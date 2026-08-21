@@ -11,6 +11,7 @@ namespace ZEngine::Rendering::Buffers
     struct FramebufferVNext
     {
         FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&&);
+        explicit FramebufferVNext(Hardwares::VulkanDevice* device);
         ~FramebufferVNext();
 
         VkFramebuffer                                        Handle{VK_NULL_HANDLE};
@@ -18,6 +19,7 @@ namespace ZEngine::Rendering::Buffers
         void                                                 Create();
         void                                                 Resize(uint32_t width = 1, uint32_t height = 1);
         void                                                 Dispose();
+        void                                                 Reset(VkFramebuffer handle, uint32_t width, uint32_t height);
         uint32_t                                             GetWidth() const;
         uint32_t                                             GetHeight() const;
         Specifications::FrameBufferSpecificationVNext&       GetSpecification();

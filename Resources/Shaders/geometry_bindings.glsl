@@ -7,6 +7,7 @@ layout(set = 0, binding = 0) uniform UBCamera
     mat4 View;
     mat4 Projection;
     vec4 Position;
+    mat4 InvViewProj;
 }
 Camera;
 

@@ -24,7 +24,7 @@ The two rendering paths differ in when lighting is evaluated relative to visibil
 | Material variety | Unlimited | Must fit in G-buffer layout |
 | Best for | Mobile, outdoor, few lights, high transparency | Indoor/architectural, 50+ lights, complex scenes |
 
-**Default path:** Forward rendering with tile-based light culling (`light-culling.md`). Forward handles up to ~100 lights comfortably with culling. Deferred is activated only when a scene has 50+ lights or when the project explicitly sets `RenderingMode::Deferred`.
+**Default path:** Forward rendering with tile-based light culling (`light-culling.md`). Forward handles up to ~100 lights comfortably with culling. Deferred is activated only when a scene has 50+ lights or when the project explicitly enables it.
 
 ---
 
@@ -56,38 +56,67 @@ The G-buffer is four render targets. All targets share the same dimensions as th
 ```cpp
 class GBufferPass final : public IRenderGraphCallbackPass {
 public:
-    void Setup(RenderGraphBuilder& builder) override;
-    void Compile(RenderGraphInspector& inspector) override;
-    void Execute(VkCommandBuffer cmd, RenderGraphInspector& inspector) override;
+    void Setup(Hardwares::VulkanDevicePtr const device, cstring name,
+               RenderGraphResourceBuilderPtr const res_builder,
+               RenderGraphResourceInspectorPtr res_inspector) override;
 
-private:
-    VkPipeline       m_pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout m_layout   = VK_NULL_HANDLE;
-    VkRenderPass     m_rp       = VK_NULL_HANDLE;
+    void Compile(Hardwares::VulkanDevicePtr const device,
+                 Rendering::Scenes::SceneDataPtr const scene,
+                 RenderPasses::RenderPassBuilder* pass_builder,
+                 RenderGraphResourceInspectorPtr res_inspector,
+                 RenderPasses::RenderPass** const output_pass) override;
+
+    void Execute(Hardwares::VulkanDevicePtr const device,
+                 RenderGraphResourceInspectorPtr res_inspector,
+                 Rendering::Scenes::SceneDataPtr const scene,
+                 RenderPasses::RenderPass* const pass,
+                 Buffers::FramebufferVNext* const framebuffer,
+                 Hardwares::CommandBufferPtr const command_buffer) override;
+
+    void Deinitialize(Hardwares::VulkanDevicePtr const device) override;
 };
 ```
 
 **Setup:**
 
 ```cpp
-void GBufferPass::Setup(RenderGraphBuilder& builder) {
-    builder.WriteColorAttachment("gbuffer_albedo_ao",
-        RGTextureDesc{ .format = VK_FORMAT_R8G8B8A8_UNORM,
-                       .usage  = IMAGE_USAGE_COLOR_ATTACHMENT | IMAGE_USAGE_SAMPLED });
+void GBufferPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name,
+                        RenderGraphResourceBuilderPtr const res_builder,
+                        RenderGraphResourceInspectorPtr res_inspector) {
+    TextureSpecification albedo_spec = {};
+    albedo_spec.Format               = VK_FORMAT_R8G8B8A8_UNORM;
+    res_builder->WriteColorAttachment("gbuffer_albedo_ao", albedo_spec);
 
-    builder.WriteColorAttachment("gbuffer_normals_rough",
-        RGTextureDesc{ .format = VK_FORMAT_R16G16B16A16_SFLOAT,
-                       .usage  = IMAGE_USAGE_COLOR_ATTACHMENT | IMAGE_USAGE_SAMPLED });
+    TextureSpecification normals_spec = {};
+    normals_spec.Format               = VK_FORMAT_R16G16B16A16_SFLOAT;
+    res_builder->WriteColorAttachment("gbuffer_normals_rough", normals_spec);
 
-    builder.WriteColorAttachment("gbuffer_metallic_emissive",
-        RGTextureDesc{ .format = VK_FORMAT_R8G8B8A8_UNORM,
-                       .usage  = IMAGE_USAGE_COLOR_ATTACHMENT | IMAGE_USAGE_SAMPLED });
+    TextureSpecification metallic_spec = {};
+    metallic_spec.Format               = VK_FORMAT_R8G8B8A8_UNORM;
+    res_builder->WriteColorAttachment("gbuffer_metallic_emissive", metallic_spec);
 
-    builder.WriteDepthAttachment("hdr_depth",
-        RGTextureDesc{ .format = VK_FORMAT_D32_SFLOAT,
-                       .usage  = IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT | IMAGE_USAGE_SAMPLED });
+    TextureSpecification depth_spec = {};
+    depth_spec.Format               = VK_FORMAT_D32_SFLOAT;
+    res_builder->WriteDepthAttachment("hdr_depth", depth_spec);
 }
 ```
+
+Before `Compile` is called, the RenderGraph pre-populates the `RenderPassBuilder` with one `UseRenderTarget` call per declared write. `Compile` receives this pre-populated builder and extends it with pipeline state:
+
+```cpp
+void GBufferPass::Compile(Hardwares::VulkanDevicePtr const device,
+                          Rendering::Scenes::SceneDataPtr const scene,
+                          RenderPasses::RenderPassBuilder* pass_builder,
+                          RenderGraphResourceInspectorPtr res_inspector,
+                          RenderPasses::RenderPass** const output_pass) {
+    pass_builder->SetPipelineName("gbuffer")
+                 .EnablePipelineDepthTest(true)
+                 .UseShader("gbuffer.vert", "gbuffer.frag")
+                 .Detach(output_pass);
+}
+```
+
+`Execute` binds the per-mesh material descriptor sets and records the draw calls for all opaque meshes in the scene.
 
 **Vertex shader:** standard MVP transform. No changes from the forward path.
 
@@ -121,40 +150,68 @@ void main() {
 ```cpp
 class DeferredLightingPass final : public IRenderGraphCallbackPass {
 public:
-    void Setup(RenderGraphBuilder& builder) override;
-    void Compile(RenderGraphInspector& inspector) override;
-    void Execute(VkCommandBuffer cmd, RenderGraphInspector& inspector) override;
+    void Setup(Hardwares::VulkanDevicePtr const device, cstring name,
+               RenderGraphResourceBuilderPtr const res_builder,
+               RenderGraphResourceInspectorPtr res_inspector) override;
 
-private:
-    VkPipeline       m_pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout m_layout   = VK_NULL_HANDLE;
+    void Compile(Hardwares::VulkanDevicePtr const device,
+                 Rendering::Scenes::SceneDataPtr const scene,
+                 RenderPasses::RenderPassBuilder* pass_builder,
+                 RenderGraphResourceInspectorPtr res_inspector,
+                 RenderPasses::RenderPass** const output_pass) override;
+
+    void Execute(Hardwares::VulkanDevicePtr const device,
+                 RenderGraphResourceInspectorPtr res_inspector,
+                 Rendering::Scenes::SceneDataPtr const scene,
+                 RenderPasses::RenderPass* const pass,
+                 Buffers::FramebufferVNext* const framebuffer,
+                 Hardwares::CommandBufferPtr const command_buffer) override;
+
+    void Deinitialize(Hardwares::VulkanDevicePtr const device) override;
 };
 ```
 
 **Setup:**
 
 ```cpp
-void DeferredLightingPass::Setup(RenderGraphBuilder& builder) {
-    // Read G-buffer
-    builder.ReadTexture("gbuffer_albedo_ao",       IMAGE_USAGE_SAMPLED);
-    builder.ReadTexture("gbuffer_normals_rough",   IMAGE_USAGE_SAMPLED);
-    builder.ReadTexture("gbuffer_metallic_emissive", IMAGE_USAGE_SAMPLED);
-    builder.ReadTexture("hdr_depth",               IMAGE_USAGE_SAMPLED);
+void DeferredLightingPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name,
+                                  RenderGraphResourceBuilderPtr const res_builder,
+                                  RenderGraphResourceInspectorPtr res_inspector) {
+    res_builder->ReadTexture("gbuffer_albedo_ao");
+    res_builder->ReadTexture("gbuffer_normals_rough");
+    res_builder->ReadTexture("gbuffer_metallic_emissive");
+    res_builder->ReadDepth("hdr_depth");
 
-    // Read shadow maps
-    builder.ReadTexture("shadow_map_directional",  IMAGE_USAGE_SAMPLED);
+    // Shadow map read — depends on ShadowPass completing first.
+    res_builder->ReadTexture("shadow_map_directional");
 
-    // Read light culling output
-    builder.ReadBuffer("light_grid",        BUFFER_USAGE_STORAGE_READ);
-    builder.ReadBuffer("light_index_list",  BUFFER_USAGE_STORAGE_READ);
-    builder.ReadBuffer("light_buffer",      BUFFER_USAGE_UNIFORM_READ);
+    // Light culling buffer reads are declared here when LightCullPass is implemented.
+    // See light-culling.md for the light_grid and light_index_list resource names.
 
-    // Write HDR output
-    builder.WriteColorAttachment("hdr_lit",
-        RGTextureDesc{ .format = VK_FORMAT_B10G11R11_UFLOAT_PACK32,
-                       .usage  = IMAGE_USAGE_COLOR_ATTACHMENT | IMAGE_USAGE_SAMPLED });
+    TextureSpecification hdr_spec = {};
+    hdr_spec.Format               = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+    res_builder->WriteColorAttachment("hdr_lit", hdr_spec);
 }
 ```
+
+Depth is read in `VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL` (MoltenVK compatible). `depthWriteEnable` is set to false in the pipeline spec.
+
+Before `Compile` is called, the RenderGraph pre-populates the `RenderPassBuilder` with one `AddInputAttachment` call per declared read and one `UseRenderTarget` call for the declared write. `Compile` extends the builder with pipeline state:
+
+```cpp
+void DeferredLightingPass::Compile(Hardwares::VulkanDevicePtr const device,
+                                    Rendering::Scenes::SceneDataPtr const scene,
+                                    RenderPasses::RenderPassBuilder* pass_builder,
+                                    RenderGraphResourceInspectorPtr res_inspector,
+                                    RenderPasses::RenderPass** const output_pass) {
+    pass_builder->SetPipelineName("deferred_lighting")
+                 .EnablePipelineDepthTest(false)
+                 .UseShader("fullscreen_triangle.vert", "deferred_lighting.frag")
+                 .Detach(output_pass);
+}
+```
+
+`Execute` retrieves texture handles via `res_inspector->GetTextureHandle(handle)` and binds them to the lighting descriptor set before recording the full-screen triangle draw.
 
 **Fragment shader (`deferred_lighting.frag.glsl`):** Reconstructs world position from depth + inverse VP matrix. Reads G-buffer. Evaluates directional light (always applied, not tile-culled). Iterates tile-assigned point and spot lights via `light_grid`/`light_index_list`. Applies shadow map lookups. Applies lightmap if `LightmapComponent` data is packed into RT2 reserved bits.
 
@@ -188,7 +245,7 @@ vec3 reconstruct_position(vec2 uv, float depth) {
 }
 ```
 
-Note: "depth must be in Vulkan range [0,1]. If reversed-Z optimization is enabled, pass (1.0 - depth) instead."
+Note: depth must be in Vulkan range [0,1]. If reversed-Z optimization is enabled, pass `(1.0 - depth)` instead.
 
 **NDC convention:** Vulkan depth is [0,1] natively. The reconstruction shader uses depth directly without conversion. If the project uses reversed-Z (depth_near=1, depth_far=0), pass `(1.0 - depth)` instead.
 
@@ -212,41 +269,63 @@ Alpha-cutout materials (masked) that do not require blending can be rendered in 
 
 ## 6. RenderGraph Integration
 
-**`RenderingMode` enum:**
+`GraphicRenderer::Initialize` is the orchestrator for pass registration. Passes are registered via `AddCallbackPass` and toggled with `SetPassEnabled`. The deferred path is disabled by default; enabling it requires disabling the forward geometry pass and enabling the deferred passes.
 
 ```cpp
-enum class RenderingMode : uint8_t {
-    Forward,   // default; GeometryPass + LightingPass
-    Deferred,  // GBufferPass + DeferredLightingPass + TransparentForwardPass
-};
-```
+void GraphicRenderer::Initialize(/* ... */) {
+    // Forward path (enabled by default)
+    m_render_graph->AddCallbackPass("DepthPrePass",    &m_depth_pre_pass,    true);
+    m_render_graph->AddCallbackPass("GeometryPass",    &m_geometry_pass,     true);
+    m_render_graph->AddCallbackPass("LightingPass",    &m_lighting_pass,     true);
 
-`AppRenderPipeline` holds a `RenderingMode m_mode` field. At `Compile()` time, the pipeline registers the appropriate pass set:
+    // Deferred path (disabled by default)
+    m_render_graph->AddCallbackPass("GBufferPass",          &m_gbuffer_pass,          false);
+    m_render_graph->AddCallbackPass("DeferredLightingPass", &m_deferred_lighting_pass, false);
+    m_render_graph->AddCallbackPass("TransparentForwardPass", &m_transparent_pass,     false);
 
-```cpp
-void AppRenderPipeline::Compile(RenderGraphBuilder& builder) {
     // Common passes (both modes)
-    builder.AddPass<ShadowPass>();
-    builder.AddPass<LightCullPass>();
-
-    if (m_mode == RenderingMode::Deferred) {
-        builder.AddPass<GBufferPass>();
-        builder.AddPass<DeferredLightingPass>();
-        builder.AddPass<TransparentForwardPass>();
-    } else {
-        builder.AddPass<DepthPrePass>();
-        builder.AddPass<GeometryPass>();
-        builder.AddPass<LightingPass>();
-    }
-
-    // Common post-processing (both modes)
-    builder.AddPass<BloomPass>();
-    builder.AddPass<TonemapPass>();
-    builder.AddPass<UIPass>();
+    m_render_graph->AddCallbackPass("BloomPass",    &m_bloom_pass,    true);
+    m_render_graph->AddCallbackPass("TonemapPass",  &m_tonemap_pass,  true);
+    m_render_graph->AddCallbackPass("UIPass",       &m_ui_pass,       true);
 }
 ```
 
-The RenderGraph resolves resource dependencies from the declared `Setup` inputs/outputs, so pass ordering is handled automatically after the registration order establishes the topology.
+To switch to the deferred path at runtime, disable the forward geometry group and enable the deferred group:
+
+```cpp
+m_render_graph->SetPassEnabled("DepthPrePass", false);
+m_render_graph->SetPassEnabled("GeometryPass", false);
+m_render_graph->SetPassEnabled("LightingPass", false);
+
+m_render_graph->SetPassEnabled("GBufferPass",           true);
+m_render_graph->SetPassEnabled("DeferredLightingPass",  true);
+m_render_graph->SetPassEnabled("TransparentForwardPass", true);
+```
+
+A full RenderGraph recompile is triggered on pass enable/disable changes. This should not be done during gameplay.
+
+**`ZENGINE_DEFERRED` CMake flag:** not yet wired. When implemented, it will control whether the deferred passes are registered at all. Until then, deferred pass registration is controlled entirely through `SetPassEnabled`.
+
+### 6.3 Descriptor Set Layout (DeferredLightingPass)
+
+```
+Set 0 — per-frame UBO:
+  binding 0: CameraData  { mat4 view; mat4 proj; mat4 inv_view; mat4 inv_view_proj; vec3 cam_pos; }
+  binding 1: LightBuffer { uint light_count; Light lights[MAX_LIGHTS]; }
+
+Set 1 — G-buffer textures (sampler2D):
+  binding 0: gbuffer_albedo_ao
+  binding 1: gbuffer_normals_rough
+  binding 2: gbuffer_metallic_emissive
+  binding 3: hdr_depth
+
+Set 2 — shadow maps:
+  binding 0: shadow_map_directional
+
+Set 3 — light culling (storage buffers, when LightCullPass is implemented):
+  binding 0: light_grid        (readonly SSBO)
+  binding 1: light_index_list  (readonly SSBO)
+```
 
 ---
 
@@ -264,7 +343,7 @@ The depth buffer is shared with the forward depth pre-pass and is not an additio
 
 At 4K, the G-buffer costs 96 MB of VRAM. This must be accounted for in the project's memory budget. Cross-reference: `memory-budget.md` should reserve a `RENDER_GBUFFER` budget line of 128 MB (worst-case 4K with some headroom).
 
-If VRAM is constrained, `RenderingMode::Deferred` should be restricted to PC configurations with 8GB+ VRAM. Console targets with unified memory budgets require separate analysis.
+If VRAM is constrained, the deferred path should be restricted to PC configurations with 8GB+ VRAM. Console targets with unified memory budgets require separate analysis.
 
 ---
 
@@ -291,9 +370,9 @@ Motion vectors for TAA require writing a `"motion_vectors"` render target in `GB
 
 The deferred path is additive. Existing forward shaders are not modified. New deferred-path shaders (`gbuffer.vert.glsl`, `gbuffer.frag.glsl`, `deferred_lighting.frag.glsl`) are added alongside them.
 
-**CMake flag:** `-DZENGINE_DEFERRED=ON` enables the deferred rendering path. When disabled (default), the deferred pass files are compiled but `AppRenderPipeline` defaults to `RenderingMode::Forward`.
+`GraphicRenderer::Initialize` registers both the forward and deferred pass groups. Switching between them is a matter of toggling pass enabled state via `SetPassEnabled`, which triggers a RenderGraph recompile. See §6 for the full switching pattern.
 
-**Runtime switching:** `RenderingMode` can be changed at runtime (for editor tooling and RenderDoc debugging) if the RenderGraph is rebuilt. A full RenderGraph recompile is triggered on mode change. This should not be done during gameplay.
+**`ZENGINE_DEFERRED` CMake flag:** not yet wired. See §6.
 
 **Shader variants:** G-buffer fragment shaders are separate files, not `#ifdef` variants of the forward fragment shader. This avoids a combinatorial explosion of shader permutations and keeps both paths readable independently.
 
@@ -301,8 +380,10 @@ The deferred path is additive. Existing forward shaders are not modified. New de
 
 ## 10. File Layout
 
+The layout below is the target directory structure for the deferred rendering feature. It does not exist yet. Current rendering passes are located in `ZEngine/ZEngine/Rendering/Renderers/RendererPasses.h` and `ZEngine/ZEngine/Rendering/Renderers/RendererPasses.cpp`.
+
 ```
-ZEngine/Rendering/Deferred/
+ZEngine/Rendering/Deferred/          -- target layout; not yet created
     GBufferPass.h
     GBufferPass.cpp
     DeferredLightingPass.h
@@ -315,10 +396,6 @@ ZEngine/Rendering/Deferred/
         deferred_lighting.frag.glsl
         deferred_common.glsl          -- position reconstruction, G-buffer unpack helpers
         transparent_forward.frag.glsl
-
-ZEngine/Rendering/
-    AppRenderPipeline.h              -- RenderingMode enum, Compile() switch (modified)
-    AppRenderPipeline.cpp
 ```
 
 ---
@@ -330,8 +407,8 @@ ZEngine/Rendering/
 - [ ] `DeferredLightingPass.h` / `DeferredLightingPass.cpp` — full-screen lighting with tile-culled light iteration
 - [ ] `deferred_lighting.frag.glsl` — G-buffer unpack, position reconstruction, PBR evaluation
 - [ ] `TransparentForwardPass.h` / `TransparentForwardPass.cpp` — forward pass for alpha-blended objects
-- [ ] `RenderingMode` enum and `AppRenderPipeline::Compile()` switch
-- [ ] `ZENGINE_DEFERRED` CMake flag
+- [ ] `RenderingMode` enum and `GraphicRenderer::Initialize` deferred registration
+- [ ] `ZENGINE_DEFERRED` CMake flag wired to pass registration
 - [ ] `memory-budget.md` updated with `RENDER_GBUFFER` budget line
 - [ ] FXAA post-process pass (or stub placeholder)
 - [ ] Integration test: scene with 50 point lights renders correctly in deferred mode

@@ -41,10 +41,7 @@ namespace ZEngine::Applications
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
     {
         if (SceneRenderer && SceneRenderer->RenderGraph)
-        {
-            auto rendergraph = SceneRenderer->RenderGraph;
-            rendergraph->Resize(w, h);
-        }
+            SceneRenderer->RenderGraph->Resize(w, h);
     }
 
     bool AppRenderPipeline::BeginFrame()
