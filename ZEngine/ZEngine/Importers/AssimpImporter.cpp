@@ -32,7 +32,7 @@ namespace ZEngine::Importers
 
     void AssimpImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(350), &Arena);
+        arena->CreateSubArena(ZMega(128), &Arena);
     }
 
     bool AssimpImporter::CanImport(const char* extension) const

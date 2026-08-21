@@ -37,23 +37,23 @@ namespace ZEngine::Managers
 
     void AssetManager::Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path)
     {
-        s_Instance = ZPushStructCtor(arena, AssetManager);
-        arena->CreateSubArena(ZMega(400), &s_Instance->Arena);
+        s_Instance                          = ZPushStructCtor(arena, AssetManager);
+        s_Instance->Arena                   = arena;
 
         s_Instance->Device                  = device;
         s_Instance->CurrentWorkingSpacePath = working_space_path;
 
-        s_Instance->NodeHierarchies.init(&s_Instance->Arena, 5000);
-        s_Instance->Meshes.init(&s_Instance->Arena, 5000);
-        s_Instance->Materials.init(&s_Instance->Arena, 5000);
-        s_Instance->GPUMeshMaterials.init(&s_Instance->Arena, 5000);
-        s_Instance->Textures.init(&s_Instance->Arena, 5000);
-        s_Instance->UUIDToTextureHandle.init(&s_Instance->Arena, 5000);
-        s_Instance->MeshToHierarchySlot.init(&s_Instance->Arena, 5000);
-        s_Instance->UUIDToMaterialSlot.init(&s_Instance->Arena, 5000);
+        s_Instance->NodeHierarchies.init(s_Instance->Arena, 5000);
+        s_Instance->Meshes.init(s_Instance->Arena, 5000);
+        s_Instance->Materials.init(s_Instance->Arena, 5000);
+        s_Instance->GPUMeshMaterials.init(s_Instance->Arena, 5000);
+        s_Instance->Textures.init(s_Instance->Arena, 5000);
+        s_Instance->UUIDToTextureHandle.init(s_Instance->Arena, 5000);
+        s_Instance->MeshToHierarchySlot.init(s_Instance->Arena, 5000);
+        s_Instance->UUIDToMaterialSlot.init(s_Instance->Arena, 5000);
 
         static Core::VFS::AssetRegistry s_registry;
-        s_registry.Initialize(&s_Instance->Arena);
+        s_registry.Initialize(s_Instance->Arena);
         s_Instance->Registry = &s_registry;
     }
 
@@ -99,9 +99,9 @@ namespace ZEngine::Managers
         auto  mesh_slot = static_cast<uint32_t>(s_Instance->Meshes.size());
         auto& m         = s_Instance->Meshes.push_use({});
         m.MeshUUID      = mesh.MeshUUID;
-        m.SubMeshes.init(&s_Instance->Arena, mesh.SubMeshes.size());
-        m.Vertices.init(&s_Instance->Arena, mesh.Vertices.size(), mesh.Vertices.size());
-        m.Indices.init(&s_Instance->Arena, mesh.Indices.size(), mesh.Indices.size());
+        m.SubMeshes.init(s_Instance->Arena, mesh.SubMeshes.size());
+        m.Vertices.init(s_Instance->Arena, mesh.Vertices.size(), mesh.Vertices.size());
+        m.Indices.init(s_Instance->Arena, mesh.Indices.size(), mesh.Indices.size());
         Helpers::secure_memcpy(m.Vertices.data(), m.Vertices.size() * sizeof(float), mesh.Vertices.data(), mesh.Vertices.size() * sizeof(float));
         Helpers::secure_memcpy(m.Indices.data(), m.Indices.size() * sizeof(uint32_t), mesh.Indices.data(), mesh.Indices.size() * sizeof(uint32_t));
         for (auto& sub : mesh.SubMeshes)
@@ -113,14 +113,14 @@ namespace ZEngine::Managers
         h.NodeHierarchyUUID = hierarchy.NodeHierarchyUUID;
         h.MeshUUID          = hierarchy.MeshUUID;
 
-        h.Hierarchies.init(&s_Instance->Arena, hierarchy.Hierarchies.size(), hierarchy.Hierarchies.size());
-        h.LocalTransforms.init(&s_Instance->Arena, hierarchy.LocalTransforms.size(), hierarchy.LocalTransforms.size());
-        h.GlobalTransforms.init(&s_Instance->Arena, hierarchy.GlobalTransforms.size(), hierarchy.GlobalTransforms.size());
-        h.Names.init(&s_Instance->Arena, hierarchy.Names.size());
-        h.MaterialNames.init(&s_Instance->Arena, hierarchy.MaterialNames.size());
-        h.NodeNames.init(&s_Instance->Arena, hierarchy.NodeNames.size() > 32 ? hierarchy.NodeNames.size() * 2 : 64);
-        h.NodeMeshes.init(&s_Instance->Arena, hierarchy.NodeMeshes.size() > 32 ? hierarchy.NodeMeshes.size() * 2 : 64);
-        h.NodeMaterials.init(&s_Instance->Arena, hierarchy.NodeMaterials.size() > 32 ? hierarchy.NodeMaterials.size() * 2 : 64);
+        h.Hierarchies.init(s_Instance->Arena, hierarchy.Hierarchies.size(), hierarchy.Hierarchies.size());
+        h.LocalTransforms.init(s_Instance->Arena, hierarchy.LocalTransforms.size(), hierarchy.LocalTransforms.size());
+        h.GlobalTransforms.init(s_Instance->Arena, hierarchy.GlobalTransforms.size(), hierarchy.GlobalTransforms.size());
+        h.Names.init(s_Instance->Arena, hierarchy.Names.size());
+        h.MaterialNames.init(s_Instance->Arena, hierarchy.MaterialNames.size());
+        h.NodeNames.init(s_Instance->Arena, hierarchy.NodeNames.size() > 32 ? hierarchy.NodeNames.size() * 2 : 64);
+        h.NodeMeshes.init(s_Instance->Arena, hierarchy.NodeMeshes.size() > 32 ? hierarchy.NodeMeshes.size() * 2 : 64);
+        h.NodeMaterials.init(s_Instance->Arena, hierarchy.NodeMaterials.size() > 32 ? hierarchy.NodeMaterials.size() * 2 : 64);
 
         Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(Helpers::NodeHierarchy), hierarchy.Hierarchies.data(), hierarchy.Hierarchies.size() * sizeof(Helpers::NodeHierarchy));
         Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchy.LocalTransforms.data(), hierarchy.LocalTransforms.size() * sizeof(Core::Maths::Mat4f));
@@ -129,12 +129,12 @@ namespace ZEngine::Managers
         for (auto& name : hierarchy.Names)
         {
             auto& n = h.Names.push_use({});
-            n.init(&s_Instance->Arena, name.c_str());
+            n.init(s_Instance->Arena, name.c_str());
         }
         for (auto& mat_name : hierarchy.MaterialNames)
         {
             auto& n = h.MaterialNames.push_use({});
-            n.init(&s_Instance->Arena, mat_name.c_str());
+            n.init(s_Instance->Arena, mat_name.c_str());
         }
         for (const auto& [k, v] : hierarchy.NodeNames)
             h.NodeNames.insert(k, v);
@@ -169,7 +169,7 @@ namespace ZEngine::Managers
         auto  slot          = static_cast<uint32_t>(s_Instance->Textures.size());
         auto& new_tex       = s_Instance->Textures.push_use({});
         new_tex.TextureUUID = uuid;
-        new_tex.Path.init(&s_Instance->Arena, path.c_str());
+        new_tex.Path.init(s_Instance->Arena, path.c_str());
 
         if (!new_tex.Path.empty() && s_Instance->Device && s_Instance->Device->RRM)
         {

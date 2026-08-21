@@ -62,7 +62,7 @@ namespace ZEngine::Core::Memory
             cfg.Logging            = {"Logging", ZMega(8ULL)};
             cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};
             cfg.VulkanDevice       = {"VulkanDevice", ZGiga(1ULL)};
-            cfg.ImportPipeline     = {"ImportPipeline", ZGiga(1ULL)}; // engine importers (414 MB) + editor importers (414 MB) + coordinator
+            cfg.ImportPipeline     = {"ImportPipeline", ZGiga(1ULL)}; // glTF 64 + Assimp 128 + envmap 32 + editor ~414 MB; each carves directly
             cfg.UIContext          = {"UIContext", ZMega(64ULL)};
             cfg.Swapchain          = {"Swapchain", ZMega(8ULL)};
             cfg.ShaderCache        = {"ShaderCache", ZMega(64ULL)};

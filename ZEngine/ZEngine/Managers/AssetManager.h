@@ -17,7 +17,7 @@ namespace ZEngine::Managers
 {
     struct AssetManager
     {
-        Core::Memory::ArenaAllocator                                                        Arena                   = {};
+        Core::Memory::ArenaAllocator*                                                       Arena                   = nullptr;
         cstring                                                                             CurrentWorkingSpacePath = "";
 
         // CPU-side import buffers — owned by the import pipeline.
