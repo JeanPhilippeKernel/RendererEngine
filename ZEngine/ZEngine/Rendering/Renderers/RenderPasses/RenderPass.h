@@ -12,16 +12,6 @@
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    enum PassInputType
-    {
-        UNIFORM_BUFFER_SET,
-        STORAGE_BUFFER_SET,
-        BINDLESS_TEXTURE,
-        UNIFORM_BUFFER,
-        STORAGE_BUFFER,
-        TEXTURE
-    };
-
     struct RenderPass
     {
         RenderPass() {}
@@ -40,17 +30,25 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                                    Dispose();
         void                                    Bake();
         bool                                    Verify();
-        // Binds a single device-local BufferView to ALL frame descriptor sets.
-        void                                    SetInput(std::string_view key_name, const Core::Memory::BufferView* buffer);
-        // Direct binding by (set, binding) index — bypasses name lookup for well-known bindings.
-        void                                    SetInputByBinding(uint32_t set, uint32_t binding, const Core::Memory::BufferView* buffer);
-        // Bind a heap-allocated resource as DYNAMIC_UNIFORM_BUFFER.
-        // The heap VkBuffer covers all frames; dynamic offsets are supplied at draw time.
-        void                                    SetInputFromHeap(std::string_view key_name, VkDeviceSize range);
-        void                                    SetInput(std::string_view key_name, const Textures::TextureHandle& texture);
-        void                                    SetBindlessInput(std::string_view key_name);
-        // Todo : This is a temporary solution, we should have a more abstract sampler resource in the future
-        void                                    SetInput(cstring key_name, const VkDescriptorImageInfo& sampler_info);
+
+        // Bind a storage buffer (STORAGE_BUFFER) to all frame descriptor sets by name.
+        void                                    SetStorageBuffer(std::string_view name, const Core::Memory::BufferView* buffer);
+
+        // Bind a per-frame dynamic uniform (UNIFORM_BUFFER_DYNAMIC) from the FrameHeap.
+        void                                    SetDynamicUniform(std::string_view name, VkDeviceSize range);
+
+        // Bind a single texture as SAMPLED_IMAGE (or the type declared in the shader).
+        void                                    SetTexture(std::string_view name, const Textures::TextureHandle& texture);
+
+        // Bind a sampler at compile time (SAMPLER). Use for LinearWrapSampler etc.
+        void                                    SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
+
+        // Connects this pass to the engine's global bindless TextureArray
+        // (set=1, binding=0, 600 slots). Registers descriptor sets for per-frame
+        // texture slot updates via DeviceSwapchain::Present().
+        // Asserts that the named binding is VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE.
+        void                                    UseTextureArray(std::string_view name);
+
         void                                    UpdateInputBinding();
         ZRawPtr(Renderers::RenderPasses::Attachment) GetAttachment() const;
         void     UpdateRenderTargets();
@@ -61,7 +59,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
     private:
-        bool                     m_perform_update{false};
         Hardwares::VulkanDevice* m_device;
     };
     ZDEFINE_PTR(RenderPass);

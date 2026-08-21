@@ -87,6 +87,13 @@ namespace ZEngine::Rendering::Shaders
             }
         }
 
+        BindingsByName.init(&LocalArena, static_cast<size_t>(LayoutBindingSpecifications.size() * 2) + 4);
+        for (const auto& spec : LayoutBindingSpecifications)
+        {
+            if (spec.Name)
+                BindingsByName[spec.Name] = spec;
+        }
+
         // We remove the Set to avoid double release from the Device and Shader owned resource
         for (const auto [set, _] : m_device->ShaderReservedDescriptorSetLayoutMap)
         {
@@ -267,7 +274,8 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& SI_resource : fragment_resources.sampled_images)
             {
-                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
@@ -275,10 +283,9 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecification binding_spec           = {};
                     for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        const auto& spec = binding_specifications[i];
-                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        if (binding_specifications[i].Binding == binding)
                         {
-                            binding_spec = spec;
+                            binding_spec = binding_specifications[i];
                             break;
                         }
                     }
@@ -292,11 +299,9 @@ namespace ZEngine::Rendering::Shaders
 
                     continue;
                 }
-                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
-
-                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                const auto& type  = spirv_compiler->get_type(SI_resource.type_id);
+                uint32_t    count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
@@ -311,7 +316,8 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& SI_resource : fragment_resources.separate_images)
             {
-                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
@@ -319,10 +325,9 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecification binding_spec           = {};
                     for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        const auto& spec = binding_specifications[i];
-                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        if (binding_specifications[i].Binding == binding)
                         {
-                            binding_spec = spec;
+                            binding_spec = binding_specifications[i];
                             break;
                         }
                     }
@@ -336,11 +341,10 @@ namespace ZEngine::Rendering::Shaders
 
                     continue;
                 }
-                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
+                const auto& type  = spirv_compiler->get_type(SI_resource.type_id);
 
-                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                uint32_t    count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
@@ -355,7 +359,8 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& SI_resource : fragment_resources.separate_samplers)
             {
-                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
@@ -363,10 +368,9 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecification binding_spec           = {};
                     for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        const auto& spec = binding_specifications[i];
-                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        if (binding_specifications[i].Binding == binding)
                         {
-                            binding_spec = spec;
+                            binding_spec = binding_specifications[i];
                             break;
                         }
                     }
@@ -380,11 +384,9 @@ namespace ZEngine::Rendering::Shaders
 
                     continue;
                 }
-                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
-
-                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                const auto& type  = spirv_compiler->get_type(SI_resource.type_id);
+                uint32_t    count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
@@ -401,25 +403,11 @@ namespace ZEngine::Rendering::Shaders
 
     Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(cstring name)
     {
-        LayoutBindingSpecification binding_spec = {};
-
         if (!Helpers::secure_strlen(name))
-        {
-            return binding_spec;
-        }
+            return {};
 
-        for (const auto& layout_binding : LayoutBindingSpecificationMap)
-        {
-            const auto& binding_specification_collection = layout_binding.second;
-            auto        find_it                          = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) { return Helpers::secure_strcmp(spec.Name, name) == 0; });
-
-            if (find_it != std::end(binding_specification_collection))
-            {
-                binding_spec = *find_it;
-                break;
-            }
-        }
-        return binding_spec;
+        const auto* spec = BindingsByName.find(name);
+        return spec ? *spec : LayoutBindingSpecification{};
     }
 
     void Shader::Dispose()

@@ -39,6 +39,7 @@ namespace ZEngine::Core::VFS
         const AssetRecord* FindByUUID(const uuids::uuid& uuid) const;
         AssetRecord*       FindByPath(const Core::VFS::VFSPath& path);
         const AssetRecord* FindByPath(const Core::VFS::VFSPath& path) const;
+        AssetRecord*       Access(Helpers::Handle<AssetRecord> handle);
 
         // Query
         struct QueryFilter

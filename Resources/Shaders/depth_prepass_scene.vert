@@ -1,6 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
-#include "vertex_common.glsl"
+#include "draw.glsl"
 
 void main()
 {

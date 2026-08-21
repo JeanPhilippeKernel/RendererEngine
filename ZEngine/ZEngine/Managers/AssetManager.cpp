@@ -1,6 +1,7 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
@@ -49,6 +50,7 @@ namespace ZEngine::Managers
         s_Instance->Textures.init(&s_Instance->Arena, 5000);
         s_Instance->UUIDToTextureHandle.init(&s_Instance->Arena, 5000);
         s_Instance->MeshToHierarchySlot.init(&s_Instance->Arena, 5000);
+        s_Instance->UUIDToMaterialSlot.init(&s_Instance->Arena, 5000);
 
         static Core::VFS::AssetRegistry s_registry;
         s_registry.Initialize(&s_Instance->Arena);
@@ -78,8 +80,6 @@ namespace ZEngine::Managers
         return handle;
     }
 
-    // ── Direct ingest methods — called from ImportCoordinator thread ─────────────
-
     bool AssetManager::IsRegistered(const uuids::uuid& id)
     {
         return s_Instance && s_Instance->Registry && s_Instance->Registry->FindByUUID(id) != nullptr;
@@ -90,12 +90,12 @@ namespace ZEngine::Managers
         if (!s_Instance)
             return;
         std::lock_guard lock(s_Instance->IngestMutex);
-        // Use GetAsset (not IsRegistered) — VFSScanner pre-registers UUIDs in the registry
-        // without populating the Meshes array, so IsRegistered gives a false positive.
-        if (GetAsset<AssetMesh>(mesh.MeshUUID) != nullptr)
+        // Use MeshToHierarchySlot — populated only after data is actually ingested.
+        // IsRegistered / GetAsset both give false positives because VFSScanner
+        // pre-registers UUIDs with SlotHandle=0 before any mesh data exists.
+        if (s_Instance->MeshToHierarchySlot.find(mesh.MeshUUID) != nullptr)
             return;
 
-        // Mesh
         auto  mesh_slot = static_cast<uint32_t>(s_Instance->Meshes.size());
         auto& m         = s_Instance->Meshes.push_use({});
         m.MeshUUID      = mesh.MeshUUID;
@@ -108,7 +108,6 @@ namespace ZEngine::Managers
             m.SubMeshes.push(sub);
         RegisterAsset(AssetType::MESH, m.MeshUUID, mesh_slot);
 
-        // Hierarchy
         auto  hier_slot     = static_cast<uint32_t>(s_Instance->NodeHierarchies.size());
         auto& h             = s_Instance->NodeHierarchies.push_use({});
         h.NodeHierarchyUUID = hierarchy.NodeHierarchyUUID;
@@ -123,7 +122,7 @@ namespace ZEngine::Managers
         h.NodeMeshes.init(&s_Instance->Arena, hierarchy.NodeMeshes.size() > 32 ? hierarchy.NodeMeshes.size() * 2 : 64);
         h.NodeMaterials.init(&s_Instance->Arena, hierarchy.NodeMaterials.size() > 32 ? hierarchy.NodeMaterials.size() * 2 : 64);
 
-        Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(AssetNodeHierarchy), hierarchy.Hierarchies.data(), hierarchy.Hierarchies.size() * sizeof(AssetNodeHierarchy));
+        Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(Helpers::NodeHierarchy), hierarchy.Hierarchies.data(), hierarchy.Hierarchies.size() * sizeof(Helpers::NodeHierarchy));
         Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchy.LocalTransforms.data(), hierarchy.LocalTransforms.size() * sizeof(Core::Maths::Mat4f));
         Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchy.GlobalTransforms.data(), hierarchy.GlobalTransforms.size() * sizeof(Core::Maths::Mat4f));
 
@@ -210,12 +209,17 @@ namespace ZEngine::Managers
         if (!s_Instance)
             return;
         std::lock_guard lock(s_Instance->IngestMutex);
-        if (GetAsset<AssetMaterial>(mat.MaterialUUID) != nullptr)
+        // Use UUIDToMaterialSlot — populated only after data is actually ingested.
+        // GetAsset gives false positives: VFSScanner pre-registers all .zematerial UUIDs
+        // with SlotHandle=0, so GetAsset<AssetMaterial>(uuid_N) returns Materials[0]
+        // (the first ingested material) for every subsequent material → all skipped.
+        if (s_Instance->UUIDToMaterialSlot.find(mat.MaterialUUID) != nullptr)
             return;
 
         auto slot = static_cast<uint32_t>(s_Instance->Materials.size());
         s_Instance->Materials.push(mat);
         RegisterAsset(AssetType::MATERIAL, mat.MaterialUUID, slot);
+        s_Instance->UUIDToMaterialSlot.insert(mat.MaterialUUID, slot);
 
         Rendering::Meshes::MeshMaterial& gpu_mat = s_Instance->GPUMeshMaterials.push_use({});
         gpu_mat.AlbedoColor                      = mat.AlbedoColor;
@@ -245,8 +249,6 @@ namespace ZEngine::Managers
         gpu_mat.SpecularMap = tex_handle(mat.SpecularTexUUID, mat.SpecularTexPath);
     }
 
-    // ── CPU buffer accessors ──────────────────────────────────────────────────────
-
     Importers::AssetMesh* AssetManager::GetMeshAsset(const uuids::uuid& id)
     {
         if (!Registry)
@@ -272,6 +274,60 @@ namespace ZEngine::Managers
             return 0;
         const Core::VFS::AssetRecord* rec = Registry->FindByUUID(id);
         return rec ? rec->SlotHandle : 0;
+    }
+
+    void AssetManager::ReloadFromDisk(Core::Memory::ArenaAllocator* scratch)
+    {
+        if (!s_Instance || !s_Instance->Registry || !scratch)
+            return;
+        // Materials — deserialize each .zematerial that has not been ingested yet.
+        {
+            auto result = s_Instance->Registry->Query({.Type = AssetType::MATERIAL}, scratch);
+            for (uint32_t i = 0; i < result.Handles.size(); ++i)
+            {
+                auto* rec = s_Instance->Registry->Access(result.Handles[i]);
+                if (!rec || rec->UUID.is_nil())
+                    continue;
+                if (s_Instance->UUIDToMaterialSlot.find(rec->UUID) != nullptr)
+                    continue;
+
+                char native[MAX_FILE_PATH_COUNT] = {};
+                rec->Path.ResolveNative(s_Instance->CurrentWorkingSpacePath, native, sizeof(native));
+
+                AssetMaterial mat = {};
+                Importers::AssetCodec::DeserializeMaterialAssetFile(scratch, native, mat);
+                if (!mat.MaterialUUID.is_nil())
+                {
+                    ZENGINE_LOG_ASSET_INFO("Reloading material from disk: {}", native)
+                    IngestMaterial(std::move(mat));
+                }
+            }
+        }
+
+        // Meshes — deserialize each .zemesh that has not been ingested yet.
+        {
+            auto result = s_Instance->Registry->Query({.Type = AssetType::MESH}, scratch);
+            for (uint32_t i = 0; i < result.Handles.size(); ++i)
+            {
+                auto* rec = s_Instance->Registry->Access(result.Handles[i]);
+                if (!rec || rec->UUID.is_nil())
+                    continue;
+                if (s_Instance->MeshToHierarchySlot.find(rec->UUID) != nullptr)
+                    continue;
+
+                char native[MAX_FILE_PATH_COUNT] = {};
+                rec->Path.ResolveNative(s_Instance->CurrentWorkingSpacePath, native, sizeof(native));
+
+                AssetMesh          mesh = {};
+                AssetNodeHierarchy hier = {};
+                Importers::AssetCodec::DeserializeMeshAssetFile(scratch, native, mesh, hier);
+                if (!mesh.MeshUUID.is_nil())
+                {
+                    ZENGINE_LOG_ASSET_INFO("Reloading mesh from disk: {}", native)
+                    IngestMesh(std::move(mesh), std::move(hier));
+                }
+            }
+        }
     }
 
     uuids::uuid AssetManager::GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name)

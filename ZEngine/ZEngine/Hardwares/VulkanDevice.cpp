@@ -353,6 +353,8 @@ namespace ZEngine::Hardwares
         device_features_2.features.drawIndirectFirstInstance = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
         device_features_2.features.multiDrawIndirect         = PhysicalDeviceFeature.features.multiDrawIndirect;
         device_features_2.features.samplerAnisotropy         = PhysicalDeviceFeature.features.samplerAnisotropy;
+        // Required for MaterialData.AlbedoMap / NormalMap etc. (uint64_t handles in g_buffer.frag)
+        device_features_2.features.shaderInt64               = PhysicalDeviceFeature.features.shaderInt64;
 
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {

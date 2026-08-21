@@ -34,6 +34,10 @@ namespace ZEngine::Managers
 
         // Mesh UUID → NodeHierarchy slot — O(1) lookup replacing the old linear scan.
         Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           MeshToHierarchySlot     = {};
+        // Populated only when asset data is actually ingested — not by VFSScanner
+        // pre-registration (which sets SlotHandle=0, causing GetAsset to return a
+        // false match for any material at slot 0).
+        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           UUIDToMaterialSlot      = {};
 
         // (255, 20, 147) fallback handle used when a texture file cannot be resolved.
         Rendering::Textures::TextureHandle                                                  FallbackTextureHandle   = {};
@@ -44,7 +48,6 @@ namespace ZEngine::Managers
         Hardwares::VulkanDevice*                                                            Device   = nullptr;
         ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
 
-        // CPU buffer accessors
         Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
         Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& mesh_id);
         AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
@@ -72,6 +75,10 @@ namespace ZEngine::Managers
         static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
 
         static uuids::uuid                                                                  GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name);
+
+        // Reload all .zemesh and .zematerial assets already registered by the VFSScanner
+        // but not yet ingested (second launch / project reopen). Safe to call every scan.
+        static void                                                                         ReloadFromDisk(Core::Memory::ArenaAllocator* scratch);
 
         template <typename T, typename K>
         static T* GetAsset(K key)

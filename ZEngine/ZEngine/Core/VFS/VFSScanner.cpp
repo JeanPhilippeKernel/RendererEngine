@@ -10,7 +10,7 @@ namespace ZEngine::Core::VFS
     {
         static bool IsAssetExtension(const VFSPath& path)
         {
-            const char*      exts[] = {".glb", ".gltf", ".fbx", ".png", ".jpg", ".jpeg", ".hdr", ".ktx"};
+            const char*      exts[] = {".glb", ".gltf", ".fbx", ".png", ".jpg", ".jpeg", ".hdr", ".ktx", ".zemesh", ".zematerial"};
             VFSPathComponent ext    = path.Extension();
             for (const char* candidate : exts)
                 if (ext.Equals(candidate))

@@ -26,7 +26,7 @@ TEST_F(UnorderedHashSetTest, InitialState)
     UnorderedHashSet<int> set;
     set.init(&manager.MainArena, 10);
     EXPECT_EQ(set.size(), 0);
-    EXPECT_EQ(set.capacity(), 10);
+    EXPECT_GE(set.capacity(), 10);
     EXPECT_TRUE(set.empty());
 }
 

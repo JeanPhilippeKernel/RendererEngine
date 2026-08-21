@@ -9,6 +9,8 @@
 #include <Tetragrama/Layers/ImguiLayer.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/ImGUIRenderer.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
@@ -33,6 +35,15 @@ namespace Tetragrama::Layers
         arena->CreateSubArena(ZMega(64), &LocalArena);
 
         Scanner.Initialize(arena);
+        Scanner.SetAssetRegistry(ZEngine::Managers::AssetManager::Instance()->Registry);
+        Scanner.SetOnScanComplete(this, [](void* ctx, ZEngine::Core::VFS::ScanStats) {
+            ZEngine::Core::MainThreadScheduler::Post(ctx, [](void* p) {
+                auto* layer   = static_cast<ImguiLayer*>(p);
+                auto  scratch = ZGetScratch(&layer->LocalArena);
+                ZEngine::Managers::AssetManager::ReloadFromDisk(scratch.Arena);
+                ZReleaseScratch(scratch);
+            });
+        });
         Cache.Initialize(arena);
 
         NodeHierarchies.init(arena, 10, 0);
@@ -82,9 +93,6 @@ namespace Tetragrama::Layers
         dockspace_cmp->ChildrenCount = dockspace_cmp->Children.size();
 
         AddUIComponent(dockspace_cmp, -1, 0);
-        /*
-         * Register Dockspace Component
-         */
         IMessenger::Register<Components::UIComponent, GenericMessage<std::string>>(dockspace_cmp, EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, [=](void* const message) -> std::future<void> {
             auto        message_ptr = reinterpret_cast<GenericMessage<std::string>*>(message);
             const auto& value       = message_ptr->GetValue();
@@ -96,6 +104,8 @@ namespace Tetragrama::Layers
             const auto& value       = message_ptr->GetValue();
             return dockspace_cmp->OnOpenMeshRequestAsync(value.c_str());
         });
+
+        ZEngine::Core::MainThreadScheduler::Post(importer_cmp, [](void* ctx) { reinterpret_cast<Components::AssetImporterUIComponent*>(ctx)->TriggerScan(); });
     }
 
     void ImguiLayer::Deinitialize()
