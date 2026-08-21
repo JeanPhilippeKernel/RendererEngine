@@ -44,9 +44,7 @@ namespace ZEngine::Rendering::Cameras
         UpdateMatrices();
     }
 
-    // ---------------------------------------------------------------------------
     // Public accessors
-    // ---------------------------------------------------------------------------
 
     Quaternion<float> FlyCamera::GetOrientation() const
     {
@@ -73,9 +71,7 @@ namespace ZEngine::Rendering::Cameras
         return rotate(GetOrientation(), Vec3f(0.0f, 1.0f, 0.0f));
     }
 
-    // ---------------------------------------------------------------------------
     // Configuration
-    // ---------------------------------------------------------------------------
 
     void FlyCamera::SetViewportSize(float logicalW, float logicalH)
     {
@@ -98,9 +94,7 @@ namespace ZEngine::Rendering::Cameras
         m_viewDirty       = true;
     }
 
-    // ---------------------------------------------------------------------------
     // OnUpdate — main entry point called once per frame by the controller
-    // ---------------------------------------------------------------------------
 
     void FlyCamera::OnUpdate(float dt)
     {
@@ -191,9 +185,7 @@ namespace ZEngine::Rendering::Cameras
         Input.FlushDeltas();
     }
 
-    // ---------------------------------------------------------------------------
     // Private update methods
-    // ---------------------------------------------------------------------------
 
     void FlyCamera::UpdateFree(float dt)
     {
@@ -305,9 +297,7 @@ namespace ZEngine::Rendering::Cameras
         }
     }
 
-    // ---------------------------------------------------------------------------
     // Focus / bookmarks
-    // ---------------------------------------------------------------------------
 
     void FlyCamera::FocusOn(Vec3f center, float radius)
     {
@@ -376,9 +366,7 @@ namespace ZEngine::Rendering::Cameras
         State             = FlyCameraState::Animating;
     }
 
-    // ---------------------------------------------------------------------------
     // Ray unprojection
-    // ---------------------------------------------------------------------------
 
     FlyCamera::Ray FlyCamera::GetRayFromViewport(float viewportX, float viewportY) const
     {
@@ -400,9 +388,7 @@ namespace ZEngine::Rendering::Cameras
         return {Position, mag > 0.0001f ? dir / mag : f};
     }
 
-    // ---------------------------------------------------------------------------
     // Private helpers
-    // ---------------------------------------------------------------------------
 
     Vec3f FlyCamera::KeyboardMoveDir() const
     {

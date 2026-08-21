@@ -240,11 +240,15 @@ namespace ZEngine::Rendering
         void         ResetGeometryBuffers();
 
         /// @brief Find the BufferHandle registered for a mesh asset by UUID.
-        /// @details Returns an invalid handle if the mesh has not been uploaded yet or
-        ///          the UUID is not in the uuid-to-buffer map.
-        /// @param uuid Asset UUID from the meta file.
-        /// @return Valid BufferHandle if found; invalid otherwise.
         BufferHandle FindMeshBuffer(const uuids::uuid& uuid) const;
+
+        /// @brief Release the geometry slot for a mesh and unregister its UUID.
+        /// @details Frees the MeshSlot so it can be reused by a future upload.
+        ///          The VB/IB bytes are not reclaimed (append-only buffer) but the
+        ///          slot index becomes available for the next UploadMesh call.
+        ///          No-op if the UUID is not registered.
+        /// @param uuid Asset UUID of the mesh to release.
+        void         ReleaseMeshGeometry(const uuids::uuid& uuid);
 
         /// @brief Write CPU data into an existing HOST_VISIBLE BufferView.
         /// @details Uses the ring allocator for staging; falls back to a one-shot staging

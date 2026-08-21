@@ -278,7 +278,6 @@ namespace Tetragrama::Components
         char name[MAX_FILE_PATH_COUNT];
         entry.Path.CopyFilename(name, sizeof(name));
 
-        // --- UE thumbnail-first card layout ---
         // Icon fills the top portion, name overlaid on a semi-transparent footer strip.
         const float sz       = m_thumbnail_size;
         const float pad      = 6.0f;
@@ -324,7 +323,6 @@ namespace Tetragrama::Components
             ImGui::EndPopup();
         }
 
-        // ---- DrawList rendering ----
         ImDrawList* dl         = ImGui::GetWindowDrawList();
         ImVec2      icon_end   = {origin.x + card_w, origin.y + sz};
 
@@ -344,7 +342,6 @@ namespace Tetragrama::Components
         if (!dark_theme)
             dl->AddRect(origin, card_end, card_border, rounding, 0, 1.0f);
 
-        // --- Icon (vector, centered in the thumbnail area) ---
         // When a per-asset thumbnail is ready, call
         //   dl->AddImage((ImTextureID)(intptr_t)thumb.Index, ixo, {ixo.x + ic, ixo.y + ic * 0.92f})
         // instead of DrawContentIcon().

@@ -617,6 +617,29 @@ namespace ZEngine::Rendering
         return {};
     }
 
+    void RenderResourceManager::ReleaseMeshGeometry(const uuids::uuid& uuid)
+    {
+        std::lock_guard lock(m_uuid_map_mutex);
+
+        // Find and invalidate the slot
+        for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+        {
+            if (m_uuid_to_buffer[i].UUID == uuid)
+            {
+                BufferHandle h = m_uuid_to_buffer[i].Handle;
+
+                // Free the mesh slot (geometry bytes stay in VB/IB — append-only)
+                if (h.IsValid() && !(h.Generation & GBUF_GEN_TAG) && h.Index < m_mesh_slot_count)
+                    m_mesh_slots[h.Index].Generation = 0;
+
+                // Remove from UUID map (swap with last entry)
+                m_uuid_to_buffer[i] = m_uuid_to_buffer[--m_uuid_to_buffer_count];
+                ZENGINE_CORE_INFO("[RRM] Released mesh geometry slot for UUID {}", uuids::to_string(uuid))
+                return;
+            }
+        }
+    }
+
     void RenderResourceManager::Release(BufferHandle handle)
     {
         if (!handle.IsValid())

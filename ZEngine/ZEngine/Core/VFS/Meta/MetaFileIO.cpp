@@ -27,9 +27,7 @@ namespace ZEngine::Core::VFS
         }
     } // namespace
 
-    // -------------------------------------------------------------------------
     // MetaFileIO
-    // -------------------------------------------------------------------------
 
     VFSPath MetaFileIO::MetaPathFor(const VFSPath& asset_path)
     {
