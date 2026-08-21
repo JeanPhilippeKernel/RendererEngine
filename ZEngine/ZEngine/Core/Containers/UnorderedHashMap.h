@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
@@ -7,21 +7,32 @@
 #include <cstddef>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
+
+// Open-addressing hash map backed by Array<Entry>.
+//
+// Capacity contract:
+//   - Always a power of 2. init() rounds the requested slot count up to the next
+//     power of 2 (minimum 16) so (index + 1) & mask visits every slot.
+//   - Pass at least 2× the number of entries you intend to insert so the load
+//     stays ≤50% and rehash is never needed.
+//   - Capacity is pre-allocated via Array::init(arena, cap, cap) — no push loop,
+//     all slots are zeroed (EntryState::Empty = 0) and no Arena waste on grow.
 
 namespace ZEngine::Core::Containers
 {
-    enum class EntryState
+    enum class EntryState : uint8_t
     {
-        Empty,
-        Occupied,
-        Deleted
+        Empty    = 0,
+        Occupied = 1,
+        Deleted  = 2,
     };
 
     template <typename K, typename V>
     struct HashEntry
     {
-        K          key;
-        V          value;
+        K          key   = {};
+        V          value = {};
         EntryState state = EntryState::Empty;
     };
 
@@ -37,80 +48,50 @@ namespace ZEngine::Core::Containers
         using iterator_category = std::input_iterator_tag;
         using difference_type   = std::ptrdiff_t;
 
-        // Constructs an iterator for the hash map's entries, starting at the given index.
-        // @param entries Value to the array of hash map entries.
-        // @param index Starting index for iteration.
-        HashMapIterator(EntryPointer entries, std::size_t index, std::size_t size) : m_entries(entries), m_index(index), m_size(size)
+        HashMapIterator(EntryPointer entries, std::size_t index, std::size_t capacity) : m_entries(entries), m_index(index), m_capacity(capacity)
         {
-            advance_to_valid();
+            skip_to_occupied();
         }
 
-        // Advances the iterator to the next occupied entry.
-        // @return Reference to the incremented iterator.
         HashMapIterator& operator++()
         {
             ++m_index;
-            advance_to_valid();
+            skip_to_occupied();
             return *this;
         }
 
-        // Checks if two iterators are not equal based on their index.
-        // @param other The iterator to compare with.
-        // @return True if the iterators point to different indices, false otherwise.
-        bool operator!=(const HashMapIterator& other) const
+        bool operator!=(const HashMapIterator& o) const
         {
-            return m_index != other.m_index;
+            return m_index != o.m_index;
+        }
+        bool operator==(const HashMapIterator& o) const
+        {
+            return m_index == o.m_index;
         }
 
-        // Checks if two iterators are equal based on their index.
-        // @param other The iterator to compare with.
-        // @return True if the iterators point to the same index, false otherwise.
-        bool operator==(const HashMapIterator& other) const
-        {
-            return m_index == other.m_index;
-        }
-
-        // Dereferences the iterator to return a key-value pair for the current entry.
-        // @return A pair containing references to the key and value (const or non-const based on IsConst).
         value_type operator*() const
         {
-            const auto& entry = m_entries[m_index];
             if constexpr (IsConst)
-            {
-                return {entry.key, entry.value};
-            }
+                return {m_entries[m_index].key, m_entries[m_index].value};
             else
-            {
-                return {entry.key, const_cast<V&>(entry.value)};
-            }
+                return {m_entries[m_index].key, const_cast<V&>(m_entries[m_index].value)};
         }
 
-        // Provides pointer-like access to the current key-value pair.
-        // @return A pointer to a temporary key-value pair.
-        pointer operator->() const
-        {
-            return std::addressof(**this);
-        }
-
-        // Returns a const reference to the key at the current position.
         const K& key() const
         {
             return m_entries[m_index].key;
         }
 
     private:
-        // Advances the iterator to the next occupied entry, skipping empty or deleted entries.
-        void advance_to_valid()
+        void skip_to_occupied()
         {
-            while (m_index < m_size && m_entries[m_index].state != EntryState::Occupied)
-            {
+            while (m_index < m_capacity && m_entries[m_index].state != EntryState::Occupied)
                 ++m_index;
-            }
         }
 
         EntryPointer m_entries;
         std::size_t  m_index;
-        std::size_t  m_size;
+        std::size_t  m_capacity;
     };
 
     template <typename K, typename V>
@@ -122,374 +103,262 @@ namespace ZEngine::Core::Containers
         using iterator       = HashMapIterator<K, V, false>;
         using const_iterator = HashMapIterator<K, V, true>;
 
-        // Initializes the hash map with an allocator, initial capacity, and load factor.
-        // @param allocator Pointer to the arena allocator for memory management.
-        // @param initial_capacity Initial number of slots (default: 16).
-        // @param load_factor Maximum load factor before resizing (default: 0.75).
-        void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
+        // Pre-allocate capacity slots (rounded to next power of 2 ≥ 16).
+        // Uses Array::init(arena, cap, cap) so the full block is reserved up-front;
+        // all entries are zeroed — EntryState::Empty = 0 needs no explicit loop.
+        void init(Memory::ArenaAllocator* arena, size_type slot_capacity = 16)
         {
-            m_allocator   = allocator;
-            m_load_factor = 0.75f;
-            m_entries.init(m_allocator, initial_capacity);
-            for (size_type i = 0; i < initial_capacity; ++i)
-            {
-                m_entries.push({});
-            }
+            m_allocator     = arena;
+            size_type cap   = next_pow2(slot_capacity < 16 ? 16 : slot_capacity);
+            m_capacity_mask = cap - 1;
+            m_entries.init(arena, cap, cap);
+            Helpers::secure_memset(m_entries.data(), 0, cap * sizeof(Entry), cap * sizeof(Entry));
             m_size = 0;
         }
 
-        // Inserts a key-value pair into the hash map, updating the value if the key exists.
-        // Resizes the map if the load factor would be exceeded.
-        // @param key The key to insert.
-        // @param value The value to associate with the key.
-        // @throws std::runtime_error if the table is full and cannot be resized.
         void insert(const K& key, const V& value)
-            requires std::is_copy_assignable_v<V>
         {
-            maybe_grow();
-
-            size_type index = probe_for_insert(key);
-            auto&     entry = m_entries[index];
-
-            if (entry.state == EntryState::Empty || entry.state == EntryState::Deleted)
-            {
-                entry.key   = key;
-                entry.value = value;
-                entry.state = EntryState::Occupied;
-                ++m_size;
-            }
-            else
-            {
-                entry.value = value;
-            }
+            upsert(key, value);
         }
-
         void insert(const K& key, V&& value)
         {
-            maybe_grow();
-
-            size_type index = probe_for_insert(key);
-            auto&     entry = m_entries[index];
-
-            if (entry.state == EntryState::Empty || entry.state == EntryState::Deleted)
-            {
-                entry.key   = key;
-                entry.value = std::move(value);
-                entry.state = EntryState::Occupied;
-                ++m_size;
-            }
-            else
-            {
-                entry.value = std::move(value);
-            }
+            upsert(key, std::move(value));
         }
 
         V& operator[](const K& key)
         {
-            maybe_grow();
-
-            size_type index = probe_for_insert(key);
-            auto&     entry = m_entries[index];
-
-            if (entry.state == EntryState::Empty || entry.state == EntryState::Deleted)
+            guard_load();
+            size_type idx = probe_insert(key);
+            Entry&    e   = m_entries[idx];
+            if (e.state != EntryState::Occupied)
             {
-                entry.key   = key;
-                entry.value = V{};
-                entry.state = EntryState::Occupied;
+                e.key   = key;
+                e.value = V{};
+                e.state = EntryState::Occupied;
                 ++m_size;
             }
-            return entry.value;
+            return e.value;
         }
 
-        // Retrieves a const reference to the value associated with a key.
-        // @param key The key to look up.
-        // @return Const reference to the value.
-        // @throws std::out_of_range if the key is not found.
-        const V& at(const K& key) const
-        {
-            size_type index = probe_for_key(key);
-            if (index == size_type(-1))
-            {
-                throw std::out_of_range("Key not found in UnorderedHashMap");
-            }
-            return m_entries[index].value;
-        }
-
-        // Finds the value associated with a key.
-        // @param key The key to look up.
-        // @return Pointer to the value if found, nullptr otherwise.
         V* find(const K& key)
         {
-            size_type index = probe_for_key(key);
-            return (index != size_type(-1)) ? &m_entries[index].value : nullptr;
+            size_type i = probe_find(key);
+            return i != npos ? &m_entries[i].value : nullptr;
         }
-
-        // Finds the value associated with a key (const version).
-        // @param key The key to look up.
-        // @return Const pointer to the value if found, nullptr otherwise.
         const V* find(const K& key) const
         {
-            size_type index = probe_for_key(key);
-            return (index != size_type(-1)) ? &m_entries[index].value : nullptr;
+            size_type i = probe_find(key);
+            return i != npos ? &m_entries[i].value : nullptr;
         }
 
-        // Returns a pointer to the stored key if found, nullptr otherwise.
         const K* find_key(const K& key) const
         {
-            size_type index = probe_for_key(key);
-            return (index != size_type(-1)) ? &m_entries[index].key : nullptr;
+            size_type i = probe_find(key);
+            return i != npos ? &m_entries[i].key : nullptr;
         }
 
-        // Checks if a key exists in the hash map.
-        // @param key The key to check.
-        // @return True if the key exists, false otherwise.
         bool contains(const K& key) const
         {
-            return find(key) != nullptr;
+            return probe_find(key) != npos;
         }
 
-        // Removes a key-value pair from the hash map.
-        // @param key The key to remove.
-        // @note Marks the entry as Deleted; does not shrink the table.
+        const V& at(const K& key) const
+        {
+            size_type i = probe_find(key);
+            ZENGINE_VALIDATE_ASSERT(i != npos, "UnorderedHashMap::at: key not found")
+            return m_entries[i].value;
+        }
+
         void remove(const K& key)
         {
-            size_type index = probe_for_key(key);
-            if (index != size_type(-1))
+            size_type i = probe_find(key);
+            if (i != npos)
             {
-                m_entries[index].state = EntryState::Deleted;
+                m_entries[i].state = EntryState::Deleted;
                 --m_size;
             }
         }
 
-        // Clears all entries in the hash map, resetting it to an empty state.
-        // @note Sets all entries to Empty; does not change capacity.
         void clear()
         {
-            for (auto& entry : m_entries)
-            {
-                entry.state = EntryState::Empty;
-            }
+            Helpers::secure_memset(m_entries.data(), 0, m_entries.size() * sizeof(Entry), m_entries.size() * sizeof(Entry));
             m_size = 0;
         }
 
-        // Checks if the hash map is empty.
-        // @return True if the map contains no key-value pairs, false otherwise.
+        size_type size() const
+        {
+            return m_size;
+        }
+        size_type capacity() const
+        {
+            return m_entries.size();
+        }
         bool empty() const
         {
             return m_size == 0;
         }
 
-        // Returns the number of key-value pairs in the hash map.
-        // @return The number of occupied entries.
-        size_type size() const
+        // Grow to next_pow2(new_count) — allocates a new Array block, abandons old.
+        // Call sparingly; pre-size correctly via init() to avoid this entirely.
+        void reserve(size_type new_count)
         {
-            return m_size;
+            size_type new_cap = next_pow2(new_count);
+            if (new_cap > capacity())
+                rehash(new_cap);
         }
 
-        // Returns the current capacity of the hash map.
-        // @return The number of slots in the underlying array.
-        size_type capacity() const
-        {
-            return m_entries.size();
-        }
-
-        // Returns an iterator to the first occupied entry.
-        // @return Iterator pointing to the first key-value pair or end() if empty.
-        // @note Iterators are invalidated by insert, remove, or reserve operations.
         iterator begin()
         {
-            return iterator(m_entries.data(), 0, m_entries.size());
+            return {m_entries.data(), 0, capacity()};
         }
-
-        // Returns an iterator to the end of the hash map.
-        // @return Iterator representing the past-the-end position.
         iterator end()
         {
-            return iterator(m_entries.data(), m_entries.size(), m_entries.size());
+            return {m_entries.data(), capacity(), capacity()};
         }
-
-        // Returns a const iterator to the first occupied entry.
-        // @return Const iterator pointing to the first key-value pair or end() if empty.
-        // @note Iterators are invalidated by insert, remove, or reserve operations.
         const_iterator begin() const
         {
-            return const_iterator(m_entries.data(), 0, m_entries.size());
+            return {m_entries.data(), 0, capacity()};
         }
-
-        // Returns a const iterator to the end of the hash map.
-        // @return Const iterator representing the past-the-end position.
         const_iterator end() const
         {
-            return const_iterator(m_entries.data(), m_entries.size(), m_entries.size());
+            return {m_entries.data(), capacity(), capacity()};
         }
-
-        // Returns a const iterator to the first occupied entry (alias for begin() const).
-        // @return Const iterator pointing to the first key-value pair or end() if empty.
         const_iterator cbegin() const
         {
             return begin();
         }
-
-        // Returns a const iterator to the end of the hash map (alias for end() const).
-        // @return Const iterator representing the past-the-end position.
         const_iterator cend() const
         {
             return end();
         }
 
-        // Ensures the hash map has at least the specified capacity.
-        // @param new_capacity Desired minimum number of slots.
-        // @note Rehashes the map if the new capacity is greater than the current capacity.
-        void reserve(size_type new_capacity)
-        {
-            if (new_capacity > m_entries.size())
-            {
-                rehash(new_capacity);
-            }
-        }
-
     private:
-        // Checks if the hash map needs to grow based on the load factor and resizes if necessary.
-        // @note Triggers rehashing if (m_size + 1) / capacity > load_factor.
-        void maybe_grow()
+        static constexpr size_type npos = size_type(-1);
+
+        static size_type           next_pow2(size_type n)
         {
-            if (static_cast<float>(m_size + 1) / m_entries.size() > m_load_factor)
-            {
-                size_type new_capacity = std::max<size_type>(16, static_cast<size_type>(m_entries.size() * 1.5f)); // Growth factor 1.5
-                rehash(new_capacity);
-            }
+            if (n == 0)
+                return 1;
+            --n;
+            n |= n >> 1;
+            n |= n >> 2;
+            n |= n >> 4;
+            n |= n >> 8;
+            n |= n >> 16;
+            if constexpr (sizeof(size_type) > 4)
+                n |= n >> 32;
+            return n + 1;
         }
 
-        // Compare keys, specialized for const char*
-        bool key_equals(const K& a, const K& b) const
+        bool key_eq(const K& a, const K& b) const
         {
             if constexpr (std::is_same_v<K, const char*>)
-            {
                 return Helpers::secure_strcmp(a, b) == 0;
-            }
             else
-            {
                 return a == b;
-            }
         }
 
-        // Rehashes the hash map to a new capacity, reinserting all occupied entries.
-        // @param new_capacity The new number of slots.
-        // @note Moves the old entries to avoid copying and skips Deleted entries.
-        void rehash(size_type new_capacity)
+        size_type hash_of(const K& key) const
         {
-            Array<Entry> old_entries = std::move(m_entries);
-            m_entries                = Array<Entry>{};
-            m_entries.init(m_allocator, new_capacity);
-            for (size_type i = 0; i < new_capacity; ++i)
+            if constexpr (std::is_same_v<K, const char*>)
+                return rapidhash(key, Helpers::secure_strlen(key));
+            else
+                return rapidhash(&key, sizeof(K));
+        }
+
+        size_type probe_find(const K& key) const
+        {
+            if (m_entries.empty())
+                return npos;
+            size_type idx = hash_of(key) & m_capacity_mask;
+            for (size_type i = 0; i <= m_capacity_mask; ++i)
             {
-                m_entries.push({});
+                const Entry& e = m_entries[idx];
+                if (e.state == EntryState::Empty)
+                    return npos;
+                if (e.state == EntryState::Occupied && key_eq(e.key, key))
+                    return idx;
+                idx = (idx + 1) & m_capacity_mask;
             }
+            return npos;
+        }
+
+        size_type probe_insert(const K& key)
+        {
+            ZENGINE_VALIDATE_ASSERT(!m_entries.empty(), "UnorderedHashMap: call init() before insert")
+            size_type idx       = hash_of(key) & m_capacity_mask;
+            size_type tombstone = npos;
+            for (size_type i = 0; i <= m_capacity_mask; ++i)
+            {
+                Entry& e = m_entries[idx];
+                if (e.state == EntryState::Occupied && key_eq(e.key, key))
+                    return idx;
+                if (e.state == EntryState::Empty)
+                    return tombstone != npos ? tombstone : idx;
+                if (e.state == EntryState::Deleted && tombstone == npos)
+                    tombstone = idx;
+                idx = (idx + 1) & m_capacity_mask;
+            }
+            if (tombstone != npos)
+                return tombstone;
+            ZENGINE_VALIDATE_ASSERT(false, "UnorderedHashMap: table full — pre-size with init(arena, 2*count)")
+            return npos;
+        }
+
+        void guard_load()
+        {
+            if (m_entries.empty())
+                return;
+            ZENGINE_VALIDATE_ASSERT(static_cast<float>(m_size + 1) / static_cast<float>(capacity()) <= 0.75f, "UnorderedHashMap: load > 75% — call reserve() or increase init() capacity")
+        }
+
+        template <typename Val>
+        void upsert(const K& key, Val&& val)
+        {
+            guard_load();
+            size_type idx = probe_insert(key);
+            if (idx == npos)
+                return;
+            Entry& e = m_entries[idx];
+            if (e.state != EntryState::Occupied)
+            {
+                e.key   = key;
+                e.state = EntryState::Occupied;
+                ++m_size;
+            }
+            e.value = std::forward<Val>(val);
+        }
+
+        void rehash(size_type new_cap)
+        {
+            Array<Entry> old     = std::move(m_entries);
+            size_type    old_cap = old.size();
+
+            m_capacity_mask      = new_cap - 1;
+            m_entries.init(m_allocator, new_cap, new_cap);
+            Helpers::secure_memset(m_entries.data(), 0, new_cap * sizeof(Entry), new_cap * sizeof(Entry));
             m_size = 0;
 
-            for (size_type i = 0; i < old_entries.size(); ++i)
+            for (size_type i = 0; i < old_cap; ++i)
             {
-                if (old_entries[i].state == EntryState::Occupied)
+                if (old[i].state == EntryState::Occupied)
                 {
-                    size_type index  = probe_for_insert(old_entries[i].key);
-                    m_entries[index] = std::move(old_entries[i]);
+                    size_type idx  = probe_insert(old[i].key);
+                    m_entries[idx] = std::move(old[i]);
                     ++m_size;
                 }
             }
         }
 
-        // Probes for a key using quadratic probing.
-        // @param key The key to look up.
-        // @return Index of the key if found, or size_type(-1) if not found.
-        size_type probe_for_key(const K& key) const
-        {
-            size_type index = hash(key) % m_entries.size();
-            size_type i     = 0;
-
-            do
-            {
-                const auto& entry = m_entries[index];
-                if (entry.state == EntryState::Empty)
-                {
-                    return size_type(-1);
-                }
-                if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
-                {
-                    return index;
-                }
-                ++i;
-                index = (index + i) % m_entries.size();
-            } while (i < m_entries.size());
-
-            return size_type(-1);
-        }
-
-        // Probes for a slot to insert a key, preferring deleted slots if available.
-        // @param key The key to insert.
-        // @return Index of the slot to use for insertion or the existing key.
-        // @throws std::runtime_error if the table is full and no slot is found.
-        size_type probe_for_insert(const K& key)
-        {
-            size_type index         = hash(key) % m_entries.size();
-            size_type first_deleted = size_type(-1);
-            size_type i             = 0;
-
-            do
-            {
-                auto& entry = m_entries[index];
-                if (entry.state == EntryState::Occupied && key_equals(entry.key, key))
-                {
-                    return index;
-                }
-
-                if (entry.state == EntryState::Empty)
-                {
-                    return (first_deleted != size_type(-1)) ? first_deleted : index;
-                }
-
-                if (entry.state == EntryState::Deleted && first_deleted == size_type(-1))
-                {
-                    first_deleted = index;
-                }
-
-                ++i;
-                index = (index + i) % m_entries.size();
-            } while (i < m_entries.size());
-
-            if (first_deleted != size_type(-1))
-            {
-                return first_deleted;
-            }
-
-            throw std::runtime_error("UnorderedHashMap probe failed: table full");
-        }
-
-        // Computes the hash value for a key using the provided hasher.
-        // @param key The key to hash.
-        // @return The hash value.
-        size_type hash(const K& key) const
-        {
-            if constexpr (std::is_same_v<K, const char*>)
-            {
-                return rapidhash(key, Helpers::secure_strlen(key));
-            }
-            else
-            {
-                return rapidhash(&key, sizeof(K));
-            }
-        }
-
-        Memory::ArenaAllocator* m_allocator = nullptr;
-        Array<Entry>            m_entries;
-        size_type               m_size        = 0;
-        float                   m_load_factor = 0.75f;
+        Memory::ArenaAllocator* m_allocator     = nullptr;
+        Array<Entry>            m_entries       = {};
+        size_type               m_capacity_mask = 0;
+        size_type               m_size          = 0;
     };
 
-    // Computes a hash value for a C-string using rapidhash.
-    // @param str The null-terminated string to hash.
-    // @return The hash value.
     inline uint64_t hash_compute(const char* str)
     {
         return rapidhash(str, Helpers::secure_strlen(str));
     }
+
 } // namespace ZEngine::Core::Containers

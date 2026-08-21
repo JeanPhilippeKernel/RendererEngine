@@ -149,7 +149,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return verify;
     }
 
-    void RenderPass::SetInputFromHeap(std::string_view key_name, VkDeviceSize range)
+    void RenderPass::SetDynamicUniform(std::string_view key_name, VkDeviceSize range)
     {
         auto validity_output = ValidateInput(key_name);
         if (!validity_output.first)
@@ -162,7 +162,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
         if (!set_array)
         {
-            ZENGINE_CORE_ERROR("SetInputFromHeap: descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            ZENGINE_CORE_ERROR("SetDynamicUniform: descriptor set {} not found for key '{}'", spec.Set, key_name.data())
             return;
         }
 
@@ -192,11 +192,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Inputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInput(std::string_view key_name, const Core::Memory::BufferView* buffer)
+    void RenderPass::SetStorageBuffer(std::string_view key_name, const Core::Memory::BufferView* buffer)
     {
         if (!buffer || !buffer->Handle)
         {
-            ZENGINE_CORE_WARN("SetInput(BufferView): null buffer for key '{}'", key_name.data())
+            ZENGINE_CORE_WARN("SetStorageBuffer: null buffer for key '{}'", key_name.data())
             return;
         }
 
@@ -211,7 +211,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
         if (!set_array)
         {
-            ZENGINE_CORE_ERROR("SetInput(BufferView): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
+            ZENGINE_CORE_ERROR("SetStorageBuffer: descriptor set {} not found for key '{}'", spec.Set, key_name.data())
             return;
         }
 
@@ -234,131 +234,113 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Inputs.insert(key_name.data());
     }
 
-    void RenderPass::SetInputByBinding(uint32_t set, uint32_t binding, const Core::Memory::BufferView* buffer)
+    void RenderPass::SetTexture(std::string_view key_name, const Textures::TextureHandle& handle)
     {
-        if (!buffer || !buffer->Handle)
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first)
             return;
 
+        const auto& spec      = validity_output.second;
         auto        shader    = Pipeline->Shader;
-        const auto* set_array = shader->DescriptorSetMap.find(set);
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
         if (!set_array)
-            set_array = m_device->ShaderReservedDescriptorSetMap.find(set);
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
         if (!set_array)
         {
-            ZENGINE_CORE_ERROR("SetInputByBinding: descriptor set {} not found", set)
+            ZENGINE_CORE_ERROR("SetTexture: descriptor set {} not found for key '{}'", spec.Set, key_name.data())
             return;
         }
 
-        auto                              frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        VkDescriptorBufferInfo            buf_info    = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
-        std::vector<VkWriteDescriptorSet> write_reqs(frame_count);
+        // Use the descriptor type declared in the shader (SAMPLED_IMAGE or COMBINED_IMAGE_SAMPLER)
+        // rather than hardcoding — avoids type mismatches with the pipeline layout.
+        const VkDescriptorType vk_type     = Specifications::DescriptorTypeMap[VALUE_FROM_SPEC_MAP(spec.DescriptorTypeValue)];
+
+        auto                   frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        auto                   tex_buf     = m_device->GlobalTextures.Access(handle);
+        auto                   img_buf     = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
+        auto                   write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
+
+        for (unsigned i = 0; i < frame_count; ++i)
+        {
+            auto& image_info = img_buf->GetDescriptorImageInfo();
+            write_reqs[i]    = VkWriteDescriptorSet{
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext           = nullptr,
+                .dstSet          = (*set_array)[i],
+                .dstBinding      = spec.Binding,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = vk_type,
+                .pImageInfo      = &(image_info),
+            };
+        }
+        vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
+        Inputs.insert(key_name.data());
+    }
+
+    void RenderPass::SetSampler(cstring key_name, const VkDescriptorImageInfo& sampler_info)
+    {
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first)
+            return;
+
+        const auto& spec      = validity_output.second;
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetSampler: descriptor set {} not found for key '{}'", spec.Set, key_name)
+            return;
+        }
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
+
         for (unsigned i = 0; i < frame_count; ++i)
         {
             write_reqs[i] = VkWriteDescriptorSet{
                 .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext           = nullptr,
                 .dstSet          = (*set_array)[i],
-                .dstBinding      = binding,
+                .dstBinding      = spec.Binding,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
-                .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pBufferInfo     = &buf_info,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLER,
+                .pImageInfo      = &(sampler_info),
             };
         }
         vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
-    }
-
-    void RenderPass::SetInput(std::string_view key_name, const Textures::TextureHandle& handle)
-    {
-        auto validity_output = ValidateInput(key_name);
-        if (!validity_output.first)
-        {
-            return;
-        }
-
-        const auto& spec      = validity_output.second;
-        auto        shader    = Pipeline->Shader;
-        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
-        if (!set_array)
-            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
-        if (!set_array)
-        {
-            ZENGINE_CORE_ERROR("SetInput(Texture): descriptor set {} not found for key '{}'", spec.Set, key_name.data())
-            return;
-        }
-        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto tex_buf     = m_device->GlobalTextures.Access(handle);
-        auto img_buf     = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
-        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
-        {
-            auto  set        = (*set_array)[i];
-            auto& image_info = img_buf->GetDescriptorImageInfo();
-
-            write_reqs[i]    = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .pImageInfo = &(image_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
-        }
-        vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);
-
-        Inputs.insert(key_name.data());
-    }
-
-    void RenderPass::SetInput(cstring key_name, const VkDescriptorImageInfo& sampler_info)
-    {
-        auto validity_output = ValidateInput(key_name);
-        if (!validity_output.first)
-        {
-            return;
-        }
-
-        const auto& spec      = validity_output.second;
-        auto        shader    = Pipeline->Shader;
-        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
-        if (!set_array)
-            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
-        if (!set_array)
-        {
-            ZENGINE_CORE_ERROR("SetInput(Sampler): descriptor set {} not found for key '{}'", spec.Set, key_name)
-            return;
-        }
-        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
-        {
-            auto set      = (*set_array)[i];
-
-            write_reqs[i] = VkWriteDescriptorSet{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .pNext = nullptr, .dstSet = set, .dstBinding = spec.Binding, .dstArrayElement = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER, .pImageInfo = &(sampler_info), .pBufferInfo = nullptr, .pTexelBufferView = nullptr};
-        }
-        vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);
-
         Inputs.insert(key_name);
     }
 
-    void RenderPass::SetBindlessInput(std::string_view key_name)
+    void RenderPass::UseTextureArray(std::string_view key_name)
     {
         auto validity_output = ValidateInput(key_name);
         if (!validity_output.first)
-        {
             return;
-        }
+
         const auto& binding_spec = validity_output.second;
-        auto        shader       = Pipeline->Shader;
-        const auto* set_array    = shader->DescriptorSetMap.find(binding_spec.Set);
+
+        // Only SAMPLED_IMAGE arrays belong in BindlessTextureSlotRequests.
+        // Samplers are compile-time resources — use SetSampler() for them.
+        ZENGINE_VALIDATE_ASSERT(binding_spec.DescriptorTypeValue == Specifications::DescriptorType::SAMPLED_IMAGE, "UseTextureArray: binding is not a SAMPLED_IMAGE array — use SetSampler() for samplers")
+
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(binding_spec.Set);
         if (!set_array)
             set_array = m_device->ShaderReservedDescriptorSetMap.find(binding_spec.Set);
         if (!set_array)
         {
-            ZENGINE_CORE_ERROR("SetBindlessInput: descriptor set {} not found for key '{}'", binding_spec.Set, key_name.data())
+            ZENGINE_CORE_ERROR("UseTextureArray: descriptor set {} not found for key '{}'", binding_spec.Set, key_name.data())
             return;
         }
-        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
 
+        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
         for (unsigned i = 0; i < frame_count; ++i)
         {
-            auto                                    set  = (*set_array)[i];
-            Hardwares::WriteDescriptorSetRequestKey key  = {.Binding = binding_spec.Binding, .DstSet = set};
-            auto&                                   reqs = m_device->WriteBindlessDescriptorSetRequests;
-            reqs.insert(key);
+            Hardwares::WriteDescriptorSetRequestKey key = {.Binding = binding_spec.Binding, .DstSet = (*set_array)[i]};
+            m_device->BindlessTextureSlotRequests.insert(key);
         }
 
         Inputs.insert(key_name.data());
@@ -368,7 +350,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         for (const auto& [binding_name, texture] : Specification.InputTextures)
         {
-            SetInput(binding_name, texture);
+            SetTexture(binding_name, texture);
         }
     }
 
@@ -454,7 +436,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         auto        binding_spec = shader->GetLayoutBindingSpecification(key.data());
         if ((binding_spec.Set == 0xFFFFFFFF) && (binding_spec.Binding == 0xFFFFFFFF))
         {
-            ZENGINE_CORE_ERROR("Shader input not found : {}", key.data())
+            const auto* pipeline_name = Specification.PipelineSpecification.DebugName;
+            const auto* shader_name   = shader->m_specification.Name;
+            ZENGINE_CORE_ERROR("[{}] Shader input not found: '{}' (shader: {})", pipeline_name ? pipeline_name : "?", key.data(), shader_name ? shader_name : "?")
             valid = false;
         }
         return {valid, binding_spec};
@@ -470,13 +454,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     RenderPassBuilder& RenderPassBuilder::SetName(std::string_view name)
     {
-        m_spec.DebugName = name.data();
+        auto buf = ZPushString(Arena, name.size() + 1);
+        Helpers::secure_strcpy(buf, name.size() + 1, name.data());
+        m_spec.DebugName = buf;
         return *this;
     }
 
     RenderPassBuilder& RenderPassBuilder::SetPipelineName(std::string_view name)
     {
-        m_spec.PipelineSpecification.DebugName = name.data();
+        auto buf = ZPushString(Arena, name.size() + 1);
+        Helpers::secure_strcpy(buf, name.size() + 1, name.data());
+        m_spec.PipelineSpecification.DebugName = buf;
         return *this;
     }
 

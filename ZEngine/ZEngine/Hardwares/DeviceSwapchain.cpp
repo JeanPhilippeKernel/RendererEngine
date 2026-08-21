@@ -342,9 +342,9 @@ namespace ZEngine::Hardwares
                 auto        scratch    = ZGetScratch(&Arena);
                 {
                     Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-                    write_descriptor_sets.init(scratch.Arena, Device->WriteBindlessDescriptorSetRequests.size());
+                    write_descriptor_sets.init(scratch.Arena, Device->BindlessTextureSlotRequests.size());
 
-                    for (auto& req : Device->WriteBindlessDescriptorSetRequests)
+                    for (auto& req : Device->BindlessTextureSlotRequests)
                     {
                         write_descriptor_sets.push(
                             VkWriteDescriptorSet{

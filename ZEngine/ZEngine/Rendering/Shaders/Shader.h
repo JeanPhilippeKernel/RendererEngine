@@ -25,6 +25,7 @@ namespace ZEngine::Rendering::Shaders
         Core::Containers::Array<VkShaderModule>                                                                           ShaderModules                  = {};
         Core::Containers::Array<VkDescriptorSetLayout>                                                                    SetLayouts                     = {};
         Core::Containers::Array<Specifications::LayoutBindingSpecification>                                               LayoutBindingSpecifications    = {};
+        Core::Containers::UnorderedHashMap<const char*, Specifications::LayoutBindingSpecification>                       BindingsByName                 = {};
         Core::Containers::Array<VkPushConstantRange>                                                                      PushConstants                  = {};
         Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                            DescriptorSetMap               = {}; //<set, vec<descriptorSet>>
         Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                               InternalDescriptorSetLayoutMap = {}; // <set, layout>

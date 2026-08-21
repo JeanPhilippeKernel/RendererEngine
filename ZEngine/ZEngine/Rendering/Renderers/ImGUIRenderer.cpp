@@ -141,9 +141,8 @@ namespace ZEngine::Rendering::Renderers
             .UseSwapchainAsRenderTarget();
 
         UIPass = Device->CreateRenderPass(pass_builder->Detach());
-        UIPass->SetBindlessInput("TextureArray");
-        UIPass->SetInput("LinearWrapSampler", Device->GlobalLinearWrapSamplerImageInfo);
-        UIPass->SetInput("LinearClampSampler", Device->GlobalLinearClampToEdgeSamplerImageInfo);
+        UIPass->UseTextureArray("TextureArray");
+        UIPass->SetSampler("LinearClampSampler", Device->GlobalLinearClampToEdgeSamplerImageInfo);
         UIPass->Verify();
         UIPass->Bake();
     }

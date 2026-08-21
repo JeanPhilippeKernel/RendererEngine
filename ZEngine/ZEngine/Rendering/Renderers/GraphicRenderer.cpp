@@ -35,8 +35,9 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Renderer Passes
          */
-        auto     base_pass                = ZPushStructCtor(Device->Arena, BasePass);
         auto     scene_depth_prepass      = ZPushStructCtor(Device->Arena, DepthPrePass);
+        auto     gbuffer_pass             = ZPushStructCtor(Device->Arena, GbufferPass);
+        auto     composite_pass           = ZPushStructCtor(Device->Arena, CompositePass);
         auto     skybox_pass              = ZPushStructCtor(Device->Arena, SkyboxPass);
         auto     grid_pass                = ZPushStructCtor(Device->Arena, GridPass);
 
@@ -54,9 +55,12 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameDepthRenderTargetName, FrameDepthRenderTarget);
         RenderGraph->ResourceBuilder->AttachRenderTarget(RendererResourceName::FrameColorRenderTargetName, FrameColorRenderTarget);
 
-        // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
-        RenderGraph->AddCallbackPass("Base Pass", base_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
+        RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
+        // TODO(deferred-lighting): re-add CompositePass when GbufferPass uses separate
+        // G-buffer targets and LightingPass is ready to composite them.
+        // RenderGraph->AddCallbackPass("Composite Pass", composite_pass);
+        // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
 
@@ -84,26 +88,25 @@ namespace ZEngine::Rendering::Renderers
         if (!scene)
             return;
 
-        // Bind static per-scene buffers once (TransformSB, DrawDataSB, MatSB).
-        // These are HOST_VISIBLE BufferViews — descriptor binding is set once,
-        // data is written directly via vmaCopyMemoryToAllocation each frame.
+        // Bind static per-scene buffers once. HOST_VISIBLE — descriptor set once,
+        // data written each frame via vmaCopyMemoryToAllocation.
         if (!m_static_buffers_bound && scene->TransformBuffer.Handle)
         {
-            auto& depth_node = RenderGraph->NodeMap["Depth Pre-Pass"];
-            auto& base_node  = RenderGraph->NodeMap["Base Pass"];
+            auto& depth_node   = RenderGraph->NodeMap["Depth Pre-Pass"];
+            auto& gbuffer_node = RenderGraph->NodeMap["G-Buffer Pass"];
             if (depth_node.Handle)
             {
-                depth_node.Handle->SetInput("TransformSB", &scene->TransformBuffer);
-                depth_node.Handle->SetInput("DrawDataSB", &scene->RenderDataBuffer);
+                depth_node.Handle->SetStorageBuffer("TransformSB", &scene->TransformBuffer);
+                depth_node.Handle->SetStorageBuffer("DrawDataSB", &scene->RenderDataBuffer);
             }
-            if (base_node.Handle)
+            if (gbuffer_node.Handle)
             {
-                base_node.Handle->SetInput("TransformSB", &scene->TransformBuffer);
-                base_node.Handle->SetInput("DrawDataSB", &scene->RenderDataBuffer);
-                base_node.Handle->SetInput("MatSB", &scene->MaterialBuffer);
+                gbuffer_node.Handle->SetStorageBuffer("TransformSB", &scene->TransformBuffer);
+                gbuffer_node.Handle->SetStorageBuffer("DrawDataSB", &scene->RenderDataBuffer);
+                gbuffer_node.Handle->SetStorageBuffer("MatSB", &scene->MaterialBuffer);
             }
             m_static_buffers_bound = true;
-            ZENGINE_CORE_INFO("[GraphicRenderer] Bound TransformSB/DrawDataSB/MatSB to RMM buffers")
+            ZENGINE_CORE_INFO("[GraphicRenderer] Bound TransformSB/DrawDataSB/MatSB to geometry passes")
         }
 
         if (!Device->RRM)
@@ -111,25 +114,26 @@ namespace ZEngine::Rendering::Renderers
 
         auto* rrm = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
 
-        // Global vertex + index buffers — bind once when they become ready.
-        // All meshes share these two VkBuffers; per-mesh offsets are in DrawDataSB.
+        // Global vertex + index buffers — bind to both geometry passes once ready.
         if (!m_global_buffers_bound && rrm->GlobalBuffersReady())
         {
-            const auto* vtx_buf    = rrm->GetGlobalVertexBuffer();
-            const auto* idx_buf    = rrm->GetGlobalIndexBuffer();
-            auto&       depth_node = RenderGraph->NodeMap["Depth Pre-Pass"];
-            auto&       base_node  = RenderGraph->NodeMap["Base Pass"];
-            // VertexSB = set 0, binding 1 — IndexSB = set 0, binding 2 (vertex_common.glsl).
-            // Use SetInputByBinding to bypass ValidateInput (name lookup inconsistency).
-            // Only bind to passes that include vertex_common.glsl (Depth Pre-Pass).
-            // Base Pass uses a stub shader with no bindings — skip it.
+            const auto* vtx_buf      = rrm->GetGlobalVertexBuffer();
+            const auto* idx_buf      = rrm->GetGlobalIndexBuffer();
+            auto&       depth_node   = RenderGraph->NodeMap["Depth Pre-Pass"];
+            auto&       gbuffer_node = RenderGraph->NodeMap["G-Buffer Pass"];
             if (depth_node.Handle)
             {
-                depth_node.Handle->SetInputByBinding(0, 1, vtx_buf);
-                depth_node.Handle->SetInputByBinding(0, 2, idx_buf);
+                depth_node.Handle->SetStorageBuffer("VertexSB", vtx_buf);
+                depth_node.Handle->SetStorageBuffer("IndexSB", idx_buf);
+            }
+            if (gbuffer_node.Handle)
+            {
+                gbuffer_node.Handle->SetStorageBuffer("VertexSB", vtx_buf);
+                gbuffer_node.Handle->SetStorageBuffer("IndexSB", idx_buf);
+                gbuffer_node.Handle->UseTextureArray("TextureArray");
             }
             m_global_buffers_bound = true;
-            ZENGINE_CORE_INFO("[GraphicRenderer] Bound global VertexSB/IndexSB to packed geometry buffers")
+            ZENGINE_CORE_INFO("[GraphicRenderer] Bound global VertexSB/IndexSB to geometry passes")
         }
     }
 

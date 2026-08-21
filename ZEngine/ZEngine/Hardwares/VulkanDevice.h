@@ -56,7 +56,6 @@ namespace ZEngine::Hardwares
     using Core::Memory::GpuMemoryDomain;
 
     struct WriteDescriptorSetRequestKey;
-    struct WriteDescriptorSetRequest;
     struct CommandBufferManager;
     struct AsyncGPUOperation;
     struct AsyncGPUOperationHandle;
@@ -224,18 +223,6 @@ namespace ZEngine::Hardwares
         }
     };
 
-    struct WriteDescriptorSetRequest
-    {
-        bool             Updated = false;
-        int              Handle;
-        uint32_t         FrameIndex;
-        VkDescriptorSet  DstSet;
-        uint32_t         Binding;
-        uint32_t         DstArrayElement;
-        uint32_t         DescriptorCount;
-        VkDescriptorType DescriptorType;
-    };
-
     /*
      * Async GPU operation handle and definition
      */
@@ -300,7 +287,7 @@ namespace ZEngine::Hardwares
         Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap              = {}; //<set, vec<descriptorSet>>
         Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                                          ShaderReservedDescriptorSetLayoutMap        = {}; // <set, layout>
         Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<Rendering::Specifications::LayoutBindingSpecification>> ShaderReservedLayoutBindingSpecificationMap = {};
-        std::set<WriteDescriptorSetRequestKey>                                                                                       WriteBindlessDescriptorSetRequests          = {};
+        std::set<WriteDescriptorSetRequestKey>                                                                                       BindlessTextureSlotRequests                 = {};
         std::unordered_set<uint32_t>                                                                                                 ShaderReservedBindingSets                   = {};
         Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                              = {};
         Helpers::HandleManager<Image2DBuffer>                                                                                        Image2DBufferManager                        = {};

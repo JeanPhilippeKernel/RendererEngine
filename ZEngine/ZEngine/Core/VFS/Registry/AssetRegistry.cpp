@@ -127,6 +127,11 @@ namespace ZEngine::Core::VFS
         return h.Valid() ? m_index.Access(h) : nullptr;
     }
 
+    AssetRecord* AssetRegistry::Access(Helpers::Handle<AssetRecord> handle)
+    {
+        return handle.Valid() ? m_index.Access(handle) : nullptr;
+    }
+
     void AssetRegistry::SetHotReloadCallback(void* ctx, void (*cb)(void*, std::span<const uuids::uuid>))
     {
         m_reload_cb_ctx = ctx;
@@ -336,12 +341,7 @@ namespace ZEngine::Core::VFS
                 return;
 
             Core::Containers::Array<uuids::uuid> deps;
-            // We need an arena here — use a small stack buffer via a temporary array
-            // that is left uninitialized and just enumerated from the graph.
-            // For DOT output we accept O(n) per node; this is a debug-only path.
             dc->self->m_graph.CopyDependents(rec.UUID, deps);
-            // DOT output intentionally omitted for brevity of this debug helper.
-            // Full implementation would write edges between node names.
         });
 
         int tail = std::snprintf(out_buf + dot.pos, out_len - dot.pos, "}\n");
@@ -358,6 +358,10 @@ namespace ZEngine::Core::VFS
 
         if (ext.Equals(".png") || ext.Equals(".jpg") || ext.Equals(".jpeg") || ext.Equals(".hdr") || ext.Equals(".ktx") || ext.Equals(".ktx2"))
             return Managers::AssetType::TEXTURE;
+        if (ext.Equals(".zematerial"))
+            return Managers::AssetType::MATERIAL;
+        if (ext.Equals(".zemesh"))
+            return Managers::AssetType::MESH;
 
         return Managers::AssetType::MESH;
     }

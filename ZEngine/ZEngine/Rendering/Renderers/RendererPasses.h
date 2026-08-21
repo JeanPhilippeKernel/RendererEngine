@@ -9,7 +9,11 @@
 namespace ZEngine::Rendering::Renderers
 {
 
-    struct BasePass : public IRenderGraphCallbackPass
+    // Temporary albedo passthrough until LightingPass is implemented.
+    // Reads gbuffer_albedo_render_target and blits it to FrameColorRenderTarget
+    // using the "composite" full-screen shader. Replace with LightingPass when
+    // deferred lighting (DirectionalLightSB / PointLightSB / SpotLightSB) is ready.
+    struct CompositePass : public IRenderGraphCallbackPass
     {
         virtual void Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
         virtual void Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;

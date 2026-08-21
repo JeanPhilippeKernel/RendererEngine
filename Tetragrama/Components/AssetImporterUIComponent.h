@@ -32,6 +32,7 @@ namespace Tetragrama::Components
         void                                  Initialize(Layers::ImguiLayer* parent = nullptr, cstring name = "Asset Importer", bool visibility = true, bool closed = false) override;
         void                                  Update(ZEngine::Core::TimeStep dt) override;
         virtual void                          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
+        void                                  TriggerScan(); // main-thread only
 
     private:
         PaddedAtomic<ImporterState>       m_state{}; // default = Idle (0)
@@ -90,7 +91,6 @@ namespace Tetragrama::Components
 
         void                                PushLog(cstring text, const float color[4]);
         void                                PushHistory(cstring name, bool success, cstring msg);
-        void                                TriggerScan(); // main-thread only
         void                                StartImport();
         void                                BrowseFile();
         void                                RenderIdle();
