@@ -29,7 +29,7 @@ namespace ZEngine::Core::Memory
         SubArenaConfig  Logging          = {};
         SubArenaConfig  VirtualFS        = {};
         SubArenaConfig  VulkanDevice     = {};
-        SubArenaConfig  Importer         = {};
+        SubArenaConfig  ImportPipeline   = {}; // engine importers + editor importers
         SubArenaConfig  UIContext        = {};
         SubArenaConfig  Swapchain        = {};
         SubArenaConfig  ShaderCache      = {};
@@ -40,7 +40,7 @@ namespace ZEngine::Core::Memory
         // Returns the total bytes committed by all SubArenaConfig entries.
         inline uint64_t TotalCommitted() const
         {
-            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + Importer.SizeBytes + UIContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
+            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
         }
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
@@ -62,7 +62,7 @@ namespace ZEngine::Core::Memory
             cfg.Logging            = {"Logging", ZMega(8ULL)};
             cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};
             cfg.VulkanDevice       = {"VulkanDevice", ZGiga(1ULL)};
-            cfg.Importer           = {"Importer", ZMega(512ULL)};
+            cfg.ImportPipeline     = {"ImportPipeline", ZGiga(1ULL)}; // engine importers (414 MB) + editor importers (414 MB) + coordinator
             cfg.UIContext          = {"UIContext", ZMega(64ULL)};
             cfg.Swapchain          = {"Swapchain", ZMega(8ULL)};
             cfg.ShaderCache        = {"ShaderCache", ZMega(64ULL)};
