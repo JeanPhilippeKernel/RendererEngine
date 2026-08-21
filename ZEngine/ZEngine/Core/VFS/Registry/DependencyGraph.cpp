@@ -4,9 +4,7 @@
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // AdjacencyList
-    // -------------------------------------------------------------------------
 
     bool AdjacencyList::Contains(const uuids::uuid& uuid) const
     {
@@ -70,9 +68,7 @@ namespace ZEngine::Core::VFS
         return false;
     }
 
-    // -------------------------------------------------------------------------
     // DependencyGraph
-    // -------------------------------------------------------------------------
 
     void DependencyGraph::Initialize(Core::Memory::ArenaAllocator* arena)
     {
