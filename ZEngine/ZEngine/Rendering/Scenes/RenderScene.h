@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/GPUTypes.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <ZEngine/ZEngineDef.h>
@@ -51,6 +52,32 @@ namespace ZEngine::Rendering::Scenes
         }
     };
 
+    struct GpuDirectionalLight
+    {
+        gpuvec4 Direction = {};
+        gpuvec4 Color     = {};
+        float   Intensity = 0.f;
+        float   _pad[3]   = {};
+    };
+
+    struct GpuPointLight
+    {
+        gpuvec4 Position  = {};
+        gpuvec4 Color     = {};
+        float   Intensity = 0.f;
+        float   Radius    = 0.f;
+        float   _pad[2]   = {};
+    };
+
+    struct LightArrayUBO
+    {
+        GpuDirectionalLight DirectionalLights[4] = {};
+        GpuPointLight       PointLights[8]       = {};
+        uint32_t            DirectionalCount     = 0;
+        uint32_t            PointCount           = 0;
+        uint32_t            _pad[2]              = {};
+    };
+
     struct SceneData
     {
         // Camera UBO — migrated to PerFrameUploadHeap; offset updated each frame in DrawScene
@@ -67,6 +94,7 @@ namespace ZEngine::Rendering::Scenes
         Core::Memory::BufferView  TransformBuffer                   = {};
         Core::Memory::BufferView  MaterialBuffer                    = {};
         Core::Memory::BufferView  RenderDataBuffer                  = {};
+        Core::Memory::BufferView  LightBuffer                       = {};
 
         // RRM vertex buffer handle — index buffer is paired via RRM::GetIndexBuffer(RMMVertexHandle).
         Rendering::BufferHandle   RMMVertexHandle                   = {};

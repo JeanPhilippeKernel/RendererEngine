@@ -12,16 +12,8 @@ namespace ZEngine::Rendering::Renderers
 
     void CompositePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-
-        pass_node.Inputs.init(device->Arena, 1);
-        pass_node.Outputs.init(device->Arena, 1);
-
-        // Read the GbufferPass albedo output; write to the final swapchain color target.
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = "gbuffer_albedo_render_target", .BindingInputKeyName = "sharedRTAsTex", .Type = RenderGraphResourceType::TEXTURE});
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-
-        res_builder->CreateRenderPassNode(std::move(pass_node));
+        res_builder->ReadTexture("gbuffer_albedo_render_target", "sharedRTAsTex");
+        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {});
     }
 
     void CompositePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -55,13 +47,9 @@ namespace ZEngine::Rendering::Renderers
 
     void DepthPrePass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-
-        pass_node.Inputs.init(device->Arena, 1);
-        pass_node.Outputs.init(device->Arena, 1);
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-
-        res_builder->CreateRenderPassNode(std::move(pass_node));
+        uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
+        uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->WriteDepthAttachment(RendererResourceName::FrameDepthRenderTargetName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
     }
 
     void DepthPrePass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -143,16 +131,13 @@ namespace ZEngine::Rendering::Renderers
 
         if (env_map_available)
         {
-            auto env_map_res = res_builder->CreateTexture("skybox_env_map", EnvMapPath);
-            m_env_map        = env_map_res.ResourceInfo.TextureHandle;
+            auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
+            if (rrm)
+                m_env_map = rrm->SubmitTextureFile(0, 0, EnvMapPath);
         }
 
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-        pass_node.Inputs.init(device->Arena, 2);
-        pass_node.Outputs.init(device->Arena, 1);
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        res_builder->CreateRenderPassNode(std::move(pass_node));
+        res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
+        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {});
     }
 
     void SkyboxPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -230,12 +215,8 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(rrm, "GridPass::Setup: RenderResourceManager not available")
         rrm->RegisterBuiltinGeometry(verts, sizeof(verts), idxs, 6, m_vtx_offset, m_idx_offset);
 
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-        pass_node.Inputs.init(device->Arena, 2);
-        pass_node.Outputs.init(device->Arena, 1);
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        res_builder->CreateRenderPassNode(std::move(pass_node));
+        res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
+        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {});
     }
 
     void GridPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -298,16 +279,12 @@ namespace ZEngine::Rendering::Renderers
 
     void GbufferPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
-        uint32_t                      rt_w      = device->SwapchainPtr->SwapchainImageWidth;
-        uint32_t                      rt_h      = device->SwapchainPtr->SwapchainImageHeight;
-        RenderGraphRenderPassCreation pass_node = {.Name = name};
-
-        pass_node.Inputs.init(device->Arena, 1);
-        pass_node.Outputs.init(device->Arena, 1);
-
-        pass_node.Inputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameDepthRenderTargetName});
-        pass_node.Outputs.push(RenderGraphRenderPassInputOutputInfo{.Name = RendererResourceName::FrameColorRenderTargetName});
-        res_builder->CreateRenderPassNode(std::move(pass_node));
+        uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
+        uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
+        res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
+        res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
+        res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
     }
 
     void GbufferPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -350,9 +327,63 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->EndRenderPass();
     }
 
-    void LightingPass::Setup(Hardwares::VulkanDevicePtr const, cstring, RenderGraphResourceBuilderPtr const, RenderGraphResourceInspectorPtr) {}
+    void LightingPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
+    {
+        uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
+        uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->ReadTexture(RendererResourceName::GBufferAlbedoAOName, "GBufferAlbedoAO");
+        res_builder->ReadTexture(RendererResourceName::GBufferNormalRoughnessName, "GBufferNormalRoughness");
+        res_builder->ReadTexture(RendererResourceName::GBufferMetallicEmissiveName, "GBufferMetallicEmissive");
+        res_builder->ReadTexture(RendererResourceName::FrameDepthRenderTargetName, "GBufferDepth");
+        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::LOAD});
+    }
 
-    void LightingPass::Compile(Hardwares::VulkanDevicePtr const, Rendering::Scenes::SceneDataPtr const, RenderPasses::RenderPassBuilder*, RenderGraphResourceInspectorPtr, RenderPasses::RenderPass** const) {}
+    void LightingPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
+    {
+        CHECK_AND_ESCAPE_NULL(output_pass)
 
-    void LightingPass::Execute(Hardwares::VulkanDevicePtr const, RenderGraphResourceInspectorPtr, Rendering::Scenes::SceneDataPtr const, RenderPasses::RenderPass* const, Buffers::FramebufferVNext* const, Hardwares::CommandBufferPtr const) {}
+        if (output_pass && !(*output_pass))
+        {
+            auto pass_spec = pass_builder->SetPipelineName("Deferred-Lighting-Pipeline").SetInputBindingCount(0).EnablePipelineDepthTest(false).UseShader("deferred_lighting").Detach();
+            *output_pass   = device->CreateRenderPass(std::move(pass_spec));
+            (*output_pass)->Bake();
+        }
+
+        (*output_pass)->SetDynamicUniform("UBCamera", sizeof(Contracts::UBOCameraLayout));
+
+        auto albedo_ao_handle     = res_inspector->GetRenderTarget(RendererResourceName::GBufferAlbedoAOName);
+        auto normal_rough_handle  = res_inspector->GetRenderTarget(RendererResourceName::GBufferNormalRoughnessName);
+        auto metallic_emit_handle = res_inspector->GetRenderTarget(RendererResourceName::GBufferMetallicEmissiveName);
+        auto depth_handle         = res_inspector->GetRenderTarget(RendererResourceName::FrameDepthRenderTargetName);
+
+        if (albedo_ao_handle.Valid())
+            (*output_pass)->SetTexture("GBufferAlbedoAO", albedo_ao_handle);
+        if (normal_rough_handle.Valid())
+            (*output_pass)->SetTexture("GBufferNormalRoughness", normal_rough_handle);
+        if (metallic_emit_handle.Valid())
+            (*output_pass)->SetTexture("GBufferMetallicEmissive", metallic_emit_handle);
+        if (depth_handle.Valid())
+            (*output_pass)->SetTexture("GBufferDepth", depth_handle);
+
+        if (scene && scene->LightBuffer.Handle)
+            (*output_pass)->SetStorageBuffer("LightSB", &scene->LightBuffer);
+
+        (*output_pass)->SetSampler("GBufferSampler", device->GlobalLinearWrapSamplerImageInfo);
+        (*output_pass)->Verify();
+    }
+
+    void LightingPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
+    {
+        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        {
+            uint32_t w = pass->GetRenderAreaWidth();
+            uint32_t h = pass->GetRenderAreaHeight();
+            command_buffer->SetViewport(w, h);
+            command_buffer->SetScissor(w, h);
+        }
+        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
+        command_buffer->Draw(3, 1, 0, 0);
+        command_buffer->EndRenderPass();
+    }
 } // namespace ZEngine::Rendering::Renderers

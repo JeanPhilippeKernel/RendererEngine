@@ -237,7 +237,7 @@ namespace ZEngine::Rendering::Shaders
                 uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
                 uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
 
-                if (LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
                     LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
                 }
@@ -459,9 +459,19 @@ namespace ZEngine::Rendering::Shaders
                 continue;
             }
 
+            layout_binding_collection.clear();
             for (uint32_t i = 0; i < layout_binding_set.second.size(); ++i)
             {
                 layout_binding_collection.push(VkDescriptorSetLayoutBinding{.binding = layout_binding_set.second[i].Binding, .descriptorType = DescriptorTypeMap[static_cast<uint32_t>(layout_binding_set.second[i].DescriptorTypeValue)], .descriptorCount = layout_binding_set.second[i].Count, .stageFlags = ShaderStageFlagsMap[static_cast<uint32_t>(layout_binding_set.second[i].Flags)], .pImmutableSamplers = nullptr});
+            }
+
+            for (const auto& lb : layout_binding_collection)
+            {
+                auto it = std::find_if(pool_size_collection.begin(), pool_size_collection.end(), [&](const VkDescriptorPoolSize& ps) { return ps.type == lb.descriptorType; });
+                if (it == pool_size_collection.end())
+                    pool_size_collection.push(VkDescriptorPoolSize{.type = lb.descriptorType, .descriptorCount = lb.descriptorCount});
+                else
+                    it->descriptorCount += lb.descriptorCount;
             }
 
             /*
@@ -533,20 +543,6 @@ namespace ZEngine::Rendering::Shaders
         }
 
         /*
-         * Packing PoolSize
-         */
-        for (const auto& layout_binding : layout_binding_collection)
-        {
-            auto find_pool_size_it = std::find_if(pool_size_collection.begin(), pool_size_collection.end(), [&](const VkDescriptorPoolSize& pool_size) { return (layout_binding.descriptorType == pool_size.type); });
-
-            if (find_pool_size_it == std::end(pool_size_collection))
-            {
-                pool_size_collection.push(VkDescriptorPoolSize{.type = layout_binding.descriptorType, .descriptorCount = layout_binding.descriptorCount});
-                continue;
-            }
-            find_pool_size_it->descriptorCount += layout_binding.descriptorCount;
-        }
-        /*
          * Ensure correctness with number of frame count
          */
         for (auto& pool_size : pool_size_collection)
@@ -576,10 +572,17 @@ namespace ZEngine::Rendering::Shaders
             return;
         }
 
+        uint32_t non_reserved_set_count = 0;
+        for (const auto& layout : InternalDescriptorSetLayoutMap)
+        {
+            if (!m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
+                ++non_reserved_set_count;
+        }
+
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags                      = pool_needs_update_after_bind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
-        pool_info.maxSets                    = m_device->SwapchainPtr->BufferredFrameCount;
+        pool_info.maxSets                    = non_reserved_set_count * m_device->SwapchainPtr->BufferredFrameCount;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
 

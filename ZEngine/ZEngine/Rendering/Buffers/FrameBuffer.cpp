@@ -11,6 +11,8 @@ namespace ZEngine::Rendering::Buffers
         Create();
     }
 
+    FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device) : m_device(device) {}
+
     FramebufferVNext::~FramebufferVNext()
     {
         Dispose();
@@ -64,6 +66,13 @@ namespace ZEngine::Rendering::Buffers
         m_specification.Height = height;
         Dispose();
         Create();
+    }
+
+    void FramebufferVNext::Reset(VkFramebuffer handle, uint32_t width, uint32_t height)
+    {
+        Handle                 = handle;
+        m_specification.Width  = width;
+        m_specification.Height = height;
     }
 
     void FramebufferVNext::Dispose()

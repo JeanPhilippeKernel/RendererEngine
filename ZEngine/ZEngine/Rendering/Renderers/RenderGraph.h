@@ -1,7 +1,7 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
-#include <ZEngine/Core/Containers/UnorderedHashSet.h>
+#include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Buffers/Framebuffer.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
@@ -9,12 +9,12 @@
 #include <ZEngine/Rendering/Specifications/TextureSpecification.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <ZEngine/ZEngineDef.h>
+#include <vulkan/vulkan.h>
 
 namespace ZEngine::Rendering::Renderers
 {
     struct RenderGraphResourceBuilder;
     struct RenderGraphResourceInspector;
-    struct RenderGraphNode;
     struct RenderGraph;
     struct IRenderGraphCallbackPass;
 
@@ -23,47 +23,101 @@ namespace ZEngine::Rendering::Renderers
     ZDEFINE_PTR(RenderGraph);
     ZDEFINE_PTR(IRenderGraphCallbackPass);
 
-    enum RenderGraphResourceType
+    // Typed index into RenderGraph::Resources[]. No string on the execute hot path.
+    struct RGResourceHandle
     {
-        UNDEFINED = -1,
-        BUFFER    = 0,
-        ATTACHMENT,
-        TEXTURE,
-        REFERENCE
-    };
+        uint32_t Index   = UINT32_MAX;
+        uint32_t Version = 0;
 
-    struct RenderGraphResourceInfo
-    {
-        bool                                 External = false;
-        Specifications::TextureSpecification TextureSpec;
-        union
+        bool     Valid() const
         {
-            Textures::TextureHandle TextureHandle;
-        };
+            return Index != UINT32_MAX;
+        }
     };
 
-    struct RenderGraphResource
+    enum class RGResourceKind : uint8_t
     {
-        cstring                 Name;
-        cstring                 ProducerNodeName;
-        RenderGraphResourceType Type;
-        RenderGraphResourceInfo ResourceInfo;
+        Attachment,
+        Texture,
+        Buffer,
     };
 
-    struct RenderGraphRenderPassInputOutputInfo
+    // How a pass uses a resource — drives barrier stage/access/layout derivation.
+    enum class RGAccess : uint8_t
     {
-        cstring                 Name;
-        cstring                 BindingInputKeyName;
-        RenderGraphResourceType Type = RenderGraphResourceType::ATTACHMENT;
+        None,
+        ColorWrite,
+        DepthWrite,
+        DepthRead,
+        ShaderRead,
+        ShaderReadWrite,
+        TransferRead,
+        TransferWrite,
+        Present,
+        Count_,
     };
 
-    struct RenderGraphRenderPassCreation
+    struct RGResourceState
     {
-        cstring                                                       Name;
-        Core::Containers::Array<RenderGraphRenderPassInputOutputInfo> Inputs;
-        Core::Containers::Array<RenderGraphRenderPassInputOutputInfo> Outputs;
+        VkPipelineStageFlags Stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkAccessFlags        Access = 0;
+        VkImageLayout        Layout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
+    struct RGResource
+    {
+        cstring                              Name           = nullptr;
+        RGResourceKind                       Kind           = RGResourceKind::Attachment;
+        bool                                 External       = false;
+        Textures::TextureHandle              TextureHandle  = {};
+        RGResourceState                      CurrentState   = {}; // compile-time simulation
+        RGResourceState                      RuntimeState   = {}; // per-frame Execute tracking
+        uint32_t                             FirstPassIndex = UINT32_MAX;
+        uint32_t                             LastPassIndex  = 0;
+        bool                                 Transient      = true;
+        Specifications::TextureSpecification Spec           = {};
+    };
+
+    struct RGPassResource
+    {
+        RGResourceHandle Handle     = {};
+        RGAccess         Access     = RGAccess::None;
+        cstring          BindingKey = nullptr;
+    };
+
+    struct RGPass
+    {
+        cstring                   Name                                = nullptr;
+        bool                      Enabled                             = true;
+        IRenderGraphCallbackPass* Callback                            = nullptr;
+        RenderPasses::RenderPass* Handle                              = nullptr;
+        ZRawPtr(Buffers::FramebufferVNext) Framebuffer                = nullptr;
+        Core::Containers::Array<RGPassResource>       Reads           = {};
+        Core::Containers::Array<RGPassResource>       Writes          = {};
+        Core::Containers::Array<VkImageMemoryBarrier> ImageBarriers   = {};
+        VkPipelineStageFlags                          BarrierSrcStage = 0;
+        VkPipelineStageFlags                          BarrierDstStage = 0;
+    };
+
+    struct RGTransientSlot
+    {
+        Textures::TextureHandle              Handle        = {};
+        Specifications::TextureSpecification Spec          = {};
+        uint32_t                             FreeAfterPass = 0;
+    };
+
+    struct RGTransientPool
+    {
+        Core::Containers::Array<RGTransientSlot> Slots;
+
+        void                                     Initialize(Core::Memory::ArenaAllocator* arena);
+        Textures::TextureHandle                  TryAlias(const Specifications::TextureSpecification& spec, uint32_t first_pass);
+        void                                     Register(Textures::TextureHandle handle, const Specifications::TextureSpecification& spec, uint32_t last_pass);
+        void                                     MarkInUse(Textures::TextureHandle handle, uint32_t last_pass);
+        void                                     Clear();
+    };
+
+    // Unchanged interface — all existing pass implementations compile without modification.
     struct IRenderGraphCallbackPass
     {
         virtual void Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)                                                                                                                       = 0;
@@ -72,66 +126,90 @@ namespace ZEngine::Rendering::Renderers
         virtual void Deinitialize(Hardwares::VulkanDevicePtr const device) {}
     };
 
-    struct RenderGraphNode
-    {
-        bool                                        Enabled   = true;
-        RenderGraphRenderPassCreation               Creation  = {};
-        Core::Containers::UnorderedHashSet<cstring> EdgeNodes = {};
-        RenderPasses::RenderPassPtr                 Handle    = nullptr;
-        ZRawPtr(Buffers::FramebufferVNext) Framebuffer        = nullptr;
-        IRenderGraphCallbackPassPtr CallbackPass              = nullptr;
-    };
-
     struct RenderGraph
     {
-        RenderGraph() {}
-        ~RenderGraph() {}
+        RenderGraph()                                                   = default;
+        ~RenderGraph()                                                  = default;
 
-        Hardwares::VulkanDevicePtr                                       Device            = nullptr;
+        Hardwares::VulkanDevicePtr                            Device    = nullptr;
+        Scenes::SceneDataPtr                                  SceneData = nullptr;
 
-        Core::Containers::Array<cstring>                                 SortedNodesMap    = {};
-        Core::Containers::UnorderedHashMap<cstring, RenderGraphNode>     NodeMap           = {};
-        Core::Containers::UnorderedHashMap<cstring, RenderGraphResource> ResourceMap       = {};
+        Core::Containers::Array<RGPass>                       Passes;
+        Core::Containers::Array<RGResource>                   Resources;
+        Core::Containers::Array<uint32_t>                     SortedPassIndices;
 
-        RenderGraphResourceBuilderPtr                                    ResourceBuilder   = nullptr;
-        RenderGraphResourceInspectorPtr                                  ResourceInspector = nullptr;
-        RenderPasses::RenderPassBuilder*                                 RenderPassBuilder = nullptr;
+        // String → index: used only in Setup/Compile, not in Execute.
+        Core::Containers::UnorderedHashMap<cstring, uint32_t> ResourceIndex;
+        Core::Containers::UnorderedHashMap<cstring, uint32_t> PassIndex;
 
-        Scenes::SceneDataPtr                                             SceneData         = nullptr;
+        RenderGraphResourceBuilderPtr                         ResourceBuilder   = nullptr;
+        RenderGraphResourceInspectorPtr                       ResourceInspector = nullptr;
+        RenderPasses::RenderPassBuilder*                      RenderPassBuilder = nullptr;
 
-        void                                                             Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data = nullptr);
+        RGTransientPool                                       TransientPool;
 
-        void                                                             Setup();
-        void                                                             Compile();
-        void                                                             Execute(Hardwares::CommandBufferPtr const command_buffer);
-        void                                                             Resize(uint32_t width, uint32_t height);
-        void                                                             Dispose();
-        void                                                             AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const pass_callback, bool enabled = true);
+        void                                                  Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data = nullptr);
+        void                                                  AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const cb, bool enabled = true);
+        void                                                  Setup();
+        void                                                  Compile();
+        void                                                  Execute(Hardwares::CommandBufferPtr const cb);
+        void                                                  Resize(uint32_t width, uint32_t height);
+        void                                                  Dispose();
+
+        RGResourceHandle                                      ImportRenderTarget(cstring name, Textures::TextureHandle handle);
+
+        // Access a pass by name — O(1) lookup via PassIndex; setup/config only, not Execute.
+        RGPass*                                               GetPass(cstring name);
+        void                                                  SetPassEnabled(cstring name, bool enabled);
+
+    private:
+        void BuildLifetimes();
+        void AllocateTransientResources();
+        void BuildBarriers();
+        void BuildTopology();
+        void AllocateFramebuffers();
     };
 
-    struct RenderGraphResourceInspector
-    {
-        RenderGraphPtr          Graph = nullptr;
-
-        void                    Initialize(RenderGraphPtr graph);
-
-        RenderGraphResource&    GetResource(cstring name);
-        Textures::TextureHandle GetRenderTarget(cstring name);
-        Textures::TextureHandle GetTexture(cstring name);
-        RenderGraphNode&        GetNode(cstring name);
-    };
-
+    // Pass-facing API — replaces RenderGraphResourceBuilder call sites in Setup().
     struct RenderGraphResourceBuilder
     {
-        RenderGraphPtr       Graph = nullptr;
+        RenderGraph*     Graph       = nullptr;
+        uint32_t         CurrentPass = UINT32_MAX;
 
-        void                 Initialize(RenderGraphPtr graph);
+        void             Initialize(RenderGraph* graph);
 
-        RenderGraphResource& CreateTexture(cstring name, const Specifications::TextureSpecification& spec);
-        RenderGraphResource& CreateTexture(cstring name, cstring filename);
-        RenderGraphResource& CreateRenderTarget(cstring name, const Specifications::TextureSpecification& spec);
-        RenderGraphResource& AttachTexture(cstring name, const Textures::TextureHandle& texture);
-        RenderGraphResource& AttachRenderTarget(cstring name, const Textures::TextureHandle& texture);
-        void                 CreateRenderPassNode(RenderGraphRenderPassCreation creation);
+        // Declare that the current pass writes a transient color attachment.
+        RGResourceHandle WriteColorAttachment(cstring name, const Specifications::TextureSpecification& spec);
+
+        // Declare that the current pass writes a transient depth attachment.
+        RGResourceHandle WriteDepthAttachment(cstring name, const Specifications::TextureSpecification& spec);
+
+        // Declare that the current pass reads a resource as a sampled texture.
+        RGResourceHandle ReadTexture(cstring name, cstring binding_key = nullptr);
+
+        // Declare that the current pass reads a depth resource (read-only).
+        RGResourceHandle ReadDepth(cstring name);
+
+        // Import an externally-managed render target (not owned by the graph).
+        RGResourceHandle ImportRenderTarget(cstring name, Textures::TextureHandle handle);
+
+        // Attach an already-imported render target by name — looks up by name only.
+        RGResourceHandle AttachRenderTarget(cstring name, const Textures::TextureHandle& texture);
     };
+
+    // Pass-facing read API — replaces RenderGraphResourceInspector call sites in Execute().
+    struct RenderGraphResourceInspector
+    {
+        RenderGraph*            Graph = nullptr;
+
+        void                    Initialize(RenderGraph* graph);
+
+        // Retrieve a texture handle by RGResourceHandle (O(1), no string).
+        Textures::TextureHandle GetTextureHandle(RGResourceHandle handle) const;
+
+        // String-keyed overloads — preserved for existing Execute() call sites.
+        Textures::TextureHandle GetRenderTarget(cstring name) const;
+        Textures::TextureHandle GetTexture(cstring name) const;
+    };
+
 } // namespace ZEngine::Rendering::Renderers
