@@ -1,8 +1,8 @@
 #include <Tetragrama/Components/DockspaceUIComponent.h>
 #include <Tetragrama/Editor.h>
-#include <Tetragrama/Helpers/UIDispatcher.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/ImportJob.h>
@@ -478,7 +478,7 @@ namespace Tetragrama::Components
         if (m_pending_shutdown)
         {
             m_open_save_scene = false;
-            Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
+            ZEngine::Core::MainThreadScheduler::Post(this, [](void* context) { reinterpret_cast<DockspaceUIComponent*>(context)->OnExitAsync(); });
         }
         else if (m_request_save_scene_ui_close)
         {
@@ -568,7 +568,7 @@ namespace Tetragrama::Components
 
         if (!current_scene->HasPendingChange())
         {
-            Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
+            ZEngine::Core::MainThreadScheduler::Post(this, [](void* context) { reinterpret_cast<DockspaceUIComponent*>(context)->OnExitAsync(); });
         }
 
         const char* str_id = "Saving changes to the current Scene ?";
@@ -595,8 +595,7 @@ namespace Tetragrama::Components
             if (ImGui::Button("Don't save", ImVec2(120, 0)))
             {
                 ImGui::CloseCurrentPopup();
-
-                Helpers::UIDispatcher::RunAsync([this] { OnExitAsync(); });
+                ZEngine::Core::MainThreadScheduler::Post(this, [](void* context) { reinterpret_cast<DockspaceUIComponent*>(context)->OnExitAsync(); });
             }
             ImGui::SetItemDefaultFocus();
             ImGui::SameLine();
@@ -1054,12 +1053,12 @@ namespace Tetragrama::Components
             {
                 if (ImGui::MenuItem("New Scene"))
                 {
-                    Helpers::UIDispatcher::RunAsync([this] { OnNewSceneAsync(); });
+                    ZEngine::Core::MainThreadScheduler::Post(this, [](void* context) { reinterpret_cast<DockspaceUIComponent*>(context)->OnNewSceneAsync(); });
                 }
 
                 if (ImGui::MenuItem("Open Scene"))
                 {
-                    Helpers::UIDispatcher::RunAsync([this] { OnOpenSceneAsync(); });
+                    ZEngine::Core::MainThreadScheduler::Post(this, [](void* context) { reinterpret_cast<DockspaceUIComponent*>(context)->OnOpenSceneAsync(); });
                 }
 
                 if (ImGui::MenuItem("Import New Asset..."))
@@ -1074,14 +1073,12 @@ namespace Tetragrama::Components
                 {
                     m_open_save_scene             = true;
                     m_request_save_scene_ui_close = true;
-                    Helpers::UIDispatcher::RunAsync([this] {
-                        if (ParentLayer->CurrentApp)
-                        {
-                            auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-                            auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
-                            m_editor_serializer->Serialize(current_scene);
-                        }
-                    });
+                    if (ParentLayer->CurrentApp)
+                    {
+                        auto app           = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                        auto current_scene = reinterpret_cast<EditorScenePtr>(app->CurrentScene);
+                        m_editor_serializer->Serialize(current_scene);
+                    }
                 }
 
                 ImGui::MenuItem("Save As...", NULL, &m_open_save_scene_as);

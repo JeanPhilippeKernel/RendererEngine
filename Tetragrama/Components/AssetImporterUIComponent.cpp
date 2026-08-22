@@ -1,6 +1,5 @@
 #include <Tetragrama/Components/AssetImporterUIComponent.h>
 #include <Tetragrama/Editor.h>
-#include <Tetragrama/Helpers/UIDispatcher.h>
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileData.h>
@@ -114,21 +113,24 @@ namespace Tetragrama::Components
             ParentLayer->Scanner.Scan(vfs, ZEngine::Core::VFS::VFSPath::Root(), &ParentLayer->Cache);
     }
 
+    std::future<void> AssetImporterUIComponent::BrowseFileAsync()
+    {
+        if (!ParentLayer || !ParentLayer->CurrentApp)
+            co_return;
+        auto                          window  = ParentLayer->CurrentApp->CurrentWindow;
+        std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
+        std::string                   picked  = co_await window->OpenFileDialogAsync(filters);
+        if (!picked.empty())
+        {
+            m_path_buf.clear();
+            m_path_buf.append(picked.c_str());
+            m_state.value.store(ImporterState::Options);
+        }
+    }
+
     void AssetImporterUIComponent::BrowseFile()
     {
-        Helpers::UIDispatcher::RunAsync([this]() -> std::future<void> {
-            if (!ParentLayer || !ParentLayer->CurrentApp)
-                co_return;
-            auto                          window  = ParentLayer->CurrentApp->CurrentWindow;
-            std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
-            std::string                   picked  = co_await window->OpenFileDialogAsync(filters);
-            if (!picked.empty())
-            {
-                m_path_buf.clear();
-                m_path_buf.append(picked.c_str());
-                m_state.value.store(ImporterState::Options);
-            }
-        });
+        ZEngine::Core::MainThreadScheduler::Post(this, [](void* context) { reinterpret_cast<AssetImporterUIComponent*>(context)->BrowseFileAsync(); });
     }
 
     void AssetImporterUIComponent::StartImport()

@@ -12,7 +12,7 @@ extern "C" std::string ZEngineOpenFileDialog(const char** extensions, int count)
     __block std::string result;
 
     // NSOpenPanel must run on the main thread.
-    dispatch_sync(dispatch_get_main_queue(), ^{
+    void (^run_panel)(void) = ^{
         NSOpenPanel* panel = [NSOpenPanel openPanel];
         [panel setAllowsMultipleSelection:NO];
         [panel setCanChooseFiles:YES];
@@ -42,7 +42,12 @@ extern "C" std::string ZEngineOpenFileDialog(const char** extensions, int count)
             if (url)
                 result = [[url path] UTF8String];
         }
-    });
+    };
+
+    if ([NSThread isMainThread])
+        run_panel();
+    else
+        dispatch_sync(dispatch_get_main_queue(), run_panel);
 
     return result;
 }
