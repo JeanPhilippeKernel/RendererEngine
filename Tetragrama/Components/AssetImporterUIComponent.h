@@ -7,6 +7,7 @@
 #include <ZEngine/Importers/AssimpImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/ZEngineDef.h>
+#include <future>
 #include <mutex>
 
 namespace Tetragrama::Components
@@ -92,6 +93,7 @@ namespace Tetragrama::Components
         void                                PushLog(cstring text, const float color[4]);
         void                                PushHistory(cstring name, bool success, cstring msg);
         void                                StartImport();
+        std::future<void>                   BrowseFileAsync();
         void                                BrowseFile();
         void                                RenderIdle();
         void                                RenderOptions();
