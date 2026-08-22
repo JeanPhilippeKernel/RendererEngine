@@ -25,12 +25,13 @@ third-party plugins at runtime — without knowing their types at compile time.
 
 ## 2. Relationship to Existing Registries
 
-ZEngine already has two component registries. Reflection is a third, separate concern:
+ZEngine has one implemented component registry (`ComponentTypeOf<T>()`). Serialization and
+reflection are two additional registries, both unimplemented today (design only):
 
 ```
-ComponentTypeOf<T>()            → stable numeric ComponentTypeID per type  (source of truth)
-ComponentSerializerRegistry     → serialize/deserialize functions per type (for save/load)
-ComponentReflectionRegistry     → field metadata per type (for editor display/edit)
+ComponentTypeOf<T>()            → stable numeric ComponentTypeID per type  (source of truth)  IMPLEMENTED
+ComponentSerializerRegistry     → serialize/deserialize functions per type (for save/load)     NOT YET BUILT
+ComponentReflectionRegistry     → field metadata per type (for editor display/edit)            NOT YET BUILT
 ```
 
 All three are indexed by `ComponentTypeID`. Registration is independent — a component
@@ -536,23 +537,30 @@ ZEngine/
 
 ## 13. What this replaces in Tetragrama
 
-The current `InspectorViewUIComponent` has per-component code like:
+The current `InspectorViewUIComponent` uses per-component code via the `Actor*`
+tier-1 API (not raw `EntityID`). The actual pattern today is:
 
 ```cpp
-// TODAY — one ImGui block per known component type
-if (entity.HasComponent<TransformComponent>()) {
-    auto& t = entity.GetComponent<TransformComponent>();
-    ImGui::DragFloat3("Position", &t.m_position.x);
-    ImGui::DragFloat3("Rotation", &t.m_rotation.x);
+// TODAY (InspectorViewUIComponent.cpp) — per-component blocks via Actor*
+auto* tc = actor->GetComponent<TransformComponent>();
+if (tc) {
+    ImGui::DragFloat3("Position", &tc->Position.x);
     // ...
 }
-if (entity.HasComponent<LightComponent>()) { ... }
-// ... 10+ more blocks, none of which work for plugin components
+auto* mc = actor->GetComponent<MeshComponent>();
+if (mc) { ... }
+// ... one block per known component type, none work for plugin components
 ```
 
-After migration, all of this is replaced by the generic `DrawEntityInspector` loop
-from §8. Any component — engine, game, or plugin — is displayed automatically as long
-as it has registered metadata.
+Note: the inspector receives an `Actor*` from `ActorManager`, not a raw `EntityID`.
+The generic `DrawEntityInspector` in §8 calls `Scene::GetComponentRaw(EntityID, TypeID)`
+which works for both tier-1 (`Actor`) and tier-2 (raw `EntityID`) entities. When the
+inspector is migrated it should accept either an `EntityID` directly or extract
+`actor->GetEntityID()` to feed into `DrawEntityInspector`.
+
+After migration, all per-component blocks are replaced by the generic loop from §8.
+Any component — engine, game, or plugin — is displayed automatically as long as it
+has registered metadata.
 
 ---
 
@@ -563,7 +571,9 @@ as it has registered metadata.
 - [ ] `ZEngine/ECS/Reflection/ComponentReflectionRegistry.h/.cpp` — `Register`, `Lookup`, `LookupByName`, `ForEach`
 - [ ] `ECS::Scene::GetComponentRaw(EntityID, ComponentTypeID) → void*`
 - [ ] `ECS::Scene::AddComponentRaw(EntityID, ComponentTypeID, size, align)`
-- [ ] All built-in component `.cpp` files register reflection metadata (Transform, Mesh, RigidBody, Light, Camera, Name, UUID, Animator, Skeleton, Skinning, NetReplicated)
+- [ ] All built-in component `.cpp` files register reflection metadata for the 8 actual components:
+  `TransformComponent`, `MeshComponent`, `CameraComponent`, `LightComponent`,
+  `MaterialComponent`, `NameComponent`, `RigidBodyComponent`, `UUIDComponent`
 - [ ] `PluginEditor.h`: `ZFieldDescriptor`, `ZComponentMetaDesc`, `ZPlugin_RegisterComponentMeta`
 - [ ] `InspectorViewUIComponent` migrated to generic `DrawEntityInspector` loop
 - [ ] "Add Component" button in inspector using `ComponentReflectionRegistry::ForEach`
