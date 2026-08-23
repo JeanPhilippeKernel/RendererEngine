@@ -18,8 +18,6 @@
 
                 "FMT_MODULE": "OFF",
                 "VULKAN_HEADERS_ENABLE_INSTALL": "ON",
-                "ENTT_INCLUDE_HEADERS": "ON",
-
                 "SPDLOG_BUILD_SHARED": "OFF",
                 "SPDLOG_FMT_EXTERNAL": "ON",
                 "SPDLOG_FMT_EXTERNAL_HO": "OFF",
