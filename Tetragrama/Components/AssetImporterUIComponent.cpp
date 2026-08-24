@@ -32,14 +32,13 @@ namespace Tetragrama::Components
         // import memory — engine importers and editor importers — is budget-tracked.
         auto* import_arena = &ZEngine::Engine::GetContext()->ImportPipelineArena;
         import_arena->CreateSubArena(ZMega(64), &GltfImporterArena);
-        import_arena->CreateSubArena(ZMega(256), &FbxImporterArena);
         import_arena->CreateSubArena(ZMega(350), &AssimpImporterArena);
 
         m_gltf_importer   = ZPushStructCtor(import_arena, ZEngine::Importers::GltfImporter);
         m_fbx_importer    = ZPushStructCtor(import_arena, ZEngine::Importers::FbxImporter);
         m_assimp_importer = ZPushStructCtor(import_arena, ZEngine::Importers::AssimpImporter);
         m_gltf_importer->Initialize(&GltfImporterArena);
-        m_fbx_importer->Initialize(&FbxImporterArena);
+        m_fbx_importer->Initialize(import_arena);
         m_assimp_importer->Initialize(&AssimpImporterArena);
 
         m_path_buf.init(&LocalStringArena, 1024);

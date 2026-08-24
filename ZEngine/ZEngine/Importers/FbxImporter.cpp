@@ -241,19 +241,24 @@ namespace ZEngine::Importers
         if (on_progress)
             on_progress(context, 0.2f);
 
-        std::random_device    rd;
-        std::mt19937          gen_mt(rd());
-        uuid_random_generator gen(&gen_mt);
+        std::random_device           rd;
+        std::mt19937                 gen_mt(rd());
+        uuid_random_generator        gen(&gen_mt);
 
-        AssetMesh             mesh      = {};
-        AssetNodeHierarchy    hier      = {};
-        Array<AssetMaterial>  materials = {};
-        Array<AssetTexture>   textures  = {};
+        // Use FbxImporter::Arena for mesh data — large scratch for vertex/index arrays.
+        // Only the small config strings above use the caller's arena.
+        Core::Memory::ArenaAllocator scratch{};
+        Arena.CreateSubArena(ZMega(192), &scratch);
 
-        mesh.MeshUUID                   = gen();
-        mesh.Vertices.init(arena, 4096);
-        mesh.Indices.init(arena, 4096);
-        mesh.SubMeshes.init(arena, (uint32_t) scene->meshes.count);
+        AssetMesh            mesh      = {};
+        AssetNodeHierarchy   hier      = {};
+        Array<AssetMaterial> materials = {};
+        Array<AssetTexture>  textures  = {};
+
+        mesh.MeshUUID                  = gen();
+        mesh.Vertices.init(&scratch, 4096);
+        mesh.Indices.init(&scratch, 4096);
+        mesh.SubMeshes.init(&scratch, (uint32_t) scene->meshes.count);
 
         const float scale = config.Options.UniformScale;
 
@@ -328,7 +333,7 @@ namespace ZEngine::Importers
                 ufbx_material* mat   = fbx_mesh->materials.data[0];
                 AssetMaterial  a_mat = {};
                 a_mat.MaterialUUID   = gen();
-                a_mat.Name.init(arena, mat->name.data);
+                a_mat.Name.init(&scratch, mat->name.data);
                 sub.MaterialUUID = a_mat.MaterialUUID;
 
                 auto push_tex    = [&](ufbx_material_map& map) -> uuids::uuid {
@@ -339,7 +344,7 @@ namespace ZEngine::Importers
                         uuids::uuid  id = gen();
                         AssetTexture t  = {};
                         t.TextureUUID   = id;
-                        t.Path.init(arena, map.texture->filename.data);
+                        t.Path.init(&scratch, map.texture->filename.data);
                         textures.push(t);
                         return id;
                     }
@@ -382,18 +387,18 @@ namespace ZEngine::Importers
         hier.Hierarchies.init(arena, 1);
         hier.Names.init(arena, 1);
         hier.MaterialNames.init(arena, 1);
-        hier.NodeNames.init(arena, 64);
-        hier.NodeMeshes.init(arena, 1);
-        hier.NodeMaterials.init(arena, 1);
+        hier.NodeNames.init(&scratch, 64);
+        hier.NodeMeshes.init(&scratch, 1);
+        hier.NodeMaterials.init(&scratch, 1);
         hier.LocalTransforms.push(Identity<Mat4f>());
         hier.GlobalTransforms.push(Identity<Mat4f>());
 
         Array<AssetImporterOutput> outputs = {};
-        outputs.init(arena, 16);
-        outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hier, config));
+        outputs.init(&scratch, 16);
+        outputs.push(AssetCodec::SerializeMeshAssetFile(&scratch, mesh, hier, config));
         if (config.Options.ImportMaterials)
             for (size_t i = 0; i < materials.size(); ++i)
-                outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+                outputs.push(AssetCodec::SerializeMaterialAssetFile(&scratch, materials[i], config));
 
         auto* mgr = Managers::AssetManager::Instance();
         if (mgr)
@@ -410,6 +415,8 @@ namespace ZEngine::Importers
             on_progress(context, 1.0f);
         if (on_complete)
             on_complete(context, ArrayView{outputs});
+
+        Arena.Clear();
     }
 
     void FbxImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)

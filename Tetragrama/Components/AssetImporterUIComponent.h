@@ -29,7 +29,6 @@ namespace Tetragrama::Components
         ZEngine::Core::Memory::ArenaAllocator LocalArena          = {};
         ZEngine::Core::Memory::ArenaAllocator LocalStringArena    = {};
         ZEngine::Core::Memory::ArenaAllocator GltfImporterArena   = {}; // 64 MB scratch for GltfImporter
-        ZEngine::Core::Memory::ArenaAllocator FbxImporterArena    = {}; // 256 MB scratch for FbxImporter
         ZEngine::Core::Memory::ArenaAllocator AssimpImporterArena = {}; // 350 MB scratch for AssimpImporter
 
         void                                  Initialize(Layers::ImguiLayer* parent = nullptr, cstring name = "Asset Importer", bool visibility = true, bool closed = false) override;
