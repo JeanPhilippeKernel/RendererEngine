@@ -257,7 +257,7 @@ namespace ZEngine::Hardwares
         uint32_t                                                                                                                     TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
 
         uint32_t                                                                                                                     WriteDescriptorSetIndex                     = 0;
-        uint32_t                                                                                                                     MaxGlobalTexture                            = 600;
+        uint32_t                                                                                                                     MaxGlobalTexture                            = 1024;
         VkInstance                                                                                                                   Instance                                    = VK_NULL_HANDLE;
         VkSurfaceKHR                                                                                                                 Surface                                     = VK_NULL_HANDLE;
         VkSurfaceFormatKHR                                                                                                           SurfaceFormat                               = {};

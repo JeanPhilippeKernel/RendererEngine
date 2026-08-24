@@ -435,7 +435,7 @@ namespace ZEngine::Rendering
         uint32_t                       m_swap_count                      = 0;
 
         // Pending uploads — written from asset thread, flushed in BeginFrame
-        static constexpr uint32_t      MAX_PENDING                       = 256;
+        static constexpr uint32_t      MAX_PENDING                       = 1024;
         PendingUpload                  m_pending[MAX_PENDING]            = {};
         uint32_t                       m_pending_count                   = 0;
 
