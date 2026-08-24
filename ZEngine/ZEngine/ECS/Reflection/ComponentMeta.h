@@ -38,7 +38,7 @@ namespace ZEngine::ECS
         uint32_t               Align      = 0;
         const FieldDescriptor* Fields     = nullptr;
         uint32_t               FieldCount = 0;
-        const char*            Category   = "General";
+        const char*            Category   = "General"; // compare with strcmp, not ==
         const char*            Tooltip    = nullptr;
     };
 
