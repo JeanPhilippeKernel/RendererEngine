@@ -7,6 +7,8 @@ namespace ZEngine::ECS
 {
     ComponentReflectionRegistry& ComponentReflectionRegistry::Get()
     {
+        // Do not access after Engine::Deinitialize() — s_instance has static storage
+        // duration and outlives the arena, leaving m_metas.m_data dangling.
         static ComponentReflectionRegistry s_instance;
         return s_instance;
     }
