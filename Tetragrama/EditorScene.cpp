@@ -38,18 +38,11 @@ namespace Tetragrama
         auto* ctx = ZEngine::Engine::GetContext();
         if (ctx && ctx->ActorManager)
         {
-            // Register the built-in sun mesh so it's available for GPU upload.
-            {
-                ZEngine::Importers::AssetMesh          sun_mesh{};
-                ZEngine::Importers::AssetNodeHierarchy sun_hier{};
-                ZEngine::Rendering::CreateDirectionalLightMesh(&LocalArena, sun_mesh, sun_hier);
-                AssetManager::IngestMesh(std::move(sun_mesh), std::move(sun_hier));
-            }
+            ZEngine::Rendering::RegisterBuiltinMeshes(&LocalArena);
 
-            auto light_uuid_result = uuids::uuid::from_string(ZEngine::Rendering::DIRECTIONAL_LIGHT_MESH_UUID);
-            if (!light_uuid_result)
+            const uuids::uuid light_uuid = ZEngine::Rendering::BuiltinMeshUUIDParsed(ZEngine::Rendering::BuiltinMeshID::DirectionalLightIcon);
+            if (light_uuid.is_nil())
                 return;
-            uuids::uuid               light_uuid         = *light_uuid_result;
 
             constexpr cstring         default_light_name = "DirectionalLight";
 

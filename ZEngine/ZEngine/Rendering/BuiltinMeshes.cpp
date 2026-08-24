@@ -1,17 +1,32 @@
 #include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Importers/AssetTypes.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/BuiltinMeshes.h>
 #include <uuid.h>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Importers;
+using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering
 {
-    void CreateDirectionalLightMesh(ArenaAllocator* arena, AssetMesh& out_mesh, AssetNodeHierarchy& out_hierarchy)
-    {
-        using namespace Core::Maths;
+    // ── Internal types ────────────────────────────────────────────────────────
 
-        // Estimated counts: disc(13v 36i) + rays(32v 48i) + arrow(14v 18i) = 59v 102i
+    using BuildMeshFn     = void (*)(ArenaAllocator*, AssetMesh&, AssetNodeHierarchy&);
+    using BuildMaterialFn = void (*)(AssetMaterial&); // null = no paired material
+
+    struct BuiltinMeshEntry
+    {
+        const char*     MeshUUID;
+        const char*     MaterialUUID; // null if no material
+        BuildMeshFn     BuildMesh;
+        BuildMaterialFn BuildMaterial; // null if no material
+    };
+
+    // ── Mesh builders (static — not exposed in the header) ───────────────────
+
+    static void BuildDirectionalLightIcon(ArenaAllocator* arena, AssetMesh& out_mesh, AssetNodeHierarchy& out_hierarchy)
+    {
         out_mesh.Vertices.init(arena, 512);
         out_mesh.Indices.init(arena, 256);
 
@@ -25,116 +40,89 @@ namespace ZEngine::Rendering
             out_mesh.Vertices.push(u);
             out_mesh.Vertices.push(v);
         };
-
         auto push_tri = [&](uint32_t a, uint32_t b, uint32_t c) {
             out_mesh.Indices.push(a);
             out_mesh.Indices.push(b);
             out_mesh.Indices.push(c);
         };
+        auto            vcount   = [&]() -> uint32_t { return static_cast<uint32_t>(out_mesh.Vertices.size() / 8); };
 
-        // Returns the current vertex count (index of the next vertex to be added).
-        auto            vcount     = [&]() -> uint32_t { return static_cast<uint32_t>(out_mesh.Vertices.size() / 8); };
+        constexpr float PI       = 3.14159265358979323846f;
+        constexpr float TWO_PI   = 2.f * PI;
+        constexpr int   DISC_SEG = 12;
 
-        constexpr float PI         = 3.14159265358979323846f;
-        constexpr float TWO_PI     = 2.f * PI;
-        constexpr int   DISC_SEGS  = 12;
-
-        // ── Disc (12-gon in XY plane, normal +Z) ──────────────────────────────────
-        uint32_t        center_idx = vcount();
+        // Disc (12-gon in XY plane, normal +Z)
+        uint32_t        ci       = vcount();
         push_v(0.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.5f, 0.5f);
-
-        uint32_t ring_start = vcount();
-        for (int i = 0; i < DISC_SEGS; ++i)
+        uint32_t rs = vcount();
+        for (int i = 0; i < DISC_SEG; ++i)
         {
-            float a = TWO_PI * i / DISC_SEGS;
+            float a = TWO_PI * i / DISC_SEG;
             float c = cosf(a), s = sinf(a);
             push_v(c * 0.12f, s * 0.12f, 0.f, 0.f, 0.f, 1.f, c * 0.5f + 0.5f, s * 0.5f + 0.5f);
         }
-        for (int i = 0; i < DISC_SEGS; ++i)
-            push_tri(center_idx, ring_start + i, ring_start + (i + 1) % DISC_SEGS);
+        for (int i = 0; i < DISC_SEG; ++i)
+            push_tri(ci, rs + i, rs + (i + 1) % DISC_SEG);
 
-        // ── 8 diamond rays (XY plane, normal +Z) ──────────────────────────────────
-        constexpr int   RAYS       = 8;
-        constexpr float RAY_INNER  = 0.13f;
-        constexpr float RAY_HALF_W = 0.035f;
-        constexpr float RAY_MID_R  = 0.20f;
-        constexpr float RAY_TIP_R  = 0.27f;
-
-        for (int r = 0; r < RAYS; ++r)
+        // 8 diamond rays (XY plane, normal +Z)
+        for (int r = 0; r < 8; ++r)
         {
-            float    a  = TWO_PI * r / RAYS;
-            float    cx = cosf(a), cz = sinf(a); // forward along ray
-            float    px = -cz, pz = cx;          // perpendicular in XY plane
-
-            uint32_t base = vcount();
-            push_v(cx * RAY_INNER, cz * RAY_INNER, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f);                                      // inner
-            push_v(cx * RAY_MID_R + px * RAY_HALF_W, cz * RAY_MID_R + pz * RAY_HALF_W, 0.f, 0.f, 0.f, 1.f, 0.5f, 0.f); // left
-            push_v(cx * RAY_TIP_R, cz * RAY_TIP_R, 0.f, 0.f, 0.f, 1.f, 1.f, 0.f);                                      // tip
-            push_v(cx * RAY_MID_R - px * RAY_HALF_W, cz * RAY_MID_R - pz * RAY_HALF_W, 0.f, 0.f, 0.f, 1.f, 0.5f, 1.f); // right
-
-            push_tri(base, base + 1, base + 2);
-            push_tri(base, base + 2, base + 3);
+            float    a  = TWO_PI * r / 8;
+            float    cx = cosf(a), cz = sinf(a);
+            float    px = -cz, pz = cx;
+            uint32_t b = vcount();
+            push_v(cx * 0.13f, cz * 0.13f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f);
+            push_v(cx * 0.20f + px * 0.035f, cz * 0.20f + pz * 0.035f, 0.f, 0.f, 0.f, 1.f, 0.5f, 0.f);
+            push_v(cx * 0.27f, cz * 0.27f, 0.f, 0.f, 0.f, 1.f, 1.f, 0.f);
+            push_v(cx * 0.20f - px * 0.035f, cz * 0.20f - pz * 0.035f, 0.f, 0.f, 0.f, 1.f, 0.5f, 1.f);
+            push_tri(b, b + 1, b + 2);
+            push_tri(b, b + 2, b + 3);
         }
 
-        // ── Arrow shaft — two perpendicular flat planes for 360-degree visibility ──
-        // Plane 1: XZ (y = 0), normal +Y
+        // Arrow shaft — two perpendicular flat planes for 360-degree visibility
         {
-            uint32_t base = vcount();
+            uint32_t b = vcount();
             push_v(-0.025f, 0.f, 0.15f, 0.f, 1.f, 0.f, 0.f, 0.f);
             push_v(0.025f, 0.f, 0.15f, 0.f, 1.f, 0.f, 1.f, 0.f);
             push_v(0.025f, 0.f, 0.35f, 0.f, 1.f, 0.f, 1.f, 1.f);
             push_v(-0.025f, 0.f, 0.35f, 0.f, 1.f, 0.f, 0.f, 1.f);
-            push_tri(base, base + 1, base + 2);
-            push_tri(base, base + 2, base + 3);
+            push_tri(b, b + 1, b + 2);
+            push_tri(b, b + 2, b + 3);
         }
-        // Plane 2: YZ (x = 0), normal +X
         {
-            uint32_t base = vcount();
+            uint32_t b = vcount();
             push_v(0.f, -0.025f, 0.15f, 1.f, 0.f, 0.f, 0.f, 0.f);
             push_v(0.f, 0.025f, 0.15f, 1.f, 0.f, 0.f, 1.f, 0.f);
             push_v(0.f, 0.025f, 0.35f, 1.f, 0.f, 0.f, 1.f, 1.f);
             push_v(0.f, -0.025f, 0.35f, 1.f, 0.f, 0.f, 0.f, 1.f);
-            push_tri(base, base + 1, base + 2);
-            push_tri(base, base + 2, base + 3);
+            push_tri(b, b + 1, b + 2);
+            push_tri(b, b + 2, b + 3);
         }
 
-        // ── Arrowhead — two perpendicular triangles ────────────────────────────────
-        // Plane 1: XZ (y = 0), normal +Y
+        // Arrowhead — two perpendicular triangles
         {
-            uint32_t base = vcount();
+            uint32_t b = vcount();
             push_v(-0.06f, 0.f, 0.32f, 0.f, 1.f, 0.f, 0.f, 0.f);
             push_v(0.06f, 0.f, 0.32f, 0.f, 1.f, 0.f, 1.f, 0.f);
             push_v(0.00f, 0.f, 0.55f, 0.f, 1.f, 0.f, 0.5f, 1.f);
-            push_tri(base, base + 1, base + 2);
+            push_tri(b, b + 1, b + 2);
         }
-        // Plane 2: YZ (x = 0), normal +X
         {
-            uint32_t base = vcount();
+            uint32_t b = vcount();
             push_v(0.f, -0.06f, 0.32f, 1.f, 0.f, 0.f, 0.f, 0.f);
             push_v(0.f, 0.06f, 0.32f, 1.f, 0.f, 0.f, 1.f, 0.f);
             push_v(0.f, 0.00f, 0.55f, 1.f, 0.f, 0.f, 0.5f, 1.f);
-            push_tri(base, base + 1, base + 2);
+            push_tri(b, b + 1, b + 2);
         }
 
-        // ── SubMesh (single sub-mesh covering all geometry) ────────────────────────
         out_mesh.SubMeshes.init(arena, 1);
         AssetSubMesh& sub        = out_mesh.SubMeshes.push_use({});
         sub.VertexCount          = vcount();
         sub.IndexCount           = static_cast<uint32_t>(out_mesh.Indices.size());
-        sub.VertexOffset         = 0;
-        sub.IndexOffset          = 0;
         sub.VertexUnitStreamSize = 8 * sizeof(float);
         sub.IndexUnitStreamSize  = sizeof(uint32_t);
         sub.TotalByteSize        = sub.VertexCount * sub.VertexUnitStreamSize;
-
-        // ── UUID ───────────────────────────────────────────────────────────────────
-        auto uuid_result         = uuids::uuid::from_string(DIRECTIONAL_LIGHT_MESH_UUID);
-        if (uuid_result)
-            out_mesh.MeshUUID = *uuid_result;
-
-        // ── Minimal node hierarchy (one root node, no children) ────────────────────
-        out_hierarchy.MeshUUID          = out_mesh.MeshUUID;
-        out_hierarchy.NodeHierarchyUUID = out_mesh.MeshUUID;
+        // sub.MaterialUUID is patched by RegisterBuiltinMeshes after this returns.
 
         out_hierarchy.Hierarchies.init(arena, 1);
         out_hierarchy.LocalTransforms.init(arena, 1);
@@ -144,8 +132,95 @@ namespace ZEngine::Rendering
         out_hierarchy.NodeNames.init(arena, 64);
         out_hierarchy.NodeMeshes.init(arena, 1);
         out_hierarchy.NodeMaterials.init(arena, 1);
-
         out_hierarchy.LocalTransforms.push(Identity<Mat4f>());
         out_hierarchy.GlobalTransforms.push(Identity<Mat4f>());
     }
+
+    // ── Material builders ─────────────────────────────────────────────────────
+
+    static void BuildDirectionalLightMaterial(AssetMaterial& mat)
+    {
+        // Yellow emissive — no textures, no PBR specular.
+        mat.EmissiveColor[0] = 1.f;
+        mat.EmissiveColor[1] = 0.85f;
+        mat.EmissiveColor[2] = 0.f;
+        mat.EmissiveColor[3] = 1.f;
+        mat.Factors[1]       = 0.f; // metallic = 0
+    }
+
+    // ── Static table ──────────────────────────────────────────────────────────
+
+    static constexpr BuiltinMeshEntry kBuiltinMeshTable[] = {
+        {
+         "ff000000-0000-0000-0000-000000000001", // mesh
+        "ff000000-0000-0001-0000-000000000001", // material
+        BuildDirectionalLightIcon, BuildDirectionalLightMaterial,
+         },
+    };
+
+    static_assert(std::size(kBuiltinMeshTable) == static_cast<uint32_t>(BuiltinMeshID::COUNT), "kBuiltinMeshTable size must match BuiltinMeshID::COUNT");
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    const char* BuiltinMeshUUID(BuiltinMeshID id)
+    {
+        return kBuiltinMeshTable[static_cast<uint32_t>(id)].MeshUUID;
+    }
+
+    uuids::uuid BuiltinMeshUUIDParsed(BuiltinMeshID id)
+    {
+        auto r = uuids::uuid::from_string(BuiltinMeshUUID(id));
+        return r ? *r : uuids::uuid{};
+    }
+
+    uuids::uuid BuiltinMaterialUUIDParsed(BuiltinMeshID id)
+    {
+        const char* s = kBuiltinMeshTable[static_cast<uint32_t>(id)].MaterialUUID;
+        if (!s)
+            return {};
+        auto r = uuids::uuid::from_string(s);
+        return r ? *r : uuids::uuid{};
+    }
+
+    void RegisterBuiltinMeshes(ArenaAllocator* arena)
+    {
+        for (const auto& entry : kBuiltinMeshTable)
+        {
+            // Ingest material first — must exist before the mesh is rendered.
+            if (entry.MaterialUUID && entry.BuildMaterial)
+            {
+                AssetMaterial mat{};
+                mat.Name.init(arena, entry.MaterialUUID);
+                auto r = uuids::uuid::from_string(entry.MaterialUUID);
+                if (r)
+                    mat.MaterialUUID = *r;
+                entry.BuildMaterial(mat);
+                Managers::AssetManager::IngestMaterial(std::move(mat));
+            }
+
+            // Build mesh then patch all submesh MaterialUUIDs before ingesting.
+            AssetMesh          mesh{};
+            AssetNodeHierarchy hier{};
+            entry.BuildMesh(arena, mesh, hier);
+
+            auto mesh_uuid_result = uuids::uuid::from_string(entry.MeshUUID);
+            if (mesh_uuid_result)
+            {
+                mesh.MeshUUID          = *mesh_uuid_result;
+                hier.MeshUUID          = *mesh_uuid_result;
+                hier.NodeHierarchyUUID = *mesh_uuid_result;
+            }
+
+            if (entry.MaterialUUID)
+            {
+                auto mat_r = uuids::uuid::from_string(entry.MaterialUUID);
+                if (mat_r)
+                    for (auto& sub : mesh.SubMeshes)
+                        sub.MaterialUUID = *mat_r;
+            }
+
+            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hier));
+        }
+    }
+
 } // namespace ZEngine::Rendering
