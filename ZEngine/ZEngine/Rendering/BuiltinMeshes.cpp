@@ -15,10 +15,10 @@ namespace ZEngine::Rendering
 
     struct BuiltinMeshEntry
     {
-        const char*     MeshUUID;
-        const char*     MaterialUUID; // null if no material
-        BuildMeshFn     BuildMesh;
-        BuildMaterialFn BuildMaterial; // null if no material
+        const char*     MeshUUID      = nullptr;
+        const char*     MaterialUUID  = nullptr;
+        BuildMeshFn     BuildMesh     = nullptr;
+        BuildMaterialFn BuildMaterial = nullptr;
     };
 
     static void BuildDirectionalLightIcon(ArenaAllocator* arena, AssetMesh& out_mesh, AssetNodeHierarchy& out_hierarchy)
