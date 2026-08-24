@@ -70,4 +70,16 @@ namespace ZEngine::ECS
         });
     }
 
+    void* Scene::GetComponentRaw(EntityID id, ComponentTypeID type_id)
+    {
+        IComponentStorage** found = m_storages.find(type_id);
+        return found ? (*found)->GetRaw(id) : nullptr;
+    }
+
+    const void* Scene::GetComponentRaw(EntityID id, ComponentTypeID type_id) const
+    {
+        const IComponentStorage* const* found = m_storages.find(type_id);
+        return found ? (*found)->GetRaw(id) : nullptr;
+    }
+
 } // namespace ZEngine::ECS

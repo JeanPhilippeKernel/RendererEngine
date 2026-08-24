@@ -120,6 +120,15 @@ namespace ZEngine::ECS
                 fn(m_dense_ids[i], m_dense[i]);
         }
 
+        void* GetRaw(EntityID id) override
+        {
+            return Has(id) ? static_cast<void*>(Get(id)) : nullptr;
+        }
+        const void* GetRaw(EntityID id) const override
+        {
+            return Has(id) ? static_cast<const void*>(Get(id)) : nullptr;
+        }
+
     private:
         Core::Containers::Array<uint32_t> m_sparse;    // entity Index → dense index
         Core::Containers::Array<T>        m_dense;     // packed component data

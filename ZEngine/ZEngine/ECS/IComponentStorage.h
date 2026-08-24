@@ -8,12 +8,15 @@ namespace ZEngine::ECS
     // iterate all storages during DestroyEntity without knowing concrete types.
     struct IComponentStorage
     {
-        virtual ~IComponentStorage()           = default;
+        virtual ~IComponentStorage()                  = default;
 
         // Remove the component for this entity if present. No-op if absent.
-        virtual void RemoveRaw(EntityID id)    = 0;
+        virtual void        RemoveRaw(EntityID id)    = 0;
 
         // Returns true if this entity has a component in this storage.
-        virtual bool HasRaw(EntityID id) const = 0;
+        virtual bool        HasRaw(EntityID id) const = 0;
+
+        virtual void*       GetRaw(EntityID id)       = 0;
+        virtual const void* GetRaw(EntityID id) const = 0;
     };
 } // namespace ZEngine::ECS
