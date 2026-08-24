@@ -162,6 +162,19 @@ FetchContent_Declare(miniz
     GIT_SHALLOW TRUE
 )
 
+FetchContent_Declare(ufbx
+    GIT_REPOSITORY https://github.com/ufbx/ufbx.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v0.14.3
+    SOURCE_DIR     ${FETCHCONTENT_BASE_DIR}/ufbx
+)
+FetchContent_GetProperties(ufbx)
+if(NOT ufbx_POPULATED)
+    FetchContent_Populate(ufbx)
+endif()
+add_library(ufbx STATIC ${FETCHCONTENT_BASE_DIR}/ufbx/ufbx.c)
+target_include_directories(ufbx PUBLIC ${FETCHCONTENT_BASE_DIR}/ufbx)
+
 FetchContent_Declare(simdjson
     GIT_REPOSITORY https://github.com/simdjson/simdjson.git
     GIT_SHALLOW    TRUE
@@ -274,6 +287,7 @@ target_include_directories(External_libs
                                 ${FETCHCONTENT_BASE_DIR}/stb
                                 ${FETCHCONTENT_BASE_DIR}/CLI11
                                 ${FETCHCONTENT_BASE_DIR}/tlsf
+                                ${FETCHCONTENT_BASE_DIR}/ufbx
                        )
 
 
@@ -304,6 +318,7 @@ target_link_libraries(External_libs
          nlohmann_json::nlohmann_json
          miniz
          fastgltf::fastgltf
+         ufbx
 )
 
 if(ZENGINE_TRACY)

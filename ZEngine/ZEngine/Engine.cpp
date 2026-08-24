@@ -13,6 +13,7 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssimpImporter.h>
 #include <ZEngine/Importers/EnvironmentMapImporter.h>
+#include <ZEngine/Importers/FbxImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Input/InputManager.h>
@@ -95,12 +96,15 @@ namespace ZEngine
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
         static Importers::GltfImporter           s_gltf_importer;
+        static Importers::FbxImporter            s_fbx_importer;
         static Importers::AssimpImporter         s_assimp_importer;
         static Importers::EnvironmentMapImporter s_env_map_importer;
         s_gltf_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
+        s_fbx_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         s_assimp_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         s_env_map_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_gltf_importer);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_fbx_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_assimp_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_env_map_importer);
 
