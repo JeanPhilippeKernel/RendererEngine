@@ -162,6 +162,14 @@ FetchContent_Declare(miniz
     GIT_SHALLOW TRUE
 )
 
+FetchContent_Declare(simdjson
+    GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v3.12.3
+    SOURCE_DIR     ${FETCHCONTENT_BASE_DIR}/simdjson
+)
+set(SIMDJSON_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(fastgltf
     GIT_REPOSITORY https://github.com/spnda/fastgltf.git
     GIT_SHALLOW    TRUE
@@ -203,6 +211,7 @@ FetchContent_MakeAvailable(
   GTest
   miniz
   TracyClient
+  simdjson
   fastgltf
   )
 
