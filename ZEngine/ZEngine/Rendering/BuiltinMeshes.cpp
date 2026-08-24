@@ -140,11 +140,14 @@ namespace ZEngine::Rendering
 
     static void BuildDirectionalLightMaterial(AssetMaterial& mat)
     {
-        // Yellow emissive — no textures, no PBR specular.
-        mat.EmissiveColor[0] = 1.f;
-        mat.EmissiveColor[1] = 0.85f;
-        mat.EmissiveColor[2] = 0.f;
-        mat.EmissiveColor[3] = 1.f;
+        // Yellow albedo + emissive self-glow.
+        // Shader: color = ambient + Lo + albedo * emissive.r
+        // emissive.r = 1 makes the icon always show its albedo color regardless of lighting.
+        mat.AlbedoColor[0]   = 1.f;
+        mat.AlbedoColor[1]   = 0.85f;
+        mat.AlbedoColor[2]   = 0.f;
+        mat.AlbedoColor[3]   = 1.f;
+        mat.EmissiveColor[0] = 1.f; // scalar multiplier on albedo
         mat.Factors[1]       = 0.f; // metallic = 0
     }
 
