@@ -561,8 +561,9 @@ namespace ZEngine::Importers
                 continue;
             }
 
-            auto src_file = (fs::path(config.InputBaseAssetFilePath.c_str()) / tex.Path.c_str()).string();
-            auto dst_file = (fs::path(dst_dir) / tex.Path.c_str()).string();
+            fs::path tex_path(tex.Path.c_str());
+            auto     src_file = (tex_path.is_absolute() ? tex_path : fs::path(config.InputBaseAssetFilePath.c_str()) / tex_path).string();
+            auto     dst_file = (fs::path(dst_dir) / tex_path.filename()).string();
 
             CreateBaseDirectoryFn(dst_file);
 
