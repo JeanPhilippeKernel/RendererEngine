@@ -10,8 +10,6 @@ using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering
 {
-    // ── Internal types ────────────────────────────────────────────────────────
-
     using BuildMeshFn     = void (*)(ArenaAllocator*, AssetMesh&, AssetNodeHierarchy&);
     using BuildMaterialFn = void (*)(AssetMaterial&); // null = no paired material
 
@@ -22,8 +20,6 @@ namespace ZEngine::Rendering
         BuildMeshFn     BuildMesh;
         BuildMaterialFn BuildMaterial; // null if no material
     };
-
-    // ── Mesh builders (static — not exposed in the header) ───────────────────
 
     static void BuildDirectionalLightIcon(ArenaAllocator* arena, AssetMesh& out_mesh, AssetNodeHierarchy& out_hierarchy)
     {
@@ -136,8 +132,6 @@ namespace ZEngine::Rendering
         out_hierarchy.GlobalTransforms.push(Identity<Mat4f>());
     }
 
-    // ── Material builders ─────────────────────────────────────────────────────
-
     static void BuildDirectionalLightMaterial(AssetMaterial& mat)
     {
         // Yellow albedo + emissive self-glow.
@@ -151,8 +145,6 @@ namespace ZEngine::Rendering
         mat.Factors[1]       = 0.f; // metallic = 0
     }
 
-    // ── Static table ──────────────────────────────────────────────────────────
-
     static constexpr BuiltinMeshEntry kBuiltinMeshTable[] = {
         {
          "ff000000-0000-0000-0000-000000000001", // mesh
@@ -162,8 +154,6 @@ namespace ZEngine::Rendering
     };
 
     static_assert(std::size(kBuiltinMeshTable) == static_cast<uint32_t>(BuiltinMeshID::COUNT), "kBuiltinMeshTable size must match BuiltinMeshID::COUNT");
-
-    // ── Public API ────────────────────────────────────────────────────────────
 
     const char* BuiltinMeshUUID(BuiltinMeshID id)
     {
