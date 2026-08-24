@@ -140,21 +140,7 @@ namespace ZEngine::Rendering::Renderers
             rrm->UpdateBuffer(RenderSceneData->MaterialBuffer, asset_manager->GPUMeshMaterials.data(), asset_manager->GPUMeshMaterials.size() * sizeof(asset_manager->GPUMeshMaterials[0]));
         }
 
-        if (Device->RRM && RenderSceneData->LightBuffer.Handle)
-        {
-            auto*                 rrm               = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
-            Scenes::LightArrayUBO lights            = {};
-            lights.DirectionalLights[0].Direction.x = 0.5f;
-            lights.DirectionalLights[0].Direction.y = -1.0f;
-            lights.DirectionalLights[0].Direction.z = 0.5f;
-            lights.DirectionalLights[0].Color.x     = 1.0f;
-            lights.DirectionalLights[0].Color.y     = 1.0f;
-            lights.DirectionalLights[0].Color.z     = 1.0f;
-            lights.DirectionalLights[0].Color.w     = 1.0f;
-            lights.DirectionalLights[0].Intensity   = 3.0f;
-            lights.DirectionalCount                 = 1;
-            rrm->UpdateBuffer(RenderSceneData->LightBuffer, &lights, sizeof(lights));
-        }
+        // Light buffer is uploaded by AppRenderPipeline::RenderScene from scene->PendingLights.
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
         auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];

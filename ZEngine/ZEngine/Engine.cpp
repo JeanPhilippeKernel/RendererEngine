@@ -4,6 +4,7 @@
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/Systems/LightSyncSystem.h>
 #include <ZEngine/ECS/Systems/TransformSyncSystem.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Engine/FixedTimestepAccumulator.h>
@@ -280,7 +281,10 @@ namespace ZEngine
             }
 
             if (g_engine_ctx->Scene && g_app->CurrentScene)
+            {
                 ECS::Systems::SyncECSToRenderScene(*g_engine_ctx->Scene, alpha, *g_app->CurrentScene);
+                ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_app->CurrentScene);
+            }
 
             g_app->PrepareScene(r_payload);
 

@@ -130,6 +130,7 @@ namespace ZEngine::Rendering::Scenes
 
         SkyConfig                             Sky                = {};
         GridConfig                            Grid               = {};
+        LightArrayUBO                         PendingLights      = {};
 
         PaddedAtomic<uint64_t>                m_seq              = {};
         PaddedAtomic<int32_t>                 SelectedInstanceId = {};
