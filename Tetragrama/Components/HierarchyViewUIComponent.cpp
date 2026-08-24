@@ -233,12 +233,11 @@ namespace Tetragrama::Components
             Vec3f new_pos, new_rot, new_scale;
             if (DecomposeTransformComponent(transform, new_pos, new_rot, new_scale))
             {
-                tc->PreviousPosition = tc->Position;
                 tc->Position         = new_pos;
                 tc->Rotation         = new_rot;
                 tc->Scale            = new_scale;
+                tc->PreviousPosition = new_pos;
 
-                // Keep RenderScene in sync — TransformComponent and Instances are not auto-bridged yet.
                 auto* mc             = actor->GetComponent<MeshComponent>();
                 if (mc && mc->RenderInstanceId != UINT32_MAX)
                     scene->SetInstanceTransform(mc->RenderInstanceId, transform);

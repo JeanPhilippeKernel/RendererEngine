@@ -1,10 +1,13 @@
 #include <Tetragrama/EditorScene.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/BuiltinMeshes.h>
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::ECS::Components;
 using namespace ZEngine::Managers;
@@ -29,6 +32,48 @@ namespace Tetragrama
         // Allocate a sub-arena for the instance list.
         LocalArena.CreateSubArena(ZMega(4), &InstanceArena);
         Instances.init(&InstanceArena, 64);
+
+        // Spawn a default directional light so new scenes are not dark.
+        // Rotation: -60° pitch (mostly downward), 30° yaw (slight horizontal angle).
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (ctx && ctx->ActorManager)
+        {
+            ZEngine::Rendering::RegisterBuiltinMeshes(&LocalArena);
+
+            const uuids::uuid light_uuid = ZEngine::Rendering::BuiltinMeshUUIDParsed(ZEngine::Rendering::BuiltinMeshID::DirectionalLightIcon);
+            if (light_uuid.is_nil())
+                return;
+
+            constexpr cstring         default_light_name = "DirectionalLight";
+
+            ZEngine::ECS::ActorHandle handle             = ctx->ActorManager->Create();
+            ZEngine::ECS::Actor*      actor              = ctx->ActorManager->Access(handle);
+            if (!actor)
+                return;
+
+            NameComponent nc = {};
+            ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), default_light_name, ZEngine::Helpers::secure_strlen(default_light_name));
+            actor->AddComponent<NameComponent>(nc);
+
+            TransformComponent tc = {};
+            tc.Rotation.x         = -1.047f;
+            tc.Rotation.y         = 0.524f;
+            actor->AddComponent<TransformComponent>(tc);
+
+            LightComponent lc = {};
+            lc.LightType      = LightComponent::Type::Directional;
+            lc.Intensity      = 3.f;
+            lc.Color[0]       = 1.f;
+            lc.Color[1]       = 1.f;
+            lc.Color[2]       = 1.f;
+            actor->AddComponent<LightComponent>(lc);
+
+            uint32_t      render_id = AddMeshInstance(light_uuid, default_light_name);
+            MeshComponent mc        = {};
+            mc.MeshUUID             = light_uuid;
+            mc.RenderInstanceId     = render_id;
+            actor->AddComponent<MeshComponent>(mc);
+        }
     }
 
     bool EditorScene::HasPendingChange() const

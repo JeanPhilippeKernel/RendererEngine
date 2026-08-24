@@ -194,6 +194,14 @@ namespace ZEngine::Applications
             SceneRenderer->UpdateRMMBindings(gpu_data);
         }
 
+        if (Device->RRM)
+        {
+            auto* rrm     = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
+            auto* gpu_buf = SceneRenderer->RenderSceneData;
+            if (gpu_buf->LightBuffer.Handle)
+                rrm->UpdateBuffer(gpu_buf->LightBuffer, &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
+        }
+
         SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 
