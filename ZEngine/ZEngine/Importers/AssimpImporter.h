@@ -42,7 +42,6 @@ namespace ZEngine::Importers
         void                         CopyTextureFiles(Core::Memory::ArenaAllocator*, Core::Containers::Array<AssetTexture>&, const AssetCodec::ImportConfiguration&);
 
     private:
-        uint32_t              m_flags;
         AssimpProgressHandler m_progress_handler;
 
         friend struct AssimpProgressHandler;

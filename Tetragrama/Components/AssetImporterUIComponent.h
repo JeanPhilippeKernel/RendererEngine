@@ -57,10 +57,14 @@ namespace Tetragrama::Components
         // Import settings (shown in Options state)
         float m_scale            = 1.0f;
         int   m_axis_index       = 0; // 0 = Y-Up, 1 = Z-Up
-        bool  m_gen_normals      = true;
+        int   m_normals_mode     = 1; // 0 = Off, 1 = Flat, 2 = Smooth
+        bool  m_flip_uvs         = false;
         bool  m_merge_vertices   = true;
         bool  m_import_materials = true;
         bool  m_import_textures  = true;
+        bool  m_use_source_name  = true;
+        bool  m_same_settings    = false;
+        int   m_active_tab       = 0;
 
         // Compact import log (Importing state — ring buffer)
         struct LogEntry

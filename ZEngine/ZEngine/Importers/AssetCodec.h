@@ -13,16 +13,28 @@ namespace ZEngine::Importers::AssetCodec
     // These are the cook-time serialization helpers used by format importers to produce
     // the cooked binary artifacts that AssetManager loads at runtime.
 
+    struct ImportOptions
+    {
+        float   UniformScale    = 1.0f;
+        bool    AxisUpIsZ       = false;
+        bool    FlipUVs         = false;
+        uint8_t NormalsMode     = 1; // 0 = off, 1 = flat, 2 = smooth
+        bool    MergeVertices   = true;
+        bool    ImportMaterials = true;
+        bool    ImportTextures  = true;
+    };
+
     struct ImportConfiguration
     {
         Core::Containers::String AssetName;
         Core::Containers::String OutputAssetFile;
-        Core::Containers::String OutputAssetsPath;   // mesh output dir (Assets/Meshes)
-        Core::Containers::String OutputMaterialPath; // material output dir (Assets/Materials)
+        Core::Containers::String OutputAssetsPath;
+        Core::Containers::String OutputMaterialPath;
         Core::Containers::String InputBaseAssetFilePath;
         Core::Containers::String OutputWorkingSpacePath;
         Core::Containers::String OutputTextureFilesPath;
-        Core::VFS::IVFSContext*  VFS = nullptr; // required — used for CreateDir before each write
+        Core::VFS::IVFSContext*  VFS     = nullptr;
+        ImportOptions            Options = {};
     };
 
     struct AssetMeshFileHeader
