@@ -42,7 +42,7 @@ namespace ZEngine::Importers
 
     void FbxImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(256), &Arena);
+        arena->CreateSubArena(ZMega(512), &Arena);
     }
 
     bool FbxImporter::CanImport(const char* extension) const
@@ -250,16 +250,22 @@ namespace ZEngine::Importers
         // Use FbxImporter::Arena for mesh data — large scratch for vertex/index arrays.
         // Only the small config strings above use the caller's arena.
         Core::Memory::ArenaAllocator scratch{};
-        Arena.CreateSubArena(ZMega(192), &scratch);
+        Arena.CreateSubArena(ZMega(440), &scratch);
 
         AssetMesh            mesh      = {};
         AssetNodeHierarchy   hier      = {};
         Array<AssetMaterial> materials = {};
         Array<AssetTexture>  textures  = {};
 
-        mesh.MeshUUID                  = gen();
-        mesh.Vertices.init(&scratch, 4096);
-        mesh.Indices.init(&scratch, 4096);
+        // Pre-size vertex/index arrays from ufbx's triangle counts to avoid grow() dead blocks.
+        // Worst-case capacity: all face-vertices unique (no dedup) — actual used will be less.
+        uint32_t total_tris = 0;
+        for (size_t mi = 0; mi < scene->meshes.count; ++mi)
+            total_tris += static_cast<uint32_t>(scene->meshes.data[mi]->num_triangles);
+
+        mesh.MeshUUID = gen();
+        mesh.Vertices.init(&scratch, (size_t) total_tris * 3 * 8);
+        mesh.Indices.init(&scratch, (size_t) total_tris * 3);
         mesh.SubMeshes.init(&scratch, (uint32_t) scene->meshes.count);
         materials.init(&scratch, 64);
         textures.init(&scratch, 256);
