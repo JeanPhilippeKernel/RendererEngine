@@ -87,7 +87,7 @@ namespace ZEngine::Rendering::Scenes
         // The heap is reset every frame so we cache the commands here and re-push every frame.
         uint32_t                  IndirectHeapOffset                = 0;
         uint32_t                  IndirectCommandCount              = 0;
-        static constexpr uint32_t MAX_DRAW_COMMANDS                 = 512;
+        static constexpr uint32_t MAX_DRAW_COMMANDS                 = 8192;
         VkDrawIndirectCommand     CachedDrawCmds[MAX_DRAW_COMMANDS] = {};
 
         // RMM-owned HOST_VISIBLE buffers — written via RRM::UpdateBuffer every frame.

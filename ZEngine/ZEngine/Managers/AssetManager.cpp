@@ -336,6 +336,8 @@ namespace ZEngine::Managers
                 auto* rec = s_Instance->Registry->Access(result.Handles[i]);
                 if (!rec || rec->UUID.is_nil())
                     continue;
+                if (rec->State == Core::VFS::AssetState::Loaded)
+                    continue;
                 if (s_Instance->MeshToHierarchySlot.find(rec->UUID) != nullptr)
                     continue;
 
@@ -344,7 +346,11 @@ namespace ZEngine::Managers
 
                 AssetMesh          mesh = {};
                 AssetNodeHierarchy hier = {};
-                Importers::AssetCodec::DeserializeMeshAssetFile(scratch, native, mesh, hier);
+                // Use the AssetManager's own arena — meshes can be hundreds of MB,
+                // far exceeding the caller's scratch. After IngestMesh copies the data
+                // permanently, the deserialization buffers become dead weight but are
+                // acceptable as a one-time startup cost.
+                Importers::AssetCodec::DeserializeMeshAssetFile(s_Instance->Arena, native, mesh, hier);
                 if (!mesh.MeshUUID.is_nil())
                 {
                     ZENGINE_LOG_ASSET_INFO("Reloading mesh from disk: {}", native)

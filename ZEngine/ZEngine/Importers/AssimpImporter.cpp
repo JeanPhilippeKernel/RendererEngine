@@ -41,7 +41,7 @@ namespace ZEngine::Importers
     {
         if (!extension)
             return false;
-        return secure_strcmp(extension, "fbx") == 0 || secure_strcmp(extension, "obj") == 0;
+        return secure_strcmp(extension, "obj") == 0;
     }
 
     Core::VFS::VFSResult<void> AssimpImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)

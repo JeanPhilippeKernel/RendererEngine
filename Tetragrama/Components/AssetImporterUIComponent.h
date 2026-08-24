@@ -5,6 +5,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/AssimpImporter.h>
+#include <ZEngine/Importers/FbxImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/ZEngineDef.h>
 #include <future>
@@ -92,6 +93,7 @@ namespace Tetragrama::Components
 
         // Importers — allocated from parent arena in Initialize()
         ZEngine::Importers::GltfImporter*   m_gltf_importer     = nullptr;
+        ZEngine::Importers::FbxImporter*    m_fbx_importer      = nullptr;
         ZEngine::Importers::AssimpImporter* m_assimp_importer   = nullptr;
 
         void                                PushLog(cstring text, const float color[4]);

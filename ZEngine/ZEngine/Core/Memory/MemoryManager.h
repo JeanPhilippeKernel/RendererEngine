@@ -57,12 +57,12 @@ namespace ZEngine::Core::Memory
             MemoryBudgetConfig cfg = {};
             cfg.AudioEngine        = {"AudioEngine", ZMega(128ULL)};
             cfg.AnimationManager   = {"AnimationManager", ZMega(256ULL)};
-            cfg.AssetManager       = {"AssetManager", ZMega(512ULL)};
+            cfg.AssetManager       = {"AssetManager", ZGiga(1ULL)};
             cfg.ECSScene           = {"ECSScene", ZMega(512ULL)};
             cfg.Logging            = {"Logging", ZMega(8ULL)};
             cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};
             cfg.VulkanDevice       = {"VulkanDevice", ZGiga(1ULL)};
-            cfg.ImportPipeline     = {"ImportPipeline", ZGiga(1ULL)}; // glTF 64 + Assimp 128 + envmap 32 + editor ~414 MB; each carves directly
+            cfg.ImportPipeline     = {"ImportPipeline", ZMega(3584ULL)}; // 3.5 GB — each importer gets generous headroom for large scenes
             cfg.UIContext          = {"UIContext", ZMega(64ULL)};
             cfg.Swapchain          = {"Swapchain", ZMega(8ULL)};
             cfg.ShaderCache        = {"ShaderCache", ZMega(64ULL)};
