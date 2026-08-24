@@ -91,6 +91,8 @@ namespace ZEngine::Importers
         mesh.Vertices.init(&scratch, 1024);
         mesh.Indices.init(&scratch, 1024);
         mesh.SubMeshes.init(&scratch, (uint32_t) scene->meshes.count);
+        materials.init(&scratch, 64);
+        textures.init(&scratch, 256);
 
         for (size_t mi = 0; mi < scene->meshes.count; ++mi)
         {
@@ -259,6 +261,8 @@ namespace ZEngine::Importers
         mesh.Vertices.init(&scratch, 4096);
         mesh.Indices.init(&scratch, 4096);
         mesh.SubMeshes.init(&scratch, (uint32_t) scene->meshes.count);
+        materials.init(&scratch, 64);
+        textures.init(&scratch, 256);
 
         const float scale = config.Options.UniformScale;
 
