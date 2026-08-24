@@ -1,10 +1,63 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Maths;
+
+namespace
+{
+    // Gribb-Hartmann frustum extraction from a combined VP matrix (row-major, Vulkan NDC z∈[0,1]).
+    // Each plane is stored as (nx, ny, nz, d) — normalized so distance = dot(n,p)+d.
+    struct FrustumPlane
+    {
+        float x, y, z, w;
+    };
+
+    void ExtractFrustumPlanes(const Mat4f& vp, FrustumPlane out[6])
+    {
+        // Row vectors
+        auto row       = [&](int r) -> FrustumPlane { return {vp(r, 0), vp(r, 1), vp(r, 2), vp(r, 3)}; };
+        auto add       = [](FrustumPlane a, FrustumPlane b) -> FrustumPlane { return {a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w}; };
+        auto sub       = [](FrustumPlane a, FrustumPlane b) -> FrustumPlane { return {a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w}; };
+        auto normalize = [](FrustumPlane p) -> FrustumPlane {
+            float len = Vec3f(p.x, p.y, p.z).magnitude();
+            if (len < 1e-6f)
+                return p;
+            return {p.x / len, p.y / len, p.z / len, p.w / len};
+        };
+
+        out[0] = normalize(add(row(3), row(0))); // left
+        out[1] = normalize(sub(row(3), row(0))); // right
+        out[2] = normalize(add(row(3), row(1))); // bottom
+        out[3] = normalize(sub(row(3), row(1))); // top
+        out[4] = normalize(row(2));              // near  (Vulkan z≥0)
+        out[5] = normalize(sub(row(3), row(2))); // far
+    }
+
+    bool SphereInFrustum(const FrustumPlane planes[6], Vec3f center, float radius)
+    {
+        for (int i = 0; i < 6; ++i)
+        {
+            float d = planes[i].x * center.x + planes[i].y * center.y + planes[i].z * center.z + planes[i].w;
+            if (d < -radius)
+                return false;
+        }
+        return true;
+    }
+
+    float MaxColumnScale(const Mat4f& m)
+    {
+        float s0 = Vec3f(m(0, 0), m(1, 0), m(2, 0)).magnitude();
+        float s1 = Vec3f(m(0, 1), m(1, 1), m(2, 1)).magnitude();
+        float s2 = Vec3f(m(0, 2), m(1, 2), m(2, 2)).magnitude();
+        return s0 > s1 ? (s0 > s2 ? s0 : s2) : (s1 > s2 ? s1 : s2);
+    }
+} // anonymous namespace
 
 namespace ZEngine::Applications
 {
@@ -103,18 +156,22 @@ namespace ZEngine::Applications
 
         auto* gpu = SceneRenderer->RenderSceneData;
 
-        if (scene->InstancesDirty[frame_index].value.exchange(false, std::memory_order_acquire))
+        // Clear the dirty flag — data is rebuilt every frame so culling tracks camera movement.
+        scene->InstancesDirty[frame_index].value.exchange(false, std::memory_order_acquire);
+
         {
             auto*                                                    rrm     = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
             auto*                                                    mgr     = Managers::AssetManager::Instance();
-
             auto                                                     scratch = ZGetScratch(&LocalArena);
 
-            // Seqlock snapshot — consistent copy of the instance list.
             Core::Containers::Array<Rendering::Scenes::MeshInstance> instances;
             scene->GetInstancesSnapshot(scratch.Arena, instances);
 
-            // Pre-size scratch arrays (worst-case: each mesh has multiple submeshes).
+            // Extract camera frustum once for this frame.
+            Mat4f        vp = camera->GetProjection() * camera->GetView();
+            FrustumPlane planes[6];
+            ExtractFrustumPlanes(vp, planes);
+
             Core::Containers::Array<Rendering::Meshes::SubMeshAllocation> allocs;
             Core::Containers::Array<VkDrawIndirectCommand>                draws;
             Core::Containers::Array<Core::Maths::Mat4f>                   transforms;
@@ -136,6 +193,16 @@ namespace ZEngine::Applications
                 auto* mesh = mgr ? mgr->GetMeshAsset(inst.MeshUUID) : nullptr;
                 if (!mesh)
                     continue;
+
+                // Frustum cull — sphere test in world space.
+                if (mesh->BoundsRadius > 0.f)
+                {
+                    const Vec3f& c = mesh->BoundsCenter;
+                    Vec3f        worldCenter(inst.Transform(0, 0) * c.x + inst.Transform(0, 1) * c.y + inst.Transform(0, 2) * c.z + inst.Transform(0, 3), inst.Transform(1, 0) * c.x + inst.Transform(1, 1) * c.y + inst.Transform(1, 2) * c.z + inst.Transform(1, 3), inst.Transform(2, 0) * c.x + inst.Transform(2, 1) * c.y + inst.Transform(2, 2) * c.z + inst.Transform(2, 3));
+                    float        worldRadius = mesh->BoundsRadius * MaxColumnScale(inst.Transform);
+                    if (!SphereInFrustum(planes, worldCenter, worldRadius))
+                        continue;
+                }
 
                 transforms.push(inst.Transform);
                 uint32_t transform_idx = static_cast<uint32_t>(transforms.size() - 1);
@@ -162,12 +229,9 @@ namespace ZEngine::Applications
 
             if (rrm && gpu->TransformBuffer.Handle && transforms.size() > 0)
                 rrm->UpdateBuffer(gpu->TransformBuffer, transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
-
             if (rrm && gpu->RenderDataBuffer.Handle && allocs.size() > 0)
                 rrm->UpdateBuffer(gpu->RenderDataBuffer, allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
 
-            // Cache draw commands — the heap resets each frame so we must re-push
-            // every frame. The cache holds the latest snapshot.
             gpu->IndirectCommandCount = static_cast<uint32_t>(draws.size());
             ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
             for (uint32_t dc = 0; dc < gpu->IndirectCommandCount; ++dc)
