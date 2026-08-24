@@ -36,10 +36,12 @@ namespace ZEngine::Importers
 
     struct AssetMesh
     {
-        uuids::uuid                           MeshUUID  = {};
-        Core::Containers::Array<float>        Vertices  = {};
-        Core::Containers::Array<uint32_t>     Indices   = {};
-        Core::Containers::Array<AssetSubMesh> SubMeshes = {};
+        uuids::uuid                           MeshUUID     = {};
+        Core::Containers::Array<float>        Vertices     = {};
+        Core::Containers::Array<uint32_t>     Indices      = {};
+        Core::Containers::Array<AssetSubMesh> SubMeshes    = {};
+        Core::Maths::Vec3f                    BoundsCenter = {};
+        float                                 BoundsRadius = 0.f;
     };
 
     struct AssetMaterial

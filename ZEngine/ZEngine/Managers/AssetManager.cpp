@@ -106,6 +106,30 @@ namespace ZEngine::Managers
         Helpers::secure_memcpy(m.Indices.data(), m.Indices.size() * sizeof(uint32_t), mesh.Indices.data(), mesh.Indices.size() * sizeof(uint32_t));
         for (auto& sub : mesh.SubMeshes)
             m.SubMeshes.push(sub);
+
+        // Compute bounding sphere (centroid + max-distance radius) from vertex positions.
+        // Vertices are 8 floats each: pos(xyz) nrm(xyz) uv(uv).
+        {
+            const uint32_t vcount = static_cast<uint32_t>(m.Vertices.size() / 8);
+            if (vcount > 0)
+            {
+                Core::Maths::Vec3f sum = {};
+                for (uint32_t vi = 0; vi < vcount; ++vi)
+                    sum = sum + Core::Maths::Vec3f(m.Vertices[vi * 8], m.Vertices[vi * 8 + 1], m.Vertices[vi * 8 + 2]);
+                m.BoundsCenter = sum * (1.f / static_cast<float>(vcount));
+
+                float maxR     = 0.f;
+                for (uint32_t vi = 0; vi < vcount; ++vi)
+                {
+                    Core::Maths::Vec3f d = Core::Maths::Vec3f(m.Vertices[vi * 8], m.Vertices[vi * 8 + 1], m.Vertices[vi * 8 + 2]) - m.BoundsCenter;
+                    float              r = d.magnitude();
+                    if (r > maxR)
+                        maxR = r;
+                }
+                m.BoundsRadius = maxR;
+            }
+        }
+
         RegisterAsset(AssetType::MESH, m.MeshUUID, mesh_slot);
 
         auto  hier_slot     = static_cast<uint32_t>(s_Instance->NodeHierarchies.size());
