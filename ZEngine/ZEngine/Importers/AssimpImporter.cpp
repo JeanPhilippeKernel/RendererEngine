@@ -123,6 +123,9 @@ namespace ZEngine::Importers
         }
         else
         {
+            if (on_progress)
+                on_progress(context, 0.2f);
+
             std::random_device    rd;
             std::mt19937          generator(rd());
             uuid_random_generator gen(&generator);
@@ -133,10 +136,15 @@ namespace ZEngine::Importers
             Array<AssetTexture>   textures    = {};
 
             ExtractMeshes(arena, scene, gen, mesh);
+            if (on_progress)
+                on_progress(context, 0.4f);
+
             ExtractMaterials(arena, scene, gen, materials, hierarchies);
             ExtractTextures(arena, scene, gen, materials, textures);
             CreateHierachy(arena, scene, gen, hierarchies, mesh, materials);
             CopyTextureFiles(arena, textures, config);
+            if (on_progress)
+                on_progress(context, 0.7f);
 
             // Propagate tex.Path (set by CopyTextureFiles) → material.*TexPath
             for (size_t m = 0; m < materials.size(); ++m)
@@ -158,13 +166,14 @@ namespace ZEngine::Importers
                 set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
             }
 
-            // Serialize .zemesh + .zematerial — no .zetextures (paths are inline in material)
             Array<AssetImporterOutput> outputs = {};
             outputs.init(arena, 100);
             outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config));
             for (size_t i = 0; i < materials.size(); ++i)
                 outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
 
+            if (on_progress)
+                on_progress(context, 1.0f);
             if (on_complete)
                 on_complete(context, ArrayView{outputs});
         }
