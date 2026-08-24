@@ -424,3 +424,7 @@ CMakeSettings.json
 # MacOS files
 .DS_Store
 SampleProject/
+
+# Presentation exports
+*.pdf
+*.pptx
