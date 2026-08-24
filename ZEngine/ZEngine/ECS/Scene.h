@@ -95,12 +95,15 @@ namespace ZEngine::ECS
         // Fixed-timestep interpolation support (game-loop.md).
         // Copies Position into PreviousPosition for all entities with a TransformComponent.
         // Call at the end of each fixed simulation step.
-        void SnapshotTransforms();
+        void        SnapshotTransforms();
 
         // Linearly interpolates between PreviousPosition and Position using alpha [0,1]
         // and fills out with one RenderableTransform per entity that has a TransformComponent.
         // Call once per render frame before submitting to the renderer.
-        void FillRenderableTransforms(float alpha, Core::Containers::Array<RenderableTransform>& out);
+        void        FillRenderableTransforms(float alpha, Core::Containers::Array<RenderableTransform>& out);
+
+        void*       GetComponentRaw(EntityID id, ComponentTypeID type_id);
+        const void* GetComponentRaw(EntityID id, ComponentTypeID type_id) const;
 
     private:
         EntityRegistry                                                          m_registry;

@@ -366,4 +366,6 @@ namespace ZEngine::Core::Maths
         return Vec3f(2 * ((quat.x * quat.y) - (quat.w * quat.z)), 1 - 2 * ((quat.x * quat.x) + (quat.z * quat.z)), 2 * ((quat.y * quat.z) + (quat.w * quat.x)));
     }
 
+    using Quatf = Quaternion<float>;
+
 } // namespace ZEngine::Core::Maths
