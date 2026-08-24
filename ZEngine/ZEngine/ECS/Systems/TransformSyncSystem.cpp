@@ -10,11 +10,13 @@ namespace ZEngine::ECS::Systems
         using namespace Components;
         using namespace Core::Maths;
 
+        // Use Position directly — interpolation between PreviousPosition and Position
+        // is deferred until fixed-timestep physics/simulation systems are active.
+        // Applying alpha here conflicts with immediate gizmo-driven position updates.
         scene.ForEach<TransformComponent, MeshComponent>([&](EntityID, TransformComponent& tc, MeshComponent& mc) {
             if (mc.RenderInstanceId == UINT32_MAX)
                 return;
-            Vec3f pos = tc.PreviousPosition + (tc.Position - tc.PreviousPosition) * alpha;
-            Mat4f mat = ComposeTransformMatrix(pos, tc.Rotation, tc.Scale);
+            Mat4f mat = ComposeTransformMatrix(tc.Position, tc.Rotation, tc.Scale);
             render_scene.SetInstanceTransform(mc.RenderInstanceId, mat);
         });
     }
