@@ -4,6 +4,8 @@
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/Reflection/BuiltInComponentReflection.h>
+#include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/ECS/Systems/LightSyncSystem.h>
 #include <ZEngine/ECS/Systems/TransformSyncSystem.h>
 #include <ZEngine/Engine.h>
@@ -86,6 +88,9 @@ namespace ZEngine
         g_engine_ctx->WorldCommands->Initialize(&g_engine_ctx->ECSArena);
         g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
         g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
+
+        ECS::ComponentReflectionRegistry::Get().Initialize(&g_engine_ctx->ECSArena);
+        ECS::Components::RegisterBuiltInComponentReflection();
 
         // ImportPipeline arena: each importer carves its own sub-arena directly from this
         // parent (glTF 64 MB + Assimp 128 MB + envmap 32 MB + editor ~414 MB).
