@@ -6,6 +6,7 @@
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/ECS/Reflection/BuiltInComponentReflection.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
+#include <ZEngine/ECS/Systems/HierarchySystem.h>
 #include <ZEngine/ECS/Systems/LightSyncSystem.h>
 #include <ZEngine/ECS/Systems/TransformSyncSystem.h>
 #include <ZEngine/Engine.h>
@@ -291,6 +292,7 @@ namespace ZEngine
 
             if (g_engine_ctx->Scene && g_app->CurrentScene)
             {
+                ECS::Systems::SyncHierarchy(*g_engine_ctx->Scene);
                 ECS::Systems::SyncECSToRenderScene(*g_engine_ctx->Scene, alpha, *g_app->CurrentScene);
                 ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_app->CurrentScene);
             }

@@ -8,6 +8,7 @@
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/ParentComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
@@ -216,7 +217,8 @@ namespace Tetragrama::Components
         // ImGuizmo expects OpenGL-style Y-up projection; un-flip the Vulkan Y scale.
         projection[1][1]      = -projection[1][1];
 
-        Mat4f transform       = ComposeTransformMatrix(tc->Position, tc->Rotation, tc->Scale);
+        // Gizmo operates on WorldTransform — already computed by HierarchySystem.
+        Mat4f transform       = tc->WorldTransform;
 
         int   gizmo_op        = app->Configuration->GizmoOperation;
         float snap_val        = 0.5f;
@@ -230,17 +232,23 @@ namespace Tetragrama::Components
 
         if (ImGuizmo::IsUsing())
         {
+            // Decompose new world transform back to local space.
+            Mat4f local_mat = transform;
+            auto* pc        = actor->GetComponent<ParentComponent>();
+            if (pc && pc->Parent != INVALID_ENTITY)
+            {
+                auto* parent_tc = ctx->Scene->GetComponent<TransformComponent>(pc->Parent);
+                if (parent_tc)
+                    local_mat = parent_tc->WorldTransform.Inverse() * transform;
+            }
+
             Vec3f new_pos, new_rot, new_scale;
-            if (DecomposeTransformComponent(transform, new_pos, new_rot, new_scale))
+            if (DecomposeTransformComponent(local_mat, new_pos, new_rot, new_scale))
             {
                 tc->Position         = new_pos;
                 tc->Rotation         = new_rot;
                 tc->Scale            = new_scale;
                 tc->PreviousPosition = new_pos;
-
-                auto* mc             = actor->GetComponent<MeshComponent>();
-                if (mc && mc->RenderInstanceId != UINT32_MAX)
-                    scene->SetInstanceTransform(mc->RenderInstanceId, transform);
             }
         }
     }
