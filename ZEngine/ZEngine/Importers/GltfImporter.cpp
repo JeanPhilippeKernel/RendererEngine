@@ -473,10 +473,11 @@ namespace ZEngine::Importers
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
-        config.VFS   = cfg.VFS;
+        config.VFS     = cfg.VFS;
+        config.Options = cfg.Options;
 
-        auto fs_path = std::filesystem::path(filename);
-        auto buf     = fastgltf::GltfDataBuffer::FromPath(fs_path);
+        auto fs_path   = std::filesystem::path(filename);
+        auto buf       = fastgltf::GltfDataBuffer::FromPath(fs_path);
         if (buf.error() != fastgltf::Error::None)
         {
             if (on_error)
@@ -516,11 +517,49 @@ namespace ZEngine::Importers
 
         ExtractMeshes(&scratch, asset, mesh);
         mesh.MeshUUID = gen();
-        ExtractMaterials(&scratch, asset, gen, materials);
-        ExtractTextures(&scratch, asset, gen, textures, materials);
+
+        // Apply per-vertex transform options
+        {
+            const float scale   = config.Options.UniformScale;
+            const bool  axis_z  = config.Options.AxisUpIsZ;
+            const bool  flip_uv = config.Options.FlipUVs;
+            if (scale != 1.0f || axis_z || flip_uv)
+            {
+                for (size_t vi = 0; vi < mesh.Vertices.size(); vi += 8)
+                {
+                    if (scale != 1.0f)
+                    {
+                        mesh.Vertices[vi + 0] *= scale;
+                        mesh.Vertices[vi + 1] *= scale;
+                        mesh.Vertices[vi + 2] *= scale;
+                    }
+                    if (axis_z)
+                    {
+                        float py              = mesh.Vertices[vi + 1];
+                        float pz              = mesh.Vertices[vi + 2];
+                        mesh.Vertices[vi + 1] = pz;
+                        mesh.Vertices[vi + 2] = -py;
+                        float ny              = mesh.Vertices[vi + 4];
+                        float nz              = mesh.Vertices[vi + 5];
+                        mesh.Vertices[vi + 4] = nz;
+                        mesh.Vertices[vi + 5] = -ny;
+                    }
+                    if (flip_uv)
+                        mesh.Vertices[vi + 7] = 1.0f - mesh.Vertices[vi + 7];
+                }
+            }
+        }
+
+        if (config.Options.ImportMaterials)
+        {
+            ExtractMaterials(&scratch, asset, gen, materials);
+            if (config.Options.ImportTextures)
+                ExtractTextures(&scratch, asset, gen, textures, materials);
+        }
         BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials);
 
         // Extract texture image bytes to disk and record project-relative paths
+        if (config.Options.ImportTextures && config.Options.ImportMaterials)
         {
             char dest_dir_buf[MAX_FILE_PATH_COUNT] = {};
             (ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dest_dir_buf, sizeof(dest_dir_buf));
@@ -709,16 +748,18 @@ namespace ZEngine::Importers
         Array<AssetImporterOutput> outputs = {};
         outputs.init(arena, 16);
         outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchy, config));
-        for (size_t i = 0; i < materials.size(); ++i)
-            outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+        if (config.Options.ImportMaterials)
+            for (size_t i = 0; i < materials.size(); ++i)
+                outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
 
-        // Also ingest into AssetManager so the asset is usable this session without a reload
         auto* mgr = Managers::AssetManager::Instance();
         if (mgr)
         {
-            Managers::AssetManager::IngestTextures(std::move(textures));
-            for (size_t i = 0; i < materials.size(); ++i)
-                Managers::AssetManager::IngestMaterial(std::move(materials[i]));
+            if (config.Options.ImportTextures && config.Options.ImportMaterials)
+                Managers::AssetManager::IngestTextures(std::move(textures));
+            if (config.Options.ImportMaterials)
+                for (size_t i = 0; i < materials.size(); ++i)
+                    Managers::AssetManager::IngestMaterial(std::move(materials[i]));
             Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
         }
 

@@ -23,7 +23,9 @@ namespace fs = std::filesystem;
 
 namespace ZEngine::Importers
 {
-    AssimpImporter::AssimpImporter() : m_progress_handler{}, m_flags{aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_SortByPType}
+    static constexpr uint32_t kDefaultFlags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_SortByPType;
+
+    AssimpImporter::AssimpImporter() : m_progress_handler{}
     {
         m_progress_handler.SetImporter(this);
     }
@@ -54,7 +56,7 @@ namespace ZEngine::Importers
             path.ToNative(native, sizeof(native));
 
         Assimp::Importer importer{};
-        const aiScene*   scene = importer.ReadFile(native, m_flags);
+        const aiScene*   scene = importer.ReadFile(native, kDefaultFlags);
 
         if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
         {
@@ -109,12 +111,23 @@ namespace ZEngine::Importers
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
-        config.VFS = cfg.VFS;
+        config.VFS     = cfg.VFS;
+        config.Options = cfg.Options;
+
+        uint32_t flags = aiProcess_Triangulate | aiProcess_SortByPType;
+        if (config.Options.MergeVertices)
+            flags |= aiProcess_JoinIdenticalVertices;
+        if (config.Options.FlipUVs)
+            flags |= aiProcess_FlipUVs;
+        if (config.Options.NormalsMode == 1)
+            flags |= aiProcess_GenNormals;
+        else if (config.Options.NormalsMode == 2)
+            flags |= aiProcess_GenSmoothNormals;
 
         Assimp::Importer importer{};
         importer.SetProgressHandler(&m_progress_handler);
 
-        const aiScene* scene = importer.ReadFile(filename, m_flags);
+        const aiScene* scene = importer.ReadFile(filename, flags);
 
         if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
         {
@@ -139,38 +152,55 @@ namespace ZEngine::Importers
             if (on_progress)
                 on_progress(context, 0.4f);
 
-            ExtractMaterials(arena, scene, gen, materials, hierarchies);
-            ExtractTextures(arena, scene, gen, materials, textures);
+            // Apply scale
+            if (config.Options.UniformScale != 1.0f)
+            {
+                const float s = config.Options.UniformScale;
+                for (size_t vi = 0; vi < mesh.Vertices.size(); vi += 8)
+                {
+                    mesh.Vertices[vi + 0] *= s;
+                    mesh.Vertices[vi + 1] *= s;
+                    mesh.Vertices[vi + 2] *= s;
+                }
+            }
+
+            if (config.Options.ImportMaterials)
+            {
+                ExtractMaterials(arena, scene, gen, materials, hierarchies);
+                if (config.Options.ImportTextures)
+                {
+                    ExtractTextures(arena, scene, gen, materials, textures);
+                    CopyTextureFiles(arena, textures, config);
+                    for (size_t m = 0; m < materials.size(); ++m)
+                    {
+                        auto set_path = [&](const uuids::uuid& uuid, Core::Containers::String& path_out) {
+                            for (size_t t = 0; t < textures.size(); ++t)
+                            {
+                                if (textures[t].TextureUUID == uuid && !textures[t].Path.empty())
+                                {
+                                    path_out.init(arena, textures[t].Path.c_str());
+                                    return;
+                                }
+                            }
+                        };
+                        set_path(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
+                        set_path(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
+                        set_path(materials[m].NormalTexUUID, materials[m].NormalTexPath);
+                        set_path(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
+                        set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+                    }
+                }
+            }
             CreateHierachy(arena, scene, gen, hierarchies, mesh, materials);
-            CopyTextureFiles(arena, textures, config);
             if (on_progress)
                 on_progress(context, 0.7f);
-
-            // Propagate tex.Path (set by CopyTextureFiles) → material.*TexPath
-            for (size_t m = 0; m < materials.size(); ++m)
-            {
-                auto set_path = [&](const uuids::uuid& uuid, Core::Containers::String& path_out) {
-                    for (size_t t = 0; t < textures.size(); ++t)
-                    {
-                        if (textures[t].TextureUUID == uuid && !textures[t].Path.empty())
-                        {
-                            path_out.init(arena, textures[t].Path.c_str());
-                            return;
-                        }
-                    }
-                };
-                set_path(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
-                set_path(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
-                set_path(materials[m].NormalTexUUID, materials[m].NormalTexPath);
-                set_path(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
-                set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
-            }
 
             Array<AssetImporterOutput> outputs = {};
             outputs.init(arena, 100);
             outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config));
-            for (size_t i = 0; i < materials.size(); ++i)
-                outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+            if (config.Options.ImportMaterials)
+                for (size_t i = 0; i < materials.size(); ++i)
+                    outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
 
             if (on_progress)
                 on_progress(context, 1.0f);

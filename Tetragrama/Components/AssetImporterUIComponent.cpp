@@ -124,7 +124,10 @@ namespace Tetragrama::Components
         {
             m_path_buf.clear();
             m_path_buf.append(picked.c_str());
-            m_state.value.store(ImporterState::Options);
+            if (m_same_settings)
+                StartImport();
+            else
+                m_state.value.store(ImporterState::Options);
         }
     }
 
@@ -165,10 +168,20 @@ namespace Tetragrama::Components
         config->OutputTextureFilesPath.init(&LocalArena, cfg.TexturePath.c_str());
         config->OutputAssetsPath.init(&LocalArena, cfg.MeshPath.c_str());
         config->OutputMaterialPath.init(&LocalArena, cfg.MaterialPath.c_str());
-        config->AssetName.init(&LocalArena, asset_name.Data);
+        if (!m_use_source_name && m_instance_name[0] != '\0')
+            config->AssetName.init(&LocalArena, m_instance_name);
+        else
+            config->AssetName.init(&LocalArena, asset_name.Data);
         config->OutputAssetFile.init(&LocalArena, asset_file_buf);
         config->InputBaseAssetFilePath.init(&LocalArena, parent_dir.CStr());
-        config->VFS = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
+        config->VFS                     = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
+        config->Options.UniformScale    = m_scale;
+        config->Options.AxisUpIsZ       = m_axis_index == 1;
+        config->Options.NormalsMode     = static_cast<uint8_t>(m_normals_mode);
+        config->Options.MergeVertices   = m_merge_vertices;
+        config->Options.ImportMaterials = m_import_materials;
+        config->Options.ImportTextures  = m_import_textures;
+        config->Options.FlipUVs         = m_flip_uvs;
 
         char msg[512];
         snprintf(msg, sizeof(msg), "Importing %s", vfs_value.Filename().Data);
@@ -371,7 +384,10 @@ namespace Tetragrama::Components
                     {
                         m_path_buf.clear();
                         m_path_buf.append(buf);
-                        m_state.value.store(ImporterState::Options);
+                        if (m_same_settings)
+                            StartImport();
+                        else
+                            m_state.value.store(ImporterState::Options);
                     }
                 }
             }
@@ -419,50 +435,107 @@ namespace Tetragrama::Components
 
         ImGui::Separator();
 
-        static constexpr cstring kAxes[] = {"Y-Up", "Z-Up"};
-
-        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+        if (ImGui::BeginTabBar("##import_tabs"))
         {
-            ImGui::SetNextItemWidth(80.0f);
-            ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.001f, 100.0f, "%.3f");
-            ImGui::SameLine(0.0f, 16.0f);
-            ImGui::SetNextItemWidth(80.0f);
-            ImGui::Combo("Axis", &m_axis_index, kAxes, 2);
-        }
+            // General tab
+            if (ImGui::BeginTabItem("General"))
+            {
+                ImGui::Checkbox("Use Source Name", &m_use_source_name);
+                if (!m_use_source_name)
+                {
+                    ImGui::SetNextItemWidth(-1.f);
+                    ImGui::InputText("Asset Name", m_instance_name, sizeof(m_instance_name));
+                }
+                else
+                {
+                    ImGui::BeginDisabled(true);
+                    ImGui::SetNextItemWidth(-1.f);
+                    ImGui::InputText("Asset Name", fn_buf, sizeof(fn_buf));
+                    ImGui::EndDisabled();
+                }
+                ImGui::Spacing();
+                ImGui::SetNextItemWidth(100.f);
+                ImGui::DragFloat("Uniform Scale", &m_scale, 0.01f, 0.001f, 100.f, "%.3f");
+                ImGui::SetNextItemWidth(100.f);
+                static constexpr cstring kAxes[] = {"Y-Up", "Z-Up"};
+                ImGui::Combo("Axis Up", &m_axis_index, kAxes, 2);
+                ImGui::EndTabItem();
+            }
 
-        if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            ImGui::Checkbox("Generate Normals", &m_gen_normals);
-            ImGui::Checkbox("Merge Identical Vertices", &m_merge_vertices);
-        }
+            // Mesh tab
+            if (ImGui::BeginTabItem("Mesh"))
+            {
+                static constexpr cstring kNormals[] = {"Off", "Flat", "Smooth"};
+                ImGui::SetNextItemWidth(120.f);
+                ImGui::Combo("Normals", &m_normals_mode, kNormals, 3);
+                ImGui::Checkbox("Merge Identical Vertices", &m_merge_vertices);
+                ImGui::Checkbox("Flip UVs", &m_flip_uvs);
+                ImGui::BeginDisabled(true);
+                static bool s_keep_sections = false;
+                ImGui::Checkbox("Keep Sections Separate", &s_keep_sections);
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("Not yet supported");
+                ImGui::EndDisabled();
+                ImGui::EndTabItem();
+            }
 
-        if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            ImGui::Checkbox("Import Materials", &m_import_materials);
-            ImGui::SameLine(0.0f, 16.0f);
-            ImGui::Checkbox("Import Textures", &m_import_textures);
+            // Material tab
+            if (ImGui::BeginTabItem("Material"))
+            {
+                ImGui::Checkbox("Import Materials", &m_import_materials);
+                ImGui::Checkbox("Import Textures", &m_import_textures);
+                ImGui::EndTabItem();
+            }
+
+            // Animation tab — placeholder, all disabled
+            if (ImGui::BeginTabItem("Animation"))
+            {
+                ImGui::BeginDisabled(true);
+                static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
+                ImGui::Checkbox("Import Animations", &s_import_anims);
+                ImGui::Checkbox("Import Only Animations", &s_only_anims);
+                ImGui::Checkbox("Import Bone Tracks", &s_bone_tracks);
+                ImGui::EndDisabled();
+                ImGui::Spacing();
+                ImGui::TextDisabled("Animation import requires skeletal mesh support.");
+                ImGui::EndTabItem();
+            }
+
+            // LOD tab — placeholder, all disabled
+            if (ImGui::BeginTabItem("LOD"))
+            {
+                ImGui::BeginDisabled(true);
+                static bool s_import_lods = false;
+                static int  s_max_lods    = 4;
+                ImGui::Checkbox("Import LODs", &s_import_lods);
+                ImGui::SetNextItemWidth(120.f);
+                ImGui::SliderInt("Max LOD Count", &s_max_lods, 1, 8);
+                ImGui::EndDisabled();
+                ImGui::Spacing();
+                ImGui::TextDisabled("LOD support requires virtual geometry streaming.");
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
         }
 
         ImGui::Separator();
+        ImGui::Checkbox("Use same settings for subsequent files", &m_same_settings);
+        ImGui::Spacing();
 
-        if (ImGui::Button("Import All", ImVec2(-108.0f, 0)))
+        if (ImGui::Button("Import All", ImVec2(-168.f, 0)))
             StartImport();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(true);
+        ImGui::Button("Preview...", ImVec2(-88.f, 0));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Not yet supported");
+        ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(-1, 0)))
         {
             m_path_buf.clear();
             m_state.value.store(ImporterState::Idle);
-        }
-
-        // Show last log entry for immediate error feedback
-        {
-            std::lock_guard<std::mutex> lk(m_log_mutex);
-            if (m_log_count > 0)
-            {
-                const auto& last = m_log[(m_log_head - 1 + kLogMax) % kLogMax];
-                ImGui::Spacing();
-                ImGui::TextColored({last.Color[0], last.Color[1], last.Color[2], last.Color[3]}, "%s", last.Text);
-            }
         }
     }
 
