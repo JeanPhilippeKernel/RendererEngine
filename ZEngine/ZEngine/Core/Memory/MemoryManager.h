@@ -57,7 +57,7 @@ namespace ZEngine::Core::Memory
             MemoryBudgetConfig cfg = {};
             cfg.AudioEngine        = {"AudioEngine", ZMega(128ULL)};
             cfg.AnimationManager   = {"AnimationManager", ZMega(256ULL)};
-            cfg.AssetManager       = {"AssetManager", ZMega(512ULL)};
+            cfg.AssetManager       = {"AssetManager", ZGiga(1ULL)};
             cfg.ECSScene           = {"ECSScene", ZMega(512ULL)};
             cfg.Logging            = {"Logging", ZMega(8ULL)};
             cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};

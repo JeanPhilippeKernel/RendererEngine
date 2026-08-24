@@ -4,6 +4,7 @@
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Importers/MeshOptimizer.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/ZEngineDef.h>
@@ -548,6 +549,18 @@ namespace ZEngine::Importers
                         mesh.Vertices[vi + 7] = 1.0f - mesh.Vertices[vi + 7];
                 }
             }
+        }
+
+        // Optimize each submesh: vertex cache, overdraw, vertex fetch.
+        for (uint32_t si = 0; si < mesh.SubMeshes.size(); ++si)
+        {
+            auto&     sub     = mesh.SubMeshes[si];
+            uint32_t* sub_idx = mesh.Indices.data() + sub.IndexOffset;
+            for (uint32_t j = 0; j < sub.IndexCount; ++j)
+                sub_idx[j] -= sub.VertexOffset;
+            Importers::OptimizeMeshSubmesh(mesh.Vertices.data() + sub.VertexOffset * 8, sub.VertexCount, sub_idx, sub.IndexCount);
+            for (uint32_t j = 0; j < sub.IndexCount; ++j)
+                sub_idx[j] += sub.VertexOffset;
         }
 
         if (config.Options.ImportMaterials)

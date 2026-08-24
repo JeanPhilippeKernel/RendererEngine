@@ -175,6 +175,20 @@ endif()
 add_library(ufbx STATIC ${FETCHCONTENT_BASE_DIR}/ufbx/ufbx.c)
 target_include_directories(ufbx PUBLIC ${FETCHCONTENT_BASE_DIR}/ufbx)
 
+FetchContent_Declare(meshoptimizer
+    GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v0.22
+    SOURCE_DIR     ${FETCHCONTENT_BASE_DIR}/meshoptimizer
+)
+FetchContent_GetProperties(meshoptimizer)
+if(NOT meshoptimizer_POPULATED)
+    FetchContent_Populate(meshoptimizer)
+endif()
+file(GLOB MESHOPT_SOURCES ${FETCHCONTENT_BASE_DIR}/meshoptimizer/src/*.cpp)
+add_library(meshoptimizer STATIC ${MESHOPT_SOURCES})
+target_include_directories(meshoptimizer PUBLIC ${FETCHCONTENT_BASE_DIR}/meshoptimizer/src)
+
 FetchContent_Declare(simdjson
     GIT_REPOSITORY https://github.com/simdjson/simdjson.git
     GIT_SHALLOW    TRUE
@@ -288,6 +302,7 @@ target_include_directories(External_libs
                                 ${FETCHCONTENT_BASE_DIR}/CLI11
                                 ${FETCHCONTENT_BASE_DIR}/tlsf
                                 ${FETCHCONTENT_BASE_DIR}/ufbx
+                                ${FETCHCONTENT_BASE_DIR}/meshoptimizer/src
                        )
 
 
@@ -319,6 +334,7 @@ target_link_libraries(External_libs
          miniz
          fastgltf::fastgltf
          ufbx
+         meshoptimizer
 )
 
 if(ZENGINE_TRACY)

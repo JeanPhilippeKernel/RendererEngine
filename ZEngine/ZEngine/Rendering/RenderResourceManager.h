@@ -391,8 +391,8 @@ namespace ZEngine::Rendering
         Core::VFS::AssetRegistry*       m_registry                     = nullptr;
 
         // Global geometry buffers — all mesh vertices/indices packed together.
-        static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY            = 256 * 1024 * 1024; // 256 MB → ~8M DrawVertex
-        static constexpr VkDeviceSize   GLOBAL_IDX_CAPACITY            = 256 * 1024 * 1024; // 256 MB → ~64M uint32
+        static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~16M DrawVertex
+        static constexpr VkDeviceSize   GLOBAL_IDX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~128M uint32
         Core::Memory::BufferView        m_global_vertex_buf            = {};
         Core::Memory::BufferView        m_global_index_buf             = {};
         VkDeviceSize                    m_vtx_cursor                   = 0; // byte offset of next write
