@@ -8,9 +8,9 @@ namespace ZEngine::ECS::Components
     static_assert(sizeof(LC::Color) == 3 * sizeof(float), "LightComponent::Color must be float[3]");
 
     static const EnumValue kLightTypes[] = {
-        {"Directional", 0},
-        {      "Point", 1},
-        {       "Spot", 2},
+        {"Directional", static_cast<int64_t>(LC::Type::Directional)},
+        {      "Point",       static_cast<int64_t>(LC::Type::Point)},
+        {       "Spot",        static_cast<int64_t>(LC::Type::Spot)},
     };
 
     static const FieldDescriptor kFields[] = {

@@ -6,9 +6,9 @@ namespace ZEngine::ECS::Components
     using RBC                             = RigidBodyComponent;
 
     static const EnumValue kMotionTypes[] = {
-        {   "Static", 0},
-        {"Kinematic", 1},
-        {  "Dynamic", 2},
+        {   "Static",    static_cast<int64_t>(RBC::MotionType::Static)},
+        {"Kinematic", static_cast<int64_t>(RBC::MotionType::Kinematic)},
+        {  "Dynamic",   static_cast<int64_t>(RBC::MotionType::Dynamic)},
     };
 
     static const FieldDescriptor kFields[] = {
