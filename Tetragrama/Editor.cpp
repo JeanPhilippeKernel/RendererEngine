@@ -1,4 +1,5 @@
 #include <Tetragrama/Components/ZUI/ZUIHierarchyViewComponent.h>
+#include <Tetragrama/Components/ZUI/ZUIInspectorViewComponent.h>
 #include <Tetragrama/Components/ZUI/ZUILogComponent.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
@@ -71,6 +72,10 @@ namespace Tetragrama
         auto* zui_hier = ZPushStructCtor(&Memory->MainArena, Components::ZUIHierarchyViewComponent);
         zui_hier->Initialize(ZUIUILayer, "Hierarchy");
         ZUIUILayer->AddComponent(zui_hier);
+
+        auto* zui_insp = ZPushStructCtor(&Memory->MainArena, Components::ZUIInspectorViewComponent);
+        zui_insp->Initialize(ZUIUILayer, "Inspector");
+        ZUIUILayer->AddComponent(zui_insp);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 
