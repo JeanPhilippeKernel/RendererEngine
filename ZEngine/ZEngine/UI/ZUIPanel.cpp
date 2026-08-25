@@ -328,7 +328,7 @@ namespace ZEngine::UI
                      (unsigned long long)p->DockKey, ti);
 
             ZUIBoxFlags tab_flags = ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-            ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFill(), ZFill());
+            ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFit(), ZFill());
             tab->Flags = tab->Flags | tab_flags;
             tab->EdgeSoftness = 0.5f;
             ZUIBoxSetCornerRadius(tab, 3.f);
