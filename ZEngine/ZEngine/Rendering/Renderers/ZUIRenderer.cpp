@@ -64,6 +64,28 @@ namespace ZEngine::Rendering::Renderers
         idxs[idx_count++] = base + 3;
     }
 
+    // Vertical gradient variant — top vertices use col_top, bottom use col_bot.
+    static void EmitQuadGradient(
+        UIDrawVert* verts, uint32_t* idxs,
+        uint32_t& vert_count, uint32_t& idx_count,
+        float x0, float y0, float x1, float y1,
+        uint32_t col_top, uint32_t col_bot)
+    {
+        uint32_t base = vert_count;
+        auto push = [&](float x, float y, uint32_t col)
+        {
+            verts[vert_count].pos.x = x; verts[vert_count].pos.y = y;
+            verts[vert_count].uv.x  = 0.f; verts[vert_count].uv.y = 0.f;
+            verts[vert_count].col   = col;
+            ++vert_count;
+        };
+        push(x0, y0, col_top); push(x1, y0, col_top);
+        push(x1, y1, col_bot); push(x0, y1, col_bot);
+        idxs[idx_count++] = base+0; idxs[idx_count++] = base+1;
+        idxs[idx_count++] = base+2; idxs[idx_count++] = base+0;
+        idxs[idx_count++] = base+2; idxs[idx_count++] = base+3;
+    }
+
     // Start a new draw command if the texture index changed or no command is open.
     static void FlushAndBeginCmd(
         ZUIDrawCmd* cmds, uint32_t& cmd_count,
@@ -339,10 +361,36 @@ namespace ZEngine::Rendering::Renderers
                                          out->VertexCount, out->IndexCount);
                         current_tex = tex;
                     }
-                    float u0 = 0.f, v0 = 0.f, u1 = 1.f, v1 = 1.f;
-                    uint32_t col = is_image ? 0xFFFFFFFFu : PackRGBA(bg);
-                    EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
-                             bx0, by0, bx1, by1, u0, v0, u1, v1, col);
+
+                    // Drop shadow (emitted before main quad so it appears behind)
+                    if (!is_image && box->ShadowColor[3] > 0.f)
+                    {
+                        float sx = box->ShadowOffset[0], sy = box->ShadowOffset[1];
+                        EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                                 bx0+sx, by0+sy, bx1+sx, by1+sy,
+                                 0.f, 0.f, 0.f, 0.f, PackRGBA(box->ShadowColor));
+                    }
+
+                    if (is_image)
+                    {
+                        EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                                 bx0, by0, bx1, by1, 0.f, 0.f, 1.f, 1.f, 0xFFFFFFFFu);
+                    }
+                    else if (box->BgColorB[3] > 0.f)
+                    {
+                        // Vertical gradient
+                        float bgb[4] = {box->BgColorB[0], box->BgColorB[1],
+                                        box->BgColorB[2], box->BgColorB[3]};
+                        EmitQuadGradient(out->Vertices, out->Indices,
+                                         out->VertexCount, out->IndexCount,
+                                         bx0, by0, bx1, by1,
+                                         PackRGBA(bg), PackRGBA(bgb));
+                    }
+                    else
+                    {
+                        EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                                 bx0, by0, bx1, by1, 0.f, 0.f, 0.f, 0.f, PackRGBA(bg));
+                    }
                 }
             }
 

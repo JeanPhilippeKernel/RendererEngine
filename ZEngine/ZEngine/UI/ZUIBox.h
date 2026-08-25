@@ -72,7 +72,14 @@ namespace ZEngine::UI
         float       TextColor[4]     = {};
         float       CornerRadius     = 0.f;
         float       BorderThickness  = 0.f;
-        float       FloatPos[2]      = {}; // screen offset from parent origin; used when ZUI_FloatX / ZUI_FloatY is set
+        float       FloatPos[2]      = {};
+        // Vertical gradient: top vertices use BgColor, bottom use BgColorB.
+        // Active when BgColorB[3] > 0.
+        float       BgColorB[4]      = {};
+        // Drop shadow: emitted as an offset copy of the background quad before
+        // the main quad. Active when ShadowColor[3] > 0.
+        float       ShadowColor[4]   = {};
+        float       ShadowOffset[2]  = {3.f, 3.f}; // screen offset from parent origin; used when ZUI_FloatX / ZUI_FloatY is set
         // Padding[0]=left  [1]=top  [2]=right  [3]=bottom
         // Offsets children away from the container walls.
         // ChildrenSum adds both ends; Fill subtracts both ends from available space.

@@ -7,6 +7,7 @@
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <ZEngine/Windows/Events/KeyEvent.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
+#include <GLFW/glfw3.h>
 #include <ZEngine/Windows/Events/MouseEvent.h>
 #include <ZEngine/Windows/Events/TextInputEvent.h>
 
@@ -70,13 +71,61 @@ namespace Tetragrama::Layers
     bool ZUILayer::OnKeyPressed(KeyPressedEvent& e)
     {
         if (!m_ctx) { return false; }
-        if (e.GetKeyCode() == ZENGINE_KEY_BACKSPACE)
+        auto key = e.GetKeyCode();
+
+        // Modifier tracking
+        if (key == ZENGINE_KEY_LEFT_CONTROL  || key == ZENGINE_KEY_RIGHT_CONTROL)
+            m_ctx->CtrlDown  = true;
+        if (key == ZENGINE_KEY_LEFT_SHIFT    || key == ZENGINE_KEY_RIGHT_SHIFT)
+            m_ctx->ShiftDown = true;
+        if (key == ZENGINE_KEY_LEFT_ALT      || key == ZENGINE_KEY_RIGHT_ALT)
+            m_ctx->AltDown   = true;
+
+        // Backspace (also starts key-repeat timer)
+        if (key == ZENGINE_KEY_BACKSPACE)
         {
             m_ctx->BackspacePressed = true;
+            m_ctx->BackspaceHeld    = true;
+            m_ctx->KeyRepeatTimer   = 0.f;
+        }
+
+        // Clipboard paste: Ctrl+V → inject clipboard text into TextInput
+        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
+        {
+            if (CurrentApp && CurrentApp->CurrentWindow)
+            {
+                auto* native = static_cast<GLFWwindow*>(
+                    CurrentApp->CurrentWindow->GetNativeWindow());
+                const char* clip = glfwGetClipboardString(native);
+                if (clip)
+                {
+                    for (uint32_t i = 0; clip[i] && m_ctx->TextInputLen < 31; ++i)
+                        m_ctx->TextInput[m_ctx->TextInputLen++] = clip[i];
+                    m_ctx->TextInput[m_ctx->TextInputLen] = '\0';
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool ZUILayer::OnKeyReleased(KeyReleasedEvent& e)
+    {
+        if (!m_ctx) { return false; }
+        auto key = e.GetKeyCode();
+        if (key == ZENGINE_KEY_LEFT_CONTROL  || key == ZENGINE_KEY_RIGHT_CONTROL)
+            m_ctx->CtrlDown  = false;
+        if (key == ZENGINE_KEY_LEFT_SHIFT    || key == ZENGINE_KEY_RIGHT_SHIFT)
+            m_ctx->ShiftDown = false;
+        if (key == ZENGINE_KEY_LEFT_ALT      || key == ZENGINE_KEY_RIGHT_ALT)
+            m_ctx->AltDown   = false;
+        if (key == ZENGINE_KEY_BACKSPACE)
+        {
+            m_ctx->BackspaceHeld  = false;
+            m_ctx->KeyRepeatTimer = 0.f;
         }
         return false;
     }
-    bool ZUILayer::OnKeyReleased(KeyReleasedEvent&)   { return false; }
 
     bool ZUILayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
     {

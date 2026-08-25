@@ -182,6 +182,24 @@ namespace ZEngine::UI
     inline void ZUISetTextAlign(ZUIBox* box, ZUITextAlign align) { box->TextAlign = align; }
 
     // ---------------------------------------------------------------
+    // Phase 9 — visual helpers (call on any ZUIBox* after pushing)
+    // ---------------------------------------------------------------
+
+    // Set a vertical gradient: top = BgColor (already set), bottom = given rgba.
+    inline void ZUISetGradient(ZUIBox* box, float r, float g, float b, float a)
+    {
+        box->BgColorB[0]=r; box->BgColorB[1]=g; box->BgColorB[2]=b; box->BgColorB[3]=a;
+    }
+    // Add a drop shadow behind the background quad.
+    inline void ZUISetShadow(ZUIBox* box, float alpha = 0.40f,
+                              float offset_x = 3.f, float offset_y = 3.f)
+    {
+        box->ShadowColor[3] = alpha;
+        box->ShadowOffset[0] = offset_x;
+        box->ShadowOffset[1] = offset_y;
+    }
+
+    // ---------------------------------------------------------------
     // Phase 7 — complex widgets
     // ---------------------------------------------------------------
 

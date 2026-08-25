@@ -53,6 +53,21 @@ namespace ZEngine::UI
         ctx->PrevMousePos[0] = ctx->MousePos[0];
         ctx->PrevMousePos[1] = ctx->MousePos[1];
 
+        // Key repeat: fire BackspacePressed again when held past the delay
+        if (ctx->BackspaceHeld && ctx->FocusKey != 0)
+        {
+            ctx->KeyRepeatTimer += ctx->DeltaTime;
+            if (ctx->KeyRepeatTimer >= ZUIContext::kRepeatDelay)
+            {
+                float excess = ctx->KeyRepeatTimer - ZUIContext::kRepeatDelay;
+                if ((int)(excess / ZUIContext::kRepeatRate) !=
+                    (int)((excess - ctx->DeltaTime) / ZUIContext::kRepeatRate))
+                {
+                    ctx->BackspacePressed = true; // fire repeat event
+                }
+            }
+        }
+
         // Clear per-frame edge states now that the interaction pass has consumed them
         for (int i = 0; i < 3; ++i)
         {

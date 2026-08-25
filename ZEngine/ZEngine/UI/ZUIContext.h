@@ -94,6 +94,7 @@ namespace ZEngine::UI
         float              ScrollDelta      = 0.f;
         float              DeltaTime        = 0.f;
         bool               BackspacePressed = false; // set by ZUILayer::OnKeyPressed, cleared in ZUIEndFrame
+        bool               BackspaceHeld    = false; // true while key is physically down
 
         // interaction state — updated by ZUIInteractionPass
         uint64_t           HotKey    = 0;
@@ -126,6 +127,17 @@ namespace ZEngine::UI
         // set by ZUISceneViewportComponent each BuildUI frame; read by Editor::ProcessEvent
         // to gate camera-controller mouse routing
         bool               ViewportHovered   = false;
+
+        // Modifier key state — written by ZUILayer::OnKeyPressed/Released
+        bool               CtrlDown          = false;
+        bool               ShiftDown         = false;
+        bool               AltDown           = false;
+
+        // Input repeat — ZUIEndFrame advances the timer; after RepeatDelay
+        // it fires BackspacePressed / ArrowPressed at RepeatRate hz
+        float              KeyRepeatTimer    = 0.f;
+        static constexpr float kRepeatDelay  = 0.45f; // s before first repeat
+        static constexpr float kRepeatRate   = 0.04f; // s between repeats
 
         // ZUIBeginDisabled / ZUIEndDisabled — widgets skip Clickable and dim colours
         bool               Disabled          = false;
