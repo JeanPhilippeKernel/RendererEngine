@@ -20,23 +20,23 @@ namespace Tetragrama::Components
         virtual void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const renderer, ZEngine::Hardwares::CommandBuffer* const command_buffer) override;
 
     private:
-        void RenderGuizmo(EditorPtr app, EditorScenePtr scene);
+        void                                                     RenderGuizmo(EditorPtr app, EditorScenePtr scene);
 
-        static void DrawArrow(ImDrawList* dl, ImVec2 pos, float row_h, bool expanded, ImU32 color);
-        static void DrawTypeIcon(ImDrawList* dl, ImVec2 pos, float sz, const char* type, bool is_collection);
+        static void                                              DrawArrow(ImDrawList* dl, ImVec2 pos, float row_h, bool expanded, ImU32 color);
+        static void                                              DrawTypeIcon(ImDrawList* dl, ImVec2 pos, float sz, const char* type, bool is_collection);
 
-        int  m_gizmo_operation{-1};
-        char m_filter_buf[128] = {};
+        int                                                      m_gizmo_operation{-1};
+        char                                                     m_filter_buf[128]      = {};
 
-        ZEngine::ECS::ActorHandle m_renaming_handle = {};
-        char                      m_rename_buf[128]  = {};
+        ZEngine::ECS::ActorHandle                                m_renaming_handle      = {};
+        char                                                     m_rename_buf[128]      = {};
 
         // Collapsed entity IDs — everything NOT in this list is expanded by default.
-        ZEngine::Core::Memory::ArenaAllocator                    m_outliner_arena      = {};
-        ZEngine::Core::Containers::Array<ZEngine::ECS::EntityID> m_collapsed           = {};
-        bool                                                      m_scene_root_collapsed = false;
+        ZEngine::Core::Memory::ArenaAllocator                    m_outliner_arena       = {};
+        ZEngine::Core::Containers::Array<ZEngine::ECS::EntityID> m_collapsed            = {};
+        bool                                                     m_scene_root_collapsed = false;
 
-        bool IsCollapsed(ZEngine::ECS::EntityID eid) const;
-        void ToggleCollapsed(ZEngine::ECS::EntityID eid);
+        bool                                                     IsCollapsed(ZEngine::ECS::EntityID eid) const;
+        void                                                     ToggleCollapsed(ZEngine::ECS::EntityID eid);
     };
 } // namespace Tetragrama::Components
