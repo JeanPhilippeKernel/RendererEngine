@@ -20,7 +20,7 @@ namespace Tetragrama::Helpers
         ImGui::PushMultiItemsWidths(4, ImGui::CalcItemWidth());
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
 
-        float  line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+        float  line_height = GImGui->Font->LegacySize + GImGui->Style.FramePadding.y * 2.0f;
         ImVec2 button_size = {line_height + 3.0f, line_height};
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
@@ -147,7 +147,7 @@ namespace Tetragrama::Helpers
         ImGui::PushMultiItemsWidths(5, ImGui::CalcItemWidth());
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{1.0f, 0});
 
-        float  line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+        float  line_height = GImGui->Font->LegacySize + GImGui->Style.FramePadding.y * 2.0f;
         ImVec2 button_size = {line_height + 3.0f, line_height};
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
@@ -250,7 +250,7 @@ namespace Tetragrama::Helpers
         ImGui::PushMultiItemsWidths(2, ImGui::CalcItemWidth());
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
 
-        float  line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+        float  line_height = GImGui->Font->LegacySize + GImGui->Style.FramePadding.y * 2.0f;
         ImVec2 button_size = {line_height + 3.0f, line_height};
 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
@@ -380,7 +380,7 @@ namespace Tetragrama::Helpers
 
         ImGui::TableNextColumn();
         auto   table_colum_width = ImGui::GetColumnWidth();
-        float  line_height       = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+        float  line_height       = GImGui->Font->LegacySize + GImGui->Style.FramePadding.y * 2.0f;
         ImVec2 button_size       = {table_colum_width, line_height};
 
         if (ImGui::Button(label.data(), button_size))
@@ -462,10 +462,10 @@ namespace Tetragrama::Helpers
         ImGui::PushMultiItemsWidths(1, ImGui::CalcItemWidth() + 60.f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0.5f, 0});
 
-        float  line_height = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+        float  line_height = GImGui->Font->LegacySize + GImGui->Style.FramePadding.y * 2.0f;
         ImVec2 button_size = {line_height + 3.0f, line_height};
 
-        if (ImGui::ImageButton(texture_id, button_size, ImVec2(0, 0), ImVec2(1, 1), 1, ImVec4(0, 0, 0, 0), ImVec4{tint_color.x, tint_color.y, tint_color.z, tint_color.w}))
+        if (ImGui::ImageButton("##imgbtn", texture_id, button_size, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), ImVec4{tint_color.x, tint_color.y, tint_color.z, tint_color.w}))
         {
             if (image_click_callback)
             {
@@ -477,7 +477,7 @@ namespace Tetragrama::Helpers
             if (ImGui::IsItemHovered())
             {
                 ImGui::BeginTooltip();
-                ImGui::Image(texture_id, ImVec2(200, 200), {0, 0}, {1, 1}, ImVec4{tint_color.x, tint_color.y, tint_color.z, tint_color.w});
+                ImGui::Image(texture_id, ImVec2(200, 200));
                 ImGui::EndTooltip();
             }
         }

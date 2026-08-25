@@ -125,15 +125,15 @@ namespace ZEngine::Rendering::Renderers
             .SetLocation(0, 0)
             .SetBinding(0, 0)
             .SetFormat(0, Specifications::ImageFormat::R32G32_SFLOAT)
-            .SetOffset(0, IM_OFFSETOF(ImDrawVert, pos))
+            .SetOffset(0, offsetof(ImDrawVert, pos))
             .SetLocation(1, 1)
             .SetBinding(1, 0)
             .SetFormat(1, Specifications::ImageFormat::R32G32_SFLOAT)
-            .SetOffset(1, IM_OFFSETOF(ImDrawVert, uv))
+            .SetOffset(1, offsetof(ImDrawVert, uv))
             .SetLocation(2, 2)
             .SetBinding(2, 0)
             .SetFormat(2, Specifications::ImageFormat::R8G8B8A8_UNORM)
-            .SetOffset(2, IM_OFFSETOF(ImDrawVert, col))
+            .SetOffset(2, offsetof(ImDrawVert, col))
 
             .UseShader("imgui")
             // .SetShaderOverloadMaxSet(2000) // Todo : deprecated API - should be removed
@@ -287,7 +287,7 @@ namespace ZEngine::Rendering::Renderers
                         scissor.extent.width                           = (uint32_t) (clip_rect.z - clip_rect.x);
                         scissor.extent.height                          = (uint32_t) (clip_rect.w - clip_rect.y);
 
-                        r_payload.TextureIds[r_payload.DrawDataIndex]  = (uint32_t) (intptr_t) pcmd->TextureId;
+                        r_payload.TextureIds[r_payload.DrawDataIndex]  = (uint32_t) (intptr_t) pcmd->GetTexID();
                         r_payload.ScissorCmds[r_payload.DrawDataIndex] = ScissorCmd{scissor.extent.width, scissor.extent.height, scissor.offset.x, scissor.offset.y};
                         r_payload.IndexedCmds[r_payload.DrawDataIndex] = IndexedCmd{pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, (int32_t) (pcmd->VtxOffset + global_vtx_offset), 0};
 

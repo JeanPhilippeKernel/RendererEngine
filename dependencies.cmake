@@ -11,7 +11,7 @@ FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
   GIT_SHALLOW TRUE
-  GIT_TAG v1.89.9-docking
+  GIT_TAG v1.92.9b-docking
   SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/imgui"
   )
 
@@ -21,6 +21,7 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE
   GIT_TAG 1.83
   SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/ImGuizmo"
+  PATCH_COMMAND python3 "${CMAKE_SOURCE_DIR}/patches/imguizmo_imgui192_compat.py" "${FETCHCONTENT_BASE_DIR}/ImGuizmo/ImGuizmo.cpp"
   )
 
 FetchContent_Declare(
