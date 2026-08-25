@@ -164,6 +164,38 @@ namespace Tetragrama::Components
             ZUIEndMenuBar(ctx);
         }
 
+        // --- Resize handle: vertical strip between Hierarchy and Viewport ---
+        if (m_dock_tree)
+        {
+            float hr[4] = {}, vr[4] = {};
+            bool got_h = ZUIDockRectForKey(m_dock_tree, ZUIDockHashName("Hierarchy"), hr);
+            bool got_v = ZUIDockRectForKey(m_dock_tree, ZUIDockHashName("Viewport"),  vr);
+            if (got_h && got_v)
+            {
+                // Place a 4-px wide invisible drag strip at the boundary
+                float strip_x = hr[2] - 2.f;
+                float strip_y = hr[1];
+                float strip_h = hr[3] - hr[1];
+
+                ZUIBox* strip = ZUIPushBox(ctx, "##dock_resize_hv", 8,
+                                            ZUI_FloatX | ZUI_FloatY | ZUI_Clickable);
+                strip->Size[0]     = ZPx(4.f);
+                strip->Size[1]     = ZPx(strip_h);
+                strip->FloatPos[0] = strip_x;
+                strip->FloatPos[1] = strip_y;
+                ZUIBoxSetColor(strip, 0.f, 0.f, 0.f, 0.f);
+                ZUISignal rs = ZUISignalFromBox(ctx, strip);
+                ZUIPopBox(ctx);
+
+                if ((rs.Flags & ZUI_SignalHeld) && rs.DragDelta[0] != 0.f)
+                {
+                    ZUIDockNode* hier_leaf = m_dock_tree->Root ? m_dock_tree->Root->First : nullptr;
+                    if (hier_leaf)
+                        ZUIDockResize(m_dock_tree, hier_leaf, rs.DragDelta[0]);
+                }
+            }
+        }
+
         ZUIEndColumn(ctx);
     }
 } // namespace Tetragrama::Components

@@ -129,8 +129,9 @@ namespace Tetragrama::Components
             {
                 const LogEntry& e = m_ring[(start + i) % kMaxEntries];
 
-                // Level filter
-                if (m_filter_level < 5 && e.Level != (uint8_t)m_filter_level)
+                // Level filter: skip entries below the selected minimum level.
+                // m_filter_level 5 == "All" — nothing skipped.
+                if (m_filter_level < 5 && e.Level < (uint8_t)m_filter_level)
                     continue;
 
                 // Search filter (case-sensitive strstr)

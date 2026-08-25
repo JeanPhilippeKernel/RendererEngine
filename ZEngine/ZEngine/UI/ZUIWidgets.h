@@ -324,4 +324,11 @@ namespace ZEngine::UI
     bool ZUITextField(ZUIContext* ctx, const char* key,
                       char* buf, uint32_t buf_size, float width_px = 160.f);
 
+    // Thin (4 px) invisible-but-clickable resize strip. horizontal=true creates
+    // a full-width 4-px-tall strip (top/bottom split); false creates a 4-px-wide
+    // full-height strip (left/right split). While held, updates *value by
+    // DragDelta clamped to [min_v, max_v]. Returns true when actively dragging.
+    bool ZUIResizeHandle(ZUIContext* ctx, const char* key, float* value,
+                         float min_v, float max_v, bool horizontal);
+
 } // namespace ZEngine::UI

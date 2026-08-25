@@ -772,10 +772,11 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);    // close row
             ctx->TableCurrentCol = -1;
         }
-        // Open new row
+        // Open new row — key based on current parent so it's deterministic per-frame
         char row_key[40];
-        static int s_row_idx = 0;
-        snprintf(row_key, sizeof(row_key), "##trow_%d", s_row_idx++);
+        int  child_count = 0;
+        if (ctx->Current) { for (auto* c = ctx->Current->FirstChild; c; c = c->NextSib) ++child_count; }
+        snprintf(row_key, sizeof(row_key), "##trow_%p_%d", (void*)ctx->Current, child_count);
         ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZFit());
         row->LayoutAxis = ZUIAxis::X;
         ctx->TableRowBox = row;
@@ -788,15 +789,15 @@ namespace ZEngine::UI
             ZUIEndColumn(ctx);
 
         ctx->TableCurrentCol = col_index;
-        float w = (col_index < ctx->TableColumns && ctx->TableColWidths &&
-                   ctx->TableColWidths[col_index] > 0.f)
-                  ? ctx->TableColWidths[col_index]
-                  : 80.f; // default cell width
+        bool  has_width = (col_index < ctx->TableColumns && ctx->TableColWidths &&
+                           ctx->TableColWidths[col_index] > 0.f);
+        float w         = has_width ? ctx->TableColWidths[col_index] : 0.f;
+        ZUISize cell_w  = has_width ? ZSPx(ctx, w) : ZFill(); // 0 = fill remaining
 
         char cell_key[40];
         snprintf(cell_key, sizeof(cell_key), "##tcell_%d_%d",
-                 (int)(uintptr_t)ctx->TableRowBox, col_index);
-        ZUIBeginColumn(ctx, cell_key, ZPx(w), ZFit());
+                 col_index, ctx->TableCurrentCol + (int)(uintptr_t)ctx->TableRowBox);
+        ZUIBeginColumn(ctx, cell_key, cell_w, ZFit());
     }
 
     void ZUIEndTable(ZUIContext* ctx)
@@ -968,14 +969,16 @@ namespace ZEngine::UI
         char key[256];
         snprintf(key, sizeof(key), "##ch_%s", label);
 
-        ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZPx(26.f));
+        ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZSPx(ctx, 26.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
-        hdr->LayoutAxis = ZUIAxis::X;
+        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
+        hdr->LayoutAxis   = ZUIAxis::X;
+        hdr->EdgeSoftness = 0.f;
+        ZUIBoxSetCornerRadius(hdr, 4.f);
 
         const char* ind = (open && *open) ? "v " : "> ";
         ZUIBox* arrow = ZUIPushBox(ctx, ind, 2, ZUI_DrawText);
-        arrow->Size[0] = ZPx(16.f); arrow->Size[1] = ZPx(26.f);
+        arrow->Size[0] = ZPx(16.f); arrow->Size[1] = ZSPx(ctx, 26.f);
         SetTextColor(arrow, ctx->Theme.TextDim);
         ZUIPopBox(ctx);
 
@@ -1379,6 +1382,41 @@ namespace ZEngine::UI
         if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
 
         return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIResizeHandle
+    // ---------------------------------------------------------------
+
+    bool ZUIResizeHandle(ZUIContext* ctx, const char* key, float* value,
+                         float min_v, float max_v, bool horizontal)
+    {
+        uint32_t len = (uint32_t)strlen(key);
+        ZUIBox*  box = ZUIPushBox(ctx, key, len, ZUI_Clickable);
+        if (horizontal)
+        {
+            box->Size[0] = ZFill();
+            box->Size[1] = ZSPx(ctx, 4.f);
+        }
+        else
+        {
+            box->Size[0] = ZSPx(ctx, 4.f);
+            box->Size[1] = ZFill();
+        }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+
+        bool dragging = false;
+        if ((sig.Flags & ZUI_SignalHeld) && value)
+        {
+            float delta = horizontal ? sig.DragDelta[1] : sig.DragDelta[0];
+            *value += delta;
+            if (*value < min_v) *value = min_v;
+            if (*value > max_v) *value = max_v;
+            dragging = (delta != 0.f);
+        }
+        return dragging;
     }
 
 } // namespace ZEngine::UI

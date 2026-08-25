@@ -115,6 +115,9 @@ namespace Tetragrama::Components
         if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
         ZUISeparator(ctx);
 
+        // Scroll region wrapping all actor content (fills remaining panel height)
+        ZUIBeginScrollRegion(ctx, "##insp_scroll", ZFill(), ZFill());
+
         // No selection guard
         ActorHandle h     = current_scene->SelectedActorHandle;
         Actor*      actor = eng->ActorManager->Access(h);
@@ -122,6 +125,7 @@ namespace Tetragrama::Components
         {
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "No actor selected", ctx->Theme.TextDim);
+            ZUIEndScrollRegion(ctx);
             ZUIEndColumn(ctx);
             return;
         }
@@ -222,6 +226,7 @@ namespace Tetragrama::Components
             }
         }
 
+        ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx); // end panel
     }
 } // namespace Tetragrama::Components

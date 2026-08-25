@@ -112,6 +112,25 @@ namespace Tetragrama::Components
         ZUISeparator(ctx);
 
         // --- Cached directory entries (scrollable) ---
+        // Extension color palette
+        static const float kColDir[4]    = {1.f,  0.9f, 0.2f, 1.f}; // yellow  — directories
+        static const float kColMesh[4]   = {0.4f, 0.8f, 1.f,  1.f}; // blue    — .glb/gltf/fbx/obj
+        static const float kColScene[4]  = {0.8f, 0.5f, 1.f,  1.f}; // purple  — .zescene
+        static const float kColAsset[4]  = {0.5f, 1.f,  0.5f, 1.f}; // green   — .zemesh
+        static const float kColTex[4]    = {1.f,  0.7f, 0.4f, 1.f}; // orange  — image files
+
+        auto ExtColor = [&](const char* name) -> const float* {
+            const char* dot = strrchr(name, '.');
+            if (!dot) { return ctx->Theme.TextDefault; }
+            if (strcmp(dot, ".glb")  == 0 || strcmp(dot, ".gltf") == 0 ||
+                strcmp(dot, ".fbx")  == 0 || strcmp(dot, ".obj")  == 0)  { return kColMesh;  }
+            if (strcmp(dot, ".zescene") == 0)                             { return kColScene; }
+            if (strcmp(dot, ".zemesh")  == 0)                             { return kColAsset; }
+            if (strcmp(dot, ".png") == 0 || strcmp(dot, ".jpg")  == 0 ||
+                strcmp(dot, ".jpeg") == 0)                                { return kColTex;   }
+            return ctx->Theme.TextDefault;
+        };
+
         ZUIBeginScrollRegion(ctx, "##proj_scroll", ZFill(), ZFill());
         for (uint32_t i = 0; i < m_entry_count; ++i)
         {
@@ -124,11 +143,26 @@ namespace Tetragrama::Components
             char row_key[32];
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
 
+            // --- Row: 2-column layout: [prefix+name] | [type/ext] ---
             ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 20.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
 
-            ZUILabel(ctx, e.is_dir ? "[D] " : "    ", ctx->Theme.TextDim);
-            ZUILabel(ctx, e.name, e.is_dir ? ctx->Theme.TextAccent : ctx->Theme.TextDefault);
+            if (e.is_dir)
+            {
+                ZUILabel(ctx, "[D] ", kColDir);
+                ZUILabel(ctx, e.name, kColDir);
+                ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, "dir", ctx->Theme.TextDim);
+            }
+            else
+            {
+                const float* name_color = ExtColor(e.name);
+                const char*  dot        = strrchr(e.name, '.');
+                ZUILabel(ctx, "    ", ctx->Theme.TextDim);
+                ZUILabel(ctx, e.name, name_color);
+                ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, dot ? dot + 1 : "", ctx->Theme.TextDim);
+            }
 
             ZUISignal row_sig = ZUISignalFromBox(ctx, row);
 
@@ -138,6 +172,13 @@ namespace Tetragrama::Components
                                    (uint32_t)ZEngine::Helpers::secure_strlen(e.full_path));
 
             ZUIEndRow(ctx);
+
+            // Double-click on directory: navigate into it
+            if ((row_sig.Flags & ZUI_SignalDoubleClicked) && e.is_dir)
+            {
+                auto next = m_current_path.Append(e.name);
+                if (next.Succeeded()) { m_current_path = next.Value(); }
+            }
 
             // Context menu
             char ctx_key[40];
@@ -166,6 +207,7 @@ namespace Tetragrama::Components
                 ZUIEndContextMenu(ctx);
             }
 
+            // Single-click on directory also navigates (kept for discoverability)
             if ((row_sig.Flags & ZUI_SignalClicked) && e.is_dir)
             {
                 auto next = m_current_path.Append(e.name);

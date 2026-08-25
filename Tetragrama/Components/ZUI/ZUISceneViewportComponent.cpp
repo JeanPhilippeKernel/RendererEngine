@@ -49,26 +49,7 @@ namespace Tetragrama::Components
         panel->BorderThickness = 1.f;
         panel->EdgeSoftness    = 0.f;
 
-        // --- Viewport toolbar ---
-        ZUIBeginRow(ctx, "##vp_toolbar", ZFill(), ZSPx(ctx, 28.f));
-        ZUISmallButton(ctx, "T##gizmo"); // Translate stub
-        ZUISameLine(ctx);
-        ZUISmallButton(ctx, "R##gizmo"); // Rotate stub
-        ZUISameLine(ctx);
-        ZUISmallButton(ctx, "S##gizmo"); // Scale stub
-        ZUISpacer(ctx, 8.f);
-        {
-            char fps_buf[32];
-            static float s_fps = 0.f;
-            if (ctx->DeltaTime > 0.f)
-                s_fps = s_fps * 0.95f + (1.f / ctx->DeltaTime) * 0.05f;
-            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double)s_fps);
-            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
-        }
-        ZUIEndRow(ctx);
-        ZUISeparator(ctx);
-
-        // Scene image — also the drag-drop target and viewport-hover source
+        // Scene image fills the full panel — drag-drop target and viewport-hover source
         ZUIBox* img_box = ZUIPushBox(ctx, "##scene_img", 11,
                                      ZUI_DrawBackground | ZUI_Clickable);
         img_box->Size[0]      = ZFill();
@@ -112,6 +93,39 @@ namespace Tetragrama::Components
                 app->Configuration->ShowImporter  = true;
                 app->Configuration->FocusImporter = true;
             }
+        }
+
+        // --- TRS toolbar overlay (top-left of viewport, floats over the scene image) ---
+        {
+            static const float kTransparent[4] = {0.f, 0.f, 0.f, 0.f};
+            ZUIBox* trs = ZUIBeginRow(ctx, "##vp_trs_overlay", ZSPx(ctx, 108.f), ZSPx(ctx, 28.f));
+            trs->Flags       = trs->Flags | ZUI_FloatX | ZUI_FloatY;
+            trs->FloatPos[0] = sx + 8.f;
+            trs->FloatPos[1] = sy + 8.f;
+            ZUIBoxSetColorArr(trs, kTransparent);
+            ZUISmallButton(ctx, "T##gizmo"); // Translate
+            ZUISameLine(ctx);
+            ZUISmallButton(ctx, "R##gizmo"); // Rotate
+            ZUISameLine(ctx);
+            ZUISmallButton(ctx, "S##gizmo"); // Scale
+            ZUIEndRow(ctx);
+        }
+
+        // --- FPS overlay (top-right of viewport) ---
+        {
+            static const float kTransparent[4] = {0.f, 0.f, 0.f, 0.f};
+            static float s_fps = 0.f;
+            if (ctx->DeltaTime > 0.f)
+                s_fps = s_fps * 0.95f + (1.f / ctx->DeltaTime) * 0.05f;
+            char fps_buf[32];
+            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double)s_fps);
+            ZUIBox* fps_box = ZUIBeginRow(ctx, "##vp_fps_overlay", ZSPx(ctx, 72.f), ZSPx(ctx, 20.f));
+            fps_box->Flags       = fps_box->Flags | ZUI_FloatX | ZUI_FloatY;
+            fps_box->FloatPos[0] = sx + sw - 80.f;
+            fps_box->FloatPos[1] = sy + 8.f;
+            ZUIBoxSetColorArr(fps_box, kTransparent);
+            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
         }
 
         // Request resize if dimensions changed
