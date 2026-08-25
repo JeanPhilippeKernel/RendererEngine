@@ -13,15 +13,7 @@ layout(location = 0) in struct
 
 void main()
 {
-    uint texId = uint(floor(In.TexData.z + 0.5));
-
-    // 0xFFFFFFFF sentinel — solid color draw, no texture sample
-    if (texId == 0xFFFFFFFFu)
-    {
-        fColor = In.Color;
-        return;
-    }
-
-    vec4 texVal = texture(sampler2D(TextureArray[texId], LinearClampSampler), In.TexData.xy);
-    fColor      = In.Color * texVal;
+    uint texId  = uint(floor(In.TexData.z + 0.5));
+    vec4 sample = texture(sampler2D(TextureArray[texId], LinearClampSampler), In.TexData.xy);
+    fColor      = In.Color * sample;
 }

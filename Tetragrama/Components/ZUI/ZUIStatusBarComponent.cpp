@@ -37,10 +37,11 @@ namespace Tetragrama::Components
         bar->Flags = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         bar->FloatPos[0] = RegionW > 0 ? RegionX : 0.f;
         bar->FloatPos[1] = sy;
-        ZUIBoxSetColor(bar, 0.25f, 0.25f, 0.28f, 1.f);
-        bar->BorderColor[0] = 0.40f; bar->BorderColor[1] = 0.40f;
-        bar->BorderColor[2] = 0.50f; bar->BorderColor[3] = 1.f;
+        ZUIBoxSetColorArr(bar, ctx->Theme.StatusBarBg);
+        bar->BorderColor[0]=ctx->Theme.PanelBorder[0]; bar->BorderColor[1]=ctx->Theme.PanelBorder[1];
+        bar->BorderColor[2]=ctx->Theme.PanelBorder[2]; bar->BorderColor[3]=ctx->Theme.PanelBorder[3];
         bar->BorderThickness = 1.f;
+        bar->EdgeSoftness    = 0.f;
 
         ZUISpacer(ctx, 6.f);
 

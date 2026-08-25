@@ -89,8 +89,10 @@ namespace Tetragrama::Components
         ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
         panel->BorderColor[0] = ctx->Theme.PanelBorder[0]; panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2]; panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
+        panel->BorderColor[3] = 1.0f;
         panel->BorderThickness = 1.f;
-        ZUIBoxSetCornerRadius(panel, 6.f);
+        panel->EdgeSoftness    = 0.f;
+        ZUIBoxSetCornerRadius(panel, 0.f);
 
         // Title bar — draggable (Gap 4)
         ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZPx(26.f));

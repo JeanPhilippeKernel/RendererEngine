@@ -39,9 +39,15 @@ namespace Tetragrama::Components
         float sy = RegionW > 0 ? RegionY : 28.f; // below menu bar
 
         ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_vp_panel", ZPx(sw), ZPx(sh));
-        panel->Flags       = panel->Flags | ZUI_FloatX | ZUI_FloatY;
+        panel->Flags       = panel->Flags | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = sx;
         panel->FloatPos[1] = sy;
+        panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
+        panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
+        panel->BorderColor[3] = 1.0f;
+        panel->BorderThickness = 1.f;
+        panel->EdgeSoftness    = 0.f;
 
         // --- Viewport toolbar ---
         ZUIBeginRow(ctx, "##vp_toolbar", ZFill(), ZPx(28.f));

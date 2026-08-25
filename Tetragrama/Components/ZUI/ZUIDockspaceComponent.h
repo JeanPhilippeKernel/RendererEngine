@@ -1,5 +1,6 @@
 #pragma once
 #include <Tetragrama/Components/ZUI/ZUIComponent.h>
+#include <ZEngine/UI/ZUIDockspace.h>
 
 namespace Tetragrama::Components
 {
@@ -25,6 +26,9 @@ namespace Tetragrama::Components
         ZUIComponent* Log        = nullptr;
         ZUIComponent* Project    = nullptr;
         ZUIComponent* StatusBar  = nullptr;
+
+    private:
+        ZEngine::UI::ZUIDockTree* m_dock_tree = nullptr;
     };
     ZDEFINE_PTR(ZUIDockspaceComponent);
 } // namespace Tetragrama::Components

@@ -133,15 +133,16 @@ namespace Tetragrama
 
             // Logical window width drives font size selection.
             // body = win_w / 85 gives ~18px at 1512 (standard), ~35px at 3024 (more-space).
-            uint32_t win_w = CurrentWindow ? CurrentWindow->GetWidth()
-                                           : RenderPipeline->Device->SwapchainPtr->SwapchainImageWidth;
-            float kBody   = (float)(win_w > 0 ? win_w / 85 : 18);
-            if (kBody < 14.f) kBody = 14.f;
-            if (kBody > 40.f) kBody = 40.f;
+            // 13px at UIScale=1.0 matches ImGui's default body font density.
+            // At ContentScale=2.0 (Retina) → 26px, rendered as 52 physical pixels ≈ 12pt.
+            float kBody   = 13.f * ctx->UIScale;
+            if (kBody < 11.f) kBody = 11.f;
+            if (kBody > 52.f) kBody = 52.f;
             float kSmall  = kBody * 0.80f;
-            float kHeader = kBody * 1.25f;
-            ZENGINE_CORE_INFO("[ZUI] FontSizes small={:.0f} body={:.0f} header={:.0f} (win_w={})",
-                              kSmall, kBody, kHeader, win_w);
+            float kHeader = kBody * 1.30f;
+            uint32_t win_w = CurrentWindow ? CurrentWindow->GetWidth() : 1280;
+            ZENGINE_CORE_INFO("[ZUI] FontSizes small={:.0f} body={:.0f} header={:.0f} (UIScale={:.1f} win_w={})",
+                              kSmall, kBody, kHeader, ctx->UIScale, win_w);
 
             // Bake all three fonts into one shared atlas — single GPU texture,
             // white pixel at (0,0), OversampleH=2 OversampleV=1 (ImGui default).

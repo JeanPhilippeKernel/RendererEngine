@@ -339,7 +339,9 @@ namespace ZEngine::Rendering::Renderers
                 float bc[4][4];
                 for (int c=0;c<4;++c) for (int ch=0;ch<4;++ch)
                     bc[c][ch] = box->BorderColor[ch];
-                PushInst(MakeColoredInst(box, bc, box->BorderThickness, box->EdgeSoftness,
+                // Border must always use SDF (to discard interior) — enforce min softness 0.5
+                float border_softness = box->EdgeSoftness < 0.5f ? 0.5f : box->EdgeSoftness;
+                PushInst(MakeColoredInst(box, bc, box->BorderThickness, border_softness,
                                          atlas_tex, wu, wv, wu, wv));
             }
 

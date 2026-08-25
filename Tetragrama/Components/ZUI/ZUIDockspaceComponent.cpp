@@ -1,5 +1,6 @@
 #include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
 #include <Tetragrama/Editor.h>
+#include <ZEngine/UI/ZUIDockspace.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
 
@@ -29,30 +30,72 @@ namespace Tetragrama::Components
         ParentLayer = parent;
         Name        = name;
         Visible     = visibility;
+
+        // Build the dockspace split tree once at startup
+        auto* arena = ParentLayer ? &ParentLayer->LocalArena : nullptr;
+        if (arena)
+        {
+            m_dock_tree = ZUIDockTreeCreate(arena);
+
+            // Root: H split → left 18% (Hierarchy) | right 82%
+            ZUIDockSplitH(m_dock_tree, m_dock_tree->Root,
+                          kLeftW,
+                          ZUIDockHashName("Hierarchy"),
+                          0);
+
+            // Right child of root: H split → left 78% (center) | right 22% (Inspector)
+            ZUIDockNode* right_node = m_dock_tree->Root->Last;
+            ZUIDockSplitH(m_dock_tree, right_node,
+                          1.f - kRightW,
+                          0,
+                          ZUIDockHashName("Inspector"));
+
+            // Center child: V split → top 75% (Viewport) | bottom 25%
+            ZUIDockNode* center_node = right_node->First;
+            ZUIDockSplitV(m_dock_tree, center_node,
+                          1.f - kBottomH,
+                          ZUIDockHashName("Viewport"),
+                          0);
+
+            // Bottom child: H split → left 40% (Log) | right 60% (Project)
+            ZUIDockNode* bottom_node = center_node->Last;
+            ZUIDockSplitH(m_dock_tree, bottom_node,
+                          0.40f,
+                          ZUIDockHashName("Log"),
+                          ZUIDockHashName("Project"));
+        }
     }
 
     void ZUIDockspaceComponent::BuildUI(ZUIContext* ctx)
     {
         if (!Visible) { return; }
 
-        float sw   = (float)ctx->ScreenW;
-        float sh   = (float)ctx->ScreenH;
-        float lw   = sw * kLeftW;
-        float rw   = sw * kRightW;
-        float bh   = sh * kBottomH;
-        float midy = kMenuH;
-        float midb = sh - bh - kStatusH;   // bottom of center/side panels
-        float midh = sh - kMenuH - bh - kStatusH;
-        float midw = sw - lw - rw;
-        float midx = lw;
+        float sw       = (float)ctx->ScreenW;
+        float sh       = (float)ctx->ScreenH;
+        float menu_h   = kMenuH   * ctx->UIScale;
+        float status_h = kStatusH * ctx->UIScale;
 
-        // Assign layout regions to each panel
-        AssignRegion(Hierarchy,  0.f,        midy, lw,        sh - midy - kStatusH);
-        AssignRegion(Inspector,  sw - rw,    midy, rw,        sh - midy - kStatusH);
-        AssignRegion(Viewport,   midx,       midy, midw,      midh);
-        AssignRegion(Log,        0.f,        midb, sw * 0.40f, bh);
-        AssignRegion(Project,    sw * 0.40f, midb, midw + rw - sw * 0.40f + lw, bh);
-        AssignRegion(StatusBar,  0.f,        sh - kStatusH, sw, kStatusH);
+        // Recompute dock rects from the current window size
+        if (m_dock_tree)
+        {
+            const float root_rect[4] = {0.f, menu_h, sw, sh - status_h};
+            ZUIDockLayout(m_dock_tree, root_rect);
+
+            auto AssignFromDock = [&](ZUIComponent* cmp, const char* panel_name)
+            {
+                if (!cmp || cmp->Detached) { return; }
+                float r[4];
+                if (ZUIDockRectForKey(m_dock_tree, ZUIDockHashName(panel_name), r))
+                    AssignRegion(cmp, r[0], r[1], r[2] - r[0], r[3] - r[1]);
+            };
+
+            AssignFromDock(Hierarchy, "Hierarchy");
+            AssignFromDock(Inspector, "Inspector");
+            AssignFromDock(Viewport,  "Viewport");
+            AssignFromDock(Log,       "Log");
+            AssignFromDock(Project,   "Project");
+        }
+        AssignRegion(StatusBar, 0.f, sh - status_h, sw, status_h);
 
         // --- Full-screen background ---
         ZUIBox* bg   = ZUIBeginColumn(ctx, "##dockspace_bg", ZPx(sw), ZPx(sh));
@@ -61,6 +104,7 @@ namespace Tetragrama::Components
         bg->FloatPos[1] = 0.f;
         ZUIBoxSetColorArr(bg, ctx->Theme.WindowBg);
         ZUIBoxSetCornerRadius(bg, 0.f);
+        bg->EdgeSoftness = 0.f;
 
         // --- Menu bar ---
         if (ZUIBeginMenuBar(ctx))

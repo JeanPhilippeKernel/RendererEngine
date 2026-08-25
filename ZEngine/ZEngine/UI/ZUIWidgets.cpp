@@ -131,6 +131,8 @@ namespace ZEngine::UI
         SetTextColor(box, ctx->Theme.TextDefault);
         SetBdrArr(box, ctx->Theme.ButtonBorder);
         box->BorderThickness = 1.f;
+        box->EdgeSoftness    = 0.5f;
+        ZUIBoxSetCornerRadius(box, 3.f);
         if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
@@ -149,6 +151,8 @@ namespace ZEngine::UI
         box->Size[1]     = ZSPx(ctx, 22.f);
         SetBgArr(box, ctx->Theme.ButtonBg);
         SetTextColor(box, ctx->Theme.TextDefault);
+        box->EdgeSoftness = 0.5f;
+        ZUIBoxSetCornerRadius(box, 3.f);
         if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
@@ -181,6 +185,8 @@ namespace ZEngine::UI
         box->Size[0]        = w;
         box->Size[1]        = h;
         box->BorderThickness = 1.f;
+        box->EdgeSoftness    = 0.5f;
+        ZUIBoxSetCornerRadius(box, 3.f);
 
         // Active state uses a lighter background
         if (active && *active)
@@ -278,7 +284,7 @@ namespace ZEngine::UI
         uint32_t    indicator_len = 2;
         ZUIBox* ind   = ZUIPushBox(ctx, indicator, indicator_len, ZUI_DrawText);
         ind->Size[0]  = ZPx(14.f);
-        ind->Size[1]  = ZPx(22.f);
+        ind->Size[1]  = ZSPx(ctx, 22.f);
         SetTextColor(ind, ctx->Theme.TextDim);
         ZUIPopBox(ctx); // pop indicator
 
@@ -286,7 +292,7 @@ namespace ZEngine::UI
         uint32_t label_len = (uint32_t)strlen(label);
         ZUIBox*  txt  = ZUIPushBox(ctx, label, label_len, ZUI_DrawText);
         txt->Size[0]  = ZText();
-        txt->Size[1]  = ZPx(22.f);
+        txt->Size[1]  = ZSPx(ctx, 22.f);
         SetTextColor(txt, ctx->Theme.TextDefault);
         ZUIPopBox(ctx); // pop label
 
@@ -387,7 +393,7 @@ namespace ZEngine::UI
         ZUIBox*  box   = ZUIPushBox(ctx, label, len,
                              ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
         box->Size[0]   = ZFill();
-        box->Size[1]   = ZPx(24.f);
+        box->Size[1]   = ZSPx(ctx, 24.f);
         if (selected) {
             ZUIBoxSetColorArr(box, ctx->Theme.RowSelectedBg);
         } else {
@@ -422,7 +428,7 @@ namespace ZEngine::UI
         // Button row
         char row_key[64];
         snprintf(row_key, sizeof(row_key), "##tbr_%s", key);
-        ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(28.f));
+        ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
         row->Flags  = row->Flags | ZUI_DrawBackground;
         SetBgArr(row, ctx->Theme.HeaderBg);
         ctx->TabBarRowBox = row;
@@ -439,7 +445,7 @@ namespace ZEngine::UI
         ZUIBoxFlags fl = ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable;
         ZUIBox* btn   = ZUIPushBox(ctx, btn_key, (uint32_t)strlen(btn_key), fl);
         btn->Size[0]  = ZText();
-        btn->Size[1]  = ZPx(28.f);
+        btn->Size[1]  = ZSPx(ctx, 28.f);
         if (active) {
             SetBgArr(btn, ctx->Theme.PanelBg);
             SetTextColor(btn, ctx->Theme.TextDefault);
@@ -571,7 +577,7 @@ namespace ZEngine::UI
         ZUIBox* field = ZUIPushBox(ctx, key, len,
                             ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0] = w;
-        field->Size[1] = ZPx(28.f);
+        field->Size[1] = ZSPx(ctx, 28.f);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         field->BorderThickness = 1.f;
@@ -697,7 +703,7 @@ namespace ZEngine::UI
         ZUIBox* swatch     = ZUIPushBox(ctx, sw_key, (uint32_t)strlen(sw_key),
                                  ZUI_DrawBackground | ZUI_DrawBorder);
         swatch->Size[0]    = ZFill();
-        swatch->Size[1]    = ZPx(28.f);
+        swatch->Size[1]    = ZSPx(ctx, 28.f);
         ZUIBoxSetColorArr(swatch, color);
         SetBdrArr(swatch, ctx->Theme.PanelBorder);
         swatch->BorderThickness = 1.f;
@@ -710,15 +716,15 @@ namespace ZEngine::UI
         const char* channel_names[] = { "R", "G", "B", "A" };
         for (int i = 0; i < 4; ++i)
         {
-            ZUIBeginRow(ctx, channel_names[i], ZFill(), ZPx(22.f));
+            ZUIBeginRow(ctx, channel_names[i], ZFill(), ZSPx(ctx, 22.f));
                 ZUIBox* lbl = ZUIPushBox(ctx, channel_names[i], 1, ZUI_DrawText);
-                lbl->Size[0] = ZPx(16.f); lbl->Size[1] = ZPx(22.f);
+                lbl->Size[0] = ZPx(16.f); lbl->Size[1] = ZSPx(ctx, 22.f);
                 SetTextColor(lbl, ctx->Theme.TextDim);
                 ZUIPopBox(ctx);
 
                 char ch_key[32];
                 snprintf(ch_key, sizeof(ch_key), "##cpch_%s_%d", key, i);
-                if (ZUISliderFloat(ctx, ch_key, &color[i], 0.f, 1.f, ZFill(), ZPx(22.f)))
+                if (ZUISliderFloat(ctx, ch_key, &color[i], 0.f, 1.f, ZFill(), ZSPx(ctx, 22.f)))
                     changed = true;
             ZUIEndRow(ctx);
         }
@@ -819,7 +825,7 @@ namespace ZEngine::UI
         ZUIBoxFlags row_flags = ZUI_Clickable;
         if (!ctx->Disabled) { /* keep Clickable */ } else row_flags = ZUI_None;
 
-        ZUIBox* row      = ZUIBeginRow(ctx, row_key, ZFit(), ZPx(24.f));
+        ZUIBox* row      = ZUIBeginRow(ctx, row_key, ZFit(), ZSPx(ctx, 24.f));
         row->Flags       = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
         row->LayoutAxis  = ZUIAxis::X;
 
@@ -856,7 +862,7 @@ namespace ZEngine::UI
         char row_key[64];
         snprintf(row_key, sizeof(row_key), "##rb_%s_%d", label, index);
 
-        ZUIBox* row      = ZUIBeginRow(ctx, row_key, ZFit(), ZPx(24.f));
+        ZUIBox* row      = ZUIBeginRow(ctx, row_key, ZFit(), ZSPx(ctx, 24.f));
         row->Flags       = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
         row->LayoutAxis  = ZUIAxis::X;
 
@@ -1011,7 +1017,7 @@ namespace ZEngine::UI
 
     void ZUISeparatorText(ZUIContext* ctx, const char* text)
     {
-        ZUIBeginRow(ctx, "##septext", ZFill(), ZPx(22.f));
+        ZUIBeginRow(ctx, "##septext", ZFill(), ZSPx(ctx, 22.f));
             ZUIBox* line1 = ZUIPushBox(ctx, "##sl1", 5, ZUI_DrawBackground);
             line1->Size[0] = ZPx(8.f); line1->Size[1] = ZPx(1.f);
             SetBgArr(line1, ctx->Theme.Separator);
@@ -1049,7 +1055,7 @@ namespace ZEngine::UI
         snprintf(btn_key, sizeof(btn_key), "##combo_btn_%s", key);
 
         // Preview row: bordered box + preview text + "v" arrow
-        ZUIBox* row = ZUIBeginRow(ctx, btn_key, w, ZPx(28.f));
+        ZUIBox* row = ZUIBeginRow(ctx, btn_key, w, ZSPx(ctx, 28.f));
         row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
         SetBgArr(row, ctx->Theme.InputBg);
         SetBdrArr(row, ctx->Theme.InputBorder);
@@ -1060,7 +1066,7 @@ namespace ZEngine::UI
 
         // Right-align "v" indicator
         ZUIBox* arrow = ZUIPushBox(ctx, "v##carrow", 9, ZUI_DrawText);
-        arrow->Size[0] = ZPx(18.f); arrow->Size[1] = ZPx(28.f);
+        arrow->Size[0] = ZPx(18.f); arrow->Size[1] = ZSPx(ctx, 28.f);
         arrow->Flags   = arrow->Flags | ZUI_FloatX;
         arrow->FloatPos[0] = w.Kind == ZUISizeKind::Fill ? 0.f : -18.f;
         SetTextColor(arrow, ctx->Theme.TextDim);
@@ -1081,8 +1087,12 @@ namespace ZEngine::UI
     bool ZUIBeginMenuBar(ZUIContext* ctx)
     {
         ZUIBox* bar = ZUIBeginRow(ctx, "##menubar_zui", ZFill(), ZSPx(ctx, 26.f));
-        bar->Flags  = bar->Flags | ZUI_DrawBackground;
-        SetBgArr(bar, ctx->Theme.HeaderBg);
+        bar->Flags  = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
+        bar->EdgeSoftness    = 0.f;
+        bar->BorderThickness = 1.f;
+        SetBgArr(bar, ctx->Theme.MenuBarBg);
+        bar->BorderColor[0]=ctx->Theme.Separator[0]; bar->BorderColor[1]=ctx->Theme.Separator[1];
+        bar->BorderColor[2]=ctx->Theme.Separator[2]; bar->BorderColor[3]=ctx->Theme.Separator[3];
         bar->LayoutAxis = ZUIAxis::X;
         return true;
     }
@@ -1151,7 +1161,7 @@ namespace ZEngine::UI
         // Title bar
         if (title)
         {
-            ZUIBox* hdr = ZUIBeginRow(ctx, "##modal_hdr", ZFill(), ZPx(28.f));
+            ZUIBox* hdr = ZUIBeginRow(ctx, "##modal_hdr", ZFill(), ZSPx(ctx, 28.f));
             hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
             SetBgArr(hdr, ctx->Theme.HeaderBg);
             ZUISpacer(ctx, 8.f);
@@ -1218,14 +1228,14 @@ namespace ZEngine::UI
         char hdr_key[64];
         snprintf(hdr_key, sizeof(hdr_key), "##pdh_%s", title);
 
-        ZUIBox* hdr   = ZUIBeginRow(ctx, hdr_key, ZFill(), ZPx(22.f));
+        ZUIBox* hdr   = ZUIBeginRow(ctx, hdr_key, ZFill(), ZSPx(ctx, 22.f));
         hdr->Flags    = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
         SetBgArr(hdr, ctx->Theme.HeaderBg);
 
         // Drag indicator ("= ") in dim colour
         ZUIBox* grip  = ZUIPushBox(ctx, "= ##grip", 8, ZUI_DrawText);
         grip->Size[0] = ZPx(18.f);
-        grip->Size[1] = ZPx(22.f);
+        grip->Size[1] = ZSPx(ctx, 22.f);
         SetTextColor(grip, ctx->Theme.TextDim);
         ZUIPopBox(ctx);
 
@@ -1279,7 +1289,7 @@ namespace ZEngine::UI
         ZUIBox*  field    = ZUIPushBox(ctx, key, key_len,
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]          = ZPx(width_px);
-        field->Size[1]          = ZPx(24.f);
+        field->Size[1]          = ZSPx(ctx, 24.f);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         SetBdrArr(field, ctx->Theme.InputBorder);

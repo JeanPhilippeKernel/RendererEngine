@@ -3,6 +3,7 @@
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <GLFW/glfw3.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Managers/AssetManager.h>
@@ -296,6 +297,13 @@ namespace ZEngine::Applications
                     glfwGetWindowContentScale(native, &xs, &ys);
                     float s = xs > ys ? xs : ys;
                     ZUICtx->UIScale = s > 0.5f ? s : 1.f;
+                    if (!ZUICtx->UIScaleLogged)
+                    {
+                        ZENGINE_CORE_INFO("[ZUI] ContentScale={:.2f} WinW={} WinH={}",
+                            ZUICtx->UIScale,
+                            ZUICtx->ScreenW, ZUICtx->ScreenH);
+                        ZUICtx->UIScaleLogged = true;
+                    }
                 }
             }
             else

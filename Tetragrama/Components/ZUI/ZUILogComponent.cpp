@@ -64,12 +64,14 @@ namespace Tetragrama::Components
         panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
         panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
+        panel->BorderColor[3] = 1.0f;
         panel->BorderThickness = 1.f;
+        panel->EdgeSoftness    = 0.f;
 
         // --- Header row — draggable ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(28.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
+        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
             ZUISpacer(ctx, 6.f);
             ZUILabel(ctx, Name ? Name : "Console", ctx->Theme.TextDefault);
             ZUISpacer(ctx, 8.f);

@@ -17,26 +17,32 @@ namespace ZEngine::UI
     // editor looks familiar to ImGui users and benefits from its years of polish.
     struct ZUITheme
     {
-        // Backgrounds — ImGui dark: WindowBg=(0.06,0.06,0.06,0.94)
-        float WindowBg[4]       = {0.06f, 0.06f, 0.06f, 0.94f};
-        float PanelBg[4]        = {0.10f, 0.10f, 0.10f, 0.96f}; // popup/child bg
-        float PanelBgAlt[4]     = {0.08f, 0.08f, 0.08f, 0.94f};
-        float HeaderBg[4]       = {0.14f, 0.14f, 0.14f, 1.00f}; // title bars
-        float RowHoverBg[4]     = {0.26f, 0.59f, 0.98f, 0.f};   // ImGui Header at 0 alpha, fades in
-        float RowSelectedBg[4]  = {0.26f, 0.59f, 0.98f, 0.35f}; // ImGui Header
+        // Backgrounds — fully opaque to prevent scene-render bleed.
+        // Values tuned to match ImGui StyleColorsDark visual feel.
+        float WindowBg[4]       = {0.07f, 0.07f, 0.07f, 1.00f}; // root / dockspace
+        float PanelBg[4]        = {0.12f, 0.12f, 0.12f, 1.00f}; // side panels
+        float PanelBgAlt[4]     = {0.09f, 0.09f, 0.09f, 1.00f}; // alternating rows
+        float TitleBarBg[4]     = {0.18f, 0.18f, 0.20f, 1.00f}; // panel title strips
+        float HeaderBg[4]       = {0.20f, 0.20f, 0.22f, 1.00f}; // collapser headers
+        float TabActiveBg[4]    = {0.24f, 0.24f, 0.28f, 1.00f}; // active tab
+        float TabInactiveBg[4]  = {0.12f, 0.12f, 0.14f, 1.00f}; // inactive tab
+        float MenuBarBg[4]      = {0.14f, 0.14f, 0.14f, 1.00f}; // menu bar strip
+        float RowHoverBg[4]     = {0.26f, 0.59f, 0.98f, 0.00f}; // fades in on hover
+        float RowSelectedBg[4]  = {0.26f, 0.59f, 0.98f, 0.35f};
         float RowRootBg[4]      = {0.16f, 0.29f, 0.48f, 0.20f};
-        float InputBg[4]        = {0.16f, 0.29f, 0.48f, 0.54f}; // ImGui FrameBg exact
-        float ButtonBg[4]       = {0.26f, 0.59f, 0.98f, 0.40f}; // ImGui Button exact
-        // Text — ImGui: Text=(1,1,1,1), TextDisabled=(0.5,0.5,0.5,1)
+        float InputBg[4]        = {0.16f, 0.29f, 0.48f, 0.54f}; // FrameBg
+        float ButtonBg[4]       = {0.26f, 0.59f, 0.98f, 0.40f}; // Button
+        float StatusBarBg[4]    = {0.18f, 0.35f, 0.58f, 1.00f}; // bottom status strip
+        // Text
         float TextDefault[4]    = {1.00f, 1.00f, 1.00f, 1.00f};
-        float TextDim[4]        = {0.50f, 0.50f, 0.50f, 1.00f};
-        float TextAccent[4]     = {0.26f, 0.59f, 0.98f, 1.00f}; // ImGui blue
-        // Borders — ImGui: Border=(0.43,0.43,0.50,0.50)
-        float PanelBorder[4]    = {0.43f, 0.43f, 0.50f, 0.50f};
-        float ButtonBorder[4]   = {0.43f, 0.43f, 0.50f, 0.50f};
-        float InputBorder[4]    = {0.43f, 0.43f, 0.50f, 0.50f};
-        float InputFocusBorder[4]= {0.26f, 0.59f, 0.98f, 1.00f}; // accent blue
-        float Separator[4]      = {0.43f, 0.43f, 0.50f, 0.50f};
+        float TextDim[4]        = {0.60f, 0.60f, 0.60f, 1.00f};
+        float TextAccent[4]     = {0.40f, 0.70f, 1.00f, 1.00f};
+        // Borders
+        float PanelBorder[4]    = {0.30f, 0.30f, 0.35f, 1.00f};
+        float ButtonBorder[4]   = {0.35f, 0.35f, 0.42f, 0.80f};
+        float InputBorder[4]    = {0.35f, 0.35f, 0.42f, 0.80f};
+        float InputFocusBorder[4]= {0.26f, 0.59f, 0.98f, 1.00f};
+        float Separator[4]      = {0.28f, 0.28f, 0.32f, 1.00f};
     };
 
     struct ZUIPersistentState
@@ -120,6 +126,8 @@ namespace ZEngine::UI
         // display content scale (glfwGetWindowContentScale); 1.0=standard, 2.0=Retina.
         // Widgets multiply logical pixel sizes by this to stay readable at any DPI.
         float              UIScale           = 1.f;
+        // guard against per-frame ContentScale log spam — log only once
+        bool               UIScaleLogged     = false;
 
         // drag-and-drop — source is set by ZUIBeginDragSource while a box is held+moving;
         // drop result (DragDropFired/DragTargetKey) is set by ZUIInteractionPass on mouse-release

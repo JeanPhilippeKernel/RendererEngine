@@ -4,6 +4,7 @@
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/EventDispatcher.h>
 #include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/UI/ZUIInput.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <ZEngine/Windows/Events/KeyEvent.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
@@ -53,7 +54,8 @@ namespace Tetragrama::Layers
                                                                   ZEngine::UI::ZPx((float)m_ctx->ScreenW),
                                                                   ZEngine::UI::ZPx((float)m_ctx->ScreenH));
         root->Flags = root->Flags | ZEngine::UI::ZUI_DrawBackground;
-        ZUIBoxSetColor(root, 0.02f, 0.02f, 0.02f, 1.0f); // fully opaque — covers anything in the swapchain
+        root->EdgeSoftness = 0.f;
+        ZUIBoxSetColorArr(root, m_ctx->Theme.WindowBg); // WindowBg is now fully opaque
 
         for (uint32_t i = 0; i < m_component_count; ++i)
         {
