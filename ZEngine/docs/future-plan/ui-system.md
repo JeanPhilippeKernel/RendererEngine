@@ -1,8 +1,8 @@
 # ZEngine — UI System (RAD Debugger-Inspired)
 
 **Priority:** P2 — Required for DebugOverlay, DebugConsole, in-game HUD, menus, and eventual editor migration  
-**Status:** Design  
-**Depends on:** `ArenaAllocator` (done), `Array<T>` (done), `UnorderedHashMap` (done), `VulkanDevice` (done), `RenderGraph` (done), stb (vendored), rapidhash (vendored)  
+**Status:** Design — not yet started  
+**Depends on:** `ArenaAllocator` (done), `Array<T>` (done), `UnorderedHashMap` (done), `VulkanDevice` (done), `RenderGraph` (done), `InputManager` (done), stb_truetype (not yet vendored), rapidhash (not yet vendored)  
 **Blocks:** `profiling.md` (DebugOverlay, DebugConsole), in-game HUD, main menu, settings screen
 
 ---
@@ -86,14 +86,15 @@ ZEngine/ZEngine/Core/Containers/StringHash.h    (header-only)
 
 ### Implementation
 
-rapidhash is already vendored at `__externals/rapidhash/src/rapidhash.h`.
+rapidhash is a header-only library and must be added as a FetchContent dependency before this
+step. The include path below assumes it is fetched into `_deps/rapidhash-src/`.
 
 ```cpp
 // ZEngine/ZEngine/Core/Containers/StringHash.h
 #pragma once
 #include <cstdint>
 #include <cstring>
-#include <rapidhash/src/rapidhash.h>
+#include <rapidhash.h>
 
 namespace ZEngine::Core::Containers
 {
@@ -123,41 +124,44 @@ namespace ZEngine::Core::Containers
 
 ### Why
 
-The current input layer (`Keyboard`, `Mouse`) requires `CoreWindow*` at every query site and
-has no per-frame delta accumulation, no edge-detect (just-pressed / just-released), and no
-retained scroll state. `UIContext` needs all of these as zero-argument queries.
+`InputManager` (`ZEngine/Input/InputManager.h`) already exists and covers game input via
+action slots (`BindKey`, `GetAxis`, `GetMouseDelta`, `GetScrollDelta`). It is the right tool
+for FlyCamera and gameplay consumers.
+
+`InputFrame` is a separate, UI-specific input snapshot. `UIContext` needs raw key/button
+edge-detect (`IsKeyJustPressed`, `IsMouseJustPressed`) and a per-frame text input buffer —
+neither is available from `InputManager`'s action-slot API. `InputFrame` lives alongside
+`InputManager` in `ZEngine/Input/` and registers via the same event callback interfaces.
 
 `InputFrame` implements `IMouseEventCallback`, `IKeyboardEventCallback`, and
-`ITextInputEventCallback` and self-registers alongside the window's existing listeners. It is
-the single source of per-frame input truth for the UI system and for game input consumers.
+`ITextInputEventCallback` (all defined in `Windows/Inputs/IInputEventCallback.h`) and
+self-registers alongside the window's existing listeners.
 
 ### Files
 
 ```
-ZEngine/ZEngine/Windows/Inputs/InputFrame.h
-ZEngine/ZEngine/Windows/Inputs/InputFrame.cpp
+ZEngine/ZEngine/Input/InputFrame.h
+ZEngine/ZEngine/Input/InputFrame.cpp
 ```
 
 ### Header
 
 ```cpp
-// ZEngine/ZEngine/Windows/Inputs/InputFrame.h
+// ZEngine/ZEngine/Input/InputFrame.h
 #pragma once
 #include <ZEngine/Windows/Inputs/IInputEventCallback.h>
-#include <ZEngine/Windows/Inputs/KeyCode.h>
 #include <ZEngine/Core/Maths/Vec.h>
 
-namespace ZEngine::Windows::Inputs
+namespace ZEngine::Input
 {
     // Per-frame snapshot of all input state.
     // Call BeginFrame() at the top of each main-loop tick before event polling.
     // Events are fed automatically via the IXxxEventCallback interfaces.
     struct InputFrame
-        : public IMouseEventCallback
-        , public IKeyboardEventCallback
-        , public ITextInputEventCallback
+        : public Windows::Inputs::IMouseEventCallback
+        , public Windows::Inputs::IKeyboardEventCallback
+        , public Windows::Inputs::ITextInputEventCallback
     {
-        // ── Frame lifecycle ──────────────────────────────────────────────────
         // Rotate cur→prev, zero scroll delta and text buffer.
         // Called at the top of Engine::MainThreadRun, before PollEvents().
         void BeginFrame();
@@ -219,7 +223,7 @@ namespace ZEngine::Windows::Inputs
         char     m_text_buf[k_TextBufLen] = {};
         uint32_t m_text_len               = 0;
     };
-} // namespace ZEngine::Windows::Inputs
+} // namespace ZEngine::Input
 ```
 
 ### Implementation notes
@@ -236,15 +240,16 @@ namespace ZEngine::Windows::Inputs
 
 ### Registration
 
-`CoreWindow` registers `InputFrame::Get()` alongside its existing listeners:
+`GameWindow` (which extends `CoreWindow`) registers `InputFrame::Get()` alongside its
+existing listeners:
 
 ```cpp
-// CoreWindow (after existing callback registration):
-RegisterInputCallback(&InputFrame::Get());
+// GameWindow::Initialize — after existing callback registration:
+RegisterInputCallback(&Input::InputFrame::Get());
 ```
 
 `InputFrame::BeginFrame()` is called at the top of `Engine::MainThreadRun` before
-`PollEvents()`.
+`window->PollEvent()`.
 
 ### Input consumption contract
 
@@ -254,9 +259,9 @@ mouse state — prevents clicks "passing through" UI panels into the 3D scene.
 
 ### Deliverables
 
-- [ ] `Windows/Inputs/InputFrame.h/.cpp` — `BeginFrame`, all query methods, all callback implementations
-- [ ] `CoreWindow` registers `InputFrame::Get()` as a listener
-- [ ] `Engine::MainThreadRun` calls `InputFrame::Get().BeginFrame()` before `PollEvents()`
+- [ ] `Input/InputFrame.h/.cpp` — `BeginFrame`, all query methods, all callback implementations
+- [ ] `GameWindow::Initialize` registers `Input::InputFrame::Get()` as a listener
+- [ ] `Engine::MainThreadRun` calls `Input::InputFrame::Get().BeginFrame()` before `window->PollEvent()`
 
 ---
 
@@ -341,7 +346,8 @@ if IsKeyJustPressed(Tab):
 ### Why
 
 This is the critical-path item. No text means no widget captions, no debug values, no console
-output. The entire UI is blocked here. stb_truetype is already vendored in `__externals/stb`.
+output. The entire UI is blocked here. stb_truetype must be added as a FetchContent dependency
+before this step — it is not yet vendored.
 
 ### Approach: bitmap atlas (not MSDF)
 
@@ -1175,8 +1181,9 @@ ZEngine/ZEngine/
 ├── Core/Containers/
 │   └── StringHash.h                   Step 1
 │
-├── Windows/Inputs/
-│   ├── InputFrame.h                   Step 2
+├── Input/
+│   ├── InputManager.h/.cpp            done — game action-slot input
+│   ├── InputFrame.h                   Step 2 — UI raw key/button/text snapshot
 │   └── InputFrame.cpp
 │
 └── UI/
@@ -1213,7 +1220,11 @@ Resources/
 - `ImGUIRenderer` stays untouched. Both renderers register as separate `IRenderGraphCallbackPass` nodes.
 - UIPass is the final node; ImGuiPass runs before it.
 - `SceneViewportUIComponent` keeps ImGui + ImGuizmo permanently — gizmos depend on ImGui draw lists.
-- Other Tetragrama panels migrate one-by-one after Widgets layer is stable: `LogUIComponent` first (simplest), then `InspectorViewUIComponent`, `HierarchyViewUIComponent`, `ProjectViewUIComponent`.
+- `HierarchyViewUIComponent` was rewritten with custom `ImDrawList` rendering (O(n) DFS, per-type
+  icons, UE5-style layout). It is a hybrid: still hosted in the ImGui window but draws with raw
+  draw commands. It can be migrated to UIContext later but is not blocking anything.
+- Other Tetragrama panels migrate one-by-one after Widgets layer is stable: `LogUIComponent` first
+  (simplest), then `InspectorViewUIComponent`, `ProjectViewUIComponent`.
 - No migration timeline pressure. First milestone is DebugOverlay + DebugConsole working via UIContext.
 
 ---
@@ -1224,9 +1235,9 @@ Resources/
 - [ ] `Core/Containers/StringHash.h` — `StringHash(const char*)` + `StringHashN`
 
 ### Step 2 — InputFrame
-- [ ] `Windows/Inputs/InputFrame.h/.cpp` — `BeginFrame`, all query methods, all callbacks
-- [ ] `CoreWindow` registers `InputFrame::Get()` as a listener
-- [ ] `Engine::MainThreadRun` calls `InputFrame::Get().BeginFrame()` before `PollEvents()`
+- [ ] `Input/InputFrame.h/.cpp` — `BeginFrame`, all query methods, all callbacks
+- [ ] `GameWindow::Initialize` registers `Input::InputFrame::Get()` as a listener
+- [ ] `Engine::MainThreadRun` calls `Input::InputFrame::Get().BeginFrame()` before `window->PollEvent()`
 
 ### Step 3 — UIInput
 - [ ] `UI/UIInput.h/.cpp` — `HitTest`, `UpdateInteraction`, `AdvanceFocus`
