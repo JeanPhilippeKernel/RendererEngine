@@ -34,16 +34,17 @@ namespace Tetragrama::Components
         // RAD Debugger style: dividers check mouse bounds directly, not through
         // the z-ordered box tree. This gives dividers priority over panel content.
         struct Divider {
-            const char* leaf_name;  // which dock leaf to resize on drag
-            bool        horizontal; // true = drag Y (top/bottom split), false = drag X
+            const char* leaf_name;   // which dock leaf to resize on drag
+            bool        horizontal;  // true = drag Y (top/bottom), false = drag X (left/right)
+            bool        use_near;    // true = divider on left/top edge; false = right/bottom edge
             bool        dragging = false;
         };
-        // Four dividers: left|center, center|right, top|bottom, left-bottom|right-bottom
+        // leaf_name, horizontal, use_near(left/top vs right/bottom edge)
         Divider m_dividers[4] = {
-            {"Hierarchy", false, false},  // vertical line: hierarchy | viewport
-            {"Inspector", false, false},  // vertical line: viewport | inspector (resize right)
-            {"Viewport",  true,  false},  // horizontal line: viewport | bottom panels
-            {"Log",       false, false},  // vertical line: log | project
+            {"Hierarchy", false, false}, // vertical at hierarchy's RIGHT edge
+            {"Inspector", false, true},  // vertical at inspector's LEFT edge
+            {"Viewport",  true,  false}, // horizontal at viewport's BOTTOM edge
+            {"Log",       false, false}, // vertical at log's RIGHT edge
         };
     };
     ZDEFINE_PTR(ZUIDockspaceComponent);

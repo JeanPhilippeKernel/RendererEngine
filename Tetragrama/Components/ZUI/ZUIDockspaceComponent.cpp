@@ -252,21 +252,23 @@ namespace Tetragrama::Components
                 if (!ZUIDockRectForKey(m_dock_tree, ZUIDockHashName(div.leaf_name), lr))
                     continue;
 
-                // Divider rect: at the right/bottom edge of the leaf
+                // Divider rect: at the right/bottom (or left/top if use_near) edge of the leaf
                 float dx0, dy0, dx1, dy1;
                 if (!div.horizontal)
                 {   // vertical divider (left|right split)
-                    dx0 = lr[2] - kDivW * 0.5f;
+                    float edge_x = div.use_near ? lr[0] : lr[2];
+                    dx0 = edge_x - kDivW * 0.5f;
                     dy0 = lr[1];
-                    dx1 = lr[2] + kDivW * 0.5f;
+                    dx1 = edge_x + kDivW * 0.5f;
                     dy1 = lr[3];
                 }
                 else
                 {   // horizontal divider (top|bottom split)
+                    float edge_y = div.use_near ? lr[1] : lr[3];
                     dx0 = lr[0];
-                    dy0 = lr[3] - kDivW * 0.5f;
+                    dy0 = edge_y - kDivW * 0.5f;
                     dx1 = lr[2];
-                    dy1 = lr[3] + kDivW * 0.5f;
+                    dy1 = edge_y + kDivW * 0.5f;
                 }
 
                 float mx = ctx->MousePos[0], my = ctx->MousePos[1];
