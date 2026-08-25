@@ -153,7 +153,7 @@ namespace ZEngine::UI
 
         ZUIBox* box      = ZUIPushBox(ctx, label, len, flags);
         box->Size[0]     = ZText();
-        box->Size[1]     = ZPx(22.f);
+        box->Size[1]     = ZSPx(ctx, 22.f);
         SetBgArr(box, ctx->Theme.ButtonBg);
         SetTextColor(box, ctx->Theme.TextDefault);
         if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
@@ -246,7 +246,7 @@ namespace ZEngine::UI
     {
         ZUIBox* box   = ZUIPushBox(ctx, "##zui_sep", 9, ZUI_DrawBackground);
         box->Size[0]  = ZFill();
-        box->Size[1]  = ZPx(2.f);
+        box->Size[1]  = ZSPx(ctx, 2.f);
         SetBgArr(box, ctx->Theme.Separator);
         ZUIPopBox(ctx);
     }
@@ -277,7 +277,7 @@ namespace ZEngine::UI
 
         ZUIBox* row      = ZUIPushBox(ctx, row_key, row_key_len, ZUI_Clickable);
         row->Size[0]     = ZFill();
-        row->Size[1]     = ZPx(22.f);
+        row->Size[1]     = ZSPx(ctx, 22.f);
         row->LayoutAxis  = ZUIAxis::X;
 
         // Disclosure indicator — ">" (closed) or "v" (open), ASCII-safe
@@ -1332,7 +1332,7 @@ namespace ZEngine::UI
         ZUIBox*  field      = ZUIPushBox(ctx, key, key_len,
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]      = ZPx(width_px);
-        field->Size[1]      = ZPx(28.f);
+        field->Size[1]      = ZSPx(ctx, 28.f);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
 

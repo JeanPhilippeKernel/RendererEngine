@@ -7,6 +7,7 @@
 #include <Tetragrama/Components/ZUI/ZUIStatusBarComponent.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
+#include <GLFW/glfw3.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIFont.h>
 #include <Tetragrama/MessageToken.h>
@@ -107,26 +108,48 @@ namespace Tetragrama
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
 
-        // Bake ZUI font atlases — Small (18 px), Body (28 px), Header (36 px)
+        // Bake ZUI font atlases scaled by the display's content scale (DPI).
+        // On a 2x Retina display glfwGetWindowContentScale returns 2.0, making
+        // 28 logical px bake as 56 physical px — readable at any DPI.
         if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
         {
             constexpr const char* kFontPath =
                 "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
             auto* ctx = RenderPipeline->ZUICtx;
 
+            // Query content scale (1.0 on standard, 2.0 on Retina, etc.)
+            float xscale = 1.f, yscale = 1.f;
+            if (CurrentWindow)
+            {
+                auto* glfw_win = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
+                if (glfw_win)
+                    glfwGetWindowContentScale(glfw_win, &xscale, &yscale);
+            }
+            float scale = xscale > yscale ? xscale : yscale;
+            if (scale < 1.f) scale = 1.f; // never shrink below baseline
+
+            // Base logical sizes; atlas grows with scale to avoid atlas overflow
+            float sz_small  = 16.f * scale;
+            float sz_body   = 22.f * scale;
+            float sz_header = 30.f * scale;
+
+            auto atlas_dim = [](float sz) -> uint32_t {
+                return sz > 40.f ? 2048u : (sz > 24.f ? 1024u : 512u);
+            };
+
             auto scratch = ZGetScratch(&Memory->MainArena);
 
             ctx->FontSmall = ZEngine::UI::ZUIFontBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, 18.f, 512, 512, 32, 96);
+                kFontPath, sz_small, atlas_dim(sz_small), atlas_dim(sz_small), 32, 96);
 
             ctx->Font = ZEngine::UI::ZUIFontBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, 28.f, 1024, 1024, 32, 96);
+                kFontPath, sz_body, atlas_dim(sz_body), atlas_dim(sz_body), 32, 96);
 
             ctx->FontHeader = ZEngine::UI::ZUIFontBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, 36.f, 1024, 1024, 32, 96);
+                kFontPath, sz_header, atlas_dim(sz_header), atlas_dim(sz_header), 32, 96);
 
             ZReleaseScratch(scratch);
         }

@@ -116,6 +116,9 @@ namespace ZEngine::UI
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
         uint32_t           ScreenW           = 1280;
         uint32_t           ScreenH           = 720;
+        // display content scale (glfwGetWindowContentScale); 1.0=standard, 2.0=Retina.
+        // Widgets multiply logical pixel sizes by this to stay readable at any DPI.
+        float              UIScale           = 1.f;
 
         // drag-and-drop — source is set by ZUIBeginDragSource while a box is held+moving;
         // drop result (DragDropFired/DragTargetKey) is set by ZUIInteractionPass on mouse-release

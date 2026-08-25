@@ -10,6 +10,11 @@ namespace ZEngine::UI
     // ---------------------------------------------------------------
 
     inline ZUISize ZPx(float v)      { return {ZUISizeKind::Pixels,        v,    1.f}; }
+    // DPI-scaled pixel size — multiplies v by ctx->UIScale (1.0 on standard, 2.0 on Retina)
+    inline ZUISize ZSPx(const ZUIContext* ctx, float v)
+    {
+        return {ZUISizeKind::Pixels, v * (ctx ? ctx->UIScale : 1.f), 1.f};
+    }
     inline ZUISize ZFill()           { return {ZUISizeKind::Fill,           0.f,  1.f}; }
     inline ZUISize ZText()           { return {ZUISizeKind::Text,           0.f,  1.f}; }
     inline ZUISize ZPct(float v)     { return {ZUISizeKind::ParentPercent,  v,    1.f}; }

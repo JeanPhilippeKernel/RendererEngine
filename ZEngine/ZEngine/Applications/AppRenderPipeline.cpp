@@ -2,6 +2,7 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <GLFW/glfw3.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Managers/AssetManager.h>
@@ -286,6 +287,16 @@ namespace ZEngine::Applications
             {
                 ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
                 ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
+
+                // Query per-monitor content scale so widgets stay readable on Retina/HiDPI
+                auto* native = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
+                if (native)
+                {
+                    float xs = 1.f, ys = 1.f;
+                    glfwGetWindowContentScale(native, &xs, &ys);
+                    float s = xs > ys ? xs : ys;
+                    ZUICtx->UIScale = s > 0.5f ? s : 1.f;
+                }
             }
             else
             {
