@@ -1,10 +1,5 @@
-#include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
-#include <Tetragrama/Components/ZUI/ZUIHierarchyViewComponent.h>
-#include <Tetragrama/Components/ZUI/ZUIInspectorViewComponent.h>
-#include <Tetragrama/Components/ZUI/ZUILogComponent.h>
-#include <Tetragrama/Components/ZUI/ZUIProjectViewComponent.h>
-#include <Tetragrama/Components/ZUI/ZUISceneViewportComponent.h>
-#include <Tetragrama/Components/ZUI/ZUIStatusBarComponent.h>
+// New panel-manager-based UI (replaces old per-component system)
+#include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
 #include <GLFW/glfw3.h>
@@ -69,39 +64,11 @@ namespace Tetragrama
 
         ZUIUILayer->Initialize(&Memory->MainArena, this);
 
-        // Create all ZUI panels
-        auto* zui_log  = ZPushStructCtor(&Memory->MainArena, Components::ZUILogComponent);
-        auto* zui_hier = ZPushStructCtor(&Memory->MainArena, Components::ZUIHierarchyViewComponent);
-        auto* zui_insp = ZPushStructCtor(&Memory->MainArena, Components::ZUIInspectorViewComponent);
-        auto* zui_vp   = ZPushStructCtor(&Memory->MainArena, Components::ZUISceneViewportComponent);
-        auto* zui_proj = ZPushStructCtor(&Memory->MainArena, Components::ZUIProjectViewComponent);
-        auto* zui_stat = ZPushStructCtor(&Memory->MainArena, Components::ZUIStatusBarComponent);
-        auto* zui_dock = ZPushStructCtor(&Memory->MainArena, Components::ZUIDockspaceComponent);
-
-        zui_log->Initialize(ZUIUILayer,  "Console");
-        zui_hier->Initialize(ZUIUILayer, "Hierarchy");
-        zui_insp->Initialize(ZUIUILayer, "Inspector");
-        zui_vp->Initialize(ZUIUILayer,   "Scene");
-        zui_proj->Initialize(ZUIUILayer, "Project");
-        zui_stat->Initialize(ZUIUILayer, "StatusBar");
-        zui_dock->Initialize(ZUIUILayer, "Dockspace");
-
-        // Wire panel pointers into dockspace for region assignment
-        zui_dock->Hierarchy  = zui_hier;
-        zui_dock->Inspector  = zui_insp;
-        zui_dock->Viewport   = zui_vp;
-        zui_dock->Log        = zui_log;
-        zui_dock->Project    = zui_proj;
-        zui_dock->StatusBar  = zui_stat;
-
-        // Register: dockspace FIRST (sets regions), then panels
-        ZUIUILayer->AddComponent(zui_dock);
-        ZUIUILayer->AddComponent(zui_vp);
-        ZUIUILayer->AddComponent(zui_hier);
-        ZUIUILayer->AddComponent(zui_insp);
-        ZUIUILayer->AddComponent(zui_log);
-        ZUIUILayer->AddComponent(zui_proj);
-        ZUIUILayer->AddComponent(zui_stat);
+        // Single panel-manager component replaces all old per-panel components.
+        // It owns the dock tree, tab bars, and all panel views.
+        auto* pm = ZPushStructCtor(&Memory->MainArena, Tetragrama::Panels::ZUIPanelManagerComponent);
+        pm->Initialize(ZUIUILayer, "PanelManager");
+        ZUIUILayer->AddComponent(pm);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 
