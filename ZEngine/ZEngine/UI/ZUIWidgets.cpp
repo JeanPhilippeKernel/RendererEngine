@@ -338,7 +338,14 @@ namespace ZEngine::UI
         popup->FloatPos[1]      = ctx->PopupPos[1];
         popup->LayoutAxis       = ZUIAxis::Y;
         popup->BorderThickness  = 1.f;
-        SetBgArr(popup,  ctx->Theme.PanelBg);
+        popup->EdgeSoftness     = 0.5f;
+        ZUIBoxSetCornerRadius(popup, 4.f);
+        popup->Padding[0] = popup->Padding[2] = 2.f; // slight horizontal inset
+        // Use a slightly lighter background than panel to distinguish dropdown
+        float popup_bg[4] = { ctx->Theme.PanelBg[0] + 0.04f,
+                               ctx->Theme.PanelBg[1] + 0.04f,
+                               ctx->Theme.PanelBg[2] + 0.04f, 1.f };
+        SetBgArr(popup, popup_bg);
         SetBdrArr(popup, ctx->Theme.PanelBorder);
 
         ctx->ActivePopupBox = popup;

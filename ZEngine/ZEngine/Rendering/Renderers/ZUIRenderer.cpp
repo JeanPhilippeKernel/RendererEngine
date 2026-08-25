@@ -352,7 +352,8 @@ namespace ZEngine::Rendering::Renderers
                 float box_h    = by1 - by0;
                 float text_top = floorf(by0 + (box_h - font->LineHeight) * 0.5f);
                 float baseline = text_top + font->Ascent;
-                float cx       = floorf(bx0 + 4.f);
+                float text_indent = box->Padding[0] > 0.f ? box->Padding[0] : 4.f;
+                float cx       = floorf(bx0 + text_indent);
 
                 if (box->TextAlign != ZUITextAlign::Left)
                 {
