@@ -63,10 +63,8 @@ namespace Tetragrama
     {
         auto editor_scene          = ZPushStructCtor(&Memory->MainArena, EditorScene);
         auto editor_cam_controller = ZPushStructCtor(&Memory->MainArena, Controllers::EditorCameraController);
-        UILayer                    = ZPushStructCtor(&Memory->MainArena, ImguiLayer);
         ZUIUILayer                 = ZPushStructCtor(&Memory->MainArena, ZUILayer);
 
-        UILayer->Initialize(&Memory->MainArena, this);
         ZUIUILayer->Initialize(&Memory->MainArena, this);
 
         // Create all ZUI panels
@@ -127,17 +125,14 @@ namespace Tetragrama
 
     void Editor::OnUpdate(float dt)
     {
-        CHECK_AND_ESCAPE_NULL(UILayer)
-
-        UILayer->Update(dt);
+        CHECK_AND_ESCAPE_NULL(ZUIUILayer)
+        ZUIUILayer->Update(dt);
     }
 
     void Editor::OnEvent(Core::CoreEvent& e)
     {
-        CHECK_AND_ESCAPE_NULL(UILayer)
-
-        UILayer->OnEvent(e);
-        if (ZUIUILayer) { ZUIUILayer->OnEvent(e); }
+        CHECK_AND_ESCAPE_NULL(ZUIUILayer)
+        ZUIUILayer->OnEvent(e);
     }
 
     void Editor::OnPreRender() {}
@@ -146,7 +141,6 @@ namespace Tetragrama
 
     void Editor::OnRenderUI()
     {
-        UILayer->Render(nullptr, nullptr);
         if (ZUIUILayer) { ZUIUILayer->Render(nullptr, nullptr); }
     }
 

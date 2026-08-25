@@ -277,8 +277,7 @@ namespace ZEngine
             if (next == tail)
                 continue; // buffer full — drop frame
 
-            auto& r_payload                   = pipeline->RenderPayloads[head];
-            r_payload.UIOverlay.DrawDataIndex = 0;
+            auto& r_payload = pipeline->RenderPayloads[head];
             r_payload.RenderUIOverlay.value.store(false, std::memory_order_release);
 
             if (g_app->EnableRenderOverlay)
