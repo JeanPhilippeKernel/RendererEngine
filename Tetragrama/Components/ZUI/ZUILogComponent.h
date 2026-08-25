@@ -36,6 +36,9 @@ namespace Tetragrama::Components
         int       m_count             = 0;
         std::mutex m_mutex;
         uint32_t  m_cookie            = 0;
+        char      m_search_buf[128]   = {};
+        int       m_filter_level      = 5;   // 5 = All
+        bool      m_scroll_to_bottom  = false;
 
         void        PushEntry(const LogEntry& e);
         static void OnLogEntry(void* ctx, const ZEngine::Logging::LogMessage& msg);

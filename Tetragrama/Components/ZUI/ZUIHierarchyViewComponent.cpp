@@ -142,10 +142,17 @@ namespace Tetragrama::Components
             if (nodes[i].Parent == INVALID_ENTITY)
                 stk[sp++] = {(uint32_t)i, 0};
 
+        // --- Type icon color tables ---
+        static const float k_icon_light[4]   = {1.0f,  0.85f, 0.20f, 1.f};
+        static const float k_icon_camera[4]  = {0.45f, 0.85f, 0.55f, 1.f};
+        static const float k_icon_mesh[4]    = {0.55f, 0.75f, 0.90f, 1.f};
+        static const float k_icon_coll[4]    = {0.85f, 0.65f, 0.15f, 1.f};
+        static const float k_icon_default[4] = {0.55f, 0.55f, 0.60f, 1.f};
+        (void)k_icon_default;
+
         // --- Scene root row ---
         {
-            static const float k_sel[4]  = {0.26f, 0.44f, 0.70f, 0.50f};
-            static const float k_dim[4]  = {0.55f, 0.55f, 0.60f, 1.f};
+            static const float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
 
             ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(26.f));
             root_row->Flags  = root_row->Flags | ZUI_DrawBackground | ZUI_Clickable;
@@ -163,10 +170,23 @@ namespace Tetragrama::Components
             ZUISignal rarrow_sig = ZUISignalFromBox(ctx, root_arrow);
             ZUIPopBox(ctx);
 
+            // World type icon
+            {
+                static const float k_icon_world[4] = {0.35f, 0.80f, 0.45f, 1.f};
+                ZUIBox* icon = ZUIPushBox(ctx, "W##ti_root", 10,
+                                          ZUI_DrawBackground | ZUI_DrawText);
+                icon->Size[0]    = ZPx(14.f);
+                icon->Size[1]    = ZPx(14.f);
+                icon->BgColor[0] = k_icon_world[0]; icon->BgColor[1] = k_icon_world[1];
+                icon->BgColor[2] = k_icon_world[2]; icon->BgColor[3] = k_icon_world[3];
+                icon->TextColor[0] = 1.f; icon->TextColor[1] = 1.f;
+                icon->TextColor[2] = 1.f; icon->TextColor[3] = 1.f;
+                ZUIPopBox(ctx);
+            }
+            ZUISpacer(ctx, 4.f);
+
             const char* scene_name = (current_scene->Name && current_scene->Name[0]) ? current_scene->Name : "Scene";
             ZUILabel(ctx, scene_name);
-            ZUISpacer(ctx, 4.f);
-            ZUILabel(ctx, "World", k_dim);
 
             ZUISignal root_sig = ZUISignalFromBox(ctx, root_row);
             ZUIEndRow(ctx);
@@ -182,9 +202,10 @@ namespace Tetragrama::Components
             static const float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
             static const float k_sel[4] = {0.26f, 0.44f, 0.70f, 0.50f};
 
-            ActorHandle pending_delete = {};
-            uint32_t    total_actors   = nc;
-            uint32_t    selected_count = 0;
+            ActorHandle pending_delete          = {};
+            ActorHandle pending_duplicate       = {};
+            ActorHandle pending_reparent_child  = {};
+            ActorHandle pending_reparent_parent = {};
 
             while (sp > 0)
             {
@@ -193,26 +214,32 @@ namespace Tetragrama::Components
                 Actor*   actor = eng->ActorManager->Access(nodes[ni].Handle);
                 if (!actor) continue;
 
-                auto*       nc_comp    = actor->GetComponent<NameComponent>();
-                const char* label      = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
-                bool        is_coll    = !actor->HasComponent<MeshComponent>() &&
-                                         !actor->HasComponent<LightComponent>() &&
-                                         !actor->HasComponent<CameraComponent>();
-                const char* type_str   = is_coll ? "Coll" :
-                                         actor->HasComponent<LightComponent>()  ? "Light"  :
-                                         actor->HasComponent<CameraComponent>() ? "Camera" :
-                                         actor->HasComponent<MeshComponent>()   ? "Mesh"   : "Actor";
-                bool        has_ch     = (first_child[ni] != UINT32_MAX);
-                bool        is_open    = has_ch && !IsCollapsed(nodes[ni].EID);
-                bool        selected   = (current_scene->SelectedActorHandle.Index      == nodes[ni].Handle.Index &&
-                                          current_scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
-                if (selected) ++selected_count;
+                auto*       nc_comp = actor->GetComponent<NameComponent>();
+                const char* label   = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+
+                // Determine type icon character and color
+                char         type_char;
+                const float* type_bg;
+                if (actor->HasComponent<LightComponent>())       { type_char = 'L'; type_bg = k_icon_light; }
+                else if (actor->HasComponent<CameraComponent>()) { type_char = 'C'; type_bg = k_icon_camera; }
+                else if (actor->HasComponent<MeshComponent>())   { type_char = 'M'; type_bg = k_icon_mesh; }
+                else                                             { type_char = '+'; type_bg = k_icon_coll; }
+
+                bool has_ch  = (first_child[ni] != UINT32_MAX);
+                bool is_open = has_ch && !IsCollapsed(nodes[ni].EID);
+                bool selected = (current_scene->SelectedActorHandle.Index      == nodes[ni].Handle.Index &&
+                                 current_scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
 
                 float indent = (float)(e.depth + 1) * INDENT_W;
 
+                bool renaming_this = (m_renaming_handle.Valid() &&
+                                      m_renaming_handle.Index      == nodes[ni].Handle.Index &&
+                                      m_renaming_handle.Generation == nodes[ni].Handle.Generation);
+
                 // Build row key
                 char row_key[64];
-                snprintf(row_key, sizeof(row_key), "##hr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                snprintf(row_key, sizeof(row_key), "##hr_%u_%u",
+                         nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
 
                 ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(24.f));
                 row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
@@ -249,16 +276,112 @@ namespace Tetragrama::Components
                     ZUISpacer(ctx, 14.f);
                 }
 
-                // Actor name
-                ZUILabel(ctx, label);
+                // Type icon — 14x14 colored box with a 1-char label
+                {
+                    char icon_key[32];
+                    snprintf(icon_key, sizeof(icon_key), "%c##ti_%u_%u", type_char,
+                             nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                    ZUIBox* icon = ZUIPushBox(ctx, icon_key, (uint32_t)Helpers::secure_strlen(icon_key),
+                                              ZUI_DrawBackground | ZUI_DrawText);
+                    icon->Size[0]    = ZPx(14.f);
+                    icon->Size[1]    = ZPx(14.f);
+                    icon->BgColor[0] = type_bg[0]; icon->BgColor[1] = type_bg[1];
+                    icon->BgColor[2] = type_bg[2]; icon->BgColor[3] = type_bg[3];
+                    icon->TextColor[0] = 1.f; icon->TextColor[1] = 1.f;
+                    icon->TextColor[2] = 1.f; icon->TextColor[3] = 1.f;
+                    ZUIPopBox(ctx);
+                }
                 ZUISpacer(ctx, 4.f);
-                ZUILabel(ctx, type_str, k_dim);
+
+                // Actor name label or inline rename TextField
+                if (renaming_this) {
+                    char tf_key[64];
+                    snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u",
+                             nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                    uint64_t focus_before = ctx->FocusKey;
+                    ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
+                    uint64_t focus_after = ctx->FocusKey;
+
+                    if (m_rename_started) {
+                        // First frame after rename triggered: suppress commit check.
+                        // User must click the field to focus it.
+                        m_rename_started   = false;
+                        m_rename_focus_key = 0;
+                    } else if (m_rename_focus_key != 0 && focus_after != m_rename_focus_key) {
+                        // TextField had focus and FocusKey changed — commit rename
+                        auto* nc_ren = actor->GetComponent<NameComponent>();
+                        if (nc_ren && m_rename_buf[0]) {
+                            Helpers::secure_strncpy(nc_ren->Value, sizeof(nc_ren->Value),
+                                                    m_rename_buf, sizeof(m_rename_buf) - 1);
+                        }
+                        m_renaming_handle  = {};
+                        m_rename_focus_key = 0;
+                    }
+                    // Detect when the TextField first receives focus (user clicks it)
+                    if (focus_before != focus_after && focus_after != 0) {
+                        m_rename_focus_key = focus_after;
+                    }
+                } else {
+                    ZUILabel(ctx, label);
+                }
 
                 ZUISignal row_sig = ZUISignalFromBox(ctx, row);
                 ZUIEndRow(ctx);
 
+                // Single-click: select actor
                 if (row_sig.Flags & ZUI_SignalClicked) {
                     current_scene->SelectedActorHandle = nodes[ni].Handle;
+                }
+
+                // Double-click: begin inline rename
+                if (!renaming_this && (row_sig.Flags & ZUI_SignalDoubleClicked)) {
+                    m_renaming_handle  = nodes[ni].Handle;
+                    m_rename_started   = true;
+                    m_rename_focus_key = 0;
+                    if (nc_comp && nc_comp->Value[0]) {
+                        Helpers::secure_strncpy(m_rename_buf, sizeof(m_rename_buf),
+                                                nc_comp->Value, sizeof(nc_comp->Value));
+                    } else {
+                        m_rename_buf[0] = '\0';
+                    }
+                }
+
+                // Right-click context menu
+                if (ZUIBeginPopupContextItem(ctx, "##actor_ctx", row_sig)) {
+                    if (ZUIMenuItem(ctx, "Rename")) {
+                        m_renaming_handle  = nodes[ni].Handle;
+                        m_rename_started   = true;
+                        m_rename_focus_key = 0;
+                        if (nc_comp && nc_comp->Value[0]) {
+                            Helpers::secure_strncpy(m_rename_buf, sizeof(m_rename_buf),
+                                                    nc_comp->Value, sizeof(nc_comp->Value));
+                        } else {
+                            m_rename_buf[0] = '\0';
+                        }
+                    }
+                    if (ZUIMenuItem(ctx, "Delete")) {
+                        pending_delete = nodes[ni].Handle;
+                    }
+                    if (ZUIMenuItem(ctx, "Duplicate Actor")) {
+                        pending_duplicate = nodes[ni].Handle;
+                    }
+                    ZUIEndPopup(ctx);
+                }
+
+                // Drag source: broadcast this actor's handle as the drag payload
+                ZUIBeginDragSource(ctx, row, (const char*)&nodes[ni].Handle, sizeof(ActorHandle));
+
+                // Drop target: accept a dragged actor handle for reparenting
+                char drop_buf[sizeof(ActorHandle)] = {};
+                if (ZUIAcceptDrop(ctx, row, drop_buf, sizeof(drop_buf))) {
+                    ActorHandle dragged = {};
+                    Helpers::secure_memcpy(&dragged, sizeof(dragged), drop_buf, sizeof(drop_buf));
+                    if (dragged.Valid() &&
+                        (dragged.Index != nodes[ni].Handle.Index ||
+                         dragged.Generation != nodes[ni].Handle.Generation)) {
+                        pending_reparent_child  = dragged;
+                        pending_reparent_parent = nodes[ni].Handle;
+                    }
                 }
 
                 // Push expanded children (reverse order for correct DFS)
@@ -272,7 +395,74 @@ namespace Tetragrama::Components
                 }
             }
 
-            // Deferred delete: selected actor
+            // --- Deferred mutations (applied after DFS to avoid tree invalidation) ---
+
+            // Reparent: assign new ParentComponent to the dragged actor
+            if (pending_reparent_child.Valid() && pending_reparent_parent.Valid()) {
+                Actor* child_actor  = eng->ActorManager->Access(pending_reparent_child);
+                Actor* parent_actor = eng->ActorManager->Access(pending_reparent_parent);
+                if (child_actor && parent_actor) {
+                    EntityID new_parent_eid = parent_actor->GetEntityID();
+                    auto*    pc             = child_actor->GetComponent<ParentComponent>();
+                    if (pc) {
+                        pc->Parent = new_parent_eid;
+                    } else {
+                        ParentComponent new_pc = {};
+                        new_pc.Parent          = new_parent_eid;
+                        child_actor->AddComponent<ParentComponent>(new_pc);
+                    }
+                }
+            }
+
+            // Duplicate: create a new actor copying Name and Transform from the source
+            if (pending_duplicate.Valid()) {
+                Actor* src = eng->ActorManager->Access(pending_duplicate);
+                if (src) {
+                    ActorHandle dup_h = eng->ActorManager->Create();
+                    Actor*      dup_a = eng->ActorManager->Access(dup_h);
+                    if (dup_a) {
+                        auto*         nc_src = src->GetComponent<NameComponent>();
+                        NameComponent nc_dup = {};
+                        if (nc_src && nc_src->Value[0]) {
+                            Helpers::secure_strncpy(nc_dup.Value, sizeof(nc_dup.Value),
+                                                    nc_src->Value, sizeof(nc_src->Value));
+                            uint32_t name_len = (uint32_t)Helpers::secure_strlen(nc_dup.Value);
+                            if (name_len + 5 < sizeof(nc_dup.Value)) {
+                                Helpers::secure_strncpy(nc_dup.Value + name_len,
+                                                        sizeof(nc_dup.Value) - name_len, " Copy", 5);
+                            }
+                        } else {
+                            Helpers::secure_strncpy(nc_dup.Value, sizeof(nc_dup.Value), "Actor Copy", 10);
+                        }
+                        dup_a->AddComponent<NameComponent>(nc_dup);
+                        auto* tc_src = src->GetComponent<TransformComponent>();
+                        if (tc_src) { dup_a->AddComponent<TransformComponent>(*tc_src); }
+                        else        { dup_a->AddComponent<TransformComponent>({}); }
+                        current_scene->SelectedActorHandle = dup_h;
+                    }
+                }
+            }
+
+            // Context-menu delete
+            if (pending_delete.Valid()) {
+                Actor* del_actor = eng->ActorManager->Access(pending_delete);
+                if (del_actor) {
+                    auto* mc = del_actor->GetComponent<MeshComponent>();
+                    if (mc && mc->RenderInstanceId != UINT32_MAX)
+                        current_scene->RemoveMeshInstance(mc->RenderInstanceId, eng->RenderResourceManager);
+                    if (current_scene->SelectedActorHandle.Index      == pending_delete.Index &&
+                        current_scene->SelectedActorHandle.Generation == pending_delete.Generation)
+                        current_scene->SelectedActorHandle = {};
+                    if (m_renaming_handle.Index      == pending_delete.Index &&
+                        m_renaming_handle.Generation == pending_delete.Generation) {
+                        m_renaming_handle  = {};
+                        m_rename_focus_key = 0;
+                    }
+                    eng->ActorManager->Destroy(pending_delete);
+                }
+            }
+
+            // Header Del button: delete the currently selected actor
             if (del_sig.Flags & ZUI_SignalClicked)
             {
                 ActorHandle h     = current_scene->SelectedActorHandle;
@@ -282,6 +472,10 @@ namespace Tetragrama::Components
                     auto* mc = actor->GetComponent<MeshComponent>();
                     if (mc && mc->RenderInstanceId != UINT32_MAX)
                         current_scene->RemoveMeshInstance(mc->RenderInstanceId, eng->RenderResourceManager);
+                    if (m_renaming_handle.Index == h.Index && m_renaming_handle.Generation == h.Generation) {
+                        m_renaming_handle  = {};
+                        m_rename_focus_key = 0;
+                    }
                     current_scene->SelectedActorHandle = {};
                     eng->ActorManager->Destroy(h);
                 }
@@ -301,7 +495,6 @@ namespace Tetragrama::Components
                     current_scene->SelectedActorHandle = new_h;
                 }
             }
-
         }
 
         ZUIEndScrollRegion(ctx); // end scrollable actor list
@@ -311,8 +504,7 @@ namespace Tetragrama::Components
         ZUISeparator(ctx);
         {
             char status[64];
-            int  total = 0, sel = 0;
-            // Recount outside scroll for simplicity
+            int  total = 0;
             if (eng->ActorManager) { total = (int)eng->ActorManager->Count(); }
             snprintf(status, sizeof(status), "%d actor%s", total, total == 1 ? "" : "s");
             ZUILabel(ctx, status, ctx->Theme.TextDim);

@@ -168,6 +168,10 @@ namespace ZEngine::UI
     // Menu item inside a popup — returns true on click (closes popup too).
     bool ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
 
+    // Combo item (selectable inside a ZUIBeginCombo popup).
+    // Returns true when clicked; closes the combo. selected=true tints the item.
+    bool ZUIComboItem(ZUIContext* ctx, const char* label, bool selected = false);
+
     // ---------------------------------------------------------------
     // Phase 5 — layout improvements
     // ---------------------------------------------------------------

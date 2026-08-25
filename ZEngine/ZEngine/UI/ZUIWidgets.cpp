@@ -378,17 +378,35 @@ namespace ZEngine::UI
         ZUIBox* box   = ZUIPushBox(ctx, label, len, fl);
         box->Size[0]  = ZFill();
         box->Size[1]  = ZPx(26.f);
-        box->BgColor[3] = 0.f; // transparent base — hover fade-in via renderer
+        box->BgColor[3] = 0.f;
         SetTextColor(box, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);
 
-        if (sig.Flags & ZUI_SignalClicked)
-        {
-            ZUIClosePopup(ctx);
-            return true;
+        if (sig.Flags & ZUI_SignalClicked) { ZUIClosePopup(ctx); return true; }
+        return false;
+    }
+
+    bool ZUIComboItem(ZUIContext* ctx, const char* label, bool selected)
+    {
+        uint32_t len   = (uint32_t)strlen(label);
+        ZUIBox*  box   = ZUIPushBox(ctx, label, len,
+                             ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
+        box->Size[0]   = ZFill();
+        box->Size[1]   = ZPx(24.f);
+        if (selected) {
+            box->BgColor[0] = ctx->Theme.RowSelectedBg[0]; box->BgColor[1] = ctx->Theme.RowSelectedBg[1];
+            box->BgColor[2] = ctx->Theme.RowSelectedBg[2]; box->BgColor[3] = ctx->Theme.RowSelectedBg[3];
+        } else {
+            box->BgColor[3] = 0.f; // hover fade-in
         }
+        SetTextColor(box, ctx->Theme.TextDefault);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+
+        if (sig.Flags & ZUI_SignalClicked) { ZUIClosePopup(ctx); return true; }
         return false;
     }
 

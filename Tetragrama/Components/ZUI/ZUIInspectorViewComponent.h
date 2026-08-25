@@ -18,6 +18,7 @@ namespace Tetragrama::Components
     private:
         bool m_transform_open = true;
         bool m_mesh_open      = true;
+        bool m_light_open     = true;
     };
     ZDEFINE_PTR(ZUIInspectorViewComponent);
 } // namespace Tetragrama::Components

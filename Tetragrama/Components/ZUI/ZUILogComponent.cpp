@@ -42,6 +42,7 @@ namespace Tetragrama::Components
         m_head         = (m_head + 1) % kMaxEntries;
         if (m_count < kMaxEntries)
             ++m_count;
+        m_scroll_to_bottom = true;
     }
 
     void ZUILogComponent::BuildUI(ZEngine::UI::ZUIContext* ctx)
@@ -92,11 +93,36 @@ namespace Tetragrama::Components
 
         ZUISeparator(ctx);
 
+        // --- Search + level filter toolbar ---
+        static const char* kLevelLabels[6] = {"Trace", "Info", "Warn", "Error", "Critical", "All"};
+        ZUIBeginRow(ctx, "##log_toolbar", ZFill(), ZPx(24.f));
+            ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
+            ZUISpacer(ctx, 4.f);
+            ZUITextField(ctx, "##log_search", m_search_buf, sizeof(m_search_buf), 160.f);
+            ZUISpacer(ctx, 8.f);
+            ZUILabel(ctx, "Level:", ctx->Theme.TextDim);
+            ZUISpacer(ctx, 4.f);
+            if (ZUIBeginCombo(ctx, "##log_lvl", kLevelLabels[m_filter_level], ZEngine::UI::ZPx(90.f)))
+            {
+                for (int lvl = 0; lvl < 6; ++lvl)
+                {
+                    bool sel = (m_filter_level == lvl);
+                    if (ZUIComboItem(ctx, kLevelLabels[lvl], sel))
+                        m_filter_level = lvl;
+                }
+                ZUIEndCombo(ctx);
+            }
+        ZUIEndRow(ctx);
+
         // --- All log entries inside a scroll region ---
+        bool do_scroll;
         ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##log_scroll", ZFill(), ZFill());
         ZUIPaddingXY(scroll, 4.f, 2.f);
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+
+            do_scroll          = m_scroll_to_bottom;
+            m_scroll_to_bottom = false;
 
             int total = m_count < kMaxEntries ? m_count : kMaxEntries;
             int start = (m_count >= kMaxEntries) ? m_head : 0;
@@ -104,6 +130,15 @@ namespace Tetragrama::Components
             for (int i = 0; i < total; ++i)
             {
                 const LogEntry& e = m_ring[(start + i) % kMaxEntries];
+
+                // Level filter
+                if (m_filter_level < 5 && e.Level != (uint8_t)m_filter_level)
+                    continue;
+
+                // Search filter (case-sensitive strstr)
+                if (m_search_buf[0] && !strstr(e.Text, m_search_buf))
+                    continue;
+
                 ZUILabel(ctx, e.Text, e.Color);
             }
 
@@ -113,6 +148,9 @@ namespace Tetragrama::Components
                 m_head  = 0;
             }
         }
+
+        if (do_scroll)
+            ZUIScrollToBottom(ctx, "##log_scroll");
 
         ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx); // end panel

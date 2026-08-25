@@ -7,6 +7,7 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <cstdio>
 #include <cstring>
 
 using namespace ZEngine::UI;
@@ -42,7 +43,26 @@ namespace Tetragrama::Components
         panel->FloatPos[0] = sx;
         panel->FloatPos[1] = sy;
 
-        // Scene image fills the remaining space; used as drop target
+        // --- Viewport toolbar ---
+        ZUIBeginRow(ctx, "##vp_toolbar", ZFill(), ZPx(28.f));
+        ZUISmallButton(ctx, "T##gizmo"); // Translate stub
+        ZUISameLine(ctx);
+        ZUISmallButton(ctx, "R##gizmo"); // Rotate stub
+        ZUISameLine(ctx);
+        ZUISmallButton(ctx, "S##gizmo"); // Scale stub
+        ZUISpacer(ctx, 8.f);
+        {
+            char fps_buf[32];
+            static float s_fps = 0.f;
+            if (ctx->DeltaTime > 0.f)
+                s_fps = s_fps * 0.95f + (1.f / ctx->DeltaTime) * 0.05f;
+            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double)s_fps);
+            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
+        }
+        ZUIEndRow(ctx);
+        ZUISeparator(ctx);
+
+        // Scene image — also the drag-drop target and viewport-hover source
         ZUIBox* img_box = ZUIPushBox(ctx, "##scene_img", 11,
                                      ZUI_DrawBackground | ZUI_Clickable);
         img_box->Size[0]      = ZFill();
@@ -53,49 +73,38 @@ namespace Tetragrama::Components
         ZUISignal vp_sig = ZUISignalFromBox(ctx, img_box);
         ZUIPopBox(ctx);
 
-        // Gap 3: expose hover state so Editor can gate camera-controller routing
+        // Gap 3: viewport-hover → gate camera controller
         ctx->ViewportHovered = (vp_sig.Flags & ZUI_SignalHovered) != 0;
 
-        // Gap 2: accept file drops from ZUIProjectViewComponent
+        // Gap 2: accept file drops
         char drop_buf[512] = {};
         if (ZUIAcceptDrop(ctx, img_box, drop_buf, sizeof(drop_buf)) &&
             ZEngine::Helpers::secure_strlen(drop_buf) > 0)
         {
-            auto*       app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
             const char* dot = strrchr(drop_buf, '.');
-            if (dot && strcmp(dot, ".zescene") == 0)
-            {
+            if (dot && strcmp(dot, ".zescene") == 0) {
                 Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer,
                     Messengers::GenericMessage<std::string>>(
                         Tetragrama::EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE,
                         Messengers::GenericMessage<std::string>(drop_buf));
-            }
-            else if (dot && strcmp(dot, ".zemesh") == 0)
-            {
+            } else if (dot && strcmp(dot, ".zemesh") == 0) {
                 Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer,
                     Messengers::GenericMessage<std::string>>(
                         Tetragrama::EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH,
                         Messengers::GenericMessage<std::string>(drop_buf));
-            }
-            else if (dot && (strcmp(dot, ".glb")  == 0 || strcmp(dot, ".gltf") == 0 ||
-                             strcmp(dot, ".fbx")  == 0 || strcmp(dot, ".obj")  == 0))
-            {
-                if (app && app->Configuration)
-                {
-                    ZEngine::Helpers::secure_strncpy(
-                        app->Configuration->PendingImportPath,
-                        sizeof(app->Configuration->PendingImportPath),
-                        drop_buf, sizeof(app->Configuration->PendingImportPath) - 1);
-                    const char* name = strrchr(drop_buf, '/');
-                    name             = name ? name + 1 : drop_buf;
-                    ZEngine::Helpers::secure_strncpy(
-                        app->Configuration->PendingImportName,
-                        sizeof(app->Configuration->PendingImportName),
-                        name, sizeof(app->Configuration->PendingImportName) - 1);
-                    app->Configuration->ShowImporter  = true;
-                    app->Configuration->FocusImporter = true;
-                    ZENGINE_CORE_INFO("SceneViewport: queued '{}' for import", drop_buf)
-                }
+            } else if (app && app->Configuration && dot &&
+                       (strcmp(dot,".glb")==0 || strcmp(dot,".gltf")==0 ||
+                        strcmp(dot,".fbx")==0 || strcmp(dot,".obj")==0)) {
+                ZEngine::Helpers::secure_strncpy(app->Configuration->PendingImportPath,
+                    sizeof(app->Configuration->PendingImportPath),
+                    drop_buf, sizeof(app->Configuration->PendingImportPath)-1);
+                const char* name = strrchr(drop_buf,'/'); name = name ? name+1 : drop_buf;
+                ZEngine::Helpers::secure_strncpy(app->Configuration->PendingImportName,
+                    sizeof(app->Configuration->PendingImportName),
+                    name, sizeof(app->Configuration->PendingImportName)-1);
+                app->Configuration->ShowImporter  = true;
+                app->Configuration->FocusImporter = true;
             }
         }
 

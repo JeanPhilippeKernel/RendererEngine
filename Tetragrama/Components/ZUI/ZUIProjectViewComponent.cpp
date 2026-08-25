@@ -98,6 +98,14 @@ namespace Tetragrama::Components
             panel->FloatPos[0] = RegionX; panel->FloatPos[1] = RegionY;
         }
         if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
+
+        // --- Search row ---
+        ZUIBeginRow(ctx, "##proj_search_row", ZFill(), ZPx(24.f));
+            ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
+            ZUISpacer(ctx, 4.f);
+            ZUITextField(ctx, "##proj_search", m_search_buf, sizeof(m_search_buf), 160.f);
+        ZUIEndRow(ctx);
+
         ZUISeparator(ctx);
 
         // --- Cached directory entries (scrollable) ---
@@ -106,6 +114,9 @@ namespace Tetragrama::Components
         {
             const CachedEntry& e = m_entries[i];
             if (!e.name[0]) { continue; }
+
+            // Search filter
+            if (m_search_buf[0] && !strstr(e.name, m_search_buf)) { continue; }
 
             char row_key[32];
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
@@ -124,6 +135,33 @@ namespace Tetragrama::Components
                                    (uint32_t)ZEngine::Helpers::secure_strlen(e.full_path));
 
             ZUIEndRow(ctx);
+
+            // Context menu
+            char ctx_key[40];
+            snprintf(ctx_key, sizeof(ctx_key), "##proj_ctx_%u", i);
+            if (ZUIBeginPopupContextItem(ctx, ctx_key, row_sig))
+            {
+                if (e.is_dir)
+                {
+                    if (ZUIMenuItem(ctx, "Open##proj"))
+                    {
+                        auto next = m_current_path.Append(e.name);
+                        if (next.Succeeded()) { m_current_path = next.Value(); }
+                    }
+                }
+                else
+                {
+                    if (ZUIMenuItem(ctx, "Import##proj") && e.full_path[0])
+                    {
+                        ZEngine::Helpers::secure_strncpy(PendingImportPath,
+                                                          sizeof(PendingImportPath),
+                                                          e.full_path,
+                                                          sizeof(PendingImportPath) - 1);
+                        ShowImporter = true;
+                    }
+                }
+                ZUIEndContextMenu(ctx);
+            }
 
             if ((row_sig.Flags & ZUI_SignalClicked) && e.is_dir)
             {

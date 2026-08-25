@@ -33,9 +33,14 @@ namespace Tetragrama::Components
         CachedEntry*                          m_entries      = nullptr;
         uint32_t                              m_entry_count  = 0;
         bool                                  m_initialized  = false;
+        char                                  m_search_buf[256] = {};
 
         // Re-lists only when m_current_path != m_listed_path — NOT every frame
         void RefreshIfNeeded();
+
+    public:
+        char PendingImportPath[512] = {};
+        bool ShowImporter           = false;
     };
     ZDEFINE_PTR(ZUIProjectViewComponent);
 } // namespace Tetragrama::Components

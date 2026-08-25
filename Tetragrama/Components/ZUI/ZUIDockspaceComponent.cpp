@@ -7,6 +7,7 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Components
 {
+    static constexpr float k_dim[4]   = {0.55f, 0.55f, 0.60f, 1.f};
     static constexpr float kMenuH     = 26.f;
     static constexpr float kStatusH   = 28.f;
     static constexpr float kLeftW     = 0.18f;
@@ -58,53 +59,68 @@ namespace Tetragrama::Components
         bg->Flags    = bg->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         bg->FloatPos[0] = 0.f;
         bg->FloatPos[1] = 0.f;
-        bg->BgColor[0]  = 0.22f; bg->BgColor[1] = 0.22f;
-        bg->BgColor[2]  = 0.24f; bg->BgColor[3]  = 1.f;
+        bg->BgColor[0]  = 0.10f; bg->BgColor[1] = 0.10f;
+        bg->BgColor[2]  = 0.11f; bg->BgColor[3]  = 1.f;
+        bg->CornerRadius = 0.f;
 
         // --- Menu bar ---
-        ZUIBox* menu = ZUIBeginRow(ctx, "##menubar", ZFill(), ZPx(kMenuH));
-        menu->Flags  = menu->Flags | ZUI_DrawBackground;
-        menu->BgColor[0] = 0.28f; menu->BgColor[1] = 0.28f;
-        menu->BgColor[2] = 0.32f; menu->BgColor[3]  = 1.f;
-
-        ZUISpacer(ctx, 8.f);
-        ZUILabel(ctx, "ZodiacEngine", ctx->Theme.TextDefault);
-        ZUISpacer(ctx, 16.f);
-        ZUILabel(ctx, "|", ctx->Theme.TextDim);
-        ZUISpacer(ctx, 8.f);
-
-        if (ParentLayer && ParentLayer->CurrentApp)
+        if (ZUIBeginMenuBar(ctx))
         {
-            auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-            if (app->Configuration)
+            ZUISpacer(ctx, 4.f);
+
+            // "File" menu
+            if (ZUIBeginMenu(ctx, "File"))
             {
-                const char* sname = app->Configuration->ActiveSceneName.empty()
-                                  ? "-" : app->Configuration->ActiveSceneName.c_str();
-                char scene_buf[128];
-                snprintf(scene_buf, sizeof(scene_buf), "Scene: %s", sname);
-                ZUILabel(ctx, scene_buf, ctx->Theme.TextDim);
+                if (ZUIMenuItem(ctx, "New Scene"))        { /* TODO */ }
+                if (ZUIMenuItem(ctx, "Open Scene..."))    { /* TODO */ }
+                ZUISeparator(ctx);
+                if (ZUIMenuItem(ctx, "Save Scene"))       { /* TODO */ }
+                if (ZUIMenuItem(ctx, "Save Scene As...")) { /* TODO */ }
+                ZUISeparator(ctx);
+                if (ZUIMenuItem(ctx, "Quit"))             { /* TODO */ }
+                ZUIEndMenu(ctx);
             }
+
+            // "Edit" menu
+            if (ZUIBeginMenu(ctx, "Edit"))
+            {
+                if (ZUIMenuItem(ctx, "Undo", false)) {}
+                if (ZUIMenuItem(ctx, "Redo", false)) {}
+                ZUISeparator(ctx);
+                if (ZUIMenuItem(ctx, "Select All")) { /* TODO */ }
+                ZUIEndMenu(ctx);
+            }
+
+            // "View" menu — toggle panel visibility
+            if (ZUIBeginMenu(ctx, "View"))
+            {
+                if (Viewport)  { bool v = Viewport->Visible;  if (ZUIToggleButton(ctx, "Scene##vm",     &v, ZFill(), ZPx(22.f))) Viewport->Visible  = v; }
+                if (Hierarchy) { bool v = Hierarchy->Visible; if (ZUIToggleButton(ctx, "Hierarchy##vm", &v, ZFill(), ZPx(22.f))) Hierarchy->Visible = v; }
+                if (Inspector) { bool v = Inspector->Visible; if (ZUIToggleButton(ctx, "Inspector##vm", &v, ZFill(), ZPx(22.f))) Inspector->Visible = v; }
+                if (Log)       { bool v = Log->Visible;       if (ZUIToggleButton(ctx, "Console##vm",   &v, ZFill(), ZPx(22.f))) Log->Visible       = v; }
+                if (Project)   { bool v = Project->Visible;   if (ZUIToggleButton(ctx, "Project##vm",   &v, ZFill(), ZPx(22.f))) Project->Visible   = v; }
+                ZUIEndMenu(ctx);
+            }
+
+            ZUILabel(ctx, " | ", k_dim);
+
+            // Scene name
+            if (ParentLayer && ParentLayer->CurrentApp)
+            {
+                auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                if (app->Configuration)
+                {
+                    const char* sname = app->Configuration->ActiveSceneName.empty()
+                                      ? "-" : app->Configuration->ActiveSceneName.c_str();
+                    char scene_buf[128];
+                    snprintf(scene_buf, sizeof(scene_buf), "Scene: %s", sname);
+                    ZUILabel(ctx, scene_buf, k_dim);
+                }
+            }
+
+            ZUIEndMenuBar(ctx);
         }
 
-        ZUISpacer(ctx, 16.f);
-        ZUILabel(ctx, "|", ctx->Theme.TextDim);
-        ZUISpacer(ctx, 8.f);
-
-        // Panel visibility toggles
-        auto PanelToggle = [&](ZUIComponent* cmp, const char* label_on, const char* label_off) {
-            if (!cmp) { return; }
-            ZUISignal s = ZUIButton(ctx, cmp->Visible ? label_on : label_off);
-            if (s.Flags & ZUI_SignalClicked) { cmp->Visible = !cmp->Visible; }
-            ZUISpacer(ctx, 4.f);
-        };
-
-        PanelToggle(Hierarchy,  "Hierarchy##on",  "Hierarchy##off");
-        PanelToggle(Inspector,  "Inspector##on",  "Inspector##off");
-        PanelToggle(Viewport,   "Scene##on",      "Scene##off");
-        PanelToggle(Log,        "Console##on",    "Console##off");
-        PanelToggle(Project,    "Project##on",    "Project##off");
-
-        ZUIEndRow(ctx);
         ZUIEndColumn(ctx);
     }
 } // namespace Tetragrama::Components

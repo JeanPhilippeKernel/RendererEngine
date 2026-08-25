@@ -2,6 +2,7 @@
 #include <Tetragrama/Components/ZUI/ZUIInspectorViewComponent.h>
 #include <Tetragrama/Editor.h>
 #include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
@@ -90,6 +91,7 @@ namespace Tetragrama::Components
         panel->BorderColor[0] = ctx->Theme.PanelBorder[0]; panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2]; panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
+        panel->CornerRadius    = 6.f;
 
         // Title bar — draggable (Gap 4)
         ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZPx(26.f));
@@ -147,16 +149,40 @@ namespace Tetragrama::Components
         auto* tc = actor->GetComponent<TransformComponent>();
         if (tc)
         {
-            ZUITreeNode(ctx, "Transform##sec", &m_transform_open);
+            ZUICollapsingHeader(ctx, "Transform", &m_transform_open);
             if (m_transform_open)
             {
-                XYZDragRow(ctx, "##loc", "Location",
-                           &tc->Position.x, &tc->Position.y, &tc->Position.z, 0.05f);
-                // Rotation stored in radians; speed 0.01 rad/px ≈ 0.57°/px
-                XYZDragRow(ctx, "##rot", "Rotation (rad)",
-                           &tc->Rotation.x, &tc->Rotation.y, &tc->Rotation.z, 0.01f);
-                XYZDragRow(ctx, "##scl", "Scale",
-                           &tc->Scale.x, &tc->Scale.y, &tc->Scale.z, 0.01f);
+                float widths[2] = {80.f, 0.f};
+                ZUIBeginTable(ctx, "##transform_tbl", 2, widths);
+
+                    ZUITableNextRow(ctx);
+                    ZUITableSetColumn(ctx, 0);
+                    ZUITableSetColumn(ctx, 1);
+                    XYZDragRow(ctx, "##loc", "Location",
+                               &tc->Position.x, &tc->Position.y, &tc->Position.z, 0.05f);
+
+                    ZUITableNextRow(ctx);
+                    ZUITableSetColumn(ctx, 0);
+                    ZUITableSetColumn(ctx, 1);
+                    {
+                        float deg[3] = {
+                            tc->Rotation.x * 57.2957f,
+                            tc->Rotation.y * 57.2957f,
+                            tc->Rotation.z * 57.2957f
+                        };
+                        XYZDragRow(ctx, "##rot", "Rotation", &deg[0], &deg[1], &deg[2], 1.0f);
+                        tc->Rotation.x = deg[0] / 57.2957f;
+                        tc->Rotation.y = deg[1] / 57.2957f;
+                        tc->Rotation.z = deg[2] / 57.2957f;
+                    }
+
+                    ZUITableNextRow(ctx);
+                    ZUITableSetColumn(ctx, 0);
+                    ZUITableSetColumn(ctx, 1);
+                    XYZDragRow(ctx, "##scl", "Scale",
+                               &tc->Scale.x, &tc->Scale.y, &tc->Scale.z, 0.01f);
+
+                ZUIEndTable(ctx);
                 ZUISpacer(ctx, 4.f);
             }
         }
@@ -165,11 +191,30 @@ namespace Tetragrama::Components
         auto* mc = actor->GetComponent<MeshComponent>();
         if (mc)
         {
-            ZUITreeNode(ctx, "Mesh##sec", &m_mesh_open);
+            ZUICollapsingHeader(ctx, "Mesh", &m_mesh_open);
             if (m_mesh_open)
             {
                 std::string uuid_str = uuids::to_string(mc->MeshUUID);
                 PropRow(ctx, "##mesh_uuid", "UUID", uuid_str.c_str());
+                ZUISpacer(ctx, 4.f);
+            }
+        }
+
+        // --- Light section ---
+        auto* lc = actor->GetComponent<LightComponent>();
+        if (lc)
+        {
+            ZUICollapsingHeader(ctx, "Light", &m_light_open);
+            if (m_light_open)
+            {
+                ZUIBeginRow(ctx, "##light_intensity_row", ZFill(), ZPx(kRowH));
+                    ZUILabel(ctx, "Intensity", ctx->Theme.TextDim);
+                    ZUIDragFloat(ctx, "##light_intensity", &lc->Intensity, 0.1f, 120.f);
+                ZUIEndRow(ctx);
+
+                char type_buf[32];
+                snprintf(type_buf, sizeof(type_buf), "%d", (int)lc->LightType);
+                PropRow(ctx, "##light_type", "Type", type_buf);
                 ZUISpacer(ctx, 4.f);
             }
         }
