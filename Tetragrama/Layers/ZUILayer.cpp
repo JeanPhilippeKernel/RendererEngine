@@ -6,6 +6,7 @@
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <ZEngine/Windows/Events/KeyEvent.h>
+#include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <ZEngine/Windows/Events/MouseEvent.h>
 #include <ZEngine/Windows/Events/TextInputEvent.h>
 
@@ -62,7 +63,15 @@ namespace Tetragrama::Layers
         }
     }
 
-    bool ZUILayer::OnKeyPressed(KeyPressedEvent&)     { return false; }
+    bool ZUILayer::OnKeyPressed(KeyPressedEvent& e)
+    {
+        if (!m_ctx) { return false; }
+        if (e.GetKeyCode() == ZENGINE_KEY_BACKSPACE)
+        {
+            m_ctx->BackspacePressed = true;
+        }
+        return false;
+    }
     bool ZUILayer::OnKeyReleased(KeyReleasedEvent&)   { return false; }
 
     bool ZUILayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)

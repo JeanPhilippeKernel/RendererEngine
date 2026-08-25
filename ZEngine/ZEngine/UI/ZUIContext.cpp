@@ -30,8 +30,10 @@ namespace ZEngine::UI
         ctx->Root         = nullptr;
         ctx->Current      = nullptr;
         ctx->DeltaTime    = dt;
-        ctx->TextInputLen = 0;
-        // MousePressed, MouseReleased, ScrollDelta are intentionally NOT cleared here —
+        // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
+        // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
+        // must survive until ZUIEndFrame runs the interaction pass and widget logic.
+        // ──────────────────────────────────────────────────────────────────────────
         // GLFW events fire before BeginFrame (in window->PollEvent) and must survive
         // until ZUIEndFrame runs the interaction pass.
     }
@@ -41,14 +43,19 @@ namespace ZEngine::UI
         ZUILayoutSolve(ctx);
         ZUIInteractionPass(ctx);
 
+        // Save mouse position before clearing edge states — used for drag delta next frame
+        ctx->PrevMousePos[0] = ctx->MousePos[0];
+        ctx->PrevMousePos[1] = ctx->MousePos[1];
+
         // Clear per-frame edge states now that the interaction pass has consumed them
         for (int i = 0; i < 3; ++i)
         {
             ctx->MousePressed[i]  = false;
             ctx->MouseReleased[i] = false;
         }
-        ctx->ScrollDelta  = 0.f;
-        ctx->TextInputLen = 0;
+        ctx->ScrollDelta      = 0.f;
+        ctx->TextInputLen     = 0;
+        ctx->BackspacePressed = false;
     }
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)

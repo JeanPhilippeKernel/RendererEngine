@@ -74,7 +74,12 @@ namespace ZEngine::UI
         bool active  = (ctx->ActiveKey == box->Key);
 
         if (hovered)                                              { signal.Flags |= ZUI_SignalHovered; }
-        if (active  && ctx->MouseDown[0])                        { signal.Flags |= ZUI_SignalHeld; }
+        if (active && ctx->MouseDown[0])
+        {
+            signal.Flags        |= ZUI_SignalHeld;
+            signal.DragDelta[0]  = ctx->MousePos[0] - ctx->PrevMousePos[0];
+            signal.DragDelta[1]  = ctx->MousePos[1] - ctx->PrevMousePos[1];
+        }
         if (ctx->MousePressed[0]  && hovered)                    { signal.Flags |= ZUI_SignalPressed; }
         if (ctx->MouseReleased[0] && active && hovered)          { signal.Flags |= ZUI_SignalClicked | ZUI_SignalReleased; }
         if (ctx->ScrollDelta != 0.f && hovered)

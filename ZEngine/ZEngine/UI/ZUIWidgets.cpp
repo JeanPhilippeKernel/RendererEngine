@@ -1,3 +1,4 @@
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstring>
 #include <cstdio>
@@ -158,6 +159,105 @@ namespace ZEngine::UI
         }
 
         return sig;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIDragFloat
+    // ---------------------------------------------------------------
+
+    bool ZUIDragFloat(ZUIContext* ctx, const char* key, float* value, float speed, float width_px)
+    {
+        uint32_t key_len  = (uint32_t)strlen(key);
+        ZUIBox*  field    = ZUIPushBox(ctx, key, key_len,
+                                ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
+        field->Size[0]    = ZPx(width_px);
+        field->Size[1]    = ZPx(22.f);
+        field->BgColor[0] = 0.18f; field->BgColor[1] = 0.18f;
+        field->BgColor[2] = 0.22f; field->BgColor[3] = 1.f;
+        SetTextColor(field, k_text_default);
+
+        // Format the current value and store in FrameArena so the renderer can draw it
+        char val_buf[32];
+        snprintf(val_buf, sizeof(val_buf), "%.3f", (double)*value);
+        uint32_t vlen  = (uint32_t)Helpers::secure_strlen(val_buf);
+        field->Label   = ZUIPushStr(&ctx->FrameArena, val_buf, vlen);
+
+        ZUISignal sig  = ZUISignalFromBox(ctx, field);
+        ZUIPopBox(ctx);
+
+        bool changed = false;
+        if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+        {
+            *value  += sig.DragDelta[0] * speed;
+            changed  = true;
+        }
+        return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUITextField
+    // ---------------------------------------------------------------
+
+    bool ZUITextField(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, float width_px)
+    {
+        uint32_t key_len    = (uint32_t)strlen(key);
+        ZUIBox*  field      = ZUIPushBox(ctx, key, key_len,
+                                ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
+        field->Size[0]      = ZPx(width_px);
+        field->Size[1]      = ZPx(22.f);
+        field->BgColor[0]   = 0.14f; field->BgColor[1] = 0.14f;
+        field->BgColor[2]   = 0.18f; field->BgColor[3] = 1.f;
+        field->BorderColor[0] = 0.35f; field->BorderColor[1] = 0.35f;
+        field->BorderColor[2] = 0.45f; field->BorderColor[3] = 1.f;
+        SetTextColor(field, k_text_default);
+
+        bool is_focused = (ctx->FocusKey == field->Key);
+        bool changed    = false;
+
+        if (is_focused)
+        {
+            // Append text input characters
+            for (uint32_t i = 0; i < ctx->TextInputLen; ++i)
+            {
+                uint32_t cur = (uint32_t)Helpers::secure_strlen(buf);
+                if (cur + 1 < buf_size)
+                {
+                    buf[cur]     = ctx->TextInput[i];
+                    buf[cur + 1] = '\0';
+                    changed      = true;
+                }
+            }
+            // Backspace
+            if (ctx->BackspacePressed)
+            {
+                uint32_t cur = (uint32_t)Helpers::secure_strlen(buf);
+                if (cur > 0)
+                {
+                    buf[cur - 1] = '\0';
+                    changed      = true;
+                }
+            }
+            // Brighter border when focused
+            field->BorderColor[0] = 0.40f; field->BorderColor[1] = 0.65f;
+            field->BorderColor[2] = 0.90f; field->BorderColor[3] = 1.f;
+        }
+
+        // Build display string: add blinking cursor "|" when focused
+        char display[512];
+        if (is_focused)
+            snprintf(display, sizeof(display), "%s|", buf);
+        else
+            snprintf(display, sizeof(display), "%s",  buf);
+
+        uint32_t dlen  = (uint32_t)Helpers::secure_strlen(display);
+        field->Label   = ZUIPushStr(&ctx->FrameArena, display, dlen);
+
+        ZUISignal sig  = ZUISignalFromBox(ctx, field);
+        ZUIPopBox(ctx);
+
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
+
+        return changed;
     }
 
 } // namespace ZEngine::UI

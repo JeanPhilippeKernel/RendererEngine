@@ -23,7 +23,7 @@ namespace Tetragrama::Components
     static constexpr float kLabelW   = 72.f;
     static constexpr float kRowH     = 21.f;
 
-    // A label + value row for a single named property
+    // Label + read-only value row
     static void PropRow(ZUIContext* ctx, const char* row_key, const char* label, const char* value)
     {
         ZUIBeginRow(ctx, row_key, ZFill(), ZPx(kRowH));
@@ -33,18 +33,33 @@ namespace Tetragrama::Components
             lbl->TextColor[0] = k_dim[0]; lbl->TextColor[1] = k_dim[1];
             lbl->TextColor[2] = k_dim[2]; lbl->TextColor[3] = k_dim[3];
             ZUIPopBox(ctx);
-
             ZUILabel(ctx, value, k_text);
         ZUIEndRow(ctx);
     }
 
-    // Three-float XYZ display row (read-only in Phase 9; editable widgets come in Phase 10)
-    static void XYZRow(ZUIContext* ctx, const char* row_key, const char* label,
-                       float x, float y, float z)
+    // Label + three DragFloat fields on one row — editable XYZ
+    static bool XYZDragRow(ZUIContext* ctx,
+                            const char* row_key, const char* label,
+                            float* x, float* y, float* z, float speed)
     {
-        char val[64];
-        snprintf(val, sizeof(val), "%.3f  %.3f  %.3f", (double)x, (double)y, (double)z);
-        PropRow(ctx, row_key, label, val);
+        ZUIBeginRow(ctx, row_key, ZFill(), ZPx(kRowH));
+            ZUIBox* lbl = ZUIPushBox(ctx, label, (uint32_t)ZEngine::Helpers::secure_strlen(label), ZUI_DrawText);
+            lbl->Size[0]      = ZPx(kLabelW);
+            lbl->Size[1]      = ZPx(kRowH);
+            lbl->TextColor[0] = k_dim[0]; lbl->TextColor[1] = k_dim[1];
+            lbl->TextColor[2] = k_dim[2]; lbl->TextColor[3] = k_dim[3];
+            ZUIPopBox(ctx);
+
+            // Build unique per-axis keys from the row key
+            char kx[40], ky[40], kz[40];
+            snprintf(kx, sizeof(kx), "##x_%s", row_key + 2);
+            snprintf(ky, sizeof(ky), "##y_%s", row_key + 2);
+            snprintf(kz, sizeof(kz), "##z_%s", row_key + 2);
+            bool cx = ZUIDragFloat(ctx, kx, x, speed, 54.f);
+            bool cy = ZUIDragFloat(ctx, ky, y, speed, 54.f);
+            bool cz = ZUIDragFloat(ctx, kz, z, speed, 54.f);
+        ZUIEndRow(ctx);
+        return cx || cy || cz;
     }
 
     // ---------------------------------------------------------------
@@ -101,9 +116,14 @@ namespace Tetragrama::Components
             hdr->BgColor[0] = 0.18f; hdr->BgColor[1] = 0.18f;
             hdr->BgColor[2] = 0.22f; hdr->BgColor[3] = 1.f;
 
-                // Name (read-only display; edit comes in Phase 10)
-                const char* actor_name = (nc && nc->Value[0]) ? nc->Value : "Actor";
-                ZUILabel(ctx, actor_name);
+                if (nc)
+                {
+                    ZUITextField(ctx, "##actor_name_field", nc->Value, sizeof(nc->Value), 200.f);
+                }
+                else
+                {
+                    ZUILabel(ctx, "Actor");
+                }
                 ZUILabel(ctx, "Actor", k_dim);
 
             ZUIEndColumn(ctx);
@@ -118,13 +138,13 @@ namespace Tetragrama::Components
             ZUITreeNode(ctx, "Transform##sec", &m_transform_open);
             if (m_transform_open)
             {
-                constexpr float kDeg = 180.f / 3.14159265f;
-                XYZRow(ctx, "##loc", "Location",
-                       tc->Position.x, tc->Position.y, tc->Position.z);
-                XYZRow(ctx, "##rot", "Rotation",
-                       tc->Rotation.x * kDeg, tc->Rotation.y * kDeg, tc->Rotation.z * kDeg);
-                XYZRow(ctx, "##scl", "Scale",
-                       tc->Scale.x, tc->Scale.y, tc->Scale.z);
+                XYZDragRow(ctx, "##loc", "Location",
+                           &tc->Position.x, &tc->Position.y, &tc->Position.z, 0.05f);
+                // Rotation stored in radians; speed 0.01 rad/px ≈ 0.57°/px
+                XYZDragRow(ctx, "##rot", "Rotation (rad)",
+                           &tc->Rotation.x, &tc->Rotation.y, &tc->Rotation.z, 0.01f);
+                XYZDragRow(ctx, "##scl", "Scale",
+                           &tc->Scale.x, &tc->Scale.y, &tc->Scale.z, 0.01f);
                 ZUISpacer(ctx, 4.f);
             }
         }

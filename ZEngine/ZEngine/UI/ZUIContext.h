@@ -47,11 +47,13 @@ namespace ZEngine::UI
 
         // input state — written by ZUILayer each frame before ZUIBeginFrame
         float              MousePos[2]      = {};
+        float              PrevMousePos[2]  = {};  // saved at end of ZUIEndFrame for drag-delta
         bool               MouseDown[3]     = {};
         bool               MousePressed[3]  = {};
         bool               MouseReleased[3] = {};
         float              ScrollDelta      = 0.f;
         float              DeltaTime        = 0.f;
+        bool               BackspacePressed = false; // set by ZUILayer::OnKeyPressed, cleared in ZUIEndFrame
 
         // interaction state — updated by ZUIInteractionPass
         uint64_t           HotKey    = 0;

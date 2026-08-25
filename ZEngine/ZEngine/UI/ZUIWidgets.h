@@ -51,4 +51,16 @@ namespace ZEngine::UI
     // *open is toggled on click. Returns signal from the row box.
     ZUISignal ZUITreeNode(ZUIContext* ctx, const char* label, bool* open);
 
+    // Drag to edit a single float value. Horizontal mouse drag changes *value
+    // by delta * speed. Returns true if *value changed this frame.
+    // width_px controls the box width; typically 60–80 px inside a row.
+    bool ZUIDragFloat(ZUIContext* ctx, const char* key,
+                      float* value, float speed = 0.05f, float width_px = 60.f);
+
+    // Single-line editable text field. When focused (after a click), text-input
+    // events append to buf and backspace removes the last character.
+    // Returns true if buf changed this frame.
+    bool ZUITextField(ZUIContext* ctx, const char* key,
+                      char* buf, uint32_t buf_size, float width_px = 160.f);
+
 } // namespace ZEngine::UI
