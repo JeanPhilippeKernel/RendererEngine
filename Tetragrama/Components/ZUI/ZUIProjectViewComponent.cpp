@@ -81,7 +81,7 @@ namespace Tetragrama::Components
         panel->EdgeSoftness    = 0.f;
 
         // --- Header: draggable title + path + up button ---
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZPx(24.f));
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZSPx(ctx, 24.f));
         hdr->Flags  = hdr->Flags | ZUI_Clickable;
             ZUILabel(ctx, Name ? Name : "Project", ctx->Theme.TextDim);
             ZUISpacer(ctx, 4.f);
@@ -101,7 +101,7 @@ namespace Tetragrama::Components
         if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
 
         // --- Search row ---
-        ZUIBeginRow(ctx, "##proj_search_row", ZFill(), ZPx(24.f));
+        ZUIBeginRow(ctx, "##proj_search_row", ZFill(), ZSPx(ctx, 24.f));
             ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
             ZUISpacer(ctx, 4.f);
             ZUITextField(ctx, "##proj_search", m_search_buf, sizeof(m_search_buf), 160.f);
@@ -122,7 +122,7 @@ namespace Tetragrama::Components
             char row_key[32];
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
 
-            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(20.f));
+            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 20.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
 
             ZUILabel(ctx, e.is_dir ? "[D] " : "    ", ctx->Theme.TextDim);

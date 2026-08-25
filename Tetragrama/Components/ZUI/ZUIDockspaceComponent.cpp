@@ -137,11 +137,11 @@ namespace Tetragrama::Components
             // "View" menu — toggle panel visibility
             if (ZUIBeginMenu(ctx, "View"))
             {
-                if (Viewport)  { bool v = Viewport->Visible;  if (ZUIToggleButton(ctx, "Scene##vm",     &v, ZFill(), ZPx(22.f))) Viewport->Visible  = v; }
-                if (Hierarchy) { bool v = Hierarchy->Visible; if (ZUIToggleButton(ctx, "Hierarchy##vm", &v, ZFill(), ZPx(22.f))) Hierarchy->Visible = v; }
-                if (Inspector) { bool v = Inspector->Visible; if (ZUIToggleButton(ctx, "Inspector##vm", &v, ZFill(), ZPx(22.f))) Inspector->Visible = v; }
-                if (Log)       { bool v = Log->Visible;       if (ZUIToggleButton(ctx, "Console##vm",   &v, ZFill(), ZPx(22.f))) Log->Visible       = v; }
-                if (Project)   { bool v = Project->Visible;   if (ZUIToggleButton(ctx, "Project##vm",   &v, ZFill(), ZPx(22.f))) Project->Visible   = v; }
+                if (Viewport)  { bool v = Viewport->Visible;  if (ZUIToggleButton(ctx, "Scene##vm",     &v, ZFill(), ZSPx(ctx, 22.f))) Viewport->Visible  = v; }
+                if (Hierarchy) { bool v = Hierarchy->Visible; if (ZUIToggleButton(ctx, "Hierarchy##vm", &v, ZFill(), ZSPx(ctx, 22.f))) Hierarchy->Visible = v; }
+                if (Inspector) { bool v = Inspector->Visible; if (ZUIToggleButton(ctx, "Inspector##vm", &v, ZFill(), ZSPx(ctx, 22.f))) Inspector->Visible = v; }
+                if (Log)       { bool v = Log->Visible;       if (ZUIToggleButton(ctx, "Console##vm",   &v, ZFill(), ZSPx(ctx, 22.f))) Log->Visible       = v; }
+                if (Project)   { bool v = Project->Visible;   if (ZUIToggleButton(ctx, "Project##vm",   &v, ZFill(), ZSPx(ctx, 22.f))) Project->Visible   = v; }
                 ZUIEndMenu(ctx);
             }
 

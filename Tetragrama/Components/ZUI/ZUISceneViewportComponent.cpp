@@ -50,7 +50,7 @@ namespace Tetragrama::Components
         panel->EdgeSoftness    = 0.f;
 
         // --- Viewport toolbar ---
-        ZUIBeginRow(ctx, "##vp_toolbar", ZFill(), ZPx(28.f));
+        ZUIBeginRow(ctx, "##vp_toolbar", ZFill(), ZSPx(ctx, 28.f));
         ZUISmallButton(ctx, "T##gizmo"); // Translate stub
         ZUISameLine(ctx);
         ZUISmallButton(ctx, "R##gizmo"); // Rotate stub

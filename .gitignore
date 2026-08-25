@@ -428,3 +428,4 @@ SampleProject/
 # Presentation exports
 *.pdf
 *.pptx
+.claude/worktrees/

@@ -25,10 +25,10 @@ namespace Tetragrama::Components
     // Label + read-only value row
     static void PropRow(ZUIContext* ctx, const char* row_key, const char* label, const char* value)
     {
-        ZUIBeginRow(ctx, row_key, ZFill(), ZPx(kRowH));
+        ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, kRowH));
             ZUIBox* lbl = ZUIPushBox(ctx, label, (uint32_t)ZEngine::Helpers::secure_strlen(label), ZUI_DrawText);
             lbl->Size[0]      = ZPx(kLabelW);
-            lbl->Size[1]      = ZPx(kRowH);
+            lbl->Size[1]      = ZSPx(ctx, kRowH);
             lbl->TextColor[0] = ctx->Theme.TextDim[0]; lbl->TextColor[1] = ctx->Theme.TextDim[1];
             lbl->TextColor[2] = ctx->Theme.TextDim[2]; lbl->TextColor[3] = ctx->Theme.TextDim[3];
             ZUIPopBox(ctx);
@@ -41,10 +41,10 @@ namespace Tetragrama::Components
                             const char* row_key, const char* label,
                             float* x, float* y, float* z, float speed)
     {
-        ZUIBeginRow(ctx, row_key, ZFill(), ZPx(kRowH));
+        ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, kRowH));
             ZUIBox* lbl = ZUIPushBox(ctx, label, (uint32_t)ZEngine::Helpers::secure_strlen(label), ZUI_DrawText);
             lbl->Size[0]      = ZPx(kLabelW);
-            lbl->Size[1]      = ZPx(kRowH);
+            lbl->Size[1]      = ZSPx(ctx, kRowH);
             lbl->TextColor[0] = ctx->Theme.TextDim[0]; lbl->TextColor[1] = ctx->Theme.TextDim[1];
             lbl->TextColor[2] = ctx->Theme.TextDim[2]; lbl->TextColor[3] = ctx->Theme.TextDim[3];
             ZUIPopBox(ctx);
@@ -95,7 +95,7 @@ namespace Tetragrama::Components
         ZUIBoxSetCornerRadius(panel, 0.f);
 
         // Title bar — draggable (Gap 4)
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZPx(26.f));
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZSPx(ctx, 26.f));
         hdr->Flags  = hdr->Flags | ZUI_Clickable;
             ZUILabel(ctx, Name ? Name : "Inspector");
             ZUISignal drag_sig = ZUISignalFromBox(ctx, hdr);
@@ -126,7 +126,7 @@ namespace Tetragrama::Components
         // --- Actor header ---
         auto* nc = actor->GetComponent<NameComponent>();
         {
-            ZUIBox* hdr = ZUIBeginColumn(ctx, "##actor_hdr_card", ZFill(), ZPx(42.f));
+            ZUIBox* hdr = ZUIBeginColumn(ctx, "##actor_hdr_card", ZFill(), ZSPx(ctx, 42.f));
             hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
             ZUIBoxSetColor(hdr, 0.18f, 0.18f, 0.22f, 1.f);
 
@@ -207,7 +207,7 @@ namespace Tetragrama::Components
             ZUICollapsingHeader(ctx, "Light", &m_light_open);
             if (m_light_open)
             {
-                ZUIBeginRow(ctx, "##light_intensity_row", ZFill(), ZPx(kRowH));
+                ZUIBeginRow(ctx, "##light_intensity_row", ZFill(), ZSPx(ctx, kRowH));
                     ZUILabel(ctx, "Intensity", ctx->Theme.TextDim);
                     ZUIDragFloat(ctx, "##light_intensity", &lc->Intensity, 0.1f, 120.f);
                 ZUIEndRow(ctx);

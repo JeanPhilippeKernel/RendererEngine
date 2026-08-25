@@ -78,7 +78,7 @@ namespace Tetragrama::Components
         panel->EdgeSoftness    = 0.f;
 
         // --- Header — draggable ---
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(28.f));
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZSPx(ctx, 28.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
         ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
             ZUISpacer(ctx, 6.f);
@@ -154,7 +154,7 @@ namespace Tetragrama::Components
         {
             static const float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
 
-            ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(26.f));
+            ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZSPx(ctx, 26.f));
             root_row->Flags  = root_row->Flags | ZUI_DrawBackground | ZUI_Clickable;
             ZUIBoxSetColor(root_row, 0.30f, 0.30f, 0.36f, 0.18f);
 
@@ -239,7 +239,7 @@ namespace Tetragrama::Components
                 snprintf(row_key, sizeof(row_key), "##hr_%u_%u",
                          nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
 
-                ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(24.f));
+                ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 24.f));
                 row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
                 if (selected) {
                     ZUIBoxSetColorArr(row, k_sel);

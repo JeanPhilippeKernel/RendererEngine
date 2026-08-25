@@ -86,13 +86,13 @@ namespace ZEngine::UI
         // Fill subtracts parent padding from available space.
         // Child placement starts at parent->ScreenMin + parent padding.
         // ---------------------------------------------------------------
+        // Pass 2a: resolve extrinsic sizes only (no positions yet)
         for (uint32_t i = 0; i < node_count; ++i)
         {
             ZUIBox* box    = nodes[i];
             ZUIBox* parent = box->Parent;
             int     layout = parent ? (int)parent->LayoutAxis : 0;
 
-            // --- Resolve extrinsic sizes ---
             for (int axis = 0; axis < 2; ++axis)
             {
                 ZUISize s = box->Size[axis];
@@ -105,18 +105,14 @@ namespace ZEngine::UI
                     case ZUISizeKind::Fill:
                     {
                         if (!parent) { box->ComputedSize[axis] = 0.f; break; }
-
                         float ps = PadStart(parent, axis);
                         float pe = PadEnd  (parent, axis);
-
                         if (axis != layout)
                         {
-                            // Cross axis: fill parent minus padding
                             box->ComputedSize[axis] = parent->ComputedSize[axis] - ps - pe;
                         }
                         else
                         {
-                            // Layout axis: share remaining space (after padding) among Fill siblings
                             float    non_fill = 0.f;
                             uint32_t fill_n   = 0;
                             for (ZUIBox* sib = parent->FirstChild; sib; sib = sib->NextSib)
@@ -134,8 +130,60 @@ namespace ZEngine::UI
                         break;
                 }
             }
+        }
 
-            // --- Compute screen position ---
+        // ---------------------------------------------------------------
+        // Pass 2.5 — enforce constraints: when children overflow a parent
+        // along its layout axis, shrink flexible (low-strictness) children
+        // proportionally to absorb the overflow. Prevents panel content from
+        // bleeding outside its bounds. Strictness 1.0 = rigid, 0.0 = fully
+        // flexible. ZFill defaults to Strictness=0, ZPx to Strictness=1.
+        // ---------------------------------------------------------------
+        for (uint32_t i = 0; i < node_count; ++i)
+        {
+            ZUIBox* box = nodes[i];
+            if (!box->FirstChild) { continue; }
+
+            int axis = (int)box->LayoutAxis;
+            float ps = PadStart(box, axis);
+            float pe = PadEnd(box, axis);
+            float available = box->ComputedSize[axis] - ps - pe;
+
+            float total = 0.f;
+            for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
+                total += c->ComputedSize[axis];
+
+            float overflow = total - available;
+            if (overflow <= 0.001f) { continue; }
+
+            // Weighted flexibility pool: each child contributes (1-strictness) fraction
+            float flex_pool = 0.f;
+            for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
+            {
+                float flex = 1.f - c->Size[axis].Strictness;
+                if (flex > 0.f) { flex_pool += c->ComputedSize[axis] * flex; }
+            }
+            if (flex_pool <= 0.f) { continue; }
+
+            for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
+            {
+                float flex = 1.f - c->Size[axis].Strictness;
+                if (flex <= 0.f) { continue; }
+                float share   = c->ComputedSize[axis] * flex / flex_pool;
+                c->ComputedSize[axis] -= overflow * share;
+                if (c->ComputedSize[axis] < 0.f) { c->ComputedSize[axis] = 0.f; }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Pass 3 — assign screen positions (top-down, after sizes finalized)
+        // ---------------------------------------------------------------
+        for (uint32_t i = 0; i < node_count; ++i)
+        {
+            ZUIBox* box    = nodes[i];
+            ZUIBox* parent = box->Parent;
+            int     layout = parent ? (int)parent->LayoutAxis : 0;
+
             if (!parent)
             {
                 box->ScreenMin[0] = 0.f;
@@ -153,9 +201,6 @@ namespace ZEngine::UI
                     }
                     else if (axis == layout)
                     {
-                        // Flow: after previous sibling, or at parent origin + start padding.
-                        // For scrollable containers, subtract the scroll offset from the
-                        // first child's position so the whole content block shifts up/left.
                         float ps     = PadStart(parent, axis);
                         float scroll = 0.f;
                         if (!box->PrevSib && (parent->Flags & ZUI_Scrollable))
@@ -170,7 +215,6 @@ namespace ZEngine::UI
                     }
                     else
                     {
-                        // Cross axis: aligned to parent origin + cross-start padding
                         float ps = PadStart(parent, axis);
                         box->ScreenMin[axis] = parent->ScreenMin[axis] + ps;
                     }
@@ -182,7 +226,7 @@ namespace ZEngine::UI
         }
 
         // ---------------------------------------------------------------
-        // Pass 3 — compute MaxScrollY for every ZUI_Scrollable box so that
+        // Pass 4 — compute MaxScrollY for every ZUI_Scrollable box so that
         // ZUIInteractionPass can clamp the scroll offset.
         // ---------------------------------------------------------------
         for (uint32_t i = 0; i < node_count; ++i)

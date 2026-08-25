@@ -69,7 +69,7 @@ namespace Tetragrama::Components
         panel->EdgeSoftness    = 0.f;
 
         // --- Header row — draggable ---
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(28.f));
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZSPx(ctx, 28.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
         ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
             ZUISpacer(ctx, 6.f);
@@ -93,7 +93,7 @@ namespace Tetragrama::Components
 
         // --- Search + level filter toolbar ---
         static const char* kLevelLabels[6] = {"Trace", "Info", "Warn", "Error", "Critical", "All"};
-        ZUIBeginRow(ctx, "##log_toolbar", ZFill(), ZPx(24.f));
+        ZUIBeginRow(ctx, "##log_toolbar", ZFill(), ZSPx(ctx, 24.f));
             ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
             ZUISpacer(ctx, 4.f);
             ZUITextField(ctx, "##log_search", m_search_buf, sizeof(m_search_buf), 160.f);
