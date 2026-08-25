@@ -177,6 +177,12 @@ namespace ZEngine::UI
         if (sibling->PctOfParent < kMin) { sibling->PctOfParent = kMin; }
     }
 
+    ZUIDockNode* ZUIDockFindLeaf(ZUIDockTree* tree, uint64_t key)
+    {
+        if (!tree || !tree->Root) { return nullptr; }
+        return FindLeaf(tree->Root, key);
+    }
+
     uint64_t ZUIDockHashName(const char* name)
     {
         uint64_t h = 14695981039346656037ULL;

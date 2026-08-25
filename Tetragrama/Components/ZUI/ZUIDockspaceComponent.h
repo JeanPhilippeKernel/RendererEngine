@@ -29,6 +29,22 @@ namespace Tetragrama::Components
 
     private:
         ZEngine::UI::ZUIDockTree* m_dock_tree = nullptr;
+
+        // Workspace resize state — separate from the normal hit-test pass.
+        // RAD Debugger style: dividers check mouse bounds directly, not through
+        // the z-ordered box tree. This gives dividers priority over panel content.
+        struct Divider {
+            const char* leaf_name;  // which dock leaf to resize on drag
+            bool        horizontal; // true = drag Y (top/bottom split), false = drag X
+            bool        dragging = false;
+        };
+        // Four dividers: left|center, center|right, top|bottom, left-bottom|right-bottom
+        Divider m_dividers[4] = {
+            {"Hierarchy", false, false},  // vertical line: hierarchy | viewport
+            {"Inspector", false, false},  // vertical line: viewport | inspector (resize right)
+            {"Viewport",  true,  false},  // horizontal line: viewport | bottom panels
+            {"Log",       false, false},  // vertical line: log | project
+        };
     };
     ZDEFINE_PTR(ZUIDockspaceComponent);
 } // namespace Tetragrama::Components

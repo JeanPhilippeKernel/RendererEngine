@@ -238,35 +238,81 @@ namespace Tetragrama::Components
             ZUIEndMenuBar(ctx);
         }
 
-        // --- Resize handle: vertical strip between Hierarchy and Viewport ---
+        // --- Workspace resize dividers (RAD Debugger style) ---
+        // Direct mouse-bound tracking — bypasses z-ordered hit-test so dividers
+        // always have priority over panel content, regardless of render order.
         if (m_dock_tree)
         {
-            float hr[4] = {}, vr[4] = {};
-            bool got_h = ZUIDockRectForKey(m_dock_tree, ZUIDockHashName("Hierarchy"), hr);
-            bool got_v = ZUIDockRectForKey(m_dock_tree, ZUIDockHashName("Viewport"),  vr);
-            if (got_h && got_v)
+            static constexpr float kDivW = 6.f; // grab width in logical px
+
+            for (int di = 0; di < 4; ++di)
             {
-                // Place a 4-px wide invisible drag strip at the boundary
-                float strip_x = hr[2] - 2.f;
-                float strip_y = hr[1];
-                float strip_h = hr[3] - hr[1];
+                Divider& div = m_dividers[di];
+                float lr[4] = {};
+                if (!ZUIDockRectForKey(m_dock_tree, ZUIDockHashName(div.leaf_name), lr))
+                    continue;
 
-                ZUIBox* strip = ZUIPushBox(ctx, "##dock_resize_hv", 8,
-                                            ZUI_FloatX | ZUI_FloatY | ZUI_Clickable);
-                strip->Size[0]     = ZPx(4.f);
-                strip->Size[1]     = ZPx(strip_h);
-                strip->FloatPos[0] = strip_x;
-                strip->FloatPos[1] = strip_y;
-                ZUIBoxSetColor(strip, 0.f, 0.f, 0.f, 0.f);
-                ZUISignal rs = ZUISignalFromBox(ctx, strip);
-                ZUIPopBox(ctx);
-
-                if ((rs.Flags & ZUI_SignalHeld) && rs.DragDelta[0] != 0.f)
-                {
-                    ZUIDockNode* hier_leaf = m_dock_tree->Root ? m_dock_tree->Root->First : nullptr;
-                    if (hier_leaf)
-                        ZUIDockResize(m_dock_tree, hier_leaf, rs.DragDelta[0]);
+                // Divider rect: at the right/bottom edge of the leaf
+                float dx0, dy0, dx1, dy1;
+                if (!div.horizontal)
+                {   // vertical divider (left|right split)
+                    dx0 = lr[2] - kDivW * 0.5f;
+                    dy0 = lr[1];
+                    dx1 = lr[2] + kDivW * 0.5f;
+                    dy1 = lr[3];
                 }
+                else
+                {   // horizontal divider (top|bottom split)
+                    dx0 = lr[0];
+                    dy0 = lr[3] - kDivW * 0.5f;
+                    dx1 = lr[2];
+                    dy1 = lr[3] + kDivW * 0.5f;
+                }
+
+                float mx = ctx->MousePos[0], my = ctx->MousePos[1];
+                bool  in_rect = (mx >= dx0 && mx <= dx1 && my >= dy0 && my <= dy1);
+
+                // Start drag when mouse pressed in divider area
+                if (ctx->MousePressed[0] && in_rect)  div.dragging = true;
+                if (ctx->MouseReleased[0])             div.dragging = false;
+
+                // Apply resize while dragging
+                if (div.dragging && ctx->MouseDown[0])
+                {
+                    float delta = div.horizontal
+                                ? (ctx->MousePos[1] - ctx->PrevMousePos[1])
+                                : (ctx->MousePos[0] - ctx->PrevMousePos[0]);
+                    if (delta != 0.f)
+                    {
+                        uint64_t key = ZUIDockHashName(div.leaf_name);
+                        ZUIDockNode* leaf = ZUIDockFindLeaf(m_dock_tree, key);
+                        if (leaf) ZUIDockResize(m_dock_tree, leaf, delta);
+                    }
+                }
+
+                // Visual indicator: thin colored line at the divider, brighter on hover/drag
+                bool  highlight = in_rect || div.dragging;
+                float vis_col[4] = { highlight ? 0.45f : 0.22f,
+                                     highlight ? 0.55f : 0.28f,
+                                     highlight ? 0.70f : 0.35f, 1.f };
+                char  vis_key[32];
+                snprintf(vis_key, sizeof(vis_key), "##divvis_%d", di);
+                ZUIBox* vis = ZUIPushBox(ctx, vis_key, (uint32_t)strlen(vis_key),
+                                         ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                if (!div.horizontal) {
+                    vis->Size[0] = ZPx(1.f);
+                    vis->Size[1] = ZPx(dy1 - dy0);
+                    vis->FloatPos[0] = (dx0 + dx1) * 0.5f;
+                    vis->FloatPos[1] = dy0;
+                } else {
+                    vis->Size[0] = ZPx(dx1 - dx0);
+                    vis->Size[1] = ZPx(1.f);
+                    vis->FloatPos[0] = dx0;
+                    vis->FloatPos[1] = (dy0 + dy1) * 0.5f;
+                }
+                vis->EdgeSoftness = 0.f;
+                ZUIBoxSetColorArr(vis, vis_col);
+                ZUIPopBox(ctx);
             }
         }
 

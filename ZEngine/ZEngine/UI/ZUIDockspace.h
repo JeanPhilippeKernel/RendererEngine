@@ -95,4 +95,7 @@ namespace ZEngine::UI
     // Hash a panel name to a content key.
     uint64_t ZUIDockHashName(const char* name);
 
+    // Find the leaf node whose ContentKey == key. Returns nullptr if not found.
+    ZUIDockNode* ZUIDockFindLeaf(ZUIDockTree* tree, uint64_t key);
+
 } // namespace ZEngine::UI
