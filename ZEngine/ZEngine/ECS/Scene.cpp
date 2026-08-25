@@ -1,4 +1,5 @@
 #include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ZEngineDef.h>
 
@@ -68,6 +69,20 @@ namespace ZEngine::ECS
             rt.Scale    = t.Scale;
             out.push(rt);
         });
+    }
+
+    void Scene::AddComponentRaw(EntityID id, ComponentTypeID type_id)
+    {
+        if (!IsAlive(id) || MaskHas(m_registry.GetMask(id), type_id))
+        {
+            return;
+        }
+
+        const ComponentMeta* meta = ComponentReflectionRegistry::Get().Lookup(type_id);
+        if (meta && meta->Add)
+        {
+            meta->Add(*this, id);
+        }
     }
 
     void* Scene::GetComponentRaw(EntityID id, ComponentTypeID type_id)

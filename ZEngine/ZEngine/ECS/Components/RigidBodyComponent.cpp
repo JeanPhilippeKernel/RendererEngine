@@ -1,5 +1,6 @@
 #include <ZEngine/ECS/Components/RigidBodyComponent.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
+#include <ZEngine/ECS/Scene.h>
 
 namespace ZEngine::ECS::Components
 {
@@ -29,6 +30,7 @@ namespace ZEngine::ECS::Components
             .Fields     = kFields,
             .FieldCount = static_cast<uint32_t>(sizeof(kFields) / sizeof(kFields[0])),
             .Category   = "Physics",
+            .Add        = [](Scene& scene, EntityID id) { scene.AddComponent<RBC>(id, {}); },
         });
     }
 } // namespace ZEngine::ECS::Components
