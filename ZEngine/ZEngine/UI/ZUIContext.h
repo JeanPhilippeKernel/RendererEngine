@@ -119,6 +119,17 @@ namespace ZEngine::UI
         // ZUIBeginDisabled / ZUIEndDisabled — widgets skip Clickable and dim colours
         bool               Disabled          = false;
         int                DisabledDepth     = 0; // supports nesting
+
+        // ---------------------------------------------------------------
+        // Popup system
+        // ZUIOpenPopup → sets OpenPopupKey; ZUIEndFrame promotes to ActivePopupKey.
+        // ZUIBeginPopup returns true when active and pushes a floated root-level box.
+        // ---------------------------------------------------------------
+        uint64_t           OpenPopupKey     = 0;     // requested this frame
+        float              PopupPos[2]      = {};    // screen position to open at
+        uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
+        ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame
+        ZUIBox*            PopupSavedParent = nullptr; // ctx->Current saved during popup build
     };
 
     ZDEFINE_PTR(ZUIContext);

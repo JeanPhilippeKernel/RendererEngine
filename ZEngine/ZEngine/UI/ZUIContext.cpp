@@ -62,6 +62,15 @@ namespace ZEngine::UI
         ctx->ScrollDelta      = 0.f;
         ctx->TextInputLen     = 0;
         ctx->BackspacePressed = false;
+
+        // Popup: promote open request → active; reset per-frame box pointer
+        if (ctx->OpenPopupKey != 0)
+        {
+            ctx->ActivePopupKey = ctx->OpenPopupKey;
+            ctx->OpenPopupKey   = 0;
+        }
+        ctx->ActivePopupBox   = nullptr; // rebuilt fresh each frame
+        ctx->PopupSavedParent = nullptr;
     }
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)

@@ -294,6 +294,90 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // Popup / overlay system
+    // ---------------------------------------------------------------
+
+    void ZUIOpenPopup(ZUIContext* ctx, const char* key, float pos_x, float pos_y)
+    {
+        ctx->OpenPopupKey  = ZUIHashStr(key, (uint32_t)strlen(key));
+        ctx->PopupPos[0]   = (pos_x >= 0.f) ? pos_x : ctx->MousePos[0];
+        ctx->PopupPos[1]   = (pos_y >= 0.f) ? pos_y : ctx->MousePos[1];
+    }
+
+    bool ZUIBeginPopup(ZUIContext* ctx, const char* key)
+    {
+        uint64_t hash = ZUIHashStr(key, (uint32_t)strlen(key));
+        if (ctx->ActivePopupKey != hash) { return false; }
+
+        // Save current parent and escape to root so the popup box is a
+        // root-level child — it renders last (on top of everything else).
+        ctx->PopupSavedParent = ctx->Current;
+        ctx->Current          = ctx->Root;
+
+        uint32_t len    = (uint32_t)strlen(key);
+        ZUIBox*  popup  = ZUIPushBox(ctx, key, len,
+                              ZUI_DrawBackground | ZUI_DrawBorder |
+                              ZUI_ClipChildren   | ZUI_FloatX | ZUI_FloatY);
+        popup->Size[0]          = ZFit();
+        popup->Size[1]          = ZFit();
+        popup->FloatPos[0]      = ctx->PopupPos[0];
+        popup->FloatPos[1]      = ctx->PopupPos[1];
+        popup->LayoutAxis       = ZUIAxis::Y;
+        popup->BorderThickness  = 1.f;
+        SetBgArr(popup,  ctx->Theme.PanelBg);
+        SetBdrArr(popup, ctx->Theme.PanelBorder);
+
+        ctx->ActivePopupBox = popup;
+        return true;
+    }
+
+    void ZUIEndPopup(ZUIContext* ctx)
+    {
+        ZUIPopBox(ctx);                         // pop the popup box
+        ctx->Current = ctx->PopupSavedParent;  // restore original parent
+        ctx->PopupSavedParent = nullptr;
+    }
+
+    void ZUIClosePopup(ZUIContext* ctx)
+    {
+        ctx->ActivePopupKey = 0;
+    }
+
+    bool ZUIBeginPopupContextItem(ZUIContext* ctx, const char* key,
+                                   const ZUISignal& item_signal)
+    {
+        // Right-click while hovered → request popup at mouse position
+        if ((item_signal.Flags & ZUI_SignalHovered) && ctx->MousePressed[1])
+        {
+            ZUIOpenPopup(ctx, key);
+        }
+        return ZUIBeginPopup(ctx, key);
+    }
+
+    bool ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled)
+    {
+        uint32_t len   = (uint32_t)strlen(label);
+        ZUIBoxFlags fl = ZUI_DrawText;
+        if (enabled) fl = fl | ZUI_DrawBackground | ZUI_Clickable;
+
+        ZUIBox* box   = ZUIPushBox(ctx, label, len, fl);
+        box->Size[0]  = ZFill();
+        box->Size[1]  = ZPx(26.f);
+        box->BgColor[3] = 0.f; // transparent base — hover fade-in via renderer
+        SetTextColor(box, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+
+        if (sig.Flags & ZUI_SignalClicked)
+        {
+            ZUIClosePopup(ctx);
+            return true;
+        }
+        return false;
+    }
+
+    // ---------------------------------------------------------------
     // Drag-and-drop helpers
     // ---------------------------------------------------------------
 

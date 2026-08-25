@@ -106,6 +106,30 @@ namespace ZEngine::UI
                       float* value, float speed = 0.05f, float width_px = 60.f);
 
     // ---------------------------------------------------------------
+    // Popup / overlay system
+    // ---------------------------------------------------------------
+
+    // Request this popup to open at the given position (defaults to current mouse pos).
+    void ZUIOpenPopup(ZUIContext* ctx, const char* key,
+                      float pos_x = -1.f, float pos_y = -1.f);
+
+    // Returns true while this popup is active; pushes a floated root-level column.
+    // Always pair with ZUIEndPopup when it returns true.
+    bool ZUIBeginPopup(ZUIContext* ctx, const char* key);
+    void ZUIEndPopup(ZUIContext* ctx);
+
+    // Close whatever popup is currently open.
+    void ZUIClosePopup(ZUIContext* ctx);
+
+    // Convenience: opens a popup on right-click over the previous signal's box.
+    // Call immediately after ZUISignalFromBox; returns true if now active.
+    bool ZUIBeginPopupContextItem(ZUIContext* ctx, const char* key,
+                                  const ZUISignal& item_signal);
+
+    // Menu item inside a popup — returns true on click (closes popup too).
+    bool ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
+
+    // ---------------------------------------------------------------
     // Drag-and-drop helpers
     // ---------------------------------------------------------------
 

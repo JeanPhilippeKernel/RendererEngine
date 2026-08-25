@@ -52,6 +52,16 @@ namespace ZEngine::UI
             }
         }
 
+        // Close popup when any mouse button is pressed outside its bounds.
+        // (Right-click to open via ZUIBeginPopupContextItem sets OpenPopupKey, which
+        // only promotes to ActivePopupKey at end of frame — so no spurious close.)
+        bool any_pressed = ctx->MousePressed[0] || ctx->MousePressed[1];
+        if (any_pressed && ctx->ActivePopupKey != 0 && ctx->ActivePopupBox)
+        {
+            if (!PointInBox(ctx->MousePos, ctx->ActivePopupBox))
+                ctx->ActivePopupKey = 0;
+        }
+
         // Hot / active
         if (!ctx->MouseDown[0]) { ctx->HotKey = new_hot; }
 
