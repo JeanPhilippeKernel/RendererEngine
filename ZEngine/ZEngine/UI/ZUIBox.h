@@ -39,6 +39,11 @@ namespace ZEngine::UI
         ZUI_FloatY         = 1 << 7,
     };
 
+    inline ZUIBoxFlags operator|(ZUIBoxFlags a, ZUIBoxFlags b)
+    {
+        return static_cast<ZUIBoxFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+    }
+
     enum class ZUIAxis : uint8_t
     {
         X,
