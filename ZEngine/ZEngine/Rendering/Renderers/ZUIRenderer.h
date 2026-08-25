@@ -54,8 +54,10 @@ namespace ZEngine::Rendering::Renderers
         void Initialize(Hardwares::VulkanDevicePtr device) override;
         void Deinitialize() override;
 
-        // Walk the box tree, emit quads into frame-arena arrays.
-        void PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out);
+        // Walk the box tree and emit quads. Output arrays are allocated from
+        // payload_arena (a per-mailbox-slot sub-arena) so they survive until the
+        // render thread consumes the payload — not the shorter-lived FrameArena.
+        void PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena);
 
         // Upload vertex/index data and record draw calls into a secondary command buffer.
         // primary_cmd must be the current frame's active primary command buffer.

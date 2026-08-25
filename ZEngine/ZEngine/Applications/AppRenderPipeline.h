@@ -2,6 +2,9 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/ImGUIRenderer.h>
+#include <ZEngine/Rendering/Renderers/ZUIRenderer.h>
+
+namespace ZEngine::UI { struct ZUIContext; }
 
 namespace ZEngine::Applications
 {
@@ -14,6 +17,7 @@ namespace ZEngine::Applications
         Rendering::Cameras::CameraPtr              Camera             = nullptr;
         Rendering::Scenes::RenderScenePtr          Scene              = nullptr;
         Rendering::Renderers::RenderOverlayPayload UIOverlay          = {};
+        Rendering::Renderers::ZUIRenderPayload     ZUIOverlay         = {};
     };
 
     struct AppRenderPipeline
@@ -27,9 +31,14 @@ namespace ZEngine::Applications
         PaddedAtomic<int>                        MailBoxBufferTail        = {.value = 0};
         RenderPayload                            RenderPayloads[3]        = {};
         ZEngine::Core::Memory::ArenaAllocator    LocalArena               = {};
+        // ZUIPayloadArenas and ZUICtx are sub-arenas of LocalArena; declared after it
+        // so C++ destroys them before LocalArena (reverse order)
+        ZEngine::Core::Memory::ArenaAllocator    ZUIPayloadArenas[3]      = {};
+        ZEngine::UI::ZUIContext*                 ZUICtx                   = nullptr;
         Hardwares::VulkanDevicePtr               Device                   = nullptr;
         Rendering::Renderers::GraphicRendererPtr SceneRenderer            = nullptr;
         Rendering::Renderers::ImGUIRendererPtr   ImguiRenderer            = nullptr;
+        Rendering::Renderers::ZUIRendererPtr     ZUIRenderer              = nullptr;
         Hardwares::CommandBufferPtr              CurrentCmdBuf            = nullptr;
 
         void                                     Initialize(Hardwares::VulkanDevicePtr device);
@@ -44,10 +53,10 @@ namespace ZEngine::Applications
 
         void                                     RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene);
 
-        void                                     BeginOverlayFrame();
+        void                                     BeginOverlayFrame(float dt = 0.f);
         void                                     EndOverlayFrame();
-        void                                     FillOverlayPayload(Rendering::Renderers::RenderOverlayPayload& payload);
-        void                                     RenderOverlay(const Rendering::Renderers::RenderOverlayPayload& payload);
+        void                                     FillOverlayPayload(RenderPayload& payload);
+        void                                     RenderOverlay(const RenderPayload& payload);
     };
     ZDEFINE_PTR(AppRenderPipeline);
 

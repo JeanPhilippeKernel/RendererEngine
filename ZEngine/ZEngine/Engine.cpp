@@ -283,11 +283,11 @@ namespace ZEngine
 
             if (g_app->EnableRenderOverlay)
             {
-                pipeline->BeginOverlayFrame();
+                pipeline->BeginOverlayFrame(raw_dt);
                 g_app->OnRenderUI();
                 pipeline->EndOverlayFrame();
                 r_payload.RenderUIOverlay.value.store(true, std::memory_order_release);
-                pipeline->FillOverlayPayload(r_payload.UIOverlay);
+                pipeline->FillOverlayPayload(r_payload);
             }
 
             if (g_engine_ctx->Scene && g_app->CurrentScene)
@@ -355,7 +355,7 @@ namespace ZEngine
             {
                 pipeline->RenderScene(r_payload.Camera, r_payload.Scene);
                 if (r_payload.RenderUIOverlay.value.load(std::memory_order_acquire))
-                    pipeline->RenderOverlay(r_payload.UIOverlay);
+                    pipeline->RenderOverlay(r_payload);
             }
             pipeline->EndFrame();
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <Tetragrama/EditorScene.h>
 #include <Tetragrama/Layers/ImguiLayer.h>
+#include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
@@ -50,6 +51,7 @@ namespace Tetragrama
         virtual ~Editor() {}
 
         ZRawPtr(Layers::ImguiLayer) UILayer                    = nullptr;
+        ZRawPtr(Layers::ZUILayer)   ZUIUILayer                 = nullptr;
 
         ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend = {};
 

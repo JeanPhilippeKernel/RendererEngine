@@ -1,5 +1,6 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Managers/AssetManager.h>
@@ -70,9 +71,18 @@ namespace ZEngine::Applications
 
         SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
         ImguiRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
+        ZUIRenderer   = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
 
         SceneRenderer->Initialize(Device);
         ImguiRenderer->Initialize(Device);
+        ZUIRenderer->Initialize(Device);
+
+        ZUICtx = ZPushStruct(&LocalArena, ZEngine::UI::ZUIContext);
+        ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(4), ZMega(1), 4096, 4096);
+        for (int i = 0; i < 3; ++i)
+        {
+            LocalArena.CreateSubArena(ZMega(4), &ZUIPayloadArenas[i]);
+        }
 
         Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
         Device->SwapchainPtr->OnSwapchainResizedCtx = this;
@@ -89,6 +99,9 @@ namespace ZEngine::Applications
     {
         SceneRenderer->Deinitialize();
         ImguiRenderer->Deinitialize();
+        if (ZUIRenderer) { ZUIRenderer->Deinitialize(); }
+        if (ZUICtx)      { ZEngine::UI::ZUIContextDestroy(ZUICtx); }
+        for (int i = 0; i < 3; ++i) { ZUIPayloadArenas[i].Shutdown(); }
     }
 
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
@@ -269,19 +282,28 @@ namespace ZEngine::Applications
         SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 
-    void AppRenderPipeline::BeginOverlayFrame()
+    void AppRenderPipeline::BeginOverlayFrame(float dt)
     {
         ImguiRenderer->NewFrame();
+        if (ZUICtx) { ZEngine::UI::ZUIBeginFrame(ZUICtx, dt); }
     }
 
-    void AppRenderPipeline::FillOverlayPayload(Rendering::Renderers::RenderOverlayPayload& payload)
+    void AppRenderPipeline::FillOverlayPayload(RenderPayload& payload)
     {
-        ImguiRenderer->PreparePayload(payload);
+        ImguiRenderer->PreparePayload(payload.UIOverlay);
+
+        if (ZUIRenderer && ZUICtx && ZUICtx->Root)
+        {
+            uint32_t slot = MailBoxBufferHead.value.load(std::memory_order_relaxed);
+            ZUIPayloadArenas[slot].Clear();
+            ZUIRenderer->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
+        }
     }
 
-    void AppRenderPipeline::RenderOverlay(const Rendering::Renderers::RenderOverlayPayload& payload)
+    void AppRenderPipeline::RenderOverlay(const RenderPayload& payload)
     {
-        if (payload.VertexCount == 0 && payload.IndexCount == 0)
+        const auto& imgui = payload.UIOverlay;
+        if (imgui.VertexCount == 0 && imgui.IndexCount == 0 && payload.ZUIOverlay.VertexCount == 0)
         {
             return;
         }
@@ -303,8 +325,8 @@ namespace ZEngine::Applications
             auto* rrm = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
             if (rrm)
             {
-                rrm->UpdateBuffer(vb, payload.VertexData.data(), payload.VertexData.size() * sizeof(payload.VertexData[0]));
-                rrm->UpdateBuffer(ib, payload.IndexData.data(), payload.IndexData.size() * sizeof(payload.IndexData[0]));
+                rrm->UpdateBuffer(vb, imgui.VertexData.data(), imgui.VertexData.size() * sizeof(imgui.VertexData[0]));
+                rrm->UpdateBuffer(ib, imgui.IndexData.data(),  imgui.IndexData.size()  * sizeof(imgui.IndexData[0]));
             }
 
             auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, Device->SwapchainPtr->CurrentFrame->Index, RenderMainThreadIndex, UICommandBufferIndex, false);
@@ -315,22 +337,22 @@ namespace ZEngine::Applications
             ui_second_cb->BindPipeline(Rendering::Specifications::PipelineBindPoint::GRAPHIC, ImguiRenderer->UIPass->Pipeline);
 
             ui_second_cb->BindVertexBuffer(vb);
-            ui_second_cb->BindIndexBuffer(ib, payload.IsIndexBufferUint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+            ui_second_cb->BindIndexBuffer(ib, imgui.IsIndexBufferUint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
 
             Rendering::Renderers::PushConstantData pc_data = {};
-            pc_data.Scale[0]                               = payload.Pc[0];
-            pc_data.Scale[1]                               = payload.Pc[1];
+            pc_data.Scale[0]                               = imgui.Pc[0];
+            pc_data.Scale[1]                               = imgui.Pc[1];
 
-            pc_data.Translate[0]                           = payload.Pc[2];
-            pc_data.Translate[1]                           = payload.Pc[3];
+            pc_data.Translate[0]                           = imgui.Pc[2];
+            pc_data.Translate[1]                           = imgui.Pc[3];
 
-            for (uint32_t i = 0; i < payload.DrawDataIndex; ++i)
+            for (uint32_t i = 0; i < imgui.DrawDataIndex; ++i)
             {
-                const auto& scissor_cmd = payload.ScissorCmds[i];
-                const auto& indexed_cmd = payload.IndexedCmds[i];
+                const auto& scissor_cmd = imgui.ScissorCmds[i];
+                const auto& indexed_cmd = imgui.IndexedCmds[i];
 
                 ui_second_cb->SetScissor(scissor_cmd.w, scissor_cmd.h, scissor_cmd.x, scissor_cmd.y);
-                pc_data.TextureId = payload.TextureIds[i];
+                pc_data.TextureId = imgui.TextureIds[i];
                 ui_second_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Rendering::Renderers::PushConstantData), &pc_data);
                 ui_second_cb->BindDescriptorSets(Device->SwapchainPtr->CurrentFrame->Index);
                 ui_second_cb->DrawIndexed(indexed_cmd.IdxCount, indexed_cmd.InstanceCount, indexed_cmd.FirstIndex, indexed_cmd.VertexOffset, indexed_cmd.FirstInstance);
@@ -342,10 +364,17 @@ namespace ZEngine::Applications
         }
 
         CurrentCmdBuf->EndRenderPass();
+
+        // ZUI render pass — runs as a separate pass after ImGui
+        if (ZUIRenderer && payload.ZUIOverlay.VertexCount > 0)
+        {
+            ZUIRenderer->Submit(CurrentCmdBuf, payload.ZUIOverlay);
+        }
     }
 
     void AppRenderPipeline::EndOverlayFrame()
     {
         ImguiRenderer->EndFrame();
+        if (ZUICtx) { ZEngine::UI::ZUIEndFrame(ZUICtx); }
     }
 } // namespace ZEngine::Applications

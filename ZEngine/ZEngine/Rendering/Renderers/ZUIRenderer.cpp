@@ -155,22 +155,23 @@ namespace ZEngine::Rendering::Renderers
     // PreparePayload
     // ---------------------------------------------------------------
 
-    void ZUIRenderer::PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out)
+    void ZUIRenderer::PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena)
     {
-        if (!ctx || !ctx->Root || !out) { return; }
+        if (!ctx || !ctx->Root || !out || !payload_arena) { return; }
 
         uint32_t max     = ctx->MaxBoxesPerFrame;
         float    fb_w    = (float)Device->SwapchainPtr->SwapchainImageWidth;
         float    fb_h    = (float)Device->SwapchainPtr->SwapchainImageHeight;
 
-        // Pre-allocate output arrays in the frame arena
+        // Output arrays go into payload_arena (per-mailbox-slot, lives until the render
+        // thread consumes this payload) — NOT FrameArena which is cleared next frame.
         uint32_t max_verts = 65536;
-        uint32_t max_idxs  = max_verts * 3 / 2; // 6 idxs per quad, 4 verts = 1.5 ratio
+        uint32_t max_idxs  = max_verts * 3 / 2;
         uint32_t max_cmds  = max * 2;
 
-        out->Vertices     = ZPushArray(&ctx->FrameArena, UIDrawVert, max_verts);
-        out->Indices      = ZPushArray(&ctx->FrameArena, uint32_t,   max_idxs);
-        out->Cmds         = ZPushArray(&ctx->FrameArena, ZUIDrawCmd, max_cmds);
+        out->Vertices     = ZPushArray(payload_arena, UIDrawVert, max_verts);
+        out->Indices      = ZPushArray(payload_arena, uint32_t,   max_idxs);
+        out->Cmds         = ZPushArray(payload_arena, ZUIDrawCmd, max_cmds);
         out->VertexCount  = 0;
         out->IndexCount   = 0;
         out->CmdCount     = 0;

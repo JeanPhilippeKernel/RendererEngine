@@ -1,5 +1,7 @@
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
+#include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/UI/ZUIFont.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
@@ -55,13 +57,28 @@ namespace Tetragrama
         auto editor_scene          = ZPushStructCtor(&Memory->MainArena, EditorScene);
         auto editor_cam_controller = ZPushStructCtor(&Memory->MainArena, Controllers::EditorCameraController);
         UILayer                    = ZPushStructCtor(&Memory->MainArena, ImguiLayer);
+        ZUIUILayer                 = ZPushStructCtor(&Memory->MainArena, ZUILayer);
 
         UILayer->Initialize(&Memory->MainArena, this);
+        ZUIUILayer->Initialize(&Memory->MainArena, this);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
+
+        // Bake ZUI font atlas using the same TTF as ImGui
+        if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
+        {
+            auto scratch            = ZGetScratch(&Memory->MainArena);
+            RenderPipeline->ZUICtx->Font = ZEngine::UI::ZUIFontBake(
+                &RenderPipeline->ZUICtx->PersistentArena,
+                scratch.Arena,
+                RenderPipeline->Device,
+                "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf",
+                17.f, 512, 512, 32, 96);
+            ZReleaseScratch(scratch);
+        }
 
         // Scene instance creation is handled directly in SceneViewportUIComponent::OnDrop
         // via ImportCoordinator::Enqueue's returned UUID — no callback needed here.
@@ -79,6 +96,7 @@ namespace Tetragrama
         CHECK_AND_ESCAPE_NULL(UILayer)
 
         UILayer->OnEvent(e);
+        if (ZUIUILayer) { ZUIUILayer->OnEvent(e); }
     }
 
     void Editor::OnPreRender() {}
@@ -88,6 +106,7 @@ namespace Tetragrama
     void Editor::OnRenderUI()
     {
         UILayer->Render(nullptr, nullptr);
+        if (ZUIUILayer) { ZUIUILayer->Render(nullptr, nullptr); }
     }
 
     void Editor::OnClosing() {}

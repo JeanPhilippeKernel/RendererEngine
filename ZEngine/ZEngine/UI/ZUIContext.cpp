@@ -31,19 +31,24 @@ namespace ZEngine::UI
         ctx->Current      = nullptr;
         ctx->DeltaTime    = dt;
         ctx->TextInputLen = 0;
-        ctx->ScrollDelta  = 0.f;
-
-        for (int i = 0; i < 3; ++i)
-        {
-            ctx->MousePressed[i]  = false;
-            ctx->MouseReleased[i] = false;
-        }
+        // MousePressed, MouseReleased, ScrollDelta are intentionally NOT cleared here —
+        // GLFW events fire before BeginFrame (in window->PollEvent) and must survive
+        // until ZUIEndFrame runs the interaction pass.
     }
 
     void ZUIEndFrame(ZUIContext* ctx)
     {
         ZUILayoutSolve(ctx);
         ZUIInteractionPass(ctx);
+
+        // Clear per-frame edge states now that the interaction pass has consumed them
+        for (int i = 0; i < 3; ++i)
+        {
+            ctx->MousePressed[i]  = false;
+            ctx->MouseReleased[i] = false;
+        }
+        ctx->ScrollDelta  = 0.f;
+        ctx->TextInputLen = 0;
     }
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)
