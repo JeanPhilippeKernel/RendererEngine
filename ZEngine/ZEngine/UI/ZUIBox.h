@@ -47,6 +47,7 @@ namespace ZEngine::UI
     enum class ZUIAxis : uint8_t { X, Y };
 
     enum class ZUITextAlign : uint8_t { Left = 0, Center, Right };
+    enum class ZUIFontSize  : uint8_t { Small = 0, Body = 1, Header = 2 };
 
     struct ZUIBox
     {
@@ -63,8 +64,9 @@ namespace ZEngine::UI
         // build-time spec
         ZUIBoxFlags Flags            = ZUI_None;
         ZUISize     Size[2]          = {};
-        ZUIAxis     LayoutAxis       = ZUIAxis::Y;
+        ZUIAxis      LayoutAxis       = ZUIAxis::Y;
         ZUITextAlign TextAlign       = ZUITextAlign::Left;
+        ZUIFontSize  FontSize        = ZUIFontSize::Body;
         float       BgColor[4]       = {};
         float       BorderColor[4]   = {};
         float       TextColor[4]     = {};

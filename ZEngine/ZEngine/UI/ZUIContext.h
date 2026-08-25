@@ -71,8 +71,19 @@ namespace ZEngine::UI
         // persistent state — open-addressing hash table in PersistentArena
         ZUIPersistentStore StateStore;
 
-        // font — set by caller after ZUIFontBake(); used by layout solver for ZUISizeKind::Text
-        ZUIFont*           Font = nullptr;
+        // Fonts — set after ZUIFontBake(). Font = Body (backwards-compat alias).
+        // FontSmall / FontHeader added for multi-size support.
+        ZUIFont*           Font       = nullptr; // ZUIFontSize::Body
+        ZUIFont*           FontSmall  = nullptr; // ZUIFontSize::Small
+        ZUIFont*           FontHeader = nullptr; // ZUIFontSize::Header
+
+        // Helper: returns the right ZUIFont* for a given size
+        ZUIFont* GetFont(ZUIFontSize size) const
+        {
+            if (size == ZUIFontSize::Small  && FontSmall)  return FontSmall;
+            if (size == ZUIFontSize::Header && FontHeader) return FontHeader;
+            return Font; // Body fallback
+        }
 
         // input state — written by ZUILayer each frame before ZUIBeginFrame
         float              MousePos[2]      = {};

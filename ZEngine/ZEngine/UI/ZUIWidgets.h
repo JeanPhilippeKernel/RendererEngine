@@ -55,8 +55,10 @@ namespace ZEngine::UI
     // Leaf widgets
     // ---------------------------------------------------------------
 
-    // Static text — no interaction
-    void ZUILabel(ZUIContext* ctx, const char* text, const float color[4] = nullptr);
+    // Static text — no interaction. Pass a font size for Small/Header variants.
+    void ZUILabel(ZUIContext* ctx, const char* text,
+                  const float color[4] = nullptr,
+                  ZUIFontSize size = ZUIFontSize::Body);
 
     // ---------------------------------------------------------------
     // Button family

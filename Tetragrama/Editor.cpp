@@ -107,16 +107,27 @@ namespace Tetragrama
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
 
-        // Bake ZUI font atlas using the same TTF as ImGui
+        // Bake ZUI font atlases — Small (18 px), Body (28 px), Header (36 px)
         if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
         {
-            auto scratch            = ZGetScratch(&Memory->MainArena);
-            RenderPipeline->ZUICtx->Font = ZEngine::UI::ZUIFontBake(
-                &RenderPipeline->ZUICtx->PersistentArena,
-                scratch.Arena,
-                RenderPipeline->Device,
-                "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf",
-                28.f, 1024, 1024, 32, 96);
+            constexpr const char* kFontPath =
+                "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
+            auto* ctx = RenderPipeline->ZUICtx;
+
+            auto scratch = ZGetScratch(&Memory->MainArena);
+
+            ctx->FontSmall = ZEngine::UI::ZUIFontBake(
+                &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
+                kFontPath, 18.f, 512, 512, 32, 96);
+
+            ctx->Font = ZEngine::UI::ZUIFontBake(
+                &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
+                kFontPath, 28.f, 1024, 1024, 32, 96);
+
+            ctx->FontHeader = ZEngine::UI::ZUIFontBake(
+                &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
+                kFontPath, 36.f, 1024, 1024, 32, 96);
+
             ZReleaseScratch(scratch);
         }
 

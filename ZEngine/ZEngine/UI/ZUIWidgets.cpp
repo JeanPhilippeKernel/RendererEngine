@@ -76,14 +76,15 @@ namespace ZEngine::UI
     // ZUILabel
     // ---------------------------------------------------------------
 
-    void ZUILabel(ZUIContext* ctx, const char* text, const float color[4])
+    void ZUILabel(ZUIContext* ctx, const char* text, const float color[4], ZUIFontSize size)
     {
         const float* c   = color ? color : ctx->Theme.TextDefault;
         uint32_t     len = (uint32_t)strlen(text);
 
-        ZUIBox* box   = ZUIPushBox(ctx, text, len, ZUI_DrawText);
-        box->Size[0]  = ZText();
-        box->Size[1]  = ZText();
+        ZUIBox* box    = ZUIPushBox(ctx, text, len, ZUI_DrawText);
+        box->Size[0]   = ZText();
+        box->Size[1]   = ZText();
+        box->FontSize  = size;
         SetTextColor(box, c);
         ZUIPopBox(ctx);
     }

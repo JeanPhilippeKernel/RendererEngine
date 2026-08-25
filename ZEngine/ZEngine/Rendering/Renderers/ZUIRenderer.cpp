@@ -370,9 +370,9 @@ namespace ZEngine::Rendering::Renderers
             }
 
             // --- Text (vertically centred, 6 px left indent) ---
-            if ((box->Flags & UI::ZUI_DrawText) && box->Label.Ptr && ctx->Font)
+            if ((box->Flags & UI::ZUI_DrawText) && box->Label.Ptr && ctx->GetFont(box->FontSize))
             {
-                const UI::ZUIFont* font     = ctx->Font;
+                const UI::ZUIFont* font = ctx->GetFont(box->FontSize);
                 uint32_t           font_tex = font->AtlasHandle.Index;
 
                 if (current_tex != font_tex || out->CmdCount == 0)

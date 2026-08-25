@@ -48,8 +48,8 @@ namespace ZEngine::UI
                     case ZUISizeKind::Text:
                     {
                         float text_size[2] = {0.f, 0.f};
-                        if (ctx->Font && box->Label.Ptr)
-                            ZUIMeasureText(ctx->Font, box->Label.Ptr, box->Label.Len, text_size);
+                        if (ctx->GetFont(box->FontSize) && box->Label.Ptr)
+                            ZUIMeasureText(ctx->GetFont(box->FontSize), box->Label.Ptr, box->Label.Len, text_size);
                         box->ComputedSize[axis] = text_size[axis];
                         break;
                     }
