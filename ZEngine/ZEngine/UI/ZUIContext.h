@@ -22,11 +22,18 @@ namespace ZEngine::UI
         float WindowBg[4]       = {0.07f, 0.07f, 0.07f, 1.00f}; // root / dockspace
         float PanelBg[4]        = {0.12f, 0.12f, 0.12f, 1.00f}; // side panels
         float PanelBgAlt[4]     = {0.09f, 0.09f, 0.09f, 1.00f}; // alternating rows
-        float TitleBarBg[4]     = {0.18f, 0.18f, 0.20f, 1.00f}; // panel title strips
+        // RAD Debugger default dark theme (from raddbg.mdesk):
+        //   active tab:   #333333 bg + #2392eb blue border + drop shadow
+        //   inactive tab: transparent bg + #42494e dim border
+        //   tab bar:      very dark background
+        float TitleBarBg[4]     = {0.05f, 0.05f, 0.06f, 1.00f}; // tab bar bg (darkest: ~#0d0d0f)
         float HeaderBg[4]       = {0.20f, 0.20f, 0.22f, 1.00f}; // collapser headers
-        float TabActiveBg[4]    = {0.24f, 0.24f, 0.28f, 1.00f}; // active tab
-        float TabInactiveBg[4]  = {0.12f, 0.12f, 0.14f, 1.00f}; // inactive tab
-        float MenuBarBg[4]      = {0.14f, 0.14f, 0.14f, 1.00f}; // menu bar strip
+        float TabActiveBg[4]    = {0.20f, 0.20f, 0.20f, 1.00f}; // #333333 ≈ 0.20 linear
+        float TabInactiveBg[4]  = {0.00f, 0.00f, 0.00f, 0.00f}; // transparent
+        float TabActiveBorder[4]= {0.137f,0.573f,0.922f,1.00f}; // #2392eb vivid blue
+        float TabInactiveBorder[4]={0.259f,0.286f,0.306f,1.00f};// #42494e dim grey
+        float TabAccent[4]      = {0.137f,0.573f,0.922f,1.00f}; // same as active border
+        float MenuBarBg[4]      = {0.07f, 0.07f, 0.08f, 1.00f}; // menu bar strip
         float RowHoverBg[4]     = {0.26f, 0.59f, 0.98f, 0.00f}; // fades in on hover
         float RowSelectedBg[4]  = {0.26f, 0.59f, 0.98f, 0.35f};
         float RowRootBg[4]      = {0.16f, 0.29f, 0.48f, 0.20f};

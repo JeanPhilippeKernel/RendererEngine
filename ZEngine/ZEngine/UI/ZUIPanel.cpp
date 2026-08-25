@@ -300,54 +300,88 @@ namespace ZEngine::UI
 
         ZUISpacer(ctx, 4.f);
 
-        // RAD-style tabs: box sized via ChildrenSum (ZFit), inner row = [spacer|label|spacer]
+        // RAD Debugger tab structure (raddbg_core.c ~8903):
+        //   tab_column (Y-layout, ZFit width × full tab_h)
+        //     spacer(1px)                    ← subtle raise from bar top
+        //     tab_box (X-layout, ZFill×rest) ← DrawBackground|DrawBorder|(DrawDropShadow if active)
+        //       spacer(0.5em) | label | [close_btn if active+focused]
         for (uint32_t ti = 0; ti < p->ViewCount; ++ti)
         {
             ZUIPanelView* view = p->Views[ti];
             if (!view) { continue; }
             bool is_active = (ti == p->ActiveTab);
 
+            // --- Outer column (Y-axis, ZFit width) ---
+            char col_key[64];
+            snprintf(col_key, sizeof(col_key), "##tcol_%llx_%u",
+                     (unsigned long long)p->DockKey, ti);
+            ZUIBox* col = ZUIBeginColumn(ctx, col_key, ZFit(), ZPx(tab_h));
+            col->Flags = col->Flags | ZUI_Clickable; // col captures drag
+            col->EdgeSoftness = 0.f;
+
+            // 1px spacer at top (RAD line 8927: ui_spacer(ui_px(1.f, 1.f)))
+            ZUISpacer(ctx, 1.f);
+
+            // --- Tab box (X-axis, fills remaining height = tab_h - 1) ---
             char tab_key[64];
             snprintf(tab_key, sizeof(tab_key), "##tab_%llx_%u",
                      (unsigned long long)p->DockKey, ti);
 
-            // Outer box: ChildrenSum width so it grows to fit label+padding
-            ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFit(), ZPx(tab_h - 4.f));
-            tab->Flags  = tab->Flags | ZUI_DrawBackground | ZUI_Clickable;
+            ZUIBoxFlags tab_flags = ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+            ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFill(), ZFill());
+            tab->Flags = tab->Flags | tab_flags;
             tab->EdgeSoftness = 0.5f;
             ZUIBoxSetCornerRadius(tab, 3.f);
-            if (is_active)
-                ZUIBoxSetColorArr(tab, ctx->Theme.TabActiveBg);
-            else
-                ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg);
 
-            // Inner: spacer | label | spacer | close-btn | spacer
+            // Colors: RAD default dark theme (#333333 active, transparent inactive)
+            if (is_active)
+            {
+                ZUIBoxSetColorArr(tab, ctx->Theme.TabActiveBg);
+                tab->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
+                tab->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
+                tab->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
+                tab->BorderColor[3] = ctx->Theme.TabActiveBorder[3];
+                tab->BorderThickness = 1.f;
+            }
+            else
+            {
+                ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg);
+                tab->BorderColor[0] = ctx->Theme.TabInactiveBorder[0];
+                tab->BorderColor[1] = ctx->Theme.TabInactiveBorder[1];
+                tab->BorderColor[2] = ctx->Theme.TabInactiveBorder[2];
+                tab->BorderColor[3] = ctx->Theme.TabInactiveBorder[3];
+                tab->BorderThickness = 1.f;
+            }
+
+            // Tab contents: spacer | label | [close if active] (RAD line 8941-8966)
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, view->Title,
                      is_active ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
-            ZUISpacer(ctx, 6.f);
 
-            // Close "×" button — only visible on active tab or hover
+            // Close button — only on focused+active tab (RAD line 8948)
             bool tab_closed = false;
+            if (is_active)
             {
+                ZUISpacer(ctx, 6.f);
                 char xkey[64];
-                snprintf(xkey, sizeof(xkey), "×##close_%llx_%u",
+                snprintf(xkey, sizeof(xkey), "×##x_%llx_%u",
                          (unsigned long long)p->DockKey, ti);
-                float close_sz = (tab_h - 8.f);
+                float close_sz = tab_h * 0.55f;
                 ZUIBox* xbtn = ZUIPushBox(ctx, xkey, (uint32_t)strlen(xkey),
                                            ZUI_DrawText | ZUI_Clickable);
                 xbtn->Size[0] = ZPx(close_sz); xbtn->Size[1] = ZPx(close_sz);
                 xbtn->TextAlign = ZUITextAlign::Center;
-                float xc[4] = {0.70f, 0.35f, 0.35f, is_active ? 0.90f : 0.50f};
+                float xc[4] = {0.75f, 0.40f, 0.40f, 0.90f};
                 SetTextColorOnBox(xbtn, xc);
                 ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
                 ZUIPopBox(ctx);
                 if (xsig.Flags & ZUI_SignalClicked) { tab_closed = true; }
+                ZUISpacer(ctx, 4.f);
             }
-            ZUISpacer(ctx, 4.f);
 
             ZUISignal sig = ZUISignalFromBox(ctx, tab);
-            ZUIEndRow(ctx);
+            ZUIEndRow(ctx);  // close tab_box
+            ZUIEndColumn(ctx); // close col
 
             // Tab close — remove view, adjust active tab
             if (tab_closed && p->ViewCount > 1)
