@@ -119,12 +119,12 @@ namespace Tetragrama::Components
                 s_fps = s_fps * 0.95f + (1.f / ctx->DeltaTime) * 0.05f;
             char fps_buf[32];
             snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double)s_fps);
-            ZUIBox* fps_box = ZUIBeginRow(ctx, "##vp_fps_overlay", ZSPx(ctx, 72.f), ZSPx(ctx, 20.f));
+            ZUIBox* fps_box = ZUIBeginRow(ctx, "##vp_fps_overlay", ZSPx(ctx, 120.f), ZSPx(ctx, 22.f));
             fps_box->Flags       = fps_box->Flags | ZUI_FloatX | ZUI_FloatY;
             fps_box->FloatPos[0] = sx + sw - 80.f;
             fps_box->FloatPos[1] = sy + 8.f;
             ZUIBoxSetColorArr(fps_box, kTransparent);
-            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
+            ZUILabel(ctx, fps_buf, ctx->Theme.TextDefault);
             ZUIEndRow(ctx);
         }
 
