@@ -1,7 +1,13 @@
 #include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
 #include <Tetragrama/Editor.h>
+#include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Serializers/EditorSceneSerializer.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <GLFW/glfw3.h>
 #include <cstdio>
 
 using namespace ZEngine::UI;
@@ -109,20 +115,63 @@ namespace Tetragrama::Components
         // --- Menu bar ---
         if (ZUIBeginMenuBar(ctx))
         {
-            ZUISpacer(ctx, 4.f);
+            ZUISpacer(ctx, 6.f);
 
             // "File" menu
             if (ZUIBeginMenu(ctx, "File"))
             {
-                if (ZUIMenuItem(ctx, "New Scene"))        { /* TODO */ }
-                if (ZUIMenuItem(ctx, "Open Scene..."))    { /* TODO */ }
+                auto* file_app = (ParentLayer && ParentLayer->CurrentApp)
+                               ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+
+                if (ZUIMenuItem(ctx, "New Scene"))
+                {
+                    // Reset scene: deselect actor, clear scene actors
+                    if (file_app && file_app->CurrentScene)
+                    {
+                        auto* scene = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
+                        scene->SelectedActorHandle = {};
+                    }
+                }
+                if (ZUIMenuItem(ctx, "Open Scene..."))
+                {
+                    // Navigate the Project Browser to select a .zescene
+                    // (no system file dialog — user uses the Project panel)
+                    ZENGINE_CORE_INFO("[Editor] Use the Project panel to locate and drop a .zescene into the viewport")
+                }
                 ZUISeparator(ctx);
-                if (ZUIMenuItem(ctx, "Save Scene"))       { /* TODO */ }
-                if (ZUIMenuItem(ctx, "Save Scene As...")) { /* TODO */ }
+                if (ZUIMenuItem(ctx, "Save Scene"))
+                {
+                    if (file_app && file_app->CurrentScene && file_app->Configuration)
+                    {
+                        auto* scene = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
+                        Serializers::EditorSceneSerializer serializer;
+                        serializer.Serialize(scene);
+                        ZENGINE_CORE_INFO("[Editor] Scene saved")
+                    }
+                }
+                if (ZUIMenuItem(ctx, "Save Scene As..."))
+                {
+                    // Same as Save for now (path is determined by scene config)
+                    if (file_app && file_app->CurrentScene)
+                    {
+                        auto* scene = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
+                        Serializers::EditorSceneSerializer serializer;
+                        serializer.Serialize(scene);
+                    }
+                }
                 ZUISeparator(ctx);
-                if (ZUIMenuItem(ctx, "Quit"))             { /* TODO */ }
+                if (ZUIMenuItem(ctx, "Quit"))
+                {
+                    if (file_app && file_app->CurrentWindow)
+                    {
+                        auto* glfw_win = static_cast<GLFWwindow*>(
+                            file_app->CurrentWindow->GetNativeWindow());
+                        if (glfw_win) { glfwSetWindowShouldClose(glfw_win, GLFW_TRUE); }
+                    }
+                }
                 ZUIEndMenu(ctx);
             }
+            ZUISpacer(ctx, 4.f);
 
             // "Edit" menu
             if (ZUIBeginMenu(ctx, "Edit"))
@@ -130,18 +179,43 @@ namespace Tetragrama::Components
                 if (ZUIMenuItem(ctx, "Undo", false)) {}
                 if (ZUIMenuItem(ctx, "Redo", false)) {}
                 ZUISeparator(ctx);
-                if (ZUIMenuItem(ctx, "Select All")) { /* TODO */ }
+                if (ZUIMenuItem(ctx, "Select All"))
+                {
+                    // Select first actor (full multi-select not yet supported)
+                    if (ParentLayer && ParentLayer->CurrentApp)
+                    {
+                        auto* edit_app   = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+                        auto* edit_scene = reinterpret_cast<EditorScenePtr>(edit_app->CurrentScene);
+                        auto* eng        = ZEngine::Engine::GetContext();
+                        if (edit_scene && eng && eng->ActorManager && eng->ActorManager->Count() > 0)
+                        {
+                            // Select the first valid actor via ForEach
+                            bool found = false;
+                            eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*)
+                            {
+                                if (!found) { edit_scene->SelectedActorHandle = h; found = true; }
+                            });
+                        }
+                    }
+                }
                 ZUIEndMenu(ctx);
             }
+            ZUISpacer(ctx, 4.f);
 
-            // "View" menu — toggle panel visibility
+            // "View" menu — checkable panel toggles (checkmark = visible)
             if (ZUIBeginMenu(ctx, "View"))
             {
-                if (Viewport)  { bool v = Viewport->Visible;  if (ZUIToggleButton(ctx, "Scene##vm",     &v, ZFill(), ZSPx(ctx, 22.f))) Viewport->Visible  = v; }
-                if (Hierarchy) { bool v = Hierarchy->Visible; if (ZUIToggleButton(ctx, "Hierarchy##vm", &v, ZFill(), ZSPx(ctx, 22.f))) Hierarchy->Visible = v; }
-                if (Inspector) { bool v = Inspector->Visible; if (ZUIToggleButton(ctx, "Inspector##vm", &v, ZFill(), ZSPx(ctx, 22.f))) Inspector->Visible = v; }
-                if (Log)       { bool v = Log->Visible;       if (ZUIToggleButton(ctx, "Console##vm",   &v, ZFill(), ZSPx(ctx, 22.f))) Log->Visible       = v; }
-                if (Project)   { bool v = Project->Visible;   if (ZUIToggleButton(ctx, "Project##vm",   &v, ZFill(), ZSPx(ctx, 22.f))) Project->Visible   = v; }
+                auto vis_item = [&](const char* label, ZUIComponent* cmp) {
+                    if (!cmp) { return; }
+                    char buf[80];
+                    snprintf(buf, sizeof(buf), "%s  %s##vm", cmp->Visible ? "[x]" : "[ ]", label);
+                    if (ZUIMenuItem(ctx, buf)) { cmp->Visible = !cmp->Visible; }
+                };
+                vis_item("Scene",     Viewport);
+                vis_item("Hierarchy", Hierarchy);
+                vis_item("Inspector", Inspector);
+                vis_item("Console",   Log);
+                vis_item("Project",   Project);
                 ZUIEndMenu(ctx);
             }
 

@@ -376,8 +376,9 @@ namespace ZEngine::UI
 
         ZUIBox* box   = ZUIPushBox(ctx, label, len, fl);
         box->Size[0]  = ZFill();
-        box->Size[1]  = ZPx(26.f);
+        box->Size[1]  = ZSPx(ctx, 22.f);
         ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
+        box->Padding[0] = 8.f; // left indent
         SetTextColor(box, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
@@ -1106,14 +1107,20 @@ namespace ZEngine::UI
     bool ZUIBeginMenu(ZUIContext* ctx, const char* label, bool enabled)
     {
         char key[80];
-        snprintf(key, sizeof(key), "##menu_%s", label);
+        // Format: "Label##menu_Label" — label before ## is the display text,
+        // the full string is the hash key so multiple menus with same label don't collide.
+        snprintf(key, sizeof(key), "%s##menu_%s", label, label);
         ZUIBoxFlags fl = ZUI_DrawText;
         if (enabled) fl = fl | ZUI_Clickable | ZUI_DrawBackground;
 
         ZUIBox* btn   = ZUIPushBox(ctx, key, (uint32_t)strlen(key), fl);
         btn->Size[0]  = ZText();
-        btn->Size[1]  = ZPx(26.f);
+        btn->Size[1]  = ZSPx(ctx, 22.f);
+        btn->Padding[0] = 8.f; // left
+        btn->Padding[2] = 8.f; // right
         ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f);
+        btn->EdgeSoftness = 0.5f;
+        ZUIBoxSetCornerRadius(btn, 3.f);
         SetTextColor(btn, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, btn);

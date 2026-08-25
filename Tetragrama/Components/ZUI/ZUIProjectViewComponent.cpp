@@ -143,26 +143,34 @@ namespace Tetragrama::Components
             char row_key[32];
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
 
-            // --- Row: 2-column layout: [prefix+name] | [type/ext] ---
-            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 20.f));
+            // --- Row: icon square + name + ext tag ---
+            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 24.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+            ZUIBoxSetColor(row, 0.45f, 0.45f, 0.50f, 0.f); // transparent, hover fades in
 
-            if (e.is_dir)
+            ZUISpacer(ctx, 4.f);
+            // Type icon — 14×14 colored square
             {
-                ZUILabel(ctx, "[D] ", kColDir);
-                ZUILabel(ctx, e.name, kColDir);
-                ZUISpacer(ctx, 8.f);
-                ZUILabel(ctx, "dir", ctx->Theme.TextDim);
+                const float* icon_col = e.is_dir ? kColDir : ExtColor(e.name);
+                char icon_key[40];
+                snprintf(icon_key, sizeof(icon_key), "##picon_%u", i);
+                ZUIBox* icon = ZUIPushBox(ctx, icon_key,
+                                           (uint32_t)ZEngine::Helpers::secure_strlen(icon_key),
+                                           ZUI_DrawBackground);
+                icon->Size[0] = ZPx(12.f);
+                icon->Size[1] = ZPx(12.f);
+                ZUIBoxSetColorArr(icon, icon_col);
+                icon->EdgeSoftness = 1.f;
+                ZUIBoxSetCornerRadius(icon, 2.f);
+                ZUIPopBox(ctx);
             }
-            else
+            ZUISpacer(ctx, 5.f);
+            // Name
             {
-                const float* name_color = ExtColor(e.name);
-                const char*  dot        = strrchr(e.name, '.');
-                ZUILabel(ctx, "    ", ctx->Theme.TextDim);
-                ZUILabel(ctx, e.name, name_color);
-                ZUISpacer(ctx, 8.f);
-                ZUILabel(ctx, dot ? dot + 1 : "", ctx->Theme.TextDim);
+                const float* name_col = e.is_dir ? kColDir : ExtColor(e.name);
+                ZUILabel(ctx, e.name, name_col);
             }
+            ZUISpacer(ctx, 4.f);
 
             ZUISignal row_sig = ZUISignalFromBox(ctx, row);
 
