@@ -160,6 +160,36 @@ namespace ZEngine::UI
     bool ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
 
     // ---------------------------------------------------------------
+    // Phase 4 — popup-based widgets
+    // ---------------------------------------------------------------
+
+    // Context menu — opens on right-click anywhere in the caller's region.
+    // Pair with ZUIEndContextMenu when it returns true.
+    bool ZUIBeginContextMenu(ZUIContext* ctx, const char* key);
+    void ZUIEndContextMenu(ZUIContext* ctx);
+
+    // Combo / dropdown.  preview_label is shown in the collapsed box.
+    // Returns true while the dropdown is open. Add ZUISelectable items inside.
+    bool ZUIBeginCombo(ZUIContext* ctx, const char* key,
+                       const char* preview_label, ZUISize w = ZFill());
+    void ZUIEndCombo(ZUIContext* ctx);
+
+    // Menu bar — call once per frame to get a horizontal toolbar row.
+    // Pair with ZUIEndMenuBar.
+    bool ZUIBeginMenuBar(ZUIContext* ctx);
+    void ZUIEndMenuBar(ZUIContext* ctx);
+
+    // Menu button inside a menu bar. Opens a popup column on click.
+    bool ZUIBeginMenu(ZUIContext* ctx, const char* label, bool enabled = true);
+    void ZUIEndMenu(ZUIContext* ctx);
+
+    // Modal — dims the background and shows a centred popup that cannot
+    // be dismissed by clicking outside.
+    void ZUIOpenModal(ZUIContext* ctx, const char* key);
+    bool ZUIBeginModal(ZUIContext* ctx, const char* key, const char* title);
+    void ZUIEndModal(ZUIContext* ctx);
+
+    // ---------------------------------------------------------------
     // Drag-and-drop helpers
     // ---------------------------------------------------------------
 

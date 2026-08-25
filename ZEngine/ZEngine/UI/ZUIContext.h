@@ -126,6 +126,7 @@ namespace ZEngine::UI
         // ZUIBeginPopup returns true when active and pushes a floated root-level box.
         // ---------------------------------------------------------------
         uint64_t           OpenPopupKey     = 0;     // requested this frame
+        uint64_t           ActiveModalKey   = 0;     // modal (cannot close by clicking outside)
         float              PopupPos[2]      = {};    // screen position to open at
         uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
         ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame

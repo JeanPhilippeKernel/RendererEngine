@@ -609,6 +609,150 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // Phase 4 — popup-based widgets
+    // ---------------------------------------------------------------
+
+    bool ZUIBeginContextMenu(ZUIContext* ctx, const char* key)
+    {
+        // Opens on right-click anywhere (not on a specific item)
+        if (ctx->MousePressed[1])
+            ZUIOpenPopup(ctx, key);
+        return ZUIBeginPopup(ctx, key);
+    }
+    void ZUIEndContextMenu(ZUIContext* ctx) { ZUIEndPopup(ctx); }
+
+    bool ZUIBeginCombo(ZUIContext* ctx, const char* key,
+                       const char* preview_label, ZUISize w)
+    {
+        uint32_t len   = (uint32_t)strlen(key);
+        char btn_key[80];
+        snprintf(btn_key, sizeof(btn_key), "##combo_btn_%s", key);
+
+        // Preview row: bordered box + preview text + "v" arrow
+        ZUIBox* row = ZUIBeginRow(ctx, btn_key, w, ZPx(28.f));
+        row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+        SetBgArr(row, ctx->Theme.InputBg);
+        SetBdrArr(row, ctx->Theme.InputBorder);
+        row->BorderThickness = 1.f;
+
+        ZUISpacer(ctx, 4.f);
+        ZUILabel(ctx, preview_label ? preview_label : "", ctx->Theme.TextDefault);
+
+        // Right-align "v" indicator
+        ZUIBox* arrow = ZUIPushBox(ctx, "v##carrow", 9, ZUI_DrawText);
+        arrow->Size[0] = ZPx(18.f); arrow->Size[1] = ZPx(28.f);
+        arrow->Flags   = arrow->Flags | ZUI_FloatX;
+        arrow->FloatPos[0] = w.Kind == ZUISizeKind::Fill ? 0.f : -18.f;
+        SetTextColor(arrow, ctx->Theme.TextDim);
+        ZUIPopBox(ctx);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+        ZUIEndRow(ctx);
+
+        // Open popup on click; position below this row (approx)
+        if (sig.Flags & ZUI_SignalClicked)
+            ZUIOpenPopup(ctx, key, ctx->MousePos[0] - 8.f, ctx->MousePos[1] + 4.f);
+
+        return ZUIBeginPopup(ctx, key);
+    }
+    void ZUIEndCombo(ZUIContext* ctx) { ZUIEndPopup(ctx); }
+
+    // Internal: menu bar saved state so EndMenuBar can pop the right box
+    bool ZUIBeginMenuBar(ZUIContext* ctx)
+    {
+        ZUIBox* bar = ZUIBeginRow(ctx, "##menubar_zui", ZFill(), ZPx(26.f));
+        bar->Flags  = bar->Flags | ZUI_DrawBackground;
+        SetBgArr(bar, ctx->Theme.HeaderBg);
+        bar->LayoutAxis = ZUIAxis::X;
+        return true;
+    }
+    void ZUIEndMenuBar(ZUIContext* ctx) { ZUIEndRow(ctx); }
+
+    bool ZUIBeginMenu(ZUIContext* ctx, const char* label, bool enabled)
+    {
+        char key[80];
+        snprintf(key, sizeof(key), "##menu_%s", label);
+        ZUIBoxFlags fl = ZUI_DrawText;
+        if (enabled) fl = fl | ZUI_Clickable | ZUI_DrawBackground;
+
+        ZUIBox* btn   = ZUIPushBox(ctx, key, (uint32_t)strlen(key), fl);
+        btn->Size[0]  = ZText();
+        btn->Size[1]  = ZPx(26.f);
+        btn->BgColor[3] = 0.f;
+        SetTextColor(btn, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, btn);
+        ZUIPopBox(ctx);
+
+        if ((sig.Flags & ZUI_SignalClicked) && enabled)
+            ZUIOpenPopup(ctx, label, ctx->MousePos[0], ctx->MousePos[1] + 2.f);
+
+        return ZUIBeginPopup(ctx, label);
+    }
+    void ZUIEndMenu(ZUIContext* ctx) { ZUIEndPopup(ctx); }
+
+    void ZUIOpenModal(ZUIContext* ctx, const char* key)
+    {
+        ctx->ActiveModalKey = ZUIHashStr(key, (uint32_t)strlen(key));
+    }
+
+    bool ZUIBeginModal(ZUIContext* ctx, const char* key, const char* title)
+    {
+        uint64_t hash = ZUIHashStr(key, (uint32_t)strlen(key));
+        if (ctx->ActiveModalKey != hash) { return false; }
+
+        float sw = (float)ctx->ScreenW;
+        float sh = (float)ctx->ScreenH;
+        float mw = 480.f, mh = 280.f;
+
+        // Dim overlay — root level, covers full screen
+        ZUIBox* saved = ctx->Current;
+        ctx->Current  = ctx->Root;
+
+        ZUIBox* dim  = ZUIPushBox(ctx, "##modal_dim", 12, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+        dim->Size[0] = ZPx(sw); dim->Size[1] = ZPx(sh);
+        dim->FloatPos[0] = 0.f; dim->FloatPos[1] = 0.f;
+        dim->BgColor[0] = 0.f; dim->BgColor[1] = 0.f;
+        dim->BgColor[2] = 0.f; dim->BgColor[3] = 0.55f;
+        ZUIPopBox(ctx);
+
+        // Modal panel — centred
+        ZUIBox* panel = ZUIPushBox(ctx, key, (uint32_t)strlen(key),
+                            ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
+        panel->Size[0]      = ZPx(mw); panel->Size[1] = ZPx(mh);
+        panel->FloatPos[0]  = (sw - mw) * 0.5f;
+        panel->FloatPos[1]  = (sh - mh) * 0.5f;
+        panel->LayoutAxis   = ZUIAxis::Y;
+        panel->BorderThickness = 1.f;
+        SetBgArr(panel,  ctx->Theme.PanelBg);
+        SetBdrArr(panel, ctx->Theme.PanelBorder);
+
+        ctx->Current = panel; // children go inside modal
+
+        // Title bar
+        if (title)
+        {
+            ZUIBox* hdr = ZUIBeginRow(ctx, "##modal_hdr", ZFill(), ZPx(28.f));
+            hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
+            SetBgArr(hdr, ctx->Theme.HeaderBg);
+            ZUISpacer(ctx, 8.f);
+            ZUILabel(ctx, title, ctx->Theme.TextDefault);
+            ZUIEndRow(ctx);
+            ZUISeparator(ctx);
+        }
+
+        ctx->PopupSavedParent = saved; // reuse popup save for restore
+        return true;
+    }
+
+    void ZUIEndModal(ZUIContext* ctx)
+    {
+        ZUIPopBox(ctx); // pop modal panel
+        ctx->Current = ctx->PopupSavedParent;
+        ctx->PopupSavedParent = nullptr;
+    }
+
+    // ---------------------------------------------------------------
     // Drag-and-drop helpers
     // ---------------------------------------------------------------
 
