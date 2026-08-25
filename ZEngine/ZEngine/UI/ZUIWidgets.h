@@ -182,6 +182,48 @@ namespace ZEngine::UI
     inline void ZUISetTextAlign(ZUIBox* box, ZUITextAlign align) { box->TextAlign = align; }
 
     // ---------------------------------------------------------------
+    // Phase 7 — complex widgets
+    // ---------------------------------------------------------------
+
+    // Tab bar. Usage:
+    //   ZUIBeginTabBar(ctx, "##tabs")
+    //   if (ZUIBeginTabItem(ctx, "Tab 1")) { ...content... ZUIEndTabItem(ctx); }
+    //   if (ZUIBeginTabItem(ctx, "Tab 2")) { ...content... ZUIEndTabItem(ctx); }
+    //   ZUIEndTabBar(ctx)
+    void ZUIBeginTabBar(ZUIContext* ctx, const char* key);
+    bool ZUIBeginTabItem(ZUIContext* ctx, const char* label);
+    void ZUIEndTabItem(ZUIContext* ctx);
+    void ZUIEndTabBar(ZUIContext* ctx);
+
+    // Scrollable list box — wraps a scroll region + Selectables.
+    // w/h control the visible area; items are added as ZUISelectable calls inside.
+    ZUIBox* ZUIBeginListBox(ZUIContext* ctx, const char* key,
+                             ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
+    void    ZUIEndListBox(ZUIContext* ctx);
+
+    // Bounded horizontal slider — maps thumb position to [v_min, v_max].
+    // Returns true while value changes.
+    bool ZUISliderFloat(ZUIContext* ctx, const char* key, float* value,
+                        float v_min, float v_max,
+                        ZUISize w = ZFill(), ZUISize h = ZPx(24.f));
+
+    // Integer text field — editable with keyboard; clamped to [v_min, v_max].
+    // Returns true when value changes.
+    bool ZUIInputInt(ZUIContext* ctx, const char* key, int* value,
+                     int v_min = -0x7FFFFFFF, int v_max = 0x7FFFFFFF,
+                     ZUISize w = ZFill());
+
+    // Multi-line text input inside a scroll region.
+    // Returns true when buf changes.
+    bool ZUIInputTextMultiline(ZUIContext* ctx, const char* key,
+                                char* buf, uint32_t buf_size,
+                                ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
+
+    // RGBA colour picker (hue bar + SV square + alpha bar).
+    // color[4] in linear [0,1]. Returns true when changed.
+    bool ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4]);
+
+    // ---------------------------------------------------------------
     // Phase 4 — popup-based widgets
     // ---------------------------------------------------------------
 

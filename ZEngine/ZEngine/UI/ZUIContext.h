@@ -139,6 +139,14 @@ namespace ZEngine::UI
         uint64_t           OpenPopupKey     = 0;     // requested this frame
         uint64_t           ActiveModalKey   = 0;     // modal (cannot close by clicking outside)
 
+        // Tab bar state (single-level; reset by ZUIBeginTabBar)
+        uint64_t           TabBarKey           = 0;  // hash of active tab bar
+        int                TabBarSelectedIdx   = 0;  // which tab is open
+        int                TabBarCurrentIdx    = 0;  // iteration counter
+        bool               TabItemWasSelected  = false; // did last BeginTabItem match?
+        ZUIBox*            TabBarOuterBox      = nullptr;
+        ZUIBox*            TabBarRowBox        = nullptr;
+
         // Table state (single-level; reset by ZUIBeginTable/ZUIEndTable)
         int                TableColumns     = 0;
         int                TableCurrentCol  = -1;

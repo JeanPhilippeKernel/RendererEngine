@@ -379,6 +379,332 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // Phase 7 — complex widgets
+    // ---------------------------------------------------------------
+
+    void ZUIBeginTabBar(ZUIContext* ctx, const char* key)
+    {
+        uint64_t hash  = ZUIHashStr(key, (uint32_t)strlen(key));
+        ctx->TabBarKey = hash;
+
+        // Read selected index from persistent state (stored in ScrollY)
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        ctx->TabBarSelectedIdx = ps ? (int)ps->ScrollY : 0;
+        ctx->TabBarCurrentIdx  = 0;
+
+        ZUIBox* outer = ZUIBeginColumn(ctx, key, ZFill(), ZFit());
+        ctx->TabBarOuterBox = outer;
+
+        // Button row
+        char row_key[64];
+        snprintf(row_key, sizeof(row_key), "##tbr_%s", key);
+        ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(28.f));
+        row->Flags  = row->Flags | ZUI_DrawBackground;
+        SetBgArr(row, ctx->Theme.HeaderBg);
+        ctx->TabBarRowBox = row;
+    }
+
+    bool ZUIBeginTabItem(ZUIContext* ctx, const char* label)
+    {
+        int idx = ctx->TabBarCurrentIdx++;
+        bool active = (idx == ctx->TabBarSelectedIdx);
+
+        // Tab button
+        char btn_key[128];
+        snprintf(btn_key, sizeof(btn_key), "%s##tbi_%d", label, idx);
+        ZUIBoxFlags fl = ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable;
+        ZUIBox* btn   = ZUIPushBox(ctx, btn_key, (uint32_t)strlen(btn_key), fl);
+        btn->Size[0]  = ZText();
+        btn->Size[1]  = ZPx(28.f);
+        if (active) {
+            SetBgArr(btn, ctx->Theme.PanelBg);
+            SetTextColor(btn, ctx->Theme.TextDefault);
+        } else {
+            btn->BgColor[3] = 0.f;
+            SetTextColor(btn, ctx->Theme.TextDim);
+        }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, btn);
+        ZUIPopBox(ctx);
+
+        if (sig.Flags & ZUI_SignalClicked)
+        {
+            ctx->TabBarSelectedIdx = idx;
+            ZUIPersistentState* ps =
+                ZUIStateGetOrInsert(&ctx->StateStore, ctx->TabBarKey);
+            if (ps) ps->ScrollY = (float)idx;
+        }
+
+        ctx->TabItemWasSelected = active;
+        if (!active) return false;
+
+        // Close the button row so content goes below it
+        ZUIEndRow(ctx);
+        ctx->TabBarRowBox = nullptr;
+
+        // Push content column
+        char content_key[128];
+        snprintf(content_key, sizeof(content_key), "##tbc_%s_%d",
+                 label, idx);
+        ZUIBeginColumn(ctx, content_key, ZFill(), ZFit());
+        return true;
+    }
+
+    void ZUIEndTabItem(ZUIContext* ctx)
+    {
+        ZUIEndColumn(ctx); // close content column
+    }
+
+    void ZUIEndTabBar(ZUIContext* ctx)
+    {
+        if (ctx->TabBarRowBox) { ZUIEndRow(ctx); } // close button row if no tab was active
+        ZUIEndColumn(ctx); // close outer column
+        ctx->TabBarKey     = 0;
+        ctx->TabBarRowBox  = nullptr;
+        ctx->TabBarOuterBox = nullptr;
+    }
+
+    ZUIBox* ZUIBeginListBox(ZUIContext* ctx, const char* key, ZUISize w, ZUISize h)
+    {
+        ZUIBox* frame = ZUIBeginColumn(ctx, key, w, h);
+        frame->Flags  = frame->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
+        SetBgArr(frame, ctx->Theme.InputBg);
+        SetBdrArr(frame, ctx->Theme.InputBorder);
+        frame->BorderThickness = 1.f;
+
+        // Content inside a scroll region
+        char sr_key[64];
+        snprintf(sr_key, sizeof(sr_key), "##lbsr_%s", key);
+        ZUIBeginScrollRegion(ctx, sr_key, ZFill(), ZFill());
+        return frame;
+    }
+    void ZUIEndListBox(ZUIContext* ctx)
+    {
+        ZUIEndScrollRegion(ctx);
+        ZUIEndColumn(ctx);
+    }
+
+    bool ZUISliderFloat(ZUIContext* ctx, const char* key, float* value,
+                        float v_min, float v_max, ZUISize w, ZUISize h)
+    {
+        if (!value) return false;
+        float range = v_max - v_min;
+        if (range <= 0.f) range = 1.f;
+        float fraction = (*value - v_min) / range;
+        if (fraction < 0.f) fraction = 0.f;
+        if (fraction > 1.f) fraction = 1.f;
+
+        uint32_t len  = (uint32_t)strlen(key);
+        ZUIBox*  track = ZUIPushBox(ctx, key, len,
+                             ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable);
+        track->Size[0] = w;
+        track->Size[1] = h;
+        track->LayoutAxis = ZUIAxis::X;
+        SetBgArr(track, ctx->Theme.InputBg);
+        SetBdrArr(track, ctx->Theme.InputBorder);
+        track->BorderThickness = 1.f;
+
+        ZUISignal sig = ZUISignalFromBox(ctx, track);
+        ZUIPopBox(ctx);
+
+        bool changed = false;
+        if (sig.Flags & ZUI_SignalHeld)
+        {
+            // Map horizontal drag to value change
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, track->Key);
+            // Box width isn't available until next frame; use 120 px estimate
+            float box_w = 120.f;
+            *value += sig.DragDelta[0] * (range / box_w);
+            if (*value < v_min) *value = v_min;
+            if (*value > v_max) *value = v_max;
+            changed = (sig.DragDelta[0] != 0.f);
+        }
+        else if ((sig.Flags & ZUI_SignalClicked) || (sig.Flags & ZUI_SignalPressed))
+        {
+            // Click on track: jump to position
+            float pos = ctx->MousePos[0] - track->ScreenMin[0];
+            float box_w = track->ScreenMax[0] - track->ScreenMin[0];
+            if (box_w > 0.f) {
+                *value = v_min + (pos / box_w) * range;
+                if (*value < v_min) *value = v_min;
+                if (*value > v_max) *value = v_max;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    bool ZUIInputInt(ZUIContext* ctx, const char* key, int* value, int v_min, int v_max,
+                     ZUISize w)
+    {
+        if (!value) return false;
+
+        // Format as string, use TextField-style box
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d", *value);
+        uint32_t len = (uint32_t)strlen(key);
+
+        ZUIBox* field = ZUIPushBox(ctx, key, len,
+                            ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
+        field->Size[0] = w;
+        field->Size[1] = ZPx(28.f);
+        SetBgArr(field, ctx->Theme.InputBg);
+        SetTextColor(field, ctx->Theme.TextDefault);
+        field->BorderThickness = 1.f;
+
+        bool focused = (ctx->FocusKey == field->Key);
+        if (focused)
+        {
+            // Append digits from text input
+            static char s_ibuf[32] = {};
+            static uint64_t s_last_key = 0;
+            if (s_last_key != field->Key) {
+                snprintf(s_ibuf, sizeof(s_ibuf), "%d", *value);
+                s_last_key = field->Key;
+            }
+            bool changed = false;
+            for (uint32_t i = 0; i < ctx->TextInputLen; ++i)
+            {
+                char c = ctx->TextInput[i];
+                if ((c >= '0' && c <= '9') || (c == '-' && strlen(s_ibuf) == 0))
+                {
+                    size_t l = strlen(s_ibuf);
+                    if (l < sizeof(s_ibuf) - 1) { s_ibuf[l] = c; s_ibuf[l+1] = '\0'; changed = true; }
+                }
+            }
+            if (ctx->BackspacePressed)
+            {
+                size_t l = strlen(s_ibuf);
+                if (l > 0) { s_ibuf[l-1] = '\0'; changed = true; }
+            }
+            if (changed || focused) {
+                int parsed = s_ibuf[0] ? atoi(s_ibuf) : 0;
+                if (parsed < v_min) parsed = v_min;
+                if (parsed > v_max) parsed = v_max;
+                *value = parsed;
+            }
+
+            char disp[34]; snprintf(disp, sizeof(disp), "%s|", s_ibuf);
+            field->Label = ZUIPushStr(&ctx->FrameArena, disp, (uint32_t)strlen(disp));
+
+            SetBdrArr(field, ctx->Theme.InputFocusBorder);
+        }
+        else
+        {
+            field->Label = ZUIPushStr(&ctx->FrameArena, buf, (uint32_t)strlen(buf));
+            SetBdrArr(field, ctx->Theme.InputBorder);
+        }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, field);
+        ZUIPopBox(ctx);
+
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
+        // Also support drag to change
+        if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+        {
+            *value += (int)(sig.DragDelta[0] * 0.5f);
+            if (*value < v_min) *value = v_min;
+            if (*value > v_max) *value = v_max;
+        }
+
+        return focused && ctx->TextInputLen > 0;
+    }
+
+    bool ZUIInputTextMultiline(ZUIContext* ctx, const char* key,
+                                char* buf, uint32_t buf_size,
+                                ZUISize w, ZUISize h)
+    {
+        // Outer bordered frame
+        char frame_key[64];
+        snprintf(frame_key, sizeof(frame_key), "##itmf_%s", key);
+        ZUIBox* frame = ZUIBeginColumn(ctx, frame_key, w, h);
+        frame->Flags  = frame->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+        SetBgArr(frame, ctx->Theme.InputBg);
+        SetBdrArr(frame, ctx->Theme.InputBorder);
+        frame->BorderThickness = 1.f;
+
+        // Scroll region inside
+        char sr_key[64];
+        snprintf(sr_key, sizeof(sr_key), "##itmsr_%s", key);
+        ZUIBeginScrollRegion(ctx, sr_key, ZFill(), ZFill());
+
+        // The text as a label for now (full editing in a later pass)
+        bool focused = (ctx->FocusKey == frame->Key);
+        char disp[1024];
+        if (focused) snprintf(disp, sizeof(disp), "%s|", buf);
+        else         snprintf(disp, sizeof(disp), "%s", buf);
+
+        ZUILabel(ctx, disp, ctx->Theme.TextDefault);
+
+        ZUIEndScrollRegion(ctx);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, frame);
+        ZUIEndColumn(ctx);
+
+        bool changed = false;
+        if ((sig.Flags & ZUI_SignalClicked)) ctx->FocusKey = frame->Key;
+        if (focused)
+        {
+            for (uint32_t i = 0; i < ctx->TextInputLen; ++i)
+            {
+                char c = ctx->TextInput[i];
+                uint32_t l = (uint32_t)Helpers::secure_strlen(buf);
+                if (l + 1 < buf_size) { buf[l] = c; buf[l+1] = '\0'; changed = true; }
+            }
+            if (ctx->BackspacePressed)
+            {
+                uint32_t l = (uint32_t)Helpers::secure_strlen(buf);
+                if (l > 0) { buf[l-1] = '\0'; changed = true; }
+            }
+        }
+        return changed;
+    }
+
+    bool ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4])
+    {
+        // Simple version: color swatch + R/G/B/A sliders
+        char outer_key[64];
+        snprintf(outer_key, sizeof(outer_key), "##cp_%s", key);
+        ZUIBeginColumn(ctx, outer_key, ZFill(), ZFit());
+
+        // Color swatch
+        char sw_key[64];
+        snprintf(sw_key, sizeof(sw_key), "##cpswk_%s", key);
+        ZUIBox* swatch     = ZUIPushBox(ctx, sw_key, (uint32_t)strlen(sw_key),
+                                 ZUI_DrawBackground | ZUI_DrawBorder);
+        swatch->Size[0]    = ZFill();
+        swatch->Size[1]    = ZPx(28.f);
+        swatch->BgColor[0] = color[0]; swatch->BgColor[1] = color[1];
+        swatch->BgColor[2] = color[2]; swatch->BgColor[3] = color[3];
+        SetBdrArr(swatch, ctx->Theme.PanelBorder);
+        swatch->BorderThickness = 1.f;
+        ZUIPopBox(ctx);
+
+        ZUISpacer(ctx, 4.f);
+
+        bool changed = false;
+        // R/G/B/A sliders
+        const char* channel_names[] = { "R", "G", "B", "A" };
+        for (int i = 0; i < 4; ++i)
+        {
+            ZUIBeginRow(ctx, channel_names[i], ZFill(), ZPx(22.f));
+                ZUIBox* lbl = ZUIPushBox(ctx, channel_names[i], 1, ZUI_DrawText);
+                lbl->Size[0] = ZPx(16.f); lbl->Size[1] = ZPx(22.f);
+                SetTextColor(lbl, ctx->Theme.TextDim);
+                ZUIPopBox(ctx);
+
+                char ch_key[32];
+                snprintf(ch_key, sizeof(ch_key), "##cpch_%s_%d", key, i);
+                if (ZUISliderFloat(ctx, ch_key, &color[i], 0.f, 1.f, ZFill(), ZPx(22.f)))
+                    changed = true;
+            ZUIEndRow(ctx);
+        }
+
+        ZUIEndColumn(ctx);
+        return changed;
+    }
+
+    // ---------------------------------------------------------------
     // Phase 5 — layout improvements
     // ---------------------------------------------------------------
 
