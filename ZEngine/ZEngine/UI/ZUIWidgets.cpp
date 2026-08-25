@@ -378,6 +378,237 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // Phase 3 — simple standalone widgets
+    // ---------------------------------------------------------------
+
+    bool ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked)
+    {
+        // Row: [16×16 box] [label]
+        char row_key[64];
+        snprintf(row_key, sizeof(row_key), "##cb_%s", label);
+
+        ZUIBoxFlags row_flags = ZUI_Clickable;
+        if (!ctx->Disabled) { /* keep Clickable */ } else row_flags = ZUI_None;
+
+        ZUIBox* row      = ZUIBeginRow(ctx, row_key, ZFit(), ZPx(24.f));
+        row->Flags       = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
+        row->LayoutAxis  = ZUIAxis::X;
+
+        // Tick box
+        bool active = checked && *checked;
+        ZUIBox* box  = ZUIPushBox(ctx, "##tick", 6,
+                            ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DrawText);
+        box->Size[0] = ZPx(16.f); box->Size[1] = ZPx(16.f);
+        SetBgArr(box, ctx->Theme.InputBg);
+        SetBdrArr(box, active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
+        box->BorderThickness = 1.f;
+        if (active) {
+            box->Label = ZUIPushStr(&ctx->FrameArena, "v", 1);
+            SetTextColor(box, ctx->Theme.InputFocusBorder);
+        }
+        ZUIPopBox(ctx);
+
+        ZUISpacer(ctx, 6.f);
+        ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+        ZUIEndRow(ctx);
+
+        if ((sig.Flags & ZUI_SignalClicked) && checked)
+        {
+            *checked = !(*checked);
+            return true;
+        }
+        return false;
+    }
+
+    bool ZUIRadioButton(ZUIContext* ctx, const char* label, int* selected, int index)
+    {
+        char row_key[64];
+        snprintf(row_key, sizeof(row_key), "##rb_%s_%d", label, index);
+
+        ZUIBox* row      = ZUIBeginRow(ctx, row_key, ZFit(), ZPx(24.f));
+        row->Flags       = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
+        row->LayoutAxis  = ZUIAxis::X;
+
+        bool active = selected && (*selected == index);
+        ZUIBox* circle = ZUIPushBox(ctx, "##dot", 5,
+                              ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DrawText);
+        circle->Size[0] = ZPx(16.f); circle->Size[1] = ZPx(16.f);
+        SetBgArr(circle, ctx->Theme.InputBg);
+        SetBdrArr(circle, active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
+        circle->BorderThickness = 1.f;
+        if (active) {
+            circle->Label = ZUIPushStr(&ctx->FrameArena, "*", 1);
+            SetTextColor(circle, ctx->Theme.InputFocusBorder);
+        }
+        ZUIPopBox(ctx);
+
+        ZUISpacer(ctx, 6.f);
+        ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+        ZUIEndRow(ctx);
+
+        if ((sig.Flags & ZUI_SignalClicked) && selected && !ctx->Disabled)
+        {
+            *selected = index;
+            return true;
+        }
+        return false;
+    }
+
+    void ZUIProgressBar(ZUIContext* ctx, const char* key, float fraction,
+                        ZUISize w, ZUISize h, const char* overlay_text)
+    {
+        fraction = fraction < 0.f ? 0.f : (fraction > 1.f ? 1.f : fraction);
+        uint32_t len = (uint32_t)strlen(key);
+
+        // Track
+        ZUIBox* track   = ZUIBeginRow(ctx, key, w, h);
+        track->Flags    = track->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
+        SetBgArr(track,  ctx->Theme.InputBg);
+        SetBdrArr(track, ctx->Theme.InputBorder);
+        track->BorderThickness = 1.f;
+        track->LayoutAxis = ZUIAxis::X;
+
+        // Fill bar
+        char fill_key[64];
+        snprintf(fill_key, sizeof(fill_key), "##fill_%s", key);
+        ZUIBox* fill    = ZUIPushBox(ctx, fill_key, (uint32_t)strlen(fill_key),
+                               ZUI_DrawBackground | (overlay_text ? ZUI_DrawText : ZUI_None));
+        fill->Size[0]   = ZPct(fraction);
+        fill->Size[1]   = ZFill();
+        fill->BgColor[0] = ctx->Theme.InputFocusBorder[0];
+        fill->BgColor[1] = ctx->Theme.InputFocusBorder[1];
+        fill->BgColor[2] = ctx->Theme.InputFocusBorder[2];
+        fill->BgColor[3] = 0.80f;
+        if (overlay_text) {
+            fill->Label = ZUIPushStr(&ctx->FrameArena, overlay_text,
+                                      (uint32_t)Helpers::secure_strlen(overlay_text));
+            SetTextColor(fill, ctx->Theme.TextDefault);
+        }
+        ZUIPopBox(ctx);
+
+        ZUIEndRow(ctx);
+    }
+
+    void ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text)
+    {
+        if (!(sig.Flags & ZUI_SignalHovered) || !text) { return; }
+
+        // Open a popup-style floating box near the cursor
+        float tx = ctx->MousePos[0] + 14.f;
+        float ty = ctx->MousePos[1] + 14.f;
+
+        // Clamp to screen edges (rough)
+        if (tx + 200.f > (float)ctx->ScreenW) tx = ctx->MousePos[0] - 200.f;
+        if (ty + 32.f  > (float)ctx->ScreenH) ty = ctx->MousePos[1] - 32.f;
+
+        // Build as a root-level floated box (same parent-escape as popups)
+        ZUIBox* saved    = ctx->Current;
+        ctx->Current     = ctx->Root;
+
+        char ttkey[64];
+        snprintf(ttkey, sizeof(ttkey), "##tt_%p", (void*)text);
+        ZUIBox* tip       = ZUIPushBox(ctx, ttkey, (uint32_t)strlen(ttkey),
+                                ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DrawText |
+                                ZUI_FloatX | ZUI_FloatY);
+        tip->Size[0]      = ZFit();
+        tip->Size[1]      = ZFit();
+        tip->FloatPos[0]  = tx;
+        tip->FloatPos[1]  = ty;
+        tip->Label        = ZUIPushStr(&ctx->FrameArena, text,
+                                        (uint32_t)Helpers::secure_strlen(text));
+        tip->BgColor[0]   = ctx->Theme.HeaderBg[0]; tip->BgColor[1] = ctx->Theme.HeaderBg[1];
+        tip->BgColor[2]   = ctx->Theme.HeaderBg[2]; tip->BgColor[3] = ctx->Theme.HeaderBg[3];
+        SetBdrArr(tip, ctx->Theme.PanelBorder);
+        tip->BorderThickness = 1.f;
+        SetTextColor(tip, ctx->Theme.TextDefault);
+        ZUIPopBox(ctx);
+
+        ctx->Current = saved;
+    }
+
+    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open)
+    {
+        char key[256];
+        snprintf(key, sizeof(key), "##ch_%s", label);
+
+        ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZPx(26.f));
+        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->BgColor[0] = ctx->Theme.HeaderBg[0]; hdr->BgColor[1] = ctx->Theme.HeaderBg[1];
+        hdr->BgColor[2] = ctx->Theme.HeaderBg[2]; hdr->BgColor[3] = ctx->Theme.HeaderBg[3];
+        hdr->LayoutAxis = ZUIAxis::X;
+
+        const char* ind = (open && *open) ? "v " : "> ";
+        ZUIBox* arrow = ZUIPushBox(ctx, ind, 2, ZUI_DrawText);
+        arrow->Size[0] = ZPx(16.f); arrow->Size[1] = ZPx(26.f);
+        SetTextColor(arrow, ctx->Theme.TextDim);
+        ZUIPopBox(ctx);
+
+        ZUILabel(ctx, label, ctx->Theme.TextDefault);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, hdr);
+        ZUIEndRow(ctx);
+
+        if ((sig.Flags & ZUI_SignalClicked) && open) { *open = !(*open); }
+        return open ? *open : false;
+    }
+
+    bool ZUISelectable(ZUIContext* ctx, const char* label, bool* selected, ZUISize h)
+    {
+        char key[256];
+        snprintf(key, sizeof(key), "##sel_%s", label);
+
+        ZUIBox* row = ZUIBeginRow(ctx, key, ZFill(), h);
+        row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        if (selected && *selected) {
+            row->BgColor[0] = ctx->Theme.RowSelectedBg[0];
+            row->BgColor[1] = ctx->Theme.RowSelectedBg[1];
+            row->BgColor[2] = ctx->Theme.RowSelectedBg[2];
+            row->BgColor[3] = ctx->Theme.RowSelectedBg[3];
+        } else {
+            row->BgColor[0] = ctx->Theme.RowHoverBg[0];
+            row->BgColor[1] = ctx->Theme.RowHoverBg[1];
+            row->BgColor[2] = ctx->Theme.RowHoverBg[2];
+            row->BgColor[3] = 0.f; // transparent, fade in on hover
+        }
+
+        ZUISpacer(ctx, 6.f);
+        ZUILabel(ctx, label, ctx->Theme.TextDefault);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+        ZUIEndRow(ctx);
+
+        if ((sig.Flags & ZUI_SignalClicked) && selected)
+        {
+            *selected = !(*selected);
+            return true;
+        }
+        return false;
+    }
+
+    void ZUISeparatorText(ZUIContext* ctx, const char* text)
+    {
+        ZUIBeginRow(ctx, "##septext", ZFill(), ZPx(22.f));
+            ZUIBox* line1 = ZUIPushBox(ctx, "##sl1", 5, ZUI_DrawBackground);
+            line1->Size[0] = ZPx(8.f); line1->Size[1] = ZPx(1.f);
+            SetBgArr(line1, ctx->Theme.Separator);
+            ZUIPopBox(ctx);
+
+            ZUISpacer(ctx, 4.f);
+            ZUILabel(ctx, text, ctx->Theme.TextDim);
+            ZUISpacer(ctx, 4.f);
+
+            ZUIBox* line2 = ZUIPushBox(ctx, "##sl2", 5, ZUI_DrawBackground);
+            line2->Size[0] = ZFill(); line2->Size[1] = ZPx(1.f);
+            SetBgArr(line2, ctx->Theme.Separator);
+            ZUIPopBox(ctx);
+        ZUIEndRow(ctx);
+    }
+
+    // ---------------------------------------------------------------
     // Drag-and-drop helpers
     // ---------------------------------------------------------------
 

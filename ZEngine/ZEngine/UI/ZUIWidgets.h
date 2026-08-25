@@ -99,6 +99,36 @@ namespace ZEngine::UI
     // *open is toggled on click. Returns signal from the row box.
     ZUISignal ZUITreeNode(ZUIContext* ctx, const char* label, bool* open);
 
+    // ---------------------------------------------------------------
+    // Phase 3 — simple standalone widgets
+    // ---------------------------------------------------------------
+
+    // 16×16 checkbox + label. Returns true when *checked changes.
+    bool ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked);
+
+    // Radio button — sets *selected = index on click. Returns true when changed.
+    bool ZUIRadioButton(ZUIContext* ctx, const char* label, int* selected, int index);
+
+    // Filled progress bar [0..1]. Optional label drawn on top when non-null.
+    void ZUIProgressBar(ZUIContext* ctx, const char* key, float fraction,
+                        ZUISize w = ZFill(), ZUISize h = ZPx(18.f),
+                        const char* overlay_text = nullptr);
+
+    // Shows a tooltip box near the cursor when sig contains ZUI_SignalHovered.
+    // Call immediately after ZUISignalFromBox.
+    void ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text);
+
+    // Full-width collapsible section header. Returns *open state.
+    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open);
+
+    // Full-width selectable row. *selected is toggled on click.
+    // Returns true the frame *selected changes.
+    bool ZUISelectable(ZUIContext* ctx, const char* label, bool* selected,
+                       ZUISize h = ZPx(24.f));
+
+    // Horizontal separator with centred label text.
+    void ZUISeparatorText(ZUIContext* ctx, const char* text);
+
     // Drag to edit a single float value. Horizontal mouse drag changes *value
     // by delta * speed. Returns true if *value changed this frame.
     // width_px controls the box width; typically 60–80 px inside a row.
