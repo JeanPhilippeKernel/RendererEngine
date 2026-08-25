@@ -58,8 +58,36 @@ namespace ZEngine::UI
     // Static text — no interaction
     void ZUILabel(ZUIContext* ctx, const char* text, const float color[4] = nullptr);
 
-    // Clickable text-on-background button — returns signal with ZUI_SignalClicked set on click
-    ZUISignal ZUIButton(ZUIContext* ctx, const char* label);
+    // ---------------------------------------------------------------
+    // Button family
+    // ---------------------------------------------------------------
+
+    // Regular button. w/h default to ZText()/ZPx(28); pass ZPx(n) to override.
+    ZUISignal ZUIButton(ZUIContext* ctx, const char* label,
+                        ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+
+    // No border, 22 px tall, tight horizontal fit — safe inside rows/toolbars.
+    ZUISignal ZUISmallButton(ZUIContext* ctx, const char* label);
+
+    // Invisible hit-area only — no drawing. Used for custom-drawn clickable regions.
+    ZUISignal ZUIInvisibleButton(ZUIContext* ctx, const char* key,
+                                  ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+
+    // Stateful toggle — background brightens when *active is true.
+    // Returns true the frame *active changes.
+    bool ZUIToggleButton(ZUIContext* ctx, const char* label, bool* active,
+                         ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+
+    // Image button — renders a texture rect, returns click signal.
+    ZUISignal ZUIImageButton(ZUIContext* ctx, const char* key,
+                              uint32_t texture_index,
+                              ZUISize w = ZPx(28.f), ZUISize h = ZPx(28.f));
+
+    // ---------------------------------------------------------------
+    // Disabled state — nest freely; widgets inside skip Clickable + dim
+    // ---------------------------------------------------------------
+    void ZUIBeginDisabled(ZUIContext* ctx);
+    void ZUIEndDisabled(ZUIContext* ctx);
 
     // 1 px horizontal divider
     void ZUISeparator(ZUIContext* ctx);

@@ -89,20 +89,134 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // ZUIButton
+    // Disabled-state helpers
     // ---------------------------------------------------------------
 
-    ZUISignal ZUIButton(ZUIContext* ctx, const char* label)
+    void ZUIBeginDisabled(ZUIContext* ctx)
     {
-        uint32_t len  = (uint32_t)strlen(label);
-        ZUIBox*  box  = ZUIPushBox(ctx, label, len,
-                            ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
-        box->Size[0]          = ZText();
-        box->Size[1]          = ZPx(28.f);
+        ++ctx->DisabledDepth;
+        ctx->Disabled = true;
+    }
+    void ZUIEndDisabled(ZUIContext* ctx)
+    {
+        if (ctx->DisabledDepth > 0) --ctx->DisabledDepth;
+        ctx->Disabled = (ctx->DisabledDepth > 0);
+    }
+
+    // Dim a color array in-place when the widget is disabled
+    static void ApplyDisabledDim(float c[4]) { c[3] *= 0.38f; }
+
+    // ---------------------------------------------------------------
+    // ZUIButton family
+    // ---------------------------------------------------------------
+
+    ZUISignal ZUIButton(ZUIContext* ctx, const char* label, ZUISize w, ZUISize h)
+    {
+        uint32_t   len   = (uint32_t)strlen(label);
+        ZUIBoxFlags flags = ZUI_DrawBackground | ZUI_DrawText | ZUI_DrawBorder;
+        if (!ctx->Disabled) flags = flags | ZUI_Clickable;
+
+        ZUIBox* box         = ZUIPushBox(ctx, label, len, flags);
+        box->Size[0]        = w;
+        box->Size[1]        = h;
         SetBgArr(box, ctx->Theme.ButtonBg);
         SetTextColor(box, ctx->Theme.TextDefault);
         SetBdrArr(box, ctx->Theme.ButtonBorder);
-        box->BorderThickness  = 1.f;
+        box->BorderThickness = 1.f;
+        if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+        return sig;
+    }
+
+    ZUISignal ZUISmallButton(ZUIContext* ctx, const char* label)
+    {
+        uint32_t   len   = (uint32_t)strlen(label);
+        ZUIBoxFlags flags = ZUI_DrawBackground | ZUI_DrawText;
+        if (!ctx->Disabled) flags = flags | ZUI_Clickable;
+
+        ZUIBox* box      = ZUIPushBox(ctx, label, len, flags);
+        box->Size[0]     = ZText();
+        box->Size[1]     = ZPx(22.f);
+        SetBgArr(box, ctx->Theme.ButtonBg);
+        SetTextColor(box, ctx->Theme.TextDefault);
+        if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+        return sig;
+    }
+
+    ZUISignal ZUIInvisibleButton(ZUIContext* ctx, const char* key, ZUISize w, ZUISize h)
+    {
+        uint32_t    len   = (uint32_t)strlen(key);
+        ZUIBoxFlags flags = ctx->Disabled ? ZUI_None : ZUI_Clickable;
+
+        ZUIBox* box   = ZUIPushBox(ctx, key, len, flags);
+        box->Size[0]  = w;
+        box->Size[1]  = h;
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+        return sig;
+    }
+
+    bool ZUIToggleButton(ZUIContext* ctx, const char* label, bool* active,
+                         ZUISize w, ZUISize h)
+    {
+        uint32_t   len   = (uint32_t)strlen(label);
+        ZUIBoxFlags flags = ZUI_DrawBackground | ZUI_DrawText | ZUI_DrawBorder;
+        if (!ctx->Disabled) flags = flags | ZUI_Clickable;
+
+        ZUIBox* box         = ZUIPushBox(ctx, label, len, flags);
+        box->Size[0]        = w;
+        box->Size[1]        = h;
+        box->BorderThickness = 1.f;
+
+        // Active state uses a lighter background
+        if (active && *active)
+        {
+            float bg[4] = { ctx->Theme.ButtonBg[0] + 0.14f,
+                            ctx->Theme.ButtonBg[1] + 0.14f,
+                            ctx->Theme.ButtonBg[2] + 0.14f,
+                            ctx->Theme.ButtonBg[3] };
+            SetBgArr(box, bg);
+            SetBdrArr(box, ctx->Theme.InputFocusBorder);
+        }
+        else
+        {
+            SetBgArr(box, ctx->Theme.ButtonBg);
+            SetBdrArr(box, ctx->Theme.ButtonBorder);
+        }
+        SetTextColor(box, ctx->Theme.TextDefault);
+        if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+        ZUIPopBox(ctx);
+
+        if ((sig.Flags & ZUI_SignalClicked) && active)
+        {
+            *active = !(*active);
+            return true;
+        }
+        return false;
+    }
+
+    ZUISignal ZUIImageButton(ZUIContext* ctx, const char* key,
+                              uint32_t texture_index, ZUISize w, ZUISize h)
+    {
+        uint32_t    len   = (uint32_t)strlen(key);
+        ZUIBoxFlags flags = ZUI_DrawBackground;
+        if (!ctx->Disabled) flags = flags | ZUI_Clickable;
+
+        ZUIBox* box          = ZUIPushBox(ctx, key, len, flags);
+        box->Size[0]         = w;
+        box->Size[1]         = h;
+        box->TextureIndex    = texture_index;
+        // Ensure bg alpha > 0 so PreparePayload emits the quad
+        box->BgColor[0] = box->BgColor[1] = box->BgColor[2] = box->BgColor[3] = 1.f;
+        if (ctx->Disabled) box->BgColor[3] = 0.38f;
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);

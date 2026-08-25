@@ -115,6 +115,10 @@ namespace ZEngine::UI
         // set by ZUISceneViewportComponent each BuildUI frame; read by Editor::ProcessEvent
         // to gate camera-controller mouse routing
         bool               ViewportHovered   = false;
+
+        // ZUIBeginDisabled / ZUIEndDisabled — widgets skip Clickable and dim colours
+        bool               Disabled          = false;
+        int                DisabledDepth     = 0; // supports nesting
     };
 
     ZDEFINE_PTR(ZUIContext);
