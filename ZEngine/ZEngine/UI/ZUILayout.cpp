@@ -117,6 +117,11 @@ namespace ZEngine::UI
                             uint32_t fill_n   = 0;
                             for (ZUIBox* sib = parent->FirstChild; sib; sib = sib->NextSib)
                             {
+                                // Floated siblings are positioned absolutely — they do
+                                // not participate in the flow layout or Fill budget.
+                                bool floated = (axis == 0) ? !!(sib->Flags & ZUI_FloatX)
+                                                           : !!(sib->Flags & ZUI_FloatY);
+                                if (floated) { continue; }
                                 if (sib->Size[axis].Kind == ZUISizeKind::Fill) ++fill_n;
                                 else non_fill += sib->ComputedSize[axis];
                             }
@@ -151,7 +156,10 @@ namespace ZEngine::UI
 
             float total = 0.f;
             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
-                total += c->ComputedSize[axis];
+            {
+                bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                if (!floated) total += c->ComputedSize[axis];
+            }
 
             float overflow = total - available;
             if (overflow <= 0.001f) { continue; }
@@ -160,6 +168,8 @@ namespace ZEngine::UI
             float flex_pool = 0.f;
             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
             {
+                bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                if (floated) { continue; }
                 float flex = 1.f - c->Size[axis].Strictness;
                 if (flex > 0.f) { flex_pool += c->ComputedSize[axis] * flex; }
             }
@@ -167,6 +177,8 @@ namespace ZEngine::UI
 
             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
             {
+                bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                if (floated) { continue; }
                 float flex = 1.f - c->Size[axis].Strictness;
                 if (flex <= 0.f) { continue; }
                 float share   = c->ComputedSize[axis] * flex / flex_pool;
