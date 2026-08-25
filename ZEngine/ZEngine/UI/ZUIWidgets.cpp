@@ -72,6 +72,20 @@ namespace ZEngine::UI
 
     void ZUIEndScrollRegion(ZUIContext* ctx) { ZUIPopBox(ctx); }
 
+    void ZUIScrollToBottom(ZUIContext* ctx, const char* key)
+    {
+        uint64_t hash = ZUIHashStr(key, (uint32_t)strlen(key));
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        if (ps) ps->ScrollY = 1e9f; // clamped to MaxScrollY by layout pass
+    }
+
+    float ZUIGetScrollY(ZUIContext* ctx, const char* key)
+    {
+        uint64_t hash = ZUIHashStr(key, (uint32_t)strlen(key));
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        return ps ? ps->ScrollY : 0.f;
+    }
+
     // ---------------------------------------------------------------
     // ZUILabel
     // ---------------------------------------------------------------

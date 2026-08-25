@@ -86,6 +86,53 @@ namespace ZEngine::Rendering::Renderers
         idxs[idx_count++] = base+2; idxs[idx_count++] = base+3;
     }
 
+    // Rounded rectangle — fan-triangulated from the centre.
+    // N arc segments per corner (N=4 gives a smooth appearance).
+    static void EmitRoundedRect(
+        UIDrawVert* verts, uint32_t* idxs,
+        uint32_t& vert_count, uint32_t& idx_count,
+        float x0, float y0, float x1, float y1,
+        float r, uint32_t color, int N = 4)
+    {
+        // Clamp radius so it fits inside the rect
+        float hw = (x1 - x0) * 0.5f, hh = (y1 - y0) * 0.5f;
+        if (r > hw) r = hw;
+        if (r > hh) r = hh;
+        if (r <= 0.f) { EmitQuad(verts, idxs, vert_count, idx_count, x0,y0,x1,y1, 0,0,0,0, color); return; }
+
+        // Corner arc centres
+        float acx[4] = { x0+r, x1-r, x1-r, x0+r };
+        float acy[4] = { y0+r, y0+r, y1-r, y1-r };
+        float a0[4]  = { 3.14159265f, 3.f*3.14159265f/2.f, 0.f, 3.14159265f/2.f };
+
+        int total_pts = 4 * (N + 1);
+        uint32_t cx_idx = vert_count; // centre vertex
+        verts[vert_count] = { { (x0+x1)*0.5f, (y0+y1)*0.5f }, {0,0}, color };
+        ++vert_count;
+
+        uint32_t first = vert_count;
+        for (int c = 0; c < 4; ++c)
+        {
+            for (int i = 0; i <= N; ++i)
+            {
+                float a = a0[c] + (float)i * (3.14159265f * 0.5f / (float)N);
+                float px = acx[c] + r * cosf(a);
+                float py = acy[c] + r * sinf(a);
+                verts[vert_count] = { {px, py}, {0,0}, color };
+                ++vert_count;
+            }
+        }
+
+        for (int i = 0; i < total_pts; ++i)
+        {
+            uint32_t a = first + (uint32_t)i;
+            uint32_t b = first + (uint32_t)((i + 1) % total_pts);
+            idxs[idx_count++] = cx_idx;
+            idxs[idx_count++] = a;
+            idxs[idx_count++] = b;
+        }
+    }
+
     // Start a new draw command if the texture index changed or no command is open.
     static void FlushAndBeginCmd(
         ZUIDrawCmd* cmds, uint32_t& cmd_count,
@@ -378,13 +425,19 @@ namespace ZEngine::Rendering::Renderers
                     }
                     else if (box->BgColorB[3] > 0.f)
                     {
-                        // Vertical gradient
-                        float bgb[4] = {box->BgColorB[0], box->BgColorB[1],
-                                        box->BgColorB[2], box->BgColorB[3]};
+                        float bgb[4] = { box->BgColorB[0], box->BgColorB[1],
+                                         box->BgColorB[2], box->BgColorB[3] };
                         EmitQuadGradient(out->Vertices, out->Indices,
                                          out->VertexCount, out->IndexCount,
                                          bx0, by0, bx1, by1,
                                          PackRGBA(bg), PackRGBA(bgb));
+                    }
+                    else if (box->CornerRadius > 0.f)
+                    {
+                        EmitRoundedRect(out->Vertices, out->Indices,
+                                        out->VertexCount, out->IndexCount,
+                                        bx0, by0, bx1, by1,
+                                        box->CornerRadius, PackRGBA(bg));
                     }
                     else
                     {

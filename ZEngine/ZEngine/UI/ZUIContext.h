@@ -39,10 +39,12 @@ namespace ZEngine::UI
 
     struct ZUIPersistentState
     {
-        float HotT    = 0.f;
-        float ActiveT = 0.f;
-        float ScrollX = 0.f;
-        float ScrollY = 0.f;
+        float HotT      = 0.f;
+        float ActiveT   = 0.f;
+        float ScrollX   = 0.f;
+        float ScrollY   = 0.f;
+        float MaxScrollY= 0.f; // set by layout solver; clamped in interaction pass
+        float UserData  = 0.f; // general-purpose (tab selected index, open bool, etc.)
     };
 
     struct ZUIPersistentSlot

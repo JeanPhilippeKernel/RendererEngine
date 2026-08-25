@@ -47,8 +47,10 @@ namespace ZEngine::UI
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, new_scroll_key);
             if (ps)
             {
-                ps->ScrollY -= ctx->ScrollDelta * 24.f; // 24 px per scroll unit
+                ps->ScrollY -= ctx->ScrollDelta * 24.f;
                 if (ps->ScrollY < 0.f) ps->ScrollY = 0.f;
+                if (ps->MaxScrollY > 0.f && ps->ScrollY > ps->MaxScrollY)
+                    ps->ScrollY = ps->MaxScrollY;
             }
         }
 

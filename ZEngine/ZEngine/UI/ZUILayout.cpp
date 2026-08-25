@@ -180,6 +180,27 @@ namespace ZEngine::UI
             box->ScreenMax[0] = box->ScreenMin[0] + box->ComputedSize[0];
             box->ScreenMax[1] = box->ScreenMin[1] + box->ComputedSize[1];
         }
+
+        // ---------------------------------------------------------------
+        // Pass 3 — compute MaxScrollY for every ZUI_Scrollable box so that
+        // ZUIInteractionPass can clamp the scroll offset.
+        // ---------------------------------------------------------------
+        for (uint32_t i = 0; i < node_count; ++i)
+        {
+            ZUIBox* box = nodes[i];
+            if (!(box->Flags & ZUI_Scrollable)) { continue; }
+
+            int layout = (int)box->LayoutAxis;
+            float content = 0.f;
+            for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
+                content += c->ComputedSize[layout];
+
+            float visible = box->ComputedSize[layout];
+            float max_scroll = content - visible;
+
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+            if (ps) ps->MaxScrollY = max_scroll > 0.f ? max_scroll : 0.f;
+        }
     }
 
 } // namespace ZEngine::UI

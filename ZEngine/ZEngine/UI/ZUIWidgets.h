@@ -51,6 +51,13 @@ namespace ZEngine::UI
                                  ZUISize w = ZFill(), ZUISize h = ZFill());
     void    ZUIEndScrollRegion(ZUIContext* ctx);
 
+    // Scroll the named region to the bottom on the next frame.
+    // Call once whenever new content is appended (e.g. new log entry).
+    void ZUIScrollToBottom(ZUIContext* ctx, const char* key);
+
+    // Read current scroll offset (useful for save/restore or position queries).
+    float ZUIGetScrollY(ZUIContext* ctx, const char* key);
+
     // ---------------------------------------------------------------
     // Leaf widgets
     // ---------------------------------------------------------------
