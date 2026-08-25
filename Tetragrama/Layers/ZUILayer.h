@@ -2,7 +2,8 @@
 #include <ZEngine/Applications/Layer.h>
 #include <ZEngine/Windows/Inputs/IInputEventCallback.h>
 
-namespace ZEngine::UI { struct ZUIContext; }
+namespace ZEngine::UI  { struct ZUIContext; }
+namespace Tetragrama::Components { struct ZUIComponent; }
 
 namespace Tetragrama::Layers
 {
@@ -20,7 +21,7 @@ namespace Tetragrama::Layers
         bool OnEvent(ZEngine::Core::CoreEvent& event) override;
         void Update(ZEngine::Core::TimeStep dt) override {}
         void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const,
-                    ZEngine::Hardwares::CommandBuffer* const) override {}
+                    ZEngine::Hardwares::CommandBuffer* const) override;
 
         bool OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;
         bool OnKeyReleased(ZEngine::Windows::Events::KeyReleasedEvent&) override;
@@ -32,8 +33,13 @@ namespace Tetragrama::Layers
 
         bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
+        void AddComponent(Components::ZUIComponent* cmp);
+
     private:
-        ZEngine::UI::ZUIContext* m_ctx = nullptr;
+        static constexpr uint32_t kMaxComponents = 32;
+        ZEngine::UI::ZUIContext*  m_ctx                        = nullptr;
+        Components::ZUIComponent* m_components[kMaxComponents] = {};
+        uint32_t                  m_component_count            = 0;
     };
     ZDEFINE_PTR(ZUILayer);
 } // namespace Tetragrama::Layers

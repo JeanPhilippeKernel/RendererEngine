@@ -1,8 +1,10 @@
+#include <Tetragrama/Components/ZUI/ZUIComponent.h>
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/EventDispatcher.h>
 #include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/UI/ZUIWidgets.h>
 #include <ZEngine/Windows/Events/KeyEvent.h>
 #include <ZEngine/Windows/Events/MouseEvent.h>
 #include <ZEngine/Windows/Events/TextInputEvent.h>
@@ -30,6 +32,34 @@ namespace Tetragrama::Layers
         event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&ZUILayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         event_dispatcher.Dispatch<TextInputEvent>(std::bind(&ZUILayer::OnTextInputRaised, this, std::placeholders::_1));
         return false;
+    }
+
+    void ZUILayer::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const,
+                          ZEngine::Hardwares::CommandBuffer* const)
+    {
+        if (!m_ctx || m_component_count == 0) { return; }
+
+        // Root box — transparent, fills the full swapchain surface.
+        // All component panels float relative to this box's screen origin (0,0).
+        ZEngine::UI::ZUIBox* root = ZEngine::UI::ZUIBeginColumn(m_ctx, "##zui_root",
+                                                                  ZEngine::UI::ZFill(),
+                                                                  ZEngine::UI::ZFill());
+        root->BgColor[3] = 0.f; // fully transparent — no background draw
+
+        for (uint32_t i = 0; i < m_component_count; ++i)
+        {
+            m_components[i]->BuildUI(m_ctx);
+        }
+
+        ZEngine::UI::ZUIEndColumn(m_ctx);
+    }
+
+    void ZUILayer::AddComponent(Components::ZUIComponent* cmp)
+    {
+        if (m_component_count < kMaxComponents)
+        {
+            m_components[m_component_count++] = cmp;
+        }
     }
 
     bool ZUILayer::OnKeyPressed(KeyPressedEvent&)     { return false; }

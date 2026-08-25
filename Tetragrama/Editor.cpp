@@ -1,3 +1,4 @@
+#include <Tetragrama/Components/ZUI/ZUILogComponent.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
 #include <ZEngine/UI/ZUIContext.h>
@@ -61,6 +62,10 @@ namespace Tetragrama
 
         UILayer->Initialize(&Memory->MainArena, this);
         ZUIUILayer->Initialize(&Memory->MainArena, this);
+
+        auto* zui_log = ZPushStructCtor(&Memory->MainArena, Components::ZUILogComponent);
+        zui_log->Initialize(ZUIUILayer, "Console");
+        ZUIUILayer->AddComponent(zui_log);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 
