@@ -3,14 +3,16 @@
 
 namespace ZEngine::UI
 {
+    // Padding helpers: [0]=left [1]=top [2]=right [3]=bottom
+    static inline float PadStart(const ZUIBox* b, int axis) { return (axis == 0) ? b->Padding[0] : b->Padding[1]; }
+    static inline float PadEnd  (const ZUIBox* b, int axis) { return (axis == 0) ? b->Padding[2] : b->Padding[3]; }
+
     void ZUILayoutSolve(ZUIContext* ctx)
     {
         if (!ctx->Root) { return; }
 
         uint32_t max = ctx->MaxBoxesPerFrame;
 
-        // Collect nodes in pre-order using a DFS stack.
-        // Both arrays live in FrameArena and are reclaimed by Clear() next frame.
         ZUIBox** nodes     = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
         ZUIBox** dfs_stack = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
         uint32_t node_count = 0;
@@ -21,17 +23,13 @@ namespace ZEngine::UI
         {
             ZUIBox* box      = dfs_stack[--stack_top];
             nodes[node_count++] = box;
-
-            // push children right-to-left so leftmost child is processed first
             for (ZUIBox* c = box->LastChild; c; c = c->PrevSib)
-            {
                 if (stack_top < max) { dfs_stack[stack_top++] = c; }
-            }
         }
 
         // ---------------------------------------------------------------
-        // Pass 1 — post-order (reverse pre-order): intrinsic sizes
-        // Resolves: Pixels, Text (stub=0), ChildrenSum
+        // Pass 1 — post-order: intrinsic sizes (Pixels, Text, ChildrenSum)
+        // Padding is included in ChildrenSum totals.
         // ---------------------------------------------------------------
         for (uint32_t i = node_count; i > 0; --i)
         {
@@ -51,46 +49,42 @@ namespace ZEngine::UI
                     {
                         float text_size[2] = {0.f, 0.f};
                         if (ctx->Font && box->Label.Ptr)
-                        {
                             ZUIMeasureText(ctx->Font, box->Label.Ptr, box->Label.Len, text_size);
-                        }
                         box->ComputedSize[axis] = text_size[axis];
                         break;
                     }
 
                     case ZUISizeKind::ChildrenSum:
                     {
-                        float accum = 0.f;
+                        float ps = PadStart(box, axis);
+                        float pe = PadEnd  (box, axis);
+                        float accum = ps + pe;
                         if (axis == layout)
                         {
-                            // layout axis: sum children along the stacking direction
                             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
-                            {
                                 accum += c->ComputedSize[axis];
-                            }
                         }
                         else
                         {
-                            // cross axis: max of children (they all overlap on this axis)
+                            float mx = 0.f;
                             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
-                            {
-                                if (c->ComputedSize[axis] > accum) { accum = c->ComputedSize[axis]; }
-                            }
+                                if (c->ComputedSize[axis] > mx) mx = c->ComputedSize[axis];
+                            accum = mx + ps + pe;
                         }
                         box->ComputedSize[axis] = accum;
                         break;
                     }
 
                     default:
-                        // Fill and ParentPercent are deferred to Pass 2
-                        break;
+                        break; // Fill / ParentPercent deferred to Pass 2
                 }
             }
         }
 
         // ---------------------------------------------------------------
         // Pass 2 — pre-order: extrinsic sizes + screen positions
-        // Resolves: ParentPercent, Fill; then sets ScreenMin / ScreenMax
+        // Fill subtracts parent padding from available space.
+        // Child placement starts at parent->ScreenMin + parent padding.
         // ---------------------------------------------------------------
         for (uint32_t i = 0; i < node_count; ++i)
         {
@@ -112,29 +106,26 @@ namespace ZEngine::UI
                     {
                         if (!parent) { box->ComputedSize[axis] = 0.f; break; }
 
+                        float ps = PadStart(parent, axis);
+                        float pe = PadEnd  (parent, axis);
+
                         if (axis != layout)
                         {
-                            // cross axis: fill the entire parent extent on this axis
-                            box->ComputedSize[axis] = parent->ComputedSize[axis];
+                            // Cross axis: fill parent minus padding
+                            box->ComputedSize[axis] = parent->ComputedSize[axis] - ps - pe;
                         }
                         else
                         {
-                            // layout axis: divide remaining space among all Fill siblings
-                            float    non_fill_sum = 0.f;
-                            uint32_t fill_count   = 0;
+                            // Layout axis: share remaining space (after padding) among Fill siblings
+                            float    non_fill = 0.f;
+                            uint32_t fill_n   = 0;
                             for (ZUIBox* sib = parent->FirstChild; sib; sib = sib->NextSib)
                             {
-                                if (sib->Size[axis].Kind == ZUISizeKind::Fill)
-                                {
-                                    ++fill_count;
-                                }
-                                else
-                                {
-                                    non_fill_sum += sib->ComputedSize[axis];
-                                }
+                                if (sib->Size[axis].Kind == ZUISizeKind::Fill) ++fill_n;
+                                else non_fill += sib->ComputedSize[axis];
                             }
-                            float remaining        = parent->ComputedSize[axis] - non_fill_sum;
-                            box->ComputedSize[axis] = (fill_count > 0) ? remaining / (float)fill_count : 0.f;
+                            float remaining = parent->ComputedSize[axis] - ps - pe - non_fill;
+                            box->ComputedSize[axis] = (fill_n > 0) ? remaining / (float)fill_n : 0.f;
                         }
                         break;
                     }
@@ -162,14 +153,26 @@ namespace ZEngine::UI
                     }
                     else if (axis == layout)
                     {
-                        // flow position: immediately after previous sibling on the layout axis
+                        // Flow: after previous sibling, or at parent origin + start padding.
+                        // For scrollable containers, subtract the scroll offset from the
+                        // first child's position so the whole content block shifts up/left.
+                        float ps     = PadStart(parent, axis);
+                        float scroll = 0.f;
+                        if (!box->PrevSib && (parent->Flags & ZUI_Scrollable))
+                        {
+                            ZUIPersistentState* ps_state =
+                                ZUIStateGetOrInsert(&ctx->StateStore, parent->Key);
+                            if (ps_state)
+                                scroll = (axis == 1) ? ps_state->ScrollY : ps_state->ScrollX;
+                        }
                         box->ScreenMin[axis] = box->PrevSib ? box->PrevSib->ScreenMax[axis]
-                                                            : parent->ScreenMin[axis];
+                                                            : parent->ScreenMin[axis] + ps - scroll;
                     }
                     else
                     {
-                        // cross axis: align to parent origin
-                        box->ScreenMin[axis] = parent->ScreenMin[axis];
+                        // Cross axis: aligned to parent origin + cross-start padding
+                        float ps = PadStart(parent, axis);
+                        box->ScreenMin[axis] = parent->ScreenMin[axis] + ps;
                     }
                 }
             }

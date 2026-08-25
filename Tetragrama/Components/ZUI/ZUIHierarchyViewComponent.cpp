@@ -68,18 +68,21 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = 0.24f;
-        panel->BgColor[1]  = 0.24f;
-        panel->BgColor[2]  = 0.28f;
-        panel->BgColor[3]  = 0.96f;
-        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
-        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BgColor[0] = ctx->Theme.PanelBg[0]; panel->BgColor[1] = ctx->Theme.PanelBg[1];
+        panel->BgColor[2] = ctx->Theme.PanelBg[2]; panel->BgColor[3] = ctx->Theme.PanelBg[3];
+        panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
+        panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
+        panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
 
-        // --- Header — draggable (Gap 4) ---
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(26.f));
-        hdr->Flags  = hdr->Flags | ZUI_Clickable;
-            ZUILabel(ctx, Name ? Name : "Hierarchy");
+        // --- Header — draggable ---
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(28.f));
+        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->BgColor[0] = ctx->Theme.HeaderBg[0]; hdr->BgColor[1] = ctx->Theme.HeaderBg[1];
+        hdr->BgColor[2] = ctx->Theme.HeaderBg[2]; hdr->BgColor[3] = ctx->Theme.HeaderBg[3];
+            ZUISpacer(ctx, 6.f);
+            ZUILabel(ctx, Name ? Name : "Hierarchy", ctx->Theme.TextDefault);
             ZUISpacer(ctx, 8.f);
             ZUISignal add_sig  = ZUIButton(ctx, "Add##hier");
             ZUISpacer(ctx, 4.f);
@@ -97,6 +100,9 @@ namespace Tetragrama::Components
         }
         if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
         ZUISeparator(ctx);
+
+        // --- Scrollable actor list ---
+        ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
 
         // --- DFS tree build (no ImGui dependency) ---
         auto     scratch = ZGetScratch(&m_arena);
@@ -296,18 +302,22 @@ namespace Tetragrama::Components
                 }
             }
 
-            // Status bar
-            ZUISeparator(ctx);
-            char status[64];
-            if (selected_count > 0)
-                snprintf(status, sizeof(status), "%u actor%s  %u selected", nc, nc == 1 ? "" : "s", selected_count);
-            else
-                snprintf(status, sizeof(status), "%u actor%s", nc, nc == 1 ? "" : "s");
-            static const float k_dim_status[4] = {0.55f, 0.55f, 0.60f, 1.f};
-            ZUILabel(ctx, status, k_dim_status);
         }
 
+        ZUIEndScrollRegion(ctx); // end scrollable actor list
         ZReleaseScratch(scratch);
+
+        // Status bar — always visible outside the scroll region
+        ZUISeparator(ctx);
+        {
+            char status[64];
+            int  total = 0, sel = 0;
+            // Recount outside scroll for simplicity
+            if (eng->ActorManager) { total = (int)eng->ActorManager->Count(); }
+            snprintf(status, sizeof(status), "%d actor%s", total, total == 1 ? "" : "s");
+            ZUILabel(ctx, status, ctx->Theme.TextDim);
+        }
+
         ZUIEndColumn(ctx); // end panel
     }
 } // namespace Tetragrama::Components

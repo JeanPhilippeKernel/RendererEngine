@@ -18,8 +18,6 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Components
 {
-    static constexpr float k_dim[4]  = {0.55f, 0.55f, 0.60f, 1.f};
-    static constexpr float k_text[4] = {0.90f, 0.90f, 0.90f, 1.f};
     static constexpr float kLabelW   = 72.f;
     static constexpr float kRowH     = 21.f;
 
@@ -30,10 +28,10 @@ namespace Tetragrama::Components
             ZUIBox* lbl = ZUIPushBox(ctx, label, (uint32_t)ZEngine::Helpers::secure_strlen(label), ZUI_DrawText);
             lbl->Size[0]      = ZPx(kLabelW);
             lbl->Size[1]      = ZPx(kRowH);
-            lbl->TextColor[0] = k_dim[0]; lbl->TextColor[1] = k_dim[1];
-            lbl->TextColor[2] = k_dim[2]; lbl->TextColor[3] = k_dim[3];
+            lbl->TextColor[0] = ctx->Theme.TextDim[0]; lbl->TextColor[1] = ctx->Theme.TextDim[1];
+            lbl->TextColor[2] = ctx->Theme.TextDim[2]; lbl->TextColor[3] = ctx->Theme.TextDim[3];
             ZUIPopBox(ctx);
-            ZUILabel(ctx, value, k_text);
+            ZUILabel(ctx, value, ctx->Theme.TextDefault);
         ZUIEndRow(ctx);
     }
 
@@ -46,8 +44,8 @@ namespace Tetragrama::Components
             ZUIBox* lbl = ZUIPushBox(ctx, label, (uint32_t)ZEngine::Helpers::secure_strlen(label), ZUI_DrawText);
             lbl->Size[0]      = ZPx(kLabelW);
             lbl->Size[1]      = ZPx(kRowH);
-            lbl->TextColor[0] = k_dim[0]; lbl->TextColor[1] = k_dim[1];
-            lbl->TextColor[2] = k_dim[2]; lbl->TextColor[3] = k_dim[3];
+            lbl->TextColor[0] = ctx->Theme.TextDim[0]; lbl->TextColor[1] = ctx->Theme.TextDim[1];
+            lbl->TextColor[2] = ctx->Theme.TextDim[2]; lbl->TextColor[3] = ctx->Theme.TextDim[3];
             ZUIPopBox(ctx);
 
             // Build unique per-axis keys from the row key
@@ -87,12 +85,10 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = 0.24f;
-        panel->BgColor[1]  = 0.24f;
-        panel->BgColor[2]  = 0.28f;
-        panel->BgColor[3]  = 0.96f;
-        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
-        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BgColor[0] = ctx->Theme.PanelBg[0]; panel->BgColor[1] = ctx->Theme.PanelBg[1];
+        panel->BgColor[2] = ctx->Theme.PanelBg[2]; panel->BgColor[3] = ctx->Theme.PanelBg[3];
+        panel->BorderColor[0] = ctx->Theme.PanelBorder[0]; panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2] = ctx->Theme.PanelBorder[2]; panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
 
         // Title bar — draggable (Gap 4)
@@ -119,7 +115,7 @@ namespace Tetragrama::Components
         if (!actor)
         {
             ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "No actor selected", k_dim);
+            ZUILabel(ctx, "No actor selected", ctx->Theme.TextDim);
             ZUIEndColumn(ctx);
             return;
         }
@@ -140,7 +136,7 @@ namespace Tetragrama::Components
                 {
                     ZUILabel(ctx, "Actor");
                 }
-                ZUILabel(ctx, "Actor", k_dim);
+                ZUILabel(ctx, "Actor", ctx->Theme.TextDim);
 
             ZUIEndColumn(ctx);
         }

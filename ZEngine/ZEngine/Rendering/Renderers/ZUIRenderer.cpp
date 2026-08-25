@@ -205,18 +205,79 @@ namespace ZEngine::Rendering::Renderers
             }
         }
 
-        uint32_t current_tex = 0xFFFFFFFFu; // start invalid so first box opens a cmd
+        uint32_t current_tex = 0xFFFFFFFFu;
+
+        // ---------------------------------------------------------------
+        // Scissor stack for ZUI_ClipChildren boxes.
+        // clip_x/y/w/h tracks the current active clip rect.
+        // ---------------------------------------------------------------
+        static constexpr uint32_t kClipDepth = 8;
+        const UI::ZUIBox* clip_stack[kClipDepth] = {};
+        uint32_t          clip_top  = 0;
+        float             clip_x    = 0.f, clip_y = 0.f;
+        float             clip_w    = fb_w, clip_h = fb_h; // default = full framebuffer
+
+        auto UpdateClip = [&]()
+        {
+            // Compute the intersection of all active clip boxes
+            float cx0 = 0.f, cy0 = 0.f, cx1 = fb_w, cy1 = fb_h;
+            for (uint32_t ci = 0; ci < clip_top; ++ci)
+            {
+                const UI::ZUIBox* cb = clip_stack[ci];
+                if (cb->ScreenMin[0] > cx0) cx0 = cb->ScreenMin[0];
+                if (cb->ScreenMin[1] > cy0) cy0 = cb->ScreenMin[1];
+                if (cb->ScreenMax[0] < cx1) cx1 = cb->ScreenMax[0];
+                if (cb->ScreenMax[1] < cy1) cy1 = cb->ScreenMax[1];
+            }
+            clip_x = cx0; clip_y = cy0;
+            clip_w = cx1 > cx0 ? cx1 - cx0 : 0.f;
+            clip_h = cy1 > cy0 ? cy1 - cy0 : 0.f;
+        };
+
+        // Returns true if `ancestor` appears in box->Parent chain
+        auto IsAncestor = [](const UI::ZUIBox* ancestor, const UI::ZUIBox* box) -> bool
+        {
+            for (const UI::ZUIBox* p = box->Parent; p; p = p->Parent)
+                if (p == ancestor) return true;
+            return false;
+        };
 
         for (uint32_t i = 0; i < node_count; ++i)
         {
             ZUIBox* box = nodes[i];
+
+            // --- Maintain scissor stack ---
+            // Pop clip entries that are no longer ancestors of the current box
+            while (clip_top > 0 && !IsAncestor(clip_stack[clip_top - 1], box))
+            {
+                --clip_top;
+                UpdateClip();
+                // Force a new cmd so the new scissor takes effect
+                if (out->CmdCount > 0)
+                {
+                    ZUIDrawCmd& prev = out->Cmds[out->CmdCount - 1];
+                    prev.IndexCount = out->IndexCount - prev.IndexOffset;
+                    ZUIDrawCmd& cmd  = out->Cmds[out->CmdCount++];
+                    cmd.IndexOffset  = out->IndexCount;
+                    cmd.IndexCount   = 0;
+                    cmd.VertexOffset = 0;
+                    cmd.TextureIndex = current_tex;
+                    cmd.ClipX = clip_x; cmd.ClipY = clip_y;
+                    cmd.ClipW = clip_w; cmd.ClipH = clip_h;
+                }
+            }
+            // Push this box if it clips children
+            if ((box->Flags & UI::ZUI_ClipChildren) && clip_top < kClipDepth)
+            {
+                clip_stack[clip_top++] = box;
+                UpdateClip();
+            }
 
             float bx0 = box->ScreenMin[0];
             float by0 = box->ScreenMin[1];
             float bx1 = box->ScreenMax[0];
             float by1 = box->ScreenMax[1];
 
-            // Skip zero-size boxes
             if (bx1 <= bx0 || by1 <= by0) { continue; }
 
             // --- Implicit hover highlight for Clickable boxes with no explicit background ---
@@ -233,7 +294,7 @@ namespace ZEngine::Rendering::Renderers
                         if (current_tex != 0xFFFFFFFFu || out->CmdCount == 0)
                         {
                             FlushAndBeginCmd(out->Cmds, out->CmdCount, 0xFFFFFFFFu,
-                                             0.f, 0.f, fb_w, fb_h,
+                                             clip_x, clip_y, clip_w, clip_h,
                                              out->VertexCount, out->IndexCount);
                             current_tex = 0xFFFFFFFFu;
                         }
@@ -275,7 +336,7 @@ namespace ZEngine::Rendering::Renderers
                     if (current_tex != tex || out->CmdCount == 0)
                     {
                         FlushAndBeginCmd(out->Cmds, out->CmdCount, tex,
-                                         0.f, 0.f, fb_w, fb_h,
+                                         clip_x, clip_y, clip_w, clip_h,
                                          out->VertexCount, out->IndexCount);
                         current_tex = tex;
                     }
@@ -294,7 +355,7 @@ namespace ZEngine::Rendering::Renderers
                 if (current_tex != 0xFFFFFFFFu || out->CmdCount == 0)
                 {
                     FlushAndBeginCmd(out->Cmds, out->CmdCount, 0xFFFFFFFFu,
-                                     0.f, 0.f, fb_w, fb_h,
+                                     clip_x, clip_y, clip_w, clip_h,
                                      out->VertexCount, out->IndexCount);
                     current_tex = 0xFFFFFFFFu;
                 }
@@ -321,7 +382,7 @@ namespace ZEngine::Rendering::Renderers
                     // cut off glyphs shifted by the left indent. Per-panel clip via
                     // ZUI_ClipChildren will be added in a later pass.
                     FlushAndBeginCmd(out->Cmds, out->CmdCount, font_tex,
-                                     0.f, 0.f, fb_w, fb_h,
+                                     clip_x, clip_y, clip_w, clip_h,
                                      out->VertexCount, out->IndexCount);
                     current_tex = font_tex;
                 }

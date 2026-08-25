@@ -7,9 +7,6 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Components
 {
-    static constexpr float k_dim[4]  = {0.55f, 0.55f, 0.60f, 1.f};
-    static constexpr float k_text[4] = {0.90f, 0.90f, 0.90f, 1.f};
-    static constexpr float k_on[4]   = {0.30f, 0.65f, 0.45f, 1.f};
 
     void ZUIStatusBarComponent::Initialize(Tetragrama::Layers::ZUILayer* parent,
                                            cstring name, bool visibility)
@@ -87,18 +84,18 @@ namespace Tetragrama::Components
         }
 
         ZUISpacer(ctx, 8.f);
-        ZUILabel(ctx, "|", k_dim);
+        ZUILabel(ctx, "|", ctx->Theme.TextDim);
         ZUISpacer(ctx, 8.f);
 
         // Scene name
-        ZUILabel(ctx, "Scene:", k_dim);
+        ZUILabel(ctx, "Scene:", ctx->Theme.TextDim);
         ZUISpacer(ctx, 4.f);
         const char* scene_name = (app->Configuration && !app->Configuration->ActiveSceneName.empty())
                                  ? app->Configuration->ActiveSceneName.c_str() : "-";
-        ZUILabel(ctx, scene_name, k_text);
+        ZUILabel(ctx, scene_name, ctx->Theme.TextDefault);
 
         ZUISpacer(ctx, 10.f);
-        ZUILabel(ctx, "|", k_dim);
+        ZUILabel(ctx, "|", ctx->Theme.TextDim);
         ZUISpacer(ctx, 10.f);
 
         // Camera position
@@ -108,11 +105,11 @@ namespace Tetragrama::Components
             char cam_buf[64];
             snprintf(cam_buf, sizeof(cam_buf), "X:%.1f  Y:%.1f  Z:%.1f",
                      (double)pos.x, (double)pos.y, (double)pos.z);
-            ZUILabel(ctx, cam_buf, k_dim);
+            ZUILabel(ctx, cam_buf, ctx->Theme.TextDim);
         }
 
         ZUISpacer(ctx, 10.f);
-        ZUILabel(ctx, "|", k_dim);
+        ZUILabel(ctx, "|", ctx->Theme.TextDim);
         ZUISpacer(ctx, 10.f);
 
         // FPS
@@ -121,7 +118,7 @@ namespace Tetragrama::Components
             char  fps_buf[32];
             snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms",
                      (double)fps, (double)(m_smoothed_dt * 1000.f));
-            ZUILabel(ctx, fps_buf, k_dim);
+            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
         }
 
         ZUIEndRow(ctx);

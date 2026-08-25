@@ -16,6 +16,19 @@ namespace ZEngine::UI
     inline ZUISize ZFit()            { return {ZUISizeKind::ChildrenSum,    0.f,  1.f}; }
 
     // ---------------------------------------------------------------
+    // Padding helpers — call immediately after ZUIBeginColumn/Row
+    // ---------------------------------------------------------------
+    inline void ZUIPadding(ZUIBox* box, float all)
+    {
+        box->Padding[0] = box->Padding[1] = box->Padding[2] = box->Padding[3] = all;
+    }
+    inline void ZUIPaddingXY(ZUIBox* box, float horiz, float vert)
+    {
+        box->Padding[0] = box->Padding[2] = horiz;
+        box->Padding[1] = box->Padding[3] = vert;
+    }
+
+    // ---------------------------------------------------------------
     // Layout containers
     // Push a container box and return it so the caller can override
     // size / color before adding children. Always pair with EndXxx.
@@ -30,6 +43,13 @@ namespace ZEngine::UI
     ZUIBox* ZUIBeginRow(ZUIContext* ctx, const char* key,
                         ZUISize w = ZFill(), ZUISize h = ZFit());
     void    ZUIEndRow(ZUIContext* ctx);
+
+    // Vertically-scrollable clipped region. Children that overflow the
+    // height are scissored out; the user scrolls with the mouse wheel.
+    // Returns the container box (set Size / BgColor before adding children).
+    ZUIBox* ZUIBeginScrollRegion(ZUIContext* ctx, const char* key,
+                                 ZUISize w = ZFill(), ZUISize h = ZFill());
+    void    ZUIEndScrollRegion(ZUIContext* ctx);
 
     // ---------------------------------------------------------------
     // Leaf widgets

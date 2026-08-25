@@ -21,15 +21,15 @@ namespace ZEngine::UI
         box->BgColor[2] = b; box->BgColor[3] = a;
     }
 
-    // Design palette
-    static constexpr float k_text_default[4]  = {0.92f, 0.92f, 0.92f, 1.f};
-    static constexpr float k_text_dim[4]      = {0.55f, 0.55f, 0.62f, 1.f};
-    static constexpr float k_button_bg[4]     = {0.32f, 0.32f, 0.38f, 1.f};
-    static constexpr float k_button_bdr[4]    = {0.50f, 0.50f, 0.60f, 1.f};
-    static constexpr float k_input_bg[4]      = {0.18f, 0.18f, 0.22f, 1.f};
-    static constexpr float k_input_bdr[4]     = {0.40f, 0.40f, 0.52f, 1.f};
-    static constexpr float k_input_focus[4]   = {0.40f, 0.65f, 0.92f, 1.f};
-    static constexpr float k_separator[4]     = {0.38f, 0.38f, 0.44f, 1.f};
+    // Colors are read from ctx->Theme — no local palette constants needed.
+    static void SetBgArr(ZUIBox* b, const float c[4])
+    {
+        b->BgColor[0]=c[0]; b->BgColor[1]=c[1]; b->BgColor[2]=c[2]; b->BgColor[3]=c[3];
+    }
+    static void SetBdrArr(ZUIBox* b, const float c[4])
+    {
+        b->BorderColor[0]=c[0]; b->BorderColor[1]=c[1]; b->BorderColor[2]=c[2]; b->BorderColor[3]=c[3];
+    }
 
     // ---------------------------------------------------------------
     // Layout containers
@@ -59,13 +59,26 @@ namespace ZEngine::UI
 
     void ZUIEndRow(ZUIContext* ctx) { ZUIPopBox(ctx); }
 
+    ZUIBox* ZUIBeginScrollRegion(ZUIContext* ctx, const char* key, ZUISize w, ZUISize h)
+    {
+        uint32_t len  = (uint32_t)strlen(key);
+        ZUIBox*  box  = ZUIPushBox(ctx, key, len,
+                            ZUI_Scrollable | ZUI_ClipChildren);
+        box->Size[0]  = w;
+        box->Size[1]  = h;
+        box->LayoutAxis = ZUIAxis::Y;
+        return box;
+    }
+
+    void ZUIEndScrollRegion(ZUIContext* ctx) { ZUIPopBox(ctx); }
+
     // ---------------------------------------------------------------
     // ZUILabel
     // ---------------------------------------------------------------
 
     void ZUILabel(ZUIContext* ctx, const char* text, const float color[4])
     {
-        const float* c   = color ? color : k_text_default;
+        const float* c   = color ? color : ctx->Theme.TextDefault;
         uint32_t     len = (uint32_t)strlen(text);
 
         ZUIBox* box   = ZUIPushBox(ctx, text, len, ZUI_DrawText);
@@ -86,10 +99,9 @@ namespace ZEngine::UI
                             ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         box->Size[0]          = ZText();
         box->Size[1]          = ZPx(28.f);
-        SetBgColor(box, k_button_bg[0], k_button_bg[1], k_button_bg[2], k_button_bg[3]);
-        SetTextColor(box, k_text_default);
-        box->BorderColor[0]   = k_button_bdr[0]; box->BorderColor[1] = k_button_bdr[1];
-        box->BorderColor[2]   = k_button_bdr[2]; box->BorderColor[3] = k_button_bdr[3];
+        SetBgArr(box, ctx->Theme.ButtonBg);
+        SetTextColor(box, ctx->Theme.TextDefault);
+        SetBdrArr(box, ctx->Theme.ButtonBorder);
         box->BorderThickness  = 1.f;
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
@@ -106,7 +118,7 @@ namespace ZEngine::UI
         ZUIBox* box   = ZUIPushBox(ctx, "##zui_sep", 9, ZUI_DrawBackground);
         box->Size[0]  = ZFill();
         box->Size[1]  = ZPx(2.f);
-        SetBgColor(box, k_separator[0], k_separator[1], k_separator[2], k_separator[3]);
+        SetBgArr(box, ctx->Theme.Separator);
         ZUIPopBox(ctx);
     }
 
@@ -145,7 +157,7 @@ namespace ZEngine::UI
         ZUIBox* ind   = ZUIPushBox(ctx, indicator, indicator_len, ZUI_DrawText);
         ind->Size[0]  = ZPx(14.f);
         ind->Size[1]  = ZPx(22.f);
-        SetTextColor(ind, k_text_dim);
+        SetTextColor(ind, ctx->Theme.TextDim);
         ZUIPopBox(ctx); // pop indicator
 
         // Label text
@@ -153,7 +165,7 @@ namespace ZEngine::UI
         ZUIBox*  txt  = ZUIPushBox(ctx, label, label_len, ZUI_DrawText);
         txt->Size[0]  = ZText();
         txt->Size[1]  = ZPx(22.f);
-        SetTextColor(txt, k_text_default);
+        SetTextColor(txt, ctx->Theme.TextDefault);
         ZUIPopBox(ctx); // pop label
 
         ZUISignal sig = ZUISignalFromBox(ctx, row);
@@ -211,28 +223,21 @@ namespace ZEngine::UI
     bool ZUIPanelDragHeader(ZUIContext* ctx, const char* title,
                             float* inout_x, float* inout_y, bool* detached)
     {
-        static constexpr float k_hdr_bg[4]   = {0.18f, 0.18f, 0.22f, 1.f};
-        static constexpr float k_text[4]      = {0.90f, 0.90f, 0.90f, 1.f};
-        static constexpr float k_drag_col[4]  = {0.45f, 0.45f, 0.55f, 1.f};
-
-        // Build a unique header key from the title
         char hdr_key[64];
         snprintf(hdr_key, sizeof(hdr_key), "##pdh_%s", title);
 
         ZUIBox* hdr   = ZUIBeginRow(ctx, hdr_key, ZFill(), ZPx(22.f));
         hdr->Flags    = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        hdr->BgColor[0] = k_hdr_bg[0]; hdr->BgColor[1] = k_hdr_bg[1];
-        hdr->BgColor[2] = k_hdr_bg[2]; hdr->BgColor[3] = k_hdr_bg[3];
+        SetBgArr(hdr, ctx->Theme.HeaderBg);
 
         // Drag indicator ("= ") in dim colour
         ZUIBox* grip  = ZUIPushBox(ctx, "= ##grip", 8, ZUI_DrawText);
         grip->Size[0] = ZPx(18.f);
         grip->Size[1] = ZPx(22.f);
-        grip->TextColor[0] = k_drag_col[0]; grip->TextColor[1] = k_drag_col[1];
-        grip->TextColor[2] = k_drag_col[2]; grip->TextColor[3] = k_drag_col[3];
+        SetTextColor(grip, ctx->Theme.TextDim);
         ZUIPopBox(ctx);
 
-        ZUILabel(ctx, title, k_text);
+        ZUILabel(ctx, title, ctx->Theme.TextDefault);
 
         ZUISignal sig = ZUISignalFromBox(ctx, hdr);
         ZUIEndRow(ctx);
@@ -283,10 +288,9 @@ namespace ZEngine::UI
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]          = ZPx(width_px);
         field->Size[1]          = ZPx(24.f);
-        SetBgColor(field, k_input_bg[0], k_input_bg[1], k_input_bg[2], k_input_bg[3]);
-        SetTextColor(field, k_text_default);
-        field->BorderColor[0]   = k_input_bdr[0]; field->BorderColor[1] = k_input_bdr[1];
-        field->BorderColor[2]   = k_input_bdr[2]; field->BorderColor[3] = k_input_bdr[3];
+        SetBgArr(field, ctx->Theme.InputBg);
+        SetTextColor(field, ctx->Theme.TextDefault);
+        SetBdrArr(field, ctx->Theme.InputBorder);
         field->BorderThickness  = 1.f;
 
         // Format the current value and store in FrameArena so the renderer can draw it
@@ -318,8 +322,8 @@ namespace ZEngine::UI
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]      = ZPx(width_px);
         field->Size[1]      = ZPx(28.f);
-        SetBgColor(field, k_input_bg[0], k_input_bg[1], k_input_bg[2], k_input_bg[3]);
-        SetTextColor(field, k_text_default);
+        SetBgArr(field, ctx->Theme.InputBg);
+        SetTextColor(field, ctx->Theme.TextDefault);
 
         bool is_focused = (ctx->FocusKey == field->Key);
         bool changed    = false;
@@ -348,13 +352,11 @@ namespace ZEngine::UI
                 }
             }
             // Accent border when focused
-            field->BorderColor[0] = k_input_focus[0]; field->BorderColor[1] = k_input_focus[1];
-            field->BorderColor[2] = k_input_focus[2]; field->BorderColor[3] = k_input_focus[3];
+            SetBdrArr(field, ctx->Theme.InputFocusBorder);
         }
         else
         {
-            field->BorderColor[0] = k_input_bdr[0]; field->BorderColor[1] = k_input_bdr[1];
-            field->BorderColor[2] = k_input_bdr[2]; field->BorderColor[3] = k_input_bdr[3];
+            SetBdrArr(field, ctx->Theme.InputBorder);
         }
 
         // Build display string: add blinking cursor "|" when focused

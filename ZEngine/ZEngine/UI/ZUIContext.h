@@ -8,6 +8,35 @@ namespace ZEngine::UI
 {
     using namespace ZEngine::Core::Memory;
 
+    // ---------------------------------------------------------------
+    // ZUITheme — single source of truth for every color in the editor.
+    // Widgets and components read from ctx->Theme instead of local constants.
+    // Swap the whole struct to apply a different theme at runtime.
+    // ---------------------------------------------------------------
+    struct ZUITheme
+    {
+        // Backgrounds
+        float WindowBg[4]       = {0.18f, 0.18f, 0.20f, 1.f};
+        float PanelBg[4]        = {0.22f, 0.22f, 0.25f, 0.96f};
+        float PanelBgAlt[4]     = {0.20f, 0.20f, 0.23f, 0.96f}; // inspector header card
+        float HeaderBg[4]       = {0.28f, 0.28f, 0.32f, 1.f};   // menu bar
+        float RowHoverBg[4]     = {0.42f, 0.42f, 0.48f, 0.f};   // list row — transparent, fade in
+        float RowSelectedBg[4]  = {0.26f, 0.44f, 0.70f, 0.50f};
+        float RowRootBg[4]      = {0.30f, 0.30f, 0.36f, 0.18f}; // scene root row
+        float InputBg[4]        = {0.18f, 0.18f, 0.22f, 1.f};
+        float ButtonBg[4]       = {0.32f, 0.32f, 0.38f, 1.f};
+        // Text
+        float TextDefault[4]    = {0.92f, 0.92f, 0.92f, 1.f};
+        float TextDim[4]        = {0.55f, 0.55f, 0.62f, 1.f};
+        float TextAccent[4]     = {0.55f, 0.75f, 0.95f, 1.f};
+        // Borders
+        float PanelBorder[4]    = {0.40f, 0.42f, 0.50f, 1.f};
+        float ButtonBorder[4]   = {0.50f, 0.50f, 0.60f, 1.f};
+        float InputBorder[4]    = {0.40f, 0.40f, 0.52f, 1.f};
+        float InputFocusBorder[4]= {0.40f, 0.65f, 0.92f, 1.f};
+        float Separator[4]      = {0.38f, 0.38f, 0.44f, 1.f};
+    };
+
     struct ZUIPersistentState
     {
         float HotT    = 0.f;
@@ -66,6 +95,9 @@ namespace ZEngine::UI
 
         // capacity caps used by layout and interaction passes
         uint32_t           MaxBoxesPerFrame  = 0;
+
+        // active color theme — swap to retheme the whole UI at runtime
+        ZUITheme           Theme;
 
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
         uint32_t           ScreenW           = 1280;

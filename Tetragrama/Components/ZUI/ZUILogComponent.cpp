@@ -58,18 +58,23 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = 0.22f;
-        panel->BgColor[1]  = 0.22f;
-        panel->BgColor[2]  = 0.24f;
-        panel->BgColor[3]  = 0.96f;
-        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
-        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BgColor[0]  = ctx->Theme.PanelBg[0];
+        panel->BgColor[1]  = ctx->Theme.PanelBg[1];
+        panel->BgColor[2]  = ctx->Theme.PanelBg[2];
+        panel->BgColor[3]  = ctx->Theme.PanelBg[3];
+        panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
+        panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
+        panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
 
-        // --- Header row — draggable (Gap 4) ---
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(26.f));
-        hdr->Flags  = hdr->Flags | ZUI_Clickable;
-            ZUILabel(ctx, Name ? Name : "Console");
+        // --- Header row — draggable ---
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(28.f));
+        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->BgColor[0] = ctx->Theme.HeaderBg[0]; hdr->BgColor[1] = ctx->Theme.HeaderBg[1];
+        hdr->BgColor[2] = ctx->Theme.HeaderBg[2]; hdr->BgColor[3] = ctx->Theme.HeaderBg[3];
+            ZUISpacer(ctx, 6.f);
+            ZUILabel(ctx, Name ? Name : "Console", ctx->Theme.TextDefault);
             ZUISpacer(ctx, 8.f);
             ZUISignal clear_sig = ZUIButton(ctx, "Clear##log");
             ZUISignal drag_sig  = ZUISignalFromBox(ctx, hdr);
@@ -87,17 +92,16 @@ namespace Tetragrama::Components
 
         ZUISeparator(ctx);
 
-        // --- Log entries — last kVisibleLines from ring ---
+        // --- All log entries inside a scroll region ---
+        ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##log_scroll", ZFill(), ZFill());
+        ZUIPaddingXY(scroll, 4.f, 2.f);
         {
             std::lock_guard<std::mutex> lock(m_mutex);
 
             int total = m_count < kMaxEntries ? m_count : kMaxEntries;
             int start = (m_count >= kMaxEntries) ? m_head : 0;
 
-            // Show only the most-recent kVisibleLines entries
-            int skip = total > kVisibleLines ? total - kVisibleLines : 0;
-
-            for (int i = skip; i < total; ++i)
+            for (int i = 0; i < total; ++i)
             {
                 const LogEntry& e = m_ring[(start + i) % kMaxEntries];
                 ZUILabel(ctx, e.Text, e.Color);
@@ -110,6 +114,7 @@ namespace Tetragrama::Components
             }
         }
 
+        ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx); // end panel
     }
 } // namespace Tetragrama::Components

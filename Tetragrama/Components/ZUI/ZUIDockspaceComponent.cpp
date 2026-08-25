@@ -7,8 +7,6 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Components
 {
-    static constexpr float k_dim[4]   = {0.55f, 0.55f, 0.60f, 1.f};
-    static constexpr float k_text[4]  = {0.90f, 0.90f, 0.90f, 1.f};
     static constexpr float kMenuH     = 26.f;
     static constexpr float kStatusH   = 28.f;
     static constexpr float kLeftW     = 0.18f;
@@ -70,9 +68,9 @@ namespace Tetragrama::Components
         menu->BgColor[2] = 0.32f; menu->BgColor[3]  = 1.f;
 
         ZUISpacer(ctx, 8.f);
-        ZUILabel(ctx, "ZodiacEngine", k_text);
+        ZUILabel(ctx, "ZodiacEngine", ctx->Theme.TextDefault);
         ZUISpacer(ctx, 16.f);
-        ZUILabel(ctx, "|", k_dim);
+        ZUILabel(ctx, "|", ctx->Theme.TextDim);
         ZUISpacer(ctx, 8.f);
 
         if (ParentLayer && ParentLayer->CurrentApp)
@@ -84,12 +82,12 @@ namespace Tetragrama::Components
                                   ? "-" : app->Configuration->ActiveSceneName.c_str();
                 char scene_buf[128];
                 snprintf(scene_buf, sizeof(scene_buf), "Scene: %s", sname);
-                ZUILabel(ctx, scene_buf, k_dim);
+                ZUILabel(ctx, scene_buf, ctx->Theme.TextDim);
             }
         }
 
         ZUISpacer(ctx, 16.f);
-        ZUILabel(ctx, "|", k_dim);
+        ZUILabel(ctx, "|", ctx->Theme.TextDim);
         ZUISpacer(ctx, 8.f);
 
         // Panel visibility toggles

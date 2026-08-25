@@ -11,9 +11,6 @@ using namespace ZEngine::Core::VFS;
 
 namespace Tetragrama::Components
 {
-    static constexpr float k_dim[4]  = {0.55f, 0.55f, 0.60f, 1.f};
-    static constexpr float k_dir[4]  = {0.55f, 0.75f, 0.95f, 1.f};
-    static constexpr float k_text[4] = {0.90f, 0.90f, 0.90f, 1.f};
 
     void ZUIProjectViewComponent::Initialize(Tetragrama::Layers::ZUILayer* parent,
                                              cstring name, bool visibility)
@@ -76,19 +73,19 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = 0.24f; panel->BgColor[1] = 0.24f;
-        panel->BgColor[2]  = 0.28f; panel->BgColor[3]  = 0.96f;
-        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
-        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BgColor[0] = ctx->Theme.PanelBg[0]; panel->BgColor[1] = ctx->Theme.PanelBg[1];
+        panel->BgColor[2] = ctx->Theme.PanelBg[2]; panel->BgColor[3] = ctx->Theme.PanelBg[3];
+        panel->BorderColor[0] = ctx->Theme.PanelBorder[0]; panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2] = ctx->Theme.PanelBorder[2]; panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
 
         // --- Header: draggable title + path + up button ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZPx(24.f));
         hdr->Flags  = hdr->Flags | ZUI_Clickable;
-            ZUILabel(ctx, Name ? Name : "Project", k_dim);
+            ZUILabel(ctx, Name ? Name : "Project", ctx->Theme.TextDim);
             ZUISpacer(ctx, 4.f);
             const char* path_str = m_current_path.CStr() ? m_current_path.CStr() : "/";
-            ZUILabel(ctx, path_str, k_dim);
+            ZUILabel(ctx, path_str, ctx->Theme.TextDim);
             ZUISpacer(ctx, 8.f);
             ZUISignal up_sig   = ZUIButton(ctx, "Up##proj");
             ZUISignal drag_sig = ZUISignalFromBox(ctx, hdr);
@@ -103,7 +100,8 @@ namespace Tetragrama::Components
         if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
         ZUISeparator(ctx);
 
-        // --- Cached directory entries ---
+        // --- Cached directory entries (scrollable) ---
+        ZUIBeginScrollRegion(ctx, "##proj_scroll", ZFill(), ZFill());
         for (uint32_t i = 0; i < m_entry_count; ++i)
         {
             const CachedEntry& e = m_entries[i];
@@ -115,8 +113,8 @@ namespace Tetragrama::Components
             ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(20.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
 
-            ZUILabel(ctx, e.is_dir ? "[D] " : "    ", k_dim);
-            ZUILabel(ctx, e.name, e.is_dir ? k_dir : k_text);
+            ZUILabel(ctx, e.is_dir ? "[D] " : "    ", ctx->Theme.TextDim);
+            ZUILabel(ctx, e.name, e.is_dir ? ctx->Theme.TextAccent : ctx->Theme.TextDefault);
 
             ZUISignal row_sig = ZUISignalFromBox(ctx, row);
 
@@ -133,6 +131,8 @@ namespace Tetragrama::Components
                 if (next.Succeeded()) { m_current_path = next.Value(); }
             }
         }
+
+        ZUIEndScrollRegion(ctx);
 
         // Up navigation (applied after rendering so signal is from prev frame)
         if ((up_sig.Flags & ZUI_SignalClicked) && !m_current_path.IsRoot())
