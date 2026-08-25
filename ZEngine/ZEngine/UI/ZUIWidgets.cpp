@@ -162,6 +162,95 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // Drag-and-drop helpers
+    // ---------------------------------------------------------------
+
+    void ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box,
+                            const char* payload, uint32_t payload_len)
+    {
+        if (!ctx || !box) { return; }
+        // Activate drag when this box is the active (held) box and the mouse has moved.
+        // Reads ctx state directly to avoid a second ZUISignalFromBox call on the same box.
+        bool held   = (ctx->ActiveKey == box->Key) && ctx->MouseDown[0];
+        bool moving = held && (ctx->MousePos[0] != ctx->PrevMousePos[0] ||
+                               ctx->MousePos[1] != ctx->PrevMousePos[1]);
+        if (moving && ctx->DragSourceKey == 0)
+        {
+            ctx->DragSourceKey = box->Key;
+            uint32_t copy_len  = payload_len < 511u ? payload_len : 511u;
+            Helpers::secure_memcpy(ctx->DragPayload, sizeof(ctx->DragPayload), payload, copy_len);
+            ctx->DragPayload[copy_len] = '\0';
+            ctx->DragPayloadLen        = copy_len;
+        }
+    }
+
+    bool ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box,
+                       char* out_buf, uint32_t out_size)
+    {
+        if (!ctx || !box) { return false; }
+        if (!ctx->DragDropFired || ctx->DragTargetKey != box->Key) { return false; }
+        if (out_buf && out_size > 0)
+        {
+            uint32_t copy_len = ctx->DragPayloadLen < out_size - 1 ? ctx->DragPayloadLen : out_size - 1;
+            Helpers::secure_memcpy(out_buf, out_size, ctx->DragPayload, copy_len);
+            out_buf[copy_len] = '\0';
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIPanelDragHeader
+    // ---------------------------------------------------------------
+
+    bool ZUIPanelDragHeader(ZUIContext* ctx, const char* title,
+                            float* inout_x, float* inout_y, bool* detached)
+    {
+        static constexpr float k_hdr_bg[4]   = {0.18f, 0.18f, 0.22f, 1.f};
+        static constexpr float k_text[4]      = {0.90f, 0.90f, 0.90f, 1.f};
+        static constexpr float k_drag_col[4]  = {0.45f, 0.45f, 0.55f, 1.f};
+
+        // Build a unique header key from the title
+        char hdr_key[64];
+        snprintf(hdr_key, sizeof(hdr_key), "##pdh_%s", title);
+
+        ZUIBox* hdr   = ZUIBeginRow(ctx, hdr_key, ZFill(), ZPx(22.f));
+        hdr->Flags    = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->BgColor[0] = k_hdr_bg[0]; hdr->BgColor[1] = k_hdr_bg[1];
+        hdr->BgColor[2] = k_hdr_bg[2]; hdr->BgColor[3] = k_hdr_bg[3];
+
+        // Drag indicator ("= ") in dim colour
+        ZUIBox* grip  = ZUIPushBox(ctx, "= ##grip", 8, ZUI_DrawText);
+        grip->Size[0] = ZPx(18.f);
+        grip->Size[1] = ZPx(22.f);
+        grip->TextColor[0] = k_drag_col[0]; grip->TextColor[1] = k_drag_col[1];
+        grip->TextColor[2] = k_drag_col[2]; grip->TextColor[3] = k_drag_col[3];
+        ZUIPopBox(ctx);
+
+        ZUILabel(ctx, title, k_text);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, hdr);
+        ZUIEndRow(ctx);
+
+        bool moved = false;
+        if ((sig.Flags & ZUI_SignalHeld) &&
+            (sig.DragDelta[0] != 0.f || sig.DragDelta[1] != 0.f))
+        {
+            if (inout_x) { *inout_x += sig.DragDelta[0]; }
+            if (inout_y) { *inout_y += sig.DragDelta[1]; }
+            if (detached) { *detached = true; }
+            moved = true;
+        }
+
+        // Double-click snaps back to dockspace
+        if ((sig.Flags & ZUI_SignalDoubleClicked) && detached)
+        {
+            *detached = false;
+        }
+
+        return moved;
+    }
+
+    // ---------------------------------------------------------------
     // ZUIImage
     // ---------------------------------------------------------------
 

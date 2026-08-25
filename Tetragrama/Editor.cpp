@@ -12,6 +12,7 @@
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
+#include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <fmt/format.h>
@@ -123,16 +124,39 @@ namespace Tetragrama
         // via ImportCoordinator::Enqueue's returned UUID — no callback needed here.
     }
 
+    void Editor::ProcessEvent(ZEngine::Core::CoreEvent& e)
+    {
+        // Always route events to the window and ZUI layer
+        if (CurrentWindow) { CurrentWindow->OnEvent(e); }
+        if (ZUIUILayer)    { ZUIUILayer->OnEvent(e); }
+
+        // Gate camera-controller mouse routing on viewport focus (Gap 3)
+        bool is_mouse_event = (e.GetType() == ZEngine::Core::EventType::MouseButtonPressed  ||
+                               e.GetType() == ZEngine::Core::EventType::MouseButtonReleased ||
+                               e.GetType() == ZEngine::Core::EventType::MouseMoved          ||
+                               e.GetType() == ZEngine::Core::EventType::MouseWheel);
+
+        bool viewport_active = RenderPipeline && RenderPipeline->ZUICtx &&
+                               RenderPipeline->ZUICtx->ViewportHovered;
+
+        if (CameraController && (!is_mouse_event || viewport_active))
+        {
+            CameraController->OnEvent(e);
+        }
+
+        OnEvent(e);
+    }
+
     void Editor::OnUpdate(float dt)
     {
         CHECK_AND_ESCAPE_NULL(ZUIUILayer)
         ZUIUILayer->Update(dt);
     }
 
-    void Editor::OnEvent(Core::CoreEvent& e)
+    void Editor::OnEvent(Core::CoreEvent& /*e*/)
     {
-        CHECK_AND_ESCAPE_NULL(ZUIUILayer)
-        ZUIUILayer->OnEvent(e);
+        // Event routing is handled in ProcessEvent (which also gates camera input
+        // on viewport focus). Nothing extra needed here.
     }
 
     void Editor::OnPreRender() {}

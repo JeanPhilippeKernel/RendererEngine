@@ -31,10 +31,13 @@ namespace Tetragrama::Components
         // Layout region — set by ZUIDockspaceComponent before BuildUI is called.
         // When RegionW > 0 the component uses these values for its panel position/size.
         // When RegionW == 0 the component falls back to its own hardcoded defaults.
-        float RegionX = 0.f;
-        float RegionY = 0.f;
-        float RegionW = 0.f;
-        float RegionH = 0.f;
+        float RegionX    = 0.f;
+        float RegionY    = 0.f;
+        float RegionW    = 0.f;
+        float RegionH    = 0.f;
+        // When true the dockspace skips assigning this panel's region — the panel
+        // controls its own position via ZUIPanelDragHeader. Double-click to snap back.
+        bool  Detached   = false;
     };
     ZDEFINE_PTR(ZUIComponent);
 } // namespace Tetragrama::Components

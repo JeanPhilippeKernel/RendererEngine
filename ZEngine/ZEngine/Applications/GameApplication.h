@@ -43,7 +43,7 @@ namespace ZEngine::Applications
 
         void                              Initialize(Core::Memory::MemoryManager* memory);
         void                              Update(Core::TimeStep dt);
-        void                              ProcessEvent(Core::CoreEvent&);
+        virtual void                      ProcessEvent(Core::CoreEvent&);
         void                              Run();
         void                              PrepareScene(RenderPayload&);
         void                              Shutdown();

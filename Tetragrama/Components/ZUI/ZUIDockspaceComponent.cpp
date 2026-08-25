@@ -17,7 +17,7 @@ namespace Tetragrama::Components
 
     static void AssignRegion(ZUIComponent* cmp, float x, float y, float w, float h)
     {
-        if (!cmp) { return; }
+        if (!cmp || cmp->Detached) { return; }
         cmp->RegionX = x;
         cmp->RegionY = y;
         cmp->RegionW = w;

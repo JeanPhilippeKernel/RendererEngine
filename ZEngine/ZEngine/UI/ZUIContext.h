@@ -70,6 +70,19 @@ namespace ZEngine::UI
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
         uint32_t           ScreenW           = 1280;
         uint32_t           ScreenH           = 720;
+
+        // drag-and-drop — source is set by ZUIBeginDragSource while a box is held+moving;
+        // drop result (DragDropFired/DragTargetKey) is set by ZUIInteractionPass on mouse-release
+        // and cleared at the START of the next ZUIEndFrame so BuildUI can read it
+        uint64_t           DragSourceKey     = 0;
+        char               DragPayload[512]  = {};
+        uint32_t           DragPayloadLen    = 0;
+        bool               DragDropFired     = false;
+        uint64_t           DragTargetKey     = 0;
+
+        // set by ZUISceneViewportComponent each BuildUI frame; read by Editor::ProcessEvent
+        // to gate camera-controller mouse routing
+        bool               ViewportHovered   = false;
     };
 
     ZDEFINE_PTR(ZUIContext);

@@ -62,6 +62,14 @@ namespace ZEngine::UI
         }
         if (ctx->MouseReleased[0])
         {
+            // Fire drag-drop if a source was active and mouse landed on a different box
+            if (ctx->DragSourceKey != 0)
+            {
+                ctx->DragDropFired = true;
+                ctx->DragTargetKey = ctx->HotKey;
+                ctx->DragSourceKey = 0;
+                ctx->DragPayloadLen = 0;
+            }
             ctx->ActiveKey = 0;
         }
     }

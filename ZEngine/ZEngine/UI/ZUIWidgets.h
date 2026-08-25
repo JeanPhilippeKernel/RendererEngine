@@ -57,6 +57,33 @@ namespace ZEngine::UI
     bool ZUIDragFloat(ZUIContext* ctx, const char* key,
                       float* value, float speed = 0.05f, float width_px = 60.f);
 
+    // ---------------------------------------------------------------
+    // Drag-and-drop helpers
+    // ---------------------------------------------------------------
+
+    // Call after ZUISignalFromBox for a source box. When the box is held and the
+    // mouse has moved, records ctx->DragSourceKey + copies payload so the next
+    // ZUIAcceptDrop call on the landing box can retrieve it.
+    void ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box,
+                            const char* payload, uint32_t payload_len);
+
+    // Call after ZUISignalFromBox for a potential drop target.
+    // Returns true exactly once — on the BuildUI frame after the drop fires.
+    // Copies the payload into out_buf (null-terminated). out_buf may be nullptr.
+    bool ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box,
+                       char* out_buf, uint32_t out_size);
+
+    // ---------------------------------------------------------------
+    // Panel drag header (gap 4)
+    // ---------------------------------------------------------------
+
+    // Renders a draggable title bar row (DrawBackground + Clickable).
+    // While held + mouse is moving, *inout_x and *inout_y are updated by DragDelta.
+    // Returns true if the panel was dragged this frame (position changed).
+    // Double-click resets *detached to false (snap back to dockspace).
+    bool ZUIPanelDragHeader(ZUIContext* ctx, const char* title,
+                            float* inout_x, float* inout_y, bool* detached);
+
     // Display a texture in a box. texture_index is the bindless array slot
     // (e.g. TextureHandle::Index from SceneRenderer::GetFrameOutput()).
     void ZUIImage(ZUIContext* ctx, const char* key,

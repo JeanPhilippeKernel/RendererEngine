@@ -62,29 +62,37 @@ namespace Tetragrama::Components
         auto* eng           = Engine::GetContext();
         if (!current_scene || !eng || !eng->ActorManager) { return; }
 
-        float sx = RegionW > 0 ? RegionX : 480.f;
-        float sy = RegionW > 0 ? RegionY : 80.f;
-        float sw = RegionW > 0 ? RegionW : 280.f;
-        float sh = RegionW > 0 ? RegionH : 700.f;
+        if (RegionW == 0) { RegionX = 480.f; RegionY = 80.f; RegionW = 280.f; RegionH = 700.f; }
 
-        // --- Outer panel ---
-        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_hier_panel", ZPx(sw), ZPx(sh));
+        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_hier_panel", ZPx(RegionW), ZPx(RegionH));
         panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
-        panel->FloatPos[0] = sx;
-        panel->FloatPos[1] = sy;
+        panel->FloatPos[0] = RegionX;
+        panel->FloatPos[1] = RegionY;
         panel->BgColor[0]  = 0.12f;
         panel->BgColor[1]  = 0.12f;
         panel->BgColor[2]  = 0.14f;
         panel->BgColor[3]  = 0.96f;
 
-        // --- Header ---
-        ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(26.f));
+        // --- Header — draggable (Gap 4) ---
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(26.f));
+        hdr->Flags  = hdr->Flags | ZUI_Clickable;
             ZUILabel(ctx, Name ? Name : "Hierarchy");
             ZUISpacer(ctx, 8.f);
-            ZUISignal add_sig = ZUIButton(ctx, "Add##hier");
+            ZUISignal add_sig  = ZUIButton(ctx, "Add##hier");
             ZUISpacer(ctx, 4.f);
-            ZUISignal del_sig = ZUIButton(ctx, "Del##hier");
+            ZUISignal del_sig  = ZUIButton(ctx, "Del##hier");
+            ZUISignal drag_sig = ZUISignalFromBox(ctx, hdr);
         ZUIEndRow(ctx);
+        if ((drag_sig.Flags & ZUI_SignalHeld) &&
+            (drag_sig.DragDelta[0] != 0.f || drag_sig.DragDelta[1] != 0.f))
+        {
+            RegionX += drag_sig.DragDelta[0];
+            RegionY += drag_sig.DragDelta[1];
+            Detached = true;
+            panel->FloatPos[0] = RegionX;
+            panel->FloatPos[1] = RegionY;
+        }
+        if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
         ZUISeparator(ctx);
 
         // --- DFS tree build (no ImGui dependency) ---

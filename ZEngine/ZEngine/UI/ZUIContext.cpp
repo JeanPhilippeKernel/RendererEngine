@@ -40,6 +40,12 @@ namespace ZEngine::UI
 
     void ZUIEndFrame(ZUIContext* ctx)
     {
+        // Clear drop result from the previous frame before the interaction pass may set a new one
+        ctx->DragDropFired  = false;
+        ctx->DragTargetKey  = 0;
+        // ViewportHovered is written fresh each BuildUI; reset it so a missing panel = false
+        ctx->ViewportHovered = false;
+
         ZUILayoutSolve(ctx);
         ZUIInteractionPass(ctx);
 

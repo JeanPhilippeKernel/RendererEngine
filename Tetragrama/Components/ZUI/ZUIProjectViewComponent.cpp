@@ -34,25 +34,40 @@ namespace Tetragrama::Components
             m_initialized  = true;
         }
 
-        float sw = RegionW > 0 ? RegionW : (float)ctx->ScreenW * 0.48f;
-        float sh = RegionW > 0 ? RegionH : 200.f;
-        float sx = RegionW > 0 ? RegionX : (float)ctx->ScreenW * 0.19f;
-        float sy = RegionW > 0 ? RegionY : (float)ctx->ScreenH - sh - 28.f; // above status bar
+        if (RegionW == 0) {
+            RegionW = (float)ctx->ScreenW * 0.48f; RegionH = 200.f;
+            RegionX = (float)ctx->ScreenW * 0.19f;
+            RegionY = (float)ctx->ScreenH - RegionH - 28.f;
+        }
 
-        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_proj_panel", ZPx(sw), ZPx(sh));
+        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_proj_panel", ZPx(RegionW), ZPx(RegionH));
         panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
-        panel->FloatPos[0] = sx;
-        panel->FloatPos[1] = sy;
+        panel->FloatPos[0] = RegionX;
+        panel->FloatPos[1] = RegionY;
         panel->BgColor[0]  = 0.12f; panel->BgColor[1] = 0.12f;
         panel->BgColor[2]  = 0.14f; panel->BgColor[3]  = 0.96f;
 
-        // --- Header row: path + up button ---
-        ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZPx(24.f));
+        // --- Header row: draggable title + path + up button (Gap 4) ---
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZPx(24.f));
+        hdr->Flags  = hdr->Flags | ZUI_Clickable;
+            ZUILabel(ctx, Name ? Name : "Project", k_dim);
+            ZUISpacer(ctx, 4.f);
             const char* path_str = m_current_path.CStr() ? m_current_path.CStr() : "/";
             ZUILabel(ctx, path_str, k_dim);
             ZUISpacer(ctx, 8.f);
-            ZUISignal up_sig = ZUIButton(ctx, "Up##proj");
+            ZUISignal up_sig   = ZUIButton(ctx, "Up##proj");
+            ZUISignal drag_sig = ZUISignalFromBox(ctx, hdr);
         ZUIEndRow(ctx);
+        if ((drag_sig.Flags & ZUI_SignalHeld) &&
+            (drag_sig.DragDelta[0] != 0.f || drag_sig.DragDelta[1] != 0.f))
+        {
+            RegionX += drag_sig.DragDelta[0];
+            RegionY += drag_sig.DragDelta[1];
+            Detached = true;
+            panel->FloatPos[0] = RegionX;
+            panel->FloatPos[1] = RegionY;
+        }
+        if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
         ZUISeparator(ctx);
 
         // --- Directory listing ---
@@ -82,6 +97,19 @@ namespace Tetragrama::Components
                     ZUILabel(ctx, name_buf, color);
 
                     ZUISignal row_sig = ZUISignalFromBox(ctx, row);
+
+                    // Gap 2: files are drag sources for the scene viewport drop target
+                    if (!entry.IsDirectory)
+                    {
+                        const char* native_path = entry.Path.CStr();
+                        if (native_path)
+                        {
+                            ZUIBeginDragSource(ctx, row,
+                                               native_path,
+                                               (uint32_t)ZEngine::Helpers::secure_strlen(native_path));
+                        }
+                    }
+
                     ZUIEndRow(ctx);
 
                     if ((row_sig.Flags & ZUI_SignalClicked) && entry.IsDirectory)

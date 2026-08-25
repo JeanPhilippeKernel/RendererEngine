@@ -53,22 +53,34 @@ namespace Tetragrama::Components
         float sw = RegionW > 0 ? RegionW : kPanelW;
         float sh = RegionW > 0 ? RegionH : kPanelH;
 
-        // --- Outer panel — floated, dark background ---
-        ZUIBox* panel    = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(sw), ZPx(sh));
+        if (RegionW == 0) { RegionX = sx; RegionY = sy; RegionW = sw; RegionH = sh; }
+        ZUIBox* panel    = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(RegionW), ZPx(RegionH));
         panel->Flags     = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
-        panel->FloatPos[0] = sx;
-        panel->FloatPos[1] = sy;
+        panel->FloatPos[0] = RegionX;
+        panel->FloatPos[1] = RegionY;
         panel->BgColor[0]  = 0.10f;
         panel->BgColor[1]  = 0.10f;
         panel->BgColor[2]  = 0.11f;
         panel->BgColor[3]  = 0.96f;
 
-        // --- Header row ---
-        ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(26.f));
+        // --- Header row — draggable (Gap 4) ---
+        ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(26.f));
+        hdr->Flags  = hdr->Flags | ZUI_Clickable;
             ZUILabel(ctx, Name ? Name : "Console");
             ZUISpacer(ctx, 8.f);
             ZUISignal clear_sig = ZUIButton(ctx, "Clear##log");
+            ZUISignal drag_sig  = ZUISignalFromBox(ctx, hdr);
         ZUIEndRow(ctx);
+        if ((drag_sig.Flags & ZUI_SignalHeld) &&
+            (drag_sig.DragDelta[0] != 0.f || drag_sig.DragDelta[1] != 0.f))
+        {
+            RegionX += drag_sig.DragDelta[0];
+            RegionY += drag_sig.DragDelta[1];
+            Detached = true;
+            panel->FloatPos[0] = RegionX;
+            panel->FloatPos[1] = RegionY;
+        }
+        if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
 
         ZUISeparator(ctx);
 
