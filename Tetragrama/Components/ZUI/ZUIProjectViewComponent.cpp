@@ -144,7 +144,7 @@ namespace Tetragrama::Components
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
 
             // --- Row: icon square + name + ext tag ---
-            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 24.f));
+            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
             ZUIBoxSetColor(row, 0.45f, 0.45f, 0.50f, 0.f); // transparent, hover fades in
 
@@ -157,11 +157,11 @@ namespace Tetragrama::Components
                 ZUIBox* icon = ZUIPushBox(ctx, icon_key,
                                            (uint32_t)ZEngine::Helpers::secure_strlen(icon_key),
                                            ZUI_DrawBackground);
-                icon->Size[0] = ZPx(12.f);
-                icon->Size[1] = ZPx(12.f);
+                icon->Size[0] = ZSPx(ctx, 16.f);
+                icon->Size[1] = ZSPx(ctx, 16.f);
                 ZUIBoxSetColorArr(icon, icon_col);
-                icon->EdgeSoftness = 1.f;
-                ZUIBoxSetCornerRadius(icon, 2.f);
+                icon->EdgeSoftness = 0.5f;
+                ZUIBoxSetCornerRadius(icon, 3.f);
                 ZUIPopBox(ctx);
             }
             ZUISpacer(ctx, 5.f);
