@@ -127,6 +127,12 @@ namespace ZEngine::UI
         // ---------------------------------------------------------------
         uint64_t           OpenPopupKey     = 0;     // requested this frame
         uint64_t           ActiveModalKey   = 0;     // modal (cannot close by clicking outside)
+
+        // Table state (single-level; reset by ZUIBeginTable/ZUIEndTable)
+        int                TableColumns     = 0;
+        int                TableCurrentCol  = -1;
+        float*             TableColWidths   = nullptr; // FrameArena array
+        ZUIBox*            TableRowBox      = nullptr;
         float              PopupPos[2]      = {};    // screen position to open at
         uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
         ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame

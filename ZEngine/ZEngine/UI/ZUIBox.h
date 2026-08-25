@@ -44,11 +44,9 @@ namespace ZEngine::UI
         return static_cast<ZUIBoxFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
     }
 
-    enum class ZUIAxis : uint8_t
-    {
-        X,
-        Y
-    };
+    enum class ZUIAxis : uint8_t { X, Y };
+
+    enum class ZUITextAlign : uint8_t { Left = 0, Center, Right };
 
     struct ZUIBox
     {
@@ -66,6 +64,7 @@ namespace ZEngine::UI
         ZUIBoxFlags Flags            = ZUI_None;
         ZUISize     Size[2]          = {};
         ZUIAxis     LayoutAxis       = ZUIAxis::Y;
+        ZUITextAlign TextAlign       = ZUITextAlign::Left;
         float       BgColor[4]       = {};
         float       BorderColor[4]   = {};
         float       TextColor[4]     = {};

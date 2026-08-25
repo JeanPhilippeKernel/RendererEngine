@@ -386,11 +386,22 @@ namespace ZEngine::Rendering::Renderers
                     current_tex = font_tex;
                 }
 
-                // Vertically centre text within the box; 4 px left indent
+                // Vertically centre text within the box
                 float box_h    = by1 - by0;
                 float text_top = by0 + (box_h - font->LineHeight) * 0.5f;
                 float baseline  = text_top + font->Ascent;
-                float cx        = bx0 + 4.f;
+
+                // Horizontal alignment
+                float cx = bx0 + 4.f; // default Left
+                if (box->TextAlign != UI::ZUITextAlign::Left)
+                {
+                    float text_size[2] = {0.f, 0.f};
+                    ZUIMeasureText(font, box->Label.Ptr, box->Label.Len, text_size);
+                    if (box->TextAlign == UI::ZUITextAlign::Center)
+                        cx = bx0 + ((bx1 - bx0) - text_size[0]) * 0.5f;
+                    else // Right
+                        cx = bx1 - text_size[0] - 4.f;
+                }
                 uint32_t color  = PackRGBA(box->TextColor);
 
                 for (uint32_t ci = 0; ci < box->Label.Len; ++ci)

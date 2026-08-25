@@ -378,6 +378,85 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // Phase 5 — layout improvements
+    // ---------------------------------------------------------------
+
+    void ZUISameLine(ZUIContext* ctx, float /*spacing*/)
+    {
+        // Change the current parent's layout axis to X so the NEXT sibling
+        // is placed horizontally next to the previous one.
+        if (ctx->Current)
+            ctx->Current->LayoutAxis = ZUIAxis::X;
+    }
+
+    void ZUIBeginTable(ZUIContext* ctx, const char* key, int columns,
+                       const float* widths, ZUISize h)
+    {
+        ctx->TableColumns    = columns;
+        ctx->TableCurrentCol = -1;
+        ctx->TableRowBox     = nullptr;
+
+        // Allocate per-column widths in FrameArena
+        ctx->TableColWidths = ZPushArray(&ctx->FrameArena, float, columns);
+        for (int i = 0; i < columns; ++i)
+            ctx->TableColWidths[i] = widths ? widths[i] : 0.f;
+
+        // Outer column container
+        ZUIBeginColumn(ctx, key, ZFill(), h);
+    }
+
+    void ZUITableNextRow(ZUIContext* ctx)
+    {
+        // Close previous row if open
+        if (ctx->TableCurrentCol >= 0)
+        {
+            ZUIEndColumn(ctx); // close last cell column
+            ZUIEndRow(ctx);    // close row
+            ctx->TableCurrentCol = -1;
+        }
+        // Open new row
+        char row_key[40];
+        static int s_row_idx = 0;
+        snprintf(row_key, sizeof(row_key), "##trow_%d", s_row_idx++);
+        ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZFit());
+        row->LayoutAxis = ZUIAxis::X;
+        ctx->TableRowBox = row;
+    }
+
+    void ZUITableSetColumn(ZUIContext* ctx, int col_index)
+    {
+        // Close previous cell
+        if (ctx->TableCurrentCol >= 0)
+            ZUIEndColumn(ctx);
+
+        ctx->TableCurrentCol = col_index;
+        float w = (col_index < ctx->TableColumns && ctx->TableColWidths &&
+                   ctx->TableColWidths[col_index] > 0.f)
+                  ? ctx->TableColWidths[col_index]
+                  : 80.f; // default cell width
+
+        char cell_key[40];
+        snprintf(cell_key, sizeof(cell_key), "##tcell_%d_%d",
+                 (int)(uintptr_t)ctx->TableRowBox, col_index);
+        ZUIBeginColumn(ctx, cell_key, ZPx(w), ZFit());
+    }
+
+    void ZUIEndTable(ZUIContext* ctx)
+    {
+        // Close any open cell + row
+        if (ctx->TableCurrentCol >= 0)
+        {
+            ZUIEndColumn(ctx);
+            ZUIEndRow(ctx);
+        }
+        ZUIEndColumn(ctx); // outer table column
+        ctx->TableColumns    = 0;
+        ctx->TableCurrentCol = -1;
+        ctx->TableColWidths  = nullptr;
+        ctx->TableRowBox     = nullptr;
+    }
+
+    // ---------------------------------------------------------------
     // Phase 3 — simple standalone widgets
     // ---------------------------------------------------------------
 

@@ -160,6 +160,26 @@ namespace ZEngine::UI
     bool ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
 
     // ---------------------------------------------------------------
+    // Phase 5 — layout improvements
+    // ---------------------------------------------------------------
+
+    // Place the next item on the same line as the previous one.
+    void ZUISameLine(ZUIContext* ctx, float spacing = 0.f);
+
+    // Simple fixed-column table. widths[] = per-column pixel widths;
+    // pass nullptr for equal distribution. Use ZUITableNextRow /
+    // ZUITableSetColumn to fill cells. Pair with ZUIEndTable.
+    void ZUIBeginTable(ZUIContext* ctx, const char* key, int columns,
+                       const float* widths = nullptr, ZUISize h = ZFit());
+    void ZUITableNextRow(ZUIContext* ctx);
+    void ZUITableSetColumn(ZUIContext* ctx, int col_index);
+    void ZUIEndTable(ZUIContext* ctx);
+
+    // Set text alignment on a box returned by ZUIBeginColumn/Row or any
+    // ZUIBox* — e.g. ZUISetTextAlign(box, ZUITextAlign::Center).
+    inline void ZUISetTextAlign(ZUIBox* box, ZUITextAlign align) { box->TextAlign = align; }
+
+    // ---------------------------------------------------------------
     // Phase 4 — popup-based widgets
     // ---------------------------------------------------------------
 
