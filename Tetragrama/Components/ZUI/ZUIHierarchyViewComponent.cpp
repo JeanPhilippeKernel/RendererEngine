@@ -65,13 +65,16 @@ namespace Tetragrama::Components
         if (RegionW == 0) { RegionX = 480.f; RegionY = 80.f; RegionW = 280.f; RegionH = 700.f; }
 
         ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_hier_panel", ZPx(RegionW), ZPx(RegionH));
-        panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
+        panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
         panel->BgColor[0]  = 0.24f;
         panel->BgColor[1]  = 0.24f;
         panel->BgColor[2]  = 0.28f;
         panel->BgColor[3]  = 0.96f;
+        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
+        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BorderThickness = 1.f;
 
         // --- Header — draggable (Gap 4) ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(26.f));
@@ -138,8 +141,10 @@ namespace Tetragrama::Components
             static const float k_sel[4]  = {0.26f, 0.44f, 0.70f, 0.50f};
             static const float k_dim[4]  = {0.55f, 0.55f, 0.60f, 1.f};
 
-            ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(22.f));
+            ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(26.f));
             root_row->Flags  = root_row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+            root_row->BgColor[0] = 0.30f; root_row->BgColor[1] = 0.30f;
+            root_row->BgColor[2] = 0.36f; root_row->BgColor[3] = 0.18f;
 
             // Disclosure
             const char* root_ind = m_root_open ? "v##scr" : ">##scr";
@@ -203,11 +208,17 @@ namespace Tetragrama::Components
                 char row_key[64];
                 snprintf(row_key, sizeof(row_key), "##hr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
 
-                ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(22.f));
+                ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(24.f));
                 row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
                 if (selected) {
                     row->BgColor[0] = k_sel[0]; row->BgColor[1] = k_sel[1];
                     row->BgColor[2] = k_sel[2]; row->BgColor[3] = k_sel[3];
+                }
+                else {
+                    // Neutral base — transparent but non-zero RGB so hover blending
+                    // produces a visible highlight rather than dark gray.
+                    row->BgColor[0] = 0.42f; row->BgColor[1] = 0.42f;
+                    row->BgColor[2] = 0.48f; row->BgColor[3] = 0.f;
                 }
 
                 // Indent spacer

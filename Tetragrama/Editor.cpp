@@ -116,7 +116,7 @@ namespace Tetragrama
                 scratch.Arena,
                 RenderPipeline->Device,
                 "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf",
-                17.f, 512, 512, 32, 96);
+                28.f, 1024, 1024, 32, 96);
             ZReleaseScratch(scratch);
         }
 

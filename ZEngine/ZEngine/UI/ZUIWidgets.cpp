@@ -21,11 +21,15 @@ namespace ZEngine::UI
         box->BgColor[2] = b; box->BgColor[3] = a;
     }
 
-    // Default palette — all colors as {r, g, b, a}
-    static constexpr float k_text_default[4]      = {0.90f, 0.90f, 0.90f, 1.f};
-    static constexpr float k_text_dim[4]          = {0.60f, 0.60f, 0.65f, 1.f};
-    static constexpr float k_button_bg[4]         = {0.22f, 0.22f, 0.28f, 1.f};
-    static constexpr float k_separator[4]         = {0.30f, 0.30f, 0.35f, 1.f};
+    // Design palette
+    static constexpr float k_text_default[4]  = {0.92f, 0.92f, 0.92f, 1.f};
+    static constexpr float k_text_dim[4]      = {0.55f, 0.55f, 0.62f, 1.f};
+    static constexpr float k_button_bg[4]     = {0.32f, 0.32f, 0.38f, 1.f};
+    static constexpr float k_button_bdr[4]    = {0.50f, 0.50f, 0.60f, 1.f};
+    static constexpr float k_input_bg[4]      = {0.18f, 0.18f, 0.22f, 1.f};
+    static constexpr float k_input_bdr[4]     = {0.40f, 0.40f, 0.52f, 1.f};
+    static constexpr float k_input_focus[4]   = {0.40f, 0.65f, 0.92f, 1.f};
+    static constexpr float k_separator[4]     = {0.38f, 0.38f, 0.44f, 1.f};
 
     // ---------------------------------------------------------------
     // Layout containers
@@ -79,11 +83,14 @@ namespace ZEngine::UI
     {
         uint32_t len  = (uint32_t)strlen(label);
         ZUIBox*  box  = ZUIPushBox(ctx, label, len,
-                            ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
-        box->Size[0]  = ZText();
-        box->Size[1]  = ZPx(24.f);
+                            ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
+        box->Size[0]          = ZText();
+        box->Size[1]          = ZPx(28.f);
         SetBgColor(box, k_button_bg[0], k_button_bg[1], k_button_bg[2], k_button_bg[3]);
         SetTextColor(box, k_text_default);
+        box->BorderColor[0]   = k_button_bdr[0]; box->BorderColor[1] = k_button_bdr[1];
+        box->BorderColor[2]   = k_button_bdr[2]; box->BorderColor[3] = k_button_bdr[3];
+        box->BorderThickness  = 1.f;
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);
@@ -96,10 +103,9 @@ namespace ZEngine::UI
 
     void ZUISeparator(ZUIContext* ctx)
     {
-        // Fixed key — separators have no meaningful persistent state
         ZUIBox* box   = ZUIPushBox(ctx, "##zui_sep", 9, ZUI_DrawBackground);
         box->Size[0]  = ZFill();
-        box->Size[1]  = ZPx(1.f);
+        box->Size[1]  = ZPx(2.f);
         SetBgColor(box, k_separator[0], k_separator[1], k_separator[2], k_separator[3]);
         ZUIPopBox(ctx);
     }
@@ -274,12 +280,14 @@ namespace ZEngine::UI
     {
         uint32_t key_len  = (uint32_t)strlen(key);
         ZUIBox*  field    = ZUIPushBox(ctx, key, key_len,
-                                ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
-        field->Size[0]    = ZPx(width_px);
-        field->Size[1]    = ZPx(22.f);
-        field->BgColor[0] = 0.18f; field->BgColor[1] = 0.18f;
-        field->BgColor[2] = 0.22f; field->BgColor[3] = 1.f;
+                                ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
+        field->Size[0]          = ZPx(width_px);
+        field->Size[1]          = ZPx(24.f);
+        SetBgColor(field, k_input_bg[0], k_input_bg[1], k_input_bg[2], k_input_bg[3]);
         SetTextColor(field, k_text_default);
+        field->BorderColor[0]   = k_input_bdr[0]; field->BorderColor[1] = k_input_bdr[1];
+        field->BorderColor[2]   = k_input_bdr[2]; field->BorderColor[3] = k_input_bdr[3];
+        field->BorderThickness  = 1.f;
 
         // Format the current value and store in FrameArena so the renderer can draw it
         char val_buf[32];
@@ -309,11 +317,8 @@ namespace ZEngine::UI
         ZUIBox*  field      = ZUIPushBox(ctx, key, key_len,
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]      = ZPx(width_px);
-        field->Size[1]      = ZPx(22.f);
-        field->BgColor[0]   = 0.14f; field->BgColor[1] = 0.14f;
-        field->BgColor[2]   = 0.18f; field->BgColor[3] = 1.f;
-        field->BorderColor[0] = 0.35f; field->BorderColor[1] = 0.35f;
-        field->BorderColor[2] = 0.45f; field->BorderColor[3] = 1.f;
+        field->Size[1]      = ZPx(28.f);
+        SetBgColor(field, k_input_bg[0], k_input_bg[1], k_input_bg[2], k_input_bg[3]);
         SetTextColor(field, k_text_default);
 
         bool is_focused = (ctx->FocusKey == field->Key);
@@ -342,9 +347,14 @@ namespace ZEngine::UI
                     changed      = true;
                 }
             }
-            // Brighter border when focused
-            field->BorderColor[0] = 0.40f; field->BorderColor[1] = 0.65f;
-            field->BorderColor[2] = 0.90f; field->BorderColor[3] = 1.f;
+            // Accent border when focused
+            field->BorderColor[0] = k_input_focus[0]; field->BorderColor[1] = k_input_focus[1];
+            field->BorderColor[2] = k_input_focus[2]; field->BorderColor[3] = k_input_focus[3];
+        }
+        else
+        {
+            field->BorderColor[0] = k_input_bdr[0]; field->BorderColor[1] = k_input_bdr[1];
+            field->BorderColor[2] = k_input_bdr[2]; field->BorderColor[3] = k_input_bdr[3];
         }
 
         // Build display string: add blinking cursor "|" when focused

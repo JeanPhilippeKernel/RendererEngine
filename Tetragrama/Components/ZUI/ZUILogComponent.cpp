@@ -55,13 +55,16 @@ namespace Tetragrama::Components
 
         if (RegionW == 0) { RegionX = sx; RegionY = sy; RegionW = sw; RegionH = sh; }
         ZUIBox* panel    = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(RegionW), ZPx(RegionH));
-        panel->Flags     = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
+        panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
         panel->BgColor[0]  = 0.22f;
         panel->BgColor[1]  = 0.22f;
         panel->BgColor[2]  = 0.24f;
         panel->BgColor[3]  = 0.96f;
+        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
+        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BorderThickness = 1.f;
 
         // --- Header row — draggable (Gap 4) ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(26.f));

@@ -1,6 +1,7 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Managers/AssetManager.h>
@@ -276,8 +277,19 @@ namespace ZEngine::Applications
     {
         if (ZUICtx)
         {
-            ZUICtx->ScreenW = Device->SwapchainPtr->SwapchainImageWidth;
-            ZUICtx->ScreenH = Device->SwapchainPtr->SwapchainImageHeight;
+            // Use the logical window size (glfwGetWindowSize) not the physical swapchain
+            // size. Mouse positions from GLFW cursor callbacks are also in logical pixels,
+            // so panel positions and hit-testing must use the same coordinate space.
+            if (Device->CurrentWindow)
+            {
+                ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
+                ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
+            }
+            else
+            {
+                ZUICtx->ScreenW = Device->SwapchainPtr->SwapchainImageWidth;
+                ZUICtx->ScreenH = Device->SwapchainPtr->SwapchainImageHeight;
+            }
             ZEngine::UI::ZUIBeginFrame(ZUICtx, dt);
         }
     }

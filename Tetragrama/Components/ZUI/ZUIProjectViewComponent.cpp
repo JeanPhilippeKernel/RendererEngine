@@ -73,11 +73,14 @@ namespace Tetragrama::Components
         }
 
         ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_proj_panel", ZPx(RegionW), ZPx(RegionH));
-        panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
+        panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
         panel->BgColor[0]  = 0.24f; panel->BgColor[1] = 0.24f;
         panel->BgColor[2]  = 0.28f; panel->BgColor[3]  = 0.96f;
+        panel->BorderColor[0] = 0.40f; panel->BorderColor[1] = 0.42f;
+        panel->BorderColor[2] = 0.50f; panel->BorderColor[3] = 1.f;
+        panel->BorderThickness = 1.f;
 
         // --- Header: draggable title + path + up button ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZPx(24.f));

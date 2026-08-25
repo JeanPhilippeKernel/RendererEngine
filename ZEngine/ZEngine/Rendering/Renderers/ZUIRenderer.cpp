@@ -1,5 +1,6 @@
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/ZUIRenderer.h>
 #include <ZEngine/UI/ZUIContext.h>
@@ -160,8 +161,14 @@ namespace ZEngine::Rendering::Renderers
         if (!ctx || !ctx->Root || !out || !payload_arena) { return; }
 
         uint32_t max     = ctx->MaxBoxesPerFrame;
-        float    fb_w    = (float)Device->SwapchainPtr->SwapchainImageWidth;
-        float    fb_h    = (float)Device->SwapchainPtr->SwapchainImageHeight;
+        // Use logical window size for NDC scale to match panel positions and
+        // mouse coordinates (all in logical pixels from glfwGetWindowSize /
+        // GLFW cursor callbacks). NDC [-1,1] maps to the full physical framebuffer
+        // regardless of which unit system we use, so this is always correct.
+        float    fb_w    = Device->CurrentWindow ? (float)Device->CurrentWindow->GetWidth()
+                                                  : (float)Device->SwapchainPtr->SwapchainImageWidth;
+        float    fb_h    = Device->CurrentWindow ? (float)Device->CurrentWindow->GetHeight()
+                                                  : (float)Device->SwapchainPtr->SwapchainImageHeight;
 
         // Output arrays go into payload_arena (per-mailbox-slot, lives until the render
         // thread consumes this payload) — NOT FrameArena which is cleared next frame.
@@ -212,13 +219,57 @@ namespace ZEngine::Rendering::Renderers
             // Skip zero-size boxes
             if (bx1 <= bx0 || by1 <= by0) { continue; }
 
+            // --- Implicit hover highlight for Clickable boxes with no explicit background ---
+            // This handles header rows and nav items that intentionally omit ZUI_DrawBackground.
+            if ((box->Flags & UI::ZUI_Clickable) && !(box->Flags & UI::ZUI_DrawBackground))
+            {
+                UI::ZUIPersistentState* ps =
+                    UI::ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+                if (ps && ps->HotT > 0.02f)
+                {
+                    float a = ps->HotT * 0.15f - ps->ActiveT * 0.05f;
+                    if (a > 0.f)
+                    {
+                        if (current_tex != 0xFFFFFFFFu || out->CmdCount == 0)
+                        {
+                            FlushAndBeginCmd(out->Cmds, out->CmdCount, 0xFFFFFFFFu,
+                                             0.f, 0.f, fb_w, fb_h,
+                                             out->VertexCount, out->IndexCount);
+                            current_tex = 0xFFFFFFFFu;
+                        }
+                        float hover_bg[4] = {0.50f, 0.50f, 0.56f, a};
+                        EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                                 bx0, by0, bx1, by1, 0.f, 0.f, 0.f, 0.f, PackRGBA(hover_bg));
+                    }
+                }
+            }
+
             // --- Background (solid) or Image (textured) ---
             if (box->Flags & UI::ZUI_DrawBackground)
             {
                 bool is_image = (box->TextureIndex != 0xFFFFFFFFu);
                 uint32_t tex  = is_image ? box->TextureIndex : 0xFFFFFFFFu;
 
-                if (!is_image && box->BgColor[3] <= 0.f) {} // transparent solid — skip
+                float bg[4] = { box->BgColor[0], box->BgColor[1],
+                                 box->BgColor[2], box->BgColor[3] };
+
+                // Hover / active tint for clickable solid boxes
+                if (!is_image && (box->Flags & UI::ZUI_Clickable))
+                {
+                    UI::ZUIPersistentState* ps =
+                        UI::ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+                    if (ps)
+                    {
+                        float lift = ps->HotT * 0.12f - ps->ActiveT * 0.06f;
+                        bg[0] = bg[0] + lift > 1.f ? 1.f : bg[0] + lift;
+                        bg[1] = bg[1] + lift > 1.f ? 1.f : bg[1] + lift;
+                        bg[2] = bg[2] + lift > 1.f ? 1.f : bg[2] + lift;
+                        // Transparent rows fade in on hover
+                        if (bg[3] < 0.01f) { bg[3] = ps->HotT * 0.18f; }
+                    }
+                }
+
+                if (!is_image && bg[3] <= 0.f) {} // fully transparent — skip
                 else
                 {
                     if (current_tex != tex || out->CmdCount == 0)
@@ -228,31 +279,59 @@ namespace ZEngine::Rendering::Renderers
                                          out->VertexCount, out->IndexCount);
                         current_tex = tex;
                     }
-                    // Images use full UV [0,1]; solids use UV 0 (sentinel tex ignores UV)
                     float u0 = 0.f, v0 = 0.f, u1 = 1.f, v1 = 1.f;
-                    uint32_t col = is_image ? 0xFFFFFFFFu : PackRGBA(box->BgColor);
+                    uint32_t col = is_image ? 0xFFFFFFFFu : PackRGBA(bg);
                     EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
                              bx0, by0, bx1, by1, u0, v0, u1, v1, col);
                 }
             }
 
-            // --- Text ---
+            // --- Border (4 thin solid rects, 1 px default) ---
+            if ((box->Flags & UI::ZUI_DrawBorder) &&
+                box->BorderThickness > 0.f && box->BorderColor[3] > 0.f)
+            {
+                float t = box->BorderThickness;
+                if (current_tex != 0xFFFFFFFFu || out->CmdCount == 0)
+                {
+                    FlushAndBeginCmd(out->Cmds, out->CmdCount, 0xFFFFFFFFu,
+                                     0.f, 0.f, fb_w, fb_h,
+                                     out->VertexCount, out->IndexCount);
+                    current_tex = 0xFFFFFFFFu;
+                }
+                uint32_t bc = PackRGBA(box->BorderColor);
+                EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                         bx0, by0, bx1, by0 + t, 0.f, 0.f, 0.f, 0.f, bc); // top
+                EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                         bx0, by1 - t, bx1, by1, 0.f, 0.f, 0.f, 0.f, bc); // bottom
+                EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                         bx0, by0 + t, bx0 + t, by1 - t, 0.f, 0.f, 0.f, 0.f, bc); // left
+                EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                         bx1 - t, by0 + t, bx1, by1 - t, 0.f, 0.f, 0.f, 0.f, bc); // right
+            }
+
+            // --- Text (vertically centred, 6 px left indent) ---
             if ((box->Flags & UI::ZUI_DrawText) && box->Label.Ptr && ctx->Font)
             {
-                const UI::ZUIFont* font    = ctx->Font;
+                const UI::ZUIFont* font     = ctx->Font;
                 uint32_t           font_tex = font->AtlasHandle.Index;
 
                 if (current_tex != font_tex || out->CmdCount == 0)
                 {
+                    // Use full-framebuffer clip for text — per-box clipping would
+                    // cut off glyphs shifted by the left indent. Per-panel clip via
+                    // ZUI_ClipChildren will be added in a later pass.
                     FlushAndBeginCmd(out->Cmds, out->CmdCount, font_tex,
-                                     bx0, by0, bx1 - bx0, by1 - by0,
+                                     0.f, 0.f, fb_w, fb_h,
                                      out->VertexCount, out->IndexCount);
                     current_tex = font_tex;
                 }
 
-                float cx       = bx0;
-                float baseline = by0 + font->Ascent;
-                uint32_t color = PackRGBA(box->TextColor);
+                // Vertically centre text within the box; 4 px left indent
+                float box_h    = by1 - by0;
+                float text_top = by0 + (box_h - font->LineHeight) * 0.5f;
+                float baseline  = text_top + font->Ascent;
+                float cx        = bx0 + 4.f;
+                uint32_t color  = PackRGBA(box->TextColor);
 
                 for (uint32_t ci = 0; ci < box->Label.Len; ++ci)
                 {
