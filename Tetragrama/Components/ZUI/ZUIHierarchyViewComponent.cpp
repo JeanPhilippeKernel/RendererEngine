@@ -62,11 +62,16 @@ namespace Tetragrama::Components
         auto* eng           = Engine::GetContext();
         if (!current_scene || !eng || !eng->ActorManager) { return; }
 
-        // --- Outer panel — floated, right side of screen ---
-        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_hier_panel", ZPx(280.f), ZPx(700.f));
+        float sx = RegionW > 0 ? RegionX : 480.f;
+        float sy = RegionW > 0 ? RegionY : 80.f;
+        float sw = RegionW > 0 ? RegionW : 280.f;
+        float sh = RegionW > 0 ? RegionH : 700.f;
+
+        // --- Outer panel ---
+        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_hier_panel", ZPx(sw), ZPx(sh));
         panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
-        panel->FloatPos[0] = 480.f;
-        panel->FloatPos[1] = 80.f;
+        panel->FloatPos[0] = sx;
+        panel->FloatPos[1] = sy;
         panel->BgColor[0]  = 0.12f;
         panel->BgColor[1]  = 0.12f;
         panel->BgColor[2]  = 0.14f;

@@ -285,7 +285,12 @@ namespace ZEngine::Applications
     void AppRenderPipeline::BeginOverlayFrame(float dt)
     {
         ImguiRenderer->NewFrame();
-        if (ZUICtx) { ZEngine::UI::ZUIBeginFrame(ZUICtx, dt); }
+        if (ZUICtx)
+        {
+            ZUICtx->ScreenW = Device->SwapchainPtr->SwapchainImageWidth;
+            ZUICtx->ScreenH = Device->SwapchainPtr->SwapchainImageHeight;
+            ZEngine::UI::ZUIBeginFrame(ZUICtx, dt);
+        }
     }
 
     void AppRenderPipeline::FillOverlayPayload(RenderPayload& payload)

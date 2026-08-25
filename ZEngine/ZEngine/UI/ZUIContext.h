@@ -66,6 +66,10 @@ namespace ZEngine::UI
 
         // capacity caps used by layout and interaction passes
         uint32_t           MaxBoxesPerFrame  = 0;
+
+        // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
+        uint32_t           ScreenW           = 1280;
+        uint32_t           ScreenH           = 720;
     };
 
     ZDEFINE_PTR(ZUIContext);

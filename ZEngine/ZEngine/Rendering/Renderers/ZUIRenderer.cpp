@@ -212,20 +212,28 @@ namespace ZEngine::Rendering::Renderers
             // Skip zero-size boxes
             if (bx1 <= bx0 || by1 <= by0) { continue; }
 
-            // --- Background ---
-            if ((box->Flags & UI::ZUI_DrawBackground) && box->BgColor[3] > 0.f)
+            // --- Background (solid) or Image (textured) ---
+            if (box->Flags & UI::ZUI_DrawBackground)
             {
-                constexpr uint32_t SOLID_TEX = 0xFFFFFFFFu;
-                if (current_tex != SOLID_TEX || out->CmdCount == 0)
+                bool is_image = (box->TextureIndex != 0xFFFFFFFFu);
+                uint32_t tex  = is_image ? box->TextureIndex : 0xFFFFFFFFu;
+
+                if (!is_image && box->BgColor[3] <= 0.f) {} // transparent solid — skip
+                else
                 {
-                    FlushAndBeginCmd(out->Cmds, out->CmdCount, SOLID_TEX,
-                                     0.f, 0.f, fb_w, fb_h,
-                                     out->VertexCount, out->IndexCount);
-                    current_tex = SOLID_TEX;
+                    if (current_tex != tex || out->CmdCount == 0)
+                    {
+                        FlushAndBeginCmd(out->Cmds, out->CmdCount, tex,
+                                         0.f, 0.f, fb_w, fb_h,
+                                         out->VertexCount, out->IndexCount);
+                        current_tex = tex;
+                    }
+                    // Images use full UV [0,1]; solids use UV 0 (sentinel tex ignores UV)
+                    float u0 = 0.f, v0 = 0.f, u1 = 1.f, v1 = 1.f;
+                    uint32_t col = is_image ? 0xFFFFFFFFu : PackRGBA(box->BgColor);
+                    EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
+                             bx0, by0, bx1, by1, u0, v0, u1, v1, col);
                 }
-                EmitQuad(out->Vertices, out->Indices, out->VertexCount, out->IndexCount,
-                         bx0, by0, bx1, by1, 0.f, 0.f, 0.f, 0.f,
-                         PackRGBA(box->BgColor));
             }
 
             // --- Text ---

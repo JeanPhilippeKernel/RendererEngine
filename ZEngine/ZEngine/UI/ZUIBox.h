@@ -72,6 +72,7 @@ namespace ZEngine::UI
         float       CornerRadius     = 0.f;
         float       BorderThickness  = 0.f;
         float       FloatPos[2]      = {}; // screen offset from parent origin; used when ZUI_FloatX / ZUI_FloatY is set
+        uint32_t    TextureIndex     = 0xFFFFFFFFu; // bindless slot; when != 0xFFFFFFFF and ZUI_DrawBackground set, renders as image
 
         // layout output — filled by ZUILayout::Solve
         float       ComputedSize[2]  = {};

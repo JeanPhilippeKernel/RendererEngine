@@ -48,11 +48,16 @@ namespace Tetragrama::Components
     {
         if (!Visible) { return; }
 
+        float sx = RegionW > 0 ? RegionX : 20.f;
+        float sy = RegionW > 0 ? RegionY : 500.f;
+        float sw = RegionW > 0 ? RegionW : kPanelW;
+        float sh = RegionW > 0 ? RegionH : kPanelH;
+
         // --- Outer panel — floated, dark background ---
-        ZUIBox* panel    = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(kPanelW), ZPx(kPanelH));
+        ZUIBox* panel    = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(sw), ZPx(sh));
         panel->Flags     = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
-        panel->FloatPos[0] = 20.f;
-        panel->FloatPos[1] = 500.f;
+        panel->FloatPos[0] = sx;
+        panel->FloatPos[1] = sy;
         panel->BgColor[0]  = 0.10f;
         panel->BgColor[1]  = 0.10f;
         panel->BgColor[2]  = 0.11f;

@@ -27,6 +27,14 @@ namespace Tetragrama::Components
         cstring                      Name        = nullptr;
         bool                         Visible     = true;
         Tetragrama::Layers::ZUILayer* ParentLayer = nullptr;
+
+        // Layout region — set by ZUIDockspaceComponent before BuildUI is called.
+        // When RegionW > 0 the component uses these values for its panel position/size.
+        // When RegionW == 0 the component falls back to its own hardcoded defaults.
+        float RegionX = 0.f;
+        float RegionY = 0.f;
+        float RegionW = 0.f;
+        float RegionH = 0.f;
     };
     ZDEFINE_PTR(ZUIComponent);
 } // namespace Tetragrama::Components

@@ -162,6 +162,22 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // ZUIImage
+    // ---------------------------------------------------------------
+
+    void ZUIImage(ZUIContext* ctx, const char* key, uint32_t texture_index, ZUISize w, ZUISize h)
+    {
+        uint32_t len   = (uint32_t)strlen(key);
+        ZUIBox*  box   = ZUIPushBox(ctx, key, len, ZUI_DrawBackground);
+        box->Size[0]   = w;
+        box->Size[1]   = h;
+        box->TextureIndex = texture_index;
+        // BgColor alpha must be > 0 so the renderer doesn't skip this box
+        box->BgColor[0] = box->BgColor[1] = box->BgColor[2] = box->BgColor[3] = 1.f;
+        ZUIPopBox(ctx);
+    }
+
+    // ---------------------------------------------------------------
     // ZUIDragFloat
     // ---------------------------------------------------------------
 

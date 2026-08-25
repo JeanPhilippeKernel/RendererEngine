@@ -57,6 +57,11 @@ namespace ZEngine::UI
     bool ZUIDragFloat(ZUIContext* ctx, const char* key,
                       float* value, float speed = 0.05f, float width_px = 60.f);
 
+    // Display a texture in a box. texture_index is the bindless array slot
+    // (e.g. TextureHandle::Index from SceneRenderer::GetFrameOutput()).
+    void ZUIImage(ZUIContext* ctx, const char* key,
+                  uint32_t texture_index, ZUISize w = ZFill(), ZUISize h = ZFill());
+
     // Single-line editable text field. When focused (after a click), text-input
     // events append to buf and backspace removes the last character.
     // Returns true if buf changed this frame.
