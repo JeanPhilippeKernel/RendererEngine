@@ -56,7 +56,7 @@ namespace Tetragrama::Components
         m_collapsed.push(eid);
     }
 
-    // ── Static helpers ────────────────────────────────────────────────────────
+    // Static helpers
 
     void HierarchyViewUIComponent::DrawArrow(ImDrawList* dl, ImVec2 pos, float row_h, bool expanded, ImU32 color)
     {
@@ -148,7 +148,7 @@ namespace Tetragrama::Components
         }
     }
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // Render
 
     void HierarchyViewUIComponent::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const /*renderer*/, ZEngine::Hardwares::CommandBuffer* const /*command_buffer*/)
     {
@@ -163,7 +163,7 @@ namespace Tetragrama::Components
 
         ImGui::Begin(Name, CanBeClosed ? &CanBeClosed : nullptr, ImGuiWindowFlags_NoCollapse);
 
-        // ── Search + Buttons ─────────────────────────────────────────────────
+        // Search + Buttons
         {
             const float btn_sz  = 22.f;
             const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -174,9 +174,30 @@ namespace Tetragrama::Components
             ImGui::InputText("##filter", m_filter_buf, sizeof(m_filter_buf));
             ImGui::SameLine();
 
-            // "+" — New Collection
-            bool clicked_add = ImGui::Button("+", {btn_sz, btn_sz});
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("New Collection");
+            // Folder+ — New Collection
+            ImVec2 btn_pos    = ImGui::GetCursorScreenPos();
+            bool   clicked_add = ImGui::InvisibleButton("##new_collection", {btn_sz, btn_sz});
+            bool   col_hov    = ImGui::IsItemHovered();
+            if (col_hov) ImGui::SetTooltip("New Collection");
+            {
+                ImDrawList* fdl = ImGui::GetWindowDrawList();
+                ImU32 col = ImGui::ColorConvertFloat4ToU32(col_hov ? ImVec4(0.85f, 0.85f, 0.90f, 1.f) : ImVec4(0.55f, 0.58f, 0.65f, 1.f));
+                float x = btn_pos.x, y = btn_pos.y, s = btn_sz;
+                float m   = s * 0.12f;
+                float bx0 = x + m,     by0 = y + s * 0.32f;
+                float bx1 = x + s - m, by1 = y + s - m;
+                fdl->AddRectFilled({bx0, by0}, {bx1, by1}, col, 2.f);
+                float tx0 = bx0, ty0 = by0 - s * 0.14f;
+                float tx1 = bx0 + (bx1 - bx0) * 0.45f, ty1 = by0 + 1.f;
+                fdl->AddRectFilled({tx0, ty0}, {tx1, ty1}, col, 2.f, ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight);
+                float cx = (bx0 + bx1) * 0.5f, cy = (by0 + by1) * 0.5f;
+                float hl  = s * 0.18f, thk = 1.5f;
+                ImU32 bg  = ImGui::ColorConvertFloat4ToU32(ImVec4(0.14f, 0.15f, 0.18f, 1.f));
+                fdl->AddLine({cx - hl, cy}, {cx + hl, cy}, bg, thk + 1.5f);
+                fdl->AddLine({cx, cy - hl}, {cx, cy + hl}, bg, thk + 1.5f);
+                fdl->AddLine({cx - hl, cy}, {cx + hl, cy}, col, thk);
+                fdl->AddLine({cx, cy - hl}, {cx, cy + hl}, col, thk);
+            }
             ImGui::SameLine();
 
             // Settings gear placeholder
@@ -207,7 +228,7 @@ namespace Tetragrama::Components
         }
         ImGui::Spacing();
 
-        // ── O(n) Build ───────────────────────────────────────────────────────
+        // O(n) Build
         auto     scratch    = ZGetScratch(&ParentLayer->LocalArena);
         uint32_t n          = ctx->ActorManager->Count();
 
@@ -246,7 +267,7 @@ namespace Tetragrama::Components
             if (nodes[i].Parent == INVALID_ENTITY)
                 stk[sp++] = {(uint32_t)i, 0};
 
-        // ── Table ─────────────────────────────────────────────────────────────
+        // Table
         ActorHandle pending_delete               = {};
         ActorHandle pending_reparent_child       = {};
         EntityID    pending_reparent_parent      = INVALID_ENTITY;
@@ -297,7 +318,7 @@ namespace Tetragrama::Components
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
 
-            // ── Scene Root row ────────────────────────────────────────────────
+            // Scene Root row
             {
                 ImGui::TableNextRow(ImGuiTableRowFlags_None, ROW_H);
                 ImGui::TableSetColumnIndex(0);
@@ -335,7 +356,7 @@ namespace Tetragrama::Components
                 ImGui::TextDisabled("World");
             }
 
-            // ── Actor rows (DFS) ──────────────────────────────────────────────
+            // Actor rows (DFS)
             bool scene_root_collapsed = m_scene_root_collapsed;
             if (!scene_root_collapsed)
             {
@@ -518,7 +539,7 @@ namespace Tetragrama::Components
 
         ZReleaseScratch(scratch);
 
-        // ── Status bar ────────────────────────────────────────────────────────
+        // Status bar
         ImGui::Separator();
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2.f);
         if (selected_count > 0)
@@ -526,7 +547,7 @@ namespace Tetragrama::Components
         else
             ImGui::TextDisabled("%u actor%s", total_actors, total_actors == 1 ? "" : "s");
 
-        // ── Deferred mutations ────────────────────────────────────────────────
+        // Deferred mutations
         if (pending_reparent_child.Valid())
         {
             Actor* child = ctx->ActorManager->Access(pending_reparent_child);
@@ -556,7 +577,7 @@ namespace Tetragrama::Components
         ImGui::End();
     }
 
-    // ── Gizmo ─────────────────────────────────────────────────────────────────
+    // Gizmo
 
     void HierarchyViewUIComponent::RenderGuizmo(EditorPtr app, EditorScenePtr scene)
     {
