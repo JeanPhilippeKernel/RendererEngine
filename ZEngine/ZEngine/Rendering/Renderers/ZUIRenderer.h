@@ -45,7 +45,7 @@ namespace ZEngine::Rendering::Renderers
     struct ZUIRenderer : public IRenderer
     {
         static constexpr uint32_t FRAMES_IN_FLIGHT     = 3;
-        static constexpr uint32_t ZUICommandBufferIndex = 2; // slot above ImGui (1)
+        static constexpr uint32_t ZUICommandBufferIndex = 1; // slot 1 = secondary CB (ImGui slot, now free)
 
         RenderPasses::RenderPass* UIPass                       = nullptr;
         Core::Memory::BufferView  VBHandles[FRAMES_IN_FLIGHT]  = {};

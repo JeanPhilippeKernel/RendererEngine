@@ -20,6 +20,9 @@ namespace Tetragrama::Layers
         Arena      = arena;
         CurrentApp = app;
         m_ctx      = app->RenderPipeline ? app->RenderPipeline->ZUICtx : nullptr;
+        // Components carved sub-arenas from LocalArena in their Initialize() calls.
+        // Without this, LocalArena has no backing memory → CreateSubArena asserts.
+        arena->CreateSubArena(ZMega(4), &LocalArena);
     }
 
     bool ZUILayer::OnEvent(ZEngine::Core::CoreEvent& event)
@@ -40,11 +43,12 @@ namespace Tetragrama::Layers
     {
         if (!m_ctx || m_component_count == 0) { return; }
 
-        // Root box — transparent, fills the full swapchain surface.
-        // All component panels float relative to this box's screen origin (0,0).
+        // Root box — transparent, explicitly sized to the swapchain surface.
+        // ZFill() collapses to 0 when there is no parent; children that use
+        // ZFill() need a non-zero parent size to expand into.
         ZEngine::UI::ZUIBox* root = ZEngine::UI::ZUIBeginColumn(m_ctx, "##zui_root",
-                                                                  ZEngine::UI::ZFill(),
-                                                                  ZEngine::UI::ZFill());
+                                                                  ZEngine::UI::ZPx((float)m_ctx->ScreenW),
+                                                                  ZEngine::UI::ZPx((float)m_ctx->ScreenH));
         root->BgColor[3] = 0.f; // fully transparent — no background draw
 
         for (uint32_t i = 0; i < m_component_count; ++i)

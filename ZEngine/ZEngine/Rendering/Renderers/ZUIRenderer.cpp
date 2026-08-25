@@ -79,7 +79,7 @@ namespace ZEngine::Rendering::Renderers
         ZUIDrawCmd& cmd  = cmds[cmd_count++];
         cmd.IndexOffset  = current_idx_count;
         cmd.IndexCount   = 0; // filled when next cmd is opened or at end
-        cmd.VertexOffset = (int32_t)current_vert_count;
+        cmd.VertexOffset = 0; // ZUI uses absolute index values — vertexOffset must be 0
         cmd.TextureIndex = new_tex;
         cmd.ClipX        = clip_x;
         cmd.ClipY        = clip_y;

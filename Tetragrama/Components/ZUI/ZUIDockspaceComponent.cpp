@@ -60,14 +60,14 @@ namespace Tetragrama::Components
         bg->Flags    = bg->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         bg->FloatPos[0] = 0.f;
         bg->FloatPos[1] = 0.f;
-        bg->BgColor[0]  = 0.10f; bg->BgColor[1] = 0.10f;
-        bg->BgColor[2]  = 0.11f; bg->BgColor[3]  = 1.f;
+        bg->BgColor[0]  = 0.22f; bg->BgColor[1] = 0.22f;
+        bg->BgColor[2]  = 0.24f; bg->BgColor[3]  = 1.f;
 
         // --- Menu bar ---
         ZUIBox* menu = ZUIBeginRow(ctx, "##menubar", ZFill(), ZPx(kMenuH));
         menu->Flags  = menu->Flags | ZUI_DrawBackground;
-        menu->BgColor[0] = 0.15f; menu->BgColor[1] = 0.15f;
-        menu->BgColor[2] = 0.18f; menu->BgColor[3]  = 1.f;
+        menu->BgColor[0] = 0.28f; menu->BgColor[1] = 0.28f;
+        menu->BgColor[2] = 0.32f; menu->BgColor[3]  = 1.f;
 
         ZUISpacer(ctx, 8.f);
         ZUILabel(ctx, "ZodiacEngine", k_text);

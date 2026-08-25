@@ -40,8 +40,8 @@ namespace Tetragrama::Components
         bar->Flags     = bar->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         bar->FloatPos[0] = RegionW > 0 ? RegionX : 0.f;
         bar->FloatPos[1] = sy;
-        bar->BgColor[0]  = 0.13f; bar->BgColor[1] = 0.13f;
-        bar->BgColor[2]  = 0.14f; bar->BgColor[3]  = 1.f;
+        bar->BgColor[0]  = 0.25f; bar->BgColor[1] = 0.25f;
+        bar->BgColor[2]  = 0.28f; bar->BgColor[3]  = 1.f;
 
         ZUISpacer(ctx, 6.f);
 

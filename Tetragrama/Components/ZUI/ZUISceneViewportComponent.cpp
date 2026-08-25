@@ -8,7 +8,6 @@
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstring>
-#include <filesystem>
 
 using namespace ZEngine::UI;
 
@@ -62,24 +61,24 @@ namespace Tetragrama::Components
         if (ZUIAcceptDrop(ctx, img_box, drop_buf, sizeof(drop_buf)) &&
             ZEngine::Helpers::secure_strlen(drop_buf) > 0)
         {
-            auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-            std::string file_ext = std::filesystem::path(drop_buf).extension().string();
-            if (file_ext == ".zescene")
+            auto*       app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+            const char* dot = strrchr(drop_buf, '.');
+            if (dot && strcmp(dot, ".zescene") == 0)
             {
                 Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer,
                     Messengers::GenericMessage<std::string>>(
                         Tetragrama::EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE,
                         Messengers::GenericMessage<std::string>(drop_buf));
             }
-            else if (file_ext == ".zemesh")
+            else if (dot && strcmp(dot, ".zemesh") == 0)
             {
                 Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer,
                     Messengers::GenericMessage<std::string>>(
                         Tetragrama::EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH,
                         Messengers::GenericMessage<std::string>(drop_buf));
             }
-            else if (file_ext == ".glb"  || file_ext == ".gltf" ||
-                     file_ext == ".fbx"  || file_ext == ".obj")
+            else if (dot && (strcmp(dot, ".glb")  == 0 || strcmp(dot, ".gltf") == 0 ||
+                             strcmp(dot, ".fbx")  == 0 || strcmp(dot, ".obj")  == 0))
             {
                 if (app && app->Configuration)
                 {

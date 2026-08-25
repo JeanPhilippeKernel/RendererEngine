@@ -21,18 +21,50 @@ namespace Tetragrama::Components
         ParentLayer = parent;
         Name        = name;
         Visible     = visibility;
-        parent->LocalArena.CreateSubArena(ZKilo(64), &m_arena);
+        parent->LocalArena.CreateSubArena(ZKilo(256), &m_arena);
+    }
+
+    void ZUIProjectViewComponent::RefreshIfNeeded()
+    {
+        if (m_initialized && m_current_path == m_listed_path) { return; }
+
+        // Reset cache and re-list
+        m_arena.Clear();
+        m_entries     = ZPushArray(&m_arena, CachedEntry, kMaxEntries);
+        m_entry_count = 0;
+
+        auto* vfs = ZEngine::Engine::GetContext()->VFS;
+        if (!vfs) { m_listed_path = m_current_path; m_initialized = true; return; }
+
+        auto scratch  = ZGetScratch(&m_arena);
+        auto list_res = vfs->List(m_current_path, scratch.Arena);
+        if (list_res.Succeeded())
+        {
+            auto& entries = list_res.Value();
+            uint32_t n = entries.size() < kMaxEntries ? (uint32_t)entries.size() : kMaxEntries;
+            for (uint32_t i = 0; i < n; ++i)
+            {
+                const VFSDirEntry& e = entries[i];
+                CachedEntry&       c = m_entries[m_entry_count++];
+                e.Path.CopyFilename(c.name, sizeof(c.name));
+                c.is_dir = e.IsDirectory;
+                if (e.Path.CStr())
+                    ZEngine::Helpers::secure_strncpy(c.full_path, sizeof(c.full_path),
+                                                      e.Path.CStr(), sizeof(c.full_path) - 1);
+            }
+        }
+        ZReleaseScratch(scratch);
+
+        m_listed_path = m_current_path;
+        m_initialized  = true;
     }
 
     void ZUIProjectViewComponent::BuildUI(ZUIContext* ctx)
     {
         if (!Visible) { return; }
 
-        if (!m_initialized)
-        {
-            m_current_path = VFSPath::Root();
-            m_initialized  = true;
-        }
+        if (!m_initialized) { m_current_path = VFSPath::Root(); }
+        RefreshIfNeeded(); // no-op unless path changed
 
         if (RegionW == 0) {
             RegionW = (float)ctx->ScreenW * 0.48f; RegionH = 200.f;
@@ -44,10 +76,10 @@ namespace Tetragrama::Components
         panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = 0.12f; panel->BgColor[1] = 0.12f;
-        panel->BgColor[2]  = 0.14f; panel->BgColor[3]  = 0.96f;
+        panel->BgColor[0]  = 0.24f; panel->BgColor[1] = 0.24f;
+        panel->BgColor[2]  = 0.28f; panel->BgColor[3]  = 0.96f;
 
-        // --- Header row: draggable title + path + up button (Gap 4) ---
+        // --- Header: draggable title + path + up button ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZPx(24.f));
         hdr->Flags  = hdr->Flags | ZUI_Clickable;
             ZUILabel(ctx, Name ? Name : "Project", k_dim);
@@ -61,71 +93,47 @@ namespace Tetragrama::Components
         if ((drag_sig.Flags & ZUI_SignalHeld) &&
             (drag_sig.DragDelta[0] != 0.f || drag_sig.DragDelta[1] != 0.f))
         {
-            RegionX += drag_sig.DragDelta[0];
-            RegionY += drag_sig.DragDelta[1];
+            RegionX += drag_sig.DragDelta[0]; RegionY += drag_sig.DragDelta[1];
             Detached = true;
-            panel->FloatPos[0] = RegionX;
-            panel->FloatPos[1] = RegionY;
+            panel->FloatPos[0] = RegionX; panel->FloatPos[1] = RegionY;
         }
         if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
         ZUISeparator(ctx);
 
-        // --- Directory listing ---
-        auto* vfs = ZEngine::Engine::GetContext()->VFS;
-        if (vfs)
+        // --- Cached directory entries ---
+        for (uint32_t i = 0; i < m_entry_count; ++i)
         {
-            auto scratch   = ZGetScratch(&m_arena);
-            auto list_res  = vfs->List(m_current_path, scratch.Arena);
-            if (list_res.Succeeded())
+            const CachedEntry& e = m_entries[i];
+            if (!e.name[0]) { continue; }
+
+            char row_key[32];
+            snprintf(row_key, sizeof(row_key), "##prow_%u", i);
+
+            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(20.f));
+            row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+
+            ZUILabel(ctx, e.is_dir ? "[D] " : "    ", k_dim);
+            ZUILabel(ctx, e.name, e.is_dir ? k_dir : k_text);
+
+            ZUISignal row_sig = ZUISignalFromBox(ctx, row);
+
+            // Drag source for file assets → drop on scene viewport
+            if (!e.is_dir && e.full_path[0])
+                ZUIBeginDragSource(ctx, row, e.full_path,
+                                   (uint32_t)ZEngine::Helpers::secure_strlen(e.full_path));
+
+            ZUIEndRow(ctx);
+
+            if ((row_sig.Flags & ZUI_SignalClicked) && e.is_dir)
             {
-                auto& entries = list_res.Value();
-                for (uint32_t i = 0; i < entries.size(); ++i)
-                {
-                    const VFSDirEntry& entry = entries[i];
-                    char name_buf[256] = {};
-                    entry.Path.CopyFilename(name_buf, sizeof(name_buf));
-
-                    // Build a stable row key
-                    char row_key[32];
-                    snprintf(row_key, sizeof(row_key), "##prow_%u", i);
-
-                    ZUIBox* row  = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(20.f));
-                    row->Flags   = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-
-                    const float* color = entry.IsDirectory ? k_dir : k_text;
-                    ZUILabel(ctx, entry.IsDirectory ? "[D] " : "    ", k_dim);
-                    ZUILabel(ctx, name_buf, color);
-
-                    ZUISignal row_sig = ZUISignalFromBox(ctx, row);
-
-                    // Gap 2: files are drag sources for the scene viewport drop target
-                    if (!entry.IsDirectory)
-                    {
-                        const char* native_path = entry.Path.CStr();
-                        if (native_path)
-                        {
-                            ZUIBeginDragSource(ctx, row,
-                                               native_path,
-                                               (uint32_t)ZEngine::Helpers::secure_strlen(native_path));
-                        }
-                    }
-
-                    ZUIEndRow(ctx);
-
-                    if ((row_sig.Flags & ZUI_SignalClicked) && entry.IsDirectory)
-                    {
-                        m_current_path = entry.Path;
-                    }
-                }
+                auto next = m_current_path.Append(e.name);
+                if (next.Succeeded()) { m_current_path = next.Value(); }
             }
-            ZReleaseScratch(scratch);
         }
 
-        // Apply up navigation
+        // Up navigation (applied after rendering so signal is from prev frame)
         if ((up_sig.Flags & ZUI_SignalClicked) && !m_current_path.IsRoot())
-        {
             m_current_path = m_current_path.Parent();
-        }
 
         ZUIEndColumn(ctx);
     }

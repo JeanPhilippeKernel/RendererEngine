@@ -18,9 +18,24 @@ namespace Tetragrama::Components
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 
     private:
-        ZEngine::Core::Memory::ArenaAllocator m_arena       = {};
+        struct CachedEntry
+        {
+            char name[256]      = {};
+            char full_path[512] = {};
+            bool is_dir         = false;
+        };
+
+        static constexpr uint32_t kMaxEntries = 256;
+
+        ZEngine::Core::Memory::ArenaAllocator m_arena        = {};
         ZEngine::Core::VFS::VFSPath           m_current_path = {};
-        bool                                   m_initialized  = false;
+        ZEngine::Core::VFS::VFSPath           m_listed_path  = {};
+        CachedEntry*                          m_entries      = nullptr;
+        uint32_t                              m_entry_count  = 0;
+        bool                                  m_initialized  = false;
+
+        // Re-lists only when m_current_path != m_listed_path — NOT every frame
+        void RefreshIfNeeded();
     };
     ZDEFINE_PTR(ZUIProjectViewComponent);
 } // namespace Tetragrama::Components

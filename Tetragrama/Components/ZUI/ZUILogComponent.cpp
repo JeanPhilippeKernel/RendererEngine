@@ -58,9 +58,9 @@ namespace Tetragrama::Components
         panel->Flags     = panel->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = 0.10f;
-        panel->BgColor[1]  = 0.10f;
-        panel->BgColor[2]  = 0.11f;
+        panel->BgColor[0]  = 0.22f;
+        panel->BgColor[1]  = 0.22f;
+        panel->BgColor[2]  = 0.24f;
         panel->BgColor[3]  = 0.96f;
 
         // --- Header row — draggable (Gap 4) ---
