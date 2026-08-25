@@ -16,14 +16,11 @@ namespace ZEngine::ECS::Systems
         scene.ForEach<TransformComponent, LightComponent>([&](EntityID, TransformComponent& tc, LightComponent& lc) {
             if (lc.LightType == LightComponent::Type::Directional && lights.DirectionalCount < 4)
             {
-                // Build rotation-only matrix and extract forward direction (column 2).
-                // ComposeTransformMatrix uses YXZ Euler order; column 2 = (-sy, sx*cy, cx*cy).
-                Mat4f rot       = ComposeTransformMatrix(Vec3f(0.f, 0.f, 0.f), tc.Rotation, Vec3f(1.f, 1.f, 1.f));
-
+                // Forward direction = column 2 of WorldTransform (already includes parent rotation).
                 auto& dir       = lights.DirectionalLights[lights.DirectionalCount++];
-                dir.Direction.x = rot(0, 2);
-                dir.Direction.y = rot(1, 2);
-                dir.Direction.z = rot(2, 2);
+                dir.Direction.x = tc.WorldTransform(0, 2);
+                dir.Direction.y = tc.WorldTransform(1, 2);
+                dir.Direction.z = tc.WorldTransform(2, 2);
                 dir.Direction.w = 0.f;
                 dir.Color.x     = lc.Color[0];
                 dir.Color.y     = lc.Color[1];
@@ -33,10 +30,11 @@ namespace ZEngine::ECS::Systems
             }
             else if (lc.LightType == LightComponent::Type::Point && lights.PointCount < 8)
             {
+                // World position = translation column of WorldTransform.
                 auto& pt      = lights.PointLights[lights.PointCount++];
-                pt.Position.x = tc.Position.x;
-                pt.Position.y = tc.Position.y;
-                pt.Position.z = tc.Position.z;
+                pt.Position.x = tc.WorldTransform(0, 3);
+                pt.Position.y = tc.WorldTransform(1, 3);
+                pt.Position.z = tc.WorldTransform(2, 3);
                 pt.Position.w = 1.f;
                 pt.Color.x    = lc.Color[0];
                 pt.Color.y    = lc.Color[1];
