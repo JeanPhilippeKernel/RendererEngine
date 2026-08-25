@@ -201,18 +201,17 @@ namespace ZEngine::UI
     // Phase 9 — visual helpers (call on any ZUIBox* after pushing)
     // ---------------------------------------------------------------
 
-    // Set a vertical gradient: top = BgColor (already set), bottom = given rgba.
-    inline void ZUISetGradient(ZUIBox* box, float r, float g, float b, float a)
+    // Set a vertical gradient — top corners get top_rgba, bottom corners get bot_rgba.
+    inline void ZUISetGradient(ZUIBox* box, const float top[4], const float bot[4])
     {
-        box->BgColorB[0]=r; box->BgColorB[1]=g; box->BgColorB[2]=b; box->BgColorB[3]=a;
+        ZUIBoxSetGradientV(box, top, bot);
     }
-    // Add a drop shadow behind the background quad.
-    inline void ZUISetShadow(ZUIBox* box, float alpha = 0.40f,
-                              float offset_x = 3.f, float offset_y = 3.f)
+    // Convenience: solid top color, fade to transparent at bottom.
+    inline void ZUISetGradientFade(ZUIBox* box, float r, float g, float b, float a)
     {
-        box->ShadowColor[3] = alpha;
-        box->ShadowOffset[0] = offset_x;
-        box->ShadowOffset[1] = offset_y;
+        const float top[4] = {r, g, b, a};
+        const float bot[4] = {r, g, b, 0.f};
+        ZUIBoxSetGradientV(box, top, bot);
     }
 
     // ---------------------------------------------------------------

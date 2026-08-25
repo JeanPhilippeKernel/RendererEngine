@@ -86,12 +86,11 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0] = ctx->Theme.PanelBg[0]; panel->BgColor[1] = ctx->Theme.PanelBg[1];
-        panel->BgColor[2] = ctx->Theme.PanelBg[2]; panel->BgColor[3] = ctx->Theme.PanelBg[3];
+        ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
         panel->BorderColor[0] = ctx->Theme.PanelBorder[0]; panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2]; panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
-        panel->CornerRadius    = 6.f;
+        ZUIBoxSetCornerRadius(panel, 6.f);
 
         // Title bar — draggable (Gap 4)
         ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZPx(26.f));
@@ -127,8 +126,7 @@ namespace Tetragrama::Components
         {
             ZUIBox* hdr = ZUIBeginColumn(ctx, "##actor_hdr_card", ZFill(), ZPx(42.f));
             hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
-            hdr->BgColor[0] = 0.18f; hdr->BgColor[1] = 0.18f;
-            hdr->BgColor[2] = 0.22f; hdr->BgColor[3] = 1.f;
+            ZUIBoxSetColor(hdr, 0.18f, 0.18f, 0.22f, 1.f);
 
                 if (nc)
                 {

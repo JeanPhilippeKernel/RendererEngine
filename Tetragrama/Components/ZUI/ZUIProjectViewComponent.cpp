@@ -73,8 +73,7 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0] = ctx->Theme.PanelBg[0]; panel->BgColor[1] = ctx->Theme.PanelBg[1];
-        panel->BgColor[2] = ctx->Theme.PanelBg[2]; panel->BgColor[3] = ctx->Theme.PanelBg[3];
+        ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
         panel->BorderColor[0] = ctx->Theme.PanelBorder[0]; panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2]; panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;

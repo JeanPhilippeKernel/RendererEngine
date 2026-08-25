@@ -68,8 +68,7 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0] = ctx->Theme.PanelBg[0]; panel->BgColor[1] = ctx->Theme.PanelBg[1];
-        panel->BgColor[2] = ctx->Theme.PanelBg[2]; panel->BgColor[3] = ctx->Theme.PanelBg[3];
+        ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
         panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
         panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
@@ -79,8 +78,7 @@ namespace Tetragrama::Components
         // --- Header — draggable ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(28.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        hdr->BgColor[0] = ctx->Theme.HeaderBg[0]; hdr->BgColor[1] = ctx->Theme.HeaderBg[1];
-        hdr->BgColor[2] = ctx->Theme.HeaderBg[2]; hdr->BgColor[3] = ctx->Theme.HeaderBg[3];
+        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
             ZUISpacer(ctx, 6.f);
             ZUILabel(ctx, Name ? Name : "Hierarchy", ctx->Theme.TextDefault);
             ZUISpacer(ctx, 8.f);
@@ -156,8 +154,7 @@ namespace Tetragrama::Components
 
             ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(26.f));
             root_row->Flags  = root_row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-            root_row->BgColor[0] = 0.30f; root_row->BgColor[1] = 0.30f;
-            root_row->BgColor[2] = 0.36f; root_row->BgColor[3] = 0.18f;
+            ZUIBoxSetColor(root_row, 0.30f, 0.30f, 0.36f, 0.18f);
 
             // Disclosure
             const char* root_ind = m_root_open ? "v##scr" : ">##scr";
@@ -177,8 +174,7 @@ namespace Tetragrama::Components
                                           ZUI_DrawBackground | ZUI_DrawText);
                 icon->Size[0]    = ZPx(14.f);
                 icon->Size[1]    = ZPx(14.f);
-                icon->BgColor[0] = k_icon_world[0]; icon->BgColor[1] = k_icon_world[1];
-                icon->BgColor[2] = k_icon_world[2]; icon->BgColor[3] = k_icon_world[3];
+                ZUIBoxSetColorArr(icon, k_icon_world);
                 icon->TextColor[0] = 1.f; icon->TextColor[1] = 1.f;
                 icon->TextColor[2] = 1.f; icon->TextColor[3] = 1.f;
                 ZUIPopBox(ctx);
@@ -244,14 +240,12 @@ namespace Tetragrama::Components
                 ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(24.f));
                 row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
                 if (selected) {
-                    row->BgColor[0] = k_sel[0]; row->BgColor[1] = k_sel[1];
-                    row->BgColor[2] = k_sel[2]; row->BgColor[3] = k_sel[3];
+                    ZUIBoxSetColorArr(row, k_sel);
                 }
                 else {
                     // Neutral base — transparent but non-zero RGB so hover blending
                     // produces a visible highlight rather than dark gray.
-                    row->BgColor[0] = 0.42f; row->BgColor[1] = 0.42f;
-                    row->BgColor[2] = 0.48f; row->BgColor[3] = 0.f;
+                    ZUIBoxSetColor(row, 0.42f, 0.42f, 0.48f, 0.f);
                 }
 
                 // Indent spacer
@@ -285,8 +279,7 @@ namespace Tetragrama::Components
                                               ZUI_DrawBackground | ZUI_DrawText);
                     icon->Size[0]    = ZPx(14.f);
                     icon->Size[1]    = ZPx(14.f);
-                    icon->BgColor[0] = type_bg[0]; icon->BgColor[1] = type_bg[1];
-                    icon->BgColor[2] = type_bg[2]; icon->BgColor[3] = type_bg[3];
+                    ZUIBoxSetColorArr(icon, type_bg);
                     icon->TextColor[0] = 1.f; icon->TextColor[1] = 1.f;
                     icon->TextColor[2] = 1.f; icon->TextColor[3] = 1.f;
                     ZUIPopBox(ctx);

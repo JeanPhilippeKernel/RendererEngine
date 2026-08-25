@@ -12,47 +12,56 @@ namespace ZEngine::UI
 
     struct ZUIGlyph
     {
-        float    U0, V0;      // atlas UV top-left  (normalized)
-        float    U1, V1;      // atlas UV bottom-right (normalized)
-        float    OffsetX;     // screen X offset from cursor
-        float    OffsetY;     // screen Y offset from baseline
-        float    Width;       // glyph screen width in pixels
-        float    Height;      // glyph screen height in pixels
-        float    AdvanceX;    // cursor advance after this glyph
+        float U0, V0;   // atlas UV top-left
+        float U1, V1;   // atlas UV bottom-right
+        float OffsetX;  // pen X offset (logical px)
+        float OffsetY;  // pen Y offset from baseline (logical px)
+        float Width;    // screen width  (logical px)
+        float Height;   // screen height (logical px)
+        float AdvanceX; // cursor advance (logical px)
     };
 
     struct ZUIFont
     {
-        ZUIGlyph*                          Glyphs         = nullptr; // persistent_arena, [GlyphCount]
-        uint32_t                           GlyphCount     = 0;
-        uint32_t                           FirstCodepoint = 32;      // inclusive
-        float                              FontSize       = 0.f;
-        float                              Ascent         = 0.f;
-        float                              Descent        = 0.f;
-        float                              LineGap        = 0.f;
-        float                              LineHeight     = 0.f;     // Ascent - Descent + LineGap
-        Rendering::Textures::TextureHandle AtlasHandle    = {};
-        uint32_t                           AtlasWidth     = 0;
-        uint32_t                           AtlasHeight    = 0;
+        ZUIGlyph*  Glyphs         = nullptr;
+        uint32_t   GlyphCount     = 0;
+        uint32_t   FirstCodepoint = 32;
+        float      FontSize       = 0.f;
+        float      Ascent         = 0.f;
+        float      Descent        = 0.f;
+        float      LineGap        = 0.f;
+        float      LineHeight     = 0.f;
     };
 
-    // Bake a font atlas from a VFS path.
-    // Permanent data (ZUIFont + ZUIGlyph[]) is allocated into persistent_arena.
-    // Temporary baking data (TTF bytes, stb contexts, bitmaps) uses temp_arena,
-    // which may be any arena the caller controls — including a scratch scope.
-    // Returns nullptr on failure.
-    ZUIFont* ZUIFontBake(ArenaAllocator*           persistent_arena,
-                         ArenaAllocator*           temp_arena,
-                         Hardwares::VulkanDevice*  device,
-                         const char*               vfs_path,
-                         float                     font_size,
-                         uint32_t                  atlas_width,
-                         uint32_t                  atlas_height,
-                         uint32_t                  first_codepoint,
-                         uint32_t                  codepoint_count);
+    // Single shared texture atlas — all fonts packed together (ImGui approach).
+    // WhiteU/WhiteV is the UV of the 1×1 white texel at pixel (0,0).
+    // Use it for solid-color quads: sampling white × vertex color = vertex color.
+    struct ZUIFontAtlas
+    {
+        ZUIFont*                           Small  = nullptr;
+        ZUIFont*                           Body   = nullptr;
+        ZUIFont*                           Header = nullptr;
+        Rendering::Textures::TextureHandle Handle = {};
+        uint32_t                           Width  = 0;
+        uint32_t                           Height = 0;
+        float                              WhiteU = 0.f;
+        float                              WhiteV = 0.f;
+    };
 
-    // Measure the pixel extent of a string using a baked font.
-    // out_size[0] = width, out_size[1] = line height (single line only).
+    // Pack Small + Body + Header fonts into one atlas in a single stbtt_pack_context pass.
+    // OversampleH=2, OversampleV=1 (ImGui default).
+    // Permanent allocations (ZUIFontAtlas, ZUIFont[3], ZUIGlyph arrays) → persistent_arena.
+    // Temporary baking buffers (TTF bytes, pixel maps) → temp_arena (caller releases it).
+    ZUIFontAtlas* ZUIFontAtlasBake(ArenaAllocator*          persistent_arena,
+                                   ArenaAllocator*          temp_arena,
+                                   Hardwares::VulkanDevice* device,
+                                   const char*              vfs_path,
+                                   float                    size_small,
+                                   float                    size_body,
+                                   float                    size_header,
+                                   uint32_t                 first_codepoint,
+                                   uint32_t                 codepoint_count);
+
     void ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
 
 } // namespace ZEngine::UI

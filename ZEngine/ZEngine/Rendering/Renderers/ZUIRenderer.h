@@ -1,68 +1,84 @@
 #pragma once
-#include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
-namespace ZEngine::UI { struct ZUIContext; }
+namespace ZEngine::UI   { struct ZUIContext; }
 
 namespace ZEngine::Rendering::Renderers
 {
+    // ---------------------------------------------------------------
+    // ZUIRectInst — one instanced rect (RAD Debugger R_Rect2DInst approach).
+    // 128 bytes. Matches zui_rect.vert attribute layout exactly.
+    //
+    // Corner order for colors[] and corner_radii[]:
+    //   [0]=TL  [1]=TR  [2]=BL  [3]=BR
+    // ---------------------------------------------------------------
+    struct ZUIRectInst
+    {
+        float dst[4];           // x0,y0,x1,y1  screen pixels
+        float src[4];           // u0,v0,u1,v1  atlas UV
+        float colors[4][4];     // per-corner RGBA  [corner_idx][channel]
+        float corner_radii[4];  // per-corner radius
+        float style[4];         // [0]=border_thickness [1]=edge_softness
+                                // [2]=tex_index (float-cast) [3]=shear
+    };
+    static_assert(sizeof(ZUIRectInst) == 128, "ZUIRectInst size mismatch");
+
+    // ---------------------------------------------------------------
+    // Draw command — a scissored batch of instances.
+    // Texture index lives inside ZUIRectInst::style[2], not here.
+    // Only clips trigger new commands.
+    // ---------------------------------------------------------------
     struct ZUIDrawCmd
     {
-        uint32_t IndexOffset;
-        uint32_t IndexCount;
-        int32_t  VertexOffset;
-        uint32_t TextureIndex; // bindless slot; 0xFFFFFFFF = solid color, no sample
-        float    ClipX;
-        float    ClipY;
-        float    ClipW;
-        float    ClipH;
+        uint32_t InstOffset = 0;
+        uint32_t InstCount  = 0;
+        float    ClipX      = 0.f;
+        float    ClipY      = 0.f;
+        float    ClipW      = 0.f;
+        float    ClipH      = 0.f;
     };
 
     struct ZUIRenderPayload
     {
-        UIDrawVert* Vertices      = nullptr; // frame-arena allocated
-        uint32_t*   Indices       = nullptr; // frame-arena allocated
-        ZUIDrawCmd* Cmds          = nullptr; // frame-arena allocated
-        uint32_t    VertexCount   = 0;
-        uint32_t    IndexCount    = 0;
-        uint32_t    CmdCount      = 0;
-        float       Scale[2]      = {};      // push constant: {2/fb_w, 2/fb_h}
-        float       Translate[2]  = {};      // push constant: {-1, -1}
+        ZUIRectInst* Instances   = nullptr;
+        uint32_t     InstCount   = 0;
+        ZUIDrawCmd*  Cmds        = nullptr;
+        uint32_t     CmdCount    = 0;
+        float        Scale[2]    = {};
+        float        Translate[2]= {};
     };
 
-    // Push constant layout shared between ZUIRenderer and zui.vert / zui.frag
-    struct ZUIPushConstant
+    // Push constant layout shared with zui_rect.vert
+    struct ZUIRectPushConstant
     {
-        float    Scale[2]     = {};
-        float    Translate[2] = {};
-        uint32_t TextureId    = 0xFFFFFFFFu;
-        uint32_t Padding      = 0u;
+        float Scale[2]     = {};
+        float Translate[2] = {};
     };
 
     struct ZUIRenderer : public IRenderer
     {
-        static constexpr uint32_t FRAMES_IN_FLIGHT     = 3;
-        static constexpr uint32_t ZUICommandBufferIndex = 1; // slot 1 = secondary CB (ImGui slot, now free)
+        static constexpr uint32_t FRAMES_IN_FLIGHT      = 3;
+        static constexpr uint32_t ZUICommandBufferIndex = 1;
 
-        RenderPasses::RenderPass* UIPass                       = nullptr;
-        Core::Memory::BufferView  VBHandles[FRAMES_IN_FLIGHT]  = {};
-        Core::Memory::BufferView  IdxBHandles[FRAMES_IN_FLIGHT]= {};
+        RenderPasses::RenderPass* UIPass                        = nullptr;
+        Core::Memory::BufferView  InstBHandles[FRAMES_IN_FLIGHT]= {};
 
-        void Initialize(Hardwares::VulkanDevicePtr device) override;
+        void Initialize  (Hardwares::VulkanDevicePtr device) override;
         void Deinitialize() override;
 
-        // Walk the box tree and emit quads. Output arrays are allocated from
-        // payload_arena (a per-mailbox-slot sub-arena) so they survive until the
-        // render thread consumes the payload — not the shorter-lived FrameArena.
-        void PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena);
+        // Build ZUIRectInst stream from the box tree.
+        void PreparePayload(UI::ZUIContext* ctx,
+                            ZUIRenderPayload* out,
+                            Core::Memory::ArenaAllocator* payload_arena);
 
-        // Upload vertex/index data and record draw calls into a secondary command buffer.
-        // primary_cmd must be the current frame's active primary command buffer.
-        void Submit(Hardwares::CommandBuffer* primary_cmd, const ZUIRenderPayload& payload);
+        // Submit to Vulkan.
+        void Submit(Hardwares::CommandBuffer* primary_cmd,
+                    const ZUIRenderPayload& payload);
     };
 
     ZDEFINE_PTR(ZUIRenderer);
+
 } // namespace ZEngine::Rendering::Renderers

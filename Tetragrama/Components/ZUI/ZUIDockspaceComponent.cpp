@@ -59,9 +59,8 @@ namespace Tetragrama::Components
         bg->Flags    = bg->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         bg->FloatPos[0] = 0.f;
         bg->FloatPos[1] = 0.f;
-        bg->BgColor[0] = ctx->Theme.WindowBg[0]; bg->BgColor[1] = ctx->Theme.WindowBg[1];
-        bg->BgColor[2] = ctx->Theme.WindowBg[2]; bg->BgColor[3] = ctx->Theme.WindowBg[3];
-        bg->CornerRadius = 0.f;
+        ZUIBoxSetColorArr(bg, ctx->Theme.WindowBg);
+        ZUIBoxSetCornerRadius(bg, 0.f);
 
         // --- Menu bar ---
         if (ZUIBeginMenuBar(ctx))

@@ -75,18 +75,17 @@ namespace ZEngine::UI
         // persistent state — open-addressing hash table in PersistentArena
         ZUIPersistentStore StateStore;
 
-        // Fonts — set after ZUIFontBake(). Font = Body (backwards-compat alias).
-        // FontSmall / FontHeader added for multi-size support.
-        ZUIFont*           Font       = nullptr; // ZUIFontSize::Body
-        ZUIFont*           FontSmall  = nullptr; // ZUIFontSize::Small
-        ZUIFont*           FontHeader = nullptr; // ZUIFontSize::Header
+        // Single shared font atlas (ImGui approach: one texture, all fonts).
+        // Set by Editor::OnInitialized after ZUIFontAtlasBake.
+        ZUIFontAtlas*      Atlas      = nullptr;
 
-        // Helper: returns the right ZUIFont* for a given size
+        // Convenience accessors — delegate to Atlas
         ZUIFont* GetFont(ZUIFontSize size) const
         {
-            if (size == ZUIFontSize::Small  && FontSmall)  return FontSmall;
-            if (size == ZUIFontSize::Header && FontHeader) return FontHeader;
-            return Font; // Body fallback
+            if (!Atlas) { return nullptr; }
+            if (size == ZUIFontSize::Small  && Atlas->Small)  return Atlas->Small;
+            if (size == ZUIFontSize::Header && Atlas->Header) return Atlas->Header;
+            return Atlas->Body;
         }
 
         // input state — written by ZUILayer each frame before ZUIBeginFrame

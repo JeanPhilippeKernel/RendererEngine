@@ -15,20 +15,11 @@ namespace ZEngine::UI
         box->TextColor[2] = c[2]; box->TextColor[3] = c[3];
     }
 
-    static void SetBgColor(ZUIBox* box, float r, float g, float b, float a)
-    {
-        box->BgColor[0] = r; box->BgColor[1] = g;
-        box->BgColor[2] = b; box->BgColor[3] = a;
-    }
-
-    // Colors are read from ctx->Theme — no local palette constants needed.
-    static void SetBgArr(ZUIBox* b, const float c[4])
-    {
-        b->BgColor[0]=c[0]; b->BgColor[1]=c[1]; b->BgColor[2]=c[2]; b->BgColor[3]=c[3];
-    }
+    static void SetBgArr(ZUIBox* b, const float c[4]) { ZUIBoxSetColorArr(b, c); }
     static void SetBdrArr(ZUIBox* b, const float c[4])
     {
-        b->BorderColor[0]=c[0]; b->BorderColor[1]=c[1]; b->BorderColor[2]=c[2]; b->BorderColor[3]=c[3];
+        b->BorderColor[0]=c[0]; b->BorderColor[1]=c[1];
+        b->BorderColor[2]=c[2]; b->BorderColor[3]=c[3];
     }
 
     // ---------------------------------------------------------------
@@ -118,8 +109,10 @@ namespace ZEngine::UI
         ctx->Disabled = (ctx->DisabledDepth > 0);
     }
 
-    // Dim a color array in-place when the widget is disabled
+    // Dim a single color array (e.g. TextColor) in-place when disabled.
     static void ApplyDisabledDim(float c[4]) { c[3] *= 0.38f; }
+    // Dim all per-corner background colors when disabled.
+    static void ApplyDisabledDimBox(ZUIBox* b) { for(int _c=0;_c<4;++_c) b->Colors[_c][3] *= 0.38f; }
 
     // ---------------------------------------------------------------
     // ZUIButton family
@@ -138,7 +131,7 @@ namespace ZEngine::UI
         SetTextColor(box, ctx->Theme.TextDefault);
         SetBdrArr(box, ctx->Theme.ButtonBorder);
         box->BorderThickness = 1.f;
-        if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
+        if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);
@@ -156,7 +149,7 @@ namespace ZEngine::UI
         box->Size[1]     = ZSPx(ctx, 22.f);
         SetBgArr(box, ctx->Theme.ButtonBg);
         SetTextColor(box, ctx->Theme.TextDefault);
-        if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
+        if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);
@@ -205,7 +198,7 @@ namespace ZEngine::UI
             SetBdrArr(box, ctx->Theme.ButtonBorder);
         }
         SetTextColor(box, ctx->Theme.TextDefault);
-        if (ctx->Disabled) { ApplyDisabledDim(box->BgColor); ApplyDisabledDim(box->TextColor); }
+        if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);
@@ -230,8 +223,8 @@ namespace ZEngine::UI
         box->Size[1]         = h;
         box->TextureIndex    = texture_index;
         // Ensure bg alpha > 0 so PreparePayload emits the quad
-        box->BgColor[0] = box->BgColor[1] = box->BgColor[2] = box->BgColor[3] = 1.f;
-        if (ctx->Disabled) box->BgColor[3] = 0.38f;
+        ZUIBoxSetColor(box, 1.f, 1.f, 1.f, 1.f);
+        if (ctx->Disabled) ApplyDisabledDimBox(box);
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         ZUIPopBox(ctx);
@@ -378,7 +371,7 @@ namespace ZEngine::UI
         ZUIBox* box   = ZUIPushBox(ctx, label, len, fl);
         box->Size[0]  = ZFill();
         box->Size[1]  = ZPx(26.f);
-        box->BgColor[3] = 0.f;
+        ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
         SetTextColor(box, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
@@ -396,10 +389,9 @@ namespace ZEngine::UI
         box->Size[0]   = ZFill();
         box->Size[1]   = ZPx(24.f);
         if (selected) {
-            box->BgColor[0] = ctx->Theme.RowSelectedBg[0]; box->BgColor[1] = ctx->Theme.RowSelectedBg[1];
-            box->BgColor[2] = ctx->Theme.RowSelectedBg[2]; box->BgColor[3] = ctx->Theme.RowSelectedBg[3];
+            ZUIBoxSetColorArr(box, ctx->Theme.RowSelectedBg);
         } else {
-            box->BgColor[3] = 0.f; // hover fade-in
+            ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f); // hover fade-in
         }
         SetTextColor(box, ctx->Theme.TextDefault);
 
@@ -452,7 +444,7 @@ namespace ZEngine::UI
             SetBgArr(btn, ctx->Theme.PanelBg);
             SetTextColor(btn, ctx->Theme.TextDefault);
         } else {
-            btn->BgColor[3] = 0.f;
+            ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f);
             SetTextColor(btn, ctx->Theme.TextDim);
         }
 
@@ -706,8 +698,7 @@ namespace ZEngine::UI
                                  ZUI_DrawBackground | ZUI_DrawBorder);
         swatch->Size[0]    = ZFill();
         swatch->Size[1]    = ZPx(28.f);
-        swatch->BgColor[0] = color[0]; swatch->BgColor[1] = color[1];
-        swatch->BgColor[2] = color[2]; swatch->BgColor[3] = color[3];
+        ZUIBoxSetColorArr(swatch, color);
         SetBdrArr(swatch, ctx->Theme.PanelBorder);
         swatch->BorderThickness = 1.f;
         ZUIPopBox(ctx);
@@ -917,10 +908,7 @@ namespace ZEngine::UI
                                ZUI_DrawBackground | (overlay_text ? ZUI_DrawText : ZUI_None));
         fill->Size[0]   = ZPct(fraction);
         fill->Size[1]   = ZFill();
-        fill->BgColor[0] = ctx->Theme.InputFocusBorder[0];
-        fill->BgColor[1] = ctx->Theme.InputFocusBorder[1];
-        fill->BgColor[2] = ctx->Theme.InputFocusBorder[2];
-        fill->BgColor[3] = 0.80f;
+        { float _c[4]={(ctx->Theme.InputFocusBorder)[0],(ctx->Theme.InputFocusBorder)[1],(ctx->Theme.InputFocusBorder)[2],0.80f}; ZUIBoxSetColorArr(fill, _c); }
         if (overlay_text) {
             fill->Label = ZUIPushStr(&ctx->FrameArena, overlay_text,
                                       (uint32_t)Helpers::secure_strlen(overlay_text));
@@ -958,8 +946,7 @@ namespace ZEngine::UI
         tip->FloatPos[1]  = ty;
         tip->Label        = ZUIPushStr(&ctx->FrameArena, text,
                                         (uint32_t)Helpers::secure_strlen(text));
-        tip->BgColor[0]   = ctx->Theme.HeaderBg[0]; tip->BgColor[1] = ctx->Theme.HeaderBg[1];
-        tip->BgColor[2]   = ctx->Theme.HeaderBg[2]; tip->BgColor[3] = ctx->Theme.HeaderBg[3];
+        ZUIBoxSetColorArr(tip, ctx->Theme.HeaderBg);
         SetBdrArr(tip, ctx->Theme.PanelBorder);
         tip->BorderThickness = 1.f;
         SetTextColor(tip, ctx->Theme.TextDefault);
@@ -975,8 +962,7 @@ namespace ZEngine::UI
 
         ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZPx(26.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        hdr->BgColor[0] = ctx->Theme.HeaderBg[0]; hdr->BgColor[1] = ctx->Theme.HeaderBg[1];
-        hdr->BgColor[2] = ctx->Theme.HeaderBg[2]; hdr->BgColor[3] = ctx->Theme.HeaderBg[3];
+        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
         hdr->LayoutAxis = ZUIAxis::X;
 
         const char* ind = (open && *open) ? "v " : "> ";
@@ -1002,15 +988,11 @@ namespace ZEngine::UI
         ZUIBox* row = ZUIBeginRow(ctx, key, ZFill(), h);
         row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
         if (selected && *selected) {
-            row->BgColor[0] = ctx->Theme.RowSelectedBg[0];
-            row->BgColor[1] = ctx->Theme.RowSelectedBg[1];
-            row->BgColor[2] = ctx->Theme.RowSelectedBg[2];
-            row->BgColor[3] = ctx->Theme.RowSelectedBg[3];
+            ZUIBoxSetColorArr(row, ctx->Theme.RowSelectedBg);
         } else {
-            row->BgColor[0] = ctx->Theme.RowHoverBg[0];
-            row->BgColor[1] = ctx->Theme.RowHoverBg[1];
-            row->BgColor[2] = ctx->Theme.RowHoverBg[2];
-            row->BgColor[3] = 0.f; // transparent, fade in on hover
+            // Transparent initially; hover tint is blended in by PreparePayload via HotT.
+            ZUIBoxSetColorArr(row, ctx->Theme.RowHoverBg);
+            row->Colors[0][3]=row->Colors[1][3]=row->Colors[2][3]=row->Colors[3][3]=0.f;
         }
 
         ZUISpacer(ctx, 6.f);
@@ -1116,7 +1098,7 @@ namespace ZEngine::UI
         ZUIBox* btn   = ZUIPushBox(ctx, key, (uint32_t)strlen(key), fl);
         btn->Size[0]  = ZText();
         btn->Size[1]  = ZPx(26.f);
-        btn->BgColor[3] = 0.f;
+        ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f);
         SetTextColor(btn, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, btn);
@@ -1150,8 +1132,7 @@ namespace ZEngine::UI
         ZUIBox* dim  = ZUIPushBox(ctx, "##modal_dim", 12, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
         dim->Size[0] = ZPx(sw); dim->Size[1] = ZPx(sh);
         dim->FloatPos[0] = 0.f; dim->FloatPos[1] = 0.f;
-        dim->BgColor[0] = 0.f; dim->BgColor[1] = 0.f;
-        dim->BgColor[2] = 0.f; dim->BgColor[3] = 0.55f;
+        ZUIBoxSetColor(dim, 0.f, 0.f, 0.f, 0.55f);
         ZUIPopBox(ctx);
 
         // Modal panel — centred
@@ -1283,8 +1264,8 @@ namespace ZEngine::UI
         box->Size[0]   = w;
         box->Size[1]   = h;
         box->TextureIndex = texture_index;
-        // BgColor alpha must be > 0 so the renderer doesn't skip this box
-        box->BgColor[0] = box->BgColor[1] = box->BgColor[2] = box->BgColor[3] = 1.f;
+        // Colors must be non-transparent so the renderer draws this box
+        ZUIBoxSetColor(box, 1.f, 1.f, 1.f, 1.f);
         ZUIPopBox(ctx);
     }
 

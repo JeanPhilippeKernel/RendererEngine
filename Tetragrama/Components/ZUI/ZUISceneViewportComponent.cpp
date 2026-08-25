@@ -68,7 +68,7 @@ namespace Tetragrama::Components
         img_box->Size[0]      = ZFill();
         img_box->Size[1]      = ZFill();
         img_box->TextureIndex = m_scene_texture.Index;
-        img_box->BgColor[0]   = img_box->BgColor[1] = img_box->BgColor[2] = img_box->BgColor[3] = 1.f;
+        ZUIBoxSetColor(img_box, 1.f, 1.f, 1.f, 1.f);
 
         ZUISignal vp_sig = ZUISignalFromBox(ctx, img_box);
         ZUIPopBox(ctx);

@@ -59,10 +59,7 @@ namespace Tetragrama::Components
         panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
-        panel->BgColor[0]  = ctx->Theme.PanelBg[0];
-        panel->BgColor[1]  = ctx->Theme.PanelBg[1];
-        panel->BgColor[2]  = ctx->Theme.PanelBg[2];
-        panel->BgColor[3]  = ctx->Theme.PanelBg[3];
+        ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
         panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
         panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
         panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
@@ -72,8 +69,7 @@ namespace Tetragrama::Components
         // --- Header row — draggable ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZPx(28.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        hdr->BgColor[0] = ctx->Theme.HeaderBg[0]; hdr->BgColor[1] = ctx->Theme.HeaderBg[1];
-        hdr->BgColor[2] = ctx->Theme.HeaderBg[2]; hdr->BgColor[3] = ctx->Theme.HeaderBg[3];
+        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
             ZUISpacer(ctx, 6.f);
             ZUILabel(ctx, Name ? Name : "Console", ctx->Theme.TextDefault);
             ZUISpacer(ctx, 8.f);

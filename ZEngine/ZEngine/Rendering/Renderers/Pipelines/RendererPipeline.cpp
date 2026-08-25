@@ -54,7 +54,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          * Vertex Input
          */
         Array<VkVertexInputBindingDescription> vertex_input_bindings            = {};
-        vertex_input_bindings.init(scratch.Arena, 5);
+        {
+            uint32_t n = Specification.VertexInputBindingSpecifications.size();
+            vertex_input_bindings.init(scratch.Arena, n > 0 ? n : 1);
+        }
         for (unsigned i = 0; i < Specification.VertexInputBindingSpecifications.size(); ++i)
         {
             auto& input = Specification.VertexInputBindingSpecifications[i];
@@ -62,7 +65,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         }
 
         Array<VkVertexInputAttributeDescription> vertex_input_attributes = {};
-        vertex_input_attributes.init(scratch.Arena, 5);
+        {
+            uint32_t n = Specification.VertexInputAttributeSpecifications.size();
+            vertex_input_attributes.init(scratch.Arena, n > 0 ? n : 1);
+        }
         for (unsigned i = 0; i < Specification.VertexInputAttributeSpecifications.size(); ++i)
         {
             auto& input = Specification.VertexInputAttributeSpecifications[i];

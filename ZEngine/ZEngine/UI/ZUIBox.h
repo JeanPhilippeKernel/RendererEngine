@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/ZEngineDef.h>
 #include <cstdint>
+#include <cstring>
 
 namespace ZEngine::UI
 {
@@ -19,6 +20,7 @@ namespace ZEngine::UI
         Fill
     };
 
+    // Strictness: 1.0 = rigid (never shrunk), 0.0 = fully flexible (absorbed first).
     struct ZUISize
     {
         ZUISizeKind Kind       = ZUISizeKind::Pixels;
@@ -44,10 +46,16 @@ namespace ZEngine::UI
         return static_cast<ZUIBoxFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
     }
 
-    enum class ZUIAxis : uint8_t { X, Y };
-
+    enum class ZUIAxis      : uint8_t { X, Y };
     enum class ZUITextAlign : uint8_t { Left = 0, Center, Right };
     enum class ZUIFontSize  : uint8_t { Small = 0, Body = 1, Header = 2 };
+
+    // Corner order: [0]=TL  [1]=TR  [2]=BL  [3]=BR
+    // Matches gl_VertexID order in the SDF vertex shader.
+    static constexpr int ZUI_CORNER_TL = 0;
+    static constexpr int ZUI_CORNER_TR = 1;
+    static constexpr int ZUI_CORNER_BL = 2;
+    static constexpr int ZUI_CORNER_BR = 3;
 
     struct ZUIBox
     {
@@ -62,34 +70,78 @@ namespace ZEngine::UI
         ZUIBox*     PrevSib    = nullptr;
 
         // build-time spec
-        ZUIBoxFlags Flags            = ZUI_None;
-        ZUISize     Size[2]          = {};
-        ZUIAxis      LayoutAxis       = ZUIAxis::Y;
-        ZUITextAlign TextAlign       = ZUITextAlign::Left;
-        ZUIFontSize  FontSize        = ZUIFontSize::Body;
-        float       BgColor[4]       = {};
-        float       BorderColor[4]   = {};
-        float       TextColor[4]     = {};
-        float       CornerRadius     = 0.f;
-        float       BorderThickness  = 0.f;
-        float       FloatPos[2]      = {};
-        // Vertical gradient: top vertices use BgColor, bottom use BgColorB.
-        // Active when BgColorB[3] > 0.
-        float       BgColorB[4]      = {};
-        // Drop shadow: emitted as an offset copy of the background quad before
-        // the main quad. Active when ShadowColor[3] > 0.
-        float       ShadowColor[4]   = {};
-        float       ShadowOffset[2]  = {3.f, 3.f}; // screen offset from parent origin; used when ZUI_FloatX / ZUI_FloatY is set
-        // Padding[0]=left  [1]=top  [2]=right  [3]=bottom
-        // Offsets children away from the container walls.
-        // ChildrenSum adds both ends; Fill subtracts both ends from available space.
-        float       Padding[4]       = {};
-        uint32_t    TextureIndex     = 0xFFFFFFFFu; // bindless slot; when != 0xFFFFFFFF and ZUI_DrawBackground set, renders as image
+        ZUIBoxFlags  Flags       = ZUI_None;
+        ZUISize      Size[2]     = {};
+        ZUIAxis      LayoutAxis  = ZUIAxis::Y;
+        ZUITextAlign TextAlign   = ZUITextAlign::Left;
+        ZUIFontSize  FontSize    = ZUIFontSize::Body;
+
+        // ---------------------------------------------------------------
+        // Per-corner colors (RAD approach).
+        // Colors[0]=TL  [1]=TR  [2]=BL  [3]=BR, each RGBA float[4].
+        // Use ZUIBoxSetColor / ZUIBoxSetGradientV helpers below.
+        float Colors[4][4]    = {};    // all transparent by default
+        float TextColor[4]    = {};
+        float BorderColor[4]  = {};
+
+        // ---------------------------------------------------------------
+        // Per-corner radii + edge softness (RAD SDF renderer).
+        // CornerRadii[0]=TL [1]=TR [2]=BL [3]=BR.
+        // EdgeSoftness: AA ramp width in pixels (0.5 = 1 pixel, 0 = hard edge).
+        float CornerRadii[4]  = {};
+        float EdgeSoftness    = 0.5f;
+
+        // ---------------------------------------------------------------
+        float BorderThickness = 0.f;
+        float FloatPos[2]     = {};
+        float Padding[4]      = {};    // left, top, right, bottom
+        uint32_t TextureIndex = 0xFFFFFFFFu;
+
 
         // layout output — filled by ZUILayout::Solve
-        float       ComputedSize[2]  = {};
-        float       ScreenMin[2]     = {};
-        float       ScreenMax[2]     = {};
+        float ComputedSize[2] = {};
+        float ScreenMin[2]    = {};
+        float ScreenMax[2]    = {};
     };
+
+    // ---------------------------------------------------------------
+    // Inline helpers — set colors and radii in a single call
+    // ---------------------------------------------------------------
+
+    inline void ZUIBoxSetColor(ZUIBox* b, float r, float g, float bl, float a)
+    {
+        for (int i = 0; i < 4; ++i)
+        { b->Colors[i][0]=r; b->Colors[i][1]=g; b->Colors[i][2]=bl; b->Colors[i][3]=a; }
+    }
+
+    inline void ZUIBoxSetColorArr(ZUIBox* b, const float c[4])
+    {
+        ZUIBoxSetColor(b, c[0], c[1], c[2], c[3]);
+    }
+
+    // Vertical gradient: top row gets `top`, bottom row gets `bot`.
+    inline void ZUIBoxSetGradientV(ZUIBox* b,
+                                    const float top[4], const float bot[4])
+    {
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            b->Colors[ZUI_CORNER_TL][ch] = top[ch];
+            b->Colors[ZUI_CORNER_TR][ch] = top[ch];
+            b->Colors[ZUI_CORNER_BL][ch] = bot[ch];
+            b->Colors[ZUI_CORNER_BR][ch] = bot[ch];
+        }
+    }
+
+    inline void ZUIBoxSetCornerRadius(ZUIBox* b, float r)
+    {
+        b->CornerRadii[0] = b->CornerRadii[1] =
+        b->CornerRadii[2] = b->CornerRadii[3] = r;
+    }
+
+    inline void ZUIBoxSetTopRadius(ZUIBox* b, float r)
+    { b->CornerRadii[ZUI_CORNER_TL] = b->CornerRadii[ZUI_CORNER_TR] = r; }
+
+    inline void ZUIBoxSetBottomRadius(ZUIBox* b, float r)
+    { b->CornerRadii[ZUI_CORNER_BL] = b->CornerRadii[ZUI_CORNER_BR] = r; }
 
 } // namespace ZEngine::UI

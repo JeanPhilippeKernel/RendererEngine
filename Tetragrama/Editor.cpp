@@ -118,8 +118,8 @@ namespace Tetragrama
                 "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
             auto* ctx = RenderPipeline->ZUICtx;
 
-            // Store content scale so widgets can use ZSPx() for consistent sizing.
-            // UIScale is used by widget heights, not by font baking (we use absolute px).
+            // Content scale for widget sizing (ZSPx). Font baking uses logical px
+            // sizes; the display upsamples on Retina (same as ImGui default behavior).
             {
                 float xs = 1.f, ys = 1.f;
                 if (CurrentWindow)
@@ -131,26 +131,24 @@ namespace Tetragrama
                 if (ctx->UIScale < 0.5f) ctx->UIScale = 1.f;
             }
 
-            // Fixed physical-pixel sizes that look right on a ~3000-pixel-wide display.
-            // Adjust these two constants if the UI looks too small or too large.
-            constexpr float kSmall  = 24.f;
-            constexpr float kBody   = 32.f;
-            constexpr float kHeader = 42.f;
+            // Logical window width drives font size selection.
+            // body = win_w / 85 gives ~18px at 1512 (standard), ~35px at 3024 (more-space).
+            uint32_t win_w = CurrentWindow ? CurrentWindow->GetWidth()
+                                           : RenderPipeline->Device->SwapchainPtr->SwapchainImageWidth;
+            float kBody   = (float)(win_w > 0 ? win_w / 85 : 18);
+            if (kBody < 14.f) kBody = 14.f;
+            if (kBody > 40.f) kBody = 40.f;
+            float kSmall  = kBody * 0.80f;
+            float kHeader = kBody * 1.25f;
+            ZENGINE_CORE_INFO("[ZUI] FontSizes small={:.0f} body={:.0f} header={:.0f} (win_w={})",
+                              kSmall, kBody, kHeader, win_w);
 
+            // Bake all three fonts into one shared atlas — single GPU texture,
+            // white pixel at (0,0), OversampleH=2 OversampleV=1 (ImGui default).
             auto scratch = ZGetScratch(&Memory->MainArena);
-
-            ctx->FontSmall = ZEngine::UI::ZUIFontBake(
+            ctx->Atlas = ZEngine::UI::ZUIFontAtlasBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, kSmall, 512, 512, 32, 96);
-
-            ctx->Font = ZEngine::UI::ZUIFontBake(
-                &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, kBody, 1024, 1024, 32, 96);
-
-            ctx->FontHeader = ZEngine::UI::ZUIFontBake(
-                &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, kHeader, 1024, 1024, 32, 96);
-
+                kFontPath, kSmall, kBody, kHeader, 32, 96);
             ZReleaseScratch(scratch);
         }
 

@@ -44,13 +44,16 @@ namespace Tetragrama::Layers
     {
         if (!m_ctx || m_component_count == 0) { return; }
 
-        // Root box — transparent, explicitly sized to the swapchain surface.
-        // ZFill() collapses to 0 when there is no parent; children that use
-        // ZFill() need a non-zero parent size to expand into.
+        // Root box — fully opaque background covering the full swapchain surface.
+        // This is critical: the scene render pass leaves bloom/HDR data in the
+        // swapchain; without an opaque root the scene bleeds through semi-transparent
+        // panel backgrounds. ImGui solves this the same way with its main DockSpace
+        // window background.
         ZEngine::UI::ZUIBox* root = ZEngine::UI::ZUIBeginColumn(m_ctx, "##zui_root",
                                                                   ZEngine::UI::ZPx((float)m_ctx->ScreenW),
                                                                   ZEngine::UI::ZPx((float)m_ctx->ScreenH));
-        root->BgColor[3] = 0.f; // fully transparent — no background draw
+        root->Flags = root->Flags | ZEngine::UI::ZUI_DrawBackground;
+        ZUIBoxSetColor(root, 0.02f, 0.02f, 0.02f, 1.0f); // fully opaque — covers anything in the swapchain
 
         for (uint32_t i = 0; i < m_component_count; ++i)
         {

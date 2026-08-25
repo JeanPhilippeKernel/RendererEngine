@@ -90,7 +90,7 @@ namespace ZEngine::UI
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)
     {
-        ZUIBox* box = ZPushStruct(&ctx->FrameArena, ZUIBox);
+        ZUIBox* box = ZPushStructCtor(&ctx->FrameArena, ZUIBox); // ctor applies default initializers (TextureIndex=0xFFFFFFFF etc.)
         box->Flags  = flags;
 
         // split key on '##': part before is the visible label, full string hashes the key
