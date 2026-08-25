@@ -75,7 +75,9 @@ namespace ZEngine::Applications
         SceneRenderer->Initialize(Device);
         ZUIRenderer->Initialize(Device);
 
-        ZUICtx = ZPushStruct(&LocalArena, ZEngine::UI::ZUIContext);
+        // ZPushStructCtor calls placement-new → default member initializers apply
+        // (ZPushStruct only zero-fills, so ZUITheme colours would all be 0).
+        ZUICtx = ZPushStructCtor(&LocalArena, ZEngine::UI::ZUIContext);
         ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(4), ZMega(1), 4096, 4096);
         for (int i = 0; i < 3; ++i)
         {

@@ -209,32 +209,38 @@ namespace ZEngine::Rendering::Renderers
 
         // ---------------------------------------------------------------
         // Scissor stack for ZUI_ClipChildren boxes.
-        // clip_x/y/w/h tracks the current active clip rect.
+        // Each entry: {min_x, min_y, max_x, max_y} of the clip box.
+        // We always track a "current clip rect" and open a new draw cmd
+        // whenever it changes, using a sentinel invalid texture value that
+        // can never collide with a real texture index or the solid-color
+        // sentinel (0xFFFFFFFF).
         // ---------------------------------------------------------------
-        static constexpr uint32_t kClipDepth = 8;
+        static constexpr uint32_t kClipDepth    = 8;
+        static constexpr uint32_t kInvalidTex   = 0xFFFFFFFEu; // used only to force cmd flush
+
         const UI::ZUIBox* clip_stack[kClipDepth] = {};
         uint32_t          clip_top  = 0;
         float             clip_x    = 0.f, clip_y = 0.f;
-        float             clip_w    = fb_w, clip_h = fb_h; // default = full framebuffer
+        float             clip_w    = fb_w, clip_h = fb_h;
 
+        // Recompute clip_x/y/w/h from the intersection of all active rects
         auto UpdateClip = [&]()
         {
-            // Compute the intersection of all active clip boxes
-            float cx0 = 0.f, cy0 = 0.f, cx1 = fb_w, cy1 = fb_h;
+            float x0 = 0.f, y0 = 0.f, x1 = fb_w, y1 = fb_h;
             for (uint32_t ci = 0; ci < clip_top; ++ci)
             {
                 const UI::ZUIBox* cb = clip_stack[ci];
-                if (cb->ScreenMin[0] > cx0) cx0 = cb->ScreenMin[0];
-                if (cb->ScreenMin[1] > cy0) cy0 = cb->ScreenMin[1];
-                if (cb->ScreenMax[0] < cx1) cx1 = cb->ScreenMax[0];
-                if (cb->ScreenMax[1] < cy1) cy1 = cb->ScreenMax[1];
+                if (cb->ScreenMin[0] > x0) x0 = cb->ScreenMin[0];
+                if (cb->ScreenMin[1] > y0) y0 = cb->ScreenMin[1];
+                if (cb->ScreenMax[0] < x1) x1 = cb->ScreenMax[0];
+                if (cb->ScreenMax[1] < y1) y1 = cb->ScreenMax[1];
             }
-            clip_x = cx0; clip_y = cy0;
-            clip_w = cx1 > cx0 ? cx1 - cx0 : 0.f;
-            clip_h = cy1 > cy0 ? cy1 - cy0 : 0.f;
+            clip_x = x0;  clip_y = y0;
+            clip_w = (x1 > x0) ? x1 - x0 : 0.f;
+            clip_h = (y1 > y0) ? y1 - y0 : 0.f;
         };
 
-        // Returns true if `ancestor` appears in box->Parent chain
+        // Is `ancestor` somewhere in box->Parent chain?
         auto IsAncestor = [](const UI::ZUIBox* ancestor, const UI::ZUIBox* box) -> bool
         {
             for (const UI::ZUIBox* p = box->Parent; p; p = p->Parent)
@@ -247,30 +253,23 @@ namespace ZEngine::Rendering::Renderers
             ZUIBox* box = nodes[i];
 
             // --- Maintain scissor stack ---
-            // Pop clip entries that are no longer ancestors of the current box
+            bool clip_changed = false;
             while (clip_top > 0 && !IsAncestor(clip_stack[clip_top - 1], box))
             {
                 --clip_top;
-                UpdateClip();
-                // Force a new cmd so the new scissor takes effect
-                if (out->CmdCount > 0)
-                {
-                    ZUIDrawCmd& prev = out->Cmds[out->CmdCount - 1];
-                    prev.IndexCount = out->IndexCount - prev.IndexOffset;
-                    ZUIDrawCmd& cmd  = out->Cmds[out->CmdCount++];
-                    cmd.IndexOffset  = out->IndexCount;
-                    cmd.IndexCount   = 0;
-                    cmd.VertexOffset = 0;
-                    cmd.TextureIndex = current_tex;
-                    cmd.ClipX = clip_x; cmd.ClipY = clip_y;
-                    cmd.ClipW = clip_w; cmd.ClipH = clip_h;
-                }
+                clip_changed = true;
             }
-            // Push this box if it clips children
             if ((box->Flags & UI::ZUI_ClipChildren) && clip_top < kClipDepth)
             {
                 clip_stack[clip_top++] = box;
+                clip_changed = true;
+            }
+            if (clip_changed)
+            {
                 UpdateClip();
+                // Close the currently open cmd so the next quad gets its own
+                // cmd with the new clip rect. Use the safe invalid sentinel.
+                current_tex = kInvalidTex;
             }
 
             float bx0 = box->ScreenMin[0];
