@@ -82,15 +82,20 @@ namespace ZEngine::UI
         // --- Menu bar ---
         BuildMenuBar(ctx, sw, real_menu_h);
 
-        // --- Each panel ---
+        // --- Each panel + hover detection for drag-to-dock ---
+        // RAD: for each panel, check contains_2f32(panel_rect, mouse) during drag
+        Drag.HoverNode = nullptr;
         if (DockTree)
         {
+            float mx = ctx->MousePos[0], my = ctx->MousePos[1];
             for (uint32_t i = 0; i < PanelCount; ++i)
             {
                 ZUIPanel* p = &Panels[i];
                 float r[4];
                 if (!ZUIDockRectForKey(DockTree, p->DockKey, r)) { continue; }
                 BuildPanel(ctx, p, r);
+                if (Drag.Active && mx >= r[0] && mx <= r[2] && my >= r[1] && my <= r[3])
+                    Drag.HoverNode = ZUIDockFindLeaf(DockTree, p->DockKey);
             }
         }
 
@@ -113,28 +118,46 @@ namespace ZEngine::UI
         // --- Workspace dividers (RAD-style direct mouse tracking) ---
         BuildDividers(ctx, sw, sh, real_menu_h, real_status_h);
 
-        // --- Drag ghost ---
+        // --- Drag ghost — follows mouse, shows tab title ---
         if (Drag.Active)
         {
-            float ghost_col[4] = { ctx->Theme.TabActiveBg[0],
-                                   ctx->Theme.TabActiveBg[1],
-                                   ctx->Theme.TabActiveBg[2], 0.6f };
-            char gkey[32];
-            ZUIPanel* sp = Drag.SrcPanel;
-            const char* title = (sp && Drag.SrcTabIdx < sp->ViewCount && sp->Views[Drag.SrcTabIdx])
-                               ? sp->Views[Drag.SrcTabIdx]->Title : "Tab";
-            snprintf(gkey, sizeof(gkey), "##ghost");
-            float ghost_w = 120.f * ctx->UIScale;
-            float ghost_h = 24.f  * ctx->UIScale;
-            ZUIBox* ghost = ZUIBeginRow(ctx, gkey, ZPx(ghost_w), ZPx(ghost_h));
-            ghost->Flags  = ghost->Flags | ZUI_DrawBackground | ZUI_DrawText |
-                             ZUI_FloatX | ZUI_FloatY;
-            ghost->FloatPos[0] = Drag.GhostX;
-            ghost->FloatPos[1] = Drag.GhostY - ghost_h * 0.5f;
-            ZUIBoxSetColorArr(ghost, ghost_col);
-            ZUIBoxSetCornerRadius(ghost, 4.f);
-            ghost->EdgeSoftness = 0.5f;
-            ZUIEndRow(ctx);
+            // Update ghost position every frame
+            Drag.GhostX = ctx->MousePos[0];
+            Drag.GhostY = ctx->MousePos[1];
+
+            // Cancel drag on release (without drop zone = abandon)
+            if (ctx->MouseReleased[0] && Drag.DropZone == ZUIDropZone::None)
+                Drag.Active = false;
+
+            if (Drag.Active)
+            {
+                ZUIPanel* sp = Drag.SrcPanel;
+                const char* title = (sp && Drag.SrcTabIdx < sp->ViewCount && sp->Views[Drag.SrcTabIdx])
+                                   ? sp->Views[Drag.SrcTabIdx]->Title : "Tab";
+
+                float ghost_h = kTabBarH * ctx->UIScale;
+                float ghost_w = (float)(strlen(title) * 9 + 36) * ctx->UIScale; // approx
+
+                float ghost_col[4] = { ctx->Theme.TabActiveBg[0],
+                                       ctx->Theme.TabActiveBg[1],
+                                       ctx->Theme.TabActiveBg[2] + 0.10f, 0.85f };
+                float ghost_bdr[4] = { 0.40f, 0.60f, 0.90f, 1.f };
+
+                ZUIBox* ghost = ZUIBeginRow(ctx, "##drag_ghost", ZPx(ghost_w), ZPx(ghost_h));
+                ghost->Flags      = ghost->Flags | ZUI_DrawBackground | ZUI_DrawBorder |
+                                    ZUI_FloatX   | ZUI_FloatY;
+                ghost->FloatPos[0] = Drag.GhostX - ghost_w * 0.3f;
+                ghost->FloatPos[1] = Drag.GhostY - ghost_h * 0.5f;
+                ZUIBoxSetColorArr(ghost, ghost_col);
+                ghost->BorderColor[0]=ghost_bdr[0]; ghost->BorderColor[1]=ghost_bdr[1];
+                ghost->BorderColor[2]=ghost_bdr[2]; ghost->BorderColor[3]=ghost_bdr[3];
+                ghost->BorderThickness = 1.f;
+                ZUIBoxSetCornerRadius(ghost, 4.f);
+                ghost->EdgeSoftness = 0.5f;
+                    ZUISpacer(ctx, 8.f);
+                    ZUILabel(ctx, title, ctx->Theme.TextDefault);
+                ZUIEndRow(ctx);
+            }
         }
 
         ZUIEndColumn(ctx); // close pm_bg
@@ -298,26 +321,56 @@ namespace ZEngine::UI
             else
                 ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg);
 
-            // Inner: spacer + label + spacer
-            ZUISpacer(ctx, 10.f);
+            // Inner: spacer | label | spacer | close-btn | spacer
+            ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, view->Title,
                      is_active ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
-            ZUISpacer(ctx, 8.f);
+            ZUISpacer(ctx, 6.f);
+
+            // Close "×" button — only visible on active tab or hover
+            bool tab_closed = false;
+            {
+                char xkey[64];
+                snprintf(xkey, sizeof(xkey), "×##close_%llx_%u",
+                         (unsigned long long)p->DockKey, ti);
+                float close_sz = (tab_h - 8.f);
+                ZUIBox* xbtn = ZUIPushBox(ctx, xkey, (uint32_t)strlen(xkey),
+                                           ZUI_DrawText | ZUI_Clickable);
+                xbtn->Size[0] = ZPx(close_sz); xbtn->Size[1] = ZPx(close_sz);
+                xbtn->TextAlign = ZUITextAlign::Center;
+                float xc[4] = {0.70f, 0.35f, 0.35f, is_active ? 0.90f : 0.50f};
+                SetTextColorOnBox(xbtn, xc);
+                ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
+                ZUIPopBox(ctx);
+                if (xsig.Flags & ZUI_SignalClicked) { tab_closed = true; }
+            }
+            ZUISpacer(ctx, 4.f);
 
             ZUISignal sig = ZUISignalFromBox(ctx, tab);
             ZUIEndRow(ctx);
 
-            if (sig.Flags & ZUI_SignalClicked)          { p->ActiveTab = ti; }
-            if (sig.Flags & ZUI_SignalDoubleClicked)    { /* TODO: detach tab */ }
+            // Tab close — remove view, adjust active tab
+            if (tab_closed && p->ViewCount > 1)
+            {
+                for (uint32_t j = ti; j + 1 < p->ViewCount; ++j)
+                    p->Views[j] = p->Views[j + 1];
+                --p->ViewCount;
+                if (p->ActiveTab >= p->ViewCount) p->ActiveTab = p->ViewCount - 1;
+                break; // iterator invalidated — tab_h bar rebuilt next frame
+            }
 
-            // Start drag when held + moved
-            if ((sig.Flags & ZUI_SignalHeld) &&
+            if (!tab_closed && (sig.Flags & ZUI_SignalClicked)) { p->ActiveTab = ti; }
+
+            // Drag-to-dock: start when tab is held + mouse moves
+            if (!tab_closed && (sig.Flags & ZUI_SignalHeld) &&
                 (sig.DragDelta[0] != 0.f || sig.DragDelta[1] != 0.f) &&
                 !Drag.Active)
             {
-                Drag.Active   = true;
-                Drag.SrcPanel = p;
-                Drag.SrcTabIdx= ti;
+                Drag.Active    = true;
+                Drag.SrcPanel  = p;
+                Drag.SrcTabIdx = ti;
+                Drag.GhostX    = ctx->MousePos[0];
+                Drag.GhostY    = ctx->MousePos[1];
             }
 
             // Tiny gap between tabs
