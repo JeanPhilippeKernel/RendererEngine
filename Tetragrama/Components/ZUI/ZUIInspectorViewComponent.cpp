@@ -96,7 +96,10 @@ namespace Tetragrama::Components
 
         // Title bar — draggable (Gap 4)
         ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZSPx(ctx, 26.f));
-        hdr->Flags  = hdr->Flags | ZUI_Clickable;
+        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
+        hdr->EdgeSoftness = 0.f;
+            ZUISpacer(ctx, 6.f);
             ZUILabel(ctx, Name ? Name : "Inspector");
             ZUISignal drag_sig = ZUISignalFromBox(ctx, hdr);
         ZUIEndRow(ctx);

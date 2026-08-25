@@ -581,6 +581,8 @@ namespace ZEngine::UI
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         field->BorderThickness = 1.f;
+        field->EdgeSoftness = 0.5f;
+        ZUIBoxSetCornerRadius(field, 3.f);
 
         bool focused = (ctx->FocusKey == field->Key);
         if (focused)

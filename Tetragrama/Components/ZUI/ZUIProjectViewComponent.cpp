@@ -82,7 +82,9 @@ namespace Tetragrama::Components
 
         // --- Header: draggable title + path + up button ---
         ZUIBox* hdr = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZSPx(ctx, 24.f));
-        hdr->Flags  = hdr->Flags | ZUI_Clickable;
+        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
+        hdr->EdgeSoftness = 0.f;
             ZUILabel(ctx, Name ? Name : "Project", ctx->Theme.TextDim);
             ZUISpacer(ctx, 4.f);
             const char* path_str = m_current_path.CStr() ? m_current_path.CStr() : "/";
