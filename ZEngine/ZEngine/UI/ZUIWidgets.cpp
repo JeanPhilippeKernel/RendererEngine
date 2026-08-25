@@ -1098,7 +1098,7 @@ namespace ZEngine::UI
     // Internal: menu bar saved state so EndMenuBar can pop the right box
     bool ZUIBeginMenuBar(ZUIContext* ctx)
     {
-        ZUIBox* bar = ZUIBeginRow(ctx, "##menubar_zui", ZFill(), ZPx(26.f));
+        ZUIBox* bar = ZUIBeginRow(ctx, "##menubar_zui", ZFill(), ZSPx(ctx, 26.f));
         bar->Flags  = bar->Flags | ZUI_DrawBackground;
         SetBgArr(bar, ctx->Theme.HeaderBg);
         bar->LayoutAxis = ZUIAxis::X;

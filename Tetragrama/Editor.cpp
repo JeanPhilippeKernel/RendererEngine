@@ -108,48 +108,48 @@ namespace Tetragrama
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
 
-        // Bake ZUI font atlases scaled by the display's content scale (DPI).
-        // On a 2x Retina display glfwGetWindowContentScale returns 2.0, making
-        // 28 logical px bake as 56 physical px — readable at any DPI.
+        // Bake ZUI font atlases. Font sizes are chosen to be readable on high-resolution
+        // displays where glfwGetWindowSize returns physical pixel counts (~3024px wide).
+        // ImGui approach: fonts are baked at physical pixel density and all draw
+        // coordinates are also in physical pixels — the NDC transform handles the rest.
         if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
         {
             constexpr const char* kFontPath =
                 "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
             auto* ctx = RenderPipeline->ZUICtx;
 
-            // Query content scale (1.0 on standard, 2.0 on Retina, etc.)
-            float xscale = 1.f, yscale = 1.f;
-            if (CurrentWindow)
+            // Store content scale so widgets can use ZSPx() for consistent sizing.
+            // UIScale is used by widget heights, not by font baking (we use absolute px).
             {
-                auto* glfw_win = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
-                if (glfw_win)
-                    glfwGetWindowContentScale(glfw_win, &xscale, &yscale);
+                float xs = 1.f, ys = 1.f;
+                if (CurrentWindow)
+                {
+                    auto* gw = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
+                    if (gw) glfwGetWindowContentScale(gw, &xs, &ys);
+                }
+                ctx->UIScale = xs > ys ? xs : ys;
+                if (ctx->UIScale < 0.5f) ctx->UIScale = 1.f;
             }
-            float scale = xscale > yscale ? xscale : yscale;
-            if (scale < 1.f) scale = 1.f; // never shrink below baseline
 
-            // Base logical sizes; atlas grows with scale to avoid atlas overflow
-            float sz_small  = 16.f * scale;
-            float sz_body   = 22.f * scale;
-            float sz_header = 30.f * scale;
-
-            auto atlas_dim = [](float sz) -> uint32_t {
-                return sz > 40.f ? 2048u : (sz > 24.f ? 1024u : 512u);
-            };
+            // Fixed physical-pixel sizes that look right on a ~3000-pixel-wide display.
+            // Adjust these two constants if the UI looks too small or too large.
+            constexpr float kSmall  = 24.f;
+            constexpr float kBody   = 32.f;
+            constexpr float kHeader = 42.f;
 
             auto scratch = ZGetScratch(&Memory->MainArena);
 
             ctx->FontSmall = ZEngine::UI::ZUIFontBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, sz_small, atlas_dim(sz_small), atlas_dim(sz_small), 32, 96);
+                kFontPath, kSmall, 512, 512, 32, 96);
 
             ctx->Font = ZEngine::UI::ZUIFontBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, sz_body, atlas_dim(sz_body), atlas_dim(sz_body), 32, 96);
+                kFontPath, kBody, 1024, 1024, 32, 96);
 
             ctx->FontHeader = ZEngine::UI::ZUIFontBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, sz_header, atlas_dim(sz_header), atlas_dim(sz_header), 32, 96);
+                kFontPath, kHeader, 1024, 1024, 32, 96);
 
             ZReleaseScratch(scratch);
         }

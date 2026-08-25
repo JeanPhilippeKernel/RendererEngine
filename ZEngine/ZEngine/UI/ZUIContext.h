@@ -13,28 +13,30 @@ namespace ZEngine::UI
     // Widgets and components read from ctx->Theme instead of local constants.
     // Swap the whole struct to apply a different theme at runtime.
     // ---------------------------------------------------------------
+    // ZUITheme — colors matched to ImGui's StyleColorsDark() palette so the
+    // editor looks familiar to ImGui users and benefits from its years of polish.
     struct ZUITheme
     {
-        // Backgrounds
-        float WindowBg[4]       = {0.18f, 0.18f, 0.20f, 1.f};
-        float PanelBg[4]        = {0.22f, 0.22f, 0.25f, 0.96f};
-        float PanelBgAlt[4]     = {0.20f, 0.20f, 0.23f, 0.96f}; // inspector header card
-        float HeaderBg[4]       = {0.28f, 0.28f, 0.32f, 1.f};   // menu bar
-        float RowHoverBg[4]     = {0.42f, 0.42f, 0.48f, 0.f};   // list row — transparent, fade in
-        float RowSelectedBg[4]  = {0.26f, 0.44f, 0.70f, 0.50f};
-        float RowRootBg[4]      = {0.30f, 0.30f, 0.36f, 0.18f}; // scene root row
-        float InputBg[4]        = {0.18f, 0.18f, 0.22f, 1.f};
-        float ButtonBg[4]       = {0.32f, 0.32f, 0.38f, 1.f};
-        // Text
-        float TextDefault[4]    = {0.92f, 0.92f, 0.92f, 1.f};
-        float TextDim[4]        = {0.55f, 0.55f, 0.62f, 1.f};
-        float TextAccent[4]     = {0.55f, 0.75f, 0.95f, 1.f};
-        // Borders
-        float PanelBorder[4]    = {0.40f, 0.42f, 0.50f, 1.f};
-        float ButtonBorder[4]   = {0.50f, 0.50f, 0.60f, 1.f};
-        float InputBorder[4]    = {0.40f, 0.40f, 0.52f, 1.f};
-        float InputFocusBorder[4]= {0.40f, 0.65f, 0.92f, 1.f};
-        float Separator[4]      = {0.38f, 0.38f, 0.44f, 1.f};
+        // Backgrounds — ImGui dark: WindowBg=(0.06,0.06,0.06,0.94)
+        float WindowBg[4]       = {0.06f, 0.06f, 0.06f, 0.94f};
+        float PanelBg[4]        = {0.10f, 0.10f, 0.10f, 0.96f}; // popup/child bg
+        float PanelBgAlt[4]     = {0.08f, 0.08f, 0.08f, 0.94f};
+        float HeaderBg[4]       = {0.14f, 0.14f, 0.14f, 1.00f}; // title bars
+        float RowHoverBg[4]     = {0.26f, 0.59f, 0.98f, 0.f};   // ImGui Header at 0 alpha, fades in
+        float RowSelectedBg[4]  = {0.26f, 0.59f, 0.98f, 0.35f}; // ImGui Header
+        float RowRootBg[4]      = {0.16f, 0.29f, 0.48f, 0.20f};
+        float InputBg[4]        = {0.16f, 0.29f, 0.48f, 0.54f}; // ImGui FrameBg exact
+        float ButtonBg[4]       = {0.26f, 0.59f, 0.98f, 0.40f}; // ImGui Button exact
+        // Text — ImGui: Text=(1,1,1,1), TextDisabled=(0.5,0.5,0.5,1)
+        float TextDefault[4]    = {1.00f, 1.00f, 1.00f, 1.00f};
+        float TextDim[4]        = {0.50f, 0.50f, 0.50f, 1.00f};
+        float TextAccent[4]     = {0.26f, 0.59f, 0.98f, 1.00f}; // ImGui blue
+        // Borders — ImGui: Border=(0.43,0.43,0.50,0.50)
+        float PanelBorder[4]    = {0.43f, 0.43f, 0.50f, 0.50f};
+        float ButtonBorder[4]   = {0.43f, 0.43f, 0.50f, 0.50f};
+        float InputBorder[4]    = {0.43f, 0.43f, 0.50f, 0.50f};
+        float InputFocusBorder[4]= {0.26f, 0.59f, 0.98f, 1.00f}; // accent blue
+        float Separator[4]      = {0.43f, 0.43f, 0.50f, 0.50f};
     };
 
     struct ZUIPersistentState
