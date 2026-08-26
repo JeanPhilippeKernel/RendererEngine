@@ -1519,44 +1519,121 @@ namespace ZEngine::UI
     bool ZUIDragFloat(ZUIContext* ctx, const char* key, float* value, float speed, float width_px)
     {
         uint32_t key_len  = (uint32_t)strlen(key);
+        uint64_t key_hash = ZUIHashStr(key, key_len);
+
         ZUIBox*  field    = ZUIPushBox(ctx, key, key_len,
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]          = ZPx(width_px);
-        field->Size[1]          = ZPx(19.f); // ImGui GetFrameHeight = FontSize+FramePadding.y*2 = 19px
-        field->Padding[0]       = 4.f;       // ImGui FramePadding.x = 4px
+        field->Size[1]          = ZPx(19.f);
+        field->Padding[0]       = 4.f;
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         SetBdrArr(field, ctx->Theme.InputBorder);
         field->BorderThickness  = 1.f;
 
-        // Format the current value and store in FrameArena so the renderer can draw it
-        char val_buf[32];
-        snprintf(val_buf, sizeof(val_buf), "%.3f", (double)*value);
-        uint32_t vlen  = (uint32_t)Helpers::secure_strlen(val_buf);
-        field->Label   = ZUIPushStr(&ctx->FrameArena, val_buf, vlen);
+        // Persistent state: UserData >= 0 → text-edit mode (cursor pos); -1 → drag mode
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, key_hash);
+        bool is_focused  = (ctx->FocusKey == key_hash);
+        bool text_mode   = is_focused && ps && (ps->UserData >= 0.f);
 
-        bool is_focused = (ctx->FocusKey == ZUIHashStr(key, (uint32_t)strlen(key)));
-        if (is_focused)
+        // Static edit buffer — shared, switched on focus change like ZUIInputInt
+        static char     s_df_buf[64] = {};
+        static uint64_t s_df_key     = 0;
+
+        if (text_mode)
         {
+            if (s_df_key != key_hash)
+            {
+                snprintf(s_df_buf, sizeof(s_df_buf), "%.6g", (double)*value);
+                s_df_key = key_hash;
+            }
             SetBdrArr(field, ctx->Theme.InputFocusBorder);
+
+            // Accumulate typed characters (digits, '.', '-')
+            for (uint32_t i = 0; i < ctx->TextInputLen; ++i)
+            {
+                char c = ctx->TextInput[i];
+                uint32_t l = (uint32_t)strlen(s_df_buf);
+                if (l < sizeof(s_df_buf) - 1 &&
+                    ((c >= '0' && c <= '9') || c == '.' || c == '-' || c == 'e' || c == 'E'))
+                {
+                    s_df_buf[l] = c; s_df_buf[l+1] = '\0';
+                }
+            }
+            if (ctx->BackspacePressed)
+            {
+                uint32_t l = (uint32_t)strlen(s_df_buf);
+                if (l > 0) s_df_buf[l-1] = '\0';
+            }
+
+            // Display with blinking cursor
+            char display[72];
+            bool show_pipe = (fmodf(ctx->Time, 1.0f) < 0.5f);
+            if (show_pipe) snprintf(display, sizeof(display), "%s|", s_df_buf);
+            else           snprintf(display, sizeof(display), "%s",  s_df_buf);
+            field->Label = ZUIPushStr(&ctx->FrameArena, display, (uint32_t)strlen(display));
+        }
+        else
+        {
+            // Normal drag mode: show value + dim arrow hint when focused
+            char val_buf[40];
+            if (is_focused)
+                snprintf(val_buf, sizeof(val_buf), "%.3f", (double)*value);
+            else
+                snprintf(val_buf, sizeof(val_buf), "%.3f", (double)*value);
+            if (is_focused) SetBdrArr(field, ctx->Theme.InputFocusBorder);
+            uint32_t vlen = (uint32_t)Helpers::secure_strlen(val_buf);
+            field->Label  = ZUIPushStr(&ctx->FrameArena, val_buf, vlen);
         }
 
         ZUISignal sig  = ZUISignalFromBox(ctx, field);
         ZUIPopBox(ctx);
 
-        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
-
         bool changed = false;
-        if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+
+        // Ctrl+click → enter text edit mode
+        if ((sig.Flags & ZUI_SignalClicked) && ctx->CtrlDown && !text_mode)
         {
-            *value  += sig.DragDelta[0] * speed;
-            changed  = true;
+            ctx->FocusKey = key_hash;
+            if (ps) ps->UserData = 0.f; // text edit mode, cursor at 0
+            snprintf(s_df_buf, sizeof(s_df_buf), "%.6g", (double)*value);
+            s_df_key = key_hash;
         }
-        // Arrow key nudge when focused
-        if (is_focused)
+        else if ((sig.Flags & ZUI_SignalClicked) && !ctx->CtrlDown)
         {
-            if (ctx->ArrowUpPressed)   { *value += speed; changed = true; }
-            if (ctx->ArrowDownPressed) { *value -= speed; changed = true; }
+            ctx->FocusKey = key_hash;
+            // Normal click — stay in drag mode
+        }
+
+        // Confirm text edit on Enter/Tab or when focus leaves
+        if (text_mode)
+        {
+            bool confirm = ctx->EnterPressed || (!is_focused);
+            bool cancel  = ctx->EscapePressed;
+            if (confirm || cancel)
+            {
+                if (confirm && s_df_buf[0])
+                {
+                    float parsed = (float)atof(s_df_buf);
+                    if (parsed != *value) { *value = parsed; changed = true; }
+                }
+                if (ps) { ps->UserData = -1.f; } // exit text mode
+                s_df_key = 0; s_df_buf[0] = '\0';
+            }
+        }
+        else
+        {
+            // Normal drag mode
+            if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+            {
+                *value  += sig.DragDelta[0] * speed;
+                changed  = true;
+            }
+            if (is_focused)
+            {
+                if (ctx->ArrowUpPressed)   { *value += speed; changed = true; }
+                if (ctx->ArrowDownPressed) { *value -= speed; changed = true; }
+            }
         }
         return changed;
     }
@@ -1567,7 +1644,9 @@ namespace ZEngine::UI
 
     bool ZUIDragInt(ZUIContext* ctx, const char* key, int* value, float speed, float width_px)
     {
-        uint32_t key_len = (uint32_t)strlen(key);
+        uint32_t key_len  = (uint32_t)strlen(key);
+        uint64_t key_hash = ZUIHashStr(key, key_len);
+
         ZUIBox*  field   = ZUIPushBox(ctx, key, key_len,
                                ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]         = ZPx(width_px);
@@ -1578,31 +1657,82 @@ namespace ZEngine::UI
         SetBdrArr(field, ctx->Theme.InputBorder);
         field->BorderThickness = 1.f;
 
-        bool is_focused = (ctx->FocusKey == ZUIHashStr(key, (uint32_t)strlen(key)));
-        if (is_focused) { SetBdrArr(field, ctx->Theme.InputFocusBorder); }
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, key_hash);
+        bool is_focused  = (ctx->FocusKey == key_hash);
+        bool text_mode   = is_focused && ps && (ps->UserData >= 0.f);
 
-        char buf[16]; snprintf(buf, sizeof(buf), "%d", *value);
-        uint32_t vlen  = (uint32_t)strlen(buf);
-        field->Label   = ZUIPushStr(&ctx->FrameArena, buf, vlen);
+        static char     s_di_buf[32] = {};
+        static uint64_t s_di_key     = 0;
+
+        if (text_mode)
+        {
+            if (s_di_key != key_hash) { snprintf(s_di_buf, sizeof(s_di_buf), "%d", *value); s_di_key = key_hash; }
+            SetBdrArr(field, ctx->Theme.InputFocusBorder);
+            for (uint32_t i = 0; i < ctx->TextInputLen; ++i)
+            {
+                char c = ctx->TextInput[i];
+                uint32_t l = (uint32_t)strlen(s_di_buf);
+                if (l < sizeof(s_di_buf) - 1 && ((c >= '0' && c <= '9') || (c == '-' && l == 0)))
+                    { s_di_buf[l] = c; s_di_buf[l+1] = '\0'; }
+            }
+            if (ctx->BackspacePressed) { uint32_t l=(uint32_t)strlen(s_di_buf); if(l>0) s_di_buf[l-1]='\0'; }
+
+            char display[36];
+            if (fmodf(ctx->Time,1.0f)<0.5f) snprintf(display,sizeof(display),"%s|",s_di_buf);
+            else                             snprintf(display,sizeof(display),"%s", s_di_buf);
+            field->Label = ZUIPushStr(&ctx->FrameArena, display, (uint32_t)strlen(display));
+        }
+        else
+        {
+            if (is_focused) { SetBdrArr(field, ctx->Theme.InputFocusBorder); }
+            char buf[16]; snprintf(buf, sizeof(buf), "%d", *value);
+            field->Label = ZUIPushStr(&ctx->FrameArena, buf, (uint32_t)strlen(buf));
+        }
 
         ZUISignal sig  = ZUISignalFromBox(ctx, field);
         ZUIPopBox(ctx);
 
-        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
-
         bool changed = false;
-        if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+
+        if ((sig.Flags & ZUI_SignalClicked) && ctx->CtrlDown && !text_mode)
         {
-            float fv  = (float)*value + sig.DragDelta[0] * speed;
-            *value    = (int)fv;
-            changed   = true;
+            ctx->FocusKey = key_hash;
+            if (ps) ps->UserData = 0.f;
+            snprintf(s_di_buf, sizeof(s_di_buf), "%d", *value);
+            s_di_key = key_hash;
         }
-        // Arrow key nudge when focused (step = max(1, speed) to at least move by 1)
-        if (is_focused)
+        else if ((sig.Flags & ZUI_SignalClicked) && !ctx->CtrlDown)
         {
-            int step = (int)speed > 0 ? (int)speed : 1;
-            if (ctx->ArrowUpPressed)   { *value += step; changed = true; }
-            if (ctx->ArrowDownPressed) { *value -= step; changed = true; }
+            ctx->FocusKey = key_hash;
+        }
+
+        if (text_mode)
+        {
+            if (ctx->EnterPressed || !is_focused)
+            {
+                if (s_di_buf[0]) { *value = atoi(s_di_buf); changed = true; }
+                if (ps) ps->UserData = -1.f;
+                s_di_key = 0; s_di_buf[0] = '\0';
+            }
+            else if (ctx->EscapePressed)
+            {
+                if (ps) ps->UserData = -1.f;
+                s_di_key = 0; s_di_buf[0] = '\0';
+            }
+        }
+        else
+        {
+            if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+            {
+                float fv = (float)*value + sig.DragDelta[0] * speed;
+                *value = (int)fv; changed = true;
+            }
+            if (is_focused)
+            {
+                int step = (int)speed > 0 ? (int)speed : 1;
+                if (ctx->ArrowUpPressed)   { *value += step; changed = true; }
+                if (ctx->ArrowDownPressed) { *value -= step; changed = true; }
+            }
         }
         return changed;
     }
