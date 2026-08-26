@@ -79,7 +79,70 @@ namespace ZEngine::UI
         return box;
     }
 
-    void ZUIEndScrollRegion(ZUIContext* ctx) { ZUIPopBox(ctx); }
+    void ZUIEndScrollRegion(ZUIContext* ctx)
+    {
+        // Before popping, inject a visible scrollbar if content overflows.
+        // We read prev-frame screen rect from ZUIPersistentState so the thumb
+        // is correctly positioned even though layout hasn't run yet this frame.
+        ZUIBox* sb = ctx->Current;
+        if (sb && sb->Key)
+        {
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, sb->Key);
+            if (ps && ps->MaxScrollY > 1.f && ps->ScreenMaxX > ps->ScreenMinX)
+            {
+                float sx0 = ps->ScreenMinX, sy0 = ps->ScreenMinY;
+                float sx1 = ps->ScreenMaxX, sy1 = ps->ScreenMaxY;
+                float track_h = sy1 - sy0;
+                float content_h = track_h + ps->MaxScrollY;
+                float thumb_h = (content_h > 0.f)
+                              ? (track_h * track_h / content_h) : track_h;
+                if (thumb_h < 18.f) thumb_h = 18.f;
+                if (thumb_h > track_h) thumb_h = track_h;
+                float thumb_y = (ps->MaxScrollY > 0.f)
+                              ? sy0 + (ps->ScrollY / ps->MaxScrollY) * (track_h - thumb_h)
+                              : sy0;
+                const float kBarW = 6.f;
+
+                // Track (dim background strip)
+                char trk[64]; snprintf(trk, sizeof(trk), "##sbtrk_%llu", (unsigned long long)sb->Key);
+                ZUIBox* track = ZUIPushBox(ctx, trk, (uint32_t)strlen(trk),
+                                           ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                track->Size[0]     = ZPx(kBarW); track->Size[1] = ZPx(track_h);
+                track->FloatPos[0] = sx1 - kBarW; track->FloatPos[1] = sy0;
+                ZUIBoxSetColorArr(track, ctx->Theme.ScrollbarBg);
+                track->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+
+                // Thumb (draggable, hover-animated)
+                char thm[64]; snprintf(thm, sizeof(thm), "##sbthm_%llu", (unsigned long long)sb->Key);
+                ZUIBox* thumb = ZUIPushBox(ctx, thm, (uint32_t)strlen(thm),
+                                           ZUI_DrawBackground | ZUI_Clickable |
+                                           ZUI_FloatX | ZUI_FloatY);
+                thumb->Size[0]     = ZPx(kBarW); thumb->Size[1] = ZPx(thumb_h);
+                thumb->FloatPos[0] = sx1 - kBarW; thumb->FloatPos[1] = thumb_y;
+                ZUIBoxSetColorArr(thumb, ctx->Theme.ScrollbarGrab);
+                ZUIBoxSetCornerRadius(thumb, 3.f);
+                thumb->EdgeSoftness = 0.5f;
+
+                ZUISignal tsig = ZUISignalFromBox(ctx, thumb);
+                ApplyHotActive(thumb, ctx,
+                               ctx->Theme.ScrollbarGrab,
+                               ctx->Theme.ScrollbarGrabHov,
+                               ctx->Theme.ScrollbarGrabAct);
+                // Drag thumb → update scroll offset
+                if ((tsig.Flags & ZUI_SignalHeld) && tsig.DragDelta[1] != 0.f)
+                {
+                    float ratio = (track_h - thumb_h) > 0.f
+                                ? ps->MaxScrollY / (track_h - thumb_h) : 0.f;
+                    ps->ScrollY += tsig.DragDelta[1] * ratio;
+                    if (ps->ScrollY < 0.f)            ps->ScrollY = 0.f;
+                    if (ps->ScrollY > ps->MaxScrollY)  ps->ScrollY = ps->MaxScrollY;
+                }
+                ZUIPopBox(ctx);
+            }
+        }
+        ZUIPopBox(ctx);
+    }
 
     void ZUIScrollToBottom(ZUIContext* ctx, const char* key)
     {
@@ -354,7 +417,7 @@ namespace ZEngine::UI
 
         uint32_t len    = (uint32_t)strlen(key);
         ZUIBox*  popup  = ZUIPushBox(ctx, key, len,
-                              ZUI_DrawBackground | ZUI_DrawBorder |
+                              ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow |
                               ZUI_ClipChildren   | ZUI_FloatX | ZUI_FloatY);
         popup->Size[0]          = ZFit();
         popup->Size[1]          = ZFit();
@@ -1256,7 +1319,8 @@ namespace ZEngine::UI
 
         // Modal panel — centred
         ZUIBox* panel = ZUIPushBox(ctx, key, (uint32_t)strlen(key),
-                            ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
+                            ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow |
+                            ZUI_FloatX | ZUI_FloatY);
         panel->Size[0]      = ZPx(mw); panel->Size[1] = ZPx(mh);
         panel->FloatPos[0]  = (sw - mw) * 0.5f;
         panel->FloatPos[1]  = (sh - mh) * 0.5f;
@@ -1750,6 +1814,61 @@ namespace ZEngine::UI
             dragging = (delta != 0.f);
         }
         return dragging;
+    }
+
+    // ================================================================
+    // Plot widgets
+    // ================================================================
+
+    static void PlotSetup(ZUIContext* ctx, const char* key, const float* values, int count,
+                           float v_min, float v_max,
+                           ZUIBoxFlags draw_flag, ZUISize w, ZUISize h)
+    {
+        if (!values || count <= 0) return;
+
+        // Auto-scale
+        if (v_min >= 3.0e+38f || v_max >= 3.0e+38f)
+        {
+            v_min = values[0]; v_max = values[0];
+            for (int i = 1; i < count; ++i)
+            {
+                if (values[i] < v_min) v_min = values[i];
+                if (values[i] > v_max) v_max = values[i];
+            }
+            if (v_min == v_max) { v_min -= 1.f; v_max += 1.f; }
+        }
+
+        // Copy values to FrameArena so they survive until PreparePayload
+        float* data = ZPushArray(&ctx->FrameArena, float, (uint32_t)count);
+        for (int i = 0; i < count; ++i) data[i] = values[i];
+
+        uint32_t klen = (uint32_t)strlen(key);
+        ZUIBox* box   = ZUIPushBox(ctx, key, klen, ZUI_DrawBackground | draw_flag);
+        box->Size[0]  = w;
+        box->Size[1]  = h;
+        // Repurpose Label for data pointer + count (no DrawText flag, so text path skipped)
+        box->Label.Ptr = (const char*)data;
+        box->Label.Len = (uint32_t)count;
+        // Store range in Padding (normally {left,top,right,bottom} but unused for plots)
+        box->Padding[0] = v_min;
+        box->Padding[2] = v_max;
+        SetBgArr(box, ctx->Theme.InputBg);
+        box->EdgeSoftness = 0.f;
+        ZUIPopBox(ctx);
+    }
+
+    void ZUIPlotLines(ZUIContext* ctx, const char* key, const float* values, int count,
+                      float v_scale_min, float v_scale_max, const char* /*overlay_text*/,
+                      ZUISize w, ZUISize h)
+    {
+        PlotSetup(ctx, key, values, count, v_scale_min, v_scale_max, ZUI_DrawPlotLines, w, h);
+    }
+
+    void ZUIPlotHistogram(ZUIContext* ctx, const char* key, const float* values, int count,
+                          float v_scale_min, float v_scale_max, const char* /*overlay_text*/,
+                          ZUISize w, ZUISize h)
+    {
+        PlotSetup(ctx, key, values, count, v_scale_min, v_scale_max, ZUI_DrawPlotBars, w, h);
     }
 
     // ================================================================

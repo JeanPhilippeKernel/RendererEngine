@@ -630,7 +630,7 @@ namespace ZEngine::UI
         char win_key[40];
         snprintf(win_key, sizeof(win_key), "##fp_%llx", (unsigned long long)p->DockKey);
         ZUIBox* win = ZUIBeginColumn(ctx, win_key, ZPx(pw), ZPx(ph));
-        win->Flags      = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder |
+        win->Flags      = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow |
                           ZUI_FloatX  | ZUI_FloatY;
         win->FloatPos[0] = px;
         win->FloatPos[1] = py;

@@ -44,6 +44,9 @@ namespace ZEngine::UI
         ZUI_DrawCheckmark  = 1 << 8,  // ✓ polyline stroke inside the box
         ZUI_DrawCircleFill = 1 << 9,  // filled circle inscribed in box center
         ZUI_DrawTriArrow   = 1 << 10, // collapse arrow; direction from UserData (0=right, 1=down)
+        ZUI_DropShadow     = 1 << 11, // dark offset rect emitted behind background
+        ZUI_DrawPlotLines  = 1 << 12, // line chart; data in Label.Ptr/Len, range in Padding
+        ZUI_DrawPlotBars   = 1 << 13, // bar chart; same data layout as DrawPlotLines
     };
 
     inline ZUIBoxFlags operator|(ZUIBoxFlags a, ZUIBoxFlags b)

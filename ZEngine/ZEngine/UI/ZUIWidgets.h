@@ -313,6 +313,22 @@ namespace ZEngine::UI
     void ZUIEndModal(ZUIContext* ctx);
 
     // ---------------------------------------------------------------
+    // Plot widgets (ZUIDrawList-backed, ImGui PlotLines / PlotHistogram parity)
+    // ---------------------------------------------------------------
+
+    // Line chart. values[count] are sampled in [v_scale_min, v_scale_max].
+    // Pass FLT_MAX for auto-scale. overlay_text drawn centered when non-null.
+    void ZUIPlotLines    (ZUIContext* ctx, const char* key, const float* values, int count,
+                          float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f,
+                          const char* overlay_text = nullptr,
+                          ZUISize w = ZFill(), ZUISize h = ZPx(40.f));
+
+    void ZUIPlotHistogram(ZUIContext* ctx, const char* key, const float* values, int count,
+                          float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f,
+                          const char* overlay_text = nullptr,
+                          ZUISize w = ZFill(), ZUISize h = ZPx(40.f));
+
+    // ---------------------------------------------------------------
     // ZUITreeView — full-featured recursive tree (ImGui TreeNode parity)
     // ---------------------------------------------------------------
 

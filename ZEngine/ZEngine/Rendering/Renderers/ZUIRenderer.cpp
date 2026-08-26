@@ -202,6 +202,17 @@ namespace ZEngine::Rendering::Renderers
 
             float cr = CornersRadius(box->CornerRadii);
 
+            // --- Drop shadow (emitted first, renders behind everything) ---
+            if (box->Flags & ZUI_DropShadow)
+            {
+                float offset = 4.f;
+                uint32_t scol = ZUIPackColor(0.f, 0.f, 0.f, 0.38f);
+                ZUIDrawListAddRectFilled(&ctx->DrawList,
+                    bx0 + offset, by0 + offset,
+                    bx1 + offset, by1 + offset,
+                    scol, cr);
+            }
+
             // --- Hover overlay for clickable boxes without background ---
             if ((box->Flags & ZUI_Clickable) && !(box->Flags & ZUI_DrawBackground))
             {
@@ -317,6 +328,55 @@ namespace ZEngine::Rendering::Renderers
                 float r   = ((bx1-bx0) < (by1-by0) ? (bx1-bx0) : (by1-by0)) * 0.32f;
                 uint32_t cc = ZUIPackColor(box->TextColor);
                 ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, r, cc);
+            }
+
+            // --- Plot lines (ZUIPlotLines) ---
+            if ((box->Flags & ZUI_DrawPlotLines) && box->Label.Ptr && box->Label.Len >= 2)
+            {
+                const float* data   = (const float*)box->Label.Ptr;
+                int          n      = (int)box->Label.Len;
+                float        v_min  = box->Padding[0];
+                float        v_max  = box->Padding[2];
+                float        range  = v_max - v_min; if (range < 1e-6f) range = 1.f;
+                float        pw     = bx1 - bx0, ph = by1 - by0;
+                uint32_t pcol = ZUIPackColor(ctx->Theme.PlotLines);
+                // Emit line segments (n-1 segments for n data points)
+                float prev_x = bx0;
+                float v0     = (data[0] - v_min) / range;
+                if (v0 < 0.f) v0 = 0.f; if (v0 > 1.f) v0 = 1.f;
+                float prev_y = by1 - v0 * ph;
+                for (int i = 1; i < n; ++i)
+                {
+                    float t    = (float)i / (float)(n - 1);
+                    float v    = (data[i] - v_min) / range;
+                    if (v < 0.f) v = 0.f; if (v > 1.f) v = 1.f;
+                    float cx   = bx0 + t * pw;
+                    float cy   = by1 - v * ph;
+                    ZUIDrawListAddLine(&ctx->DrawList, prev_x, prev_y, cx, cy, pcol, 1.5f);
+                    prev_x = cx; prev_y = cy;
+                }
+            }
+
+            // --- Plot histogram (ZUIPlotHistogram) ---
+            if ((box->Flags & ZUI_DrawPlotBars) && box->Label.Ptr && box->Label.Len >= 1)
+            {
+                const float* data  = (const float*)box->Label.Ptr;
+                int          n     = (int)box->Label.Len;
+                float        v_min = box->Padding[0];
+                float        v_max = box->Padding[2];
+                float        range = v_max - v_min; if (range < 1e-6f) range = 1.f;
+                float        pw    = bx1 - bx0, ph = by1 - by0;
+                float        bar_w = pw / (float)n;
+                uint32_t     pcol  = ZUIPackColor(ctx->Theme.PlotHistogram);
+                for (int i = 0; i < n; ++i)
+                {
+                    float v = (data[i] - v_min) / range;
+                    if (v < 0.f) v = 0.f; if (v > 1.f) v = 1.f;
+                    float x0 = bx0 + (float)i * bar_w + 1.f;
+                    float x1 = x0 + bar_w - 2.f;
+                    float y0 = by1 - v * ph;
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, x0, y0, x1, by1, pcol, 0.f);
+                }
             }
 
             // --- Triangle arrow (collapse indicator) ---
