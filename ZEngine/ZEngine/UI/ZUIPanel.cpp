@@ -824,13 +824,12 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::BuildTabBar(ZUIContext* ctx, ZUIPanel* p, float rect[4], bool in_float)
     {
-        float scale = ctx->UIScale;
-        float tab_h = rect[3] - rect[1];
+        float tab_h = rect[3] - rect[1]; // full bar height (28px)
 
         char bar_key[40];
         snprintf(bar_key, sizeof(bar_key), "##tabbar_%llx", (unsigned long long)p->DockKey);
 
-        // Bar background: TitleBgActive (deep blue) when panel focused, TitleBarBg (near-black) otherwise
+        // Bar background
         bool panel_focused = false;
         for (uint32_t pi = 0; pi < PanelCount; ++pi)
             if (&Panels[pi] == p && pi == FocusedPanelIdx) { panel_focused = true; break; }
@@ -848,54 +847,58 @@ namespace ZEngine::UI
             ZUIPanelView* view = p->Views[ti];
             if (!view) { continue; }
             bool is_active = (ti == p->ActiveTab);
+            bool has_color = view->TabColor[3] > 0.01f;
 
+            // Column container: gives each tab its own vertical space in the bar row
             char col_key[64];
             snprintf(col_key, sizeof(col_key), "##tcol_%llx_%u", (unsigned long long)p->DockKey, ti);
             ZUIBox* col = ZUIBeginColumn(ctx, col_key, ZFit(), ZPx(tab_h));
             col->Flags = col->Flags | ZUI_Clickable;
             col->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 1.f);
+            // 2px top gap — gives the "raised" Chrome appearance
+            ZUISpacer(ctx, 2.f);
 
+            // Tab row fills the remaining height within the column
             char tab_key[64];
             snprintf(tab_key, sizeof(tab_key), "##tab_%llx_%u", (unsigned long long)p->DockKey, ti);
             ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFit(), ZFill());
-            // ImGui tab style: active = panel body bg (looks "selected/attached") + bottom accent
-            // Inactive = transparent + subtle hover. No corner radius (flat).
-            tab->Flags = tab->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+            tab->Flags = tab->Flags | ZUI_DrawBackground | ZUI_Clickable;
             tab->EdgeSoftness = 0.f;
-            ZUIBoxSetCornerRadius(tab, 0.f);
+            // Chrome style: only top corners rounded, flat bottom
+            ZUIBoxSetTopRadius(tab, 5.f);
 
-            bool has_color = view->TabColor[3] > 0.01f;
             if (is_active)
             {
-                // Active tab = panel body color (seamlessly "connected" to content)
-                // + thin accent color bottom border (ImGui TabSelectedOverline)
+                // Active tab = panel body color — seamlessly connects to content below
                 ZUIBoxSetColorArr(tab, ctx->Theme.PanelBg);
-                // Bottom border = TabColor if set, else TabActiveBorder (blue)
-                const float* acc = has_color ? view->TabColor : ctx->Theme.TabActiveBorder;
-                tab->BorderColor[0]=acc[0]; tab->BorderColor[1]=acc[1];
-                tab->BorderColor[2]=acc[2]; tab->BorderColor[3]=1.f;
-                tab->BorderThickness = 2.f;
+                // Top accent line (tab's own color or accent blue when panel is focused)
+                if (has_color || panel_focused)
+                {
+                    tab->Flags = tab->Flags | ZUI_DrawBorder;
+                    const float* acc = has_color ? view->TabColor : ctx->Theme.TabActiveBorder;
+                    tab->BorderColor[0]=acc[0]; tab->BorderColor[1]=acc[1];
+                    tab->BorderColor[2]=acc[2]; tab->BorderColor[3]=0.85f;
+                    tab->BorderThickness = 2.f;
+                }
             }
             else
             {
-                if (has_color)
-                {
-                    // Inactive with color: very subtle tint (15%)
-                    // Inactive with color: transparent (matches bar), no border
-                    float bg[4] = {0.f,0.f,0.f,0.f};
-                    ZUIBoxSetColorArr(tab, bg);
-                    tab->BorderThickness = 0.f;
-                }
-                else
-                {
-                    // Inactive no-color: transparent, no border
-                    ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg); // transparent
-                    tab->BorderThickness = 0.f;
-                }
+                // Inactive: slightly lighter than bar background, smooth hover via HotT
+                float inactive[4] = {
+                    bar_bg[0] + 0.07f, bar_bg[1] + 0.04f, bar_bg[2] + 0.02f, 0.90f
+                };
+                float hover_col[4] = {
+                    bar_bg[0] + 0.14f, bar_bg[1] + 0.08f, bar_bg[2] + 0.04f, 1.00f
+                };
+                auto* st = ZUIStateGetOrInsert(&ctx->StateStore, tab->Key);
+                float ht = st ? st->HotT : 0.f;
+                float blended[4];
+                for (int ch = 0; ch < 4; ++ch)
+                    blended[ch] = inactive[ch] + (hover_col[ch] - inactive[ch]) * ht;
+                ZUIBoxSetColorArr(tab, blended);
             }
 
-            ZUISpacer(ctx, 8.f);
+            ZUISpacer(ctx, 10.f);
             ZUILabel(ctx, view->Title,
                      is_active ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
@@ -944,8 +947,8 @@ namespace ZEngine::UI
             }
 
             ZUISignal sig = ZUISignalFromBox(ctx, tab);
-            ZUIEndRow(ctx);
-            ZUIEndColumn(ctx);
+            ZUIEndRow(ctx);    // close tab row
+            ZUIEndColumn(ctx); // close column wrapper
 
             // --- Handle events ---
 
@@ -1067,7 +1070,7 @@ namespace ZEngine::UI
                 p->ReorderAccumX = 0.f;
             }
 
-            ZUISpacer(ctx, 2.f);
+            ZUISpacer(ctx, 2.f); // gap between tabs
         }
 
         ZUIEndRow(ctx);

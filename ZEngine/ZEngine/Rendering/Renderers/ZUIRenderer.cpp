@@ -213,6 +213,15 @@ namespace ZEngine::Rendering::Renderers
                     scol, cr);
             }
 
+            // Per-corner round_flags from CornerRadii — allows top-only, bottom-only, etc.
+            // ZUIBox index→PathRect bit: TL=0→0x1, TR=1→0x2, BR=3→0x4, BL=2→0x8
+            uint32_t rf = 0;
+            if (box->CornerRadii[0] > 0.f) rf |= 0x1; // TL
+            if (box->CornerRadii[1] > 0.f) rf |= 0x2; // TR
+            if (box->CornerRadii[3] > 0.f) rf |= 0x4; // BR
+            if (box->CornerRadii[2] > 0.f) rf |= 0x8; // BL
+            if (rf == 0 && cr > 0.f) rf = 0xF;        // fallback if all are equal nonzero
+
             // --- Hover overlay for clickable boxes without background ---
             if ((box->Flags & ZUI_Clickable) && !(box->Flags & ZUI_DrawBackground))
             {
@@ -220,7 +229,7 @@ namespace ZEngine::Rendering::Renderers
                 if (ps && ps->HotT > 0.01f)
                 {
                     uint32_t oc = ZUIPackColor(0.5f, 0.5f, 0.56f, ps->HotT * 0.15f);
-                    ZUIDrawListAddRectFilled(&ctx->DrawList, bx0, by0, bx1, by1, oc, cr);
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, bx0, by0, bx1, by1, oc, cr, rf);
                 }
             }
 
@@ -232,7 +241,6 @@ namespace ZEngine::Rendering::Renderers
 
                 if (box->TextureIndex != 0xFFFFFFFFu)
                 {
-                    // Textured image
                     ZUIDrawListAddImage(&ctx->DrawList, box->TextureIndex,
                                         bx0, by0, bx1, by1,
                                         0.f, 0.f, 1.f, 1.f,
@@ -240,11 +248,11 @@ namespace ZEngine::Rendering::Renderers
                 }
                 else if (all_same)
                 {
-                    ZUIDrawListAddRectFilled(&ctx->DrawList, bx0, by0, bx1, by1, col0, cr);
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, bx0, by0, bx1, by1, col0, cr, rf);
                 }
                 else
                 {
-                    // Multi-color (gradient) — uses flat rect + per-corner colors
+                    // Gradient quad — flat (no rounding), per-corner colors
                     ZUIDrawListAddRectFilledMultiColor(
                         &ctx->DrawList, bx0, by0, bx1, by1,
                         ZUIPackColor(box->Colors[0]),  // TL
@@ -260,7 +268,7 @@ namespace ZEngine::Rendering::Renderers
                 uint32_t bcol = ZUIPackColor(box->BorderColor);
                 if ((bcol >> 24) > 2)
                     ZUIDrawListAddRect(&ctx->DrawList, bx0, by0, bx1, by1,
-                                        bcol, cr, 0xF, box->BorderThickness);
+                                        bcol, cr, rf ? rf : 0xF, box->BorderThickness);
             }
 
             // --- Text ---
