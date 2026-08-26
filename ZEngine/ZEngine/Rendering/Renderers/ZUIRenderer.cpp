@@ -25,10 +25,13 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->Initialize(Device);
 
         // Per-frame vertex + index buffers
-        // 32768 vertices × 20 bytes = 640 KB/frame
-        // 65536 indices  × 2 bytes  = 128 KB/frame
-        static constexpr uint32_t kMaxVtx = 32768;
-        static constexpr uint32_t kMaxIdx = 65536;
+        // GPU buffer sizes — must match or exceed the draw list's max capacity.
+        // GrowVtx doubles the CPU buffer when exceeded; if CPU > GPU the upload
+        // overflows and corrupts GPU memory (observed as flickering triangles).
+        // 65536 vertices × 20 bytes = 1.3 MB/frame
+        // 131072 indices × 2 bytes  = 256 KB/frame
+        static constexpr uint32_t kMaxVtx = 65536;
+        static constexpr uint32_t kMaxIdx = 131072;
         for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
             VtxBHandles[i] = Device->GpuMem.AllocateBuffer(
@@ -97,8 +100,10 @@ namespace ZEngine::Rendering::Renderers
     {
         if (!ctx || !ctx->Root || !out || !payload_arena) { return; }
 
-        const uint32_t kMaxVtx   = 32768;
-        const uint32_t kMaxIdx   = 65536;
+        // Match GPU buffer sizes exactly — GrowVtx can expand CPU buffers;
+        // if CPU > GPU at upload time we get memory corruption (flickering).
+        const uint32_t kMaxVtx   = 65536;
+        const uint32_t kMaxIdx   = 131072;
         const uint32_t max_boxes = ctx->MaxBoxesPerFrame;
 
         float fb_w = ctx->ScreenW > 0 ? (float)ctx->ScreenW
@@ -446,11 +451,16 @@ namespace ZEngine::Rendering::Renderers
             ? reinterpret_cast<RenderResourceManager*>(Device->RRM) : nullptr;
         if (!rrm) { return; }
 
-        // Upload vertex + index data
+        // Clamp to GPU buffer capacity (65536 vtx, 131072 idx) — safety net
+        static constexpr uint32_t kVtxCap = 65536;
+        static constexpr uint32_t kIdxCap = 131072;
+        uint32_t vtx_upload = (payload.VtxCount > kVtxCap) ? kVtxCap : payload.VtxCount;
+        uint32_t idx_upload = (payload.IdxCount > kIdxCap) ? kIdxCap : payload.IdxCount;
+
         rrm->UpdateBuffer(VtxBHandles[fi], payload.Vtx,
-                          payload.VtxCount * sizeof(ZUIDrawVtx));
+                          vtx_upload * sizeof(ZUIDrawVtx));
         rrm->UpdateBuffer(IdxBHandles[fi], payload.Idx,
-                          payload.IdxCount * sizeof(uint16_t));
+                          idx_upload * sizeof(uint16_t));
 
         primary_cmd->BeginRenderPass(DrawPass, current_fb, true);
         {
@@ -471,6 +481,8 @@ namespace ZEngine::Rendering::Renderers
             {
                 const ZUIDrawListCmd& cmd = payload.Cmds[i];
                 if (cmd.ElemCount == 0) { continue; }
+                // Skip commands that reference indices beyond the clamped upload range
+                if (cmd.IdxOffset + cmd.ElemCount > idx_upload) { continue; }
 
                 // Logical → physical pixel scissor
                 secondary_cb->SetScissor(
