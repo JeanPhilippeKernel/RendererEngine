@@ -1228,19 +1228,19 @@ namespace ZEngine::UI
         snprintf(key, sizeof(key), "##ch_%s", label);
 
         ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZPx(19.f)); // ImGui GetFrameHeight = 19px
-        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->Flags      = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->Padding[0] = 4.f;        // ImGui FramePadding.x — arrow starts 4px from left
         ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
         hdr->LayoutAxis   = ZUIAxis::X;
         hdr->EdgeSoftness = 0.f;
 
-        // Triangle arrow — direction stored in UserData (0=right/collapsed, 1=down/expanded)
+        // Triangle arrow — ImGui: FontSize (13px) wide, color = ImGuiCol_Text
         bool is_open = open && *open;
         char arrow_key[272]; snprintf(arrow_key, sizeof(arrow_key), "##ch_arr_%s", label);
         ZUIBox* arrow = ZUIPushBox(ctx, arrow_key, (uint32_t)strlen(arrow_key),
                                     ZUI_DrawTriArrow);
-        arrow->Size[0] = ZPx(21.f); arrow->Size[1] = ZPx(19.f); // ImGui: FontSize+FramePad*2=21px wide
-        float arrow_col[4] = {0.55f, 0.55f, 0.60f, 1.f};
-        SetTextColor(arrow, arrow_col);
+        arrow->Size[0] = ZPx(13.f); arrow->Size[1] = ZPx(19.f);
+        SetTextColor(arrow, ctx->Theme.TextDefault); // ImGui: always ImGuiCol_Text
         // Write open state to UserData so PreparePayload draws the right direction
         {
             auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
@@ -2372,102 +2372,104 @@ namespace ZEngine::UI
         ZUIEndScrollRegion(ctx);
     }
 
-    // Shared row builder for both node and leaf.
-    // Returns signal from the full-width row box.
+    // Shared row builder — matches ImGui TreeNodeBehavior exactly:
+    //   • FramePadding.x (4px) left offset before indent
+    //   • Arrow color = ImGuiCol_Text (TextDefault, not dim)
+    //   • Label color = TextDefault always (selection shown via background only)
+    //   • Hover/Active = HeaderHoveredBg / HeaderActiveBg (not subtle RowHoverBg)
+    //   • Icon gap = ItemInnerSpacing.x = 4px
     static ZUISignal TV_BuildRow(ZUIContext* ctx, const char* label,
                                   bool selected, bool has_arrow, bool is_open,
                                   const float icon_col[4])
     {
-        float row_h   = ctx->TV_RowH;
-        float indent  = (float)ctx->TV_Depth * ctx->TV_IndentPx;
-        float arrow_w = 14.f; // ImGui tree node: ~FontSize advance; leave 1px breathing room
-        float icon_sz = 12.f; // slightly larger, full-circle radius below
+        const float row_h    = ctx->TV_RowH;
+        const float indent   = (float)ctx->TV_Depth * ctx->TV_IndentPx;
+        const float arrow_w  = 14.f;  // FontSize + 1px (ImGui: g.FontSize = 13)
+        const float icon_sz  = 12.f;
+        const float kPadL    = 4.f;   // ImGui FramePadding.x = 4px
 
         char rk[128]; snprintf(rk, sizeof(rk), "##tvrow_%d_%s", ctx->TV_Depth, label);
 
-        // Full-width row (hit target + background)
         ZUIBox* row  = ZUIPushBox(ctx, rk, (uint32_t)strlen(rk),
                                   ZUI_DrawBackground | ZUI_Clickable);
-        row->Size[0] = ZFill();
-        row->Size[1] = ZPx(row_h);
+        row->Size[0]    = ZFill();
+        row->Size[1]    = ZPx(row_h);
+        row->Padding[0] = kPadL;      // ImGui: FramePadding.x left margin before indent
         row->LayoutAxis = ZUIAxis::X;
 
-        // Selection / hover coloring — lerped via HotT/ActiveT
-        static const float kTVRest[4] = {0.f, 0.f, 0.f, 0.f};
-        if (selected)
-            ZUIBoxSetColorArr(row, ctx->Theme.RowSelectedBg);
-        else
-            ZUIBoxSetColorArr(row, kTVRest);
+        // Background: transparent at rest, teal highlight on hover/select
+        // ImGui: HeaderHovered at 80% opacity, Header (selected) at 31%
+        static const float kRest[4] = {0.f, 0.f, 0.f, 0.f};
+        ZUIBoxSetColorArr(row, selected ? ctx->Theme.RowSelectedBg : kRest);
 
-        // Indent spacer
+        // Depth indent
         if (indent > 0.f)
         {
-            char sk[32]; snprintf(sk, sizeof(sk), "##tvsp_%d_%s", ctx->TV_Depth, label);
-            ZUIBox* sp = ZUIPushBox(ctx, sk, (uint32_t)strlen(sk), ZUI_None);
+            char sk[48]; snprintf(sk, sizeof(sk), "##tvsp_%d_%s", ctx->TV_Depth, label);
+            ZUIBox* sp  = ZUIPushBox(ctx, sk, (uint32_t)strlen(sk), ZUI_None);
             sp->Size[0] = ZPx(indent); sp->Size[1] = ZPx(row_h);
             ZUIPopBox(ctx);
         }
 
-        // Disclosure arrow (or spacer for leaves) — filled triangle via draw list
+        // Disclosure arrow (ImGuiCol_Text color) or blank spacer for leaves
         if (has_arrow)
         {
             char ak[128]; snprintf(ak, sizeof(ak), "##tvarr_%d_%s", ctx->TV_Depth, label);
-            ZUIBox* ab = ZUIPushBox(ctx, ak, (uint32_t)strlen(ak), ZUI_DrawTriArrow);
+            ZUIBox* ab  = ZUIPushBox(ctx, ak, (uint32_t)strlen(ak), ZUI_DrawTriArrow);
             ab->Size[0] = ZPx(arrow_w); ab->Size[1] = ZPx(row_h);
-            float ac[4] = { 0.55f, 0.55f, 0.60f, 1.f };
-            SetTextColor(ab, ac);
-            // Store direction in UserData
-            {
-                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, ab->Key);
-                if (ps) ps->UserData = is_open ? 1.f : 0.f;
-            }
+            // ImGui always uses ImGuiCol_Text for the arrow — never dimmed
+            SetTextColor(ab, ctx->Theme.TextDefault);
+            { auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, ab->Key);
+              if (ps) ps->UserData = is_open ? 1.f : 0.f; }
             ZUIPopBox(ctx);
         }
         else
         {
-            // Leaf — spacer the same width to keep labels aligned
-            char lsk[32]; snprintf(lsk, sizeof(lsk), "##tvlsp_%s", label);
-            ZUIBox* lsp = ZUIPushBox(ctx, lsk, (uint32_t)strlen(lsk), ZUI_None);
+            char lsk[48]; snprintf(lsk, sizeof(lsk), "##tvlsp_%d_%s", ctx->TV_Depth, label);
+            ZUIBox* lsp  = ZUIPushBox(ctx, lsk, (uint32_t)strlen(lsk), ZUI_None);
             lsp->Size[0] = ZPx(arrow_w); lsp->Size[1] = ZPx(row_h);
             ZUIPopBox(ctx);
         }
 
-        // Icon (colored dot)
+        // Icon dot (engine-specific — ImGui has no icon; gap = ItemInnerSpacing.x = 4px)
         if (icon_col)
         {
-            char ik[64]; snprintf(ik, sizeof(ik), "##tvic_%s", label);
-            ZUIBox* ic = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
+            char ik[64]; snprintf(ik, sizeof(ik), "##tvic_%d_%s", ctx->TV_Depth, label);
+            ZUIBox* ic  = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
             ic->Size[0] = ZPx(icon_sz); ic->Size[1] = ZPx(icon_sz);
             ZUIBoxSetColorArr(ic, icon_col);
-            ZUIBoxSetCornerRadius(ic, icon_sz * 0.5f); // full circle
+            ZUIBoxSetCornerRadius(ic, icon_sz * 0.5f);
             ic->EdgeSoftness = 0.5f;
             ZUIPopBox(ctx);
-            // Gap after icon
-            char gk[64]; snprintf(gk, sizeof(gk), "##tvgap_%s", label);
-            ZUIBox* gap = ZUIPushBox(ctx, gk, (uint32_t)strlen(gk), ZUI_None);
-            gap->Size[0] = ZPx(5.f); gap->Size[1] = ZPx(row_h);
+
+            char gk[64]; snprintf(gk, sizeof(gk), "##tvgap_%d_%s", ctx->TV_Depth, label);
+            ZUIBox* gap  = ZUIPushBox(ctx, gk, (uint32_t)strlen(gk), ZUI_None);
+            gap->Size[0] = ZPx(4.f); gap->Size[1] = ZPx(row_h); // ItemInnerSpacing.x
             ZUIPopBox(ctx);
         }
 
-        // Label
+        // Label — ImGui always renders with ImGuiCol_Text regardless of selection
         uint32_t llen = (uint32_t)strlen(label);
         ZUIBox*  lbox = ZUIPushBox(ctx, label, llen, ZUI_DrawText);
         lbox->Size[0] = ZText(); lbox->Size[1] = ZPx(row_h);
-        SetTextColor(lbox, selected ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+        SetTextColor(lbox, ctx->Theme.TextDefault); // ImGui: always ImGuiCol_Text
         ZUIPopBox(ctx);
 
-        // Focus indicator: highlight row bg if keyboard-focused
         bool is_focused = (ctx->FocusKey == row->Key);
 
         ZUISignal sig = ZUISignalFromBox(ctx, row);
         if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = row->Key; }
+
+        // Hover/active: ImGui uses HeaderHovered (strong) not subtle RowHoverBg
         if (!selected)
-            ApplyHotActive(row, ctx, kTVRest, ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
-        // Space/Enter fires as click for keyboard selection
+            ApplyHotActive(row, ctx, kRest,
+                           ctx->Theme.HeaderHoveredBg,  // ImGui ImGuiCol_HeaderHovered
+                           ctx->Theme.HeaderActiveBg);  // ImGui ImGuiCol_HeaderActive
+
         if (is_focused && (ctx->SpacePressed || ctx->EnterPressed))
             sig.Flags = sig.Flags | ZUI_SignalClicked;
-        ZUIPopBox(ctx); // row
 
+        ZUIPopBox(ctx);
         return sig;
     }
 
