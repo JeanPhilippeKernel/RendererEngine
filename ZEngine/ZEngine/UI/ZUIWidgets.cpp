@@ -696,13 +696,17 @@ namespace ZEngine::UI
             ZUIPopBox(ctx);
         }
 
+        bool is_focused = (ctx->FocusKey == track->Key);
+        if (is_focused) { SetBdrArr(track, ctx->Theme.InputFocusBorder); }
+
         ZUISignal sig = ZUISignalFromBox(ctx, track);
         ApplyHotActive(track, ctx, ctx->Theme.InputBg,
                        ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
 
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = track->Key; }
+
         bool changed = false;
-        // Read prev-frame track width from persistent state for accurate drag mapping
         {
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, track->Key);
             float box_w = (ps && ps->ScreenMaxX > ps->ScreenMinX)
@@ -725,6 +729,15 @@ namespace ZEngine::UI
                     changed = true;
                 }
             }
+        }
+        // Arrow key nudge when focused: 1% of range per press
+        if (is_focused)
+        {
+            float step = range / 100.f;
+            if (ctx->ArrowRightPressed || ctx->ArrowUpPressed)
+                { *value += step; if (*value > v_max) *value = v_max; changed = true; }
+            if (ctx->ArrowLeftPressed  || ctx->ArrowDownPressed)
+                { *value -= step; if (*value < v_min) *value = v_min; changed = true; }
         }
         return changed;
     }
