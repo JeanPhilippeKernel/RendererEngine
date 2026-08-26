@@ -402,7 +402,10 @@ namespace ZEngine::Rendering::Renderers
                 bool down = ps && ps->UserData > 0.5f; // 0=right(collapsed) 1=down(expanded)
                 float cx  = (bx0 + bx1) * 0.5f;
                 float cy  = (by0 + by1) * 0.5f;
-                float s   = ((bx1-bx0) < (by1-by0) ? (bx1-bx0) : (by1-by0)) * 0.28f;
+                // Scale from row HEIGHT so the arrow looks the same regardless of
+                // how narrow the container is (tree arrows are narrower than headers).
+                // ImGui: arrow ≈ FontSize * 0.5 * 0.8 ≈ 13 * 0.40 = 5.2px
+                float s   = (by1 - by0) * 0.30f;
                 uint32_t cc = ZUIPackColor(box->TextColor);
                 if (down)
                 {

@@ -402,23 +402,25 @@ namespace ZEngine::UI
 
         ZUIBox* row      = ZUIPushBox(ctx, row_key, row_key_len, ZUI_Clickable);
         row->Size[0]     = ZFill();
-        row->Size[1]     = ZSPx(ctx, 22.f);
+        row->Size[1]     = ZPx(19.f); // ImGui GetFrameHeight = 19px
         row->LayoutAxis  = ZUIAxis::X;
 
-        // Disclosure indicator — ">" (closed) or "v" (open), ASCII-safe
-        const char* indicator     = (open && *open) ? "v " : "> ";
-        uint32_t    indicator_len = 2;
-        ZUIBox* ind   = ZUIPushBox(ctx, indicator, indicator_len, ZUI_DrawText);
+        // Disclosure indicator drawn via ZUI_DrawTriArrow (same as tree view)
+        char ind_key[160]; snprintf(ind_key, sizeof(ind_key), "##tnarr_%s", row_key);
+        ZUIBox* ind   = ZUIPushBox(ctx, ind_key, (uint32_t)strlen(ind_key), ZUI_DrawTriArrow);
         ind->Size[0]  = ZPx(14.f);
-        ind->Size[1]  = ZSPx(ctx, 22.f);
-        SetTextColor(ind, ctx->Theme.TextDim);
-        ZUIPopBox(ctx); // pop indicator
+        ind->Size[1]  = ZPx(19.f);
+        float ind_col[4] = {0.55f, 0.55f, 0.60f, 1.f};
+        SetTextColor(ind, ind_col);
+        { auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, ind->Key);
+          if (ps) ps->UserData = (open && *open) ? 1.f : 0.f; }
+        ZUIPopBox(ctx);
 
         // Label text
         uint32_t label_len = (uint32_t)strlen(label);
         ZUIBox*  txt  = ZUIPushBox(ctx, label, label_len, ZUI_DrawText);
         txt->Size[0]  = ZText();
-        txt->Size[1]  = ZSPx(ctx, 22.f);
+        txt->Size[1]  = ZPx(19.f);
         SetTextColor(txt, ctx->Theme.TextDefault);
         ZUIPopBox(ctx); // pop label
 
@@ -2378,7 +2380,7 @@ namespace ZEngine::UI
     {
         float row_h   = ctx->TV_RowH;
         float indent  = (float)ctx->TV_Depth * ctx->TV_IndentPx;
-        float arrow_w = 21.f; // ImGui: FontSize + FramePadding*2 = 13+4+4 = 21px
+        float arrow_w = 14.f; // ImGui tree node: ~FontSize advance; leave 1px breathing room
         float icon_sz = 12.f; // slightly larger, full-circle radius below
 
         char rk[128]; snprintf(rk, sizeof(rk), "##tvrow_%d_%s", ctx->TV_Depth, label);
