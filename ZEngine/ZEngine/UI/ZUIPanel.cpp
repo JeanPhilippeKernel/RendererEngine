@@ -267,7 +267,36 @@ namespace ZEngine::UI
             Drag.GhostY = ctx->MousePos[1];
 
             if (ctx->MouseReleased[0] && Drag.DropZone == ZUIDropZone::None)
-                Drag.Active = false;
+            {
+                // Released on empty space — tear off tab to new floating panel
+                ZUIPanel* src = Drag.SrcPanel;
+                ZUIPanelView* view = (src && Drag.SrcTabIdx < src->ViewCount)
+                                   ? src->Views[Drag.SrcTabIdx] : nullptr;
+                if (src && view && (src->ViewCount > 1 || src->Floating == false))
+                {
+                    uint64_t new_key = view->Key ? view->Key
+                                     : ZUIDockHashName(view->Title ? view->Title : "tab");
+                    ZUIPanel* np = AddPanel(new_key);
+                    if (np)
+                    {
+                        AddView(np, view);
+                        np->Floating = true;
+                        np->FloatX   = Drag.GhostX - 60.f;
+                        np->FloatY   = Drag.GhostY - kTabBarH;
+                        np->FloatW   = 380.f;
+                        np->FloatH   = 280.f;
+                        FocusPanel(PanelCount - 1);
+                        // Remove from source
+                        for (uint32_t j = Drag.SrcTabIdx; j + 1 < src->ViewCount; ++j)
+                            src->Views[j] = src->Views[j + 1];
+                        --src->ViewCount;
+                        if (src->ActiveTab >= src->ViewCount && src->ViewCount > 0)
+                            src->ActiveTab = src->ViewCount - 1;
+                    }
+                }
+                Drag.Active   = false;
+                Drag.SrcPanel = nullptr;
+            }
 
             if (Drag.Active)
             {
@@ -606,7 +635,9 @@ namespace ZEngine::UI
         }
 
         // Drop zones during drag
-        if (Drag.Active && Drag.HoverNode && Drag.HoverNode->ContentKey == p->DockKey)
+        // Show drop zones for both tab drags AND floating-panel title-bar drags
+        bool float_drag = (Drag.SrcPanel && Drag.SrcPanel->Floating && Drag.SrcPanel->DraggingTitle);
+        if ((Drag.Active || float_drag) && Drag.HoverNode && Drag.HoverNode->ContentKey == p->DockKey)
             BuildDropZones(ctx, p, rect);
     }
 
@@ -1271,9 +1302,16 @@ namespace ZEngine::UI
         {
             ZUIDockNode* dst_node = ZUIDockFindLeaf(DockTree, p->DockKey);
             if (dst_node)
-                CommitDrop(Drag.SrcPanel, Drag.SrcTabIdx, dst_node, hovered);
-            Drag.Active   = false;
-            Drag.SrcPanel = nullptr;
+            {
+                if (Drag.SrcPanel->Floating)
+                    RedockPanel(Drag.SrcPanel, dst_node, hovered); // whole floating panel
+                else
+                    CommitDrop(Drag.SrcPanel, Drag.SrcTabIdx, dst_node, hovered); // single tab
+            }
+            Drag.Active            = false;
+            Drag.SrcPanel          = nullptr;
+            Drag.DropZone          = ZUIDropZone::None;
+            Drag.HoverNode         = nullptr;
         }
     }
 
@@ -1449,7 +1487,8 @@ namespace ZEngine::UI
             }
         }
 
-        p->Floating = false;
+        p->Floating      = false;
+        p->DraggingTitle = false; // always clear drag state when docking
         for (uint32_t pi = 0; pi < PanelCount; ++pi)
             if (&Panels[pi] == p) { FocusPanel(pi); break; }
     }
