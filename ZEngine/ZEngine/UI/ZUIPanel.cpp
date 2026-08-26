@@ -1,5 +1,6 @@
 #include <ZEngine/UI/ZUIPanel.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <ZEngine/UI/ZUIDockSerial.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <cstdio>
@@ -21,6 +22,22 @@ namespace ZEngine::UI
     }
 
     void ZUIPanelManager::Shutdown() {}
+
+    void ZUIPanelManager::SetCentralPanel(uint64_t dock_key)
+    {
+        CentralPanelKey = dock_key;
+        // Mark the corresponding leaf as central so it can be queried
+        if (DockTree)
+        {
+            ZUIDockNode* leaf = ZUIDockFindLeaf(DockTree, dock_key);
+            if (leaf) { leaf->IsCentral = true; }
+        }
+    }
+
+    void ZUIPanelManager::SetLayoutPath(const char* path)
+    {
+        snprintf(LayoutPath, sizeof(LayoutPath), "%s", path ? path : "");
+    }
 
     ZUIPanel* ZUIPanelManager::AddPanel(uint64_t dock_key)
     {
@@ -114,6 +131,13 @@ namespace ZEngine::UI
     {
         float sw = (float)ctx->ScreenW;
         float sh = (float)ctx->ScreenH;
+
+        // Flush pending layout save (triggered by drag/close events last frame)
+        if (LayoutDirty && LayoutPath[0])
+        {
+            ZUIDockSave(this, LayoutPath);
+            LayoutDirty = false;
+        }
 
         if (DockTree)
         {
@@ -259,12 +283,11 @@ namespace ZEngine::UI
                 char buf[80]; snprintf(buf, sizeof(buf), "%s##wm_%u", name, i);
                 if (ZUIMenuItem(ctx, buf) && p->Hidden)
                 {
-                    // Restore hidden panel: try to find a sibling to split with
                     p->Hidden = false;
-                    // Re-insert into tree: split the root node
                     if (DockTree && DockTree->Root && DockTree->Root->ContentKey != 0)
                         ZUIDockSplitH(DockTree, DockTree->Root, 0.75f,
                                       DockTree->Root->ContentKey, p->DockKey);
+                    LayoutDirty = true;
                 }
             }
             ZUIEndMenu(ctx);
@@ -287,6 +310,14 @@ namespace ZEngine::UI
     void ZUIPanelManager::BuildDockedPanel(ZUIContext* ctx, ZUIPanel* p, float rect[4])
     {
         if (!p || p->ViewCount == 0) { return; }
+
+        // Central panel (viewport): no tab bar, no border, no background — pure passthrough
+        if (p->DockKey == CentralPanelKey)
+        {
+            ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
+            if (view) { view->BuildContent(ctx, rect); }
+            return;
+        }
 
         bool is_focused = false;
         for (uint32_t pi = 0; pi < PanelCount; ++pi)
@@ -384,10 +415,10 @@ namespace ZEngine::UI
 
             if (should_close)
             {
-                // Hide panel and collapse its dock slot
                 p->Hidden = true;
                 ZUIDockNode* leaf = ZUIDockFindLeaf(DockTree, p->DockKey);
                 if (leaf) ZUIDockCollapseLeaf(DockTree, leaf);
+                LayoutDirty = true;
             }
         }
 
@@ -531,11 +562,13 @@ namespace ZEngine::UI
                 for (uint32_t j = ti; j+1 < p->ViewCount; ++j) p->Views[j] = p->Views[j+1];
                 --p->ViewCount;
                 if (p->ActiveTab >= p->ViewCount) p->ActiveTab = p->ViewCount-1;
+                LayoutDirty = true;
                 break;
             }
 
             if (!tab_closed && (sig.Flags & ZUI_SignalClicked))
             {
+                if (p->ActiveTab != ti) { LayoutDirty = true; }
                 p->ActiveTab = ti;
                 for (uint32_t pi = 0; pi < PanelCount; ++pi)
                     if (&Panels[pi] == p) { FocusPanel(pi); break; }
@@ -705,7 +738,8 @@ namespace ZEngine::UI
             bool in_rect=(mx>=dx0&&mx<=dx1&&my>=dy0&&my<=dy1);
             bool& dragging=m_split_dividers[di].Dragging;
             if (ctx->MousePressed[0] && in_rect) dragging=true;
-            if (ctx->MouseReleased[0])            dragging=false;
+            if (ctx->MouseReleased[0] && dragging) { dragging=false; LayoutDirty=true; }
+            else if (ctx->MouseReleased[0]) dragging=false;
 
             if (dragging && ctx->MouseDown[0])
             {
@@ -746,6 +780,7 @@ namespace ZEngine::UI
                                       ZUIDockNode* dst, ZUIDropZone zone)
     {
         if (!src || !dst) return;
+        LayoutDirty = true; // structural change → save next frame
 
         if (tab_idx == kWholePanel)
         {

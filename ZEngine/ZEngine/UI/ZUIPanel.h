@@ -83,6 +83,13 @@ namespace ZEngine::UI
         uint32_t     PanelCount      = 0;
         uint32_t     FocusedPanelIdx = 0;
 
+        // Central node: the viewport panel key — rendered without chrome
+        uint64_t     CentralPanelKey = 0;
+
+        // Ini persistence
+        char         LayoutPath[256] = {};  // set before first BuildUI; empty = no persistence
+        bool         LayoutDirty     = false;
+
         ZUIDragDockState Drag;
 
         void Init    (ArenaAllocator* arena);
@@ -94,6 +101,9 @@ namespace ZEngine::UI
         void BuildUI(ZUIContext* ctx, float menu_h, float status_h);
 
         ZUIPanel* FindPanel(uint64_t dock_key);
+
+        void SetCentralPanel(uint64_t dock_key);
+        void SetLayoutPath(const char* path);
 
     private:
         struct SplitDivider

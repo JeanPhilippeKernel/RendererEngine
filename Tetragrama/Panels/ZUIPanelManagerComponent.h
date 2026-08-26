@@ -3,6 +3,7 @@
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <Tetragrama/Panels/EditorPanels.h>
 #include <ZEngine/UI/ZUIPanel.h>
+#include <ZEngine/UI/ZUIDockSerial.h>
 
 namespace Tetragrama::Panels
 {
@@ -81,6 +82,13 @@ namespace Tetragrama::Panels
             auto* p_out  = Manager.AddPanel(ZUIDockHashName("Output"));
             Manager.AddView(p_out, &output);
             Manager.AddView(p_out, &content); // Content Browser tab
+
+            // Viewport is the central passthrough node — no chrome, full rect to scene
+            Manager.SetCentralPanel(ZUIDockHashName("Viewport"));
+
+            // Ini persistence — save to / load from zui_layout.ini next to the binary
+            Manager.SetLayoutPath("zui_layout.ini");
+            ZUIDockLoad(&Manager, "zui_layout.ini"); // no-op if file not found
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override

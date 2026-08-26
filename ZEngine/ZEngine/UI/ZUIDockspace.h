@@ -45,6 +45,9 @@ namespace ZEngine::UI
         // computed each frame by ZUIDockLayout
         float RectMin[2]      = {};
         float RectMax[2]      = {};
+
+        // Central node: passthrough for 3D viewport — no chrome, no click interception
+        bool  IsCentral       = false;
     };
 
     struct ZUIDockTree
