@@ -21,14 +21,26 @@ namespace ZEngine::UI
         // All values are linear 0-1; hex refs are perceptual sRGB for designer reference.
 
         // --- Backgrounds ---
-        float WindowBg[4]       = {0.118f,0.118f,0.118f,1.00f}; // #1e1e1e  root fill
-        float PanelBg[4]        = {0.145f,0.145f,0.149f,1.00f}; // #252526  panel body
+        // ImGui StyleColorsDark-matched values for all interactive states.
+        // Accent blue = (0.26, 0.59, 0.98) at varying alpha levels.
+
+        // --- Backgrounds ---
+        float WindowBg[4]       = {0.060f,0.060f,0.060f,0.94f}; // ImGui WindowBg
+        float PanelBg[4]        = {0.080f,0.080f,0.080f,0.94f}; // ImGui PopupBg-ish
         float PanelBgAlt[4]     = {0.110f,0.110f,0.114f,1.00f}; // slightly darker alt rows
-        float TitleBarBg[4]     = {0.176f,0.176f,0.176f,1.00f}; // #2d2d2d  tab bar strip
-        float HeaderBg[4]       = {0.200f,0.200f,0.204f,1.00f}; // #333334  collapsing headers
-        float MenuBarBg[4]      = {0.200f,0.200f,0.200f,1.00f}; // #333333  top menu bar
-        float InputBg[4]        = {0.094f,0.094f,0.094f,1.00f}; // #181818  input / drag fields
-        float ButtonBg[4]       = {0.000f,0.475f,0.800f,0.55f}; // #007acc  accent button
+        float TitleBarBg[4]     = {0.040f,0.040f,0.040f,1.00f}; // ImGui TitleBg
+        float HeaderBg[4]       = {0.260f,0.590f,0.980f,0.31f}; // ImGui Header
+        float MenuBarBg[4]      = {0.140f,0.140f,0.140f,1.00f}; // ImGui MenuBarBg
+        float InputBg[4]        = {0.160f,0.290f,0.480f,0.54f}; // ImGui FrameBg
+        float ButtonBg[4]       = {0.260f,0.590f,0.980f,0.40f}; // ImGui Button
+
+        // Interactive state variants (rest → hover → active)
+        float ButtonHoveredBg[4]  = {0.260f,0.590f,0.980f,1.00f}; // ImGui ButtonHovered
+        float ButtonActiveBg[4]   = {0.060f,0.530f,0.980f,1.00f}; // ImGui ButtonActive
+        float InputHoveredBg[4]   = {0.260f,0.590f,0.980f,0.40f}; // ImGui FrameBgHovered
+        float InputActiveBg[4]    = {0.260f,0.590f,0.980f,0.67f}; // ImGui FrameBgActive
+        float HeaderHoveredBg[4]  = {0.260f,0.590f,0.980f,0.80f}; // ImGui HeaderHovered
+        float HeaderActiveBg[4]   = {0.260f,0.590f,0.980f,1.00f}; // ImGui HeaderActive
 
         // --- Tabs ---
         float TabActiveBg[4]    = {0.118f,0.118f,0.118f,1.00f}; // #1e1e1e  active = editor bg
@@ -53,23 +65,48 @@ namespace ZEngine::UI
         float TextError[4]      = {0.937f,0.325f,0.314f,1.00f}; // #ef5350  errors
 
         // --- Borders ---
-        float PanelBorder[4]       = {0.220f,0.220f,0.220f,1.00f}; // #383838 subtle
-        float PanelFocusBorder[4]  = {0.000f,0.475f,0.800f,1.00f}; // #007acc focus accent
+        // Widget accent marks
+        float CheckMark[4]        = {0.260f,0.590f,0.980f,1.00f}; // ImGui CheckMark
+        float SliderGrab[4]       = {0.240f,0.520f,0.880f,1.00f}; // ImGui SliderGrab
+        float SliderGrabActive[4] = {0.260f,0.590f,0.980f,1.00f}; // ImGui SliderGrabActive
+
+        // Scrollbar
+        float ScrollbarBg[4]      = {0.020f,0.020f,0.020f,0.53f}; // ImGui ScrollbarBg
+        float ScrollbarGrab[4]    = {0.310f,0.310f,0.310f,1.00f}; // ImGui ScrollbarGrab
+        float ScrollbarGrabHov[4] = {0.410f,0.410f,0.410f,1.00f}; // ImGui ScrollbarGrabHovered
+        float ScrollbarGrabAct[4] = {0.510f,0.510f,0.510f,1.00f}; // ImGui ScrollbarGrabActive
+
+        // Plot
+        float PlotLines[4]        = {0.610f,0.610f,0.610f,1.00f}; // ImGui PlotLines
+        float PlotLinesHov[4]     = {1.000f,0.430f,0.350f,1.00f}; // ImGui PlotLinesHovered
+        float PlotHistogram[4]    = {0.900f,0.700f,0.000f,1.00f}; // ImGui PlotHistogram
+        float PlotHistogramHov[4] = {1.000f,0.600f,0.000f,1.00f}; // ImGui PlotHistogramHovered
+
+        // Table
+        float TableRowBgAlt[4]    = {1.000f,1.000f,1.000f,0.06f}; // ImGui TableRowBgAlt
+
+        // --- Borders ---
+        float PanelBorder[4]       = {0.430f,0.430f,0.500f,0.50f}; // ImGui Border
+        float PanelFocusBorder[4]  = {0.260f,0.590f,0.980f,1.00f}; // accent = active blue
         float PanelInactiveOverlay[4]={0.f,  0.f,  0.f,  0.06f };  // 6% black dim
-        float ButtonBorder[4]      = {0.280f,0.280f,0.320f,0.80f};
-        float InputBorder[4]       = {0.280f,0.280f,0.320f,0.80f};
-        float InputFocusBorder[4]  = {0.000f,0.475f,0.800f,1.00f}; // #007acc
-        float Separator[4]         = {0.200f,0.200f,0.200f,0.70f}; // #333333 at 70%
+        float ButtonBorder[4]      = {0.430f,0.430f,0.500f,0.50f};
+        float InputBorder[4]       = {0.430f,0.430f,0.500f,0.50f};
+        float InputFocusBorder[4]  = {0.260f,0.590f,0.980f,1.00f}; // active blue
+        float Separator[4]         = {0.430f,0.430f,0.500f,0.50f}; // ImGui Separator
     };
 
     struct ZUIPersistentState
     {
-        float HotT      = 0.f;
-        float ActiveT   = 0.f;
-        float ScrollX   = 0.f;
-        float ScrollY   = 0.f;
-        float MaxScrollY= 0.f; // set by layout solver; clamped in interaction pass
-        float UserData  = 0.f; // general-purpose (tab selected index, open bool, etc.)
+        float HotT       = 0.f;
+        float ActiveT    = 0.f;
+        float ScrollX    = 0.f;
+        float ScrollY    = 0.f;
+        float MaxScrollY = 0.f; // set by layout solver; clamped in interaction pass
+        float UserData   = 0.f; // general-purpose (tab index, open bool, slider width, etc.)
+        float ScreenMinX = 0.f; // prev-frame screen position — written by layout, read next frame
+        float ScreenMinY = 0.f;
+        float ScreenMaxX = 0.f;
+        float ScreenMaxY = 0.f;
     };
 
     struct ZUIPersistentSlot

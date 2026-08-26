@@ -24,6 +24,22 @@ namespace ZEngine::UI
         b->BorderColor[2]=c[2]; b->BorderColor[3]=c[3];
     }
 
+    // Lerp box background through rest → hover → active using HotT/ActiveT.
+    // Call AFTER ZUISignalFromBox so the persistent state is already updated this frame.
+    static void ApplyHotActive(ZUIBox* box, ZUIContext* ctx,
+                                const float rest[4], const float hov[4], const float act[4])
+    {
+        ZUIPersistentState* st = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+        if (!st) return;
+        float ht = st->HotT, at = st->ActiveT;
+        for (int ch = 0; ch < 4; ++ch)
+        {
+            float col = rest[ch] + (hov[ch] - rest[ch]) * ht
+                                 + (act[ch] - hov[ch]) * at;
+            for (int k = 0; k < 4; ++k) box->Colors[k][ch] = col;
+        }
+    }
+
     // ---------------------------------------------------------------
     // Layout containers
     // ---------------------------------------------------------------
@@ -138,6 +154,9 @@ namespace ZEngine::UI
         if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
+        if (!ctx->Disabled)
+            ApplyHotActive(box, ctx, ctx->Theme.ButtonBg,
+                           ctx->Theme.ButtonHoveredBg, ctx->Theme.ButtonActiveBg);
         ZUIPopBox(ctx);
         return sig;
     }
@@ -158,6 +177,9 @@ namespace ZEngine::UI
         if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
+        if (!ctx->Disabled)
+            ApplyHotActive(box, ctx, ctx->Theme.ButtonBg,
+                           ctx->Theme.ButtonHoveredBg, ctx->Theme.ButtonActiveBg);
         ZUIPopBox(ctx);
         return sig;
     }
@@ -544,31 +566,66 @@ namespace ZEngine::UI
         SetBdrArr(track, ctx->Theme.InputBorder);
         track->BorderThickness = 1.f;
 
+        // Fill bar (ZPct of track width based on normalised value)
+        {
+            char fk[64]; snprintf(fk, sizeof(fk), "##sf_fill_%s", key);
+            ZUIBox* fill = ZUIPushBox(ctx, fk, (uint32_t)strlen(fk), ZUI_DrawBackground);
+            fill->Size[0] = ZPct(fraction);
+            fill->Size[1] = ZFill();
+            float fc[4] = {ctx->Theme.SliderGrab[0], ctx->Theme.SliderGrab[1],
+                           ctx->Theme.SliderGrab[2], 0.55f};
+            ZUIBoxSetColorArr(fill, fc);
+            fill->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+        }
+        // Thumb (8px square for now — Phase 2 upgrades to circle via ZUIDrawList)
+        {
+            char tk[64]; snprintf(tk, sizeof(tk), "##sf_thumb_%s", key);
+            ZUIBox* thumb = ZUIPushBox(ctx, tk, (uint32_t)strlen(tk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+            float th = 14.f, tw = 10.f;
+            // Position uses prev-frame track screen coords
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, track->Key);
+            float trk_x0 = ps ? ps->ScreenMinX : 0.f;
+            float trk_w  = ps ? (ps->ScreenMaxX - ps->ScreenMinX) : 120.f;
+            float trk_y0 = ps ? ps->ScreenMinY : 0.f;
+            float trk_h  = ps ? (ps->ScreenMaxY - ps->ScreenMinY) : 22.f;
+            thumb->FloatPos[0] = trk_x0 + fraction * trk_w - tw * 0.5f;
+            thumb->FloatPos[1] = trk_y0 + (trk_h - th) * 0.5f;
+            thumb->Size[0] = ZPx(tw); thumb->Size[1] = ZPx(th);
+            ZUIBoxSetColorArr(thumb, ctx->Theme.SliderGrab);
+            ZUIBoxSetCornerRadius(thumb, 3.f);
+            thumb->EdgeSoftness = 0.5f;
+            ZUIPopBox(ctx);
+        }
+
         ZUISignal sig = ZUISignalFromBox(ctx, track);
+        ApplyHotActive(track, ctx, ctx->Theme.InputBg,
+                       ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
 
         bool changed = false;
-        if (sig.Flags & ZUI_SignalHeld)
+        // Read prev-frame track width from persistent state for accurate drag mapping
         {
-            // Map horizontal drag to value change
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, track->Key);
-            // Box width isn't available until next frame; use 120 px estimate
-            float box_w = 120.f;
-            *value += sig.DragDelta[0] * (range / box_w);
-            if (*value < v_min) *value = v_min;
-            if (*value > v_max) *value = v_max;
-            changed = (sig.DragDelta[0] != 0.f);
-        }
-        else if ((sig.Flags & ZUI_SignalClicked) || (sig.Flags & ZUI_SignalPressed))
-        {
-            // Click on track: jump to position
-            float pos = ctx->MousePos[0] - track->ScreenMin[0];
-            float box_w = track->ScreenMax[0] - track->ScreenMin[0];
-            if (box_w > 0.f) {
-                *value = v_min + (pos / box_w) * range;
+            float box_w = (ps && ps->ScreenMaxX > ps->ScreenMinX)
+                         ? (ps->ScreenMaxX - ps->ScreenMinX) : 120.f;
+
+            if (sig.Flags & ZUI_SignalHeld)
+            {
+                *value += sig.DragDelta[0] * (range / box_w);
                 if (*value < v_min) *value = v_min;
                 if (*value > v_max) *value = v_max;
-                changed = true;
+                changed = (sig.DragDelta[0] != 0.f);
+            }
+            else if (sig.Flags & ZUI_SignalPressed)
+            {
+                float pos = ctx->MousePos[0] - (ps ? ps->ScreenMinX : ctx->MousePos[0]);
+                if (box_w > 0.f) {
+                    *value = v_min + (pos / box_w) * range;
+                    if (*value < v_min) *value = v_min;
+                    if (*value > v_max) *value = v_max;
+                    changed = true;
+                }
             }
         }
         return changed;
@@ -842,19 +899,25 @@ namespace ZEngine::UI
         row->Flags       = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
         row->LayoutAxis  = ZUIAxis::X;
 
-        // Tick box
-        bool active = checked && *checked;
-        ZUIBox* box  = ZUIPushBox(ctx, "##tick", 6,
-                            ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DrawText);
+        // Tick box — bg lerps from InputBg (rest) → InputHoveredBg (hover) → InputActiveBg (active)
+        bool is_checked = checked && *checked;
+        char tick_key[32]; snprintf(tick_key, sizeof(tick_key), "##tick_%s", label);
+        ZUIBox* box  = ZUIPushBox(ctx, tick_key, (uint32_t)strlen(tick_key),
+                            ZUI_DrawBackground | ZUI_DrawBorder | (is_checked ? ZUI_DrawText : ZUI_None));
         box->Size[0] = ZPx(16.f); box->Size[1] = ZPx(16.f);
         SetBgArr(box, ctx->Theme.InputBg);
-        SetBdrArr(box, active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
+        SetBdrArr(box, is_checked ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
         box->BorderThickness = 1.f;
-        if (active) {
+        ZUIBoxSetCornerRadius(box, 2.f);
+        if (is_checked) {
             box->Label = ZUIPushStr(&ctx->FrameArena, "v", 1);
-            SetTextColor(box, ctx->Theme.InputFocusBorder);
+            SetTextColor(box, ctx->Theme.CheckMark);
         }
+        ZUISignal tick_sig = ZUISignalFromBox(ctx, box);
+        ApplyHotActive(box, ctx, ctx->Theme.InputBg,
+                       ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
+        (void)tick_sig;
 
         ZUISpacer(ctx, 6.f);
         ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
@@ -879,18 +942,24 @@ namespace ZEngine::UI
         row->Flags       = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
         row->LayoutAxis  = ZUIAxis::X;
 
-        bool active = selected && (*selected == index);
-        ZUIBox* circle = ZUIPushBox(ctx, "##dot", 5,
-                              ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DrawText);
+        bool is_active = selected && (*selected == index);
+        char dot_key[64]; snprintf(dot_key, sizeof(dot_key), "##dot_%s_%d", label, index);
+        ZUIBox* circle = ZUIPushBox(ctx, dot_key, (uint32_t)strlen(dot_key),
+                              ZUI_DrawBackground | ZUI_DrawBorder | (is_active ? ZUI_DrawText : ZUI_None));
         circle->Size[0] = ZPx(16.f); circle->Size[1] = ZPx(16.f);
         SetBgArr(circle, ctx->Theme.InputBg);
-        SetBdrArr(circle, active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
+        SetBdrArr(circle, is_active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
         circle->BorderThickness = 1.f;
-        if (active) {
+        ZUIBoxSetCornerRadius(circle, 8.f); // full circle
+        if (is_active) {
             circle->Label = ZUIPushStr(&ctx->FrameArena, "*", 1);
-            SetTextColor(circle, ctx->Theme.InputFocusBorder);
+            SetTextColor(circle, ctx->Theme.CheckMark);
         }
+        ZUISignal dot_sig = ZUISignalFromBox(ctx, circle);
+        ApplyHotActive(circle, ctx, ctx->Theme.InputBg,
+                       ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
+        (void)dot_sig;
 
         ZUISpacer(ctx, 6.f);
         ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
@@ -994,6 +1063,8 @@ namespace ZEngine::UI
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
         ZUISignal sig = ZUISignalFromBox(ctx, hdr);
+        ApplyHotActive(hdr, ctx, ctx->Theme.HeaderBg,
+                       ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
         ZUIEndRow(ctx);
 
         if ((sig.Flags & ZUI_SignalClicked) && open) { *open = !(*open); }
@@ -1007,18 +1078,22 @@ namespace ZEngine::UI
 
         ZUIBox* row = ZUIBeginRow(ctx, key, ZFill(), h);
         row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        if (selected && *selected) {
+
+        // Use RowSelectedBg for selected, transparent for rest — hover lerps via HotT
+        static const float kTransparent[4] = {0.f, 0.f, 0.f, 0.f};
+        if (selected && *selected)
             ZUIBoxSetColorArr(row, ctx->Theme.RowSelectedBg);
-        } else {
-            // Transparent initially; hover tint is blended in by PreparePayload via HotT.
-            ZUIBoxSetColorArr(row, ctx->Theme.RowHoverBg);
-            row->Colors[0][3]=row->Colors[1][3]=row->Colors[2][3]=row->Colors[3][3]=0.f;
-        }
+        else
+            ZUIBoxSetColorArr(row, kTransparent);
 
         ZUISpacer(ctx, 6.f);
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
         ZUISignal sig = ZUISignalFromBox(ctx, row);
+        // Lerp transparent → RowHoverBg → RowSelectedBg
+        if (!(selected && *selected))
+            ApplyHotActive(row, ctx, kTransparent,
+                           ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
         ZUIEndRow(ctx);
 
         if ((sig.Flags & ZUI_SignalClicked) && selected)
@@ -1127,19 +1202,18 @@ namespace ZEngine::UI
         btn->EdgeSoftness = 0.f;
         ZUIBoxSetCornerRadius(btn, 0.f);
 
-        // Hover / active coloring
-        bool hovered = (ctx->HotKey    == btn->Key);
-        bool active  = (ctx->ActiveKey == btn->Key);
-        if (active && enabled)
-            ZUIBoxSetColor(btn, 0.22f, 0.22f, 0.26f, 1.f);
-        else if (hovered && enabled)
-            ZUIBoxSetColor(btn, 0.18f, 0.18f, 0.22f, 1.f);
-        else
-            ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f); // transparent default
-
+        ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f); // transparent rest
         SetTextColor(btn, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, btn);
+        if (enabled)
+        {
+            // Lerped hover/active: transparent → menu hover → active
+            static const float kMenuRest[4] = {0.f, 0.f, 0.f, 0.f};
+            static const float kMenuHov[4]  = {0.18f,0.18f,0.22f,1.f};
+            static const float kMenuAct[4]  = {0.22f,0.22f,0.26f,1.f};
+            ApplyHotActive(btn, ctx, kMenuRest, kMenuHov, kMenuAct);
+        }
         ZUIPopBox(ctx);
 
         if ((sig.Flags & ZUI_SignalClicked) && enabled)
@@ -1617,9 +1691,10 @@ namespace ZEngine::UI
             SetBdrArr(field, ctx->Theme.InputBorder);
         }
 
-        // Build display string: add blinking cursor "|" when focused
+        // Build display string: blinking cursor at 2 Hz when focused
         char display[512];
-        if (is_focused)
+        bool show_cursor = is_focused && (fmodf(ctx->Time, 1.0f) < 0.5f);
+        if (show_cursor)
             snprintf(display, sizeof(display), "%s|", buf);
         else
             snprintf(display, sizeof(display), "%s",  buf);
@@ -1713,25 +1788,24 @@ namespace ZEngine::UI
         cell->Size[1]  = ZPx(ctx->GV_ItemH);
         cell->LayoutAxis = ZUIAxis::Y;
 
-        bool hovered = (ctx->HotKey == cell->Key);
+        float cell_bg[4] = { ctx->Theme.PanelBgAlt[0], ctx->Theme.PanelBgAlt[1],
+                             ctx->Theme.PanelBgAlt[2], 0.8f };
         if (selected)
             ZUIBoxSetColorArr(cell, ctx->Theme.RowSelectedBg);
-        else if (hovered)
-            ZUIBoxSetColorArr(cell, ctx->Theme.RowHoverBg);
         else
-            ZUIBoxSetColor(cell, ctx->Theme.PanelBgAlt[0], ctx->Theme.PanelBgAlt[1],
-                           ctx->Theme.PanelBgAlt[2], 0.8f);
+            ZUIBoxSetColorArr(cell, cell_bg);
 
-        float border_alpha = selected ? 0.8f : (hovered ? 0.5f : 0.2f);
         cell->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
         cell->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
         cell->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
-        cell->BorderColor[3] = border_alpha;
+        cell->BorderColor[3] = 0.2f;
         cell->BorderThickness = 1.f;
         ZUIBoxSetCornerRadius(cell, 4.f);
         cell->EdgeSoftness = 0.f;
 
         ZUISignal sig = ZUISignalFromBox(ctx, cell);
+        if (!selected)
+            ApplyHotActive(cell, ctx, cell_bg, ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
         // Note: cell stays open (NOT popped) — caller adds content, then calls EndItem
         ctx->GV_CurCol++;
         return (sig.Flags & ZUI_SignalClicked) != 0;
@@ -1801,14 +1875,12 @@ namespace ZEngine::UI
         row->Size[1] = ZPx(row_h);
         row->LayoutAxis = ZUIAxis::X;
 
-        // Selection / hover coloring (check previous-frame signal via HotKey/ActiveKey)
-        bool hovered = (ctx->HotKey == row->Key);
+        // Selection / hover coloring — lerped via HotT/ActiveT
+        static const float kTVRest[4] = {0.f, 0.f, 0.f, 0.f};
         if (selected)
             ZUIBoxSetColorArr(row, ctx->Theme.RowSelectedBg);
-        else if (hovered)
-            ZUIBoxSetColorArr(row, ctx->Theme.RowHoverBg);
         else
-            ZUIBoxSetColor(row, 0.f, 0.f, 0.f, 0.f);
+            ZUIBoxSetColorArr(row, kTVRest);
 
         // Indent spacer
         if (indent > 0.f)
@@ -1864,6 +1936,8 @@ namespace ZEngine::UI
         ZUIPopBox(ctx);
 
         ZUISignal sig = ZUISignalFromBox(ctx, row);
+        if (!selected)
+            ApplyHotActive(row, ctx, kTVRest, ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
         ZUIPopBox(ctx); // row
 
         return sig;
@@ -2128,10 +2202,12 @@ namespace ZEngine::UI
         row->EdgeSoftness = 0.f;
 
         ZUISignal rsig = ZUISignalFromBox(ctx, row);
-        // Apply hover overlay
-        bool hovered = (ctx->HotKey == row->Key);
-        if (hovered && !selected)
-            ZUIBoxSetColorArr(row, ctx->Theme.RowHoverBg);
+        // Lerped hover via HotT
+        if (!selected)
+        {
+            static const float kDTRest[4] = {0.f,0.f,0.f,0.f};
+            ApplyHotActive(row, ctx, kDTRest, ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
+        }
 
         ctx->DT_RowBox = row;
         ctx->DT_InRow  = true;

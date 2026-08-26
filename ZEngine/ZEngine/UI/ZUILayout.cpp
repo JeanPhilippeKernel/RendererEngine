@@ -235,6 +235,17 @@ namespace ZEngine::UI
 
             box->ScreenMax[0] = box->ScreenMin[0] + box->ComputedSize[0];
             box->ScreenMax[1] = box->ScreenMin[1] + box->ComputedSize[1];
+
+            // Persist screen rect for next-frame access (e.g. slider width, draw-list positions)
+            if (box->Key && (box->Flags & ZUI_Clickable))
+            {
+                ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+                if (ps)
+                {
+                    ps->ScreenMinX = box->ScreenMin[0]; ps->ScreenMinY = box->ScreenMin[1];
+                    ps->ScreenMaxX = box->ScreenMax[0]; ps->ScreenMaxY = box->ScreenMax[1];
+                }
+            }
         }
 
         // ---------------------------------------------------------------

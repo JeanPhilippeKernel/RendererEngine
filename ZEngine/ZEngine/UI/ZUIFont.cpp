@@ -68,7 +68,7 @@ namespace ZEngine::UI
 
         stbtt_pack_context pack_ctx = {};
         stbtt_PackBegin(&pack_ctx, single_ch, (int)kAtlasW, (int)kAtlasH, 0, 1, nullptr);
-        stbtt_PackSetOversampling(&pack_ctx, 2, 1); // ImGui default: horizontal only
+        stbtt_PackSetOversampling(&pack_ctx, 3, 1); // OversampleH=3 for crisper glyphs (ImGui quality)
         for (int i = 0; i < 3; ++i)
         {
             stbtt_PackFontRange(&pack_ctx, ttf_data, 0, kSizes[i],
