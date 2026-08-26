@@ -94,6 +94,17 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
             m_ctx->KeyRepeatTimer   = 0.f;
         }
 
+        // Tab / Shift+Tab: cycle focus between interactive widgets
+        if (key == ZENGINE_KEY_TAB)
+        {
+            if (m_ctx->ShiftDown) m_ctx->ShiftTabPressed = true;
+            else                   m_ctx->TabPressed      = true;
+        }
+        // Escape: drop keyboard focus; Enter: confirm and drop focus
+        if (key == ZENGINE_KEY_ESCAPE) m_ctx->EscapePressed = true;
+        if (key == ZENGINE_KEY_ENTER || key == ZENGINE_KEY_KP_ENTER)
+            m_ctx->EnterPressed = true;
+
         // Clipboard paste: Ctrl+V → inject clipboard text into TextInput
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
         {

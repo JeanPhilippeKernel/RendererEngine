@@ -103,6 +103,17 @@ namespace ZEngine::UI
             signal.ScrollDelta  = ctx->ScrollDelta;
         }
 
+        // Tab focus order tracking — builds prev/next chain during the widget build pass
+        if ((ctx->TabPressed || ctx->ShiftTabPressed) && (box->Flags & ZUI_Clickable))
+        {
+            uint64_t k = box->Key;
+            if (ctx->TabNavFirstKey == 0)                    ctx->TabNavFirstKey = k;
+            if (!ctx->TabNavSeenFocus)                       ctx->TabNavPrevKey  = k;
+            if (ctx->TabNavSeenFocus && !ctx->TabNavNextKey) ctx->TabNavNextKey  = k;
+            if (k == ctx->FocusKey)                          ctx->TabNavSeenFocus = true;
+            ctx->TabNavLastKey = k;
+        }
+
         // Animate hot/active
         ZUIPersistentState* state = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
         if (state)

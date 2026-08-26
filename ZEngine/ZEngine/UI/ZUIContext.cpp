@@ -70,6 +70,33 @@ namespace ZEngine::UI
             }
         }
 
+        // Escape / Enter: clear focus
+        if (ctx->EscapePressed || ctx->EnterPressed)
+        {
+            ctx->FocusKey = 0;
+        }
+        ctx->EscapePressed = false;
+        ctx->EnterPressed  = false;
+
+        // Tab focus navigation — apply after interaction pass so click-focus wins
+        if (ctx->TabPressed)
+        {
+            uint64_t next = ctx->TabNavNextKey ? ctx->TabNavNextKey : ctx->TabNavFirstKey;
+            if (next) { ctx->FocusKey = next; }
+        }
+        if (ctx->ShiftTabPressed)
+        {
+            uint64_t prev = ctx->TabNavPrevKey ? ctx->TabNavPrevKey : ctx->TabNavLastKey;
+            if (prev) { ctx->FocusKey = prev; }
+        }
+        ctx->TabPressed       = false;
+        ctx->ShiftTabPressed  = false;
+        ctx->TabNavNextKey    = 0;
+        ctx->TabNavPrevKey    = 0;
+        ctx->TabNavFirstKey   = 0;
+        ctx->TabNavLastKey    = 0;
+        ctx->TabNavSeenFocus  = false;
+
         // Clear per-frame edge states now that the interaction pass has consumed them
         for (int i = 0; i < 3; ++i)
         {

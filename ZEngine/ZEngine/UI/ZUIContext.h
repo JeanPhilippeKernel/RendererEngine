@@ -206,6 +206,18 @@ namespace ZEngine::UI
         bool               ShiftDown         = false;
         bool               AltDown           = false;
 
+        // Tab focus navigation — set by ZUILayer, consumed by ZUIEndFrame
+        bool               TabPressed        = false;
+        bool               ShiftTabPressed   = false;
+        bool               EscapePressed     = false; // clear FocusKey
+        bool               EnterPressed      = false; // confirm / deactivate field
+        // Per-frame tracking updated in ZUISignalFromBox during the build pass
+        uint64_t           TabNavNextKey     = 0; // first clickable after FocusKey
+        uint64_t           TabNavPrevKey     = 0; // last clickable before FocusKey
+        uint64_t           TabNavFirstKey    = 0; // first clickable seen (wraparound)
+        uint64_t           TabNavLastKey     = 0; // last clickable seen (Shift+Tab wrap)
+        bool               TabNavSeenFocus   = false;
+
         // Input repeat — ZUIEndFrame advances the timer; after RepeatDelay
         // it fires BackspacePressed / ArrowPressed at RepeatRate hz
         float              KeyRepeatTimer    = 0.f;
