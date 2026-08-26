@@ -529,7 +529,7 @@ namespace ZEngine::UI
         else          ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
         SetTextColor(box, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
-        ctx->PopupBuildIdx++;
+        if (enabled) ctx->PopupBuildIdx++; // disabled items are invisible to keyboard nav
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         static const float kTransMenu[4] = {0.f, 0.f, 0.f, 0.f};
