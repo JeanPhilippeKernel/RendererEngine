@@ -106,6 +106,10 @@ namespace ZEngine::UI
         ctx->ScrollDelta      = 0.f;
         ctx->TextInputLen     = 0;
         ctx->BackspacePressed = false;
+        ctx->ArrowUpPressed   = false;
+        ctx->ArrowDownPressed = false;
+        ctx->ArrowLeftPressed = false;
+        ctx->ArrowRightPressed= false;
 
         // Popup: promote open request → active; reset per-frame box pointer
         if (ctx->OpenPopupKey != 0)

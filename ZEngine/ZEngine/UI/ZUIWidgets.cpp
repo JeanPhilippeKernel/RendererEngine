@@ -1501,14 +1501,28 @@ namespace ZEngine::UI
         uint32_t vlen  = (uint32_t)Helpers::secure_strlen(val_buf);
         field->Label   = ZUIPushStr(&ctx->FrameArena, val_buf, vlen);
 
+        bool is_focused = (ctx->FocusKey == ZUIHashStr(key, (uint32_t)strlen(key)));
+        if (is_focused)
+        {
+            SetBdrArr(field, ctx->Theme.InputFocusBorder);
+        }
+
         ZUISignal sig  = ZUISignalFromBox(ctx, field);
         ZUIPopBox(ctx);
+
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
 
         bool changed = false;
         if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
         {
             *value  += sig.DragDelta[0] * speed;
             changed  = true;
+        }
+        // Arrow key nudge when focused
+        if (is_focused)
+        {
+            if (ctx->ArrowUpPressed)   { *value += speed; changed = true; }
+            if (ctx->ArrowDownPressed) { *value -= speed; changed = true; }
         }
         return changed;
     }
@@ -1530,6 +1544,9 @@ namespace ZEngine::UI
         SetBdrArr(field, ctx->Theme.InputBorder);
         field->BorderThickness = 1.f;
 
+        bool is_focused = (ctx->FocusKey == ZUIHashStr(key, (uint32_t)strlen(key)));
+        if (is_focused) { SetBdrArr(field, ctx->Theme.InputFocusBorder); }
+
         char buf[16]; snprintf(buf, sizeof(buf), "%d", *value);
         uint32_t vlen  = (uint32_t)strlen(buf);
         field->Label   = ZUIPushStr(&ctx->FrameArena, buf, vlen);
@@ -1537,12 +1554,21 @@ namespace ZEngine::UI
         ZUISignal sig  = ZUISignalFromBox(ctx, field);
         ZUIPopBox(ctx);
 
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
+
         bool changed = false;
         if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
         {
             float fv  = (float)*value + sig.DragDelta[0] * speed;
             *value    = (int)fv;
             changed   = true;
+        }
+        // Arrow key nudge when focused (step = max(1, speed) to at least move by 1)
+        if (is_focused)
+        {
+            int step = (int)speed > 0 ? (int)speed : 1;
+            if (ctx->ArrowUpPressed)   { *value += step; changed = true; }
+            if (ctx->ArrowDownPressed) { *value -= step; changed = true; }
         }
         return changed;
     }
