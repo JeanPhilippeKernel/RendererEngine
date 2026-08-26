@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/UI/ZUIBox.h>
+#include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/UI/ZUIFont.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <cstdint>
@@ -174,6 +175,9 @@ namespace ZEngine::UI
 
         // active color theme — swap to retheme the whole UI at runtime
         ZUITheme           Theme;
+
+        // Vector draw list — populated by PreparePayload each frame (FrameArena-backed)
+        ZUIDrawList        DrawList;
 
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
         uint32_t           ScreenW           = 1280;

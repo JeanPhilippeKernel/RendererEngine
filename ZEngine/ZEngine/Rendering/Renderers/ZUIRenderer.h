@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
+#include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
@@ -9,57 +10,28 @@ namespace ZEngine::UI   { struct ZUIContext; }
 namespace ZEngine::Rendering::Renderers
 {
     // ---------------------------------------------------------------
-    // ZUIRectInst — one instanced rect (RAD Debugger R_Rect2DInst approach).
-    // 128 bytes. Matches zui_rect.vert attribute layout exactly.
-    //
-    // Corner order for colors[] and corner_radii[]:
-    //   [0]=TL  [1]=TR  [2]=BL  [3]=BR
+    // ZUIRenderPayload — draw-list backed (replaces ZUIRectInst approach)
     // ---------------------------------------------------------------
-    struct ZUIRectInst
-    {
-        float dst[4];           // x0,y0,x1,y1  screen pixels
-        float src[4];           // u0,v0,u1,v1  atlas UV
-        float colors[4][4];     // per-corner RGBA  [corner_idx][channel]
-        float corner_radii[4];  // per-corner radius
-        float style[4];         // [0]=border_thickness [1]=edge_softness
-                                // [2]=tex_index (float-cast) [3]=shear
-    };
-    static_assert(sizeof(ZUIRectInst) == 128, "ZUIRectInst size mismatch");
-
-    // ---------------------------------------------------------------
-    // Draw command — a scissored batch of instances.
-    // Texture index lives inside ZUIRectInst::style[2], not here.
-    // Only clips trigger new commands.
-    // ---------------------------------------------------------------
-    struct ZUIDrawCmd
-    {
-        uint32_t InstOffset = 0;
-        uint32_t InstCount  = 0;
-        float    ClipX      = 0.f;
-        float    ClipY      = 0.f;
-        float    ClipW      = 0.f;
-        float    ClipH      = 0.f;
-    };
-
     struct ZUIRenderPayload
     {
-        ZUIRectInst* Instances        = nullptr;
-        uint32_t     InstCount        = 0;
-        ZUIDrawCmd*  Cmds             = nullptr;
-        uint32_t     CmdCount         = 0;
-        // ImGui-style: physical_px / logical_px (ContentScale).
-        // Scissor rects are in logical pixels; multiply by this to get physical pixels
-        // before passing to Vulkan SetScissor (which expects physical pixels).
-        float        FramebufferScale = 1.f;
-        float        Scale[2]    = {};
-        float        Translate[2]= {};
+        UI::ZUIDrawVtx*    Vtx            = nullptr;
+        uint32_t           VtxCount       = 0;
+        uint16_t*          Idx            = nullptr;
+        uint32_t           IdxCount       = 0;
+        UI::ZUIDrawListCmd* Cmds          = nullptr;
+        uint32_t           CmdCount       = 0;
+        float              FramebufferScale = 1.f; // physical / logical scale for scissor
+        float              Scale[2]       = {};    // NDC scale  (2/ScreenW, 2/ScreenH)
+        float              Translate[2]   = {};    // NDC offset (-1, -1)
     };
 
-    // Push constant layout shared with zui_rect.vert
-    struct ZUIRectPushConstant
+    // Push constant shared with zui_draw.vert
+    struct ZUIDrawPushConstant
     {
-        float Scale[2]     = {};
-        float Translate[2] = {};
+        float    Scale[2]     = {};
+        float    Translate[2] = {};
+        uint32_t TexIdx       = 0;
+        uint32_t _pad         = 0;
     };
 
     struct ZUIRenderer : public IRenderer
@@ -67,13 +39,16 @@ namespace ZEngine::Rendering::Renderers
         static constexpr uint32_t FRAMES_IN_FLIGHT      = 3;
         static constexpr uint32_t ZUICommandBufferIndex = 1;
 
-        RenderPasses::RenderPass* UIPass                        = nullptr;
-        Core::Memory::BufferView  InstBHandles[FRAMES_IN_FLIGHT]= {};
+        RenderPasses::RenderPass* DrawPass = nullptr; // zui_draw pipeline
+
+        // Per-frame vertex + index buffers
+        Core::Memory::BufferView VtxBHandles[FRAMES_IN_FLIGHT] = {};
+        Core::Memory::BufferView IdxBHandles[FRAMES_IN_FLIGHT] = {};
 
         void Initialize  (Hardwares::VulkanDevicePtr device) override;
         void Deinitialize() override;
 
-        // Build ZUIRectInst stream from the box tree.
+        // Translate the ZUIBox tree into a flat ZUIRenderPayload.
         void PreparePayload(UI::ZUIContext* ctx,
                             ZUIRenderPayload* out,
                             Core::Memory::ArenaAllocator* payload_arena);
