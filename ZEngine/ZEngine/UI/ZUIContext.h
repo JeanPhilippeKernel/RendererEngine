@@ -299,6 +299,7 @@ namespace ZEngine::UI
         int                GV_CurRow        = 0;
         bool               GV_RowOpen       = false;
         float              PopupPos[2]      = {};    // screen position to open at
+        float              PopupDesiredW    = 0.f;  // optional fixed width (set by ZUIBeginCombo)
         uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
         ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame
         ZUIBox*            PopupSavedParent = nullptr; // ctx->Current saved during popup build

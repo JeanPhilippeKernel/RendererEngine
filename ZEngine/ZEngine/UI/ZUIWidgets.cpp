@@ -447,8 +447,13 @@ namespace ZEngine::UI
         ctx->OpenPopupKey  = ZUIHashStr(key, (uint32_t)strlen(key));
         ctx->PopupPos[0]   = (pos_x >= 0.f) ? pos_x : ctx->MousePos[0];
         ctx->PopupPos[1]   = (pos_y >= 0.f) ? pos_y : ctx->MousePos[1];
-        ctx->PopupNavIdx   = -1; // reset keyboard nav on each popup open
+        ctx->PopupNavIdx   = -1;
         ctx->PopupBuildIdx = 0;
+        // PopupDesiredW is set by the CALLER before ZUIOpenPopup when a specific
+        // width is required (e.g. combo matches button width). It persists until
+        // ZUIBeginPopup consumes it.  Reset it here only if the caller didn't set
+        // it (i.e. it's still 0 from a prior clear), so menu popups get the default.
+        // Callers that want a specific width set PopupDesiredW BEFORE calling us.
     }
 
     bool ZUIBeginPopup(ZUIContext* ctx, const char* key)
@@ -459,32 +464,45 @@ namespace ZEngine::UI
         // Reset item counter each frame the popup builds
         ctx->PopupBuildIdx = 0;
 
-        // Save current parent and escape to root so the popup box is a
-        // root-level child — it renders last (on top of everything else).
+        // Escape to root so the popup renders on top of everything else
         ctx->PopupSavedParent = ctx->Current;
         ctx->Current          = ctx->Root;
 
-        uint32_t len    = (uint32_t)strlen(key);
-        ZUIBox*  popup  = ZUIPushBox(ctx, key, len,
-                              ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow |
-                              ZUI_ClipChildren   | ZUI_FloatX | ZUI_FloatY);
-        popup->Size[0]          = ZFit();
-        popup->Size[1]          = ZFit();
-        popup->FloatPos[0]      = ctx->PopupPos[0];
-        popup->FloatPos[1]      = ctx->PopupPos[1];
-        popup->LayoutAxis       = ZUIAxis::Y;
-        popup->BorderThickness  = 1.f;
-        popup->EdgeSoftness     = 0.5f;
+        uint32_t len   = (uint32_t)strlen(key);
+        ZUIBox*  popup = ZUIPushBox(ctx, key, len,
+                             ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow |
+                             ZUI_ClipChildren   | ZUI_FloatX | ZUI_FloatY);
+        popup->Size[0]         = ZFit();
+        popup->Size[1]         = ZFit();
+        popup->FloatPos[0]     = ctx->PopupPos[0];
+        popup->FloatPos[1]     = ctx->PopupPos[1];
+        popup->LayoutAxis      = ZUIAxis::Y;
+        popup->BorderThickness = 1.f;
+        popup->EdgeSoftness    = 0.5f;
         ZUIBoxSetCornerRadius(popup, 4.f);
-        popup->Padding[0] = popup->Padding[2] = 2.f; // slight horizontal inset
-        // Use a slightly lighter background than panel to distinguish dropdown
-        float popup_bg[4] = { ctx->Theme.PanelBg[0] + 0.04f,
-                               ctx->Theme.PanelBg[1] + 0.04f,
-                               ctx->Theme.PanelBg[2] + 0.04f, 1.f };
+        popup->Padding[0] = popup->Padding[2] = 2.f;
+        float popup_bg[4] = { ctx->Theme.MenuBarBg[0] + 0.02f,
+                               ctx->Theme.MenuBarBg[1] + 0.02f,
+                               ctx->Theme.MenuBarBg[2] + 0.02f, 1.f };
         SetBgArr(popup, popup_bg);
         SetBdrArr(popup, ctx->Theme.PanelBorder);
 
         ctx->ActivePopupBox = popup;
+
+        // Minimum-width sizer: breaks the ZFit↔ZFill circular dependency.
+        // ZFit popup width = max(sizer_width, children widths).
+        // ZFill items can then fill this known minimum.  Menu items use 200px,
+        // combos pass their button width via ctx->PopupDesiredW.
+        {
+            float min_w = (ctx->PopupDesiredW > 0.f) ? ctx->PopupDesiredW : 200.f;
+            ctx->PopupDesiredW = 0.f; // consume
+            char sk[20] = "##popup_min_w";
+            ZUIBox* sizer   = ZUIPushBox(ctx, sk, 13, ZUI_None);
+            sizer->Size[0]  = ZPx(min_w);
+            sizer->Size[1]  = ZPx(0.f); // zero height — invisible
+            ZUIPopBox(ctx);
+        }
+
         return true;
     }
 
@@ -1349,6 +1367,9 @@ namespace ZEngine::UI
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, row->Key);
             float py = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : (ctx->MousePos[1] + 4.f);
             float px = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : (ctx->MousePos[0] - 8.f);
+            // Pass the button width so the dropdown popup matches the combo box width
+            float bw = (ps && ps->ScreenMaxX > ps->ScreenMinX) ? (ps->ScreenMaxX - ps->ScreenMinX) : 0.f;
+            ctx->PopupDesiredW = bw;
             ZUIOpenPopup(ctx, key, px, py);
         }
 
