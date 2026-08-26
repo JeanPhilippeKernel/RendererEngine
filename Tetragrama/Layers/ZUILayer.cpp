@@ -62,7 +62,7 @@ namespace Tetragrama::Layers
             m_components[i]->BuildUI(m_ctx);
         }
 
-        ZEngine::UI::ZUIEndColumn(m_ctx);
+ZEngine::UI::ZUIEndColumn(m_ctx);
     }
 
     void ZUILayer::AddComponent(Components::ZUIComponent* cmp)
@@ -159,8 +159,8 @@ namespace Tetragrama::Layers
     bool ZUILayer::OnMouseButtonMoved(MouseButtonMovedEvent& e)
     {
         if (!m_ctx) { return false; }
-        // No coordinate transformation — use raw GLFW cursor position.
-        // ScreenW/H uses the same raw coordinate space (glfwGetWindowSize).
+        // GLFW cursor callback reports in logical screen coords (same space as
+        // glfwGetWindowSize / ScreenW). No division needed on any platform.
         m_ctx->MousePos[0] = (float)e.GetPosX();
         m_ctx->MousePos[1] = (float)e.GetPosY();
         return false;
