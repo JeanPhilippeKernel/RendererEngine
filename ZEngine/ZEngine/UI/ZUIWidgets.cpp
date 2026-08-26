@@ -521,14 +521,25 @@ namespace ZEngine::UI
         ZUIBox* box   = ZUIPushBox(ctx, label, len, fl);
         box->Size[0]  = ZFill();
         box->Size[1]  = ZSPx(ctx, 22.f);
-        ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
         box->Padding[0] = 8.f; // left indent
+
+        // Keyboard highlight via popup nav
+        bool kb_focus = enabled && (ctx->PopupNavIdx >= 0 && ctx->PopupBuildIdx == ctx->PopupNavIdx);
+        if (kb_focus) ZUIBoxSetColorArr(box, ctx->Theme.RowHoverBg);
+        else          ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
         SetTextColor(box, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
+        ctx->PopupBuildIdx++;
+
         ZUISignal sig = ZUISignalFromBox(ctx, box);
+        static const float kTransMenu[4] = {0.f, 0.f, 0.f, 0.f};
+        if (enabled && !kb_focus)
+            ApplyHotActive(box, ctx, kTransMenu, ctx->Theme.RowHoverBg, ctx->Theme.RowHoverBg);
         ZUIPopBox(ctx);
 
-        if (sig.Flags & ZUI_SignalClicked) { ZUIClosePopup(ctx); return true; }
+        bool activated = (enabled && (sig.Flags & ZUI_SignalClicked)) ||
+                         (kb_focus && (ctx->EnterPressed || ctx->SpacePressed));
+        if (activated) { ZUIClosePopup(ctx); ctx->PopupNavIdx = -1; return true; }
         return false;
     }
 
