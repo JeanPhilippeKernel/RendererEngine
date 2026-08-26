@@ -37,28 +37,16 @@ namespace ZEngine::UI
         ZUIPanelView* Views[kMaxTabsPerPanel] = {};
         uint32_t      ViewCount = 0;
         uint32_t      ActiveTab = 0;
+        bool          Hidden    = false; // closed by user; can be restored from Window menu
 
-        // --- Floating state (Level 1 in-app floating) ---
-        bool     Floating      = false;
-        float    FloatX        = 120.f;
-        float    FloatY        = 120.f;
-        float    FloatW        = 420.f;
-        float    FloatH        = 320.f;
-        uint32_t ZOrder        = 0;        // higher = rendered on top
         // Tab reorder drag (horizontal drag within the same tab bar)
         bool     ReorderActive = false;
         uint32_t ReorderTabIdx = 0;
         float    ReorderAccumX = 0.f;
-
-        // Title-bar drag (floating panels)
-        bool     DraggingTitle = false;
-        float    DragOffX      = 0.f;
-        float    DragOffY      = 0.f;
-        // Resize drag
-        bool     Resizing      = false;
-        float    ResizeStartW  = 0.f;
-        float    ResizeStartH  = 0.f;
     };
+
+    // Sentinel: SrcTabIdx == kWholePanel means drag moves the entire panel
+    static constexpr uint32_t kWholePanel = 0xFFFFFFFFu;
 
     // ---------------------------------------------------------------
     // Drag-to-dock state
@@ -92,9 +80,8 @@ namespace ZEngine::UI
     {
         ZUIDockTree* DockTree          = nullptr;
         ZUIPanel     Panels[kMaxPanels];
-        uint32_t     PanelCount        = 0;
-        uint32_t     FocusedPanelIdx   = 0;
-        uint32_t     FloatingZCounter  = 0;   // incremented each time a float is focused
+        uint32_t     PanelCount      = 0;
+        uint32_t     FocusedPanelIdx = 0;
 
         ZUIDragDockState Drag;
 
@@ -109,29 +96,24 @@ namespace ZEngine::UI
         ZUIPanel* FindPanel(uint64_t dock_key);
 
     private:
-        // ---- per-split-node divider state (auto-detected from tree) ----
         struct SplitDivider
         {
-            ZUIDockNode* Node     = nullptr; // the split node (stable arena ptr)
+            ZUIDockNode* Node     = nullptr;
             bool         Dragging = false;
         };
         static constexpr uint32_t kMaxSplitDividers = 32;
         SplitDivider  m_split_dividers[kMaxSplitDividers] = {};
         uint32_t      m_split_divider_count               = 0;
 
-        // ---- helpers ----
-        void BuildMenuBar      (ZUIContext* ctx, float sw, float mh);
-        void BuildDockedPanel  (ZUIContext* ctx, ZUIPanel* p, float rect[4]);
-        void BuildFloatingPanel(ZUIContext* ctx, ZUIPanel* p);
-        void BuildTabBar       (ZUIContext* ctx, ZUIPanel* p, float rect[4], bool in_float);
-        void BuildDropZones    (ZUIContext* ctx, ZUIPanel* p, float rect[4]);
-        void BuildDividers     (ZUIContext* ctx);
-        void BuildEmptySlot    (ZUIContext* ctx, float rect[4], uint64_t key);
+        void BuildMenuBar   (ZUIContext* ctx, float sw, float mh);
+        void BuildDockedPanel(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
+        void BuildTabBar    (ZUIContext* ctx, ZUIPanel* p, float rect[4]);
+        void BuildDropZones (ZUIContext* ctx, ZUIPanel* p, float rect[4]);
+        void BuildDividers  (ZUIContext* ctx);
 
-        void CommitDrop (ZUIPanel* src, uint32_t tab_idx, ZUIDockNode* dst, ZUIDropZone zone);
-        void PopOutPanel(ZUIPanel* p, float x, float y, float w, float h);
-        void RedockPanel(ZUIPanel* p, ZUIDockNode* dst, ZUIDropZone zone);
-        void FocusPanel (uint32_t idx);
+        // CommitDrop: tab_idx == kWholePanel → move all views of src to dst
+        void CommitDrop(ZUIPanel* src, uint32_t tab_idx, ZUIDockNode* dst, ZUIDropZone zone);
+        void FocusPanel(uint32_t idx);
         void SyncSplitDividers();
         bool GetSplitDividerDragging(ZUIDockNode* node) const;
         void SetSplitDividerDragging(ZUIDockNode* node, bool v);
