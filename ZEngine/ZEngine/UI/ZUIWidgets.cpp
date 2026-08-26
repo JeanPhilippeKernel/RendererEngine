@@ -1821,6 +1821,14 @@ namespace ZEngine::UI
                 cpos--; changed = true;
             }
 
+            // Forward delete at cursor
+            len = (uint32_t)Helpers::secure_strlen(buf);
+            if (ctx->DeletePressed && (uint32_t)cpos < len)
+            {
+                memmove(buf + cpos, buf + cpos + 1, len - cpos);
+                changed = true;
+            }
+
             // Left / Right / Home / End — move cursor
             len = (uint32_t)Helpers::secure_strlen(buf);
             if (ctx->ArrowLeftPressed  && cpos > 0)             cpos--;

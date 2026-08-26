@@ -110,8 +110,9 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_DOWN)  m_ctx->ArrowDownPressed  = true;
         if (key == ZENGINE_KEY_LEFT)  m_ctx->ArrowLeftPressed  = true;
         if (key == ZENGINE_KEY_RIGHT) m_ctx->ArrowRightPressed = true;
-        if (key == ZENGINE_KEY_HOME)  m_ctx->HomePressed       = true;
-        if (key == ZENGINE_KEY_END)   m_ctx->EndPressed        = true;
+        if (key == ZENGINE_KEY_HOME)   m_ctx->HomePressed       = true;
+        if (key == ZENGINE_KEY_END)    m_ctx->EndPressed        = true;
+        if (key == ZENGINE_KEY_DELETE) m_ctx->DeletePressed     = true;
 
         // Ctrl+C → signal the context so widgets can copy their content
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)

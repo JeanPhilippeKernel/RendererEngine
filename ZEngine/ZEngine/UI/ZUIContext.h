@@ -221,6 +221,7 @@ namespace ZEngine::UI
         bool               EndPressed            = false; // cursor to end of field
         bool               CtrlCPressed          = false; // copy focused field to clipboard
         bool               CtrlBackspacePressed  = false; // delete word before cursor
+        bool               DeletePressed         = false; // forward-delete at cursor
         // Per-frame tracking updated in ZUISignalFromBox during the build pass
         uint64_t           TabNavNextKey     = 0; // first clickable after FocusKey
         uint64_t           TabNavPrevKey     = 0; // last clickable before FocusKey
