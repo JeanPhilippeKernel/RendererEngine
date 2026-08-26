@@ -438,12 +438,17 @@ namespace ZEngine::UI
         ctx->OpenPopupKey  = ZUIHashStr(key, (uint32_t)strlen(key));
         ctx->PopupPos[0]   = (pos_x >= 0.f) ? pos_x : ctx->MousePos[0];
         ctx->PopupPos[1]   = (pos_y >= 0.f) ? pos_y : ctx->MousePos[1];
+        ctx->PopupNavIdx   = -1; // reset keyboard nav on each popup open
+        ctx->PopupBuildIdx = 0;
     }
 
     bool ZUIBeginPopup(ZUIContext* ctx, const char* key)
     {
         uint64_t hash = ZUIHashStr(key, (uint32_t)strlen(key));
         if (ctx->ActivePopupKey != hash) { return false; }
+
+        // Reset item counter each frame the popup builds
+        ctx->PopupBuildIdx = 0;
 
         // Save current parent and escape to root so the popup box is a
         // root-level child — it renders last (on top of everything else).
@@ -476,8 +481,9 @@ namespace ZEngine::UI
 
     void ZUIEndPopup(ZUIContext* ctx)
     {
-        ZUIPopBox(ctx);                         // pop the popup box
-        ctx->Current = ctx->PopupSavedParent;  // restore original parent
+        ctx->PopupBuildCount = ctx->PopupBuildIdx; // save item count for next-frame nav clamping
+        ZUIPopBox(ctx);                            // pop the popup box
+        ctx->Current = ctx->PopupSavedParent;      // restore original parent
         ctx->PopupSavedParent = nullptr;
     }
 
@@ -524,17 +530,27 @@ namespace ZEngine::UI
                              ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
         box->Size[0]   = ZFill();
         box->Size[1]   = ZSPx(ctx, 24.f);
-        if (selected) {
+
+        // Keyboard highlight: this item is focused via Up/Down arrow
+        bool kb_focus = (ctx->PopupNavIdx >= 0 && ctx->PopupBuildIdx == ctx->PopupNavIdx);
+        if (selected || kb_focus)
             ZUIBoxSetColorArr(box, ctx->Theme.RowSelectedBg);
-        } else {
-            ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f); // hover fade-in
-        }
+        else
+            ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
         SetTextColor(box, ctx->Theme.TextDefault);
 
+        ctx->PopupBuildIdx++;
+
         ZUISignal sig = ZUISignalFromBox(ctx, box);
+        static const float kTransCombo[4] = {0.f, 0.f, 0.f, 0.f};
+        ApplyHotActive(box, ctx,
+                       selected ? ctx->Theme.RowSelectedBg : kTransCombo,
+                       ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
         ZUIPopBox(ctx);
 
-        if (sig.Flags & ZUI_SignalClicked) { ZUIClosePopup(ctx); return true; }
+        bool activated = (sig.Flags & ZUI_SignalClicked) ||
+                         (kb_focus && (ctx->EnterPressed || ctx->SpacePressed));
+        if (activated) { ZUIClosePopup(ctx); ctx->PopupNavIdx = -1; return true; }
         return false;
     }
 

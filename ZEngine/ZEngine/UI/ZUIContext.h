@@ -300,6 +300,10 @@ namespace ZEngine::UI
         uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
         ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame
         ZUIBox*            PopupSavedParent = nullptr; // ctx->Current saved during popup build
+        // Keyboard navigation inside open popups (combos, menus)
+        int                PopupNavIdx      = -1;    // keyboard-highlighted item index; -1 = none
+        int                PopupBuildIdx    = 0;     // incremented per ZUIComboItem/ZUISelectable in popup
+        int                PopupBuildCount  = 0;     // item count from previous popup frame (for clamping)
     };
 
     ZDEFINE_PTR(ZUIContext);
