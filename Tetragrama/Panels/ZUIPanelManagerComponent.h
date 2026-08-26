@@ -21,10 +21,11 @@ namespace Tetragrama::Panels
     {
         ZEngine::UI::ZUIPanelManager Manager;
 
-        HierarchyPanel hierarchy;
-        ViewportPanel  viewport;
-        InspectorPanel inspector;
-        OutputPanel    output;
+        HierarchyPanel       hierarchy;
+        ViewportPanel        viewport;
+        InspectorPanel       inspector;
+        OutputPanel          output;
+        ContentBrowserPanel  content;
 
         void Initialize(Tetragrama::Layers::ZUILayer* parent,
                         cstring name       = "PanelManager",
@@ -79,6 +80,7 @@ namespace Tetragrama::Panels
 
             auto* p_out  = Manager.AddPanel(ZUIDockHashName("Output"));
             Manager.AddView(p_out, &output);
+            Manager.AddView(p_out, &content); // Content Browser tab
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override

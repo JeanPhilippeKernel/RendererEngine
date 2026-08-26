@@ -215,6 +215,14 @@ namespace ZEngine::UI
         int                DT_SortCol       = -1;      // -1 = unsorted
         bool               DT_SortAsc       = true;
         bool               DT_SortChanged   = false;
+
+        // GridView state (ZUIBeginGridView / ZUIEndGridView)
+        float              GV_ItemW         = 0.f;
+        float              GV_ItemH         = 0.f;
+        int                GV_MaxCols       = 1;
+        int                GV_CurCol        = 0;
+        int                GV_CurRow        = 0;
+        bool               GV_RowOpen       = false;
         float              PopupPos[2]      = {};    // screen position to open at
         uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
         ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame

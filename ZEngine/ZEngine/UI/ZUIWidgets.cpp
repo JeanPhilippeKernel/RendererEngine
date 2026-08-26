@@ -1663,6 +1663,86 @@ namespace ZEngine::UI
     }
 
     // ================================================================
+    // ZUIGridView
+    // ================================================================
+
+    ZUIBox* ZUIBeginGridView(ZUIContext* ctx, const char* key,
+                             float item_w, float item_h,
+                             ZUISize w, ZUISize h)
+    {
+        ctx->GV_ItemW   = item_w;
+        ctx->GV_ItemH   = item_h;
+        // items_per_row from container width approximation (ScreenW / item_w)
+        // This stabilises after frame 0; panels typically fill most of ScreenW.
+        int max_c = (item_w > 0.f) ? (int)((float)ctx->ScreenW / item_w) : 1;
+        if (max_c < 1) max_c = 1;
+        ctx->GV_MaxCols = max_c;
+        ctx->GV_CurCol  = 0;
+        ctx->GV_CurRow  = 0;
+        ctx->GV_RowOpen = false;
+        return ZUIBeginScrollRegion(ctx, key, w, h);
+    }
+
+    bool ZUIGridViewNextItem(ZUIContext* ctx, const char* item_key, bool selected)
+    {
+        // Start a new row when needed
+        if (!ctx->GV_RowOpen || ctx->GV_CurCol >= ctx->GV_MaxCols)
+        {
+            if (ctx->GV_RowOpen) { ZUIEndRow(ctx); }
+            char rk[72]; snprintf(rk, sizeof(rk), "##gvrow_%s_%d", item_key, ctx->GV_CurRow);
+            ZUIBeginRow(ctx, rk, ZFill(), ZPx(ctx->GV_ItemH));
+            ctx->GV_RowOpen = true;
+            ctx->GV_CurCol  = 0;
+            ctx->GV_CurRow++;
+        }
+
+        // Cell box
+        char ck[128]; snprintf(ck, sizeof(ck), "##gvcell_%s_%d_%d",
+                               item_key, ctx->GV_CurRow, ctx->GV_CurCol);
+        ZUIBox* cell = ZUIPushBox(ctx, ck, (uint32_t)strlen(ck),
+                                  ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable);
+        cell->Size[0]  = ZPx(ctx->GV_ItemW);
+        cell->Size[1]  = ZPx(ctx->GV_ItemH);
+        cell->LayoutAxis = ZUIAxis::Y;
+
+        bool hovered = (ctx->HotKey == cell->Key);
+        if (selected)
+            ZUIBoxSetColorArr(cell, ctx->Theme.RowSelectedBg);
+        else if (hovered)
+            ZUIBoxSetColorArr(cell, ctx->Theme.RowHoverBg);
+        else
+            ZUIBoxSetColor(cell, ctx->Theme.PanelBgAlt[0], ctx->Theme.PanelBgAlt[1],
+                           ctx->Theme.PanelBgAlt[2], 0.8f);
+
+        float border_alpha = selected ? 0.8f : (hovered ? 0.5f : 0.2f);
+        cell->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
+        cell->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
+        cell->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
+        cell->BorderColor[3] = border_alpha;
+        cell->BorderThickness = 1.f;
+        ZUIBoxSetCornerRadius(cell, 4.f);
+        cell->EdgeSoftness = 0.f;
+
+        ZUISignal sig = ZUISignalFromBox(ctx, cell);
+        // Note: cell stays open (NOT popped) — caller adds content, then calls EndItem
+        ctx->GV_CurCol++;
+        return (sig.Flags & ZUI_SignalClicked) != 0;
+    }
+
+    void ZUIGridViewEndItem(ZUIContext* ctx)
+    {
+        ZUIPopBox(ctx); // close the cell box opened by NextItem
+    }
+
+    void ZUIEndGridView(ZUIContext* ctx)
+    {
+        if (ctx->GV_RowOpen) { ZUIEndRow(ctx); ctx->GV_RowOpen = false; }
+        ZUIEndScrollRegion(ctx);
+        ctx->GV_ItemW = 0.f;
+        ctx->GV_ItemH = 0.f;
+    }
+
+    // ================================================================
     // ZUITreeView
     // ================================================================
 

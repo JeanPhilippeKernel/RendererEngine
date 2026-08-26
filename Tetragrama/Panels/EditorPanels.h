@@ -285,4 +285,78 @@ namespace Tetragrama::Panels
         }
     };
 
+    // ---------------------------------------------------------------
+    // ContentBrowserPanel — asset grid with ZUIGridView
+    // ---------------------------------------------------------------
+    struct ContentBrowserPanel : ZUIPanelView
+    {
+        ContentBrowserPanel() { Title = "Content"; }
+
+        struct Asset { const char* name; const char* ext; float col[4]; };
+        static constexpr Asset k_assets[] = {
+            { "SM_Cube",      ".zemesh",    {0.40f,0.78f,1.00f,1.f} },
+            { "SM_Sphere",    ".zemesh",    {0.40f,0.78f,1.00f,1.f} },
+            { "SM_Plane",     ".zemesh",    {0.40f,0.78f,1.00f,1.f} },
+            { "T_Diffuse",    ".png",       {1.00f,0.65f,0.30f,1.f} },
+            { "T_Normal",     ".png",       {1.00f,0.65f,0.30f,1.f} },
+            { "M_Wood",       ".zemat",     {0.70f,0.85f,0.40f,1.f} },
+            { "M_Metal",      ".zemat",     {0.70f,0.85f,0.40f,1.f} },
+            { "DefaultScene", ".zescene",   {0.80f,0.50f,1.00f,1.f} },
+            { "Env_Day",      ".hdr",       {0.30f,0.90f,0.90f,1.f} },
+            { "SFX_Impact",   ".wav",       {0.98f,0.85f,0.20f,1.f} },
+            { "SFX_Ambient",  ".wav",       {0.98f,0.85f,0.20f,1.f} },
+            { "SK_Character", ".zemesh",    {0.40f,0.78f,1.00f,1.f} },
+        };
+        static constexpr int kCount = 12;
+        int selected = -1;
+
+        void BuildContent(ZUIContext* ctx, float[4]) override
+        {
+            // Toolbar
+            {
+                ZUIBox* tb = ZUIBeginRow(ctx, "##cbtb", ZFill(), ZPx(26.f));
+                tb->Flags = tb->Flags | ZUI_DrawBackground;
+                ZUIBoxSetColor(tb, 0.13f, 0.13f, 0.14f, 1.f);
+                ZUISpacer(ctx, 6.f);
+                ZUIButton(ctx, "Import",  ZFit(), ZPx(22.f));
+                ZUISpacer(ctx, 4.f);
+                ZUIButton(ctx, "New Folder", ZFit(), ZPx(22.f));
+                ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, "Assets /", ctx->Theme.TextDim);
+                ZUIEndRow(ctx);
+            }
+
+            // Grid view — 88px wide cells
+            ZUIBeginGridView(ctx, "##cbgrid", 88.f, 100.f);
+
+            for (int i = 0; i < kCount; ++i)
+            {
+                const Asset& a = k_assets[i];
+                char ik[32]; snprintf(ik, sizeof(ik), "##cb%d", i);
+
+                if (ZUIGridViewNextItem(ctx, ik, selected == i))
+                    selected = i;
+
+                // Icon square (fills most of cell width)
+                ZUISpacer(ctx, 6.f);
+                ZUIBox* icon = ZUIPushBox(ctx, a.name, (uint32_t)strlen(a.name),
+                                          ZUI_DrawBackground);
+                icon->Size[0] = ZPx(60.f);
+                icon->Size[1] = ZPx(60.f);
+                ZUIBoxSetColorArr(icon, a.col);
+                ZUIBoxSetCornerRadius(icon, 6.f);
+                icon->EdgeSoftness = 0.5f;
+                ZUIPopBox(ctx);
+                ZUISpacer(ctx, 2.f);
+
+                // Name label (truncated)
+                ZUILabel(ctx, a.name, ctx->Theme.TextDim);
+
+                ZUIGridViewEndItem(ctx);
+            }
+
+            ZUIEndGridView(ctx);
+        }
+    };
+
 } // namespace Tetragrama::Panels

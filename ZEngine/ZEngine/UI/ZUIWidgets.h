@@ -384,6 +384,28 @@ namespace ZEngine::UI
     ZUITableSortSpec ZUIDataTableGetSortSpecs(ZUIContext* ctx);
 
     // ---------------------------------------------------------------
+    // ZUIGridView — icon grid for content browsers and asset pickers
+    // ---------------------------------------------------------------
+
+    // Begin a grid view with fixed-size cells that wrap automatically.
+    // item_w / item_h: cell dimensions in logical px.
+    // w / h: scroll region size.
+    ZUIBox* ZUIBeginGridView(ZUIContext* ctx, const char* key,
+                             float item_w, float item_h,
+                             ZUISize w = ZFill(), ZUISize h = ZFill());
+
+    // Advance to the next grid cell.
+    // Returns true if the cell was clicked (for external selection handling).
+    // selected=true tints the cell background.
+    bool ZUIGridViewNextItem(ZUIContext* ctx, const char* item_key, bool selected = false);
+
+    // Close a cell opened by ZUIGridViewNextItem. Always pair.
+    void ZUIGridViewEndItem(ZUIContext* ctx);
+
+    // Close the grid view. Always pair with ZUIBeginGridView.
+    void ZUIEndGridView(ZUIContext* ctx);
+
+    // ---------------------------------------------------------------
     // Drag-and-drop helpers
     // ---------------------------------------------------------------
 
