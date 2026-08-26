@@ -303,11 +303,13 @@ namespace ZEngine::UI
         // clamp radius
         float half = (x1-x0 < y1-y0 ? x1-x0 : y1-y0) * 0.5f;
         if (r > half) r = half;
-        // LUT indices: TL=6-12, TR=0-6, BR=18-24, BL=30-36 (0..47 range)
-        if (tl) { PathArcToFast(dl, x0+r, y0+r, r,  6, 12); } else PathLineTo(dl, x0, y0);
-        if (tr) { PathArcToFast(dl, x1-r, y0+r, r,  0,  6); } else PathLineTo(dl, x1, y0);
-        if (br) { PathArcToFast(dl, x1-r, y1-r, r, 42, 48); } else PathLineTo(dl, x1, y1);
-        if (bl) { PathArcToFast(dl, x0+r, y1-r, r, 30, 36); } else PathLineTo(dl, x0, y1);
+        // 48-step LUT indices matching ImGui's 12-step convention (multiply by 4):
+        // TL: 24-36 (180°→270° = left→up),  TR: 36-48 (270°→360° = up→right)
+        // BR:  0-12 (  0°→ 90° = right→down), BL: 12-24 ( 90°→180° = down→left)
+        if (tl) { PathArcToFast(dl, x0+r, y0+r, r, 24, 36); } else PathLineTo(dl, x0, y0);
+        if (tr) { PathArcToFast(dl, x1-r, y0+r, r, 36, 48); } else PathLineTo(dl, x1, y0);
+        if (br) { PathArcToFast(dl, x1-r, y1-r, r,  0, 12); } else PathLineTo(dl, x1, y1);
+        if (bl) { PathArcToFast(dl, x0+r, y1-r, r, 12, 24); } else PathLineTo(dl, x0, y1);
     }
 
     // ---------------------------------------------------------------
@@ -362,7 +364,12 @@ namespace ZEngine::UI
             float avg_x = (dmx[i] + dmx[pi]) * 0.5f;
             float avg_y = (dmy[i] + dmy[pi]) * 0.5f;
             float dot   = avg_x*avg_x + avg_y*avg_y;
-            if (dot > 1e-9f) { float inv = 1.f / dot; avg_x *= inv; avg_y *= inv; }
+            if (dot > 1e-9f)
+            {
+                float inv = 1.f / dot;
+                if (inv > 100.f) inv = 100.f; // match ImGui IM_FIXNORMAL2F_MAX_INVLEN2
+                avg_x *= inv; avg_y *= inv;
+            }
             dmx[i] = avg_x * fs * 0.5f;
             dmy[i] = avg_y * fs * 0.5f;
         }
@@ -410,56 +417,100 @@ namespace ZEngine::UI
     // ---------------------------------------------------------------
     static void PathStroke(ZUIDrawList* dl, uint32_t col, bool closed, float thickness)
     {
-        int n = (int)dl->PathCount;
+        int n     = (int)dl->PathCount;
         int count = closed ? n : n - 1;
         if (count <= 0 || n < 2) { PathClear(dl); return; }
 
-        float fs    = dl->FringeScale;
-        float half  = thickness * 0.5f;
+        float fs         = dl->FringeScale;
+        float half       = thickness * 0.5f;
         uint32_t col_trans = col & 0x00FFFFFFu;
         float wu = dl->WhiteU, wv = dl->WhiteV;
 
+        // ------------------------------------------------------------------
+        // Pass 1: compute per-segment left normals (outward = left of direction)
+        // Matches ImGui AddPolyline temp_normals[] pattern exactly.
+        // ------------------------------------------------------------------
+        GrowPath(dl, s_Arena, (uint32_t)(n)); // use path tail as scratch for normals
+        float* snx = dl->PathX + dl->PathCount;  // segment normal X (scratch after path pts)
+        float* sny = dl->PathY + dl->PathCount;
+        // Ensure capacity for 2×n extra floats in path scratch
+        if (dl->PathCount + (uint32_t)(n * 2) > dl->PathCap)
+        {
+            GrowPath(dl, s_Arena, (uint32_t)(n * 2));
+            snx = dl->PathX + dl->PathCount;
+            sny = dl->PathY + dl->PathCount;
+        }
+
+        for (int i = 0; i < n; ++i)
+        {
+            int j    = (i + 1) < n ? i + 1 : 0; // next index (wraps for closed)
+            float dx = dl->PathX[j] - dl->PathX[i];
+            float dy = dl->PathY[j] - dl->PathY[i];
+            float len = sqrtf(dx*dx + dy*dy); if (len < 1e-6f) len = 1.f;
+            snx[i] =  dy / len; // left normal
+            sny[i] = -dx / len;
+        }
+        // For open lines: copy last segment normal to last vertex
+        // (endpoint inherits its only adjacent segment, not the phantom wrap)
+        if (!closed)
+        {
+            snx[n-1] = snx[n-2];
+            sny[n-1] = sny[n-2];
+        }
+
+        // ------------------------------------------------------------------
+        // Pass 2: per vertex — average adjacent segment normals (miter),
+        // apply IM_FIXNORMAL2F with 100.0 cap, split into inner + outer fringe.
+        // 4 vertices per point: outer-fringe-left, inner-left, inner-right, outer-fringe-right
+        // ------------------------------------------------------------------
         FlushCmd(dl);
         GrowVtx(dl, s_Arena, (uint32_t)(n * 4));
         GrowIdx(dl, s_Arena, (uint32_t)(count * 18));
 
-        uint16_t base = (uint16_t)dl->VtxCount;
-        ZUIDrawVtx* vw = dl->Vtx + dl->VtxCount;
-        uint16_t*   iw = dl->Idx  + dl->IdxCount;
+        uint16_t    base = (uint16_t)dl->VtxCount;
+        ZUIDrawVtx* vw   = dl->Vtx + dl->VtxCount;
+        uint16_t*   iw   = dl->Idx  + dl->IdxCount;
 
-        // For each segment compute outward normals
-        // Each point produces 4 vertices:
-        //   inner-left, outer-left (fringe), inner-right, outer-right (fringe)
-        for (int i1 = 0; i1 < n; ++i1)
+        for (int i = 0; i < n; ++i)
         {
-            int i2 = (i1 + 1) < n ? i1 + 1 : 0;
-            float dx = dl->PathX[i2] - dl->PathX[i1];
-            float dy = dl->PathY[i2] - dl->PathY[i1];
-            float len = sqrtf(dx*dx + dy*dy); if (len < 1e-6f) len = 1.f;
-            float nx = dy / len, ny = -dx / len; // outward normal (left side)
+            // Average with previous segment normal (miter)
+            int     prev = closed ? (i + n - 1) % n : (i > 0 ? i - 1 : 0);
+            float   dm_x = (snx[prev] + snx[i]) * 0.5f;
+            float   dm_y = (sny[prev] + sny[i]) * 0.5f;
 
-            float x = dl->PathX[i1], y = dl->PathY[i1];
-            // Outer fringe (left), inner (left), inner (right), outer fringe (right)
-            vw[i1*4+0] = {x - nx*(half + fs), y - ny*(half + fs), wu, wv, col_trans};
-            vw[i1*4+1] = {x - nx* half,       y - ny* half,       wu, wv, col};
-            vw[i1*4+2] = {x + nx* half,        y + ny* half,       wu, wv, col};
-            vw[i1*4+3] = {x + nx*(half + fs),  y + ny*(half + fs), wu, wv, col_trans};
+            // IM_FIXNORMAL2F: scale by 1/|dm|² capped at 100 to handle sharp angles
+            float d2 = dm_x*dm_x + dm_y*dm_y;
+            if (d2 > 1e-6f)
+            {
+                float inv = 1.f / d2;
+                if (inv > 100.f) inv = 100.f;
+                dm_x *= inv; dm_y *= inv;
+            }
+
+            float x = dl->PathX[i], y = dl->PathY[i];
+            float ox = dm_x * (half + fs), oy = dm_y * (half + fs); // outer (fringe)
+            float ix = dm_x * half,        iy = dm_y * half;        // inner
+
+            vw[i*4+0] = {x + ox, y + oy, wu, wv, col_trans}; // outer-left AA
+            vw[i*4+1] = {x + ix, y + iy, wu, wv, col};       // inner-left
+            vw[i*4+2] = {x - ix, y - iy, wu, wv, col};       // inner-right
+            vw[i*4+3] = {x - ox, y - oy, wu, wv, col_trans}; // outer-right AA
         }
         dl->VtxCount += (uint32_t)(n * 4);
 
-        // Indices: for each segment i1→i2, 3 quads (left fringe, fill, right fringe)
+        // Indices: 3 quads (18 indices) per segment
         for (int i1 = 0; i1 < count; ++i1)
         {
-            int i2 = (i1 + 1) < n ? i1 + 1 : 0;
+            int      i2 = (i1 + 1) < n ? i1 + 1 : 0;
             uint16_t b1 = (uint16_t)(base + (uint16_t)(i1 * 4));
             uint16_t b2 = (uint16_t)(base + (uint16_t)(i2 * 4));
-            // left fringe
-            iw[0]=b1;     iw[1]=(uint16_t)(b1+1); iw[2]=(uint16_t)(b2+1);
-            iw[3]=b1;     iw[4]=(uint16_t)(b2+1); iw[5]=b2;
-            // fill
+            // left fringe quad
+            iw[0]=b1;               iw[1]=(uint16_t)(b1+1); iw[2]=(uint16_t)(b2+1);
+            iw[3]=b1;               iw[4]=(uint16_t)(b2+1); iw[5]=b2;
+            // fill quad
             iw[6]=(uint16_t)(b1+1); iw[7]=(uint16_t)(b1+2); iw[8]=(uint16_t)(b2+2);
             iw[9]=(uint16_t)(b1+1); iw[10]=(uint16_t)(b2+2);iw[11]=(uint16_t)(b2+1);
-            // right fringe
+            // right fringe quad
             iw[12]=(uint16_t)(b1+2);iw[13]=(uint16_t)(b1+3);iw[14]=(uint16_t)(b2+3);
             iw[15]=(uint16_t)(b1+2);iw[16]=(uint16_t)(b2+3);iw[17]=(uint16_t)(b2+2);
             iw += 18;
