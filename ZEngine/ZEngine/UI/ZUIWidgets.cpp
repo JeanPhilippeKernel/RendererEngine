@@ -1019,10 +1019,15 @@ namespace ZEngine::UI
         ZUISpacer(ctx, 6.f);
         ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
 
+        bool is_focused = !ctx->Disabled && (ctx->FocusKey == row->Key);
+        if (is_focused) { SetBdrArr(box, ctx->Theme.InputFocusBorder); }
+
         ZUISignal sig = ZUISignalFromBox(ctx, row);
         ZUIEndRow(ctx);
 
-        if ((sig.Flags & ZUI_SignalClicked) && checked)
+        bool activated = (sig.Flags & ZUI_SignalClicked) ||
+                         (is_focused && ctx->SpacePressed);
+        if (activated && checked)
         {
             *checked = !(*checked);
             return true;
