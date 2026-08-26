@@ -1347,8 +1347,8 @@ namespace ZEngine::UI
         if (open_popup)
         {
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, row->Key);
-            float py = ps ? ps->ScreenMaxY : ctx->MousePos[1];
-            float px = ps ? ps->ScreenMinX : (ctx->MousePos[0] - 8.f);
+            float py = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : (ctx->MousePos[1] + 4.f);
+            float px = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : (ctx->MousePos[0] - 8.f);
             ZUIOpenPopup(ctx, key, px, py);
         }
 
