@@ -221,6 +221,7 @@ namespace ZEngine::UI
         bool               HomePressed           = false; // cursor to start of field
         bool               EndPressed            = false; // cursor to end of field
         bool               CtrlCPressed          = false; // copy focused field to clipboard
+        bool               CtrlXPressed          = false; // cut (copy + clear)
         bool               CtrlBackspacePressed  = false; // delete word before cursor
         bool               CtrlAPressed          = false; // select all (clears field + copies to clipboard)
         bool               DeletePressed         = false; // forward-delete at cursor

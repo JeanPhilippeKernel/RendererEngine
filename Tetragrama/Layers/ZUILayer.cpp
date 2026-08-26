@@ -121,10 +121,10 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_UP)    { m_ctx->ArrowUpHeld    = true;  m_ctx->ArrowRepeatTimer = 0.f; }
         if (key == ZENGINE_KEY_DOWN)  { m_ctx->ArrowDownHeld  = true;  m_ctx->ArrowRepeatTimer = 0.f; }
 
-        // Ctrl+C → signal the context so widgets can copy their content
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
             m_ctx->CtrlCPressed = true;
-        // Ctrl+A → select all (copies to clipboard + clears for fresh typing)
+        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_X)
+            m_ctx->CtrlXPressed = true;
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_A)
             m_ctx->CtrlAPressed = true;
 

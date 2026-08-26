@@ -153,6 +153,7 @@ namespace ZEngine::UI
         ctx->HomePressed           = false;
         ctx->EndPressed            = false;
         ctx->CtrlCPressed          = false;
+        ctx->CtrlXPressed          = false;
         ctx->CtrlBackspacePressed  = false;
         ctx->CtrlAPressed          = false;
         ctx->DeletePressed         = false;

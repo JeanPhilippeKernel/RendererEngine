@@ -2039,11 +2039,18 @@ namespace ZEngine::UI
             if (ctx->HomePressed)                               cpos = 0;
             if (ctx->EndPressed)                                cpos = (int)len;
 
-            // Ctrl+C — copy buf to clipboard via ZUILayer
+            // Ctrl+C — copy buf to clipboard
             if (ctx->CtrlCPressed)
                 snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
 
-            // Ctrl+A — copy to clipboard then clear for fresh typing
+            // Ctrl+X — cut: copy to clipboard + clear
+            if (ctx->CtrlXPressed)
+            {
+                snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
+                buf[0] = '\0'; cpos = 0; changed = true;
+            }
+
+            // Ctrl+A — select all: copy + clear
             if (ctx->CtrlAPressed)
             {
                 snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
@@ -2812,11 +2819,13 @@ namespace ZEngine::UI
             if (ctx->ArrowRightPressed && (uint32_t)cpos < len)  cpos++;
             if (ctx->HomePressed)  cpos = 0;
             if (ctx->EndPressed)   cpos = (int)(uint32_t)strlen(buf);
-            if (ctx->CtrlAPressed)
+            if (ctx->CtrlXPressed || ctx->CtrlAPressed)
             {
                 snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
                 buf[0] = '\0'; cpos = 0; changed = true;
             }
+            if (ctx->CtrlCPressed)
+                snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
             if (ps) ps->UserData = (float)cpos;
         }
 
