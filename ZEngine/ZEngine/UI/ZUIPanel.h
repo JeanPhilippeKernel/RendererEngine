@@ -14,9 +14,12 @@ namespace ZEngine::UI
     // ---------------------------------------------------------------
     struct ZUIPanelView
     {
-        const char* Title   = "Panel";
-        uint64_t    Key     = 0;
-        bool        Visible = true;
+        const char* Title      = "Panel";
+        uint64_t    Key        = 0;
+        bool        Visible    = true;
+        // Optional per-tab accent color (alpha=0 means use theme default).
+        // Shown as a subtle tint on the active tab and a colored left-border strip.
+        float       TabColor[4] = {0.f, 0.f, 0.f, 0.f};
 
         virtual ~ZUIPanelView() = default;
         virtual void BuildContent(ZUIContext* ctx, float rect[4]) = 0;
@@ -42,7 +45,12 @@ namespace ZEngine::UI
         float    FloatW        = 420.f;
         float    FloatH        = 320.f;
         uint32_t ZOrder        = 0;        // higher = rendered on top
-        // Title-bar drag
+        // Tab reorder drag (horizontal drag within the same tab bar)
+        bool     ReorderActive = false;
+        uint32_t ReorderTabIdx = 0;
+        float    ReorderAccumX = 0.f;
+
+        // Title-bar drag (floating panels)
         bool     DraggingTitle = false;
         float    DragOffX      = 0.f;
         float    DragOffY      = 0.f;

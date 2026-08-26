@@ -846,22 +846,57 @@ namespace ZEngine::UI
             tab->EdgeSoftness = 0.5f;
             ZUIBoxSetCornerRadius(tab, 3.f);
 
+            // Tab color: use view->TabColor as a tint when alpha > 0,
+            // otherwise fall back to theme defaults.
+            bool has_color = view->TabColor[3] > 0.01f;
             if (is_active)
             {
-                ZUIBoxSetColorArr(tab, ctx->Theme.TabActiveBg);
-                tab->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
-                tab->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
-                tab->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
-                tab->BorderColor[3] = ctx->Theme.TabActiveBorder[3];
+                if (has_color)
+                {
+                    // Blend view color over active bg at 40% strength
+                    float bg[4];
+                    for (int c = 0; c < 3; ++c)
+                        bg[c] = ctx->Theme.TabActiveBg[c] * 0.6f + view->TabColor[c] * 0.4f;
+                    bg[3] = 1.f;
+                    ZUIBoxSetColorArr(tab, bg);
+                    tab->BorderColor[0] = view->TabColor[0];
+                    tab->BorderColor[1] = view->TabColor[1];
+                    tab->BorderColor[2] = view->TabColor[2];
+                    tab->BorderColor[3] = 0.90f;
+                }
+                else
+                {
+                    ZUIBoxSetColorArr(tab, ctx->Theme.TabActiveBg);
+                    tab->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
+                    tab->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
+                    tab->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
+                    tab->BorderColor[3] = ctx->Theme.TabActiveBorder[3];
+                }
                 tab->BorderThickness = 1.f;
             }
             else
             {
-                ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg);
-                tab->BorderColor[0] = ctx->Theme.TabInactiveBorder[0];
-                tab->BorderColor[1] = ctx->Theme.TabInactiveBorder[1];
-                tab->BorderColor[2] = ctx->Theme.TabInactiveBorder[2];
-                tab->BorderColor[3] = ctx->Theme.TabInactiveBorder[3];
+                if (has_color)
+                {
+                    // Inactive: very subtle tint (15%)
+                    float bg[4] = {
+                        view->TabColor[0] * 0.15f,
+                        view->TabColor[1] * 0.15f,
+                        view->TabColor[2] * 0.15f, 0.85f };
+                    ZUIBoxSetColorArr(tab, bg);
+                    tab->BorderColor[0] = view->TabColor[0] * 0.5f;
+                    tab->BorderColor[1] = view->TabColor[1] * 0.5f;
+                    tab->BorderColor[2] = view->TabColor[2] * 0.5f;
+                    tab->BorderColor[3] = 0.55f;
+                }
+                else
+                {
+                    ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg);
+                    tab->BorderColor[0] = ctx->Theme.TabInactiveBorder[0];
+                    tab->BorderColor[1] = ctx->Theme.TabInactiveBorder[1];
+                    tab->BorderColor[2] = ctx->Theme.TabInactiveBorder[2];
+                    tab->BorderColor[3] = ctx->Theme.TabInactiveBorder[3];
+                }
                 tab->BorderThickness = 1.f;
             }
 
@@ -955,26 +990,86 @@ namespace ZEngine::UI
                     if (&Panels[pi] == p) { FocusPanel(pi); break; }
             }
 
-            // Drag-to-dock: start when held AND mouse has moved beyond threshold
-            // Uses mouse delta instead of ScreenMin/ScreenMax (which are not set during build time)
-            if (!tab_closed && !tab_popped && (sig.Flags & ZUI_SignalHeld) && !Drag.Active)
-            {
-                float total_moved = fabsf(ctx->MousePos[0] - Drag.StartX) +
-                                    fabsf(ctx->MousePos[1] - Drag.StartY);
-                if (total_moved > 8.f * ctx->UIScale)
-                {
-                    Drag.Active    = true;
-                    Drag.SrcPanel  = p;
-                    Drag.SrcTabIdx = ti;
-                    Drag.GhostX    = ctx->MousePos[0];
-                    Drag.GhostY    = ctx->MousePos[1];
-                }
-            }
             // Record press position for drag threshold
             if (sig.Flags & ZUI_SignalPressed)
             {
                 Drag.StartX = ctx->MousePos[0];
                 Drag.StartY = ctx->MousePos[1];
+                p->ReorderActive  = false;
+                p->ReorderAccumX  = 0.f;
+            }
+
+            if (!tab_closed && !tab_popped && (sig.Flags & ZUI_SignalHeld) && !Drag.Active)
+            {
+                float dx_abs = fabsf(ctx->MousePos[0] - Drag.StartX);
+                float dy_abs = fabsf(ctx->MousePos[1] - Drag.StartY);
+                float total  = dx_abs + dy_abs;
+
+                if (total > 5.f)
+                {
+                    bool mostly_horiz = (dx_abs > dy_abs * 1.5f);
+
+                    if (mostly_horiz && p->ViewCount > 1)
+                    {
+                        // --- Horizontal drag → reorder tabs within bar ---
+                        if (!p->ReorderActive)
+                        {
+                            p->ReorderActive = true;
+                            p->ReorderTabIdx = ti;
+                            p->ReorderAccumX = 0.f;
+                        }
+                        if (p->ReorderActive && p->ReorderTabIdx == ti)
+                        {
+                            p->ReorderAccumX += sig.DragDelta[0];
+                            // Approximate tab slot width from bar width / tab count
+                            float tab_slot = (rect[2] - rect[0]) / (float)p->ViewCount;
+                            if (tab_slot < 40.f) tab_slot = 40.f;
+                            float threshold = tab_slot * 0.5f;
+
+                            if (p->ReorderAccumX > threshold && ti + 1 < p->ViewCount)
+                            {
+                                // Swap right
+                                ZUIPanelView* tmp = p->Views[ti];
+                                p->Views[ti]     = p->Views[ti + 1];
+                                p->Views[ti + 1] = tmp;
+                                if (p->ActiveTab == ti)        p->ActiveTab = ti + 1;
+                                else if (p->ActiveTab == ti+1) p->ActiveTab = ti;
+                                p->ReorderTabIdx = ti + 1;
+                                p->ReorderAccumX -= threshold;
+                                break;
+                            }
+                            else if (p->ReorderAccumX < -threshold && ti > 0)
+                            {
+                                // Swap left
+                                ZUIPanelView* tmp = p->Views[ti];
+                                p->Views[ti]     = p->Views[ti - 1];
+                                p->Views[ti - 1] = tmp;
+                                if (p->ActiveTab == ti)        p->ActiveTab = ti - 1;
+                                else if (p->ActiveTab == ti-1) p->ActiveTab = ti;
+                                p->ReorderTabIdx = ti - 1;
+                                p->ReorderAccumX += threshold;
+                                break;
+                            }
+                        }
+                    }
+                    else if (!mostly_horiz || dy_abs > 12.f)
+                    {
+                        // --- Vertical drag → dock drag ---
+                        p->ReorderActive = false;
+                        Drag.Active    = true;
+                        Drag.SrcPanel  = p;
+                        Drag.SrcTabIdx = ti;
+                        Drag.GhostX    = ctx->MousePos[0];
+                        Drag.GhostY    = ctx->MousePos[1];
+                    }
+                }
+            }
+
+            // Clear reorder on mouse release
+            if (ctx->MouseReleased[0] && p->ReorderActive)
+            {
+                p->ReorderActive = false;
+                p->ReorderAccumX = 0.f;
             }
 
             ZUISpacer(ctx, 2.f);

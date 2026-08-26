@@ -13,7 +13,10 @@ namespace Tetragrama::Panels
     // ---------------------------------------------------------------
     struct HierarchyPanel : ZUIPanelView
     {
-        HierarchyPanel() { Title = "Hierarchy"; }
+        HierarchyPanel() {
+            Title = "Hierarchy";
+            TabColor[0]=0.30f; TabColor[1]=0.78f; TabColor[2]=0.30f; TabColor[3]=0.70f;
+        }
 
         struct Entry { const char* label; int depth; float icon[4]; };
         static constexpr Entry k_actors[] = {
@@ -77,7 +80,10 @@ namespace Tetragrama::Panels
     // ---------------------------------------------------------------
     struct InspectorPanel : ZUIPanelView
     {
-        InspectorPanel() { Title = "Inspector"; }
+        InspectorPanel() {
+            Title = "Inspector";
+            TabColor[0]=0.40f; TabColor[1]=0.65f; TabColor[2]=1.00f; TabColor[3]=0.70f;
+        }
 
         bool  xfm_open  = true;
         bool  mesh_open = true;
@@ -227,7 +233,10 @@ namespace Tetragrama::Panels
     // ---------------------------------------------------------------
     struct OutputPanel : ZUIPanelView
     {
-        OutputPanel() { Title = "Output"; }
+        OutputPanel() {
+            Title = "Output";
+            TabColor[0]=0.95f; TabColor[1]=0.74f; TabColor[2]=0.14f; TabColor[3]=0.70f;
+        }
 
         struct LogEntry { const char* level; const char* text; int kind; };
         // kind: 0=info  1=warn  2=error
@@ -290,7 +299,10 @@ namespace Tetragrama::Panels
     // ---------------------------------------------------------------
     struct ContentBrowserPanel : ZUIPanelView
     {
-        ContentBrowserPanel() { Title = "Content"; }
+        ContentBrowserPanel() {
+            Title = "Content";
+            TabColor[0]=0.40f; TabColor[1]=0.78f; TabColor[2]=1.00f; TabColor[3]=0.70f;
+        }
 
         struct Asset { const char* name; const char* ext; float col[4]; };
         static constexpr Asset k_assets[] = {
