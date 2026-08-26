@@ -336,11 +336,24 @@ namespace ZEngine::UI
     {
         if (!p || p->ViewCount == 0) { return; }
 
-        // Central panel (viewport): no tab bar, no border, no background — pure passthrough
+        // Central panel (viewport): no panel chrome, pass through to 3D scene.
+        // Exception: if the user has merged additional tabs in, show a minimal tab bar.
         if (p->DockKey == CentralPanelKey)
         {
-            ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
-            if (view) { view->BuildContent(ctx, rect); }
+            if (p->ViewCount > 1)
+            {
+                float hh = kTabBarH + 2.f;
+                float tab_rect[4] = { rect[0], rect[1], rect[2], rect[1] + hh };
+                BuildTabBar(ctx, p, tab_rect);
+                float cr[4] = { rect[0], rect[1] + hh, rect[2], rect[3] };
+                ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
+                if (view) { view->BuildContent(ctx, cr); }
+            }
+            else
+            {
+                ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
+                if (view) { view->BuildContent(ctx, rect); }
+            }
             return;
         }
 
@@ -582,12 +595,20 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);
             ZUIEndColumn(ctx);
 
-            if (tab_closed && p->ViewCount > 1)
+            if (tab_closed)
             {
                 for (uint32_t j = ti; j+1 < p->ViewCount; ++j) p->Views[j] = p->Views[j+1];
                 --p->ViewCount;
-                if (p->ActiveTab >= p->ViewCount) p->ActiveTab = p->ViewCount-1;
+                if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
+                    p->ActiveTab = p->ViewCount - 1;
                 LayoutDirty = true;
+                // Auto-hide when last tab is closed (don't leave a blank slot)
+                if (p->ViewCount == 0)
+                {
+                    p->Hidden = true;
+                    ZUIDockNode* leaf = ZUIDockFindLeaf(DockTree, p->DockKey);
+                    if (leaf) { ZUIDockCollapseLeaf(DockTree, leaf); }
+                }
                 break;
             }
 
