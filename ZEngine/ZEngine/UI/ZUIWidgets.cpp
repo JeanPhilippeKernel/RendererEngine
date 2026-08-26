@@ -1172,12 +1172,18 @@ namespace ZEngine::UI
         ZUISpacer(ctx, 2.f);
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
+        bool is_focused = (ctx->FocusKey == hdr->Key);
+        if (is_focused)
+        { hdr->Flags = hdr->Flags | ZUI_DrawBorder; SetBdrArr(hdr, ctx->Theme.InputFocusBorder); }
+
         ZUISignal sig = ZUISignalFromBox(ctx, hdr);
         ApplyHotActive(hdr, ctx, ctx->Theme.HeaderBg,
                        ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
         ZUIEndRow(ctx);
 
-        if ((sig.Flags & ZUI_SignalClicked) && open) { *open = !(*open); }
+        bool activated = (sig.Flags & ZUI_SignalClicked) ||
+                         (is_focused && (ctx->SpacePressed || ctx->EnterPressed));
+        if (activated && open) { *open = !(*open); }
         return open ? *open : false;
     }
 
@@ -1199,6 +1205,8 @@ namespace ZEngine::UI
         ZUISpacer(ctx, 6.f);
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
+        bool is_focused = (ctx->FocusKey == row->Key);
+
         ZUISignal sig = ZUISignalFromBox(ctx, row);
         // Lerp transparent → RowHoverBg → RowSelectedBg
         if (!(selected && *selected))
@@ -1206,12 +1214,14 @@ namespace ZEngine::UI
                            ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
         ZUIEndRow(ctx);
 
-        if ((sig.Flags & ZUI_SignalClicked) && selected)
+        bool activated = (sig.Flags & ZUI_SignalClicked) ||
+                         (is_focused && (ctx->SpacePressed || ctx->EnterPressed));
+        if (activated && selected)
         {
             *selected = !(*selected);
             return true;
         }
-        return false;
+        return activated; // return true even when selected == nullptr (e.g. ZUIMenuItem)
     }
 
     void ZUISeparatorText(ZUIContext* ctx, const char* text)
