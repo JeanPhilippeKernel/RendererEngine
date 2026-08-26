@@ -144,8 +144,8 @@ namespace ZEngine::UI
         float sh = (float)ctx->ScreenH;
         float scale = ctx->UIScale;
 
-        float real_menu_h   = menu_h   * scale;
-        float real_status_h = status_h * scale;
+        float real_menu_h   = menu_h;
+        float real_status_h = status_h;
 
         // Recompute dock layout every frame
         if (DockTree)
@@ -250,8 +250,8 @@ namespace ZEngine::UI
                 const char* title = (sp && Drag.SrcTabIdx < sp->ViewCount && sp->Views[Drag.SrcTabIdx])
                                    ? sp->Views[Drag.SrcTabIdx]->Title : "Tab";
 
-                float ghost_h = kTabBarH * scale;
-                float ghost_w = (float)(strlen(title) * 9 + 36) * scale;
+                float ghost_h = kTabBarH;
+                float ghost_w = (float)(strlen(title) * 9 + 36);
                 float ghost_col[4] = { ctx->Theme.TabActiveBg[0],
                                        ctx->Theme.TabActiveBg[1],
                                        ctx->Theme.TabActiveBg[2] + 0.10f, 0.85f };
@@ -396,7 +396,7 @@ namespace ZEngine::UI
 
         // Tab bar (hidden when single view — same as ImGui/RAD)
         bool show_tabs = (p->ViewCount > 1);
-        float tab_h = show_tabs ? kTabBarH * scale : 0.f;
+        float tab_h = show_tabs ? kTabBarH : 0.f;
         if (show_tabs)
         {
             float tab_rect[4] = { rect[0], rect[1], rect[2], rect[1] + tab_h };
@@ -448,7 +448,7 @@ namespace ZEngine::UI
 
         float scale = ctx->UIScale;
         float sw = (float)ctx->ScreenW, sh = (float)ctx->ScreenH;
-        float title_h = kTitleBarH * scale;
+        float title_h = kTitleBarH;
         float mx = ctx->MousePos[0], my = ctx->MousePos[1];
         float dx = ctx->MousePos[0] - ctx->PrevMousePos[0];
         float dy = ctx->MousePos[1] - ctx->PrevMousePos[1];
@@ -507,8 +507,8 @@ namespace ZEngine::UI
             {
                 p->FloatW += dx;
                 p->FloatH += dy;
-                if (p->FloatW < 120.f * scale) p->FloatW = 120.f * scale;
-                if (p->FloatH <  80.f * scale) p->FloatH =  80.f * scale;
+                if (p->FloatW < 120.f) p->FloatW = 120.f;
+                if (p->FloatH <  80.f) p->FloatH =  80.f;
             }
             if (ctx->MouseReleased[0]) p->Resizing = false;
         }
@@ -625,7 +625,7 @@ namespace ZEngine::UI
 
         // Tab bar (only when > 1 view)
         bool show_tabs = (p->ViewCount > 1);
-        float tab_h = show_tabs ? kTabBarH * scale : 0.f;
+        float tab_h = show_tabs ? kTabBarH : 0.f;
         if (show_tabs)
         {
             float tab_rect[4] = { px, py + title_h, px + pw, py + title_h + tab_h };
@@ -639,7 +639,7 @@ namespace ZEngine::UI
             ZUIBox* content = ZUIBeginColumn(ctx, "##fc", ZFill(), ZFill());
             content->Flags  = content->Flags | ZUI_ClipChildren;
             content->EdgeSoftness = 0.f;
-            float cr[4] = { px, py + title_h + tab_h, px + pw, py + ph - kResizeGrip * scale };
+            float cr[4] = { px, py + title_h + tab_h, px + pw, py + ph - kResizeGrip };
             view->BuildContent(ctx, cr);
             ZUIEndColumn(ctx);
         }
@@ -648,7 +648,7 @@ namespace ZEngine::UI
 
         // Resize handle (bottom-right corner)
         {
-            float rg = kResizeGrip * scale;
+            float rg = kResizeGrip;
             char rk[48];
             snprintf(rk, sizeof(rk), "##fp_resize_%llx", (unsigned long long)p->DockKey);
             ZUIBox* grip = ZUIPushBox(ctx, rk, (uint32_t)strlen(rk),

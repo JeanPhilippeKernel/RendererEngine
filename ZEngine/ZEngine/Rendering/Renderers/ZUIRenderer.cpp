@@ -354,9 +354,14 @@ namespace ZEngine::Rendering::Renderers
             if ((box->Flags & ZUI_DrawText) && box->Label.Ptr && ctx->GetFont(box->FontSize))
             {
                 const ZUIFont* font = ctx->GetFont(box->FontSize);
+                // FontScale converts atlas-pixel metrics to logical screen coordinates.
+                // Baking at physical density (26px on Retina) then scaling down 0.5×
+                // gives sharp glyphs at the correct logical size.
+                float fs       = font->FontScale > 0.f ? font->FontScale : 1.f;
+                float lh       = font->LineHeight * fs;
                 float box_h    = by1 - by0;
-                float text_top = floorf(by0 + (box_h - font->LineHeight) * 0.5f);
-                float baseline = text_top + font->Ascent;
+                float text_top = floorf(by0 + (box_h - lh) * 0.5f);
+                float baseline = text_top + font->Ascent * fs;
                 float text_indent = box->Padding[0] > 0.f ? box->Padding[0] : 4.f;
                 float cx       = floorf(bx0 + text_indent);
 
@@ -364,6 +369,7 @@ namespace ZEngine::Rendering::Renderers
                 {
                     float ts[2] = {0.f,0.f};
                     ZUIMeasureText(font, box->Label.Ptr, box->Label.Len, ts);
+                    // ZUIMeasureText already applies FontScale, ts values are logical
                     if (box->TextAlign == ZUITextAlign::Center)
                         cx = floorf(bx0 + ((bx1-bx0) - ts[0]) * 0.5f);
                     else
@@ -377,10 +383,10 @@ namespace ZEngine::Rendering::Renderers
                     if (cp < font->FirstCodepoint || idx >= font->GlyphCount) { continue; }
 
                     const ZUIGlyph& g  = font->Glyphs[idx];
-                    float gx0 = cx + g.OffsetX;
-                    float gy0 = baseline + g.OffsetY;
-                    float gx1 = gx0 + g.Width;
-                    float gy1 = gy0 + g.Height;
+                    float gx0 = cx + g.OffsetX * fs;
+                    float gy0 = baseline + g.OffsetY * fs;
+                    float gx1 = gx0 + g.Width  * fs;
+                    float gy1 = gy0 + g.Height * fs;
 
                     ZUIRectInst inst = {};
                     inst.dst[0]=floorf(gx0); inst.dst[1]=floorf(gy0);
@@ -389,12 +395,11 @@ namespace ZEngine::Rendering::Renderers
                     inst.src[2]=g.U1; inst.src[3]=g.V1;
                     for (int c=0;c<4;++c) for (int ch=0;ch<4;++ch)
                         inst.colors[c][ch] = box->TextColor[ch];
-                    // softness = 0 → skip SDF, alpha from texture
-                    inst.style[1] = 0.f;
+                    inst.style[1] = 0.f; // softness=0 → alpha from texture, no SDF
                     inst.style[2] = atlas_tex;
 
                     PushInst(inst);
-                    cx += g.AdvanceX;
+                    cx += g.AdvanceX * fs;
                 }
             }
         }

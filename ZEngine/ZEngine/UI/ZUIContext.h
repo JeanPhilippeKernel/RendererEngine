@@ -191,11 +191,30 @@ namespace ZEngine::UI
         ZUIBox*            TabBarOuterBox      = nullptr;
         ZUIBox*            TabBarRowBox        = nullptr;
 
-        // Table state (single-level; reset by ZUIBeginTable/ZUIEndTable)
+        // Basic table state (ZUIBeginTable / ZUIEndTable)
         int                TableColumns     = 0;
         int                TableCurrentCol  = -1;
         float*             TableColWidths   = nullptr; // FrameArena array
         ZUIBox*            TableRowBox      = nullptr;
+
+        // TreeView state (ZUIBeginTreeView / ZUIEndTreeView)
+        int                TV_Depth         = 0;
+        float              TV_IndentPx      = 16.f;   // px per depth level
+        float              TV_RowH          = 22.f;   // logical row height
+
+        // DataTable state (ZUIBeginDataTable / ZUIEndDataTable)
+        uint64_t           DT_Key           = 0;
+        int                DT_ColCount      = 0;
+        int                DT_CurCol        = -1;
+        int                DT_RowIndex      = 0;
+        bool               DT_InRow         = false;
+        bool               DT_InHeader      = false;
+        ZUIBox*            DT_RowBox        = nullptr;
+        float*             DT_ColWidths     = nullptr; // FrameArena, size = DT_ColCount
+        const void*        DT_Cols          = nullptr; // ZUIDataTableColumn* stored by BeginDataTable
+        int                DT_SortCol       = -1;      // -1 = unsorted
+        bool               DT_SortAsc       = true;
+        bool               DT_SortChanged   = false;
         float              PopupPos[2]      = {};    // screen position to open at
         uint64_t           ActivePopupKey   = 0;     // currently shown popup (frame-to-frame)
         ZUIBox*            ActivePopupBox   = nullptr; // set by ZUIBeginPopup; valid this frame

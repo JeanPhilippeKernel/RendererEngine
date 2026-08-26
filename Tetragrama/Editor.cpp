@@ -118,6 +118,17 @@ namespace Tetragrama
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
                 kFontPath, kSmall, kBody, kHeader, 32, 96);
             ZReleaseScratch(scratch);
+
+            // FontScale = 1/ContentScale so that atlas-pixel metrics (baked at
+            // physical density) convert back to logical screen coordinates.
+            // e.g. 26px atlas / 2.0 = 13 logical units, rendering sharp on Retina.
+            if (ctx->Atlas)
+            {
+                float fs = (content_scale > 0.5f) ? (1.f / content_scale) : 1.f;
+                if (ctx->Atlas->Small)  ctx->Atlas->Small->FontScale  = fs;
+                if (ctx->Atlas->Body)   ctx->Atlas->Body->FontScale   = fs;
+                if (ctx->Atlas->Header) ctx->Atlas->Header->FontScale = fs;
+            }
         }
 
         // Scene instance creation is handled directly in SceneViewportUIComponent::OnDrop

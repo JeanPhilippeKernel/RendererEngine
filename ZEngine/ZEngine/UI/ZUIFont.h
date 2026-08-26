@@ -31,6 +31,10 @@ namespace ZEngine::UI
         float      Descent        = 0.f;
         float      LineGap        = 0.f;
         float      LineHeight     = 0.f;
+        // Converts atlas-pixel metrics to logical screen coordinates.
+        // Set to 1/UIScale (= 0.5 on Retina) after baking so glyph quads
+        // render at the correct logical size even when baked at physical density.
+        float      FontScale      = 1.f;
     };
 
     // Single shared texture atlas — all fonts packed together (ImGui approach).

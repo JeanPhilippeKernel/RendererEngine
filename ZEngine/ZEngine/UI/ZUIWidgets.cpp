@@ -1390,7 +1390,7 @@ namespace ZEngine::UI
             char lk[48]; snprintf(lk, sizeof(lk), "##f3l%d%s", i, key);
             uint32_t llen = (uint32_t)strlen(lk);
             ZUIBox* chip  = ZUIPushBox(ctx, lk, llen, ZUI_DrawBackground | ZUI_DrawText);
-            chip->Size[0]   = ZPx(14.f * ctx->UIScale);
+            chip->Size[0]   = ZPx(14.f);
             chip->Size[1]   = ZSPx(ctx, 22.f);
             chip->TextAlign = ZUITextAlign::Center;
             ZUIBoxSetColorArr(chip, kAxes[i].chip);
@@ -1487,7 +1487,7 @@ namespace ZEngine::UI
         // Small swatch button
         char swk[48]; snprintf(swk, sizeof(swk), "##swatch_%s", key);
         uint32_t swlen = (uint32_t)strlen(swk);
-        float swatch_sz = 22.f * ctx->UIScale;
+        float swatch_sz = 22.f;
         ZUIBox* swatch = ZUIPushBox(ctx, swk, swlen,
                                      ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable);
         swatch->Size[0]     = ZPx(swatch_sz);
@@ -1660,6 +1660,436 @@ namespace ZEngine::UI
             dragging = (delta != 0.f);
         }
         return dragging;
+    }
+
+    // ================================================================
+    // ZUITreeView
+    // ================================================================
+
+    // Each node's open state is stored as ZUIPersistentState.UserData
+    // (1.0=open, 0.0=closed), keyed by the node label hash.
+
+    ZUIBox* ZUIBeginTreeView(ZUIContext* ctx, const char* key,
+                             ZUISize w, ZUISize h,
+                             const ZUITreeViewConfig* cfg)
+    {
+        if (cfg)
+        {
+            ctx->TV_RowH     = cfg->RowH;
+            ctx->TV_IndentPx = cfg->IndentPx;
+        }
+        else
+        {
+            ctx->TV_RowH     = 22.f;
+            ctx->TV_IndentPx = 16.f;
+        }
+        ctx->TV_Depth = 0;
+        return ZUIBeginScrollRegion(ctx, key, w, h);
+    }
+
+    void ZUIEndTreeView(ZUIContext* ctx)
+    {
+        ctx->TV_Depth = 0;
+        ZUIEndScrollRegion(ctx);
+    }
+
+    // Shared row builder for both node and leaf.
+    // Returns signal from the full-width row box.
+    static ZUISignal TV_BuildRow(ZUIContext* ctx, const char* label,
+                                  bool selected, bool has_arrow, bool is_open,
+                                  const float icon_col[4])
+    {
+        float row_h   = ctx->TV_RowH;
+        float indent  = (float)ctx->TV_Depth * ctx->TV_IndentPx;
+        float arrow_w = 16.f;
+        float icon_sz = 10.f;
+
+        char rk[128]; snprintf(rk, sizeof(rk), "##tvrow_%d_%s", ctx->TV_Depth, label);
+
+        // Full-width row (hit target + background)
+        ZUIBox* row  = ZUIPushBox(ctx, rk, (uint32_t)strlen(rk),
+                                  ZUI_DrawBackground | ZUI_Clickable);
+        row->Size[0] = ZFill();
+        row->Size[1] = ZPx(row_h);
+        row->LayoutAxis = ZUIAxis::X;
+
+        // Selection / hover coloring (check previous-frame signal via HotKey/ActiveKey)
+        bool hovered = (ctx->HotKey == row->Key);
+        if (selected)
+            ZUIBoxSetColorArr(row, ctx->Theme.RowSelectedBg);
+        else if (hovered)
+            ZUIBoxSetColorArr(row, ctx->Theme.RowHoverBg);
+        else
+            ZUIBoxSetColor(row, 0.f, 0.f, 0.f, 0.f);
+
+        // Indent spacer
+        if (indent > 0.f)
+        {
+            char sk[32]; snprintf(sk, sizeof(sk), "##tvsp_%d_%s", ctx->TV_Depth, label);
+            ZUIBox* sp = ZUIPushBox(ctx, sk, (uint32_t)strlen(sk), ZUI_None);
+            sp->Size[0] = ZPx(indent); sp->Size[1] = ZPx(row_h);
+            ZUIPopBox(ctx);
+        }
+
+        // Disclosure arrow (or spacer for leaves)
+        if (has_arrow)
+        {
+            const char* arrow = is_open ? "v" : ">";
+            ZUIBox* ab = ZUIPushBox(ctx, arrow, 1, ZUI_DrawText);
+            ab->Size[0] = ZPx(arrow_w); ab->Size[1] = ZPx(row_h);
+            float ac[4] = { 0.55f, 0.55f, 0.60f, 1.f };
+            SetTextColor(ab, ac);
+            ab->TextAlign = ZUITextAlign::Center;
+            ZUIPopBox(ctx);
+        }
+        else
+        {
+            // Leaf — spacer the same width to keep labels aligned
+            char lsk[32]; snprintf(lsk, sizeof(lsk), "##tvlsp_%s", label);
+            ZUIBox* lsp = ZUIPushBox(ctx, lsk, (uint32_t)strlen(lsk), ZUI_None);
+            lsp->Size[0] = ZPx(arrow_w); lsp->Size[1] = ZPx(row_h);
+            ZUIPopBox(ctx);
+        }
+
+        // Icon (colored dot)
+        if (icon_col)
+        {
+            char ik[64]; snprintf(ik, sizeof(ik), "##tvic_%s", label);
+            ZUIBox* ic = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
+            ic->Size[0] = ZPx(icon_sz); ic->Size[1] = ZPx(icon_sz);
+            ZUIBoxSetColorArr(ic, icon_col);
+            ZUIBoxSetCornerRadius(ic, icon_sz * 0.3f);
+            ic->EdgeSoftness = 0.5f;
+            ZUIPopBox(ctx);
+            // Gap after icon
+            char gk[64]; snprintf(gk, sizeof(gk), "##tvgap_%s", label);
+            ZUIBox* gap = ZUIPushBox(ctx, gk, (uint32_t)strlen(gk), ZUI_None);
+            gap->Size[0] = ZPx(5.f); gap->Size[1] = ZPx(row_h);
+            ZUIPopBox(ctx);
+        }
+
+        // Label
+        uint32_t llen = (uint32_t)strlen(label);
+        ZUIBox*  lbox = ZUIPushBox(ctx, label, llen, ZUI_DrawText);
+        lbox->Size[0] = ZText(); lbox->Size[1] = ZPx(row_h);
+        SetTextColor(lbox, selected ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+        ZUIPopBox(ctx);
+
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+        ZUIPopBox(ctx); // row
+
+        return sig;
+    }
+
+    bool ZUITreeViewBeginNode(ZUIContext* ctx, const char* label,
+                               bool selected, const float icon_col[4])
+    {
+        // Look up open state in persistent state
+        uint64_t hash  = ZUIHashStr(label, (uint32_t)strlen(label)) ^ (uint64_t)ctx->TV_Depth;
+        auto*    state = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        bool     is_open = state && state->UserData > 0.5f;
+
+        ZUISignal sig = TV_BuildRow(ctx, label, selected, true, is_open, icon_col);
+
+        if (sig.Flags & ZUI_SignalClicked)
+        {
+            is_open = !is_open;
+            if (state) state->UserData = is_open ? 1.f : 0.f;
+        }
+
+        if (is_open)
+        {
+            ctx->TV_Depth++;
+        }
+        return is_open;
+    }
+
+    void ZUITreeViewEndNode(ZUIContext* ctx)
+    {
+        if (ctx->TV_Depth > 0) ctx->TV_Depth--;
+    }
+
+    bool ZUITreeViewLeaf(ZUIContext* ctx, const char* label,
+                          bool selected, const float icon_col[4])
+    {
+        ZUISignal sig = TV_BuildRow(ctx, label, selected, false, false, icon_col);
+        return (sig.Flags & ZUI_SignalClicked) != 0;
+    }
+
+    // ================================================================
+    // ZUIDataTable
+    // ================================================================
+
+    // Persistent state layout for a data table:
+    //   slot key = DT_Key ^ (col * 2654435761ULL)  → UserData = column width
+    //   slot key = DT_Key ^ 0xBAADF00DULL           → UserData = sort encoding
+
+    static constexpr uint64_t kDT_SortSuffix = 0xBAADF00DULL;
+    static constexpr float    kDT_ColDefault  = 100.f; // default logical width
+    static constexpr float    kDT_HeaderH     = 24.f;  // logical header row height
+    static constexpr float    kDT_RowH        = 22.f;  // logical data row height
+    static constexpr float    kDT_ResizeW     =  4.f;  // resize grip logical width
+
+    static uint64_t DT_ColKey(uint64_t table_key, int col)
+    {
+        return table_key ^ ((uint64_t)col * 2654435761ULL);
+    }
+
+    bool ZUIBeginDataTable(ZUIContext* ctx, const char* key,
+                            int col_count, const ZUIDataTableColumn* cols,
+                            ZUISize h)
+    {
+        ctx->DT_Key      = ZUIHashStr(key, (uint32_t)strlen(key));
+        ctx->DT_ColCount = col_count;
+        ctx->DT_CurCol   = -1;
+        ctx->DT_RowIndex = 0;
+        ctx->DT_InRow    = false;
+        ctx->DT_InHeader = false;
+        ctx->DT_RowBox   = nullptr;
+        ctx->DT_SortChanged = false;
+
+        // Load column widths from persistent state; apply InitWidth for new tables
+        ctx->DT_ColWidths = ZPushArray(&ctx->FrameArena, float, col_count);
+        for (int i = 0; i < col_count; ++i)
+        {
+            auto* s = ZUIStateGetOrInsert(&ctx->StateStore, DT_ColKey(ctx->DT_Key, i));
+            float init = (cols && cols[i].InitWidth > 0.f) ? cols[i].InitWidth : kDT_ColDefault;
+            if (s && s->UserData > 1.f) // already set
+                ctx->DT_ColWidths[i] = s->UserData;
+            else
+            {
+                ctx->DT_ColWidths[i] = init;
+                if (s) s->UserData = init;
+            }
+        }
+
+        // Load sort state
+        {
+            auto* ss = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kDT_SortSuffix);
+            if (ss && ss->UserData != 0.f)
+            {
+                float enc = ss->UserData;
+                ctx->DT_SortAsc = (enc > 0.f);
+                ctx->DT_SortCol = (int)(enc > 0.f ? enc : -enc) - 1;
+            }
+            else { ctx->DT_SortCol = -1; ctx->DT_SortAsc = true; }
+        }
+
+        // Outer container (full-width column that clips)
+        ZUIBeginColumn(ctx, key, ZFill(), h);
+
+        // Store cols in FrameArena for HeadersRow
+        if (cols)
+        {
+            auto* copy = ZPushArray(&ctx->FrameArena, ZUIDataTableColumn, col_count);
+            for (int i = 0; i < col_count; ++i) copy[i] = cols[i];
+            ctx->DT_Cols = copy;
+        }
+        else { ctx->DT_Cols = nullptr; }
+
+        return true;
+    }
+
+    void ZUIDataTableHeadersRow(ZUIContext* ctx)
+    {
+        const ZUIDataTableColumn* cols = (const ZUIDataTableColumn*)ctx->DT_Cols;
+        float header_h = kDT_HeaderH;
+        float resize_w = kDT_ResizeW;
+
+        char hk[48]; snprintf(hk, sizeof(hk), "##dthdr_%llu", (unsigned long long)ctx->DT_Key);
+        ZUIBox* hrow = ZUIBeginRow(ctx, hk, ZFill(), ZPx(header_h));
+        hrow->Flags  = hrow->Flags | ZUI_DrawBackground;
+        ZUIBoxSetColor(hrow, 0.165f, 0.165f, 0.170f, 1.f);
+        hrow->EdgeSoftness = 0.f;
+
+        for (int i = 0; i < ctx->DT_ColCount; ++i)
+        {
+            float cw = ctx->DT_ColWidths[i];
+            bool sortable  = cols && cols[i].Sortable;
+            bool resizable = cols && cols[i].Resizable;
+
+            // Outer header cell box (clickable when sortable)
+            char ck[56]; snprintf(ck, sizeof(ck), "##dthc_%llu_%d", (unsigned long long)ctx->DT_Key, i);
+            ZUIBoxFlags cell_flags = ZUI_DrawBackground | ZUI_DrawBorder;
+            if (sortable) cell_flags = cell_flags | ZUI_Clickable;
+            ZUIBox* cell = ZUIPushBox(ctx, ck, (uint32_t)strlen(ck), cell_flags);
+            cell->Size[0] = ZPx(cw - (resizable ? resize_w : 0.f));
+            cell->Size[1] = ZPx(header_h);
+            cell->LayoutAxis = ZUIAxis::X;
+
+            // Hover tint on sortable headers
+            bool cell_hot = (ctx->HotKey == cell->Key);
+            if (cell_hot && sortable)
+                ZUIBoxSetColor(cell, 0.22f, 0.22f, 0.26f, 1.f);
+            else
+                ZUIBoxSetColor(cell, 0.165f, 0.165f, 0.170f, 1.f);
+            cell->BorderColor[0]=0.22f; cell->BorderColor[1]=0.22f;
+            cell->BorderColor[2]=0.22f; cell->BorderColor[3]=1.f;
+            cell->BorderThickness = 1.f;
+            cell->EdgeSoftness    = 0.f;
+
+            // Left padding
+            char sp1k[32]; snprintf(sp1k, sizeof(sp1k), "##thsp1_%d", i);
+            ZUIBox* sp1 = ZUIPushBox(ctx, sp1k, (uint32_t)strlen(sp1k), ZUI_None);
+            sp1->Size[0] = ZPx(6.f); sp1->Size[1] = ZPx(header_h);
+            ZUIPopBox(ctx);
+
+            // Column label
+            const char* lbl = (cols && cols[i].Label) ? cols[i].Label : "?";
+            bool is_sort_col = (ctx->DT_SortCol == i);
+            uint32_t lblen = (uint32_t)strlen(lbl);
+            ZUIBox* lbox = ZUIPushBox(ctx, lbl, lblen, ZUI_DrawText);
+            lbox->Size[0] = ZText(); lbox->Size[1] = ZPx(header_h);
+            const float* lc = is_sort_col ? ctx->Theme.TextDefault : ctx->Theme.TextDim;
+            lbox->TextColor[0]=lc[0]; lbox->TextColor[1]=lc[1];
+            lbox->TextColor[2]=lc[2]; lbox->TextColor[3]=lc[3];
+            ZUIPopBox(ctx);
+
+            // Sort direction indicator
+            if (is_sort_col && sortable)
+            {
+                char sk[32]; snprintf(sk, sizeof(sk), "##ths_%d", i);
+                const char* arrow = ctx->DT_SortAsc ? " ^" : " v";
+                ZUIBox* arr = ZUIPushBox(ctx, sk, (uint32_t)strlen(sk), ZUI_DrawText);
+                arr->Size[0] = ZPx(14.f); arr->Size[1] = ZPx(header_h);
+                arr->Label = ZUIPushStr(&ctx->FrameArena, arrow, (uint32_t)strlen(arrow));
+                float ac[4] = {ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1],
+                               ctx->Theme.TabActiveBorder[2], 1.f};
+                arr->TextColor[0]=ac[0]; arr->TextColor[1]=ac[1];
+                arr->TextColor[2]=ac[2]; arr->TextColor[3]=ac[3];
+                ZUIPopBox(ctx);
+            }
+
+            ZUISignal cell_sig = ZUISignalFromBox(ctx, cell);
+            ZUIPopBox(ctx); // cell
+
+            // Sort on click
+            if (sortable && (cell_sig.Flags & ZUI_SignalClicked))
+            {
+                if (ctx->DT_SortCol == i) { ctx->DT_SortAsc = !ctx->DT_SortAsc; }
+                else { ctx->DT_SortCol = i; ctx->DT_SortAsc = true; }
+                ctx->DT_SortChanged = true;
+                // Persist sort state
+                float enc = (float)(ctx->DT_SortCol + 1) * (ctx->DT_SortAsc ? 1.f : -1.f);
+                auto* ss = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kDT_SortSuffix);
+                if (ss) ss->UserData = enc;
+            }
+
+            // Column resize grip (right edge of header cell)
+            if (resizable)
+            {
+                char rk[56]; snprintf(rk, sizeof(rk), "##dtresize_%llu_%d", (unsigned long long)ctx->DT_Key, i);
+                ZUIBox* grip = ZUIPushBox(ctx, rk, (uint32_t)strlen(rk),
+                                          ZUI_DrawBackground | ZUI_Clickable);
+                grip->Size[0] = ZPx(resize_w);
+                grip->Size[1] = ZPx(header_h);
+                bool grip_hot = (ctx->HotKey == grip->Key);
+                float gc[4] = { 0.35f, 0.35f, 0.40f, grip_hot ? 0.9f : 0.3f };
+                ZUIBoxSetColorArr(grip, gc);
+                grip->EdgeSoftness = 0.f;
+                ZUISignal gsig = ZUISignalFromBox(ctx, grip);
+                ZUIPopBox(ctx);
+
+                // Drag to resize
+                if ((gsig.Flags & ZUI_SignalHeld) && gsig.DragDelta[0] != 0.f)
+                {
+                    float new_w = ctx->DT_ColWidths[i] + gsig.DragDelta[0];
+                    if (new_w < 30.f) new_w = 30.f;
+                    ctx->DT_ColWidths[i] = new_w;
+                    auto* cs = ZUIStateGetOrInsert(&ctx->StateStore, DT_ColKey(ctx->DT_Key, i));
+                    if (cs) cs->UserData = new_w;
+                }
+            }
+        }
+
+        ZUIEndRow(ctx);
+    }
+
+    bool ZUIDataTableNextRow(ZUIContext* ctx, bool selected)
+    {
+        float row_h  = kDT_RowH;
+
+        // Close previous row if open
+        if (ctx->DT_InRow)
+        {
+            if (ctx->DT_CurCol >= 0) { ZUIEndColumn(ctx); ctx->DT_CurCol = -1; }
+            ZUIEndRow(ctx);
+            ctx->DT_InRow = false;
+        }
+
+        // Alternating row background
+        bool  alt = (ctx->DT_RowIndex % 2) == 1;
+        float bg[4];
+        if (selected)
+            { bg[0]=ctx->Theme.RowSelectedBg[0]; bg[1]=ctx->Theme.RowSelectedBg[1];
+              bg[2]=ctx->Theme.RowSelectedBg[2]; bg[3]=ctx->Theme.RowSelectedBg[3]; }
+        else if (alt)
+            { bg[0]=ctx->Theme.PanelBgAlt[0]; bg[1]=ctx->Theme.PanelBgAlt[1];
+              bg[2]=ctx->Theme.PanelBgAlt[2]; bg[3]=0.5f; }
+        else
+            { bg[0]=0.f; bg[1]=0.f; bg[2]=0.f; bg[3]=0.f; }
+
+        char rk[48]; snprintf(rk, sizeof(rk), "##dtrow_%llu_%d",
+                              (unsigned long long)ctx->DT_Key, ctx->DT_RowIndex);
+        ZUIBox* row  = ZUIPushBox(ctx, rk, (uint32_t)strlen(rk),
+                                  ZUI_DrawBackground | ZUI_Clickable);
+        row->Size[0] = ZFill();
+        row->Size[1] = ZPx(row_h);
+        row->LayoutAxis = ZUIAxis::X;
+        ZUIBoxSetColorArr(row, bg);
+        row->EdgeSoftness = 0.f;
+
+        ZUISignal rsig = ZUISignalFromBox(ctx, row);
+        // Apply hover overlay
+        bool hovered = (ctx->HotKey == row->Key);
+        if (hovered && !selected)
+            ZUIBoxSetColorArr(row, ctx->Theme.RowHoverBg);
+
+        ctx->DT_RowBox = row;
+        ctx->DT_InRow  = true;
+        ctx->DT_CurCol = -1;
+        ctx->DT_RowIndex++;
+
+        return (rsig.Flags & ZUI_SignalClicked) != 0;
+    }
+
+    void ZUIDataTableSetColumn(ZUIContext* ctx, int col)
+    {
+        if (!ctx->DT_InRow) { return; }
+        // Close previous cell
+        if (ctx->DT_CurCol >= 0) { ZUIEndColumn(ctx); }
+
+        ctx->DT_CurCol = col;
+        float cw = (col < ctx->DT_ColCount && ctx->DT_ColWidths)
+                   ? ctx->DT_ColWidths[col] : 80.f;
+
+        char ck[48]; snprintf(ck, sizeof(ck), "##dtcell_%llu_%d_%d",
+                              (unsigned long long)ctx->DT_Key, ctx->DT_RowIndex, col);
+        ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
+        ZUISpacer(ctx, 4.f); // left padding
+    }
+
+    void ZUIEndDataTable(ZUIContext* ctx)
+    {
+        // Close open cell + row
+        if (ctx->DT_InRow)
+        {
+            if (ctx->DT_CurCol >= 0) { ZUIEndColumn(ctx); ctx->DT_CurCol = -1; }
+            ZUIEndRow(ctx);
+            ctx->DT_InRow = false;
+        }
+        ZUIEndColumn(ctx); // outer container
+        ctx->DT_ColCount = 0;
+    }
+
+    ZUITableSortSpec ZUIDataTableGetSortSpecs(ZUIContext* ctx)
+    {
+        ZUITableSortSpec spec;
+        spec.ColumnIndex = ctx->DT_SortCol;
+        spec.Ascending   = ctx->DT_SortAsc;
+        spec.Changed     = ctx->DT_SortChanged;
+        ctx->DT_SortChanged = false; // consume
+        return spec;
     }
 
 } // namespace ZEngine::UI

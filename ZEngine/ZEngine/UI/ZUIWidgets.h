@@ -10,10 +10,12 @@ namespace ZEngine::UI
     // ---------------------------------------------------------------
 
     inline ZUISize ZPx(float v)      { return {ZUISizeKind::Pixels,        v,    1.f}; }
-    // DPI-scaled pixel size — multiplies v by ctx->UIScale (1.0 on standard, 2.0 on Retina)
-    inline ZUISize ZSPx(const ZUIContext* ctx, float v)
+    // Logical pixel size. Coordinate system is already in logical units (glfwGetWindowSize
+    // space) so no UIScale multiplication is needed. Equivalent to ZPx(v).
+    // Kept as a named alias for clarity at call sites.
+    inline ZUISize ZSPx(const ZUIContext* /*ctx*/, float v)
     {
-        return {ZUISizeKind::Pixels, v * (ctx ? ctx->UIScale : 1.f), 1.f};
+        return ZPx(v);
     }
     inline ZUISize ZFill()           { return {ZUISizeKind::Fill,           0.f,  1.f}; }
     inline ZUISize ZText()           { return {ZUISizeKind::Text,           0.f,  1.f}; }
@@ -309,6 +311,77 @@ namespace ZEngine::UI
     void ZUIOpenModal(ZUIContext* ctx, const char* key);
     bool ZUIBeginModal(ZUIContext* ctx, const char* key, const char* title);
     void ZUIEndModal(ZUIContext* ctx);
+
+    // ---------------------------------------------------------------
+    // ZUITreeView — full-featured recursive tree (ImGui TreeNode parity)
+    // ---------------------------------------------------------------
+
+    struct ZUITreeViewConfig
+    {
+        float RowH      = 22.f; // logical px
+        float IndentPx  = 16.f; // px per depth level
+        float IconSize  = 10.f; // colored dot size
+    };
+
+    // Wraps a scroll region. cfg=nullptr uses defaults.
+    ZUIBox* ZUIBeginTreeView(ZUIContext* ctx, const char* key,
+                             ZUISize w = ZFill(), ZUISize h = ZFill(),
+                             const ZUITreeViewConfig* cfg = nullptr);
+    void    ZUIEndTreeView(ZUIContext* ctx);
+
+    // Expandable node. Returns true when expanded — if true, add children then
+    // call ZUITreeViewEndNode. icon_col=nullptr = no icon.
+    // Returns true on click for external selection handling.
+    bool ZUITreeViewBeginNode(ZUIContext* ctx, const char* label,
+                              bool selected,
+                              const float icon_col[4] = nullptr);
+    void ZUITreeViewEndNode(ZUIContext* ctx);
+
+    // Leaf — no expand arrow. Returns true when clicked.
+    bool ZUITreeViewLeaf(ZUIContext* ctx, const char* label,
+                         bool selected,
+                         const float icon_col[4] = nullptr);
+
+    // ---------------------------------------------------------------
+    // ZUIDataTable — sortable, resizable data table (ImGui Table parity)
+    // ---------------------------------------------------------------
+
+    struct ZUIDataTableColumn
+    {
+        const char* Label;
+        float       InitWidth;  // 0 = 100 logical px default
+        bool        Sortable;
+        bool        Resizable;
+    };
+
+    struct ZUITableSortSpec
+    {
+        int  ColumnIndex; // -1 = unsorted
+        bool Ascending;
+        bool Changed;     // true the frame the sort spec changed
+    };
+
+    // Begin a data table. Returns false if clipped (still call EndDataTable).
+    bool ZUIBeginDataTable(ZUIContext* ctx, const char* key,
+                           int col_count, const ZUIDataTableColumn* cols,
+                           ZUISize h = ZFill());
+
+    // Render the sticky header row with labels + sort arrows.
+    // Call once, before any ZUIDataTableNextRow calls.
+    void ZUIDataTableHeadersRow(ZUIContext* ctx);
+
+    // Start the next data row. selected=true tints the row.
+    // Returns true if the row was clicked (for selection).
+    bool ZUIDataTableNextRow(ZUIContext* ctx, bool selected = false);
+
+    // Set the active column for the current row. Call before adding content.
+    void ZUIDataTableSetColumn(ZUIContext* ctx, int col);
+
+    // Close the table. Always pair with ZUIBeginDataTable.
+    void ZUIEndDataTable(ZUIContext* ctx);
+
+    // Returns current sort spec. Changed=true the frame the user clicked a header.
+    ZUITableSortSpec ZUIDataTableGetSortSpecs(ZUIContext* ctx);
 
     // ---------------------------------------------------------------
     // Drag-and-drop helpers

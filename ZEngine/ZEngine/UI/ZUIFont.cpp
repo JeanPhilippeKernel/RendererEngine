@@ -171,8 +171,8 @@ namespace ZEngine::UI
             if (cp < font->FirstCodepoint || idx >= font->GlyphCount) { continue; }
             width += font->Glyphs[idx].AdvanceX;
         }
-        out_size[0] = width;
-        out_size[1] = font->LineHeight;
+        out_size[0] = width    * font->FontScale;
+        out_size[1] = font->LineHeight * font->FontScale;
     }
 
 } // namespace ZEngine::UI
