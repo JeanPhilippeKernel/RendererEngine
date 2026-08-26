@@ -32,6 +32,8 @@ namespace ZEngine::ECS
             return;
         }
 
+        ZENGINE_VALIDATE_ASSERT(m_meta.size() < m_meta.capacity(), "ComponentReflectionRegistry::Register: exceeded reserved capacity")
+
         m_meta.push(meta);
     }
 
