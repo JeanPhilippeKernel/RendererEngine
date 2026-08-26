@@ -116,8 +116,10 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_HOME)   m_ctx->HomePressed       = true;
         if (key == ZENGINE_KEY_END)    m_ctx->EndPressed        = true;
         if (key == ZENGINE_KEY_DELETE) { m_ctx->DeletePressed = true;  m_ctx->DeleteHeld        = true;  m_ctx->ArrowRepeatTimer = 0.f; }
-        if (key == ZENGINE_KEY_LEFT)  { m_ctx->ArrowLeftHeld  = true;  m_ctx->ArrowRepeatTimer  = 0.f; }
-        if (key == ZENGINE_KEY_RIGHT) { m_ctx->ArrowRightHeld = true;  m_ctx->ArrowRepeatTimer  = 0.f; }
+        if (key == ZENGINE_KEY_LEFT)  { m_ctx->ArrowLeftHeld  = true;  m_ctx->ArrowRepeatTimer = 0.f; }
+        if (key == ZENGINE_KEY_RIGHT) { m_ctx->ArrowRightHeld = true;  m_ctx->ArrowRepeatTimer = 0.f; }
+        if (key == ZENGINE_KEY_UP)    { m_ctx->ArrowUpHeld    = true;  m_ctx->ArrowRepeatTimer = 0.f; }
+        if (key == ZENGINE_KEY_DOWN)  { m_ctx->ArrowDownHeld  = true;  m_ctx->ArrowRepeatTimer = 0.f; }
 
         // Ctrl+C → signal the context so widgets can copy their content
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
@@ -164,6 +166,8 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         }
         if (key == ZENGINE_KEY_LEFT)   m_ctx->ArrowLeftHeld  = false;
         if (key == ZENGINE_KEY_RIGHT)  m_ctx->ArrowRightHeld = false;
+        if (key == ZENGINE_KEY_UP)     m_ctx->ArrowUpHeld    = false;
+        if (key == ZENGINE_KEY_DOWN)   m_ctx->ArrowDownHeld  = false;
         if (key == ZENGINE_KEY_DELETE) m_ctx->DeleteHeld     = false;
         return false;
     }

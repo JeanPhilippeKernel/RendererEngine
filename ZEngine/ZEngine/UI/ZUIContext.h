@@ -226,6 +226,8 @@ namespace ZEngine::UI
         // Held state for key-repeat (same mechanism as BackspaceHeld)
         bool               ArrowLeftHeld         = false;
         bool               ArrowRightHeld        = false;
+        bool               ArrowUpHeld           = false;
+        bool               ArrowDownHeld         = false;
         bool               DeleteHeld            = false;
         float              ArrowRepeatTimer      = 0.f;
         // Per-frame tracking updated in ZUISignalFromBox during the build pass

@@ -71,7 +71,8 @@ namespace ZEngine::UI
         }
 
         // Key repeat: Arrow left/right and Delete when held
-        bool any_arrow = ctx->ArrowLeftHeld || ctx->ArrowRightHeld || ctx->DeleteHeld;
+        bool any_arrow = ctx->ArrowLeftHeld  || ctx->ArrowRightHeld  ||
+                         ctx->ArrowUpHeld   || ctx->ArrowDownHeld   || ctx->DeleteHeld;
         if (any_arrow && ctx->FocusKey != 0)
         {
             ctx->ArrowRepeatTimer += ctx->DeltaTime;
@@ -84,6 +85,8 @@ namespace ZEngine::UI
                 {
                     if (ctx->ArrowLeftHeld)  ctx->ArrowLeftPressed  = true;
                     if (ctx->ArrowRightHeld) ctx->ArrowRightPressed = true;
+                    if (ctx->ArrowUpHeld)    ctx->ArrowUpPressed    = true;
+                    if (ctx->ArrowDownHeld)  ctx->ArrowDownPressed  = true;
                     if (ctx->DeleteHeld)     ctx->DeletePressed     = true;
                 }
             }
