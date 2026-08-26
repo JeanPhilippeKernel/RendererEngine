@@ -2017,6 +2017,13 @@ namespace ZEngine::UI
             if (ctx->CtrlCPressed)
                 snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
 
+            // Ctrl+A — copy to clipboard then clear for fresh typing
+            if (ctx->CtrlAPressed)
+            {
+                snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
+                buf[0] = '\0'; cpos = 0; changed = true;
+            }
+
             // Ctrl+Backspace — delete word before cursor (back to prev space/boundary)
             if (ctx->CtrlBackspacePressed && cpos > 0)
             {
@@ -2779,6 +2786,11 @@ namespace ZEngine::UI
             if (ctx->ArrowRightPressed && (uint32_t)cpos < len)  cpos++;
             if (ctx->HomePressed)  cpos = 0;
             if (ctx->EndPressed)   cpos = (int)(uint32_t)strlen(buf);
+            if (ctx->CtrlAPressed)
+            {
+                snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
+                buf[0] = '\0'; cpos = 0; changed = true;
+            }
             if (ps) ps->UserData = (float)cpos;
         }
 

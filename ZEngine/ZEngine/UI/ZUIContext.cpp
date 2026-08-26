@@ -138,6 +138,7 @@ namespace ZEngine::UI
         ctx->EndPressed            = false;
         ctx->CtrlCPressed          = false;
         ctx->CtrlBackspacePressed  = false;
+        ctx->CtrlAPressed          = false;
         ctx->DeletePressed         = false;
 
         // Popup: promote open request → active; reset per-frame box pointer

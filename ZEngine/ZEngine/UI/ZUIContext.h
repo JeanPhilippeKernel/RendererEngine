@@ -222,6 +222,7 @@ namespace ZEngine::UI
         bool               EndPressed            = false; // cursor to end of field
         bool               CtrlCPressed          = false; // copy focused field to clipboard
         bool               CtrlBackspacePressed  = false; // delete word before cursor
+        bool               CtrlAPressed          = false; // select all (clears field + copies to clipboard)
         bool               DeletePressed         = false; // forward-delete at cursor
         // Held state for key-repeat (same mechanism as BackspaceHeld)
         bool               ArrowLeftHeld         = false;

@@ -124,6 +124,9 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         // Ctrl+C → signal the context so widgets can copy their content
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
             m_ctx->CtrlCPressed = true;
+        // Ctrl+A → select all (copies to clipboard + clears for fresh typing)
+        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_A)
+            m_ctx->CtrlAPressed = true;
 
         // Ctrl+Backspace → delete word before cursor
         if (m_ctx->CtrlDown && key == ZENGINE_KEY_BACKSPACE)
