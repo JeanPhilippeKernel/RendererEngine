@@ -107,15 +107,12 @@ namespace ZEngine::UI
         {
             int count = ctx->PopupBuildCount > 0 ? ctx->PopupBuildCount : 1;
             if (ctx->ArrowDownPressed)
-            {
                 ctx->PopupNavIdx = (ctx->PopupNavIdx + 1) % count;
-            }
             if (ctx->ArrowUpPressed)
-            {
                 ctx->PopupNavIdx = (ctx->PopupNavIdx <= 0) ? (count - 1) : (ctx->PopupNavIdx - 1);
-            }
-            // Escape closes popup
-            if (ctx->EscapePressed) { ctx->ActivePopupKey = 0; ctx->PopupNavIdx = -1; }
+            // Escape or Tab closes popup without selecting
+            if (ctx->EscapePressed || ctx->TabPressed || ctx->ShiftTabPressed)
+                { ctx->ActivePopupKey = 0; ctx->PopupNavIdx = -1; }
         }
 
         // Tab focus navigation — apply after interaction pass so click-focus wins
