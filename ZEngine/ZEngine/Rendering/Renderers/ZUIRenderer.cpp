@@ -396,32 +396,41 @@ namespace ZEngine::Rendering::Renderers
             }
 
             // --- Triangle arrow (collapse indicator) ---
+            // Geometry matches ImGui RenderArrow() exactly:
+            //   r = FontSize * 0.40  (5.2px at FontSize=13)
+            //   Down ▼:  a=(0,0.75)*r  b=(-0.866,-0.75)*r  c=(0.866,-0.75)*r
+            //   Right ►: a=(0.75,0)*r  b=(-0.75,0.866)*r   c=(-0.75,-0.866)*r
+            // We scale r from box height so the arrow is proportional to the row.
             if (box->Flags & ZUI_DrawTriArrow)
             {
                 auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
-                bool down = ps && ps->UserData > 0.5f; // 0=right(collapsed) 1=down(expanded)
-                float cx  = (bx0 + bx1) * 0.5f;
-                float cy  = (by0 + by1) * 0.5f;
-                // Scale from row HEIGHT so the arrow looks the same regardless of
-                // how narrow the container is (tree arrows are narrower than headers).
-                // ImGui: arrow ≈ FontSize * 0.5 * 0.8 ≈ 13 * 0.40 = 5.2px
-                float s   = (by1 - by0) * 0.30f;
+                bool down = ps && ps->UserData > 0.5f;
+
+                // Center arrow in the box (ImGui centers it at pos + h*0.5)
+                float cx = (bx0 + bx1) * 0.5f;
+                float cy = (by0 + by1) * 0.5f;
+
+                // r ≈ FontSize * 0.40; scale proportionally to row height
+                // At row_h=19: r = 19*(13/19)*0.40 = 13*0.40 = 5.2px  (matches ImGui)
+                float r = (by1 - by0) * (0.40f * 13.f / 19.f);
+
                 uint32_t cc = ZUIPackColor(box->TextColor);
                 if (down)
                 {
-                    // Down-pointing triangle ▼
+                    // ▼ Down-pointing equilateral
                     ZUIDrawListAddTriangleFilled(&ctx->DrawList,
-                        cx - s, cy - s*0.6f,
-                        cx + s, cy - s*0.6f,
-                        cx,     cy + s*0.8f,  cc);
+                        cx + 0.000f * r,  cy + 0.750f * r,   // bottom
+                        cx - 0.866f * r,  cy - 0.750f * r,   // upper-left
+                        cx + 0.866f * r,  cy - 0.750f * r,   // upper-right
+                        cc);
                 }
                 else
                 {
-                    // Right-pointing triangle ▶ — CCW winding: top-left, right-tip, bottom-left
+                    // ► Right-pointing equilateral
                     ZUIDrawListAddTriangleFilled(&ctx->DrawList,
-                        cx - s*0.6f, cy - s,   // A: top-left
-                        cx + s*0.8f, cy,        // B: right tip
-                        cx - s*0.6f, cy + s,    // C: bottom-left
+                        cx + 0.750f * r,  cy + 0.000f * r,   // right tip
+                        cx - 0.750f * r,  cy + 0.866f * r,   // lower-left
+                        cx - 0.750f * r,  cy - 0.866f * r,   // upper-left
                         cc);
                 }
             }
