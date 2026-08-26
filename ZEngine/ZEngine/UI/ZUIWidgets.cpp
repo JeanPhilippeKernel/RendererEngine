@@ -2416,9 +2416,16 @@ namespace ZEngine::UI
         SetTextColor(lbox, selected ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
         ZUIPopBox(ctx);
 
+        // Focus indicator: highlight row bg if keyboard-focused
+        bool is_focused = (ctx->FocusKey == row->Key);
+
         ZUISignal sig = ZUISignalFromBox(ctx, row);
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = row->Key; }
         if (!selected)
             ApplyHotActive(row, ctx, kTVRest, ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
+        // Space/Enter fires as click for keyboard selection
+        if (is_focused && (ctx->SpacePressed || ctx->EnterPressed))
+            sig.Flags = sig.Flags | ZUI_SignalClicked;
         ZUIPopBox(ctx); // row
 
         return sig;
@@ -2442,11 +2449,18 @@ namespace ZEngine::UI
             is_open = !is_open;
             if (state) state->UserData = is_open ? 1.f : 0.f;
         }
-
-        if (is_open)
+        // Arrow Right opens a closed node; Arrow Left closes an open one (when row has focus)
+        // The row key matches what TV_BuildRow built: "##tvrow_<depth>_<label>"
         {
-            ctx->TV_Depth++;
+            char tvk[128]; snprintf(tvk, sizeof(tvk), "##tvrow_%d_%s", ctx->TV_Depth, label);
+            if (ctx->FocusKey == ZUIHashStr(tvk, (uint32_t)strlen(tvk)))
+            {
+                if (ctx->ArrowRightPressed && !is_open) { is_open = true;  if (state) state->UserData = 1.f; }
+                if (ctx->ArrowLeftPressed  &&  is_open) { is_open = false; if (state) state->UserData = 0.f; }
+            }
         }
+
+        if (is_open) { ctx->TV_Depth++; }
         return is_open;
     }
 
