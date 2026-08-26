@@ -63,6 +63,27 @@ namespace ZEngine::UI
         return nullptr;
     }
 
+    static ZUIDockNode* FindLargestLeaf(ZUIDockNode* node)
+    {
+        if (!node) { return nullptr; }
+        ZUIDockNode* best      = nullptr;
+        float        best_area = -1.f;
+        ZUIDockNode* stack[64]; int top = 0;
+        stack[top++] = node;
+        while (top > 0)
+        {
+            ZUIDockNode* n = stack[--top];
+            if (n->ContentKey != 0)
+            {
+                float area = (n->RectMax[0]-n->RectMin[0]) * (n->RectMax[1]-n->RectMin[1]);
+                if (area > best_area) { best_area = area; best = n; }
+            }
+            for (ZUIDockNode* c = n->First; c; c = c->Next)
+                if (top < 64) stack[top++] = c;
+        }
+        return best;
+    }
+
     void ZUIPanelManager::FocusPanel(uint32_t idx)
     {
         FocusedPanelIdx = idx;
@@ -284,9 +305,13 @@ namespace ZEngine::UI
                 if (ZUIMenuItem(ctx, buf) && p->Hidden)
                 {
                     p->Hidden = false;
-                    if (DockTree && DockTree->Root && DockTree->Root->ContentKey != 0)
-                        ZUIDockSplitH(DockTree, DockTree->Root, 0.75f,
-                                      DockTree->Root->ContentKey, p->DockKey);
+                    if (DockTree)
+                    {
+                        ZUIDockNode* target = FindLargestLeaf(DockTree->Root);
+                        if (target)
+                            ZUIDockSplitH(DockTree, target, 0.75f,
+                                          target->ContentKey, p->DockKey);
+                    }
                     LayoutDirty = true;
                 }
             }
@@ -503,7 +528,7 @@ namespace ZEngine::UI
             snprintf(tab_key, sizeof(tab_key), "##tab_%llx_%u", (unsigned long long)p->DockKey, ti);
             ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFit(), ZFill());
             tab->Flags = tab->Flags | ZUI_DrawBackground | ZUI_Clickable;
-            tab->EdgeSoftness=0.f; ZUIBoxSetTopRadius(tab, 5.f);
+            tab->EdgeSoftness=0.f; ZUIBoxSetTopRadius(tab, 6.f);
 
             if (is_active)
                 ZUIBoxSetColorArr(tab, ctx->Theme.PanelBg);
@@ -644,6 +669,21 @@ namespace ZEngine::UI
         }
 
         ZUIEndRow(ctx);
+
+        // Chrome shelf: 1px PanelBg strip sealing the tab bar / content boundary.
+        // Active tab BG == PanelBg → tab appears to merge seamlessly into the panel below.
+        {
+            char fk[48]; snprintf(fk, sizeof(fk), "##tbfloor_%llx", (unsigned long long)p->DockKey);
+            ZUIBox* fl = ZUIPushBox(ctx, fk, (uint32_t)strlen(fk),
+                                    ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+            fl->Size[0]     = ZPx(rect[2] - rect[0]);
+            fl->Size[1]     = ZPx(1.f);
+            fl->FloatPos[0] = rect[0];
+            fl->FloatPos[1] = rect[3] - 1.f;
+            ZUIBoxSetColorArr(fl, ctx->Theme.PanelBg);
+            fl->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+        }
     }
 
     // ---------------------------------------------------------------

@@ -83,12 +83,15 @@ namespace Tetragrama::Panels
             Manager.AddView(p_out, &output);
             Manager.AddView(p_out, &content); // Content Browser tab
 
-            // Viewport is the central passthrough node — no chrome, full rect to scene
-            Manager.SetCentralPanel(ZUIDockHashName("Viewport"));
-
-            // Ini persistence — save to / load from zui_layout.ini next to the binary
+            // Ini persistence — load saved layout (all registered views for title matching)
+            ZUIPanelView* all_views[] = {
+                &hierarchy, &viewport, &inspector, &output, &content
+            };
             Manager.SetLayoutPath("zui_layout.ini");
-            ZUIDockLoad(&Manager, "zui_layout.ini"); // no-op if file not found
+            ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 5); // no-op if file not found
+
+            // Central panel AFTER load so it marks the node in the final tree
+            Manager.SetCentralPanel(ZUIDockHashName("Viewport"));
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override
