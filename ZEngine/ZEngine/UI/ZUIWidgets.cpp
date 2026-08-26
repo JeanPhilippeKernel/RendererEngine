@@ -418,12 +418,21 @@ namespace ZEngine::UI
         SetTextColor(txt, ctx->Theme.TextDefault);
         ZUIPopBox(ctx); // pop label
 
+        bool is_focused = (ctx->FocusKey == row->Key);
+
         ZUISignal sig = ZUISignalFromBox(ctx, row);
         ZUIPopBox(ctx); // pop row
 
-        if ((sig.Flags & ZUI_SignalClicked) && open)
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = row->Key; }
+
+        bool toggle = (sig.Flags & ZUI_SignalClicked) ||
+                      (is_focused && (ctx->SpacePressed || ctx->EnterPressed));
+        if (open)
         {
-            *open = !(*open);
+            if (toggle) { *open = !(*open); }
+            // Arrow Right opens, Arrow Left closes
+            if (is_focused && ctx->ArrowRightPressed && !(*open)) *open = true;
+            if (is_focused && ctx->ArrowLeftPressed  &&  (*open)) *open = false;
         }
 
         return sig;
