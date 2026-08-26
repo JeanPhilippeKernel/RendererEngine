@@ -69,9 +69,10 @@ namespace ZEngine::UI
 
     struct ZUIPanelManager
     {
-        ZUIDockTree* DockTree   = nullptr;
+        ZUIDockTree* DockTree        = nullptr;
         ZUIPanel     Panels[kMaxPanels];
-        uint32_t     PanelCount = 0;
+        uint32_t     PanelCount      = 0;
+        uint32_t     FocusedPanelIdx = 0;  // index into Panels[], set on tab click
 
         // Drag-to-dock transient state
         ZUIDragDockState Drag;

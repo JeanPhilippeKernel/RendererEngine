@@ -43,10 +43,14 @@ namespace ZEngine::Rendering::Renderers
 
     struct ZUIRenderPayload
     {
-        ZUIRectInst* Instances   = nullptr;
-        uint32_t     InstCount   = 0;
-        ZUIDrawCmd*  Cmds        = nullptr;
-        uint32_t     CmdCount    = 0;
+        ZUIRectInst* Instances        = nullptr;
+        uint32_t     InstCount        = 0;
+        ZUIDrawCmd*  Cmds             = nullptr;
+        uint32_t     CmdCount         = 0;
+        // ImGui-style: physical_px / logical_px (ContentScale).
+        // Scissor rects are in logical pixels; multiply by this to get physical pixels
+        // before passing to Vulkan SetScissor (which expects physical pixels).
+        float        FramebufferScale = 1.f;
         float        Scale[2]    = {};
         float        Translate[2]= {};
     };

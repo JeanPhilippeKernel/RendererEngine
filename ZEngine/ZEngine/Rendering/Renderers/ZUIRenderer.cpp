@@ -116,15 +116,20 @@ namespace ZEngine::Rendering::Renderers
         out->InstCount  = 0;
         out->CmdCount   = 0;
 
-        float fb_w = Device->CurrentWindow ? (float)Device->CurrentWindow->GetWidth()
-                                           : (float)Device->SwapchainPtr->SwapchainImageWidth;
-        float fb_h = Device->CurrentWindow ? (float)Device->CurrentWindow->GetHeight()
-                                           : (float)Device->SwapchainPtr->SwapchainImageHeight;
+        // Use ctx->ScreenW/H (logical pixels, already divided by ContentScale on macOS)
+        // so that NDC matches the same coordinate space as panel bounds and cursor.
+        float fb_w = ctx->ScreenW > 0 ? (float)ctx->ScreenW
+                                      : (float)Device->SwapchainPtr->SwapchainImageWidth;
+        float fb_h = ctx->ScreenH > 0 ? (float)ctx->ScreenH
+                                      : (float)Device->SwapchainPtr->SwapchainImageHeight;
 
         out->Scale[0]     =  2.f / fb_w;
         out->Scale[1]     =  2.f / fb_h;
         out->Translate[0] = -1.f;
         out->Translate[1] = -1.f;
+        // Physical/logical scale — same as ImGui's DisplayFramebufferScale.
+        // Scissor rects stored in logical pixels; Submit multiplies by this to get physical px.
+        out->FramebufferScale = ctx->UIScale > 0.f ? ctx->UIScale : 1.f;
 
         // Gather atlas info
         float atlas_tex = ctx->Atlas ? (float)ctx->Atlas->Handle.Index : 0.f;
@@ -443,9 +448,11 @@ namespace ZEngine::Rendering::Renderers
                 const ZUIDrawCmd& cmd = payload.Cmds[i];
                 if (cmd.InstCount == 0) { continue; }
 
+                // Scale logical scissor → physical pixels (ImGui DisplayFramebufferScale pattern)
+                float fs = payload.FramebufferScale;
                 secondary_cb->SetScissor(
-                    (uint32_t)cmd.ClipW, (uint32_t)cmd.ClipH,
-                    (int32_t)cmd.ClipX,  (int32_t)cmd.ClipY);
+                    (uint32_t)(cmd.ClipW * fs), (uint32_t)(cmd.ClipH * fs),
+                    (int32_t) (cmd.ClipX * fs), (int32_t) (cmd.ClipY * fs));
 
                 secondary_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0,
                                             sizeof(ZUIRectPushConstant), &pc);

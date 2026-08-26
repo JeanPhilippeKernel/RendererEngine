@@ -85,24 +85,24 @@ namespace Tetragrama
                 "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
             auto* ctx = RenderPipeline->ZUICtx;
 
-            // Content scale for widget sizing (ZSPx). Font baking uses logical px
-            // sizes; the display upsamples on Retina (same as ImGui default behavior).
+            // UIScale = ContentScale on macOS (per Gemini analysis).
+            // On other platforms = FbRatio (same behavior as before).
+            // AppRenderPipeline::BeginOverlayFrame will override UIScale each frame;
+            // here we bake fonts using ContentScale for visual density on Retina displays.
+            float content_scale = 1.f;
+            if (CurrentWindow)
             {
-                float xs = 1.f, ys = 1.f;
-                if (CurrentWindow)
-                {
-                    auto* gw = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
-                    if (gw) glfwGetWindowContentScale(gw, &xs, &ys);
+                auto* gw = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
+                if (gw) {
+                    float xs = 1.f, ys = 1.f;
+                    glfwGetWindowContentScale(gw, &xs, &ys);
+                    content_scale = xs > ys ? xs : ys;
+                    if (content_scale < 0.5f) content_scale = 1.f;
                 }
-                ctx->UIScale = xs > ys ? xs : ys;
-                if (ctx->UIScale < 0.5f) ctx->UIScale = 1.f;
             }
+            ctx->UIScale = content_scale;  // fonts use ContentScale; BeginOverlayFrame confirms
 
-            // Logical window width drives font size selection.
-            // body = win_w / 85 gives ~18px at 1512 (standard), ~35px at 3024 (more-space).
-            // 13px at UIScale=1.0 matches ImGui's default body font density.
-            // At ContentScale=2.0 (Retina) → 26px, rendered as 52 physical pixels ≈ 12pt.
-            float kBody   = 13.f * ctx->UIScale;
+            float kBody   = 13.f * content_scale;  // 26px at 2×Retina, 13px at 1×
             if (kBody < 11.f) kBody = 11.f;
             if (kBody > 52.f) kBody = 52.f;
             float kSmall  = kBody * 0.80f;

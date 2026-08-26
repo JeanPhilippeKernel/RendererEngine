@@ -1,6 +1,7 @@
 #include <ZEngine/UI/ZUIPanel.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <cstdio>
 #include <cstring>
 
@@ -93,9 +94,19 @@ namespace ZEngine::UI
                 ZUIPanel* p = &Panels[i];
                 float r[4];
                 if (!ZUIDockRectForKey(DockTree, p->DockKey, r)) { continue; }
-                BuildPanel(ctx, p, r);
+                // Set hover BEFORE BuildPanel so drop zones show this frame
                 if (Drag.Active && mx >= r[0] && mx <= r[2] && my >= r[1] && my <= r[3])
                     Drag.HoverNode = ZUIDockFindLeaf(DockTree, p->DockKey);
+
+                BuildPanel(ctx, p, r);
+
+                // Focus this panel on any mouse press inside it
+                if (ctx->MousePressed[0] && !Drag.Active &&
+                    mx >= r[0] && mx <= r[2] && my >= r[1] && my <= r[3])
+                {
+                    for (uint32_t pi = 0; pi < PanelCount; ++pi)
+                        if (&Panels[pi] == p) { FocusedPanelIdx = pi; break; }
+                }
             }
         }
 
@@ -233,6 +244,11 @@ namespace ZEngine::UI
         char panel_key[32];
         snprintf(panel_key, sizeof(panel_key), "##panel_%llx", (unsigned long long)p->DockKey);
 
+        // Determine focus — RAD: focused panel gets accent border, unfocused gets dim border
+        bool is_focused = false;
+        for (uint32_t pi = 0; pi < PanelCount; ++pi)
+            if (&Panels[pi] == p && pi == FocusedPanelIdx) { is_focused = true; break; }
+
         // Panel border box
         ZUIBox* panel = ZUIBeginColumn(ctx, panel_key, ZPx(rect[2]-rect[0]), ZPx(rect[3]-rect[1]));
         panel->Flags  = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder |
@@ -240,10 +256,9 @@ namespace ZEngine::UI
         panel->FloatPos[0]  = rect[0];
         panel->FloatPos[1]  = rect[1];
         ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
-        panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
-        panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
-        panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
-        panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
+        const float* border_col = is_focused ? ctx->Theme.PanelFocusBorder : ctx->Theme.PanelBorder;
+        panel->BorderColor[0] = border_col[0]; panel->BorderColor[1] = border_col[1];
+        panel->BorderColor[2] = border_col[2]; panel->BorderColor[3] = border_col[3];
         panel->BorderThickness = 1.f;
         panel->EdgeSoftness    = 0.f;
 
@@ -265,6 +280,23 @@ namespace ZEngine::UI
         }
 
         ZUIEndColumn(ctx);
+
+        // Unfocused panel dim overlay — RAD: "inactive background" = 0x00000016 (9% black)
+        // Applied over the full panel rect when this panel is not focused.
+        if (!is_focused)
+        {
+            char ov_key[40];
+            snprintf(ov_key, sizeof(ov_key), "##pov_%llx", (unsigned long long)p->DockKey);
+            ZUIBox* ov = ZUIPushBox(ctx, ov_key, (uint32_t)strlen(ov_key),
+                                     ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+            ov->Size[0]     = ZPx(rect[2] - rect[0]);
+            ov->Size[1]     = ZPx(rect[3] - rect[1]);
+            ov->FloatPos[0] = rect[0];
+            ov->FloatPos[1] = rect[1];
+            ZUIBoxSetColorArr(ov, ctx->Theme.PanelInactiveOverlay);
+            ov->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+        }
 
         // Drop zones (show during active drag)
         if (Drag.Active && Drag.HoverNode)
@@ -393,18 +425,29 @@ namespace ZEngine::UI
                 break; // iterator invalidated — tab_h bar rebuilt next frame
             }
 
-            if (!tab_closed && (sig.Flags & ZUI_SignalClicked)) { p->ActiveTab = ti; }
-
-            // Drag-to-dock: start when tab is held + mouse moves
-            if (!tab_closed && (sig.Flags & ZUI_SignalHeld) &&
-                (sig.DragDelta[0] != 0.f || sig.DragDelta[1] != 0.f) &&
-                !Drag.Active)
+            if (!tab_closed && (sig.Flags & ZUI_SignalClicked))
             {
-                Drag.Active    = true;
-                Drag.SrcPanel  = p;
-                Drag.SrcTabIdx = ti;
-                Drag.GhostX    = ctx->MousePos[0];
-                Drag.GhostY    = ctx->MousePos[1];
+                p->ActiveTab = ti;
+                // Focus this panel (RAD: panel_tree.focused = panel on click)
+                for (uint32_t pi = 0; pi < PanelCount; ++pi)
+                    if (&Panels[pi] == p) { FocusedPanelIdx = pi; break; }
+            }
+
+            // Drag-to-dock: start when tab is held AND mouse moves OUTSIDE the tab box
+            // (RAD line 4053: ui_dragging(sig) && !contains_2f32(box->rect, mouse))
+            if (!tab_closed && (sig.Flags & ZUI_SignalHeld) && !Drag.Active)
+            {
+                float mx = ctx->MousePos[0], my = ctx->MousePos[1];
+                bool outside = (mx < tab->ScreenMin[0] || mx > tab->ScreenMax[0] ||
+                                my < tab->ScreenMin[1] || my > tab->ScreenMax[1]);
+                if (outside)
+                {
+                    Drag.Active    = true;
+                    Drag.SrcPanel  = p;
+                    Drag.SrcTabIdx = ti;
+                    Drag.GhostX    = mx;
+                    Drag.GhostY    = my;
+                }
             }
 
             // Tiny gap between tabs
@@ -420,45 +463,97 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::BuildDropZones(ZUIContext* ctx, ZUIPanel* p, float rect[4])
     {
-        float mx = ctx->MousePos[0], my = ctx->MousePos[1];
+        // RAD Debugger drop zones: edge-positioned rectangles (raddbg_core.c ~8059)
+        // major_dim = font_size*7, minor_dim = font_size*5 (perpendicular to split)
+        float fs        = 13.f * ctx->UIScale; // approximate font size
+        float major_dim = fs * 5.f;
+        float minor_dim = fs * 3.f;
         float w = rect[2] - rect[0], h = rect[3] - rect[1];
         float cx = (rect[0] + rect[2]) * 0.5f;
         float cy = (rect[1] + rect[3]) * 0.5f;
-        float zw = 48.f * ctx->UIScale, zh = 48.f * ctx->UIScale;
+        float mx = ctx->MousePos[0], my = ctx->MousePos[1];
 
-        struct { ZUIDropZone zone; float x, y; } zones[] = {
-            { ZUIDropZone::Center, cx - zw*0.5f, cy - zh*0.5f },
-            { ZUIDropZone::Left,   rect[0] + 4.f, cy - zh*0.5f },
-            { ZUIDropZone::Right,  rect[2] - zw - 4.f, cy - zh*0.5f },
-            { ZUIDropZone::Top,    cx - zw*0.5f, rect[1] + 4.f },
-            { ZUIDropZone::Bottom, cx - zw*0.5f, rect[3] - zh - 4.f },
+        struct Zone {
+            ZUIDropZone zone;
+            float x0, y0, x1, y1; // zone rect
+            float px0, py0, px1, py1; // split preview rect
+        };
+
+        Zone zones[5] = {
+            // Center: occupy ~40% of panel center → merge into panel
+            { ZUIDropZone::Center,
+              cx-major_dim*0.5f, cy-minor_dim*0.5f, cx+major_dim*0.5f, cy+minor_dim*0.5f,
+              rect[0], rect[1], rect[2], rect[3] },
+            // Left edge
+            { ZUIDropZone::Left,
+              rect[0]+2.f, cy-major_dim*0.5f, rect[0]+minor_dim+2.f, cy+major_dim*0.5f,
+              rect[0], rect[1], rect[0]+w*0.4f, rect[3] },
+            // Right edge
+            { ZUIDropZone::Right,
+              rect[2]-minor_dim-2.f, cy-major_dim*0.5f, rect[2]-2.f, cy+major_dim*0.5f,
+              rect[2]-w*0.4f, rect[1], rect[2], rect[3] },
+            // Top edge
+            { ZUIDropZone::Top,
+              cx-major_dim*0.5f, rect[1]+2.f, cx+major_dim*0.5f, rect[1]+minor_dim+2.f,
+              rect[0], rect[1], rect[2], rect[1]+h*0.4f },
+            // Bottom edge
+            { ZUIDropZone::Bottom,
+              cx-major_dim*0.5f, rect[3]-minor_dim-2.f, cx+major_dim*0.5f, rect[3]-2.f,
+              rect[0], rect[3]-h*0.4f, rect[2], rect[3] },
         };
 
         ZUIDropZone hovered = ZUIDropZone::None;
         for (auto& z : zones)
         {
-            bool over = (mx >= z.x && mx <= z.x+zw && my >= z.y && my <= z.y+zh);
-            if (over) hovered = z.zone;
+            if (mx >= z.x0 && mx <= z.x1 && my >= z.y0 && my <= z.y1)
+            { hovered = z.zone; break; }
         }
         Drag.DropZone = hovered;
 
-        // Render drop zone indicators
+        // Split preview — show the future panel area when hovering an edge zone
+        if (hovered != ZUIDropZone::None && hovered != ZUIDropZone::Center)
+        {
+            for (auto& z : zones)
+            {
+                if (z.zone != hovered) { continue; }
+                char pk[40]; snprintf(pk, sizeof(pk), "##dz_prev_%llx", (unsigned long long)p->DockKey);
+                ZUIBox* prev = ZUIPushBox(ctx, pk, (uint32_t)strlen(pk),
+                                           ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                prev->Size[0]     = ZPx(z.px1 - z.px0);
+                prev->Size[1]     = ZPx(z.py1 - z.py0);
+                prev->FloatPos[0] = z.px0;
+                prev->FloatPos[1] = z.py0;
+                float prevcol[4] = {0.137f, 0.573f, 0.922f, 0.18f}; // accent blue, 18% alpha
+                ZUIBoxSetColorArr(prev, prevcol);
+                prev->BorderColor[0]=0.137f; prev->BorderColor[1]=0.573f;
+                prev->BorderColor[2]=0.922f; prev->BorderColor[3]=0.70f;
+                prev->BorderThickness = 1.f;
+                prev->Flags = prev->Flags | ZUI_DrawBorder;
+                prev->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                break;
+            }
+        }
+
+        // Zone indicator boxes (small coloured rectangles at panel edges)
         for (auto& z : zones)
         {
             bool over = (z.zone == hovered);
-            float col[4] = { 0.26f, 0.59f, 0.98f, over ? 0.75f : 0.35f };
-            char zkey[32];
-            snprintf(zkey, sizeof(zkey), "##dz_%d_%llx", (int)z.zone,
-                     (unsigned long long)p->DockKey);
+            float col[4] = { 0.137f, 0.573f, 0.922f, over ? 0.90f : 0.50f };
+            char zkey[40];
+            snprintf(zkey, sizeof(zkey), "##dz_%d_%llx", (int)z.zone, (unsigned long long)p->DockKey);
             ZUIBox* box = ZUIPushBox(ctx, zkey, (uint32_t)strlen(zkey),
-                                     ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-            box->Size[0]     = ZPx(zw);
-            box->Size[1]     = ZPx(zh);
-            box->FloatPos[0] = z.x;
-            box->FloatPos[1] = z.y;
+                                     ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
+            box->Size[0]     = ZPx(z.x1 - z.x0);
+            box->Size[1]     = ZPx(z.y1 - z.y0);
+            box->FloatPos[0] = z.x0;
+            box->FloatPos[1] = z.y0;
             ZUIBoxSetColorArr(box, col);
-            ZUIBoxSetCornerRadius(box, 6.f);
-            box->EdgeSoftness = 1.f;
+            box->BorderColor[0]=1.f; box->BorderColor[1]=1.f; box->BorderColor[2]=1.f;
+            box->BorderColor[3]=over ? 0.9f : 0.4f;
+            box->BorderThickness = 1.f;
+            ZUIBoxSetCornerRadius(box, 4.f);
+            box->EdgeSoftness = 0.5f;
             ZUIPopBox(ctx);
         }
 

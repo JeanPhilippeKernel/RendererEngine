@@ -44,12 +44,14 @@ namespace ZEngine::UI
         float TextDefault[4]    = {1.00f, 1.00f, 1.00f, 1.00f};
         float TextDim[4]        = {0.60f, 0.60f, 0.60f, 1.00f};
         float TextAccent[4]     = {0.40f, 0.70f, 1.00f, 1.00f};
-        // Borders
-        float PanelBorder[4]    = {0.30f, 0.30f, 0.35f, 1.00f};
-        float ButtonBorder[4]   = {0.35f, 0.35f, 0.42f, 0.80f};
-        float InputBorder[4]    = {0.35f, 0.35f, 0.42f, 0.80f};
-        float InputFocusBorder[4]= {0.26f, 0.59f, 0.98f, 1.00f};
-        float Separator[4]      = {0.28f, 0.28f, 0.32f, 1.00f};
+        // Borders — RAD: border=#404040, focus_border=#2392eb, inactive_overlay=9% black
+        float PanelBorder[4]       = {0.251f,0.251f,0.251f,1.00f}; // #404040
+        float PanelFocusBorder[4]  = {0.137f,0.573f,0.922f,1.00f}; // #2392eb (focus=same as tab)
+        float PanelInactiveOverlay[4]={0.f,  0.f,  0.f,  0.086f}; // 9% black (0x16 alpha)
+        float ButtonBorder[4]      = {0.35f, 0.35f, 0.42f, 0.80f};
+        float InputBorder[4]       = {0.35f, 0.35f, 0.42f, 0.80f};
+        float InputFocusBorder[4]  = {0.137f,0.573f,0.922f,1.00f}; // #2392eb
+        float Separator[4]         = {0.251f,0.251f,0.251f,0.80f}; // #404040 at 80%
     };
 
     struct ZUIPersistentState

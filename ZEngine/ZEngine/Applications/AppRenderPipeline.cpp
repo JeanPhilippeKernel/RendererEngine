@@ -286,24 +286,49 @@ namespace ZEngine::Applications
             // so panel positions and hit-testing must use the same coordinate space.
             if (Device->CurrentWindow)
             {
-                ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
-                ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
-
-                // Query per-monitor content scale so widgets stay readable on Retina/HiDPI
                 auto* native = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
+                float content_scale = 1.f;
                 if (native)
                 {
                     float xs = 1.f, ys = 1.f;
                     glfwGetWindowContentScale(native, &xs, &ys);
-                    float s = xs > ys ? xs : ys;
+                    content_scale = (xs > ys ? xs : ys);
+                    if (content_scale < 0.5f) content_scale = 1.f;
+                }
+
+#if defined(__APPLE__)
+                // macOS (Gemini-verified): glfwGetWindowSize returns PHYSICAL pixels.
+                // UI logical size = physical / ContentScale.  Cursor is also physical →
+                // ZUILayer::OnMouseButtonMoved divides by UIScale before storing MousePos.
+                ZUICtx->UIScale = content_scale;
+                ZUICtx->ScreenW = (uint32_t)((float)Device->CurrentWindow->GetWidth()  / content_scale);
+                ZUICtx->ScreenH = (uint32_t)((float)Device->CurrentWindow->GetHeight() / content_scale);
+#else
+                // Windows/Linux: glfwGetWindowSize returns logical pixels already.
+                // UIScale = Fb/Win ratio for actual HiDPI framebuffers.
+                ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
+                ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
+                if (native)
+                {
+                    int fb_w = 0, fb_h = 0;
+                    glfwGetFramebufferSize(native, &fb_w, &fb_h);
+                    float s = (ZUICtx->ScreenW > 0 && fb_w > 0)
+                             ? (float)fb_w / (float)ZUICtx->ScreenW : 1.f;
                     ZUICtx->UIScale = s > 0.5f ? s : 1.f;
-                    if (!ZUICtx->UIScaleLogged)
-                    {
-                        ZENGINE_CORE_INFO("[ZUI] ContentScale={:.2f} WinW={} WinH={}",
-                            ZUICtx->UIScale,
-                            ZUICtx->ScreenW, ZUICtx->ScreenH);
-                        ZUICtx->UIScaleLogged = true;
-                    }
+                }
+                else { ZUICtx->UIScale = content_scale; }
+#endif
+                if (!ZUICtx->UIScaleLogged && native)
+                {
+                    int fb_w = 0, fb_h = 0;
+                    glfwGetFramebufferSize(native, &fb_w, &fb_h);
+                    ZENGINE_CORE_INFO(
+                        "[ZUI] ContentScale={:.2f} UIScale={:.2f} Screen={}x{} Win={}x{} Fb={}x{}",
+                        content_scale, ZUICtx->UIScale,
+                        ZUICtx->ScreenW, ZUICtx->ScreenH,
+                        Device->CurrentWindow->GetWidth(), Device->CurrentWindow->GetHeight(),
+                        fb_w, fb_h);
+                    ZUICtx->UIScaleLogged = true;
                 }
             }
             else
