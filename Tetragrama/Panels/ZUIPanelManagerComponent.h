@@ -90,8 +90,9 @@ namespace Tetragrama::Panels
             Manager.SetLayoutPath("zui_layout.ini");
             ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 5); // no-op if file not found
 
-            // Central panel AFTER load so it marks the node in the final tree
-            Manager.SetCentralPanel(ZUIDockHashName("Viewport"));
+            // No central node — all panels have normal chrome and are fully dockable,
+            // including the Viewport. Mouse passthrough for 3D scene input is handled
+            // by ctx->ViewportHovered which ViewportPanel sets each frame.
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override
