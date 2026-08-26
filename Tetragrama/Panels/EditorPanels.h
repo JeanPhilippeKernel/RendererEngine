@@ -49,7 +49,7 @@ namespace Tetragrama::Panels
                 tb->Flags = tb->Flags | ZUI_DrawBackground;
                 ZUIBoxSetColor(tb, 0.12f, 0.12f, 0.13f, 1.f);
                 ZUISpacer(ctx, 6.f);
-                ZUITextField(ctx, "##hsearch", search_buf, sizeof(search_buf), 160.f);
+                ZUISearchBox(ctx, "##hsearch", search_buf, sizeof(search_buf), "Search actors...", ZFill());
                 ZUISpacer(ctx, 6.f);
                 ZUISmallButton(ctx, "+");
                 ZUISpacer(ctx, 4.f);
@@ -304,7 +304,7 @@ namespace Tetragrama::Panels
                 ZUISpacer(ctx,6.f);
                 ZUILabel(ctx,"Q",ctx->Theme.TextDim);
                 ZUISpacer(ctx,4.f);
-                ZUITextField(ctx,"##inspsearch",search_buf,sizeof(search_buf),180.f);
+                ZUISearchBox(ctx,"##inspsearch",search_buf,sizeof(search_buf),"Search properties...",ZFill());
                 ZUIEndRow(ctx);
             }
             ZUISpacer(ctx,2.f);

@@ -78,9 +78,10 @@ namespace ZEngine::UI
     // Button family
     // ---------------------------------------------------------------
 
-    // Regular button. w/h default to ZText()/ZPx(28); pass ZPx(n) to override.
+    // Regular button. Height default = 19px (ImGui GetFrameHeight). ZText() width
+    // auto-includes 4px left+right padding (FramePadding.x) via ZText() padding fix.
     ZUISignal ZUIButton(ZUIContext* ctx, const char* label,
-                        ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+                        ZUISize w = ZText(), ZUISize h = ZPx(19.f));
 
     // No border, 22 px tall, tight horizontal fit — safe inside rows/toolbars.
     ZUISignal ZUISmallButton(ZUIContext* ctx, const char* label);
@@ -459,6 +460,13 @@ namespace ZEngine::UI
     // Returns true if buf changed this frame.
     bool ZUITextField(ZUIContext* ctx, const char* key,
                       char* buf, uint32_t buf_size, float width_px = 160.f);
+
+    // Search box — ZUITextField with a dim search icon on the left and
+    // placeholder text rendered when the buffer is empty.
+    bool ZUISearchBox(ZUIContext* ctx, const char* key,
+                      char* buf, uint32_t buf_size,
+                      const char* placeholder = "Search...",
+                      ZUISize w = ZFill());
 
     // Thin (4 px) invisible-but-clickable resize strip. horizontal=true creates
     // a full-width 4-px-tall strip (top/bottom split); false creates a 4-px-wide

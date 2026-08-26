@@ -312,9 +312,12 @@ namespace ZEngine::Rendering::Renderers
                     float gx1 = gx0 + g.Width  * fs;
                     float gy1 = gy0 + g.Height * fs;
 
+                    // Pass raw subpixel coords — OversampleH=3 atlas has sub-pixel columns
+                    // that the GPU bilinear filter selects. floorf() here wastes the entire
+                    // oversampling benefit (matched against ImGui RenderText lines 5940-5943).
                     ZUIDrawListAddImage(&ctx->DrawList, atlas_idx,
-                                        floorf(gx0), floorf(gy0),
-                                        floorf(gx1), floorf(gy1),
+                                        gx0, gy0,
+                                        gx1, gy1,
                                         g.U0, g.V0, g.U1, g.V1, text_col);
                     cx += g.AdvanceX * fs;
                 }
