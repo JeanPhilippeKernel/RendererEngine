@@ -1332,12 +1332,25 @@ namespace ZEngine::UI
         { auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key); if (ps) ps->UserData = 1.f; }
         ZUIPopBox(ctx);
 
+        bool is_focused = (ctx->FocusKey == row->Key);
+        if (is_focused) { SetBdrArr(row, ctx->Theme.InputFocusBorder); }
+
         ZUISignal sig = ZUISignalFromBox(ctx, row);
         ZUIEndRow(ctx);
 
-        // Open popup on click; position below this row (approx)
-        if (sig.Flags & ZUI_SignalClicked)
-            ZUIOpenPopup(ctx, key, ctx->MousePos[0] - 8.f, ctx->MousePos[1] + 4.f);
+        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = row->Key; }
+
+        // Open popup on click OR Space/Enter/ArrowDown when focused
+        bool open_popup = (sig.Flags & ZUI_SignalClicked) ||
+                          (is_focused && (ctx->SpacePressed || ctx->EnterPressed ||
+                                         ctx->ArrowDownPressed));
+        if (open_popup)
+        {
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, row->Key);
+            float py = ps ? ps->ScreenMaxY : ctx->MousePos[1];
+            float px = ps ? ps->ScreenMinX : (ctx->MousePos[0] - 8.f);
+            ZUIOpenPopup(ctx, key, px, py);
+        }
 
         return ZUIBeginPopup(ctx, key);
     }
