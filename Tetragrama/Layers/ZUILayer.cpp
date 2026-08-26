@@ -105,11 +105,13 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_ENTER || key == ZENGINE_KEY_KP_ENTER)
             m_ctx->EnterPressed = true;
 
-        // Arrow keys for drag-float nudge / combo navigation
+        // Arrow keys for drag-float nudge / text cursor / combo navigation
         if (key == ZENGINE_KEY_UP)    m_ctx->ArrowUpPressed    = true;
         if (key == ZENGINE_KEY_DOWN)  m_ctx->ArrowDownPressed  = true;
         if (key == ZENGINE_KEY_LEFT)  m_ctx->ArrowLeftPressed  = true;
         if (key == ZENGINE_KEY_RIGHT) m_ctx->ArrowRightPressed = true;
+        if (key == ZENGINE_KEY_HOME)  m_ctx->HomePressed       = true;
+        if (key == ZENGINE_KEY_END)   m_ctx->EndPressed        = true;
 
         // Clipboard paste: Ctrl+V → inject clipboard text into TextInput
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)

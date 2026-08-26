@@ -1786,52 +1786,78 @@ namespace ZEngine::UI
         bool is_focused = (ctx->FocusKey == field->Key);
         bool changed    = false;
 
+        // Cursor position — stored in UserData (float cast to int).
+        // -1 = sentinel (cursor at end); valid range [0, strlen(buf)]
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, field->Key);
+
         if (is_focused)
         {
-            // Append text input characters
+            SetBdrArr(field, ctx->Theme.InputFocusBorder);
+
+            uint32_t len = (uint32_t)Helpers::secure_strlen(buf);
+
+            // Clamp cursor to valid range on each focused frame
+            int cpos = (ps && ps->UserData >= 0.f) ? (int)ps->UserData : (int)len;
+            if (cpos < 0)        cpos = 0;
+            if ((uint32_t)cpos > len) cpos = (int)len;
+
+            // Insert characters at cursor position
             for (uint32_t i = 0; i < ctx->TextInputLen; ++i)
             {
-                uint32_t cur = (uint32_t)Helpers::secure_strlen(buf);
-                if (cur + 1 < buf_size)
+                len = (uint32_t)Helpers::secure_strlen(buf);
+                if (len + 1 < buf_size)
                 {
-                    buf[cur]     = ctx->TextInput[i];
-                    buf[cur + 1] = '\0';
-                    changed      = true;
+                    memmove(buf + cpos + 1, buf + cpos, len - cpos + 1);
+                    buf[cpos] = ctx->TextInput[i];
+                    cpos++; changed = true;
                 }
             }
-            // Backspace
-            if (ctx->BackspacePressed)
+
+            // Backspace: delete character before cursor
+            if (ctx->BackspacePressed && cpos > 0)
             {
-                uint32_t cur = (uint32_t)Helpers::secure_strlen(buf);
-                if (cur > 0)
-                {
-                    buf[cur - 1] = '\0';
-                    changed      = true;
-                }
+                len = (uint32_t)Helpers::secure_strlen(buf);
+                memmove(buf + cpos - 1, buf + cpos, len - cpos + 1);
+                cpos--; changed = true;
             }
-            // Accent border when focused
-            SetBdrArr(field, ctx->Theme.InputFocusBorder);
+
+            // Left / Right arrow — move cursor
+            len = (uint32_t)Helpers::secure_strlen(buf);
+            if (ctx->ArrowLeftPressed  && cpos > 0)        cpos--;
+            if (ctx->ArrowRightPressed && (uint32_t)cpos < len) cpos++;
+            if (ctx->HomePressed)                           cpos = 0;
+            if (ctx->EndPressed)                            cpos = (int)len;
+
+            if (ps) ps->UserData = (float)cpos;
+
+            // Build display: text_before_cursor + blinking_pipe + text_after_cursor
+            char display[512];
+            bool show_pipe = (fmodf(ctx->Time, 1.0f) < 0.5f);
+            if (show_pipe)
+                snprintf(display, sizeof(display), "%.*s|%s", cpos, buf, buf + cpos);
+            else
+                snprintf(display, sizeof(display), "%s", buf);
+
+            uint32_t dlen = (uint32_t)Helpers::secure_strlen(display);
+            field->Label  = ZUIPushStr(&ctx->FrameArena, display, dlen);
         }
         else
         {
             SetBdrArr(field, ctx->Theme.InputBorder);
+            uint32_t dlen = (uint32_t)Helpers::secure_strlen(buf);
+            field->Label  = ZUIPushStr(&ctx->FrameArena, buf, dlen);
         }
-
-        // Build display string: blinking cursor at 2 Hz when focused
-        char display[512];
-        bool show_cursor = is_focused && (fmodf(ctx->Time, 1.0f) < 0.5f);
-        if (show_cursor)
-            snprintf(display, sizeof(display), "%s|", buf);
-        else
-            snprintf(display, sizeof(display), "%s",  buf);
-
-        uint32_t dlen  = (uint32_t)Helpers::secure_strlen(display);
-        field->Label   = ZUIPushStr(&ctx->FrameArena, display, dlen);
 
         ZUISignal sig  = ZUISignalFromBox(ctx, field);
         ZUIPopBox(ctx);
 
-        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field->Key; }
+        if (sig.Flags & ZUI_SignalClicked)
+        {
+            ctx->FocusKey = field->Key;
+            // On click, move cursor to end of text
+            uint32_t len = (uint32_t)Helpers::secure_strlen(buf);
+            if (ps) ps->UserData = (float)len;
+        }
 
         return changed;
     }
@@ -2514,21 +2540,21 @@ namespace ZEngine::UI
         bool changed = false;
         if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field_key_hash; }
 
-        // Accept text input when focused
+        // Accept text input when focused only — do NOT unconditionally consume input
         if (is_focused)
         {
-            for (uint32_t i = 0; i < ctx->TextInputLen && (uint32_t)strlen(buf) + 1 < buf_size; ++i)
+            uint32_t len = (uint32_t)strlen(buf);
+            for (uint32_t i = 0; i < ctx->TextInputLen && len + 1 < buf_size; ++i)
             {
-                uint32_t len = (uint32_t)strlen(buf);
-                buf[len] = ctx->TextInput[i]; buf[len+1] = '\0'; changed = true;
+                buf[len] = ctx->TextInput[i]; buf[++len] = '\0'; changed = true;
             }
-            if (ctx->BackspacePressed && buf[0] != '\0')
+            if (ctx->BackspacePressed && len > 0)
             {
-                buf[strlen(buf) - 1] = '\0'; changed = true;
+                buf[len - 1] = '\0'; changed = true;
             }
+            if (ctx->HomePressed) { /* search box: not applicable (no cursor tracking) */ }
+            if (ctx->EndPressed)  { /* search box: not applicable */ }
         }
-        ctx->TextInputLen = 0;
-        ctx->BackspacePressed = false;
 
         return changed;
     }

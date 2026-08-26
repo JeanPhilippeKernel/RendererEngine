@@ -213,8 +213,10 @@ namespace ZEngine::UI
         bool               EnterPressed      = false; // confirm / deactivate field
         bool               ArrowUpPressed    = false; // nudge drag float / combo nav
         bool               ArrowDownPressed  = false;
-        bool               ArrowLeftPressed  = false;
-        bool               ArrowRightPressed = false;
+        bool               ArrowLeftPressed  = false;  // text cursor left
+        bool               ArrowRightPressed = false;  // text cursor right
+        bool               HomePressed       = false;  // cursor to start of field
+        bool               EndPressed        = false;  // cursor to end of field
         // Per-frame tracking updated in ZUISignalFromBox during the build pass
         uint64_t           TabNavNextKey     = 0; // first clickable after FocusKey
         uint64_t           TabNavPrevKey     = 0; // last clickable before FocusKey

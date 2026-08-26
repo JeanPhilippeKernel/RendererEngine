@@ -110,6 +110,8 @@ namespace ZEngine::UI
         ctx->ArrowDownPressed = false;
         ctx->ArrowLeftPressed = false;
         ctx->ArrowRightPressed= false;
+        ctx->HomePressed      = false;
+        ctx->EndPressed       = false;
 
         // Popup: promote open request → active; reset per-frame box pointer
         if (ctx->OpenPopupKey != 0)
