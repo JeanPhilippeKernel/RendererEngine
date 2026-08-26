@@ -86,32 +86,22 @@ namespace Tetragrama::Panels
         float rot[3]    = {0.f, 0.f, 0.f};
         float scl[3]    = {1.f, 1.f, 1.f};
 
-        void DragRow(ZUIContext* ctx, const char* label,
-                     const char* key, float* v)
+        float mat_color[4] = {0.8f, 0.4f, 0.2f, 1.f};
+        int   layer_id     = 0;
+
+        void LabeledRow(ZUIContext* ctx, const char* label,
+                        const char* key, float* v)
         {
-            char rk[40]; snprintf(rk, sizeof(rk), "##dr%s", key);
-            ZUIBeginRow(ctx, rk, ZFill(), ZSPx(ctx, 22.f));
+            char rk[40]; snprintf(rk, sizeof(rk), "##lrow%s", key);
+            ZUIBeginRow(ctx, rk, ZFill(), ZSPx(ctx, 24.f));
             ZUISpacer(ctx, 8.f);
-
-            // Fixed-width label
             ZUIBox* lb = ZUIPushBox(ctx, label, (uint32_t)strlen(label), ZUI_DrawText);
-            lb->Size[0] = ZPx(72.f);
-            lb->Size[1] = ZText();
-            lb->TextColor[0] = ctx->Theme.TextDim[0];
-            lb->TextColor[1] = ctx->Theme.TextDim[1];
-            lb->TextColor[2] = ctx->Theme.TextDim[2];
-            lb->TextColor[3] = ctx->Theme.TextDim[3];
+            lb->Size[0] = ZPx(68.f); lb->Size[1] = ZText();
+            lb->TextColor[0]=ctx->Theme.TextDim[0]; lb->TextColor[1]=ctx->Theme.TextDim[1];
+            lb->TextColor[2]=ctx->Theme.TextDim[2]; lb->TextColor[3]=ctx->Theme.TextDim[3];
             ZUIPopBox(ctx);
-
             ZUISpacer(ctx, 4.f);
-            char kx[32]; snprintf(kx, sizeof(kx), "##x%s", key);
-            char ky[32]; snprintf(ky, sizeof(ky), "##y%s", key);
-            char kz[32]; snprintf(kz, sizeof(kz), "##z%s", key);
-            ZUIDragFloat(ctx, kx, &v[0], 0.05f, 54.f);
-            ZUISpacer(ctx, 2.f);
-            ZUIDragFloat(ctx, ky, &v[1], 0.05f, 54.f);
-            ZUISpacer(ctx, 2.f);
-            ZUIDragFloat(ctx, kz, &v[2], 0.05f, 54.f);
+            ZUIDragFloat3(ctx, key, v, 0.05f, 0.f);
             ZUIEndRow(ctx);
         }
 
@@ -119,11 +109,11 @@ namespace Tetragrama::Panels
         {
             ZUIBeginScrollRegion(ctx, "##insp", ZFill(), ZFill());
 
-            // Actor header bar
+            // Actor header
             {
-                ZUIBox* hdr = ZUIBeginRow(ctx, "##ah", ZFill(), ZSPx(ctx, 40.f));
+                ZUIBox* hdr = ZUIBeginRow(ctx, "##ah", ZFill(), ZSPx(ctx, 42.f));
                 hdr->Flags = hdr->Flags | ZUI_DrawBackground;
-                ZUIBoxSetColor(hdr, 0.165f, 0.165f, 0.173f, 1.f);
+                ZUIBoxSetColor(hdr, 0.160f, 0.160f, 0.170f, 1.f);
                 ZUISpacer(ctx, 10.f);
                 ZUIBeginColumn(ctx, "##ahtxt", ZFit(), ZFit());
                     ZUILabel(ctx, "Cube", ctx->Theme.TextDefault, ZUIFontSize::Header);
@@ -134,36 +124,54 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 2.f);
             ZUISeparator(ctx);
 
-            // Transform
+            // Transform — uses ZUIDragFloat3 (colored X/Y/Z chips)
             if (ZUICollapsingHeader(ctx, "Transform", &xfm_open) && xfm_open)
             {
-                ZUISpacer(ctx, 2.f);
-                DragRow(ctx, "Location", "loc", pos);
-                DragRow(ctx, "Rotation", "rot", rot);
-                DragRow(ctx, "Scale",    "scl", scl);
+                ZUISpacer(ctx, 3.f);
+                LabeledRow(ctx, "Location", "loc", pos);
+                LabeledRow(ctx, "Rotation", "rot", rot);
+                LabeledRow(ctx, "Scale",    "scl", scl);
                 ZUISpacer(ctx, 4.f);
             }
             ZUISeparator(ctx);
 
-            // Mesh
+            // Static Mesh
             if (ZUICollapsingHeader(ctx, "Static Mesh", &mesh_open) && mesh_open)
             {
                 ZUISpacer(ctx, 4.f);
                 ZUIBeginRow(ctx, "##mr", ZFill(), ZSPx(ctx, 20.f));
                     ZUISpacer(ctx, 10.f);
                     ZUILabel(ctx, "Mesh", ctx->Theme.TextDim);
-                    ZUISpacer(ctx, 12.f);
+                    ZUISpacer(ctx, 10.f);
                     ZUILabel(ctx, "SM_Cube.zemesh", ctx->Theme.TextAccent);
+                ZUIEndRow(ctx);
+                ZUISpacer(ctx, 4.f);
+                // Layer ID — ZUIDragInt demo
+                ZUIBeginRow(ctx, "##layerrow", ZFill(), ZSPx(ctx, 20.f));
+                    ZUISpacer(ctx, 10.f);
+                    ZUILabel(ctx, "Layer", ctx->Theme.TextDim);
+                    ZUISpacer(ctx, 10.f);
+                    ZUIDragInt(ctx, "##layer", &layer_id, 1.f, 50.f);
                 ZUIEndRow(ctx);
                 ZUISpacer(ctx, 4.f);
             }
             ZUISeparator(ctx);
 
-            // Material (collapsed by default)
-            ZUICollapsingHeader(ctx, "Material", &mat_open);
+            // Material — ZUIColorEdit4 demo
+            if (ZUICollapsingHeader(ctx, "Material", &mat_open) && mat_open)
+            {
+                ZUISpacer(ctx, 4.f);
+                ZUIBeginRow(ctx, "##colrow", ZFill(), ZSPx(ctx, 24.f));
+                    ZUISpacer(ctx, 10.f);
+                    ZUILabel(ctx, "Base Color", ctx->Theme.TextDim);
+                    ZUISpacer(ctx, 8.f);
+                    ZUIColorEdit4(ctx, "##basecolor", mat_color);
+                ZUIEndRow(ctx);
+                ZUISpacer(ctx, 4.f);
+            }
             ZUISeparator(ctx);
 
-            // Add Component button
+            // Add Component
             ZUISpacer(ctx, 8.f);
             ZUIBeginRow(ctx, "##acrow", ZFill(), ZSPx(ctx, 28.f));
                 ZUISpacer(ctx, 8.f);
@@ -203,6 +211,8 @@ namespace Tetragrama::Panels
             ZUIBoxSetColor(scene, 0.094f, 0.094f, 0.098f, 1.f);
                 ZUISpacer(ctx, 28.f);
                 ZUILabel(ctx, "3D Viewport", ctx->Theme.TextDim);
+                ZUISpacer(ctx, 8.f);
+                ZUISpinner(ctx, "##vpload", 8.f);
                 ZUISpacer(ctx, 4.f);
                 float hint[4] = {0.28f, 0.28f, 0.30f, 1.f};
                 ZUILabel(ctx, "Scene renderer will attach here.", hint);

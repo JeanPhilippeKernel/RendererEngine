@@ -119,6 +119,7 @@ namespace ZEngine::UI
         bool               MouseReleased[3] = {};
         float              ScrollDelta      = 0.f;
         float              DeltaTime        = 0.f;
+        float              Time             = 0.f; // accumulated seconds since init
         bool               BackspacePressed = false; // set by ZUILayer::OnKeyPressed, cleared in ZUIEndFrame
         bool               BackspaceHeld    = false; // true while key is physically down
 

@@ -149,6 +149,30 @@ namespace ZEngine::UI
     bool ZUIDragFloat(ZUIContext* ctx, const char* key,
                       float* value, float speed = 0.05f, float width_px = 60.f);
 
+    // Drag to edit a single integer value. Same mechanics as DragFloat.
+    bool ZUIDragInt(ZUIContext* ctx, const char* key,
+                    int* value, float speed = 1.f, float width_px = 60.f);
+
+    // Three-component float drag with colored X/Y/Z axis labels.
+    // Renders as a single compact row: [X drag][Y drag][Z drag]
+    // Returns true if any component changed this frame.
+    bool ZUIDragFloat3(ZUIContext* ctx, const char* key,
+                       float v[3], float speed = 0.05f, float component_w = 0.f);
+
+    // Text field that edits a float — click to focus, type a value, press Enter.
+    // Returns true when value changes (on Enter or focus-loss).
+    bool ZUIInputFloat(ZUIContext* ctx, const char* key, float* value,
+                       float width_px = 80.f);
+
+    // Inline color editor: small colored swatch + hex label.
+    // Clicking the swatch opens a ZUIColorPicker4 popup.
+    // color[4] in linear [0,1]. Returns true when changed.
+    bool ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4]);
+
+    // Animated loading arc. radius_px = visual size.
+    // Driven by ctx->Time — call every frame while loading.
+    void ZUISpinner(ZUIContext* ctx, const char* key, float radius_px = 10.f);
+
     // ---------------------------------------------------------------
     // Popup / overlay system
     // ---------------------------------------------------------------

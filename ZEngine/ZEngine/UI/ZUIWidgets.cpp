@@ -2,6 +2,8 @@
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstring>
 #include <cstdio>
+#include <cmath>
+#include <cstdlib>
 
 namespace ZEngine::UI
 {
@@ -1329,6 +1331,234 @@ namespace ZEngine::UI
             changed  = true;
         }
         return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIDragInt
+    // ---------------------------------------------------------------
+
+    bool ZUIDragInt(ZUIContext* ctx, const char* key, int* value, float speed, float width_px)
+    {
+        uint32_t key_len = (uint32_t)strlen(key);
+        ZUIBox*  field   = ZUIPushBox(ctx, key, key_len,
+                               ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
+        field->Size[0]         = ZPx(width_px);
+        field->Size[1]         = ZSPx(ctx, 24.f);
+        SetBgArr(field, ctx->Theme.InputBg);
+        SetTextColor(field, ctx->Theme.TextDefault);
+        SetBdrArr(field, ctx->Theme.InputBorder);
+        field->BorderThickness = 1.f;
+
+        char buf[16]; snprintf(buf, sizeof(buf), "%d", *value);
+        uint32_t vlen  = (uint32_t)strlen(buf);
+        field->Label   = ZUIPushStr(&ctx->FrameArena, buf, vlen);
+
+        ZUISignal sig  = ZUISignalFromBox(ctx, field);
+        ZUIPopBox(ctx);
+
+        bool changed = false;
+        if ((sig.Flags & ZUI_SignalHeld) && sig.DragDelta[0] != 0.f)
+        {
+            float fv  = (float)*value + sig.DragDelta[0] * speed;
+            *value    = (int)fv;
+            changed   = true;
+        }
+        return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIDragFloat3
+    // ---------------------------------------------------------------
+
+    bool ZUIDragFloat3(ZUIContext* ctx, const char* key, float v[3], float speed, float comp_w)
+    {
+        struct AxisStyle { const char* label; float chip[4]; };
+        static const AxisStyle kAxes[3] = {
+            { "X", {0.70f,0.20f,0.20f,1.f} },
+            { "Y", {0.20f,0.65f,0.20f,1.f} },
+            { "Z", {0.20f,0.40f,0.80f,1.f} },
+        };
+
+        float fw = (comp_w > 0.f) ? comp_w : 66.f;
+        bool  changed = false;
+
+        for (int i = 0; i < 3; ++i)
+        {
+            if (i > 0) ZUISpacer(ctx, 2.f);
+
+            // Colored axis chip (X / Y / Z)
+            char lk[48]; snprintf(lk, sizeof(lk), "##f3l%d%s", i, key);
+            uint32_t llen = (uint32_t)strlen(lk);
+            ZUIBox* chip  = ZUIPushBox(ctx, lk, llen, ZUI_DrawBackground | ZUI_DrawText);
+            chip->Size[0]   = ZPx(14.f * ctx->UIScale);
+            chip->Size[1]   = ZSPx(ctx, 22.f);
+            chip->TextAlign = ZUITextAlign::Center;
+            ZUIBoxSetColorArr(chip, kAxes[i].chip);
+            chip->TextColor[0] = 1.f; chip->TextColor[1] = 1.f;
+            chip->TextColor[2] = 1.f; chip->TextColor[3] = 1.f;
+            chip->Label = ZUIPushStr(&ctx->FrameArena, kAxes[i].label, 1);
+            ZUIBoxSetCornerRadius(chip, 2.f);
+            chip->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+
+            // Drag field for this component
+            char dk[48]; snprintf(dk, sizeof(dk), "##f3d%d%s", i, key);
+            changed |= ZUIDragFloat(ctx, dk, &v[i], speed, fw);
+        }
+        return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIInputFloat
+    // ---------------------------------------------------------------
+
+    bool ZUIInputFloat(ZUIContext* ctx, const char* key, float* value, float width_px)
+    {
+        // Use persistent UserData to distinguish edit mode (1) vs display mode (0)
+        uint64_t   hash    = ZUIHashStr(key, (uint32_t)strlen(key));
+        auto*      state   = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        bool       editing = state && state->UserData > 0.5f;
+
+        // Backing char buffer lives in persistent state via a side-channel.
+        // We use a static per-hash char buffer keyed approach: store the float
+        // as text in a small arena-free static buf of 32 chars.
+        // For simplicity we re-format from *value every non-editing frame.
+        char display[32];
+        if (!editing) snprintf(display, sizeof(display), "%.4f", (double)*value);
+
+        uint32_t key_len = (uint32_t)strlen(key);
+        ZUIBox*  field   = ZUIPushBox(ctx, key, key_len,
+                               ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
+        field->Size[0]         = ZPx(width_px);
+        field->Size[1]         = ZSPx(ctx, 24.f);
+        SetBgArr(field, ctx->Theme.InputBg);
+        SetTextColor(field, ctx->Theme.TextDefault);
+        const float* bdr = editing ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder;
+        SetBdrArr(field, bdr);
+        field->BorderThickness = 1.f;
+
+        if (!editing)
+        {
+            uint32_t dlen = (uint32_t)strlen(display);
+            field->Label = ZUIPushStr(&ctx->FrameArena, display, dlen);
+        }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, field);
+        ZUIPopBox(ctx);
+
+        bool changed = false;
+
+        if (!editing && (sig.Flags & ZUI_SignalClicked))
+        {
+            if (state) state->UserData = 1.f;
+            ctx->TextInputLen = 0;
+            snprintf(ctx->TextInput, 32, "%.4f", (double)*value);
+            ctx->TextInputLen = (uint32_t)strlen(ctx->TextInput);
+        }
+
+        if (editing)
+        {
+            // Show what the user is typing
+            uint32_t tlen = (uint32_t)strlen(ctx->TextInput);
+            field->Label  = ZUIPushStr(&ctx->FrameArena, ctx->TextInput, tlen);
+
+            // Commit on Enter (no Enter key tracking yet — commit on focus loss)
+            bool click_outside = ctx->MousePressed[0] && !(sig.Flags & ZUI_SignalHovered);
+            if (click_outside)
+            {
+                float parsed = (float)atof(ctx->TextInput);
+                if (parsed != *value) { *value = parsed; changed = true; }
+                if (state) state->UserData = 0.f;
+                ctx->TextInputLen = 0;
+                ctx->TextInput[0] = '\0';
+            }
+        }
+        return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIColorEdit4
+    // ---------------------------------------------------------------
+
+    bool ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4])
+    {
+        bool changed = false;
+
+        // Small swatch button
+        char swk[48]; snprintf(swk, sizeof(swk), "##swatch_%s", key);
+        uint32_t swlen = (uint32_t)strlen(swk);
+        float swatch_sz = 22.f * ctx->UIScale;
+        ZUIBox* swatch = ZUIPushBox(ctx, swk, swlen,
+                                     ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable);
+        swatch->Size[0]     = ZPx(swatch_sz);
+        swatch->Size[1]     = ZPx(swatch_sz);
+        ZUIBoxSetColorArr(swatch, color);
+        swatch->BorderColor[0] = 0.4f; swatch->BorderColor[1] = 0.4f;
+        swatch->BorderColor[2] = 0.4f; swatch->BorderColor[3] = 0.9f;
+        swatch->BorderThickness = 1.f;
+        ZUIBoxSetCornerRadius(swatch, 3.f);
+        swatch->EdgeSoftness = 0.f;
+        ZUISignal sw_sig = ZUISignalFromBox(ctx, swatch);
+        ZUIPopBox(ctx);
+
+        ZUISpacer(ctx, 6.f);
+
+        // Hex label "#RRGGBBAA"
+        char hex[12];
+        int  r = (int)(color[0] * 255.f + 0.5f);
+        int  g = (int)(color[1] * 255.f + 0.5f);
+        int  b = (int)(color[2] * 255.f + 0.5f);
+        int  a = (int)(color[3] * 255.f + 0.5f);
+        snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X", r, g, b, a);
+        ZUILabel(ctx, hex, ctx->Theme.TextDim);
+
+        // Open picker popup
+        if (sw_sig.Flags & ZUI_SignalClicked)
+            ZUIOpenPopup(ctx, key);
+
+        if (ZUIBeginPopup(ctx, key))
+        {
+            changed |= ZUIColorPicker4(ctx, key, color);
+            ZUIEndPopup(ctx);
+        }
+
+        return changed;
+    }
+
+    // ---------------------------------------------------------------
+    // ZUISpinner  (3-dot pulse, arena-safe)
+    // ---------------------------------------------------------------
+
+    void ZUISpinner(ZUIContext* ctx, const char* key, float radius_px)
+    {
+        float dot = radius_px * 0.65f;
+        float gap = dot * 0.6f;
+
+        char rk[48]; snprintf(rk, sizeof(rk), "##spn_%s", key);
+        ZUIBeginRow(ctx, rk, ZFit(), ZPx(dot));
+
+        for (int i = 0; i < 3; ++i)
+        {
+            if (i > 0) ZUISpacer(ctx, gap);
+
+            float phase = ctx->Time * 5.f - (float)i * 0.5f;
+            float t     = 0.5f + 0.5f * sinf(phase);
+            float alpha = 0.25f + 0.75f * t;
+
+            char dk[56]; snprintf(dk, sizeof(dk), "##spd%d_%s", i, key);
+            ZUIBox* d = ZUIPushBox(ctx, dk, (uint32_t)strlen(dk), ZUI_DrawBackground);
+            d->Size[0] = ZPx(dot);
+            d->Size[1] = ZPx(dot);
+            float col[4] = { ctx->Theme.TabActiveBorder[0],
+                             ctx->Theme.TabActiveBorder[1],
+                             ctx->Theme.TabActiveBorder[2], alpha };
+            ZUIBoxSetColorArr(d, col);
+            ZUIBoxSetCornerRadius(d, dot * 0.5f);
+            d->EdgeSoftness = 0.6f;
+            ZUIPopBox(ctx);
+        }
+
+        ZUIEndRow(ctx);
     }
 
     // ---------------------------------------------------------------
