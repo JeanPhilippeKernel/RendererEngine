@@ -295,6 +295,56 @@ namespace ZEngine::Rendering::Renderers
                     cx += g.AdvanceX * fs;
                 }
             }
+
+            // --- Checkmark (✓ polyline stroke) ---
+            if (box->Flags & ZUI_DrawCheckmark)
+            {
+                float w = bx1 - bx0, h = by1 - by0;
+                // Three-point tick: (25%,55%) → (42%,75%) → (75%,28%)
+                float pts_x[3] = { bx0 + w*0.20f, bx0 + w*0.42f, bx0 + w*0.78f };
+                float pts_y[3] = { by0 + h*0.52f, by0 + h*0.76f, by0 + h*0.24f };
+                uint32_t cc = ZUIPackColor(box->TextColor);
+                float thick = (w < 14.f ? 1.5f : 2.0f);
+                ZUIDrawListAddLine(&ctx->DrawList, pts_x[0], pts_y[0], pts_x[1], pts_y[1], cc, thick);
+                ZUIDrawListAddLine(&ctx->DrawList, pts_x[1], pts_y[1], pts_x[2], pts_y[2], cc, thick);
+            }
+
+            // --- Circle fill (inscribed in box center) ---
+            if (box->Flags & ZUI_DrawCircleFill)
+            {
+                float cx  = (bx0 + bx1) * 0.5f;
+                float cy  = (by0 + by1) * 0.5f;
+                float r   = ((bx1-bx0) < (by1-by0) ? (bx1-bx0) : (by1-by0)) * 0.32f;
+                uint32_t cc = ZUIPackColor(box->TextColor);
+                ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, r, cc);
+            }
+
+            // --- Triangle arrow (collapse indicator) ---
+            if (box->Flags & ZUI_DrawTriArrow)
+            {
+                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+                bool down = ps && ps->UserData > 0.5f; // 0=right(collapsed) 1=down(expanded)
+                float cx  = (bx0 + bx1) * 0.5f;
+                float cy  = (by0 + by1) * 0.5f;
+                float s   = ((bx1-bx0) < (by1-by0) ? (bx1-bx0) : (by1-by0)) * 0.28f;
+                uint32_t cc = ZUIPackColor(box->TextColor);
+                if (down)
+                {
+                    // Down-pointing triangle ▼
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList,
+                        cx - s, cy - s*0.6f,
+                        cx + s, cy - s*0.6f,
+                        cx,     cy + s*0.8f,  cc);
+                }
+                else
+                {
+                    // Right-pointing triangle ▶
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList,
+                        cx - s*0.6f, cy - s,
+                        cx - s*0.6f, cy + s,
+                        cx + s*0.8f, cy,       cc);
+                }
+            }
         }
 
         // Pop remaining clip rects

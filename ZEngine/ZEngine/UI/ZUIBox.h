@@ -39,6 +39,11 @@ namespace ZEngine::UI
         ZUI_ClipChildren   = 1 << 5,
         ZUI_FloatX         = 1 << 6,
         ZUI_FloatY         = 1 << 7,
+        // Draw-list shape overlays — rendered by PreparePayload after background/border.
+        // All use TextColor as the stroke/fill color.
+        ZUI_DrawCheckmark  = 1 << 8,  // ✓ polyline stroke inside the box
+        ZUI_DrawCircleFill = 1 << 9,  // filled circle inscribed in box center
+        ZUI_DrawTriArrow   = 1 << 10, // collapse arrow; direction from UserData (0=right, 1=down)
     };
 
     inline ZUIBoxFlags operator|(ZUIBoxFlags a, ZUIBoxFlags b)

@@ -902,17 +902,15 @@ namespace ZEngine::UI
         // Tick box — bg lerps from InputBg (rest) → InputHoveredBg (hover) → InputActiveBg (active)
         bool is_checked = checked && *checked;
         char tick_key[32]; snprintf(tick_key, sizeof(tick_key), "##tick_%s", label);
-        ZUIBox* box  = ZUIPushBox(ctx, tick_key, (uint32_t)strlen(tick_key),
-                            ZUI_DrawBackground | ZUI_DrawBorder | (is_checked ? ZUI_DrawText : ZUI_None));
+        ZUIBoxFlags tick_draw = ZUI_DrawBackground | ZUI_DrawBorder;
+        if (is_checked) tick_draw = tick_draw | ZUI_DrawCheckmark;
+        ZUIBox* box  = ZUIPushBox(ctx, tick_key, (uint32_t)strlen(tick_key), tick_draw);
         box->Size[0] = ZPx(16.f); box->Size[1] = ZPx(16.f);
-        SetBgArr(box, ctx->Theme.InputBg);
+        SetBgArr(box, is_checked ? ctx->Theme.InputActiveBg : ctx->Theme.InputBg);
         SetBdrArr(box, is_checked ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
         box->BorderThickness = 1.f;
         ZUIBoxSetCornerRadius(box, 2.f);
-        if (is_checked) {
-            box->Label = ZUIPushStr(&ctx->FrameArena, "v", 1);
-            SetTextColor(box, ctx->Theme.CheckMark);
-        }
+        SetTextColor(box, ctx->Theme.CheckMark); // used by ZUI_DrawCheckmark
         ZUISignal tick_sig = ZUISignalFromBox(ctx, box);
         ApplyHotActive(box, ctx, ctx->Theme.InputBg,
                        ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
@@ -944,17 +942,15 @@ namespace ZEngine::UI
 
         bool is_active = selected && (*selected == index);
         char dot_key[64]; snprintf(dot_key, sizeof(dot_key), "##dot_%s_%d", label, index);
-        ZUIBox* circle = ZUIPushBox(ctx, dot_key, (uint32_t)strlen(dot_key),
-                              ZUI_DrawBackground | ZUI_DrawBorder | (is_active ? ZUI_DrawText : ZUI_None));
+        ZUIBoxFlags dot_fl = ZUI_DrawBackground | ZUI_DrawBorder;
+        if (is_active) dot_fl = dot_fl | ZUI_DrawCircleFill;
+        ZUIBox* circle = ZUIPushBox(ctx, dot_key, (uint32_t)strlen(dot_key), dot_fl);
         circle->Size[0] = ZPx(16.f); circle->Size[1] = ZPx(16.f);
-        SetBgArr(circle, ctx->Theme.InputBg);
+        SetBgArr(circle, is_active ? ctx->Theme.InputActiveBg : ctx->Theme.InputBg);
         SetBdrArr(circle, is_active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
         circle->BorderThickness = 1.f;
-        ZUIBoxSetCornerRadius(circle, 8.f); // full circle
-        if (is_active) {
-            circle->Label = ZUIPushStr(&ctx->FrameArena, "*", 1);
-            SetTextColor(circle, ctx->Theme.CheckMark);
-        }
+        ZUIBoxSetCornerRadius(circle, 8.f); // full circle for outer ring
+        SetTextColor(circle, ctx->Theme.CheckMark); // used by ZUI_DrawCircleFill
         ZUISignal dot_sig = ZUISignalFromBox(ctx, circle);
         ApplyHotActive(circle, ctx, ctx->Theme.InputBg,
                        ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
@@ -1054,12 +1050,22 @@ namespace ZEngine::UI
         hdr->LayoutAxis   = ZUIAxis::X;
         hdr->EdgeSoftness = 0.f;
 
-        const char* ind = (open && *open) ? "v " : "> ";
-        ZUIBox* arrow = ZUIPushBox(ctx, ind, 2, ZUI_DrawText);
+        // Triangle arrow — direction stored in UserData (0=right/collapsed, 1=down/expanded)
+        bool is_open = open && *open;
+        char arrow_key[272]; snprintf(arrow_key, sizeof(arrow_key), "##ch_arr_%s", label);
+        ZUIBox* arrow = ZUIPushBox(ctx, arrow_key, (uint32_t)strlen(arrow_key),
+                                    ZUI_DrawTriArrow);
         arrow->Size[0] = ZPx(16.f); arrow->Size[1] = ZSPx(ctx, 22.f);
-        SetTextColor(arrow, ctx->Theme.TextDim);
+        float arrow_col[4] = {0.55f, 0.55f, 0.60f, 1.f};
+        SetTextColor(arrow, arrow_col);
+        // Write open state to UserData so PreparePayload draws the right direction
+        {
+            auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
+            if (ps) ps->UserData = is_open ? 1.f : 0.f;
+        }
         ZUIPopBox(ctx);
 
+        ZUISpacer(ctx, 2.f);
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
         ZUISignal sig = ZUISignalFromBox(ctx, hdr);
@@ -1153,12 +1159,13 @@ namespace ZEngine::UI
         ZUISpacer(ctx, 4.f);
         ZUILabel(ctx, preview_label ? preview_label : "", ctx->Theme.TextDefault);
 
-        // Right-align "v" indicator
-        ZUIBox* arrow = ZUIPushBox(ctx, "v##carrow", 9, ZUI_DrawText);
+        // Dropdown arrow — always points down
+        ZUIBox* arrow = ZUIPushBox(ctx, "##carrow", 8, ZUI_DrawTriArrow);
         arrow->Size[0] = ZPx(18.f); arrow->Size[1] = ZSPx(ctx, 28.f);
         arrow->Flags   = arrow->Flags | ZUI_FloatX;
         arrow->FloatPos[0] = w.Kind == ZUISizeKind::Fill ? 0.f : -18.f;
         SetTextColor(arrow, ctx->Theme.TextDim);
+        { auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key); if (ps) ps->UserData = 1.f; }
         ZUIPopBox(ctx);
 
         ZUISignal sig = ZUISignalFromBox(ctx, row);
@@ -1891,15 +1898,19 @@ namespace ZEngine::UI
             ZUIPopBox(ctx);
         }
 
-        // Disclosure arrow (or spacer for leaves)
+        // Disclosure arrow (or spacer for leaves) — filled triangle via draw list
         if (has_arrow)
         {
-            const char* arrow = is_open ? "v" : ">";
-            ZUIBox* ab = ZUIPushBox(ctx, arrow, 1, ZUI_DrawText);
+            char ak[128]; snprintf(ak, sizeof(ak), "##tvarr_%d_%s", ctx->TV_Depth, label);
+            ZUIBox* ab = ZUIPushBox(ctx, ak, (uint32_t)strlen(ak), ZUI_DrawTriArrow);
             ab->Size[0] = ZPx(arrow_w); ab->Size[1] = ZPx(row_h);
             float ac[4] = { 0.55f, 0.55f, 0.60f, 1.f };
             SetTextColor(ab, ac);
-            ab->TextAlign = ZUITextAlign::Center;
+            // Store direction in UserData
+            {
+                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, ab->Key);
+                if (ps) ps->UserData = is_open ? 1.f : 0.f;
+            }
             ZUIPopBox(ctx);
         }
         else
