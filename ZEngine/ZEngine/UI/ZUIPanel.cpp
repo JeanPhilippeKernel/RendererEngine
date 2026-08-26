@@ -431,22 +431,18 @@ namespace ZEngine::UI
         panel->FloatPos[0]  = rect[0];
         panel->FloatPos[1]  = rect[1];
         ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
-        // Focused: blue accent border. Unfocused: ImGui Border = {0.43,0.43,0.50,0.50}
-        const float* bcol = is_focused ? ctx->Theme.PanelFocusBorder : ctx->Theme.PanelBorder;
-        panel->BorderColor[0] = bcol[0]; panel->BorderColor[1] = bcol[1];
-        panel->BorderColor[2] = bcol[2]; panel->BorderColor[3] = bcol[3];
+        // VS Code: 1px subtle border always, same color focused/unfocused
+        panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
+        panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
+        panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
         panel->BorderThickness = 1.f;
-        panel->EdgeSoftness    = 0.f; // square corners — docked panels are flush
+        panel->EdgeSoftness    = 0.f;
 
-        // --- ImGui-style title bar / tab bar ---
-        // Single-view: solid title band (TitleBgActive when focused, TitleBarBg when not)
-        // Multi-view:  tab bar with same color scheme
-        bool  show_tabs    = (p->ViewCount > 1);
-        float header_h     = kTabBarH + 2.f;   // 28px — ImGui title bar height
+        // VS Code panel title bar height
+        bool  show_tabs     = (p->ViewCount > 1);
+        float header_h      = kTabBarH + 2.f; // 28px
         bool  should_popout = false;
-
-        // Title bar background: deep blue when focused, near-black when not
-        const float* title_bg = is_focused ? ctx->Theme.TitleBgActive : ctx->Theme.TitleBarBg;
 
         if (show_tabs)
         {
@@ -455,35 +451,38 @@ namespace ZEngine::UI
         }
         else
         {
+            // VS Code-style panel title bar:
+            // [■ icon]  Panel Title                   [×]  ← × hover-only
             const char* view_title = (p->ViewCount > 0 && p->Views[0]) ? p->Views[0]->Title : "Panel";
-            float btn_h = header_h * 0.65f;
+            float btn_h = header_h * 0.60f;
 
             char hk[48]; snprintf(hk, sizeof(hk), "##tbar_%llx", (unsigned long long)p->DockKey);
             ZUIBox* strip = ZUIBeginRow(ctx, hk, ZFill(), ZPx(header_h));
             strip->Flags = strip->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(strip, title_bg);
+            // VS Code: title bar uses MenuBarBg (#3c3c3c), same for focused/unfocused
+            ZUIBoxSetColorArr(strip, ctx->Theme.MenuBarBg);
             strip->EdgeSoftness = 0.f;
 
-            ZUISpacer(ctx, 8.f);
+            ZUISpacer(ctx, 10.f);
 
-            // Small colored type icon (panel's TabColor, or white if none)
+            // Small colored dot icon (panel's TabColor)
             {
                 const float* ic = (p->Views[0] && p->Views[0]->TabColor[3] > 0.01f)
-                                 ? p->Views[0]->TabColor : ctx->Theme.TextDim;
+                                 ? p->Views[0]->TabColor : ctx->Theme.PanelFocusBorder;
                 char ik[48]; snprintf(ik, sizeof(ik), "##tic_%llx", (unsigned long long)p->DockKey);
                 ZUIBox* icon = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
-                icon->Size[0] = ZPx(10.f); icon->Size[1] = ZPx(10.f);
+                icon->Size[0] = ZPx(8.f); icon->Size[1] = ZPx(8.f);
                 ZUIBoxSetColorArr(icon, ic);
-                ZUIBoxSetCornerRadius(icon, 2.f);
+                ZUIBoxSetCornerRadius(icon, 4.f); // full circle
                 icon->EdgeSoftness = 0.5f;
                 ZUIPopBox(ctx);
             }
-            ZUISpacer(ctx, 6.f);
+            ZUISpacer(ctx, 7.f);
 
-            // Panel title — white when focused (on blue), dim when not
+            // Panel title — always default text color (VS Code doesn't change title color on focus)
             ZUILabel(ctx, view_title, ctx->Theme.TextDefault);
 
-            // Fill → buttons right-aligned
+            // Fill spacer
             {
                 char fk[48]; snprintf(fk, sizeof(fk), "##tf_%llx", (unsigned long long)p->DockKey);
                 ZUIBox* fill = ZUIPushBox(ctx, fk, (uint32_t)strlen(fk), ZUI_None);
@@ -491,34 +490,29 @@ namespace ZEngine::UI
                 ZUIPopBox(ctx);
             }
 
-            // Pop-out button ⊟
-            char pk[56]; snprintf(pk, sizeof(pk), "d##tp_%llx", (unsigned long long)p->DockKey);
-            ZUIBox* pbtn = ZUIPushBox(ctx, pk, (uint32_t)strlen(pk), ZUI_DrawText | ZUI_Clickable);
-            pbtn->Size[0] = ZPx(btn_h); pbtn->Size[1] = ZPx(btn_h);
-            pbtn->TextAlign = ZUITextAlign::Center;
-            bool ph = (ctx->HotKey == pbtn->Key);
-            pbtn->TextColor[0]=ph?1.f:0.60f; pbtn->TextColor[1]=ph?1.f:0.60f;
-            pbtn->TextColor[2]=ph?1.f:0.60f; pbtn->TextColor[3]=0.90f;
-            ZUISignal psig = ZUISignalFromBox(ctx, pbtn);
-            ZUIPopBox(ctx);
-            ZUISpacer(ctx, 2.f);
-
-            // Close button ×  — brightens on hover
-            char xk[56]; snprintf(xk, sizeof(xk), "x##tx_%llx", (unsigned long long)p->DockKey);
-            ZUIBox* xbtn = ZUIPushBox(ctx, xk, (uint32_t)strlen(xk), ZUI_DrawText | ZUI_Clickable);
-            xbtn->Size[0] = ZPx(btn_h); xbtn->Size[1] = ZPx(btn_h);
-            xbtn->TextAlign = ZUITextAlign::Center;
-            bool xh = (ctx->HotKey == xbtn->Key);
-            xbtn->TextColor[0]=xh?1.f:0.60f; xbtn->TextColor[1]=xh?0.25f:0.60f;
-            xbtn->TextColor[2]=xh?0.25f:0.60f; xbtn->TextColor[3]=0.90f;
-            ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
-            ZUIPopBox(ctx);
+            // × close button — VS Code: hover-only, appears as soft × on hover
+            bool should_close = false;
+            bool panel_hovered = (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] &&
+                                  ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
+            if (panel_hovered) // only render when strip is hovered
+            {
+                char xk[56]; snprintf(xk, sizeof(xk), "x##tx_%llx", (unsigned long long)p->DockKey);
+                ZUIBox* xbtn = ZUIPushBox(ctx, xk, (uint32_t)strlen(xk), ZUI_DrawText | ZUI_Clickable);
+                xbtn->Size[0] = ZPx(btn_h); xbtn->Size[1] = ZPx(btn_h);
+                xbtn->TextAlign = ZUITextAlign::Center;
+                bool xh = (ctx->HotKey == xbtn->Key);
+                xbtn->TextColor[0] = xh ? 1.f : 0.55f;
+                xbtn->TextColor[1] = xh ? 0.4f : 0.55f;
+                xbtn->TextColor[2] = xh ? 0.4f : 0.55f;
+                xbtn->TextColor[3] = 1.f;
+                ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
+                ZUIPopBox(ctx);
+                if (xsig.Flags & ZUI_SignalClicked) should_close = true;
+            }
             ZUISpacer(ctx, 6.f);
-
             ZUIEndRow(ctx);
 
-            if ((psig.Flags & ZUI_SignalClicked) || (xsig.Flags & ZUI_SignalClicked))
-                should_popout = true;
+            if (should_close) should_popout = true;
         }
 
         // Content
@@ -543,19 +537,18 @@ namespace ZEngine::UI
             PopOutPanel(p, px, py, pw, ph);
         }
 
-        // Unfocused dim overlay
-        if (!is_focused)
+        // VS Code focus indicator: 3px teal left strip on focused panel
+        if (is_focused)
         {
-            char ov_key[40];
-            snprintf(ov_key, sizeof(ov_key), "##pov_%llx", (unsigned long long)p->DockKey);
-            uint32_t klen = (uint32_t)strlen(ov_key);
-            ZUIBox* ov = ZUIPushBox(ctx, ov_key, klen, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-            ov->Size[0]     = ZPx(rect[2] - rect[0]);
-            ov->Size[1]     = ZPx(rect[3] - rect[1]);
-            ov->FloatPos[0] = rect[0];
-            ov->FloatPos[1] = rect[1];
-            ZUIBoxSetColorArr(ov, ctx->Theme.PanelInactiveOverlay);
-            ov->EdgeSoftness = 0.f;
+            char fk[48]; snprintf(fk, sizeof(fk), "##pfocus_%llx", (unsigned long long)p->DockKey);
+            uint32_t klen = (uint32_t)strlen(fk);
+            ZUIBox* fb = ZUIPushBox(ctx, fk, klen, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+            fb->Size[0]     = ZPx(3.f);
+            fb->Size[1]     = ZPx(rect[3] - rect[1]);
+            fb->FloatPos[0] = rect[0];
+            fb->FloatPos[1] = rect[1];
+            ZUIBoxSetColorArr(fb, ctx->Theme.PanelFocusBorder);
+            fb->EdgeSoftness = 0.f;
             ZUIPopBox(ctx);
         }
 
@@ -905,45 +898,40 @@ namespace ZEngine::UI
             bool tab_closed  = false;
             bool tab_popped  = false;
 
-            if (is_active)
+            // VS Code close button behavior:
+            //   Active tab   → × always visible (subtle, brightens on hover)
+            //   Inactive tab → × only appears when that tab is hovered
             {
-                float btn_sz = tab_h * 0.55f;
+                float btn_sz = tab_h * 0.52f;
+                bool tab_hovered = (ctx->HotKey == tab->Key);
+                bool show_close  = is_active || tab_hovered;
 
-                // Pop-out button (tear off to floating)
-                if (!in_float)
+                if (show_close)
                 {
                     ZUISpacer(ctx, 4.f);
-                    char popkey[64];
-                    snprintf(popkey, sizeof(popkey), "⊞##pop_%llx_%u", (unsigned long long)p->DockKey, ti);
-                    ZUIBox* pb = ZUIPushBox(ctx, popkey, (uint32_t)strlen(popkey),
-                                            ZUI_DrawText | ZUI_Clickable);
-                    pb->Size[0]   = ZPx(btn_sz);
-                    pb->Size[1]   = ZPx(btn_sz);
-                    pb->TextAlign = ZUITextAlign::Center;
-                    float pc[4]   = { 0.5f, 0.7f, 0.9f, 0.9f };
-                    pb->TextColor[0]=pc[0]; pb->TextColor[1]=pc[1];
-                    pb->TextColor[2]=pc[2]; pb->TextColor[3]=pc[3];
-                    ZUISignal psig = ZUISignalFromBox(ctx, pb);
+                    char xkey[64];
+                    snprintf(xkey, sizeof(xkey), "x##x_%llx_%u", (unsigned long long)p->DockKey, ti);
+                    ZUIBox* xbtn = ZUIPushBox(ctx, xkey, (uint32_t)strlen(xkey),
+                                               ZUI_DrawText | ZUI_Clickable);
+                    xbtn->Size[0]   = ZPx(btn_sz);
+                    xbtn->Size[1]   = ZPx(btn_sz);
+                    xbtn->TextAlign = ZUITextAlign::Center;
+                    bool xh = (ctx->HotKey == xbtn->Key);
+                    // Active + hovered: reddish; Active normal: dim; Inactive hover: slightly visible
+                    if (xh)
+                    { xbtn->TextColor[0]=1.f; xbtn->TextColor[1]=0.35f; xbtn->TextColor[2]=0.35f; xbtn->TextColor[3]=1.f; }
+                    else
+                    { float a = is_active ? 0.55f : 0.40f;
+                      xbtn->TextColor[0]=a; xbtn->TextColor[1]=a; xbtn->TextColor[2]=a; xbtn->TextColor[3]=1.f; }
+                    ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
                     ZUIPopBox(ctx);
-                    if (psig.Flags & ZUI_SignalClicked) { tab_popped = true; }
+                    if (xsig.Flags & ZUI_SignalClicked) { tab_closed = true; }
+                    ZUISpacer(ctx, 4.f);
                 }
-
-                // Close button
-                ZUISpacer(ctx, 4.f);
-                char xkey[64];
-                snprintf(xkey, sizeof(xkey), "x##x_%llx_%u", (unsigned long long)p->DockKey, ti);
-                ZUIBox* xbtn = ZUIPushBox(ctx, xkey, (uint32_t)strlen(xkey),
-                                           ZUI_DrawText | ZUI_Clickable);
-                xbtn->Size[0]   = ZPx(btn_sz);
-                xbtn->Size[1]   = ZPx(btn_sz);
-                xbtn->TextAlign = ZUITextAlign::Center;
-                float xc[4] = { 0.75f, 0.40f, 0.40f, 0.90f };
-                xbtn->TextColor[0]=xc[0]; xbtn->TextColor[1]=xc[1];
-                xbtn->TextColor[2]=xc[2]; xbtn->TextColor[3]=xc[3];
-                ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
-                ZUIPopBox(ctx);
-                if (xsig.Flags & ZUI_SignalClicked) { tab_closed = true; }
-                ZUISpacer(ctx, 4.f);
+                else
+                {
+                    ZUISpacer(ctx, 4.f); // keep width consistent with when × is shown
+                }
             }
 
             ZUISignal sig = ZUISignalFromBox(ctx, tab);
