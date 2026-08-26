@@ -70,6 +70,26 @@ namespace ZEngine::UI
             }
         }
 
+        // Key repeat: Arrow left/right and Delete when held
+        bool any_arrow = ctx->ArrowLeftHeld || ctx->ArrowRightHeld || ctx->DeleteHeld;
+        if (any_arrow && ctx->FocusKey != 0)
+        {
+            ctx->ArrowRepeatTimer += ctx->DeltaTime;
+            if (ctx->ArrowRepeatTimer >= ZUIContext::kRepeatDelay)
+            {
+                float excess = ctx->ArrowRepeatTimer - ZUIContext::kRepeatDelay;
+                bool fire = (int)(excess / ZUIContext::kRepeatRate) !=
+                            (int)((excess - ctx->DeltaTime) / ZUIContext::kRepeatRate);
+                if (fire)
+                {
+                    if (ctx->ArrowLeftHeld)  ctx->ArrowLeftPressed  = true;
+                    if (ctx->ArrowRightHeld) ctx->ArrowRightPressed = true;
+                    if (ctx->DeleteHeld)     ctx->DeletePressed     = true;
+                }
+            }
+        }
+        if (!any_arrow) ctx->ArrowRepeatTimer = 0.f;
+
         // Escape / Enter: clear focus
         if (ctx->EscapePressed || ctx->EnterPressed)
         {
@@ -77,6 +97,7 @@ namespace ZEngine::UI
         }
         ctx->EscapePressed = false;
         ctx->EnterPressed  = false;
+        ctx->SpacePressed  = false;
 
         // Tab focus navigation — apply after interaction pass so click-focus wins
         if (ctx->TabPressed)

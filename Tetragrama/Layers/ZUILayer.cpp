@@ -104,6 +104,9 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_ESCAPE) m_ctx->EscapePressed = true;
         if (key == ZENGINE_KEY_ENTER || key == ZENGINE_KEY_KP_ENTER)
             m_ctx->EnterPressed = true;
+        // Space: activate focused button (not Enter, which clears focus for text fields)
+        if (key == ZENGINE_KEY_SPACE && !m_ctx->CtrlDown && !m_ctx->AltDown)
+            m_ctx->SpacePressed = true;
 
         // Arrow keys for drag-float nudge / text cursor / combo navigation
         if (key == ZENGINE_KEY_UP)    m_ctx->ArrowUpPressed    = true;
@@ -112,7 +115,9 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_RIGHT) m_ctx->ArrowRightPressed = true;
         if (key == ZENGINE_KEY_HOME)   m_ctx->HomePressed       = true;
         if (key == ZENGINE_KEY_END)    m_ctx->EndPressed        = true;
-        if (key == ZENGINE_KEY_DELETE) m_ctx->DeletePressed     = true;
+        if (key == ZENGINE_KEY_DELETE) { m_ctx->DeletePressed = true;  m_ctx->DeleteHeld        = true;  m_ctx->ArrowRepeatTimer = 0.f; }
+        if (key == ZENGINE_KEY_LEFT)  { m_ctx->ArrowLeftHeld  = true;  m_ctx->ArrowRepeatTimer  = 0.f; }
+        if (key == ZENGINE_KEY_RIGHT) { m_ctx->ArrowRightHeld = true;  m_ctx->ArrowRepeatTimer  = 0.f; }
 
         // Ctrl+C → signal the context so widgets can copy their content
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
@@ -157,6 +162,9 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
             m_ctx->BackspaceHeld  = false;
             m_ctx->KeyRepeatTimer = 0.f;
         }
+        if (key == ZENGINE_KEY_LEFT)   m_ctx->ArrowLeftHeld  = false;
+        if (key == ZENGINE_KEY_RIGHT)  m_ctx->ArrowRightHeld = false;
+        if (key == ZENGINE_KEY_DELETE) m_ctx->DeleteHeld     = false;
         return false;
     }
 

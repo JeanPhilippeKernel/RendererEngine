@@ -232,10 +232,22 @@ namespace ZEngine::UI
         ZUIBoxSetCornerRadius(box, 3.f);
         if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
+        // Keyboard focus: Tab can land on buttons; Space/Enter activates
+        bool is_focused = !ctx->Disabled && (ctx->FocusKey == box->Key);
+        if (is_focused)
+        {
+            SetBdrArr(box, ctx->Theme.InputFocusBorder); // teal focus ring
+            box->Flags = box->Flags | ZUI_DrawBorder;
+        }
+
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         if (!ctx->Disabled)
+        {
             ApplyHotActive(box, ctx, ctx->Theme.ButtonBg,
                            ctx->Theme.ButtonHoveredBg, ctx->Theme.ButtonActiveBg);
+            if (is_focused && (ctx->SpacePressed || ctx->EnterPressed))
+                sig.Flags |= ZUI_SignalClicked;
+        }
         ZUIPopBox(ctx);
         return sig;
     }
@@ -255,10 +267,17 @@ namespace ZEngine::UI
         ZUIBoxSetCornerRadius(box, 3.f);
         if (ctx->Disabled) { ApplyDisabledDimBox(box); ApplyDisabledDim(box->TextColor); }
 
+        bool is_focused = !ctx->Disabled && (ctx->FocusKey == box->Key);
+        if (is_focused) { SetBdrArr(box, ctx->Theme.InputFocusBorder); box->Flags = box->Flags | ZUI_DrawBorder; }
+
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         if (!ctx->Disabled)
+        {
             ApplyHotActive(box, ctx, ctx->Theme.ButtonBg,
                            ctx->Theme.ButtonHoveredBg, ctx->Theme.ButtonActiveBg);
+            if (is_focused && (ctx->SpacePressed || ctx->EnterPressed))
+                sig.Flags |= ZUI_SignalClicked;
+        }
         ZUIPopBox(ctx);
         return sig;
     }

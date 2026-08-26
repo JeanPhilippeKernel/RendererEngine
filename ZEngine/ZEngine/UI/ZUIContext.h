@@ -213,6 +213,7 @@ namespace ZEngine::UI
         bool               ShiftTabPressed   = false;
         bool               EscapePressed     = false; // clear FocusKey
         bool               EnterPressed      = false; // confirm / deactivate field
+        bool               SpacePressed      = false; // activate focused button
         bool               ArrowUpPressed    = false; // nudge drag float / combo nav
         bool               ArrowDownPressed  = false;
         bool               ArrowLeftPressed  = false;  // text cursor left
@@ -222,6 +223,11 @@ namespace ZEngine::UI
         bool               CtrlCPressed          = false; // copy focused field to clipboard
         bool               CtrlBackspacePressed  = false; // delete word before cursor
         bool               DeletePressed         = false; // forward-delete at cursor
+        // Held state for key-repeat (same mechanism as BackspaceHeld)
+        bool               ArrowLeftHeld         = false;
+        bool               ArrowRightHeld        = false;
+        bool               DeleteHeld            = false;
+        float              ArrowRepeatTimer      = 0.f;
         // Per-frame tracking updated in ZUISignalFromBox during the build pass
         uint64_t           TabNavNextKey     = 0; // first clickable after FocusKey
         uint64_t           TabNavPrevKey     = 0; // last clickable before FocusKey
