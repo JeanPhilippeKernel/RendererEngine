@@ -159,16 +159,10 @@ namespace Tetragrama::Layers
     bool ZUILayer::OnMouseButtonMoved(MouseButtonMovedEvent& e)
     {
         if (!m_ctx) { return false; }
-#if defined(__APPLE__)
-        // macOS: glfwGetCursorPos returns physical pixels; divide by ContentScale
-        // to convert to the logical UI coordinate space (ScreenW/H are also logical).
-        float scale = m_ctx->UIScale > 0.5f ? m_ctx->UIScale : 1.f;
-        m_ctx->MousePos[0] = (float)e.GetPosX() / scale;
-        m_ctx->MousePos[1] = (float)e.GetPosY() / scale;
-#else
+        // No coordinate transformation — use raw GLFW cursor position.
+        // ScreenW/H uses the same raw coordinate space (glfwGetWindowSize).
         m_ctx->MousePos[0] = (float)e.GetPosX();
         m_ctx->MousePos[1] = (float)e.GetPosY();
-#endif
         return false;
     }
 

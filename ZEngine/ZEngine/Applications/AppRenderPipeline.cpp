@@ -297,12 +297,12 @@ namespace ZEngine::Applications
                 }
 
 #if defined(__APPLE__)
-                // macOS (Gemini-verified): glfwGetWindowSize returns PHYSICAL pixels.
-                // UI logical size = physical / ContentScale.  Cursor is also physical →
-                // ZUILayer::OnMouseButtonMoved divides by UIScale before storing MousePos.
+                // macOS: use raw glfwGetWindowSize for ScreenW/H (same space as glfwGetCursorPos).
+                // UIScale = ContentScale is used ONLY for font density — no coordinate transform.
+                // All coordinates (cursor, panel bounds, NDC) stay in the same raw space.
                 ZUICtx->UIScale = content_scale;
-                ZUICtx->ScreenW = (uint32_t)((float)Device->CurrentWindow->GetWidth()  / content_scale);
-                ZUICtx->ScreenH = (uint32_t)((float)Device->CurrentWindow->GetHeight() / content_scale);
+                ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
+                ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
 #else
                 // Windows/Linux: glfwGetWindowSize returns logical pixels already.
                 // UIScale = Fb/Win ratio for actual HiDPI framebuffers.

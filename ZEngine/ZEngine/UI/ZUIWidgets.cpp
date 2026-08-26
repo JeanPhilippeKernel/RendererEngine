@@ -977,16 +977,15 @@ namespace ZEngine::UI
         char key[256];
         snprintf(key, sizeof(key), "##ch_%s", label);
 
-        ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZSPx(ctx, 26.f));
+        ZUIBox* hdr = ZUIBeginRow(ctx, key, ZFill(), ZSPx(ctx, 22.f));
         hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
+        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);  // HeaderBg: slightly lighter than TitleBarBg
         hdr->LayoutAxis   = ZUIAxis::X;
         hdr->EdgeSoftness = 0.f;
-        ZUIBoxSetCornerRadius(hdr, 4.f);
 
         const char* ind = (open && *open) ? "v " : "> ";
         ZUIBox* arrow = ZUIPushBox(ctx, ind, 2, ZUI_DrawText);
-        arrow->Size[0] = ZPx(16.f); arrow->Size[1] = ZSPx(ctx, 26.f);
+        arrow->Size[0] = ZPx(16.f); arrow->Size[1] = ZSPx(ctx, 22.f);
         SetTextColor(arrow, ctx->Theme.TextDim);
         ZUIPopBox(ctx);
 
