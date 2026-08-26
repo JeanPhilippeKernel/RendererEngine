@@ -274,7 +274,7 @@ namespace ZEngine::UI
 
         // TreeView state (ZUIBeginTreeView / ZUIEndTreeView)
         int                TV_Depth         = 0;
-        float              TV_IndentPx      = 16.f;   // px per depth level
+        float              TV_IndentPx      = 21.f;   // px per depth level — ImGui IndentSpacing
         float              TV_RowH          = 22.f;   // logical row height
 
         // DataTable state (ZUIBeginDataTable / ZUIEndDataTable)

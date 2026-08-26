@@ -222,8 +222,8 @@ namespace ZEngine::UI
         ZUIBox* box         = ZUIPushBox(ctx, label, len, flags);
         box->Size[0]        = w;
         box->Size[1]        = h;
-        box->Padding[0]     = 8.f; // ImGui FramePadding.x*2 = 4*2 = 8px per side (left+right inner)
-        box->Padding[2]     = 8.f;
+        box->Padding[0]     = 4.f; // ImGui FramePadding.x = 4px per side
+        box->Padding[2]     = 4.f;
         SetBgArr(box, ctx->Theme.ButtonBg);
         SetTextColor(box, ctx->Theme.TextDefault);
         SetBdrArr(box, ctx->Theme.ButtonBorder);
@@ -260,7 +260,9 @@ namespace ZEngine::UI
 
         ZUIBox* box      = ZUIPushBox(ctx, label, len, flags);
         box->Size[0]     = ZText();
-        box->Size[1]     = ZSPx(ctx, 22.f);
+        box->Size[1]     = ZPx(19.f); // ImGui GetFrameHeight = 19px
+        box->Padding[0]  = 4.f;       // ImGui FramePadding.x
+        box->Padding[2]  = 4.f;
         SetBgArr(box, ctx->Theme.ButtonBg);
         SetTextColor(box, ctx->Theme.TextDefault);
         box->EdgeSoftness = 0.5f;
@@ -306,6 +308,8 @@ namespace ZEngine::UI
         ZUIBox* box         = ZUIPushBox(ctx, label, len, flags);
         box->Size[0]        = w;
         box->Size[1]        = h;
+        box->Padding[0]     = 4.f;
+        box->Padding[2]     = 4.f;
         box->BorderThickness = 1.f;
         box->EdgeSoftness    = 0.5f;
         ZUIBoxSetCornerRadius(box, 3.f);
@@ -538,8 +542,9 @@ namespace ZEngine::UI
 
         ZUIBox* box   = ZUIPushBox(ctx, label, len, fl);
         box->Size[0]  = ZFill();
-        box->Size[1]  = ZSPx(ctx, 22.f);
-        box->Padding[0] = 8.f; // left indent
+        box->Size[1]  = ZPx(19.f); // ImGui GetFrameHeight = 19px
+        box->Padding[0] = 8.f;     // left indent (ImGui: FramePadding.x * 2)
+        box->Padding[2] = 8.f;
 
         // Keyboard highlight via popup nav
         bool kb_focus = enabled && (ctx->PopupNavIdx >= 0 && ctx->PopupBuildIdx == ctx->PopupNavIdx);
@@ -567,7 +572,9 @@ namespace ZEngine::UI
         ZUIBox*  box   = ZUIPushBox(ctx, label, len,
                              ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable);
         box->Size[0]   = ZFill();
-        box->Size[1]   = ZSPx(ctx, 24.f);
+        box->Size[1]   = ZPx(19.f); // ImGui GetFrameHeight = 19px
+        box->Padding[0] = 8.f;
+        box->Padding[2] = 8.f;
 
         // Keyboard highlight: this item is focused via Up/Down arrow
         bool kb_focus = (ctx->PopupNavIdx >= 0 && ctx->PopupBuildIdx == ctx->PopupNavIdx);
@@ -734,7 +741,7 @@ namespace ZEngine::UI
         {
             char tk[64]; snprintf(tk, sizeof(tk), "##sf_thumb_%s", key);
             ZUIBox* thumb = ZUIPushBox(ctx, tk, (uint32_t)strlen(tk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-            float th = 14.f, tw = 10.f;
+            float th = 14.f, tw = 12.f; // ImGui GrabMinSize = 12px
             // Position uses prev-frame track screen coords
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, track->Key);
             float trk_x0 = ps ? ps->ScreenMinX : 0.f;
@@ -811,8 +818,10 @@ namespace ZEngine::UI
         field->Size[0]    = w;
         field->Size[1]    = ZPx(19.f);
         field->Padding[0] = 4.f;
+        field->Padding[2] = 4.f;
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
+        SetBdrArr(field, ctx->Theme.InputBorder);
         field->BorderThickness = 1.f;
         field->EdgeSoftness = 0.5f;
         ZUIBoxSetCornerRadius(field, 3.f);
@@ -1071,19 +1080,19 @@ namespace ZEngine::UI
         ZUIBoxFlags tick_draw = ZUI_DrawBackground | ZUI_DrawBorder;
         if (is_checked) tick_draw = tick_draw | ZUI_DrawCheckmark;
         ZUIBox* box  = ZUIPushBox(ctx, tick_key, (uint32_t)strlen(tick_key), tick_draw);
-        box->Size[0] = ZPx(16.f); box->Size[1] = ZPx(16.f);
+        box->Size[0] = ZPx(13.f); box->Size[1] = ZPx(13.f); // ImGui: checkbox = FontSize = 13px
         SetBgArr(box, is_checked ? ctx->Theme.InputActiveBg : ctx->Theme.InputBg);
         SetBdrArr(box, is_checked ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
         box->BorderThickness = 1.f;
         ZUIBoxSetCornerRadius(box, 2.f);
-        SetTextColor(box, ctx->Theme.CheckMark); // used by ZUI_DrawCheckmark
+        SetTextColor(box, ctx->Theme.CheckMark);
         ZUISignal tick_sig = ZUISignalFromBox(ctx, box);
         ApplyHotActive(box, ctx, ctx->Theme.InputBg,
                        ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
         (void)tick_sig;
 
-        ZUISpacer(ctx, 6.f);
+        ZUISpacer(ctx, 4.f); // ImGui ItemInnerSpacing.x = 4px
         ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
 
         bool is_focused = !ctx->Disabled && (ctx->FocusKey == row->Key);
@@ -1116,19 +1125,19 @@ namespace ZEngine::UI
         ZUIBoxFlags dot_fl = ZUI_DrawBackground | ZUI_DrawBorder;
         if (is_active) dot_fl = dot_fl | ZUI_DrawCircleFill;
         ZUIBox* circle = ZUIPushBox(ctx, dot_key, (uint32_t)strlen(dot_key), dot_fl);
-        circle->Size[0] = ZPx(16.f); circle->Size[1] = ZPx(16.f);
+        circle->Size[0] = ZPx(13.f); circle->Size[1] = ZPx(13.f); // ImGui: FontSize = 13px
         SetBgArr(circle, is_active ? ctx->Theme.InputActiveBg : ctx->Theme.InputBg);
         SetBdrArr(circle, is_active ? ctx->Theme.InputFocusBorder : ctx->Theme.InputBorder);
         circle->BorderThickness = 1.f;
-        ZUIBoxSetCornerRadius(circle, 8.f); // full circle for outer ring
-        SetTextColor(circle, ctx->Theme.CheckMark); // used by ZUI_DrawCircleFill
+        ZUIBoxSetCornerRadius(circle, 6.5f); // full circle
+        SetTextColor(circle, ctx->Theme.CheckMark);
         ZUISignal dot_sig = ZUISignalFromBox(ctx, circle);
         ApplyHotActive(circle, ctx, ctx->Theme.InputBg,
                        ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
         (void)dot_sig;
 
-        ZUISpacer(ctx, 6.f);
+        ZUISpacer(ctx, 4.f); // ImGui ItemInnerSpacing.x = 4px
         ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);
 
         bool is_focused = !ctx->Disabled && (ctx->FocusKey == row->Key);
@@ -1237,7 +1246,7 @@ namespace ZEngine::UI
         }
         ZUIPopBox(ctx);
 
-        ZUISpacer(ctx, 2.f);
+        ZUISpacer(ctx, 4.f); // ImGui ItemInnerSpacing.x = 4px
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
         bool is_focused = (ctx->FocusKey == hdr->Key);
@@ -1335,6 +1344,8 @@ namespace ZEngine::UI
         ZUIBox* row = ZUIBeginRow(ctx, btn_key, w, ZPx(19.f)); // ImGui GetFrameHeight = 19px
         row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
         row->Padding[0] = 4.f; // ImGui FramePadding.x
+        row->Padding[2] = 18.f; // arrow (14px) + 4px right margin
+        ZUIBoxSetCornerRadius(row, 3.f);
         SetBgArr(row, ctx->Theme.InputBg);
         SetBdrArr(row, ctx->Theme.InputBorder);
         row->BorderThickness = 1.f;
@@ -1613,6 +1624,8 @@ namespace ZEngine::UI
         field->Size[0]          = ZPx(width_px);
         field->Size[1]          = ZPx(19.f);
         field->Padding[0]       = 4.f;
+        field->Padding[2]       = 4.f;
+        ZUIBoxSetCornerRadius(field, 3.f);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         SetBdrArr(field, ctx->Theme.InputBorder);
@@ -1739,6 +1752,8 @@ namespace ZEngine::UI
         field->Size[0]         = ZPx(width_px);
         field->Size[1]         = ZPx(19.f);
         field->Padding[0]      = 4.f;
+        field->Padding[2]      = 4.f;
+        ZUIBoxSetCornerRadius(field, 3.f);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         SetBdrArr(field, ctx->Theme.InputBorder);
@@ -2030,7 +2045,9 @@ namespace ZEngine::UI
                                 ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_DrawBorder);
         field->Size[0]      = ZPx(width_px);
         field->Size[1]      = ZPx(19.f);
-        field->Padding[0]   = 4.f;
+        field->Padding[0]   = 4.f; // ImGui FramePadding.x
+        field->Padding[2]   = 4.f;
+        ZUIBoxSetCornerRadius(field, 3.f);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
 
@@ -2341,7 +2358,7 @@ namespace ZEngine::UI
         else
         {
             ctx->TV_RowH     = 19.f; // ImGui GetFrameHeight = 19px
-            ctx->TV_IndentPx = 18.f; // ImGui IndentSpacing=21; we use 18 (slightly tighter)
+            ctx->TV_IndentPx = 21.f; // ImGui IndentSpacing = 21px
         }
         ctx->TV_Depth = 0;
         return ZUIBeginScrollRegion(ctx, key, w, h);
@@ -2361,7 +2378,7 @@ namespace ZEngine::UI
     {
         float row_h   = ctx->TV_RowH;
         float indent  = (float)ctx->TV_Depth * ctx->TV_IndentPx;
-        float arrow_w = 16.f;
+        float arrow_w = 21.f; // ImGui: FontSize + FramePadding*2 = 13+4+4 = 21px
         float icon_sz = 12.f; // slightly larger, full-circle radius below
 
         char rk[128]; snprintf(rk, sizeof(rk), "##tvrow_%d_%s", ctx->TV_Depth, label);
