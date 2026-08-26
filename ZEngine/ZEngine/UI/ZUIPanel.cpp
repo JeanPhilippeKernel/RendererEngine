@@ -221,10 +221,14 @@ namespace ZEngine::UI
             // Right: FPS + UIScale indicator
             {
                 char fps_buf[48];
-                float fps = (ctx->DeltaTime > 0.001f) ? (1.f / ctx->DeltaTime) : 0.f;
-                if (fps > 9999.f) fps = 0.f; // clamp first-frame spike
-                snprintf(fps_buf, sizeof(fps_buf), "%.0f fps  |  UIScale %.1f",
-                         (double)fps, (double)ctx->UIScale);
+                float fps = (ctx->DeltaTime > 0.0005f && ctx->DeltaTime < 1.f)
+                          ? (1.f / ctx->DeltaTime) : 0.f;
+                if (fps > 0.f)
+                    snprintf(fps_buf, sizeof(fps_buf), "%.0f fps  |  UIScale %.1f",
+                             (double)fps, (double)ctx->UIScale);
+                else
+                    snprintf(fps_buf, sizeof(fps_buf), "UIScale %.1f",
+                             (double)ctx->UIScale);
                 ZUILabel(ctx, fps_buf, ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 12.f);
             }
@@ -479,8 +483,8 @@ namespace ZEngine::UI
 
             char hk[48]; snprintf(hk, sizeof(hk), "##tbar_%llx", (unsigned long long)p->DockKey);
             ZUIBox* strip = ZUIBeginRow(ctx, hk, ZFill(), ZPx(header_h));
-            strip->Flags = strip->Flags | ZUI_DrawBackground;
-            // VS Code: title bar uses MenuBarBg (#3c3c3c), same for focused/unfocused
+            // ZUI_Clickable so we can detect drag-to-detach gesture
+            strip->Flags = strip->Flags | ZUI_DrawBackground | ZUI_Clickable;
             ZUIBoxSetColorArr(strip, ctx->Theme.MenuBarBg);
             strip->EdgeSoftness = 0.f;
 
@@ -531,7 +535,35 @@ namespace ZEngine::UI
                 if (xsig.Flags & ZUI_SignalClicked) should_close = true;
             }
             ZUISpacer(ctx, 6.f);
+
+            // Signal on the strip for drag-to-detach
+            ZUISignal strip_sig = ZUISignalFromBox(ctx, strip);
             ZUIEndRow(ctx);
+
+            // Record press start for drag threshold
+            if (strip_sig.Flags & ZUI_SignalPressed)
+            {
+                Drag.StartX = ctx->MousePos[0];
+                Drag.StartY = ctx->MousePos[1];
+            }
+
+            // Drag > 8px → detach panel to floating (same direction as tab drag)
+            if (!should_close && (strip_sig.Flags & ZUI_SignalHeld))
+            {
+                float dx = fabsf(ctx->MousePos[0] - Drag.StartX);
+                float dy = fabsf(ctx->MousePos[1] - Drag.StartY);
+                if (dx + dy > 8.f)
+                {
+                    // Position panel so cursor is on the title bar
+                    float pw = rect[2] - rect[0], ph = rect[3] - rect[1];
+                    float fx = ctx->MousePos[0] - pw * 0.3f; // cursor ~30% from left
+                    float fy = ctx->MousePos[1] - header_h * 0.5f;
+                    PopOutPanel(p, fx, fy, pw, ph);
+                    p->DraggingTitle = true;
+                    p->DragOffX = ctx->MousePos[0] - fx;
+                    p->DragOffY = ctx->MousePos[1] - fy;
+                }
+            }
 
             if (should_close) should_popout = true;
         }
@@ -850,7 +882,8 @@ namespace ZEngine::UI
         const float* bar_bg = panel_focused ? ctx->Theme.TitleBgActive : ctx->Theme.TitleBarBg;
 
         ZUIBox* bar = ZUIBeginRow(ctx, bar_key, ZFill(), ZPx(tab_h));
-        bar->Flags  = bar->Flags | ZUI_DrawBackground;
+        // ZUI_Clickable: empty space in tab bar detects drag-to-detach
+        bar->Flags  = bar->Flags | ZUI_DrawBackground | ZUI_Clickable;
         ZUIBoxSetColorArr(bar, bar_bg);
         bar->EdgeSoftness = 0.f;
 
@@ -869,8 +902,24 @@ namespace ZEngine::UI
             ZUIBox* col = ZUIBeginColumn(ctx, col_key, ZFit(), ZPx(tab_h));
             col->Flags = col->Flags | ZUI_Clickable;
             col->EdgeSoftness = 0.f;
-            // 2px top gap — gives the "raised" Chrome appearance
-            ZUISpacer(ctx, 2.f);
+            // 2px top accent line: colored for active, transparent for inactive.
+            // Same height for ALL tabs — no visual size inconsistency.
+            {
+                char ak[72]; snprintf(ak, sizeof(ak), "##taccent_%llx_%u", (unsigned long long)p->DockKey, ti);
+                ZUIBox* accent = ZUIPushBox(ctx, ak, (uint32_t)strlen(ak), ZUI_DrawBackground);
+                accent->Size[0] = ZFill(); accent->Size[1] = ZPx(2.f);
+                if (is_active)
+                {
+                    const float* acc = has_color ? view->TabColor : ctx->Theme.TabActiveBorder;
+                    ZUIBoxSetColorArr(accent, acc);
+                }
+                else
+                {
+                    ZUIBoxSetColor(accent, 0.f, 0.f, 0.f, 0.f); // invisible
+                }
+                accent->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
 
             // Tab row fills the remaining height within the column
             char tab_key[64];
@@ -883,21 +932,14 @@ namespace ZEngine::UI
 
             if (is_active)
             {
-                // Active tab = panel body color — seamlessly connects to content below
+                // Active: panel body color (merges with content). NO border on the tab box
+                // itself — border inflates visual size. Instead, draw a separate 2px
+                // top-accent overlay after the tab row (top-only, no side/bottom lines).
                 ZUIBoxSetColorArr(tab, ctx->Theme.PanelBg);
-                // Top accent line (tab's own color or accent blue when panel is focused)
-                if (has_color || panel_focused)
-                {
-                    tab->Flags = tab->Flags | ZUI_DrawBorder;
-                    const float* acc = has_color ? view->TabColor : ctx->Theme.TabActiveBorder;
-                    tab->BorderColor[0]=acc[0]; tab->BorderColor[1]=acc[1];
-                    tab->BorderColor[2]=acc[2]; tab->BorderColor[3]=0.85f;
-                    tab->BorderThickness = 2.f;
-                }
             }
             else
             {
-                // Inactive: slightly lighter than bar background, smooth hover via HotT
+                // Inactive: smooth hover lerp
                 float inactive[4] = {
                     bar_bg[0] + 0.07f, bar_bg[1] + 0.04f, bar_bg[2] + 0.02f, 0.90f
                 };
@@ -913,17 +955,27 @@ namespace ZEngine::UI
             }
 
             ZUISpacer(ctx, 10.f);
-            ZUILabel(ctx, view->Title,
-                     is_active ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+            // Use ZFill() height so renderer centers text vertically within the tab
+            {
+                uint32_t tlen = (uint32_t)strlen(view->Title);
+                ZUIBox* lbl = ZUIPushBox(ctx, view->Title, tlen, ZUI_DrawText);
+                lbl->Size[0] = ZText();
+                lbl->Size[1] = ZFill(); // full height → renderer centers text
+                lbl->TextColor[0] = is_active ? ctx->Theme.TextDefault[0] : ctx->Theme.TextDim[0];
+                lbl->TextColor[1] = is_active ? ctx->Theme.TextDefault[1] : ctx->Theme.TextDim[1];
+                lbl->TextColor[2] = is_active ? ctx->Theme.TextDefault[2] : ctx->Theme.TextDim[2];
+                lbl->TextColor[3] = 1.f;
+                ZUIPopBox(ctx);
+            }
 
             bool tab_closed  = false;
             bool tab_popped  = false;
 
-            // VS Code close button behavior:
-            //   Active tab   → × always visible (subtle, brightens on hover)
-            //   Inactive tab → × only appears when that tab is hovered
+            // VS Code close button:
+            //   Active   → × always visible
+            //   Inactive → × on tab hover only
             {
-                float btn_sz = tab_h * 0.52f;
+                float btn_sz = 18.f; // fixed 18px — readable, not tiny
                 bool tab_hovered = (ctx->HotKey == tab->Key);
                 bool show_close  = is_active || tab_hovered;
 
@@ -1080,6 +1132,34 @@ namespace ZEngine::UI
             }
 
             ZUISpacer(ctx, 2.f); // gap between tabs
+        }
+
+        // Bar signal: dragging empty tab bar space detaches the whole panel
+        ZUISignal bar_sig = ZUISignalFromBox(ctx, bar);
+        if (bar_sig.Flags & ZUI_SignalPressed)
+        {
+            Drag.StartX = ctx->MousePos[0];
+            Drag.StartY = ctx->MousePos[1];
+        }
+        if ((bar_sig.Flags & ZUI_SignalHeld) && !Drag.Active && !p->ReorderActive)
+        {
+            float dx = fabsf(ctx->MousePos[0] - Drag.StartX);
+            float dy = fabsf(ctx->MousePos[1] - Drag.StartY);
+            if (dx + dy > 8.f)
+            {
+                // Use full panel rect for correct float size
+                float panel_r[4] = {};
+                if (!ZUIDockRectForKey(DockTree, p->DockKey, panel_r))
+                { panel_r[0]=rect[0]; panel_r[1]=rect[1]; panel_r[2]=rect[2]; panel_r[3]=rect[3]+200.f; }
+                float pw = panel_r[2] - panel_r[0];
+                float ph = panel_r[3] - panel_r[1];
+                float fx = ctx->MousePos[0] - pw * 0.3f;
+                float fy = ctx->MousePos[1] - tab_h * 0.5f;
+                PopOutPanel(p, fx, fy, pw, ph);
+                p->DraggingTitle = true;
+                p->DragOffX = ctx->MousePos[0] - fx;
+                p->DragOffY = ctx->MousePos[1] - fy;
+            }
         }
 
         ZUIEndRow(ctx);
