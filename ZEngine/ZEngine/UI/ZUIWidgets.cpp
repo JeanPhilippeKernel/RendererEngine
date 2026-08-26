@@ -1390,9 +1390,10 @@ namespace ZEngine::UI
         uint64_t popup_hash = ZUIHashStr(label, (uint32_t)strlen(label));
         bool     is_open    = (ctx->ActivePopupKey == popup_hash);
 
-        // When open: show solid accent-tinted background (ImGui HeaderHovered style)
+        // When open: teal highlight matching the VS Code Dark+ accent
         if (is_open && enabled)
-            ZUIBoxSetColor(btn, 0.26f, 0.59f, 0.98f, 0.20f);
+            ZUIBoxSetColor(btn, ctx->Theme.TabAccent[0], ctx->Theme.TabAccent[1],
+                               ctx->Theme.TabAccent[2], 0.18f);
         else
             ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f);
 
@@ -1401,10 +1402,12 @@ namespace ZEngine::UI
         ZUISignal sig = ZUISignalFromBox(ctx, btn);
         if (enabled && !is_open)
         {
-            // Smooth hover: transparent → subtle blue tint (matches ImGui HeaderHovered)
-            static const float kRest[4] = {0.f,   0.f,   0.f,   0.f};
-            static const float kHov[4]  = {0.26f, 0.59f, 0.98f, 0.15f};
-            static const float kAct[4]  = {0.26f, 0.59f, 0.98f, 0.25f};
+            // Smooth hover: transparent → teal tint (VS Code-style)
+            static const float kRest[4] = {0.f, 0.f, 0.f, 0.f};
+            const float kHov[4] = {ctx->Theme.TabAccent[0], ctx->Theme.TabAccent[1],
+                                    ctx->Theme.TabAccent[2], 0.12f};
+            const float kAct[4] = {ctx->Theme.TabAccent[0], ctx->Theme.TabAccent[1],
+                                    ctx->Theme.TabAccent[2], 0.22f};
             ApplyHotActive(btn, ctx, kRest, kHov, kAct);
         }
         ZUIPopBox(ctx);
