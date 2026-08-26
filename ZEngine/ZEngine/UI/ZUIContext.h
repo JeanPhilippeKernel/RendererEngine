@@ -18,81 +18,82 @@ namespace ZEngine::UI
     // editor looks familiar to ImGui users and benefits from its years of polish.
     struct ZUITheme
     {
-        // VS Code Dark+ palette with teal accent #4EC9B0.
-        // All values are linear 0-1; hex refs are perceptual sRGB.
-        // Accent: #4EC9B0 = (0.306, 0.788, 0.690) — VS Code type/class teal.
+        // ZodiacEngine Dark — cool blue-dark palette with teal #4EC9B0 accent.
+        // Inspired by VS Code Dark+, GitHub Dark Dimmed and One Dark.
+        // Backgrounds carry a subtle cool-blue tint (+5% blue) to avoid
+        // flat gray monotony.  All values sRGB [0,1]; hex refs are approximate.
 
         // --- Backgrounds (darkest → lightest) ---
-        float WindowBg[4]       = {0.118f,0.118f,0.118f,1.00f}; // #1e1e1e  editor area
-        float PanelBg[4]        = {0.145f,0.145f,0.149f,1.00f}; // #252526  panel body
-        float PanelBgAlt[4]     = {0.165f,0.165f,0.169f,1.00f}; // #2a2a2b  alt rows
-        float TitleBarBg[4]     = {0.176f,0.176f,0.176f,1.00f}; // #2d2d2d  tab bar strip
-        float TitleBgActive[4]  = {0.176f,0.176f,0.176f,1.00f}; // same — VS Code tab bar same focused/unfocused
-        float HeaderBg[4]       = {0.306f,0.788f,0.690f,0.22f}; // teal 22%  collapsing header
-        float MenuBarBg[4]      = {0.235f,0.235f,0.235f,1.00f}; // #3c3c3c  menu + title bars
-        float InputBg[4]        = {0.235f,0.235f,0.235f,1.00f}; // #3c3c3c  input fields
+        float WindowBg[4]       = {0.067f,0.067f,0.082f,1.00f}; // #111115  editor area
+        float PanelBg[4]        = {0.102f,0.102f,0.125f,1.00f}; // #1a1a20  panel content
+        float PanelBgAlt[4]     = {0.133f,0.133f,0.161f,1.00f}; // #222229  alt rows / headers
+        float TitleBarBg[4]     = {0.157f,0.157f,0.192f,1.00f}; // #282831  tab bar strip
+        float TitleBgActive[4]  = {0.157f,0.157f,0.192f,1.00f}; // same
+        float HeaderBg[4]       = {0.306f,0.788f,0.690f,0.18f}; // teal 18% collapsing header
+        float MenuBarBg[4]      = {0.180f,0.180f,0.220f,1.00f}; // #2e2e38  menu + toolbar bars
+        float InputBg[4]        = {0.180f,0.180f,0.220f,1.00f}; // #2e2e38  input fields
 
         // Buttons — teal family
-        float ButtonBg[4]         = {0.051f,0.478f,0.396f,1.00f}; // #0d7a65  rest
-        float ButtonHoveredBg[4]  = {0.059f,0.659f,0.502f,1.00f}; // #0fa880  hover
-        float ButtonActiveBg[4]   = {0.306f,0.788f,0.690f,1.00f}; // #4EC9B0  active = full teal
+        float ButtonBg[4]         = {0.035f,0.384f,0.322f,1.00f}; // #093e35  rest (dark teal)
+        float ButtonHoveredBg[4]  = {0.055f,0.529f,0.431f,1.00f}; // #0e876e  hover
+        float ButtonActiveBg[4]   = {0.192f,0.627f,0.541f,1.00f}; // #31a08a  active
 
         // Input interactive states
-        float InputHoveredBg[4]   = {0.278f,0.278f,0.278f,1.00f}; // #474747 slightly lighter
-        float InputActiveBg[4]    = {0.278f,0.278f,0.278f,1.00f}; // same on active
-        float HeaderHoveredBg[4]  = {0.306f,0.788f,0.690f,0.35f}; // teal 35%
-        float HeaderActiveBg[4]   = {0.306f,0.788f,0.690f,0.55f}; // teal 55%
+        float InputHoveredBg[4]   = {0.216f,0.216f,0.259f,1.00f}; // #373742
+        float InputActiveBg[4]    = {0.216f,0.216f,0.259f,1.00f}; // same
+        float HeaderHoveredBg[4]  = {0.306f,0.788f,0.690f,0.28f}; // teal 28%
+        float HeaderActiveBg[4]   = {0.306f,0.788f,0.690f,0.45f}; // teal 45%
 
         // --- Tabs ---
-        float TabActiveBg[4]       = {0.118f,0.118f,0.118f,1.00f}; // #1e1e1e = editor bg (active tab merges)
+        float TabActiveBg[4]       = {0.102f,0.102f,0.125f,1.00f}; // PanelBg (active tab merges)
         float TabInactiveBg[4]     = {0.000f,0.000f,0.000f,0.00f}; // transparent
-        float TabActiveBorder[4]   = {0.306f,0.788f,0.690f,1.00f}; // #4EC9B0  teal top accent
-        float TabInactiveBorder[4] = {0.278f,0.278f,0.278f,0.40f}; // #474747 subtle
+        float TabActiveBorder[4]   = {0.306f,0.788f,0.690f,1.00f}; // #4EC9B0  teal
+        float TabInactiveBorder[4] = {0.235f,0.235f,0.280f,0.40f}; // subtle
         float TabAccent[4]         = {0.306f,0.788f,0.690f,1.00f}; // teal
 
         // --- Rows ---
-        float RowHoverBg[4]    = {0.306f,0.788f,0.690f,0.10f}; // teal 10%  row hover
-        float RowSelectedBg[4] = {0.306f,0.788f,0.690f,0.25f}; // teal 25%  selection
-        float RowRootBg[4]     = {0.306f,0.788f,0.690f,0.12f}; // teal 12%  root tint
+        float RowHoverBg[4]    = {0.306f,0.788f,0.690f,0.09f}; // teal 9%
+        float RowSelectedBg[4] = {0.306f,0.788f,0.690f,0.22f}; // teal 22%
+        float RowRootBg[4]     = {0.306f,0.788f,0.690f,0.11f}; // teal 11%
 
         // --- Status bar ---
-        float StatusBarBg[4]   = {0.306f,0.788f,0.690f,1.00f}; // #4EC9B0  teal
+        float StatusBarBg[4]   = {0.200f,0.627f,0.537f,1.00f}; // slightly dark teal
 
         // --- Text ---
-        float TextDefault[4]   = {0.831f,0.831f,0.831f,1.00f}; // #d4d4d4
-        float TextDim[4]       = {0.522f,0.522f,0.522f,1.00f}; // #858585
+        float TextDefault[4]   = {0.843f,0.843f,0.886f,1.00f}; // #d7d7e2  cool near-white
+        float TextDim[4]       = {0.431f,0.431f,0.510f,1.00f}; // #6e6e82  blue-gray
         float TextAccent[4]    = {0.306f,0.788f,0.690f,1.00f}; // #4EC9B0  teal
         float TextWarn[4]      = {0.949f,0.741f,0.141f,1.00f}; // #f2bd24
         float TextError[4]     = {0.937f,0.325f,0.314f,1.00f}; // #ef5350
 
         // --- Widget accent marks ---
         float CheckMark[4]        = {0.306f,0.788f,0.690f,1.00f}; // teal
-        float SliderGrab[4]       = {0.200f,0.627f,0.537f,1.00f}; // teal -20%
-        float SliderGrabActive[4] = {0.306f,0.788f,0.690f,1.00f}; // teal
+        float SliderGrab[4]       = {0.200f,0.627f,0.537f,1.00f}; // teal dark
+        float SliderGrabActive[4] = {0.306f,0.788f,0.690f,1.00f}; // teal full
 
-        // Scrollbar (#424242 at rest, lighter on hover — VS Code exact)
-        float ScrollbarBg[4]      = {0.000f,0.000f,0.000f,0.00f}; // transparent track
-        float ScrollbarGrab[4]    = {0.259f,0.259f,0.259f,1.00f}; // #424242
-        float ScrollbarGrabHov[4] = {0.408f,0.408f,0.408f,1.00f}; // #686868
-        float ScrollbarGrabAct[4] = {0.306f,0.788f,0.690f,0.80f}; // teal on drag
+        // Scrollbar
+        float ScrollbarBg[4]      = {0.000f,0.000f,0.000f,0.00f}; // transparent
+        float ScrollbarGrab[4]    = {0.216f,0.216f,0.259f,1.00f}; // #373742
+        float ScrollbarGrabHov[4] = {0.318f,0.318f,0.380f,1.00f}; // lighter
+        float ScrollbarGrabAct[4] = {0.306f,0.788f,0.690f,0.80f}; // teal drag
 
         // Plot
-        float PlotLines[4]        = {0.306f,0.788f,0.690f,0.80f}; // teal
-        float PlotLinesHov[4]     = {0.306f,0.788f,0.690f,1.00f}; // teal full
-        float PlotHistogram[4]    = {0.200f,0.627f,0.537f,0.90f}; // teal -20%
-        float PlotHistogramHov[4] = {0.306f,0.788f,0.690f,1.00f}; // teal
+        float PlotLines[4]        = {0.306f,0.788f,0.690f,0.80f};
+        float PlotLinesHov[4]     = {0.306f,0.788f,0.690f,1.00f};
+        float PlotHistogram[4]    = {0.200f,0.627f,0.537f,0.90f};
+        float PlotHistogramHov[4] = {0.306f,0.788f,0.690f,1.00f};
 
         // Table
-        float TableRowBgAlt[4]    = {1.000f,1.000f,1.000f,0.04f}; // very subtle zebra
+        float TableRowBgAlt[4]    = {1.000f,1.000f,1.000f,0.03f};
 
         // --- Borders ---
-        float PanelBorder[4]          = {0.278f,0.278f,0.278f,1.00f}; // #474747  1px VS Code border
-        float PanelFocusBorder[4]     = {0.306f,0.788f,0.690f,1.00f}; // teal  3px left = focused panel
-        float PanelInactiveOverlay[4] = {0.000f,0.000f,0.000f,0.04f}; // 4% black dim
-        float ButtonBorder[4]         = {0.000f,0.000f,0.000f,0.00f}; // no border on buttons
-        float InputBorder[4]          = {0.278f,0.278f,0.278f,0.80f}; // #474747
-        float InputFocusBorder[4]     = {0.306f,0.788f,0.690f,1.00f}; // teal focus ring
-        float Separator[4]            = {0.278f,0.278f,0.278f,0.60f}; // #474747 60%
+        float PanelBorder[4]          = {0.235f,0.235f,0.290f,1.00f}; // cool gray border
+        float PanelFocusBorder[4]     = {0.306f,0.788f,0.690f,1.00f}; // teal focus strip
+        float PanelInactiveOverlay[4] = {0.000f,0.000f,0.000f,0.05f}; // 5% dim
+        float ButtonBorder[4]         = {0.000f,0.000f,0.000f,0.00f}; // none
+        float InputBorder[4]          = {0.235f,0.235f,0.290f,0.80f}; // cool gray
+        float InputFocusBorder[4]     = {0.306f,0.788f,0.690f,1.00f}; // teal
+        float Separator[4]            = {0.235f,0.235f,0.290f,0.50f}; // cool gray 50%
     };
 
     struct ZUIPersistentState
