@@ -178,8 +178,8 @@ namespace ZEngine::UI
 
                 if (p->Floating)
                 {
-                    // Show placeholder in the vacated dock slot
-                    BuildEmptySlot(ctx, r, p->DockKey);
+                    // Dock node was collapsed on pop-out — ZUIDockRectForKey returns false.
+                    // This branch only fires if the panel floated before the collapse fix.
                     continue;
                 }
 
@@ -246,28 +246,50 @@ namespace ZEngine::UI
 
             if (Drag.Active)
             {
-                ZUIPanel* sp = Drag.SrcPanel;
-                const char* title = (sp && Drag.SrcTabIdx < sp->ViewCount && sp->Views[Drag.SrcTabIdx])
-                                   ? sp->Views[Drag.SrcTabIdx]->Title : "Tab";
+                ZUIPanel* sp    = Drag.SrcPanel;
+                ZUIPanelView* sv = (sp && Drag.SrcTabIdx < sp->ViewCount)
+                                 ? sp->Views[Drag.SrcTabIdx] : nullptr;
+                const char* title = sv ? sv->Title : "Tab";
 
                 float ghost_h = kTabBarH;
-                float ghost_w = (float)(strlen(title) * 9 + 36);
-                float ghost_col[4] = { ctx->Theme.TabActiveBg[0],
-                                       ctx->Theme.TabActiveBg[1],
-                                       ctx->Theme.TabActiveBg[2] + 0.10f, 0.85f };
+                float ghost_w = (float)(strlen(title) * 8 + 48);
 
+                // Ghost looks like a detached tab — matches the tab bar style
                 ZUIBox* ghost = ZUIBeginRow(ctx, "##drag_ghost", ZPx(ghost_w), ZPx(ghost_h));
                 ghost->Flags      = ghost->Flags | ZUI_DrawBackground | ZUI_DrawBorder |
                                     ZUI_FloatX   | ZUI_FloatY;
                 ghost->FloatPos[0] = Drag.GhostX - ghost_w * 0.3f;
                 ghost->FloatPos[1] = Drag.GhostY - ghost_h * 0.5f;
-                ZUIBoxSetColorArr(ghost, ghost_col);
-                ghost->BorderColor[0] = 0.40f; ghost->BorderColor[1] = 0.60f;
-                ghost->BorderColor[2] = 0.90f; ghost->BorderColor[3] = 1.f;
+                // Active tab appearance: #1e1e1e bg + blue border
+                ZUIBoxSetColorArr(ghost, ctx->Theme.TabActiveBg);
+                ghost->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
+                ghost->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
+                ghost->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
+                ghost->BorderColor[3] = 0.90f;
                 ghost->BorderThickness = 1.f;
-                ZUIBoxSetCornerRadius(ghost, 4.f);
-                ghost->EdgeSoftness = 0.5f;
-                ZUISpacer(ctx, 8.f);
+                ZUIBoxSetCornerRadius(ghost, 3.f);
+                ghost->EdgeSoftness = 0.f;
+
+                // Small colored icon dot matching the view type (uses hash of title as color seed)
+                {
+                    char ik[32] = "##ghost_icon";
+                    ZUIBox* ic = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
+                    ic->Size[0] = ZPx(8.f); ic->Size[1] = ZPx(8.f);
+                    // Deterministic color from title: cycle through a small palette
+                    static const float kIconPalette[][4] = {
+                        {0.40f,0.78f,1.00f,1.f},
+                        {0.72f,0.50f,0.98f,1.f},
+                        {0.30f,0.78f,0.30f,1.f},
+                        {0.98f,0.85f,0.25f,1.f},
+                        {0.98f,0.40f,0.40f,1.f},
+                    };
+                    uint32_t ci = (title[0] % 5);
+                    ZUIBoxSetColorArr(ic, kIconPalette[ci]);
+                    ZUIBoxSetCornerRadius(ic, 2.f);
+                    ic->EdgeSoftness = 0.5f;
+                    ZUIPopBox(ctx);
+                }
+                ZUISpacer(ctx, 6.f);
                 ZUILabel(ctx, title, ctx->Theme.TextDefault);
                 ZUIEndRow(ctx);
             }
@@ -283,50 +305,71 @@ namespace ZEngine::UI
     void ZUIPanelManager::BuildMenuBar(ZUIContext* ctx, float sw, float mh)
     {
         ZUIBox* bar = ZUIBeginRow(ctx, "##pm_menubar", ZPx(sw), ZPx(mh));
-        bar->Flags  = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
+        bar->Flags  = bar->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bar, ctx->Theme.MenuBarBg);
+        bar->EdgeSoftness = 0.f;
+        // Bottom border only — VS Code / Unreal style
         bar->BorderColor[0] = ctx->Theme.Separator[0];
         bar->BorderColor[1] = ctx->Theme.Separator[1];
         bar->BorderColor[2] = ctx->Theme.Separator[2];
         bar->BorderColor[3] = ctx->Theme.Separator[3];
         bar->BorderThickness = 1.f;
-        bar->EdgeSoftness    = 0.f;
+        bar->Flags = bar->Flags | ZUI_DrawBorder;
 
-        ZUISpacer(ctx, 6.f);
+        ZUISpacer(ctx, 10.f);
         if (ZUIBeginMenu(ctx, "File")) {
+            ZUIMenuItem(ctx, "New Scene");
+            ZUIMenuItem(ctx, "Open Scene...");
+            ZUIMenuItem(ctx, "Save Scene");
+            ZUISeparator(ctx);
             ZUIMenuItem(ctx, "Save Layout");
             ZUIMenuItem(ctx, "Load Layout");
             ZUISeparator(ctx);
             ZUIMenuItem(ctx, "Quit");
             ZUIEndMenu(ctx);
         }
-        ZUISpacer(ctx, 4.f);
-        if (ZUIBeginMenu(ctx, "Window")) {
-            ZUIMenuItem(ctx, "Reset Layout");
+        ZUISpacer(ctx, 2.f);
+        if (ZUIBeginMenu(ctx, "Edit")) {
+            ZUIMenuItem(ctx, "Undo");
+            ZUIMenuItem(ctx, "Redo");
+            ZUISeparator(ctx);
+            ZUIMenuItem(ctx, "Preferences...");
             ZUIEndMenu(ctx);
         }
-        ZUISpacer(ctx, 4.f);
-        if (ZUIBeginMenu(ctx, "Panel")) {
+        ZUISpacer(ctx, 2.f);
+        if (ZUIBeginMenu(ctx, "Window")) {
+            ZUIMenuItem(ctx, "Reset Layout");
+            ZUISeparator(ctx);
+            // Toggle visibility for each panel
             for (uint32_t i = 0; i < PanelCount; ++i)
             {
                 ZUIPanel* p = &Panels[i];
                 if (p->ViewCount == 0) { continue; }
                 const char* name = p->Views[0] ? p->Views[0]->Title : "Panel";
                 char buf[80];
-                snprintf(buf, sizeof(buf), "%s##pm_panel_%u", name, i);
-                if (ZUIMenuItem(ctx, buf)) {}
+                snprintf(buf, sizeof(buf), "%s##wm_%u", name, i);
+                if (ZUIMenuItem(ctx, buf) && p->Floating)
+                    p->Floating = false; // re-dock if floating
             }
             ZUIEndMenu(ctx);
         }
-        ZUISpacer(ctx, 4.f);
-        if (ZUIBeginMenu(ctx, "View")) {
-            ZUIMenuItem(ctx, "Hierarchy");
-            ZUIMenuItem(ctx, "Inspector");
-            ZUIMenuItem(ctx, "Viewport");
-            ZUIMenuItem(ctx, "Output");
-            ZUIMenuItem(ctx, "Project");
+        ZUISpacer(ctx, 2.f);
+        if (ZUIBeginMenu(ctx, "Help")) {
+            ZUIMenuItem(ctx, "Documentation");
+            ZUIMenuItem(ctx, "About ZEngine");
             ZUIEndMenu(ctx);
         }
+
+        // Right side: engine label
+        {
+            char fill_key[] = "##mb_fill";
+            ZUIBox* fill = ZUIPushBox(ctx, fill_key, (uint32_t)strlen(fill_key), ZUI_None);
+            fill->Size[0] = ZFill();
+            fill->Size[1] = ZPx(mh);
+            ZUIPopBox(ctx);
+        }
+        ZUILabel(ctx, "ZEngine", ctx->Theme.TextDim);
+        ZUISpacer(ctx, 12.f);
 
         ZUIEndRow(ctx);
     }
@@ -394,28 +437,95 @@ namespace ZEngine::UI
         panel->BorderThickness = 1.f;
         panel->EdgeSoftness    = 0.f;
 
-        // Tab bar (hidden when single view — same as ImGui/RAD)
-        bool show_tabs = (p->ViewCount > 1);
-        float tab_h = show_tabs ? kTabBarH : 0.f;
+        // --- Header: tab bar (multi-view) or VS Code-style title strip (single-view) ---
+        bool  show_tabs = (p->ViewCount > 1);
+        float header_h  = kTabBarH; // same height for both variants
+        bool  should_popout = false;
+
         if (show_tabs)
         {
-            float tab_rect[4] = { rect[0], rect[1], rect[2], rect[1] + tab_h };
+            float tab_rect[4] = { rect[0], rect[1], rect[2], rect[1] + header_h };
             BuildTabBar(ctx, p, tab_rect, false);
+        }
+        else
+        {
+            // Single-view: VS Code-style title strip
+            // [ PanelTitle                       [⊞][×] ]
+            const char* view_title = (p->ViewCount > 0 && p->Views[0]) ? p->Views[0]->Title : "Panel";
+            float btn_sz = header_h * 0.60f;
+
+            char hk[48]; snprintf(hk, sizeof(hk), "##hstrip_%llx", (unsigned long long)p->DockKey);
+            ZUIBox* strip = ZUIBeginRow(ctx, hk, ZFill(), ZPx(header_h));
+            strip->Flags = strip->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
+            ZUIBoxSetColorArr(strip, ctx->Theme.TitleBarBg);
+            strip->BorderColor[0] = ctx->Theme.Separator[0];
+            strip->BorderColor[1] = ctx->Theme.Separator[1];
+            strip->BorderColor[2] = ctx->Theme.Separator[2];
+            strip->BorderColor[3] = ctx->Theme.Separator[3];
+            strip->BorderThickness = 1.f;
+            strip->EdgeSoftness    = 0.f;
+
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, view_title, is_focused ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+
+            // Fill spacer pushes buttons to the right
+            {
+                char fk[48]; snprintf(fk, sizeof(fk), "##hsfill_%llx", (unsigned long long)p->DockKey);
+                ZUIBox* fill = ZUIPushBox(ctx, fk, (uint32_t)strlen(fk), ZUI_None);
+                fill->Size[0] = ZFill(); fill->Size[1] = ZPx(header_h);
+                ZUIPopBox(ctx);
+            }
+
+            // Pop-out button
+            char pk[56]; snprintf(pk, sizeof(pk), "d##hspop_%llx", (unsigned long long)p->DockKey);
+            ZUIBox* pbtn = ZUIPushBox(ctx, pk, (uint32_t)strlen(pk), ZUI_DrawText | ZUI_Clickable);
+            pbtn->Size[0] = ZPx(btn_sz); pbtn->Size[1] = ZPx(btn_sz);
+            pbtn->TextAlign = ZUITextAlign::Center;
+            float pc[4] = { 0.45f, 0.65f, 0.85f, 0.75f };
+            pbtn->TextColor[0]=pc[0]; pbtn->TextColor[1]=pc[1]; pbtn->TextColor[2]=pc[2]; pbtn->TextColor[3]=pc[3];
+            ZUISignal psig = ZUISignalFromBox(ctx, pbtn);
+            ZUIPopBox(ctx);
+
+            ZUISpacer(ctx, 4.f);
+
+            // Close button
+            char xk[56]; snprintf(xk, sizeof(xk), "x##hscls_%llx", (unsigned long long)p->DockKey);
+            ZUIBox* xbtn = ZUIPushBox(ctx, xk, (uint32_t)strlen(xk), ZUI_DrawText | ZUI_Clickable);
+            xbtn->Size[0] = ZPx(btn_sz); xbtn->Size[1] = ZPx(btn_sz);
+            xbtn->TextAlign = ZUITextAlign::Center;
+            float xc[4] = { 0.75f, 0.32f, 0.32f, 0.75f };
+            xbtn->TextColor[0]=xc[0]; xbtn->TextColor[1]=xc[1]; xbtn->TextColor[2]=xc[2]; xbtn->TextColor[3]=xc[3];
+            ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
+            ZUIPopBox(ctx);
+            ZUISpacer(ctx, 6.f);
+
+            ZUIEndRow(ctx);
+
+            if ((psig.Flags & ZUI_SignalClicked) || (xsig.Flags & ZUI_SignalClicked))
+                should_popout = true;
         }
 
         // Content
         ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
-        if (view)
+        if (view && !should_popout)
         {
             ZUIBox* content = ZUIBeginColumn(ctx, "##dc", ZFill(), ZFill());
             content->Flags  = content->Flags | ZUI_ClipChildren;
             content->EdgeSoftness = 0.f;
-            float content_rect[4] = { rect[0], rect[1] + tab_h, rect[2], rect[3] };
+            float content_rect[4] = { rect[0], rect[1] + header_h, rect[2], rect[3] };
             view->BuildContent(ctx, content_rect);
             ZUIEndColumn(ctx);
         }
 
         ZUIEndColumn(ctx); // panel
+
+        // Deferred pop-out (after panel column is closed)
+        if (should_popout)
+        {
+            float px = rect[0] + 20.f, py = rect[1] + 20.f;
+            float pw = rect[2] - rect[0], ph = rect[3] - rect[1];
+            PopOutPanel(p, px, py, pw, ph);
+        }
 
         // Unfocused dim overlay
         if (!is_focused)
@@ -945,24 +1055,31 @@ namespace ZEngine::UI
             }
         }
 
-        // Zone indicators
+        // Zone indicator boxes — plain colored rectangles, no labels
         for (auto& z : zones)
         {
-            bool over = (z.zone == hovered);
-            float col[4] = { 0.137f, 0.573f, 0.922f, over ? 0.90f : 0.50f };
-            char zkey[40];
+            bool  over    = (z.zone == hovered);
+            float col[4]  = { ctx->Theme.TabActiveBorder[0],
+                              ctx->Theme.TabActiveBorder[1],
+                              ctx->Theme.TabActiveBorder[2],
+                              over ? 0.80f : 0.35f };
+
+            char zkey[48];
             snprintf(zkey, sizeof(zkey), "##dz_%d_%llx", (int)z.zone, (unsigned long long)p->DockKey);
             ZUIBox* box = ZUIPushBox(ctx, zkey, (uint32_t)strlen(zkey),
-                                     ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
-            box->Size[0]     = ZPx(z.x1 - z.x0);
-            box->Size[1]     = ZPx(z.y1 - z.y0);
-            box->FloatPos[0] = z.x0;
-            box->FloatPos[1] = z.y0;
+                                     ZUI_DrawBackground | ZUI_DrawBorder |
+                                     ZUI_FloatX | ZUI_FloatY);
+            box->Size[0]      = ZPx(z.x1 - z.x0);
+            box->Size[1]      = ZPx(z.y1 - z.y0);
+            box->FloatPos[0]  = z.x0;
+            box->FloatPos[1]  = z.y0;
             ZUIBoxSetColorArr(box, col);
-            box->BorderColor[0]=1.f; box->BorderColor[1]=1.f; box->BorderColor[2]=1.f;
-            box->BorderColor[3]=over ? 0.9f : 0.4f;
-            box->BorderThickness = 1.f;
-            ZUIBoxSetCornerRadius(box, 4.f);
+            box->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
+            box->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
+            box->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
+            box->BorderColor[3] = over ? 1.f : 0.55f;
+            box->BorderThickness = over ? 2.f : 1.f;
+            ZUIBoxSetCornerRadius(box, 5.f);
             box->EdgeSoftness = 0.5f;
             ZUIPopBox(ctx);
         }
@@ -1063,13 +1180,21 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::PopOutPanel(ZUIPanel* p, float x, float y, float w, float h)
     {
-        p->Floating  = true;
-        p->FloatX    = x;
-        p->FloatY    = y;
-        p->FloatW    = w;
-        p->FloatH    = h;
+        p->Floating = true;
+        p->FloatX   = x;
+        p->FloatY   = y;
+        p->FloatW   = w;
+        p->FloatH   = h;
         for (uint32_t pi = 0; pi < PanelCount; ++pi)
             if (&Panels[pi] == p) { FocusPanel(pi); break; }
+
+        // Collapse the dock tree so the sibling fills the vacated space.
+        // If the panel later re-docks, RedockPanel re-inserts it.
+        if (DockTree)
+        {
+            ZUIDockNode* leaf = ZUIDockFindLeaf(DockTree, p->DockKey);
+            if (leaf) ZUIDockCollapseLeaf(DockTree, leaf);
+        }
     }
 
     // ---------------------------------------------------------------

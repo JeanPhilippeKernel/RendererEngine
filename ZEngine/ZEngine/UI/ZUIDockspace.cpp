@@ -183,6 +183,44 @@ namespace ZEngine::UI
         return FindLeaf(tree->Root, key);
     }
 
+    void ZUIDockCollapseLeaf(ZUIDockTree* tree, ZUIDockNode* leaf)
+    {
+        if (!tree || !leaf) { return; }
+        ZUIDockNode* parent = leaf->Parent;
+        if (!parent) { return; } // root leaf — nothing to collapse into
+
+        // Find the sibling (the other child of the binary split parent)
+        ZUIDockNode* sibling = (parent->First == leaf) ? leaf->Next : leaf->Prev;
+        if (!sibling) { return; }
+
+        ZUIDockNode* gp = parent->Parent;
+        // Sibling inherits parent's share of the grandparent's space
+        sibling->PctOfParent = parent->PctOfParent;
+        sibling->Parent      = gp;
+        // Patch grandparent's sibling links (sibling replaces parent in the list)
+        sibling->Prev = parent->Prev;
+        sibling->Next = parent->Next;
+        if (parent->Prev) parent->Prev->Next = sibling;
+        if (parent->Next) parent->Next->Prev = sibling;
+
+        if (gp)
+        {
+            if (gp->First == parent) gp->First = sibling;
+            if (gp->Last  == parent) gp->Last  = sibling;
+        }
+        else
+        {
+            // parent was the root — sibling becomes the new root
+            tree->Root = sibling;
+        }
+
+        // Orphan the removed nodes (arena-allocated, cannot free)
+        leaf->Parent   = nullptr;
+        parent->First  = nullptr;
+        parent->Last   = nullptr;
+        parent->Parent = nullptr;
+    }
+
     uint64_t ZUIDockHashName(const char* name)
     {
         uint64_t h = 14695981039346656037ULL;

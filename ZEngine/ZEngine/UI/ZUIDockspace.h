@@ -98,4 +98,9 @@ namespace ZEngine::UI
     // Find the leaf node whose ContentKey == key. Returns nullptr if not found.
     ZUIDockNode* ZUIDockFindLeaf(ZUIDockTree* tree, uint64_t key);
 
+    // Remove a leaf from the tree. The sibling node absorbs the vacated space
+    // (takes the parent's PctOfParent and replaces it in the grandparent).
+    // Call when a panel is undocked or closed so remaining panels fill in.
+    void ZUIDockCollapseLeaf(ZUIDockTree* tree, ZUIDockNode* leaf);
+
 } // namespace ZEngine::UI
