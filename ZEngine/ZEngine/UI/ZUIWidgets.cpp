@@ -1990,7 +1990,7 @@ namespace ZEngine::UI
         float row_h   = ctx->TV_RowH;
         float indent  = (float)ctx->TV_Depth * ctx->TV_IndentPx;
         float arrow_w = 16.f;
-        float icon_sz = 10.f;
+        float icon_sz = 12.f; // slightly larger, full-circle radius below
 
         char rk[128]; snprintf(rk, sizeof(rk), "##tvrow_%d_%s", ctx->TV_Depth, label);
 
@@ -2048,7 +2048,7 @@ namespace ZEngine::UI
             ZUIBox* ic = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
             ic->Size[0] = ZPx(icon_sz); ic->Size[1] = ZPx(icon_sz);
             ZUIBoxSetColorArr(ic, icon_col);
-            ZUIBoxSetCornerRadius(ic, icon_sz * 0.3f);
+            ZUIBoxSetCornerRadius(ic, icon_sz * 0.5f); // full circle
             ic->EdgeSoftness = 0.5f;
             ZUIPopBox(ctx);
             // Gap after icon

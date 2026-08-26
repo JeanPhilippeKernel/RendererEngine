@@ -50,7 +50,8 @@ namespace ZEngine::UI
                         float text_size[2] = {0.f, 0.f};
                         if (ctx->GetFont(box->FontSize) && box->Label.Ptr)
                             ZUIMeasureText(ctx->GetFont(box->FontSize), box->Label.Ptr, box->Label.Len, text_size);
-                        box->ComputedSize[axis] = text_size[axis];
+                        // Include padding so text never clips its containing box
+                        box->ComputedSize[axis] = text_size[axis] + PadStart(box, axis) + PadEnd(box, axis);
                         break;
                     }
 
