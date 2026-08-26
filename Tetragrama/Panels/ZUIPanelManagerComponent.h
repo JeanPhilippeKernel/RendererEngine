@@ -6,24 +6,29 @@
 
 namespace Tetragrama::Panels
 {
-    // Single ZUIComponent that hosts the entire ZUIPanelManager.
-    // Replaces all old separate components (Hierarchy, Inspector, etc.).
+    // Default editor layout — matches a standard game engine editor:
+    //
+    //   ┌─────────┬──────────────────────┬──────────┐
+    //   │         │                      │          │
+    //   │Hierarchy│      Viewport        │Inspector │
+    //   │  (18%)  │       (60%)          │  (22%)   │
+    //   │         ├──────────────────────┤          │
+    //   │         │        Output        │          │
+    //   │         │        (25%)         │          │
+    //   └─────────┴──────────────────────┴──────────┘
+
     struct ZUIPanelManagerComponent : public Tetragrama::Components::ZUIComponent
     {
         ZEngine::UI::ZUIPanelManager Manager;
 
-        // Panel views (arena-free, owned here)
         HierarchyPanel hierarchy;
-        InspectorPanel inspector;
         ViewportPanel  viewport;
+        InspectorPanel inspector;
         OutputPanel    output;
-        ProjectPanel   project;
-        WatchPanel     watch;
-        TypesPanel     types;
 
         void Initialize(Tetragrama::Layers::ZUILayer* parent,
-                        cstring name = "PanelManager",
-                        bool visibility = true) override
+                        cstring name       = "PanelManager",
+                        bool    visibility = true) override
         {
             ParentLayer = parent;
             Name        = name;
@@ -34,59 +39,51 @@ namespace Tetragrama::Panels
 
             Manager.Init(arena);
 
-            // Build the dock tree — same layout as before
             using namespace ZEngine::UI;
 
-            constexpr float kLeftW   = 0.18f;
-            constexpr float kRightW  = 0.22f;
-            constexpr float kBottomH = 0.25f;
+            constexpr float kLeft    = 0.18f;  // Hierarchy width
+            constexpr float kRight   = 0.22f;  // Inspector width
+            constexpr float kBottom  = 0.25f;  // Output height
 
-            // Root: H split → Hierarchy | rest
+            // Root H-split: Hierarchy | rest
             ZUIDockSplitH(Manager.DockTree, Manager.DockTree->Root,
-                          kLeftW,
-                          ZUIDockHashName("Hierarchy"), 0);
+                          kLeft,
+                          ZUIDockHashName("Hierarchy"),
+                          0);
 
-            ZUIDockNode* right = Manager.DockTree->Root->Last;
-            // rest: H split → center | Inspector
-            ZUIDockSplitH(Manager.DockTree, right,
-                          1.f - kRightW,
-                          0, ZUIDockHashName("Inspector"));
+            ZUIDockNode* mid_right = Manager.DockTree->Root->Last;
 
-            ZUIDockNode* center = right->First;
-            // center: V split → Viewport | bottom
+            // mid_right H-split: center | Inspector
+            ZUIDockSplitH(Manager.DockTree, mid_right,
+                          1.f - kRight,
+                          0,
+                          ZUIDockHashName("Inspector"));
+
+            ZUIDockNode* center = mid_right->First;
+
+            // center V-split: Viewport | Output
             ZUIDockSplitV(Manager.DockTree, center,
-                          1.f - kBottomH,
-                          ZUIDockHashName("Viewport"), 0);
+                          1.f - kBottom,
+                          ZUIDockHashName("Viewport"),
+                          ZUIDockHashName("Output"));
 
-            ZUIDockNode* bottom = center->Last;
-            // bottom: H split → Output | Project
-            ZUIDockSplitH(Manager.DockTree, bottom,
-                          0.40f,
-                          ZUIDockHashName("Output"), ZUIDockHashName("Project"));
-
-            // Register panels (each panel = one dock slot)
+            // Register panels
             auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
             Manager.AddView(p_hier, &hierarchy);
-            Manager.AddView(p_hier, &watch);   // Hierarchy + Watch in same panel
-
-            auto* p_insp = Manager.AddPanel(ZUIDockHashName("Inspector"));
-            Manager.AddView(p_insp, &inspector);
-            Manager.AddView(p_insp, &types);
 
             auto* p_vp   = Manager.AddPanel(ZUIDockHashName("Viewport"));
             Manager.AddView(p_vp, &viewport);
 
+            auto* p_insp = Manager.AddPanel(ZUIDockHashName("Inspector"));
+            Manager.AddView(p_insp, &inspector);
+
             auto* p_out  = Manager.AddPanel(ZUIDockHashName("Output"));
             Manager.AddView(p_out, &output);
-
-            auto* p_proj = Manager.AddPanel(ZUIDockHashName("Project"));
-            Manager.AddView(p_proj, &project);
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override
         {
             if (!Visible) { return; }
-            // 26px menu bar, 24px status bar (base logical px, Manager scales internally)
             Manager.BuildUI(ctx, 26.f, 24.f);
         }
     };

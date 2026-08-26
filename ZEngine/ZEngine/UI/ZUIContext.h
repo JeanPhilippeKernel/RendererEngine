@@ -17,41 +17,49 @@ namespace ZEngine::UI
     // editor looks familiar to ImGui users and benefits from its years of polish.
     struct ZUITheme
     {
-        // Backgrounds — fully opaque to prevent scene-render bleed.
-        // Values tuned to match ImGui StyleColorsDark visual feel.
-        float WindowBg[4]       = {0.07f, 0.07f, 0.07f, 1.00f}; // root / dockspace
-        float PanelBg[4]        = {0.12f, 0.12f, 0.12f, 1.00f}; // side panels
-        float PanelBgAlt[4]     = {0.09f, 0.09f, 0.09f, 1.00f}; // alternating rows
-        // RAD Debugger default dark theme (from raddbg.mdesk):
-        //   active tab:   #333333 bg + #2392eb blue border + drop shadow
-        //   inactive tab: transparent bg + #42494e dim border
-        //   tab bar:      very dark background
-        float TitleBarBg[4]     = {0.05f, 0.05f, 0.06f, 1.00f}; // tab bar bg (darkest: ~#0d0d0f)
-        float HeaderBg[4]       = {0.20f, 0.20f, 0.22f, 1.00f}; // collapser headers
-        float TabActiveBg[4]    = {0.20f, 0.20f, 0.20f, 1.00f}; // #333333 ≈ 0.20 linear
-        float TabInactiveBg[4]  = {0.00f, 0.00f, 0.00f, 0.00f}; // transparent
-        float TabActiveBorder[4]= {0.137f,0.573f,0.922f,1.00f}; // #2392eb vivid blue
-        float TabInactiveBorder[4]={0.259f,0.286f,0.306f,1.00f};// #42494e dim grey
-        float TabAccent[4]      = {0.137f,0.573f,0.922f,1.00f}; // same as active border
-        float MenuBarBg[4]      = {0.07f, 0.07f, 0.08f, 1.00f}; // menu bar strip
-        float RowHoverBg[4]     = {0.26f, 0.59f, 0.98f, 0.00f}; // fades in on hover
-        float RowSelectedBg[4]  = {0.26f, 0.59f, 0.98f, 0.35f};
-        float RowRootBg[4]      = {0.16f, 0.29f, 0.48f, 0.20f};
-        float InputBg[4]        = {0.16f, 0.29f, 0.48f, 0.54f}; // FrameBg
-        float ButtonBg[4]       = {0.26f, 0.59f, 0.98f, 0.40f}; // Button
-        float StatusBarBg[4]    = {0.18f, 0.35f, 0.58f, 1.00f}; // bottom status strip
-        // Text
-        float TextDefault[4]    = {1.00f, 1.00f, 1.00f, 1.00f};
-        float TextDim[4]        = {0.60f, 0.60f, 0.60f, 1.00f};
-        float TextAccent[4]     = {0.40f, 0.70f, 1.00f, 1.00f};
-        // Borders — RAD: border=#404040, focus_border=#2392eb, inactive_overlay=9% black
-        float PanelBorder[4]       = {0.251f,0.251f,0.251f,1.00f}; // #404040
-        float PanelFocusBorder[4]  = {0.137f,0.573f,0.922f,1.00f}; // #2392eb (focus=same as tab)
-        float PanelInactiveOverlay[4]={0.f,  0.f,  0.f,  0.086f}; // 9% black (0x16 alpha)
-        float ButtonBorder[4]      = {0.35f, 0.35f, 0.42f, 0.80f};
-        float InputBorder[4]       = {0.35f, 0.35f, 0.42f, 0.80f};
-        float InputFocusBorder[4]  = {0.137f,0.573f,0.922f,1.00f}; // #2392eb
-        float Separator[4]         = {0.251f,0.251f,0.251f,0.80f}; // #404040 at 80%
+        // VS Code Dark+ inspired palette.
+        // All values are linear 0-1; hex refs are perceptual sRGB for designer reference.
+
+        // --- Backgrounds ---
+        float WindowBg[4]       = {0.118f,0.118f,0.118f,1.00f}; // #1e1e1e  root fill
+        float PanelBg[4]        = {0.145f,0.145f,0.149f,1.00f}; // #252526  panel body
+        float PanelBgAlt[4]     = {0.110f,0.110f,0.114f,1.00f}; // slightly darker alt rows
+        float TitleBarBg[4]     = {0.176f,0.176f,0.176f,1.00f}; // #2d2d2d  tab bar strip
+        float HeaderBg[4]       = {0.200f,0.200f,0.204f,1.00f}; // #333334  collapsing headers
+        float MenuBarBg[4]      = {0.200f,0.200f,0.200f,1.00f}; // #333333  top menu bar
+        float InputBg[4]        = {0.094f,0.094f,0.094f,1.00f}; // #181818  input / drag fields
+        float ButtonBg[4]       = {0.000f,0.475f,0.800f,0.55f}; // #007acc  accent button
+
+        // --- Tabs ---
+        float TabActiveBg[4]    = {0.118f,0.118f,0.118f,1.00f}; // #1e1e1e  active = editor bg
+        float TabInactiveBg[4]  = {0.000f,0.000f,0.000f,0.00f}; // transparent
+        float TabActiveBorder[4]= {0.000f,0.475f,0.800f,1.00f}; // #007acc  VS Code blue
+        float TabInactiveBorder[4]={0.200f,0.200f,0.200f,0.50f}; // #333333 subtle
+        float TabAccent[4]      = {0.000f,0.475f,0.800f,1.00f}; // same as active border
+
+        // --- Rows ---
+        float RowHoverBg[4]     = {0.176f,0.176f,0.176f,0.60f}; // subtle row hover
+        float RowSelectedBg[4]  = {0.012f,0.471f,0.706f,0.35f}; // #0278b4 tinted selection
+        float RowRootBg[4]      = {0.000f,0.475f,0.800f,0.15f}; // root node tint
+
+        // --- Status bar ---
+        float StatusBarBg[4]    = {0.000f,0.475f,0.800f,1.00f}; // #007acc  VS Code blue
+
+        // --- Text ---
+        float TextDefault[4]    = {0.831f,0.831f,0.831f,1.00f}; // #d4d4d4  primary text
+        float TextDim[4]        = {0.522f,0.522f,0.522f,1.00f}; // #858585  secondary / hint
+        float TextAccent[4]     = {0.353f,0.722f,0.969f,1.00f}; // #5ab8f7  links / values
+        float TextWarn[4]       = {0.949f,0.741f,0.141f,1.00f}; // #f2bd24  warnings
+        float TextError[4]      = {0.937f,0.325f,0.314f,1.00f}; // #ef5350  errors
+
+        // --- Borders ---
+        float PanelBorder[4]       = {0.220f,0.220f,0.220f,1.00f}; // #383838 subtle
+        float PanelFocusBorder[4]  = {0.000f,0.475f,0.800f,1.00f}; // #007acc focus accent
+        float PanelInactiveOverlay[4]={0.f,  0.f,  0.f,  0.06f };  // 6% black dim
+        float ButtonBorder[4]      = {0.280f,0.280f,0.320f,0.80f};
+        float InputBorder[4]       = {0.280f,0.280f,0.320f,0.80f};
+        float InputFocusBorder[4]  = {0.000f,0.475f,0.800f,1.00f}; // #007acc
+        float Separator[4]         = {0.200f,0.200f,0.200f,0.70f}; // #333333 at 70%
     };
 
     struct ZUIPersistentState
