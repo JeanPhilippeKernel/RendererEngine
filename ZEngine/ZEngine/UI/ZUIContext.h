@@ -29,7 +29,8 @@ namespace ZEngine::UI
         float WindowBg[4]       = {0.060f,0.060f,0.060f,0.94f}; // ImGui WindowBg
         float PanelBg[4]        = {0.080f,0.080f,0.080f,0.94f}; // ImGui PopupBg-ish
         float PanelBgAlt[4]     = {0.110f,0.110f,0.114f,1.00f}; // slightly darker alt rows
-        float TitleBarBg[4]     = {0.040f,0.040f,0.040f,1.00f}; // ImGui TitleBg
+        float TitleBarBg[4]     = {0.040f,0.040f,0.040f,1.00f}; // ImGui TitleBg — near-black unfocused
+        float TitleBgActive[4]  = {0.160f,0.290f,0.480f,1.00f}; // ImGui TitleBgActive — deep blue focused
         float HeaderBg[4]       = {0.260f,0.590f,0.980f,0.31f}; // ImGui Header
         float MenuBarBg[4]      = {0.140f,0.140f,0.140f,1.00f}; // ImGui MenuBarBg
         float InputBg[4]        = {0.160f,0.290f,0.480f,0.54f}; // ImGui FrameBg
@@ -103,7 +104,7 @@ namespace ZEngine::UI
         float ScrollX    = 0.f;
         float ScrollY    = 0.f;
         float MaxScrollY = 0.f; // set by layout solver; clamped in interaction pass
-        float UserData   = 0.f; // general-purpose (tab index, open bool, slider width, etc.)
+        float UserData   =-1.f; // general-purpose; -1 = never set (first-use sentinel for open states)
         float ScreenMinX = 0.f; // prev-frame screen position — written by layout, read next frame
         float ScreenMinY = 0.f;
         float ScreenMaxX = 0.f;
@@ -200,6 +201,7 @@ namespace ZEngine::UI
         // set by ZUISceneViewportComponent each BuildUI frame; read by Editor::ProcessEvent
         // to gate camera-controller mouse routing
         bool               ViewportHovered   = false;
+        int                ResizeCursor      = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
 
         // Modifier key state — written by ZUILayer::OnKeyPressed/Released
         bool               CtrlDown          = false;

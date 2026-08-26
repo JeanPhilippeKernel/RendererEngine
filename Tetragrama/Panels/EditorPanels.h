@@ -19,8 +19,9 @@ namespace Tetragrama::Panels
             TabColor[0]=0.30f; TabColor[1]=0.78f; TabColor[2]=0.30f; TabColor[3]=0.70f;
         }
 
-        int  selected      = -1;   // flat index of selected actor
-        char search_buf[64]= {};
+        int  selected           = -1;
+        bool states_seeded      = false; // open states pre-seeded on first frame
+        char search_buf[64]     = {};
 
         struct Actor {
             const char* name;
@@ -55,6 +56,20 @@ namespace Tetragrama::Panels
                 ZUIEndRow(ctx);
             }
 
+            // Pre-seed open states once so root nodes start expanded
+            if (!states_seeded)
+            {
+                auto open_node = [&](const char* lbl, int depth)
+                {
+                    uint64_t h = ZUIHashStr(lbl, (uint32_t)strlen(lbl)) ^ (uint64_t)depth;
+                    ZUIPersistentState* s = ZUIStateGetOrInsert(&ctx->StateStore, h);
+                    if (s) s->UserData = 1.f;
+                };
+                open_node("World",        0);
+                open_node("DefaultScene", 1);
+                states_seeded = true;
+            }
+
             ZUIBeginTreeView(ctx, "##hier");
 
             // Render only depth-0 and depth-1 actors (simple 2-level tree)
@@ -63,16 +78,39 @@ namespace Tetragrama::Panels
                 if (k_actors[i].parent != -1) { continue; } // skip non-roots
 
                 bool is_sel = (selected == i);
-                if (ZUITreeViewBeginNode(ctx, k_actors[i].name, is_sel, k_actors[i].icon))
+                if (ZUITreeViewBeginNode(ctx, k_actors[i].name, is_sel, k_actors[i].icon, true))
                 {
                     if (is_sel) selected = i;
-                    // Children
                     for (int j = 0; j < kCount; ++j)
                     {
                         if (k_actors[j].parent != i) { continue; }
                         bool csel = (selected == j);
-                        if (ZUITreeViewLeaf(ctx, k_actors[j].name, csel, k_actors[j].icon))
-                            selected = j;
+                        // Check if j has its own children
+                        bool j_has_children = false;
+                        for (int k = 0; k < kCount; ++k)
+                            if (k_actors[k].parent == j) { j_has_children = true; break; }
+
+                        if (j_has_children)
+                        {
+                            if (ZUITreeViewBeginNode(ctx, k_actors[j].name, csel, k_actors[j].icon, true))
+                            {
+                                if (csel) selected = j;
+                                for (int k = 0; k < kCount; ++k)
+                                {
+                                    if (k_actors[k].parent != j) continue;
+                                    bool ksel = (selected == k);
+                                    if (ZUITreeViewLeaf(ctx, k_actors[k].name, ksel, k_actors[k].icon))
+                                        selected = k;
+                                }
+                                ZUITreeViewEndNode(ctx);
+                            }
+                            else if (csel) { selected = j; }
+                        }
+                        else
+                        {
+                            if (ZUITreeViewLeaf(ctx, k_actors[j].name, csel, k_actors[j].icon))
+                                selected = j;
+                        }
                     }
                     ZUITreeViewEndNode(ctx);
                 }
@@ -436,7 +474,7 @@ namespace Tetragrama::Panels
                     if (i<2) ZUISpacer(ctx,1.f);
                 }
                 ZUISpacer(ctx,10.f);
-                ZUIToggleButton(ctx,"Snap##vsnap",&snap_enabled,ZFit(),ZPx(22.f));
+                ZUIToggleButton(ctx,"Snap##vsnap",&snap_enabled,ZText(),ZPx(22.f));
                 ZUIEndRow(ctx);
             }
 

@@ -361,5 +361,24 @@ namespace ZEngine::Applications
     void AppRenderPipeline::EndOverlayFrame()
     {
         if (ZUICtx) { ZEngine::UI::ZUIEndFrame(ZUICtx); }
+
+        // Apply resize cursor from the ZUI divider hover state
+        if (Device && Device->CurrentWindow)
+        {
+            auto* gw = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
+            if (gw)
+            {
+                int req = ZUICtx ? ZUICtx->ResizeCursor : 0;
+                // Lazily create standard cursors (created once, never destroyed — app lifetime)
+                static GLFWcursor* s_hresize = nullptr;
+                static GLFWcursor* s_vresize = nullptr;
+                if (!s_hresize) s_hresize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+                if (!s_vresize) s_vresize = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
+
+                if      (req == 1 && s_hresize) glfwSetCursor(gw, s_hresize);
+                else if (req == 2 && s_vresize) glfwSetCursor(gw, s_vresize);
+                else                            glfwSetCursor(gw, nullptr); // restore default
+            }
+        }
     }
 } // namespace ZEngine::Applications

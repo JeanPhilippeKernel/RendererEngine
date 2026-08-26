@@ -31,6 +31,7 @@ namespace ZEngine::UI
         ctx->Current      = nullptr;
         ctx->DeltaTime    = dt;
         ctx->Time        += dt;
+        ctx->ResizeCursor = 0; // reset each frame; BuildDividers sets it when hovering a divider
         // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
         // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
         // must survive until ZUIEndFrame runs the interaction pass and widget logic.
@@ -154,7 +155,10 @@ namespace ZEngine::UI
             {
                 slot->Key = key;
                 ++store->Count;
-                return &slot->State; // zero-filled by the arena allocator
+                // Arena zero-fills memory, overriding C++ default initializers.
+                // Explicitly set the sentinel so first-use detection works.
+                slot->State.UserData = -1.f;
+                return &slot->State;
             }
             if (slot->Key == key)
             {

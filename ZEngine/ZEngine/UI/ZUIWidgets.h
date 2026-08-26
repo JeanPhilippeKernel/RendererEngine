@@ -350,7 +350,8 @@ namespace ZEngine::UI
     // Returns true on click for external selection handling.
     bool ZUITreeViewBeginNode(ZUIContext* ctx, const char* label,
                               bool selected,
-                              const float icon_col[4] = nullptr);
+                              const float icon_col[4] = nullptr,
+                              bool initial_open = false);
     void ZUITreeViewEndNode(ZUIContext* ctx);
 
     // Leaf — no expand arrow. Returns true when clicked.

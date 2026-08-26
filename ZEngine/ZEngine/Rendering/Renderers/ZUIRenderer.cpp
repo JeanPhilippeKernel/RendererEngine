@@ -398,11 +398,12 @@ namespace ZEngine::Rendering::Renderers
                 }
                 else
                 {
-                    // Right-pointing triangle ▶
+                    // Right-pointing triangle ▶ — CCW winding: top-left, right-tip, bottom-left
                     ZUIDrawListAddTriangleFilled(&ctx->DrawList,
-                        cx - s*0.6f, cy - s,
-                        cx - s*0.6f, cy + s,
-                        cx + s*0.8f, cy,       cc);
+                        cx - s*0.6f, cy - s,   // A: top-left
+                        cx + s*0.8f, cy,        // B: right tip
+                        cx - s*0.6f, cy + s,    // C: bottom-left
+                        cc);
                 }
             }
         }

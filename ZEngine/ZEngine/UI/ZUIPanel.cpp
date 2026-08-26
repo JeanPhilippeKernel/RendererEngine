@@ -416,7 +416,6 @@ namespace ZEngine::UI
     {
         if (!p || p->ViewCount == 0) { return; }
 
-        float scale = ctx->UIScale;
         bool is_focused = false;
         for (uint32_t pi = 0; pi < PanelCount; ++pi)
             if (&Panels[pi] == p && pi == FocusedPanelIdx) { is_focused = true; break; }
@@ -424,6 +423,7 @@ namespace ZEngine::UI
         char panel_key[32];
         snprintf(panel_key, sizeof(panel_key), "##panel_%llx", (unsigned long long)p->DockKey);
 
+        // ImGui-style: docked panels are square (no corner radius), border is subtle grey
         ZUIBox* panel = ZUIBeginColumn(ctx, panel_key,
                                        ZPx(rect[2]-rect[0]), ZPx(rect[3]-rect[1]));
         panel->Flags  = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder |
@@ -431,16 +431,22 @@ namespace ZEngine::UI
         panel->FloatPos[0]  = rect[0];
         panel->FloatPos[1]  = rect[1];
         ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
+        // Focused: blue accent border. Unfocused: ImGui Border = {0.43,0.43,0.50,0.50}
         const float* bcol = is_focused ? ctx->Theme.PanelFocusBorder : ctx->Theme.PanelBorder;
         panel->BorderColor[0] = bcol[0]; panel->BorderColor[1] = bcol[1];
         panel->BorderColor[2] = bcol[2]; panel->BorderColor[3] = bcol[3];
         panel->BorderThickness = 1.f;
-        panel->EdgeSoftness    = 0.f;
+        panel->EdgeSoftness    = 0.f; // square corners — docked panels are flush
 
-        // --- Header: tab bar (multi-view) or VS Code-style title strip (single-view) ---
-        bool  show_tabs = (p->ViewCount > 1);
-        float header_h  = kTabBarH; // same height for both variants
+        // --- ImGui-style title bar / tab bar ---
+        // Single-view: solid title band (TitleBgActive when focused, TitleBarBg when not)
+        // Multi-view:  tab bar with same color scheme
+        bool  show_tabs    = (p->ViewCount > 1);
+        float header_h     = kTabBarH + 2.f;   // 28px — ImGui title bar height
         bool  should_popout = false;
+
+        // Title bar background: deep blue when focused, near-black when not
+        const float* title_bg = is_focused ? ctx->Theme.TitleBgActive : ctx->Theme.TitleBarBg;
 
         if (show_tabs)
         {
@@ -449,52 +455,62 @@ namespace ZEngine::UI
         }
         else
         {
-            // Single-view: VS Code-style title strip
-            // [ PanelTitle                       [⊞][×] ]
             const char* view_title = (p->ViewCount > 0 && p->Views[0]) ? p->Views[0]->Title : "Panel";
-            float btn_sz = header_h * 0.60f;
+            float btn_h = header_h * 0.65f;
 
-            char hk[48]; snprintf(hk, sizeof(hk), "##hstrip_%llx", (unsigned long long)p->DockKey);
+            char hk[48]; snprintf(hk, sizeof(hk), "##tbar_%llx", (unsigned long long)p->DockKey);
             ZUIBox* strip = ZUIBeginRow(ctx, hk, ZFill(), ZPx(header_h));
-            strip->Flags = strip->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
-            ZUIBoxSetColorArr(strip, ctx->Theme.TitleBarBg);
-            strip->BorderColor[0] = ctx->Theme.Separator[0];
-            strip->BorderColor[1] = ctx->Theme.Separator[1];
-            strip->BorderColor[2] = ctx->Theme.Separator[2];
-            strip->BorderColor[3] = ctx->Theme.Separator[3];
-            strip->BorderThickness = 1.f;
-            strip->EdgeSoftness    = 0.f;
+            strip->Flags = strip->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColorArr(strip, title_bg);
+            strip->EdgeSoftness = 0.f;
 
-            ZUISpacer(ctx, 10.f);
-            ZUILabel(ctx, view_title, is_focused ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+            ZUISpacer(ctx, 8.f);
 
-            // Fill spacer pushes buttons to the right
+            // Small colored type icon (panel's TabColor, or white if none)
             {
-                char fk[48]; snprintf(fk, sizeof(fk), "##hsfill_%llx", (unsigned long long)p->DockKey);
+                const float* ic = (p->Views[0] && p->Views[0]->TabColor[3] > 0.01f)
+                                 ? p->Views[0]->TabColor : ctx->Theme.TextDim;
+                char ik[48]; snprintf(ik, sizeof(ik), "##tic_%llx", (unsigned long long)p->DockKey);
+                ZUIBox* icon = ZUIPushBox(ctx, ik, (uint32_t)strlen(ik), ZUI_DrawBackground);
+                icon->Size[0] = ZPx(10.f); icon->Size[1] = ZPx(10.f);
+                ZUIBoxSetColorArr(icon, ic);
+                ZUIBoxSetCornerRadius(icon, 2.f);
+                icon->EdgeSoftness = 0.5f;
+                ZUIPopBox(ctx);
+            }
+            ZUISpacer(ctx, 6.f);
+
+            // Panel title — white when focused (on blue), dim when not
+            ZUILabel(ctx, view_title, ctx->Theme.TextDefault);
+
+            // Fill → buttons right-aligned
+            {
+                char fk[48]; snprintf(fk, sizeof(fk), "##tf_%llx", (unsigned long long)p->DockKey);
                 ZUIBox* fill = ZUIPushBox(ctx, fk, (uint32_t)strlen(fk), ZUI_None);
                 fill->Size[0] = ZFill(); fill->Size[1] = ZPx(header_h);
                 ZUIPopBox(ctx);
             }
 
-            // Pop-out button
-            char pk[56]; snprintf(pk, sizeof(pk), "d##hspop_%llx", (unsigned long long)p->DockKey);
+            // Pop-out button ⊟
+            char pk[56]; snprintf(pk, sizeof(pk), "d##tp_%llx", (unsigned long long)p->DockKey);
             ZUIBox* pbtn = ZUIPushBox(ctx, pk, (uint32_t)strlen(pk), ZUI_DrawText | ZUI_Clickable);
-            pbtn->Size[0] = ZPx(btn_sz); pbtn->Size[1] = ZPx(btn_sz);
+            pbtn->Size[0] = ZPx(btn_h); pbtn->Size[1] = ZPx(btn_h);
             pbtn->TextAlign = ZUITextAlign::Center;
-            float pc[4] = { 0.45f, 0.65f, 0.85f, 0.75f };
-            pbtn->TextColor[0]=pc[0]; pbtn->TextColor[1]=pc[1]; pbtn->TextColor[2]=pc[2]; pbtn->TextColor[3]=pc[3];
+            bool ph = (ctx->HotKey == pbtn->Key);
+            pbtn->TextColor[0]=ph?1.f:0.60f; pbtn->TextColor[1]=ph?1.f:0.60f;
+            pbtn->TextColor[2]=ph?1.f:0.60f; pbtn->TextColor[3]=0.90f;
             ZUISignal psig = ZUISignalFromBox(ctx, pbtn);
             ZUIPopBox(ctx);
+            ZUISpacer(ctx, 2.f);
 
-            ZUISpacer(ctx, 4.f);
-
-            // Close button
-            char xk[56]; snprintf(xk, sizeof(xk), "x##hscls_%llx", (unsigned long long)p->DockKey);
+            // Close button ×  — brightens on hover
+            char xk[56]; snprintf(xk, sizeof(xk), "x##tx_%llx", (unsigned long long)p->DockKey);
             ZUIBox* xbtn = ZUIPushBox(ctx, xk, (uint32_t)strlen(xk), ZUI_DrawText | ZUI_Clickable);
-            xbtn->Size[0] = ZPx(btn_sz); xbtn->Size[1] = ZPx(btn_sz);
+            xbtn->Size[0] = ZPx(btn_h); xbtn->Size[1] = ZPx(btn_h);
             xbtn->TextAlign = ZUITextAlign::Center;
-            float xc[4] = { 0.75f, 0.32f, 0.32f, 0.75f };
-            xbtn->TextColor[0]=xc[0]; xbtn->TextColor[1]=xc[1]; xbtn->TextColor[2]=xc[2]; xbtn->TextColor[3]=xc[3];
+            bool xh = (ctx->HotKey == xbtn->Key);
+            xbtn->TextColor[0]=xh?1.f:0.60f; xbtn->TextColor[1]=xh?0.25f:0.60f;
+            xbtn->TextColor[2]=xh?0.25f:0.60f; xbtn->TextColor[3]=0.90f;
             ZUISignal xsig = ZUISignalFromBox(ctx, xbtn);
             ZUIPopBox(ctx);
             ZUISpacer(ctx, 6.f);
@@ -814,15 +830,16 @@ namespace ZEngine::UI
         char bar_key[40];
         snprintf(bar_key, sizeof(bar_key), "##tabbar_%llx", (unsigned long long)p->DockKey);
 
+        // Bar background: TitleBgActive (deep blue) when panel focused, TitleBarBg (near-black) otherwise
+        bool panel_focused = false;
+        for (uint32_t pi = 0; pi < PanelCount; ++pi)
+            if (&Panels[pi] == p && pi == FocusedPanelIdx) { panel_focused = true; break; }
+        const float* bar_bg = panel_focused ? ctx->Theme.TitleBgActive : ctx->Theme.TitleBarBg;
+
         ZUIBox* bar = ZUIBeginRow(ctx, bar_key, ZFill(), ZPx(tab_h));
-        bar->Flags  = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
-        ZUIBoxSetColorArr(bar, ctx->Theme.TitleBarBg);
-        bar->BorderColor[0] = ctx->Theme.Separator[0];
-        bar->BorderColor[1] = ctx->Theme.Separator[1];
-        bar->BorderColor[2] = ctx->Theme.Separator[2];
-        bar->BorderColor[3] = ctx->Theme.Separator[3];
-        bar->BorderThickness = 1.f;
-        bar->EdgeSoftness    = 0.f;
+        bar->Flags  = bar->Flags | ZUI_DrawBackground;
+        ZUIBoxSetColorArr(bar, bar_bg);
+        bar->EdgeSoftness = 0.f;
 
         ZUISpacer(ctx, 4.f);
 
@@ -842,62 +859,40 @@ namespace ZEngine::UI
             char tab_key[64];
             snprintf(tab_key, sizeof(tab_key), "##tab_%llx_%u", (unsigned long long)p->DockKey, ti);
             ZUIBox* tab = ZUIBeginRow(ctx, tab_key, ZFit(), ZFill());
+            // ImGui tab style: active = panel body bg (looks "selected/attached") + bottom accent
+            // Inactive = transparent + subtle hover. No corner radius (flat).
             tab->Flags = tab->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-            tab->EdgeSoftness = 0.5f;
-            ZUIBoxSetCornerRadius(tab, 3.f);
+            tab->EdgeSoftness = 0.f;
+            ZUIBoxSetCornerRadius(tab, 0.f);
 
-            // Tab color: use view->TabColor as a tint when alpha > 0,
-            // otherwise fall back to theme defaults.
             bool has_color = view->TabColor[3] > 0.01f;
             if (is_active)
             {
-                if (has_color)
-                {
-                    // Blend view color over active bg at 40% strength
-                    float bg[4];
-                    for (int c = 0; c < 3; ++c)
-                        bg[c] = ctx->Theme.TabActiveBg[c] * 0.6f + view->TabColor[c] * 0.4f;
-                    bg[3] = 1.f;
-                    ZUIBoxSetColorArr(tab, bg);
-                    tab->BorderColor[0] = view->TabColor[0];
-                    tab->BorderColor[1] = view->TabColor[1];
-                    tab->BorderColor[2] = view->TabColor[2];
-                    tab->BorderColor[3] = 0.90f;
-                }
-                else
-                {
-                    ZUIBoxSetColorArr(tab, ctx->Theme.TabActiveBg);
-                    tab->BorderColor[0] = ctx->Theme.TabActiveBorder[0];
-                    tab->BorderColor[1] = ctx->Theme.TabActiveBorder[1];
-                    tab->BorderColor[2] = ctx->Theme.TabActiveBorder[2];
-                    tab->BorderColor[3] = ctx->Theme.TabActiveBorder[3];
-                }
-                tab->BorderThickness = 1.f;
+                // Active tab = panel body color (seamlessly "connected" to content)
+                // + thin accent color bottom border (ImGui TabSelectedOverline)
+                ZUIBoxSetColorArr(tab, ctx->Theme.PanelBg);
+                // Bottom border = TabColor if set, else TabActiveBorder (blue)
+                const float* acc = has_color ? view->TabColor : ctx->Theme.TabActiveBorder;
+                tab->BorderColor[0]=acc[0]; tab->BorderColor[1]=acc[1];
+                tab->BorderColor[2]=acc[2]; tab->BorderColor[3]=1.f;
+                tab->BorderThickness = 2.f;
             }
             else
             {
                 if (has_color)
                 {
-                    // Inactive: very subtle tint (15%)
-                    float bg[4] = {
-                        view->TabColor[0] * 0.15f,
-                        view->TabColor[1] * 0.15f,
-                        view->TabColor[2] * 0.15f, 0.85f };
+                    // Inactive with color: very subtle tint (15%)
+                    // Inactive with color: transparent (matches bar), no border
+                    float bg[4] = {0.f,0.f,0.f,0.f};
                     ZUIBoxSetColorArr(tab, bg);
-                    tab->BorderColor[0] = view->TabColor[0] * 0.5f;
-                    tab->BorderColor[1] = view->TabColor[1] * 0.5f;
-                    tab->BorderColor[2] = view->TabColor[2] * 0.5f;
-                    tab->BorderColor[3] = 0.55f;
+                    tab->BorderThickness = 0.f;
                 }
                 else
                 {
-                    ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg);
-                    tab->BorderColor[0] = ctx->Theme.TabInactiveBorder[0];
-                    tab->BorderColor[1] = ctx->Theme.TabInactiveBorder[1];
-                    tab->BorderColor[2] = ctx->Theme.TabInactiveBorder[2];
-                    tab->BorderColor[3] = ctx->Theme.TabInactiveBorder[3];
+                    // Inactive no-color: transparent, no border
+                    ZUIBoxSetColorArr(tab, ctx->Theme.TabInactiveBg); // transparent
+                    tab->BorderThickness = 0.f;
                 }
-                tab->BorderThickness = 1.f;
             }
 
             ZUISpacer(ctx, 8.f);
@@ -1240,28 +1235,57 @@ namespace ZEngine::UI
                     ZUIDockResize(DockTree, child1, delta);
             }
 
-            // Visual 1px divider line
+            // Track active resize cursor for the app to apply via GLFW
+            if (in_rect || dragging)
+                ctx->ResizeCursor = horizontal ? 2 : 1; // 1=H-resize 2=V-resize
+
+            // Divider visual: thin dim line at rest, accent-colored 3px bar when active
             bool highlight = in_rect || dragging;
-            float vc[4] = { highlight ? 0.45f : 0.22f,
-                            highlight ? 0.55f : 0.28f,
-                            highlight ? 0.70f : 0.35f, 1.f };
+            float line_w   = highlight ? 3.f : 1.f;
+            float alpha    = highlight ? 1.f : 0.35f;
+            float vc[4] = { ctx->Theme.TabActiveBorder[0],
+                            ctx->Theme.TabActiveBorder[1],
+                            ctx->Theme.TabActiveBorder[2], alpha };
+            if (!highlight)
+            {
+                // Rest state: very subtle grey
+                vc[0] = 0.25f; vc[1] = 0.25f; vc[2] = 0.28f;
+            }
+
+            // Hover area highlight — semi-transparent fill behind the line
+            if (highlight)
+            {
+                char hk[32]; snprintf(hk, sizeof(hk), "##sdivh_%u", di);
+                ZUIBox* ha = ZUIPushBox(ctx, hk, (uint32_t)strlen(hk),
+                                        ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                ha->Size[0]     = ZPx(dx1 - dx0);
+                ha->Size[1]     = ZPx(dy1 - dy0);
+                ha->FloatPos[0] = dx0;
+                ha->FloatPos[1] = dy0;
+                ZUIBoxSetColor(ha, ctx->Theme.TabActiveBorder[0],
+                               ctx->Theme.TabActiveBorder[1],
+                               ctx->Theme.TabActiveBorder[2], 0.25f);
+                ha->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
+
             char vk[32];
             snprintf(vk, sizeof(vk), "##sdiv_%u", di);
             ZUIBox* vis = ZUIPushBox(ctx, vk, (uint32_t)strlen(vk),
                                      ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
             if (!horizontal)
             {
-                vis->Size[0]     = ZPx(1.f);
+                vis->Size[0]     = ZPx(line_w);
                 vis->Size[1]     = ZPx(dy1 - dy0);
-                vis->FloatPos[0] = (dx0 + dx1) * 0.5f;
+                vis->FloatPos[0] = (dx0 + dx1) * 0.5f - line_w * 0.5f;
                 vis->FloatPos[1] = dy0;
             }
             else
             {
                 vis->Size[0]     = ZPx(dx1 - dx0);
-                vis->Size[1]     = ZPx(1.f);
+                vis->Size[1]     = ZPx(line_w);
                 vis->FloatPos[0] = dx0;
-                vis->FloatPos[1] = (dy0 + dy1) * 0.5f;
+                vis->FloatPos[1] = (dy0 + dy1) * 0.5f - line_w * 0.5f;
             }
             vis->EdgeSoftness = 0.f;
             ZUIBoxSetColorArr(vis, vc);

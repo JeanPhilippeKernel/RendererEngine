@@ -1272,17 +1272,26 @@ namespace ZEngine::UI
         btn->EdgeSoftness = 0.f;
         ZUIBoxSetCornerRadius(btn, 0.f);
 
-        ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f); // transparent rest
+        // Check if this menu's popup is currently open
+        uint64_t popup_hash = ZUIHashStr(label, (uint32_t)strlen(label));
+        bool     is_open    = (ctx->ActivePopupKey == popup_hash);
+
+        // When open: show solid accent-tinted background (ImGui HeaderHovered style)
+        if (is_open && enabled)
+            ZUIBoxSetColor(btn, 0.26f, 0.59f, 0.98f, 0.20f);
+        else
+            ZUIBoxSetColor(btn, 0.f, 0.f, 0.f, 0.f);
+
         SetTextColor(btn, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
 
         ZUISignal sig = ZUISignalFromBox(ctx, btn);
-        if (enabled)
+        if (enabled && !is_open)
         {
-            // Lerped hover/active: transparent → menu hover → active
-            static const float kMenuRest[4] = {0.f, 0.f, 0.f, 0.f};
-            static const float kMenuHov[4]  = {0.18f,0.18f,0.22f,1.f};
-            static const float kMenuAct[4]  = {0.22f,0.22f,0.26f,1.f};
-            ApplyHotActive(btn, ctx, kMenuRest, kMenuHov, kMenuAct);
+            // Smooth hover: transparent → subtle blue tint (matches ImGui HeaderHovered)
+            static const float kRest[4] = {0.f,   0.f,   0.f,   0.f};
+            static const float kHov[4]  = {0.26f, 0.59f, 0.98f, 0.15f};
+            static const float kAct[4]  = {0.26f, 0.59f, 0.98f, 0.25f};
+            ApplyHotActive(btn, ctx, kRest, kHov, kAct);
         }
         ZUIPopBox(ctx);
 
@@ -2074,11 +2083,14 @@ namespace ZEngine::UI
     }
 
     bool ZUITreeViewBeginNode(ZUIContext* ctx, const char* label,
-                               bool selected, const float icon_col[4])
+                               bool selected, const float icon_col[4],
+                               bool initial_open)
     {
-        // Look up open state in persistent state
         uint64_t hash  = ZUIHashStr(label, (uint32_t)strlen(label)) ^ (uint64_t)ctx->TV_Depth;
         auto*    state = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        // UserData < 0 means never explicitly set — apply initial_open on first use
+        if (state && state->UserData < 0.f)
+            state->UserData = initial_open ? 1.f : 0.f;
         bool     is_open = state && state->UserData > 0.5f;
 
         ZUISignal sig = TV_BuildRow(ctx, label, selected, true, is_open, icon_col);
@@ -2158,7 +2170,7 @@ namespace ZEngine::UI
         // Load sort state
         {
             auto* ss = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kDT_SortSuffix);
-            if (ss && ss->UserData != 0.f)
+            if (ss && ss->UserData != 0.f && ss->UserData > -0.5f) // skip -1 sentinel
             {
                 float enc = ss->UserData;
                 ctx->DT_SortAsc = (enc > 0.f);
