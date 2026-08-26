@@ -2526,60 +2526,83 @@ namespace ZEngine::UI
         }
 
         // Text field (no border — border is on the outer row)
-        uint32_t field_key_hash = ZUIHashStr(key, (uint32_t)strlen(key));
-        bool is_focused = (ctx->FocusKey == field_key_hash);
+        uint32_t klen           = (uint32_t)strlen(key);
+        uint32_t field_key_hash = ZUIHashStr(key, klen);
+        bool     is_focused     = (ctx->FocusKey == field_key_hash);
 
+        ZUIPersistentState* ps  = ZUIStateGetOrInsert(&ctx->StateStore, field_key_hash);
+
+        // Build display string — cursor position from persistent state
         char display[512];
         if (!is_focused && buf[0] == '\0')
         {
-            // Show placeholder when empty + unfocused
             snprintf(display, sizeof(display), "%s", placeholder);
+        }
+        else if (is_focused)
+        {
+            uint32_t len = (uint32_t)strlen(buf);
+            int cpos = (ps && ps->UserData >= 0.f) ? (int)ps->UserData : (int)len;
+            if (cpos < 0) cpos = 0;
+            if ((uint32_t)cpos > len) cpos = (int)len;
+            bool show_pipe = (fmodf(ctx->Time, 1.0f) < 0.5f);
+            if (show_pipe) snprintf(display, sizeof(display), "%.*s|%s", cpos, buf, buf + cpos);
+            else           snprintf(display, sizeof(display), "%s", buf);
         }
         else
         {
-            bool show_cursor = is_focused && (fmodf(ctx->Time, 1.0f) < 0.5f);
-            if (show_cursor) snprintf(display, sizeof(display), "%s|", buf);
-            else             snprintf(display, sizeof(display), "%s",  buf);
+            snprintf(display, sizeof(display), "%s", buf);
         }
 
-        uint32_t klen = (uint32_t)strlen(key);
-        ZUIBox* field = ZUIPushBox(ctx, key, klen,
-                            ZUI_DrawText | ZUI_Clickable);
+        ZUIBox* field = ZUIPushBox(ctx, key, klen, ZUI_DrawText | ZUI_Clickable);
         field->Size[0] = ZFill(); field->Size[1] = ZFill();
         field->Padding[0] = 2.f;
         uint32_t dlen = (uint32_t)Helpers::secure_strlen(display);
-        field->Label = ZUIPushStr(&ctx->FrameArena, display, dlen);
-        // Placeholder text is dim; actual content is default color
+        field->Label  = ZUIPushStr(&ctx->FrameArena, display, dlen);
         if (!is_focused && buf[0] == '\0')
         { float ph_col[4]={0.38f,0.38f,0.40f,1.f}; SetTextColor(field, ph_col); }
         else
         { SetTextColor(field, ctx->Theme.TextDefault); }
-        // Focus border on the outer row when active
-        if (is_focused)
-        { SetBdrArr(row, ctx->Theme.InputFocusBorder); }
+        if (is_focused) { SetBdrArr(row, ctx->Theme.InputFocusBorder); }
 
         ZUISignal sig = ZUISignalFromBox(ctx, field);
         ZUIPopBox(ctx);
-
         ZUIEndRow(ctx);
 
         bool changed = false;
-        if (sig.Flags & ZUI_SignalClicked) { ctx->FocusKey = field_key_hash; }
+        if (sig.Flags & ZUI_SignalClicked)
+        {
+            ctx->FocusKey = field_key_hash;
+            if (ps) ps->UserData = (float)strlen(buf); // cursor at end on click
+        }
 
-        // Accept text input when focused only — do NOT unconditionally consume input
+        // Accept text/cursor operations when focused
         if (is_focused)
         {
             uint32_t len = (uint32_t)strlen(buf);
+            int cpos = (ps && ps->UserData >= 0.f) ? (int)ps->UserData : (int)len;
+            if (cpos < 0) cpos = 0;
+            if ((uint32_t)cpos > len) cpos = (int)len;
+
             for (uint32_t i = 0; i < ctx->TextInputLen && len + 1 < buf_size; ++i)
             {
-                buf[len] = ctx->TextInput[i]; buf[++len] = '\0'; changed = true;
+                memmove(buf + cpos + 1, buf + cpos, len - cpos + 1);
+                buf[cpos] = ctx->TextInput[i];
+                cpos++; len++; changed = true;
             }
-            if (ctx->BackspacePressed && len > 0)
+            if (ctx->BackspacePressed && cpos > 0)
             {
-                buf[len - 1] = '\0'; changed = true;
+                len = (uint32_t)strlen(buf);
+                memmove(buf + cpos - 1, buf + cpos, len - cpos + 1);
+                cpos--; changed = true;
             }
-            if (ctx->HomePressed) { /* search box: not applicable (no cursor tracking) */ }
-            if (ctx->EndPressed)  { /* search box: not applicable */ }
+            len = (uint32_t)strlen(buf);
+            if (ctx->DeletePressed && (uint32_t)cpos < len)
+            { memmove(buf + cpos, buf + cpos + 1, len - cpos); changed = true; }
+            if (ctx->ArrowLeftPressed  && cpos > 0)              cpos--;
+            if (ctx->ArrowRightPressed && (uint32_t)cpos < len)  cpos++;
+            if (ctx->HomePressed)  cpos = 0;
+            if (ctx->EndPressed)   cpos = (int)(uint32_t)strlen(buf);
+            if (ps) ps->UserData = (float)cpos;
         }
 
         return changed;
