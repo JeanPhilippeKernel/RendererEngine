@@ -168,6 +168,8 @@ namespace ZEngine::UI
         // text input — written by OnTextInputRaised
         char               TextInput[32]     = {};
         uint32_t           TextInputLen      = 0;
+        // Clipboard write request — written by ZUITextField (Ctrl+C), read+cleared by ZUILayer
+        char               ClipboardWrite[512] = {};
 
         // capacity caps used by layout and interaction passes
         uint32_t           MaxBoxesPerFrame  = 0;
@@ -215,8 +217,10 @@ namespace ZEngine::UI
         bool               ArrowDownPressed  = false;
         bool               ArrowLeftPressed  = false;  // text cursor left
         bool               ArrowRightPressed = false;  // text cursor right
-        bool               HomePressed       = false;  // cursor to start of field
-        bool               EndPressed        = false;  // cursor to end of field
+        bool               HomePressed           = false; // cursor to start of field
+        bool               EndPressed            = false; // cursor to end of field
+        bool               CtrlCPressed          = false; // copy focused field to clipboard
+        bool               CtrlBackspacePressed  = false; // delete word before cursor
         // Per-frame tracking updated in ZUISignalFromBox during the build pass
         uint64_t           TabNavNextKey     = 0; // first clickable after FocusKey
         uint64_t           TabNavPrevKey     = 0; // last clickable before FocusKey

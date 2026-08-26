@@ -113,6 +113,14 @@ ZEngine::UI::ZUIEndColumn(m_ctx);
         if (key == ZENGINE_KEY_HOME)  m_ctx->HomePressed       = true;
         if (key == ZENGINE_KEY_END)   m_ctx->EndPressed        = true;
 
+        // Ctrl+C → signal the context so widgets can copy their content
+        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
+            m_ctx->CtrlCPressed = true;
+
+        // Ctrl+Backspace → delete word before cursor
+        if (m_ctx->CtrlDown && key == ZENGINE_KEY_BACKSPACE)
+            m_ctx->CtrlBackspacePressed = true;
+
         // Clipboard paste: Ctrl+V → inject clipboard text into TextInput
         if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
         {

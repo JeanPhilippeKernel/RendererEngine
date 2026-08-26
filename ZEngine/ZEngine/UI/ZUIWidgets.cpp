@@ -1821,12 +1821,30 @@ namespace ZEngine::UI
                 cpos--; changed = true;
             }
 
-            // Left / Right arrow — move cursor
+            // Left / Right / Home / End — move cursor
             len = (uint32_t)Helpers::secure_strlen(buf);
-            if (ctx->ArrowLeftPressed  && cpos > 0)        cpos--;
+            if (ctx->ArrowLeftPressed  && cpos > 0)             cpos--;
             if (ctx->ArrowRightPressed && (uint32_t)cpos < len) cpos++;
-            if (ctx->HomePressed)                           cpos = 0;
-            if (ctx->EndPressed)                            cpos = (int)len;
+            if (ctx->HomePressed)                               cpos = 0;
+            if (ctx->EndPressed)                                cpos = (int)len;
+
+            // Ctrl+C — copy buf to clipboard via ZUILayer
+            if (ctx->CtrlCPressed)
+                snprintf(ctx->ClipboardWrite, sizeof(ctx->ClipboardWrite), "%s", buf);
+
+            // Ctrl+Backspace — delete word before cursor (back to prev space/boundary)
+            if (ctx->CtrlBackspacePressed && cpos > 0)
+            {
+                len = (uint32_t)Helpers::secure_strlen(buf);
+                int start = cpos - 1;
+                while (start > 0 && buf[start-1] != ' ' && buf[start-1] != '/' &&
+                       buf[start-1] != '\\' && buf[start-1] != '.') start--;
+                int deleted = cpos - start;
+                memmove(buf + start, buf + cpos, len - cpos + 1);
+                cpos = start;
+                changed = true;
+                (void)deleted;
+            }
 
             if (ps) ps->UserData = (float)cpos;
 

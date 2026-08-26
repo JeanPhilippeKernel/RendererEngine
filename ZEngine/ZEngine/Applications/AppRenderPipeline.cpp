@@ -362,12 +362,18 @@ namespace ZEngine::Applications
     {
         if (ZUICtx) { ZEngine::UI::ZUIEndFrame(ZUICtx); }
 
-        // Apply resize cursor from the ZUI divider hover state
+        // Apply resize cursor from the ZUI divider hover state + flush clipboard writes
         if (Device && Device->CurrentWindow)
         {
             auto* gw = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
             if (gw)
             {
+                // Flush Ctrl+C clipboard write (set by ZUITextField when focused)
+                if (ZUICtx && ZUICtx->ClipboardWrite[0] != '\0')
+                {
+                    glfwSetClipboardString(gw, ZUICtx->ClipboardWrite);
+                    ZUICtx->ClipboardWrite[0] = '\0';
+                }
                 int req = ZUICtx ? ZUICtx->ResizeCursor : 0;
                 // Lazily create standard cursors (created once, never destroyed — app lifetime)
                 static GLFWcursor* s_hresize = nullptr;
