@@ -26,7 +26,8 @@ namespace ZEngine::UI
                                    float                    size_body,
                                    float                    size_header,
                                    uint32_t                 first_codepoint,
-                                   uint32_t                 codepoint_count)
+                                   uint32_t                 codepoint_count,
+                                   const char*              header_vfs_path)
     {
         // --- 1. Load TTF from VFS ---
         auto* vfs      = Engine::GetContext()->VFS;
@@ -60,18 +61,38 @@ namespace ZEngine::UI
         // --- 3. Allocate atlas pixel buffer (single channel, zero-init) ---
         uint8_t* single_ch = ZPushArray(temp_arena, uint8_t, kAtlasW * kAtlasH);
 
-        // --- 4. Pack all three fonts in one stbtt_pack_context pass ---
+        // --- 4. Load optional header font (e.g. SemiBold for better hierarchy) ---
+        uint8_t* hdr_ttf_data = ttf_data; // default: same font for all sizes
+        if (header_vfs_path)
+        {
+            auto hdr_res = vfs->Open(VFSPath::Parse(header_vfs_path).Value(), VFSOpenFlags::Read);
+            if (hdr_res.Succeeded())
+            {
+                auto* hdr_file = hdr_res.Value();
+                auto  hdr_size = hdr_file->Size();
+                if (hdr_size.Succeeded())
+                {
+                    hdr_ttf_data = ZPushArray(temp_arena, uint8_t, (uint32_t)hdr_size.Value());
+                    ArrayView<uint8_t> hdr_view{hdr_ttf_data, hdr_size.Value()};
+                    hdr_file->ReadAll(hdr_view);
+                }
+                vfs->Close(hdr_file);
+            }
+        }
+
+        // --- 5. Pack all three fonts in one stbtt_pack_context pass ---
         const float  kSizes[3]    = { size_small, size_body, size_header };
+        uint8_t*     kFontData[3] = { ttf_data, ttf_data, hdr_ttf_data };
         stbtt_packedchar* packed[3];
         for (int i = 0; i < 3; ++i)
             packed[i] = ZPushArray(temp_arena, stbtt_packedchar, codepoint_count);
 
         stbtt_pack_context pack_ctx = {};
         stbtt_PackBegin(&pack_ctx, single_ch, (int)kAtlasW, (int)kAtlasH, 0, 1, nullptr);
-        stbtt_PackSetOversampling(&pack_ctx, 3, 1); // OversampleH=3 for crisper glyphs (ImGui quality)
+        stbtt_PackSetOversampling(&pack_ctx, 3, 1);
         for (int i = 0; i < 3; ++i)
         {
-            stbtt_PackFontRange(&pack_ctx, ttf_data, 0, kSizes[i],
+            stbtt_PackFontRange(&pack_ctx, kFontData[i], 0, kSizes[i],
                                 (int)first_codepoint, (int)codepoint_count, packed[i]);
         }
         stbtt_PackEnd(&pack_ctx);

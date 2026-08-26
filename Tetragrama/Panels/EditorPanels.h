@@ -148,7 +148,7 @@ namespace Tetragrama::Panels
         int   cat_sel = 0;
 
         static constexpr float kLW = 118.f;
-        static constexpr float kRH = 22.f;
+        static constexpr float kRH = 24.f; // VS Code row height — slightly roomier
 
         void PropRow(ZUIContext* ctx, const char* label, const char* rkey)
         {

@@ -64,7 +64,8 @@ namespace ZEngine::UI
                                    float                    size_body,
                                    float                    size_header,
                                    uint32_t                 first_codepoint,
-                                   uint32_t                 codepoint_count);
+                                   uint32_t                 codepoint_count,
+                                   const char*              header_vfs_path = nullptr);
 
     void ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
 

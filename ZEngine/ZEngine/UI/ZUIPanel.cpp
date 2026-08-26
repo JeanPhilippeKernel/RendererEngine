@@ -206,8 +206,29 @@ namespace ZEngine::UI
             sbar->FloatPos[1] = sh - real_status_h;
             ZUIBoxSetColorArr(sbar, ctx->Theme.StatusBarBg);
             sbar->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Ready", ctx->Theme.TextDefault);
+            // Left: status text
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, "ZEngine Editor", ctx->Theme.TextDefault);
+
+            // Fill spacer
+            {
+                char sfk[] = "##sbfill";
+                ZUIBox* sf = ZUIPushBox(ctx, sfk, 8, ZUI_None);
+                sf->Size[0] = ZFill(); sf->Size[1] = ZPx(real_status_h);
+                ZUIPopBox(ctx);
+            }
+
+            // Right: FPS + UIScale indicator
+            {
+                char fps_buf[48];
+                float fps = (ctx->DeltaTime > 0.001f) ? (1.f / ctx->DeltaTime) : 0.f;
+                if (fps > 9999.f) fps = 0.f; // clamp first-frame spike
+                snprintf(fps_buf, sizeof(fps_buf), "%.0f fps  |  UIScale %.1f",
+                         (double)fps, (double)ctx->UIScale);
+                ZUILabel(ctx, fps_buf, ctx->Theme.TextDefault);
+                ZUISpacer(ctx, 12.f);
+            }
+
             ZUIEndRow(ctx);
         }
 

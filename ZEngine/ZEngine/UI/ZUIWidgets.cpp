@@ -71,8 +71,9 @@ namespace ZEngine::UI
     ZUIBox* ZUIBeginScrollRegion(ZUIContext* ctx, const char* key, ZUISize w, ZUISize h)
     {
         uint32_t len  = (uint32_t)strlen(key);
+        // ZUI_Clickable added so HotT tracks hover — used for auto-hide scrollbar alpha
         ZUIBox*  box  = ZUIPushBox(ctx, key, len,
-                            ZUI_Scrollable | ZUI_ClipChildren);
+                            ZUI_Scrollable | ZUI_ClipChildren | ZUI_Clickable);
         box->Size[0]  = w;
         box->Size[1]  = h;
         box->LayoutAxis = ZUIAxis::Y;
@@ -87,6 +88,10 @@ namespace ZEngine::UI
         ZUIBox* sb = ctx->Current;
         if (sb && sb->Key)
         {
+            // Update HotT for the scroll region — drives scrollbar auto-hide alpha
+            ZUISignal scroll_sig = ZUISignalFromBox(ctx, sb);
+            (void)scroll_sig;
+
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, sb->Key);
             if (ps && ps->MaxScrollY > 1.f && ps->ScreenMaxX > ps->ScreenMinX)
             {
@@ -96,40 +101,49 @@ namespace ZEngine::UI
                 float content_h = track_h + ps->MaxScrollY;
                 float thumb_h = (content_h > 0.f)
                               ? (track_h * track_h / content_h) : track_h;
-                if (thumb_h < 18.f) thumb_h = 18.f;
+                if (thumb_h < 16.f) thumb_h = 16.f;
                 if (thumb_h > track_h) thumb_h = track_h;
                 float thumb_y = (ps->MaxScrollY > 0.f)
                               ? sy0 + (ps->ScrollY / ps->MaxScrollY) * (track_h - thumb_h)
                               : sy0;
-                const float kBarW = 6.f;
 
-                // Track (dim background strip)
+                // Auto-hide: alpha driven by HotT (fades in on hover, out on leave)
+                // Min 0.08 so a very faint track is always hinted at
+                float vis = 0.08f + ps->HotT * 0.92f;
+                const float kBarW = 4.f; // VS Code thin scrollbar
+
+                // Track — visible only on hover
                 char trk[64]; snprintf(trk, sizeof(trk), "##sbtrk_%llu", (unsigned long long)sb->Key);
                 ZUIBox* track = ZUIPushBox(ctx, trk, (uint32_t)strlen(trk),
                                            ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 track->Size[0]     = ZPx(kBarW); track->Size[1] = ZPx(track_h);
                 track->FloatPos[0] = sx1 - kBarW; track->FloatPos[1] = sy0;
-                ZUIBoxSetColorArr(track, ctx->Theme.ScrollbarBg);
+                ZUIBoxSetColor(track,
+                    ctx->Theme.ScrollbarGrab[0], ctx->Theme.ScrollbarGrab[1],
+                    ctx->Theme.ScrollbarGrab[2], 0.15f * vis);
                 track->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
 
-                // Thumb (draggable, hover-animated)
+                // Thumb — fades in/out + hover/active animation
                 char thm[64]; snprintf(thm, sizeof(thm), "##sbthm_%llu", (unsigned long long)sb->Key);
                 ZUIBox* thumb = ZUIPushBox(ctx, thm, (uint32_t)strlen(thm),
                                            ZUI_DrawBackground | ZUI_Clickable |
                                            ZUI_FloatX | ZUI_FloatY);
                 thumb->Size[0]     = ZPx(kBarW); thumb->Size[1] = ZPx(thumb_h);
                 thumb->FloatPos[0] = sx1 - kBarW; thumb->FloatPos[1] = thumb_y;
-                ZUIBoxSetColorArr(thumb, ctx->Theme.ScrollbarGrab);
-                ZUIBoxSetCornerRadius(thumb, 3.f);
+                float grab[4]    = {ctx->Theme.ScrollbarGrab[0], ctx->Theme.ScrollbarGrab[1],
+                                    ctx->Theme.ScrollbarGrab[2], vis};
+                float grab_hov[4]= {ctx->Theme.ScrollbarGrabHov[0], ctx->Theme.ScrollbarGrabHov[1],
+                                    ctx->Theme.ScrollbarGrabHov[2], vis};
+                float grab_act[4]= {ctx->Theme.ScrollbarGrabAct[0], ctx->Theme.ScrollbarGrabAct[1],
+                                    ctx->Theme.ScrollbarGrabAct[2], 1.f};
+                ZUIBoxSetColorArr(thumb, grab);
+                ZUIBoxSetCornerRadius(thumb, 2.f);
                 thumb->EdgeSoftness = 0.5f;
 
                 ZUISignal tsig = ZUISignalFromBox(ctx, thumb);
-                ApplyHotActive(thumb, ctx,
-                               ctx->Theme.ScrollbarGrab,
-                               ctx->Theme.ScrollbarGrabHov,
-                               ctx->Theme.ScrollbarGrabAct);
-                // Drag thumb → update scroll offset
+                ApplyHotActive(thumb, ctx, grab, grab_hov, grab_act);
+
                 if ((tsig.Flags & ZUI_SignalHeld) && tsig.DragDelta[1] != 0.f)
                 {
                     float ratio = (track_h - thumb_h) > 0.f

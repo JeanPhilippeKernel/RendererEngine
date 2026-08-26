@@ -83,6 +83,8 @@ namespace Tetragrama
         {
             constexpr const char* kFontPath =
                 "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
+            constexpr const char* kHeaderFontPath =
+                "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";
             auto* ctx = RenderPipeline->ZUICtx;
 
             // UIScale = ContentScale on macOS (per Gemini analysis).
@@ -116,7 +118,8 @@ namespace Tetragrama
             auto scratch = ZGetScratch(&Memory->MainArena);
             ctx->Atlas = ZEngine::UI::ZUIFontAtlasBake(
                 &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, kSmall, kBody, kHeader, 32, 96);
+                kFontPath, kSmall, kBody, kHeader, 32, 96,
+                kHeaderFontPath); // SemiBold for header size — sharper section labels
             ZReleaseScratch(scratch);
 
             // FontScale = 1/ContentScale so that atlas-pixel metrics (baked at
