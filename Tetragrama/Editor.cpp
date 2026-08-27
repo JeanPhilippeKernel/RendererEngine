@@ -131,6 +131,13 @@ namespace Tetragrama
                 if (ctx->Atlas->Small)  ctx->Atlas->Small->FontScale  = fs;
                 if (ctx->Atlas->Body)   ctx->Atlas->Body->FontScale   = fs;
                 if (ctx->Atlas->Header) ctx->Atlas->Header->FontScale = fs;
+
+                // Sync ZUIStyle.FontSize = logical body size so ZUIGetFrameHeight()
+                // and all derived metrics (19px = 13 + 3*2) are correct.
+                ctx->Style.FontSize = kBody;   // logical pixels, not atlas physical pixels
+                ZUIStyleUpdate(&ctx->Style);
+                ZENGINE_CORE_INFO("[ZUI] Style.FontSize={:.0f}  FrameHeight={:.0f}",
+                                  ctx->Style.FontSize, ctx->Style.FrameHeight);
             }
         }
 
