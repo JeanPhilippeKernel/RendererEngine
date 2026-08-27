@@ -1564,7 +1564,7 @@ namespace ZEngine::UI
         {
             auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
             if (ps)
-                ps->UserData = 1.f; // points down
+                ps->UserData = 2.f; // 2 = VS Code chevron ∨ (1 = filled ▼, 0 = filled ►)
         }
         ZUIPopBox(ctx);
 

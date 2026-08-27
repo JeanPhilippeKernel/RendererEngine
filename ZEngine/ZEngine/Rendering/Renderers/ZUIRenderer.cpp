@@ -424,43 +424,38 @@ namespace ZEngine::Rendering::Renderers
             // We scale r from box height so the arrow is proportional to the row.
             if (box->Flags & ZUI_DrawTriArrow)
             {
-                auto*    ps   = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
-                bool     down = ps && ps->UserData > 0.5f;
+                auto*    ps    = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+                float    udata = ps ? ps->UserData : 0.f;
+                float    cx    = (bx0 + bx1) * 0.5f;
+                float    cy    = (by0 + by1) * 0.5f;
+                uint32_t cc    = ZUIPackColor(box->TextColor);
+                float    fs    = ctx->Style.FontSize;
 
-                // Center arrow in the box (ImGui centers it at pos + h*0.5)
-                float    cx   = (bx0 + bx1) * 0.5f;
-                float    cy   = (by0 + by1) * 0.5f;
-
-                // r ≈ FontSize * 0.40; scale proportionally to row height
-                // At row_h=19: r = 19*(13/19)*0.40 = 13*0.40 = 5.2px  (matches ImGui)
-                float    r    = (by1 - by0) * (0.40f * 13.f / 19.f);
-
-                uint32_t cc   = ZUIPackColor(box->TextColor);
-                if (down)
+                if (udata > 1.5f)
                 {
-                    // ▼ Down-pointing equilateral
-                    ZUIDrawListAddTriangleFilled(
-                        &ctx->DrawList,
-                        cx + 0.000f * r,
-                        cy + 0.750f * r, // bottom
-                        cx - 0.866f * r,
-                        cy - 0.750f * r, // upper-left
-                        cx + 0.866f * r,
-                        cy - 0.750f * r, // upper-right
-                        cc);
+                    // ∨  VS Code-style chevron — two stroked lines meeting at apex.
+                    // Matches codicon chevron-down proportions: ~55% wide, ~30% tall of FontSize.
+                    float hw     = fs * 0.275f; // half-width   ≈ 3.6 px at 13 px font
+                    float hh     = fs * 0.150f; // half-height  ≈ 2.0 px at 13 px font
+                    float stroke = 1.5f;
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - hw, cy - hh, cx, cy + hh, cc, stroke);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, cy + hh, cx + hw, cy - hh, cc, stroke);
                 }
                 else
                 {
-                    // ► Right-pointing equilateral
-                    ZUIDrawListAddTriangleFilled(
-                        &ctx->DrawList,
-                        cx + 0.750f * r,
-                        cy + 0.000f * r, // right tip
-                        cx - 0.750f * r,
-                        cy + 0.866f * r, // lower-left
-                        cx - 0.750f * r,
-                        cy - 0.866f * r, // upper-left
-                        cc);
+                    // Filled equilateral triangle (tree nodes, collapsing headers)
+                    float r    = (by1 - by0) * (0.40f * 13.f / 19.f);
+                    bool  down = udata > 0.5f;
+                    if (down)
+                    {
+                        // ▼ Down
+                        ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx + 0.000f * r, cy + 0.750f * r, cx - 0.866f * r, cy - 0.750f * r, cx + 0.866f * r, cy - 0.750f * r, cc);
+                    }
+                    else
+                    {
+                        // ► Right
+                        ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx + 0.750f * r, cy + 0.000f * r, cx - 0.750f * r, cy + 0.866f * r, cx - 0.750f * r, cy - 0.866f * r, cc);
+                    }
                 }
             }
         }
