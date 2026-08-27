@@ -1,5 +1,6 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <GLFW/glfw3.h>
@@ -69,7 +70,11 @@ namespace ZEngine::Applications
     {
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
-        Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
+        // Use the UIContext budget defined in MemoryBudgetConfig::Editor() (128 MB).
+        // Was: hardcoded ZMega(30) — a 30 MB orphan that bypassed the budget system.
+        using namespace ZEngine::Core::Memory;
+        Device->Arena->CreateSubArena(
+            MemoryBudgetConfig::Editor().UIContext.SizeBytes, &LocalArena);
 
         SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
         ZUIRenderer   = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
@@ -78,12 +83,15 @@ namespace ZEngine::Applications
         ZUIRenderer->Initialize(Device);
 
         // ZPushStructCtor calls placement-new → default member initializers apply
-        // (ZPushStruct only zero-fills, so ZUITheme colours would all be 0).
         ZUICtx = ZPushStructCtor(&LocalArena, ZEngine::UI::ZUIContext);
-        ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(8), ZMega(2), 8192, 8192);
+        // FrameArena 32 MB: box pool + draw geometry + traversal stacks (~5 MB typical, 32 MB headroom)
+        // PersistentArena 1 MB: state table 8192×48 = 384 KB, comfortable margin
+        // ZUIPayloadArenas 9 MB × 3 = 27 MB: CPU-side GPU staging (peak ~2.5 MB, 3.6× headroom)
+        // Total committed: ~60 MB / 128 MB budgeted
+        ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(32), ZMega(1), 8192, 8192);
         for (int i = 0; i < 3; ++i)
         {
-            LocalArena.CreateSubArena(ZMega(4), &ZUIPayloadArenas[i]);
+            LocalArena.CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
         }
 
         Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
