@@ -79,8 +79,13 @@ namespace ZEngine::UI
 
         auto* left  = AllocNode(tree);
         auto* right = AllocNode(tree);
-        left->PctOfParent  = left_pct;
-        right->PctOfParent = 1.f - left_pct;
+        // Animation: left child opens from 1% to target; right derives from 1-left.
+        left->PctOfParent  = 0.01f;    // start nearly closed
+        left->TargetPct    = left_pct;
+        left->AnimT        = 0.f;      // kick off ease-out cubic animation
+        right->PctOfParent = 0.99f;    // complement at t=0
+        right->TargetPct   = 0.f;      // driven by sibling sync, not independent animation
+        right->AnimT       = -1.f;     // idle
         left->ContentKey   = left_key;
         right->ContentKey  = right_key;
 
@@ -98,8 +103,12 @@ namespace ZEngine::UI
 
         auto* top = AllocNode(tree);
         auto* bot = AllocNode(tree);
-        top->PctOfParent = top_pct;
-        bot->PctOfParent = 1.f - top_pct;
+        top->PctOfParent = 0.01f;
+        top->TargetPct   = top_pct;
+        top->AnimT       = 0.f;
+        bot->PctOfParent = 0.99f;
+        bot->TargetPct   = 0.f;
+        bot->AnimT       = -1.f;
         top->ContentKey  = top_key;
         bot->ContentKey  = bot_key;
 
@@ -227,6 +236,46 @@ namespace ZEngine::UI
         for (const char* p = name; *p; ++p)
             h = (h ^ (uint8_t)*p) * 1099511628211ULL;
         return h ? h : 1;
+    }
+
+    void ZUIDockMarkCentral(ZUIDockTree* tree, uint64_t content_key)
+    {
+        ZUIDockNode* leaf = ZUIDockFindLeaf(tree, content_key);
+        if (leaf) { leaf->IsCentral = true; }
+    }
+
+    void ZUIDockAnimate(ZUIDockTree* tree, float dt)
+    {
+        if (!tree || !tree->Root || dt <= 0.f) { return; }
+
+        ZUIDockNode* stack[64]; int top = 0;
+        stack[top++] = tree->Root;
+        while (top > 0)
+        {
+            ZUIDockNode* n = stack[--top];
+            if (!n) { continue; }
+
+            if (n->AnimT >= 0.f)
+            {
+                n->AnimT = (n->AnimT + dt / 0.18f);   // 180ms duration
+                if (n->AnimT > 1.f) n->AnimT = 1.f;
+                float t    = n->AnimT;
+                float ease = 1.f - (1.f-t)*(1.f-t)*(1.f-t);  // ease-out cubic
+                n->PctOfParent = n->TargetPct * ease;
+                if (n->AnimT >= 1.f) { n->AnimT = -1.f; }     // animation done
+
+                // Sibling sync: keep sum-to-1 invariant in binary splits.
+                // Only the first child animates; the second derives from it.
+                if (n->Next && n->Next->AnimT < 0.f
+                    && n->Parent && n->Parent->ChildCount == 2)
+                {
+                    n->Next->PctOfParent = 1.f - n->PctOfParent;
+                }
+            }
+
+            for (ZUIDockNode* c = n->First; c; c = c->Next)
+                if (top < 64) stack[top++] = c;
+        }
     }
 
 } // namespace ZEngine::UI

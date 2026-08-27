@@ -31,7 +31,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // ZUIDockSave  (v2 format)
+    // ZUIDockSave  (v3 format — adds AutoHideTabBar; incompatible with v2)
     // ---------------------------------------------------------------
 
     void ZUIDockSave(ZUIPanelManager* manager, const char* path)
@@ -40,9 +40,10 @@ namespace ZEngine::UI
         FILE* f = fopen(path, "w");
         if (!f) { return; }
 
-        fprintf(f, "# ZUI Layout v2\n");
+        fprintf(f, "# ZUI Layout v3\n");
 
         // --- Dock tree ---
+        // node <id> <parent_id> <is_leaf> <axis:0=X,1=Y> <pct> [<content_key_hex> <is_central> <auto_hide_tab_bar>]
         if (manager->DockTree && manager->DockTree->Root)
         {
             NodeRecord records[kMaxSerialNodes];
@@ -53,17 +54,16 @@ namespace ZEngine::UI
             {
                 ZUIDockNode* n = records[i].Ptr;
                 bool is_leaf   = (n->ContentKey != 0);
-                // node <id> <parent_id> <is_leaf> <axis:0=X,1=Y> <pct>
-                //      [<content_key_hex> <is_central>]
                 fprintf(f, "node %u %d %d %d %f",
                         i, records[i].ParentId,
                         is_leaf ? 1 : 0,
                         (n->SplitAxis == ZUIAxis::X) ? 0 : 1,
                         (double)n->PctOfParent);
                 if (is_leaf)
-                    fprintf(f, " %016llx %d",
+                    fprintf(f, " %016llx %d %d",
                             (unsigned long long)n->ContentKey,
-                            n->IsCentral ? 1 : 0);
+                            n->IsCentral ? 1 : 0,
+                            n->AutoHideTabBar ? 1 : 0);
                 fprintf(f, "\n");
             }
         }
@@ -89,7 +89,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // ZUIDockLoad  (v2 format)
+    // ZUIDockLoad  (v3 format only — v2 files are intentionally incompatible)
     // ---------------------------------------------------------------
 
     bool ZUIDockLoad(ZUIPanelManager* manager, const char* path,
@@ -99,9 +99,9 @@ namespace ZEngine::UI
         FILE* f = fopen(path, "r");
         if (!f) { return false; }
 
-        // --- Version check ---
+        // --- Version check (v3 only; v2 files are discarded, not migrated) ---
         char line[512];
-        if (!fgets(line, sizeof(line), f) || strncmp(line, "# ZUI Layout v2", 15) != 0)
+        if (!fgets(line, sizeof(line), f) || strncmp(line, "# ZUI Layout v3", 15) != 0)
         {
             fclose(f);
             return false;
@@ -111,10 +111,11 @@ namespace ZEngine::UI
         struct LoadNode {
             int      parent_id;
             int      is_leaf;
-            int      axis;        // 0=X 1=Y
+            int      axis;             // 0=X 1=Y
             float    pct;
-            uint64_t content_key; // 0 if split
+            uint64_t content_key;      // 0 if split
             int      is_central;
+            int      auto_hide_tab_bar;
         };
 
         LoadNode load_nodes[kMaxSerialNodes];
@@ -146,11 +147,11 @@ namespace ZEngine::UI
             {
                 pending_panel = -1; // end any ongoing panel read
                 LoadNode& n = load_nodes[node_count];
-                n.content_key = 0; n.is_central = 0;
+                n.content_key = 0; n.is_central = 0; n.auto_hide_tab_bar = 0;
                 unsigned long long ck = 0;
-                int parsed = sscanf(line + 5, "%*u %d %d %d %f %llx %d",
+                int parsed = sscanf(line + 5, "%*u %d %d %d %f %llx %d %d",
                                     &n.parent_id, &n.is_leaf, &n.axis,
-                                    &n.pct, &ck, &n.is_central);
+                                    &n.pct, &ck, &n.is_central, &n.auto_hide_tab_bar);
                 n.content_key = (uint64_t)ck;
                 if (parsed >= 4) { ++node_count; }
             }
@@ -198,10 +199,11 @@ namespace ZEngine::UI
             LoadNode& ln  = load_nodes[i];
             ZUIDockNode* n = new_nodes[i];
 
-            n->SplitAxis   = (ln.axis == 0) ? ZUIAxis::X : ZUIAxis::Y;
-            n->PctOfParent = ln.pct;
-            n->ContentKey  = ln.content_key;
-            n->IsCentral   = (ln.is_central != 0);
+            n->SplitAxis        = (ln.axis == 0) ? ZUIAxis::X : ZUIAxis::Y;
+            n->PctOfParent      = ln.pct;
+            n->ContentKey       = ln.content_key;
+            n->IsCentral        = (ln.is_central != 0);
+            n->AutoHideTabBar   = (ln.auto_hide_tab_bar != 0);
 
             if (ln.parent_id >= 0 && (uint32_t)ln.parent_id < node_count)
             {

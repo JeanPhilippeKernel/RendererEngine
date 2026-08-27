@@ -48,6 +48,16 @@ namespace ZEngine::UI
 
         // Central node: passthrough for 3D viewport — no chrome, no click interception
         bool  IsCentral       = false;
+
+        // AutoHideTabBar: when true and ViewCount==1, shows a title strip instead of tab bar.
+        // Matches ImGui ImGuiDockNodeFlags_AutoHideTabBar.
+        // Default false = ImGui default (always show tab bar, even for single-window nodes).
+        bool  AutoHideTabBar  = false;
+
+        // Split animation — ease-out cubic over 180ms.
+        // Only the first (left/top) child animates; the second derives from 1-sibling.
+        float TargetPct       = 0.f;   // final PctOfParent after animation
+        float AnimT           = -1.f;  // -1 = idle; 0..1 = progress
     };
 
     struct ZUIDockTree
@@ -105,5 +115,13 @@ namespace ZEngine::UI
     // (takes the parent's PctOfParent and replaces it in the grandparent).
     // Call when a panel is undocked or closed so remaining panels fill in.
     void ZUIDockCollapseLeaf(ZUIDockTree* tree, ZUIDockNode* leaf);
+
+    // Mark a leaf as the central passthrough node (no chrome, viewport passthrough).
+    // Sets leaf->IsCentral = true. Replace any use of ZUIPanelManager::SetCentralPanel().
+    void ZUIDockMarkCentral(ZUIDockTree* tree, uint64_t content_key);
+
+    // Advance split animations (ease-out cubic, 180ms).
+    // Call BEFORE ZUIDockLayout each frame. Maintains sum-to-1 invariant via sibling sync.
+    void ZUIDockAnimate(ZUIDockTree* tree, float dt);
 
 } // namespace ZEngine::UI
