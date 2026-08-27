@@ -1405,12 +1405,11 @@ namespace ZEngine::UI
         ctx->Current = saved;
     }
 
-    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open)
+    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, float* out_drag_dy, float /*resize_min*/)
     {
         char key[256];
         snprintf(key, sizeof(key), "##ch_%s", label);
 
-        // VS Code section header: neutral dark background, subtle hover, dim chevron.
         ZUIBox* hdr     = ZUIBeginRow(ctx, key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
         hdr->Flags      = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
         hdr->Padding[0] = ZUIGetFramePadX(ctx);
@@ -1430,7 +1429,7 @@ namespace ZEngine::UI
         {
             auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
             if (ps)
-                ps->UserData = is_open ? 2.f : 3.f; // 2=∨ expanded, 3=› collapsed
+                ps->UserData = is_open ? 2.f : 3.f;
         }
         ZUIPopBox(ctx);
 
@@ -1440,23 +1439,44 @@ namespace ZEngine::UI
         ZUISignal sig = ZUISignalFromBox(ctx, hdr);
         ApplyHotActive(hdr, ctx, ctx->Theme.TitleBarBg, ctx->Theme.TitleBgActive, ctx->Theme.TitleBgActive);
 
-        // Drag handle strip — 2 px bar at top, visible on hover (signals draggable zone)
-        bool is_hot = (ctx->HotKey == hdr->Key) || (ctx->ActiveKey == hdr->Key);
-        if (is_hot)
+        // Drag strip — appears on hover (like panel dividers), 4px clickable, NS cursor.
+        // Reports DragDelta[1] via out_drag_dy; the caller handles multi-section resize.
+        if (out_drag_dy)
+            *out_drag_dy = 0.f;
         {
             char dk[272];
             snprintf(dk, sizeof(dk), "##ch_drag_%s", label);
-            ZUIBox* strip      = ZUIPushBox(ctx, dk, (uint32_t) strlen(dk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-            strip->Size[0]     = {ZUISizeKind::ParentPercent, 1.f, 1.f}; // full header width
-            strip->Size[1]     = ZPx(2.f);
-            strip->FloatPos[0] = 0.f;
-            strip->FloatPos[1] = 0.f;
-            ZUIBoxSetColor(strip, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 0.40f);
+            bool        has_drag = (out_drag_dy != nullptr);
+            ZUIBoxFlags sf       = ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
+            if (has_drag)
+                sf = sf | ZUI_Clickable;
+            ZUIBox* strip       = ZUIPushBox(ctx, dk, (uint32_t) strlen(dk), sf);
+            strip->Size[0]      = {ZUISizeKind::ParentPercent, 1.f, 1.f};
+            strip->Size[1]      = ZPx(4.f);
+            strip->FloatPos[0]  = 0.f;
+            strip->FloatPos[1]  = 0.f;
             strip->EdgeSoftness = 0.f;
+
+            bool strip_hot      = (ctx->HotKey == strip->Key) || (ctx->ActiveKey == strip->Key);
+            bool hdr_hot        = (ctx->HotKey == hdr->Key) || (ctx->ActiveKey == hdr->Key);
+            // Visible only on hover — hidden at rest (matches VS Code divider behaviour)
+            if (strip_hot || hdr_hot)
+                ZUIBoxSetColor(strip, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], strip_hot ? 0.70f : 0.30f);
+            else
+                ZUIBoxSetColor(strip, 0.f, 0.f, 0.f, 0.f);
+
+            if (has_drag)
+            {
+                ZUISignal ds = ZUISignalFromBox(ctx, strip);
+                if ((ds.Flags & ZUI_SignalHeld) && out_drag_dy)
+                    *out_drag_dy = ds.DragDelta[1];
+                if (strip_hot)
+                    ctx->ResizeCursor = 2;
+            }
             ZUIPopBox(ctx);
         }
 
-        // Thin 1px teal border around header when focused (VS Code selection indicator)
+        // 1px teal border — only while focused; clears when focus moves away
         if (is_focused)
         {
             hdr->Flags           = hdr->Flags | ZUI_DrawBorder;
@@ -1472,7 +1492,7 @@ namespace ZEngine::UI
         bool activated = (sig.Flags & ZUI_SignalClicked) || (is_focused && (ctx->SpacePressed || ctx->EnterPressed));
         if (activated)
         {
-            ctx->FocusKey = hdr->Key; // keep focus on this header
+            ctx->FocusKey = hdr->Key;
             if (open)
                 *open = !(*open);
         }

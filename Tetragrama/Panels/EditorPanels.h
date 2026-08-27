@@ -91,25 +91,66 @@ namespace Tetragrama::Panels
         }
 
         // Section open/close state
-        bool  m_transform_open  = true;
-        bool  m_mesh_open       = true;
-        bool  m_rigidbody_open  = false;
+        bool                   m_transform_open  = true;
+        bool                   m_mesh_open       = true;
+        bool                   m_rigidbody_open  = true;
+
+        // Section content heights (logical px). Drag the strip at the top of each header
+        // to resize: UP = that section grows (covers section above), DOWN = shrinks
+        // (cascades to push next section when min height reached).
+        float                  m_heights[3]      = {100.f, 80.f, 100.f}; // Transform, MeshRenderer, RigidBody
+        static constexpr float kMinSectionH      = 30.f;
 
         // Transform values
-        float m_position[3]     = {0.f, 0.f, 0.f};
-        float m_rotation[3]     = {0.f, 0.f, 0.f};
-        float m_scale[3]        = {1.f, 1.f, 1.f};
+        float                  m_position[3]     = {0.f, 0.f, 0.f};
+        float                  m_rotation[3]     = {0.f, 0.f, 0.f};
+        float                  m_scale[3]        = {1.f, 1.f, 1.f};
 
         // Mesh Renderer values
-        bool  m_cast_shadows    = true;
-        bool  m_receive_shadows = true;
+        bool                   m_cast_shadows    = true;
+        bool                   m_receive_shadows = true;
 
         // Rigid Body values
-        float m_mass            = 1.f;
-        bool  m_use_gravity     = true;
-        bool  m_is_kinematic    = false;
+        float                  m_mass            = 1.f;
+        bool                   m_use_gravity     = true;
+        bool                   m_is_kinematic    = false;
 
-        void  BuildContent(ZUIContext* ctx, float rect[4]) override
+        // Apply cascade resize between section[above] and section[below].
+        // delta_y > 0 = drag DOWN = above grows, below shrinks.
+        // delta_y < 0 = drag UP   = above shrinks, below grows.
+        // Cascades: when a section hits kMinSectionH, excess delta spills to its neighbour.
+        void                   ApplyResize(int above_idx, float delta_y)
+        {
+            if (above_idx < 0 || above_idx >= 2)
+                return;
+            float& A  = m_heights[above_idx];
+            float& B  = m_heights[above_idx + 1];
+            A        += delta_y;
+            B        -= delta_y;
+            if (A < kMinSectionH)
+            {
+                float spill = kMinSectionH - A;
+                A           = kMinSectionH;
+                // Cascade upward: try to compensate from prev-prev section
+                if (above_idx > 0)
+                    m_heights[above_idx - 1] -= spill;
+            }
+            if (B < kMinSectionH)
+            {
+                float spill = kMinSectionH - B;
+                B           = kMinSectionH;
+                // Cascade downward: try to compensate from next section
+                int next    = above_idx + 2;
+                if (next < 3)
+                    m_heights[next] -= spill;
+            }
+            // Enforce min on all sections
+            for (float& h : m_heights)
+                if (h < kMinSectionH)
+                    h = kMinSectionH;
+        }
+
+        void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             using namespace ZEngine::UI;
             (void) rect;
@@ -119,93 +160,96 @@ namespace Tetragrama::Panels
             ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
             bg->EdgeSoftness    = 0.f;
 
-            const float label_w = 90.f;
-            const float field_w = rect[2] - rect[0] - label_w - 16.f;
-
+            const float field_w = rect[2] - rect[0] - 100.f - 16.f;
             auto        Row     = [&](const char* rk) {
                 ZUIBeginRow(ctx, rk, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
                 ZUISpacer(ctx, 8.f);
             };
-            auto EndRow = [&]() { ZUIEndRow(ctx); };
+            auto  EndRow = [&]() { ZUIEndRow(ctx); };
+            float dy     = 0.f;
 
-            // Transform
+            // Transform — no drag (first section, nothing above to push against)
             ZUISpacer(ctx, 2.f);
             if (ZUICollapsingHeader(ctx, "Transform", &m_transform_open))
             {
+                ZUIBeginScrollRegion(ctx, "##sr_t", ZFill(), ZPx(m_heights[0]));
                 ZUISpacer(ctx, 2.f);
                 Row("##ip_pos");
                 ZUILabel(ctx, "Position", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_position", m_position, 0.1f, field_w / 3.f);
+                ZUIDragFloat3(ctx, "##ip_pos", m_position, 0.1f, field_w / 3.f);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-
                 Row("##ip_rot");
                 ZUILabel(ctx, "Rotation", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_rotation", m_rotation, 0.5f, field_w / 3.f);
+                ZUIDragFloat3(ctx, "##ip_rot", m_rotation, 0.5f, field_w / 3.f);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-
                 Row("##ip_scl");
                 ZUILabel(ctx, "Scale", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_scale", m_scale, 0.05f, field_w / 3.f);
+                ZUIDragFloat3(ctx, "##ip_scl", m_scale, 0.05f, field_w / 3.f);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-                ZUISpacer(ctx, 4.f);
+                ZUIEndScrollRegion(ctx);
             }
 
-            // Mesh Renderer
+            // Mesh Renderer — drag strip adjusts boundary 0 (Transform ↕ Mesh)
             ZUISeparator(ctx);
             ZUISpacer(ctx, 2.f);
-            if (ZUICollapsingHeader(ctx, "Mesh Renderer", &m_mesh_open))
+            dy = 0.f;
+            if (ZUICollapsingHeader(ctx, "Mesh Renderer", &m_mesh_open, &dy))
             {
+                ZUIBeginScrollRegion(ctx, "##sr_m", ZFill(), ZPx(m_heights[1]));
                 ZUISpacer(ctx, 2.f);
-                Row("##ip_mcshadow");
+                Row("##ip_mcs");
                 ZUILabel(ctx, "Cast Shadows", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_cast_shad", &m_cast_shadows);
+                ZUICheckbox(ctx, "##ip_cs", &m_cast_shadows);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-
-                Row("##ip_mrshadow");
+                Row("##ip_mrs");
                 ZUILabel(ctx, "Recv Shadows", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_recv_shad", &m_receive_shadows);
+                ZUICheckbox(ctx, "##ip_rs", &m_receive_shadows);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-                ZUISpacer(ctx, 4.f);
+                ZUIEndScrollRegion(ctx);
             }
+            if (dy != 0.f)
+                ApplyResize(0, dy); // boundary 0: Transform(0) ↕ Mesh(1)
 
-            // Rigid Body
+            // Rigid Body — drag strip adjusts boundary 1 (Mesh ↕ Rigid Body)
             ZUISeparator(ctx);
             ZUISpacer(ctx, 2.f);
-            if (ZUICollapsingHeader(ctx, "Rigid Body", &m_rigidbody_open))
+            dy = 0.f;
+            if (ZUICollapsingHeader(ctx, "Rigid Body", &m_rigidbody_open, &dy))
             {
+                ZUIBeginScrollRegion(ctx, "##sr_rb", ZFill(), ZPx(m_heights[2]));
                 ZUISpacer(ctx, 2.f);
                 Row("##ip_mass");
                 ZUILabel(ctx, "Mass", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUIDragFloat(ctx, "##ip_mass_val", &m_mass, 0.1f, field_w);
+                ZUIDragFloat(ctx, "##ip_mv", &m_mass, 0.1f, field_w);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-
                 Row("##ip_grav");
                 ZUILabel(ctx, "Use Gravity", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_gravity", &m_use_gravity);
+                ZUICheckbox(ctx, "##ip_ug", &m_use_gravity);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-
                 Row("##ip_kine");
                 ZUILabel(ctx, "Kinematic", ctx->Theme.TextDim);
                 ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_kinematic", &m_is_kinematic);
+                ZUICheckbox(ctx, "##ip_km", &m_is_kinematic);
                 ZUISpacer(ctx, 8.f);
                 EndRow();
-                ZUISpacer(ctx, 4.f);
+                ZUIEndScrollRegion(ctx);
             }
+            if (dy != 0.f)
+                ApplyResize(1, dy); // boundary 1: Mesh(1) ↕ RigidBody(2)
 
             ZUIEndColumn(ctx);
         }

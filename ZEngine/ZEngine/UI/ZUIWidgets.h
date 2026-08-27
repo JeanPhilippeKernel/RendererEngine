@@ -144,9 +144,13 @@ namespace ZEngine::UI
     void        ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text);
 
     /// @brief Full-width collapsible section header.
-    /// @param open In/out — toggled on click.
-    /// @return Current open state (same as @p *open after the call).
-    bool        ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open);
+    /// @param open        In/out — toggled on click.
+    /// @param out_drag_dy Optional output. When non-null the top drag strip becomes active:
+    ///                    receives DragDelta[1] while held (negative = dragged UP = section
+    ///                    grows, positive = DOWN = shrinks). The caller applies multi-section
+    ///                    cascade resize logic with this delta.
+    /// @return Current open state.
+    bool        ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, float* out_drag_dy = nullptr, float = 0.f);
 
     /// @brief Full-width selectable row.
     /// @param selected Toggled in-place on click.
