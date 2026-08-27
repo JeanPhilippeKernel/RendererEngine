@@ -86,6 +86,11 @@ namespace ZEngine::UI
         char         LayoutPath[256] = {};  // set before first BuildUI; empty = no persistence
         bool         LayoutDirty     = false;
 
+        // Deferred close queue: filled during render, flushed at start of next BuildUI
+        // BEFORE ZUIDockLayout so the sibling gets the freed space in the same frame.
+        uint64_t     PendingCloseKeys[kMaxPanels] = {};
+        uint32_t     PendingCloseCount             = 0;
+
         ZUIDragDockState Drag;
 
         void Init    (ArenaAllocator* arena);

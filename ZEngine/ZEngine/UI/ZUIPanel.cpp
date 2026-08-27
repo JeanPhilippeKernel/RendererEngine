@@ -150,6 +150,21 @@ namespace ZEngine::UI
             LayoutDirty = false;
         }
 
+        // Flush deferred close queue — must run BEFORE ZUIDockLayout so
+        // the sibling panel gets the freed space in the same frame the
+        // closed panel disappears (no 1-frame black gap).
+        for (uint32_t ci = 0; ci < PendingCloseCount; ++ci)
+        {
+            ZUIPanel* cp = FindPanel(PendingCloseKeys[ci]);
+            if (cp) { cp->Hidden = true; }
+            if (DockTree) {
+                ZUIDockNode* leaf = ZUIDockFindLeaf(DockTree, PendingCloseKeys[ci]);
+                if (leaf) ZUIDockCollapseLeaf(DockTree, leaf);
+            }
+            LayoutDirty = true;
+        }
+        PendingCloseCount = 0;
+
         if (DockTree)
         {
             float root_rect[4] = { 0.f, menu_h, sw, sh - status_h };
@@ -482,12 +497,9 @@ namespace ZEngine::UI
                 }
             }
 
-            if (should_close)
+            if (should_close && PendingCloseCount < kMaxPanels)
             {
-                p->Hidden = true;
-                ZUIDockNode* close_leaf = ZUIDockFindLeaf(DockTree, p->DockKey);
-                if (close_leaf) ZUIDockCollapseLeaf(DockTree, close_leaf);
-                LayoutDirty = true;
+                PendingCloseKeys[PendingCloseCount++] = p->DockKey;
             }
         }
 
@@ -624,11 +636,9 @@ namespace ZEngine::UI
                 if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
                     p->ActiveTab = p->ViewCount - 1;
                 LayoutDirty = true;
-                if (p->ViewCount == 0)
+                if (p->ViewCount == 0 && PendingCloseCount < kMaxPanels)
                 {
-                    p->Hidden = true;
-                    ZUIDockNode* close_leaf = ZUIDockFindLeaf(DockTree, p->DockKey);
-                    if (close_leaf) { ZUIDockCollapseLeaf(DockTree, close_leaf); }
+                    PendingCloseKeys[PendingCloseCount++] = p->DockKey;
                 }
                 break;
             }
