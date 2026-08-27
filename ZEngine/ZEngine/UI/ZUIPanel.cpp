@@ -135,6 +135,72 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
+    // PreDetectCloseEvents — Clay-style pre-pass
+    // Detects close button clicks using ctx->ActiveKey + ctx->MouseReleased
+    // BEFORE any panel box is built, so ZUIDockLayout sees the correct tree.
+    // ctx->ActiveKey is set by the previous frame's ZUIInteractionPass and is
+    // still valid during the current frame's build phase.
+    // ---------------------------------------------------------------
+
+    void ZUIPanelManager::PreDetectCloseEvents(ZUIContext* ctx)
+    {
+        if (!ctx->MouseReleased[0] || ctx->ActiveKey == 0) { return; }
+
+        for (uint32_t i = 0; i < PanelCount; ++i)
+        {
+            ZUIPanel* p = &Panels[i];
+            if (p->Hidden || p->ViewCount == 0) { continue; }
+
+            // ── Tab bar close buttons ─────────────────────────────────────
+            for (uint32_t ti = 0; ti < p->ViewCount; ++ti)
+            {
+                char xkey[64];
+                snprintf(xkey, sizeof(xkey), "x##x_%llx_%u",
+                         (unsigned long long)p->DockKey, ti);
+                uint64_t xhash = ZUIHashStr(xkey, (uint32_t)strlen(xkey));
+
+                if (ctx->ActiveKey == xhash && ctx->HotKey == xhash)
+                {
+                    if (p->ViewCount > 1)
+                    {
+                        // Remove this tab — panel keeps rendering with fewer tabs
+                        for (uint32_t j = ti; j+1 < p->ViewCount; ++j)
+                            p->Views[j] = p->Views[j+1];
+                        --p->ViewCount;
+                        if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
+                            p->ActiveTab = p->ViewCount - 1;
+                    }
+                    else
+                    {
+                        // Last tab — panel disappears this frame
+                        if (PendingCloseCount < kMaxPanels)
+                            PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+                    }
+                    LayoutDirty = true;
+                    goto next_panel; // only one close per panel per frame
+                }
+            }
+
+            // ── Single-view title strip close button ──────────────────────
+            {
+                char txk[56];
+                snprintf(txk, sizeof(txk), "x##tx_%llx",
+                         (unsigned long long)p->DockKey);
+                uint64_t txhash = ZUIHashStr(txk, (uint32_t)strlen(txk));
+
+                if (ctx->ActiveKey == txhash && ctx->HotKey == txhash)
+                {
+                    if (PendingCloseCount < kMaxPanels)
+                        PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+                    LayoutDirty = true;
+                }
+            }
+
+            next_panel:;
+        }
+    }
+
+    // ---------------------------------------------------------------
     // BuildUI — top-level per-frame entry
     // ---------------------------------------------------------------
 
@@ -142,6 +208,10 @@ namespace ZEngine::UI
     {
         float sw = (float)ctx->ScreenW;
         float sh = (float)ctx->ScreenH;
+
+        // Clay-style pre-pass: detect close events BEFORE layout so the
+        // sibling fills the space in the same frame the panel disappears.
+        PreDetectCloseEvents(ctx);
 
         // Flush pending layout save (triggered by drag/close events last frame)
         if (LayoutDirty && LayoutPath[0])
@@ -554,10 +624,8 @@ namespace ZEngine::UI
                 }
             }
 
-            if (should_close && PendingCloseCount < kMaxPanels)
-            {
-                PendingCloseKeys[PendingCloseCount++] = p->DockKey;
-            }
+            // Close already handled by PreDetectCloseEvents pre-pass.
+            (void)should_close;
         }
 
         // Content — apply WindowPadding
@@ -686,29 +754,9 @@ namespace ZEngine::UI
             ZUISignal sig = ZUISignalFromBox(ctx, tab);
             ZUIEndRow(ctx);
 
-            if (tab_closed)
-            {
-                if (p->ViewCount > 1)
-                {
-                    // Multi-tab: remove this tab now — panel stays, visual is correct.
-                    for (uint32_t j = ti; j+1 < p->ViewCount; ++j) p->Views[j] = p->Views[j+1];
-                    --p->ViewCount;
-                    if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
-                        p->ActiveTab = p->ViewCount - 1;
-                    LayoutDirty = true;
-                }
-                else
-                {
-                    // Last tab: don't touch state this frame.
-                    // Queue the close exactly like RAD Debugger's double-buffered command:
-                    // panel renders normally for 1 frame (no empty-box flash),
-                    // then disappears with sibling expanding correctly on frame N+1.
-                    if (PendingCloseCount < kMaxPanels)
-                        PendingCloseKeys[PendingCloseCount++] = p->DockKey;
-                    LayoutDirty = true;
-                }
-                break;
-            }
+            // Close already handled by PreDetectCloseEvents pre-pass.
+            // Nothing to do here — just break to exit the tab loop cleanly.
+            if (tab_closed) { break; }
 
             if (!tab_closed && (sig.Flags & ZUI_SignalClicked))
             {

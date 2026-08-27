@@ -115,6 +115,11 @@ namespace ZEngine::UI
         SplitDivider  m_split_dividers[kMaxSplitDividers] = {};
         uint32_t      m_split_divider_count               = 0;
 
+        // Clay-style pre-pass: detect close button clicks using ctx->ActiveKey +
+        // ctx->MouseReleased BEFORE any panel box is pushed, so ZUIDockLayout
+        // already has the correct tree when panels are rendered (zero-frame gap).
+        void PreDetectCloseEvents(ZUIContext* ctx);
+
         void BuildMenuBar   (ZUIContext* ctx, float sw, float mh);
         void BuildDockedPanel(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
         void BuildTabBar    (ZUIContext* ctx, ZUIPanel* p, float rect[4]);
