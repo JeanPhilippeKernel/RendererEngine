@@ -85,58 +85,40 @@ namespace Tetragrama
             constexpr const char* kHeaderFontPath = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";
             auto*                 ctx             = RenderPipeline->ZUICtx;
 
-            // UIScale = ContentScale on macOS (per Gemini analysis).
-            // On other platforms = FbRatio (same behavior as before).
-            // AppRenderPipeline::BeginOverlayFrame will override UIScale each frame;
-            // here we bake fonts using ContentScale for visual density on Retina displays.
-            float                 content_scale   = 1.f;
-            if (CurrentWindow)
-            {
-                auto* gw = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
-                if (gw)
-                {
-                    float xs = 1.f, ys = 1.f;
-                    glfwGetWindowContentScale(gw, &xs, &ys);
-                    content_scale = xs > ys ? xs : ys;
-                    if (content_scale < 0.5f)
-                        content_scale = 1.f;
-                }
-            }
-            ctx->UIScale = content_scale; // fonts use ContentScale; BeginOverlayFrame confirms
+            // Font atlas is always baked at 2× the logical base size so that
+            // every display gets a 2× oversampled atlas — the same sharpness
+            // advantage Retina screens had before, now available everywhere.
+            //
+            // kBase  = logical display size (matches ZUIStyle.FontSize)
+            // kBake  = atlas physical size  (kBase * kOversample)
+            // FontScale = 1/kOversample     (maps atlas px → logical px)
+            //
+            // UIScale (fb/win ratio) is set each frame by BeginOverlayFrame and
+            // handles the physical pixel density independently of the font atlas.
+            constexpr float       kBase           = 13.f;                // logical body size in px
+            constexpr float       kOversample     = 2.f;                 // always 2× — sharp on every display
+            const float           kBake           = kBase * kOversample; // 26 px atlas
+            const float           kSmall          = kBase * 0.80f * kOversample;
+            const float           kHeader         = kBase * 1.30f * kOversample;
+            const float           kFontScale      = 1.f / kOversample; // 0.5
 
-            float kBody  = 13.f * content_scale; // 26px at 2×Retina, 13px at 1×
-            if (kBody < 11.f)
-                kBody = 11.f;
-            if (kBody > 52.f)
-                kBody = 52.f;
-            float    kSmall  = kBody * 0.80f;
-            float    kHeader = kBody * 1.30f;
-            uint32_t win_w   = CurrentWindow ? CurrentWindow->GetWidth() : 1280;
-            ZENGINE_CORE_INFO("[ZUI] FontSizes small={:.0f} body={:.0f} header={:.0f} (UIScale={:.1f} win_w={})", kSmall, kBody, kHeader, ctx->UIScale, win_w);
+            ZENGINE_CORE_INFO("[ZUI] FontBake body={:.0f} small={:.0f} header={:.0f}  FontScale={:.2f}", kBake, kSmall, kHeader, kFontScale);
 
-            // Bake all three fonts into one shared atlas — single GPU texture,
-            // white pixel at (0,0), OversampleH=2 OversampleV=1 (ImGui default).
             auto scratch = ZGetScratch(&Memory->MainArena);
-            ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBody, kHeader, 32, 96,
-                                                         kHeaderFontPath); // SemiBold for header size — sharper section labels
+            ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBake, kHeader, 32, 96, kHeaderFontPath);
             ZReleaseScratch(scratch);
 
-            // FontScale = 1/ContentScale so that atlas-pixel metrics (baked at
-            // physical density) convert back to logical screen coordinates.
-            // e.g. 26px atlas / 2.0 = 13 logical units, rendering sharp on Retina.
             if (ctx->Atlas)
             {
-                float fs = (content_scale > 0.5f) ? (1.f / content_scale) : 1.f;
                 if (ctx->Atlas->Small)
-                    ctx->Atlas->Small->FontScale = fs;
+                    ctx->Atlas->Small->FontScale = kFontScale;
                 if (ctx->Atlas->Body)
-                    ctx->Atlas->Body->FontScale = fs;
+                    ctx->Atlas->Body->FontScale = kFontScale;
                 if (ctx->Atlas->Header)
-                    ctx->Atlas->Header->FontScale = fs;
+                    ctx->Atlas->Header->FontScale = kFontScale;
 
-                // Sync ZUIStyle.FontSize = logical body size so ZUIGetFrameHeight()
-                // and all derived metrics (19px = 13 + 3*2) are correct.
-                ctx->Style.FontSize = kBody; // logical pixels, not atlas physical pixels
+                // Style.FontSize = logical body size → FrameHeight = 13 + 3*2 = 19 px
+                ctx->Style.FontSize = kBase;
                 ZUIStyleUpdate(&ctx->Style);
                 ZENGINE_CORE_INFO("[ZUI] Style.FontSize={:.0f}  FrameHeight={:.0f}", ctx->Style.FontSize, ctx->Style.FrameHeight);
             }
