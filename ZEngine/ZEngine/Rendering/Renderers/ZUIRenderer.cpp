@@ -434,9 +434,12 @@ namespace ZEngine::Rendering::Renderers
                 if (udata > 1.5f)
                 {
                     // ∨  VS Code-style chevron — two stroked lines meeting at apex.
-                    // Matches codicon chevron-down proportions: ~55% wide, ~30% tall of FontSize.
-                    float hw     = fs * 0.275f; // half-width   ≈ 3.6 px at 13 px font
-                    float hh     = fs * 0.150f; // half-height  ≈ 2.0 px at 13 px font
+                    // Derived from codicon chevron-down (16×16 viewBox):
+                    //   apex at ~63% height, chevron spans 50% width × 29% height of box.
+                    //   half-width  = box_w * 0.25 ≈ FontSize * 0.327
+                    //   half-height = box_h * 0.145 ≈ FontSize * 0.212
+                    float hw     = fs * 0.327f; // half-width   ≈ 4.25 px at 13 px font
+                    float hh     = fs * 0.212f; // half-height  ≈ 2.75 px at 13 px font
                     float stroke = 1.5f;
                     ZUIDrawListAddLine(&ctx->DrawList, cx - hw, cy - hh, cx, cy + hh, cc, stroke);
                     ZUIDrawListAddLine(&ctx->DrawList, cx, cy + hh, cx + hw, cy - hh, cc, stroke);
