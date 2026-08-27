@@ -616,11 +616,18 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddChevronDown(ZUIDrawList* dl, float cx, float cy, float half_w, float half_h, uint32_t col, float thickness)
     {
-        // Single connected 3-point stroke: left-tip → apex → right-tip
-        // Using +0.5 offset (pixel-centre convention, matches ImGui AddPolyline)
         PathLineTo(dl, cx - half_w + 0.5f, cy - half_h + 0.5f); // top-left
-        PathLineTo(dl, cx + 0.5f, cy + half_h + 0.5f);          // apex (bottom)
+        PathLineTo(dl, cx + 0.5f, cy + half_h + 0.5f);          // apex (bottom-center)
         PathLineTo(dl, cx + half_w + 0.5f, cy - half_h + 0.5f); // top-right
+        PathStroke(dl, col, false, thickness);
+    }
+
+    void ZUIDrawListAddChevronRight(ZUIDrawList* dl, float cx, float cy, float half_w, float half_h, uint32_t col, float thickness)
+    {
+        // 90° CW rotation of ChevronDown: half_w → vertical span, half_h → horizontal span
+        PathLineTo(dl, cx - half_h + 0.5f, cy - half_w + 0.5f); // top-left
+        PathLineTo(dl, cx + half_h + 0.5f, cy + 0.5f);          // apex (right-center)
+        PathLineTo(dl, cx - half_h + 0.5f, cy + half_w + 0.5f); // bottom-left
         PathStroke(dl, col, false, thickness);
     }
 

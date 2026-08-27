@@ -433,13 +433,16 @@ namespace ZEngine::Rendering::Renderers
 
                 if (udata > 1.5f)
                 {
-                    // ∨  VS Code-style chevron — single connected 3-point stroke.
-                    // Codicon chevron-down proportions: 50% box width, 29% box height.
-                    float bw = bx1 - bx0; // use actual box dims — independent of FontSize
+                    float bw = bx1 - bx0;
                     float bh = by1 - by0;
-                    float hw = bw * 0.25f;  // half-width  = 50% of box / 2
-                    float hh = bh * 0.143f; // half-height = 29% of box / 2
-                    ZUIDrawListAddChevronDown(&ctx->DrawList, cx, cy, hw, hh, cc, 1.5f);
+                    // 90° opening angle: hw = 2 × hh  →  cos(θ)=0  →  arms at 45° each
+                    // hh derived from the shorter box dimension so the chevron stays compact
+                    float hh = fminf(bw, bh) * 0.185f;
+                    float hw = hh * 2.0f;
+                    if (udata < 2.5f)
+                        ZUIDrawListAddChevronDown(&ctx->DrawList, cx, cy, hw, hh, cc, 1.0f);
+                    else
+                        ZUIDrawListAddChevronRight(&ctx->DrawList, cx, cy, hw, hh, cc, 1.0f);
                 }
                 else
                 {

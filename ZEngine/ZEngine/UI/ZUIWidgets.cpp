@@ -1410,47 +1410,71 @@ namespace ZEngine::UI
         char key[256];
         snprintf(key, sizeof(key), "##ch_%s", label);
 
+        // VS Code section header: neutral dark background, subtle hover, dim chevron.
         ZUIBox* hdr     = ZUIBeginRow(ctx, key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
         hdr->Flags      = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        hdr->Padding[0] = ZUIGetFramePadX(ctx); // ImGui FramePadding.x — arrow starts at left
-        ZUIBoxSetColorArr(hdr, ctx->Theme.HeaderBg);
+        hdr->Padding[0] = ZUIGetFramePadX(ctx);
+        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
         hdr->LayoutAxis   = ZUIAxis::X;
         hdr->EdgeSoftness = 0.f;
 
-        // Triangle arrow — ImGui: FontSize (13px) wide, color = ImGuiCol_Text
         bool is_open      = open && *open;
+        bool is_focused   = (ctx->FocusKey == hdr->Key);
+
         char arrow_key[272];
         snprintf(arrow_key, sizeof(arrow_key), "##ch_arr_%s", label);
         ZUIBox* arrow  = ZUIPushBox(ctx, arrow_key, (uint32_t) strlen(arrow_key), ZUI_DrawTriArrow);
         arrow->Size[0] = ZPx(ctx->Style.FontSize);
-        arrow->Size[1] = ZPx(ZUIGetFrameHeight(ctx));
-        SetTextColor(arrow, ctx->Theme.TextDefault); // ImGui: always ImGuiCol_Text
-        // Write open state to UserData so PreparePayload draws the right direction
+        arrow->Size[1] = ZFill();
+        SetTextColor(arrow, ctx->Theme.TextDim);
         {
             auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
             if (ps)
-                ps->UserData = is_open ? 1.f : 0.f;
+                ps->UserData = is_open ? 2.f : 3.f; // 2=∨ expanded, 3=› collapsed
         }
         ZUIPopBox(ctx);
 
-        ZUISpacer(ctx, ZUIGetInnerSpac(ctx)); // ImGui ItemInnerSpacing.x
+        ZUISpacer(ctx, ZUIGetInnerSpac(ctx));
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
-        bool is_focused = (ctx->FocusKey == hdr->Key);
-        if (is_focused)
+        ZUISignal sig = ZUISignalFromBox(ctx, hdr);
+        ApplyHotActive(hdr, ctx, ctx->Theme.TitleBarBg, ctx->Theme.TitleBgActive, ctx->Theme.TitleBgActive);
+
+        // Drag handle strip — 2 px bar at top, visible on hover (signals draggable zone)
+        bool is_hot = (ctx->HotKey == hdr->Key) || (ctx->ActiveKey == hdr->Key);
+        if (is_hot)
         {
-            hdr->Flags = hdr->Flags | ZUI_DrawBorder;
-            SetBdrArr(hdr, ctx->Theme.InputFocusBorder);
+            char dk[272];
+            snprintf(dk, sizeof(dk), "##ch_drag_%s", label);
+            ZUIBox* strip      = ZUIPushBox(ctx, dk, (uint32_t) strlen(dk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+            strip->Size[0]     = {ZUISizeKind::ParentPercent, 1.f, 1.f}; // full header width
+            strip->Size[1]     = ZPx(2.f);
+            strip->FloatPos[0] = 0.f;
+            strip->FloatPos[1] = 0.f;
+            ZUIBoxSetColor(strip, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 0.40f);
+            strip->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
         }
 
-        ZUISignal sig = ZUISignalFromBox(ctx, hdr);
-        ApplyHotActive(hdr, ctx, ctx->Theme.HeaderBg, ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
+        // Thin 1px teal border around header when focused (VS Code selection indicator)
+        if (is_focused)
+        {
+            hdr->Flags           = hdr->Flags | ZUI_DrawBorder;
+            hdr->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
+            hdr->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
+            hdr->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
+            hdr->BorderColor[3]  = 0.60f;
+            hdr->BorderThickness = 1.f;
+        }
+
         ZUIEndRow(ctx);
 
         bool activated = (sig.Flags & ZUI_SignalClicked) || (is_focused && (ctx->SpacePressed || ctx->EnterPressed));
-        if (activated && open)
+        if (activated)
         {
-            *open = !(*open);
+            ctx->FocusKey = hdr->Key; // keep focus on this header
+            if (open)
+                *open = !(*open);
         }
         return open ? *open : false;
     }
