@@ -353,12 +353,12 @@ namespace ZEngine::UI
             }
 
             ZUISeparator(ctx);
+            ZUISeparatorText(ctx, "Panels");
 
-            // ── Panel submenu — toggle individual panels ──────────────
-            // Shows: Hierarchy, Console, Inspector, Viewport
-            if (ZUIBeginMenu(ctx, "Panel"))
+            // ── Panel visibility — toggle individual panels ───────────
+            // Note: ZUIBeginMenu nesting not yet supported (single ActivePopupKey).
+            // Panels listed directly in the Window menu under a "Panels" group header.
             {
-                // Canonical panel names to show in the submenu
                 static const char* kPanelNames[] = {
                     "Hierarchy", "Console", "Inspector", "Viewport"
                 };
@@ -368,54 +368,41 @@ namespace ZEngine::UI
                 {
                     const char* target_name = kPanelNames[ni];
 
-                    // Find the panel with this title
-                    ZUIPanel* match = nullptr;
-                    uint32_t  match_idx = 0;
+                    ZUIPanel* match     = nullptr;
                     for (uint32_t i = 0; i < PanelCount; ++i)
                     {
                         ZUIPanel* p = &Panels[i];
                         if (p->ViewCount == 0) continue;
                         const char* t = p->Views[0] ? p->Views[0]->Title : "";
-                        if (strcmp(t, target_name) == 0)
-                        {
-                            match = p; match_idx = i; break;
-                        }
+                        if (strcmp(t, target_name) == 0) { match = p; break; }
                     }
 
-                    // Build label: "✓ Name" when visible, "  Name" when hidden
+                    // "* Name" = visible   "  Name" = hidden
                     char label[96];
-                    if (match && !match->Hidden)
-                        snprintf(label, sizeof(label), "* %s##pmn_%u", target_name, ni);
-                    else
-                        snprintf(label, sizeof(label), "  %s##pmn_%u", target_name, ni);
+                    bool visible = match && !match->Hidden;
+                    snprintf(label, sizeof(label), "%s%s##pmn_%u",
+                             visible ? "* " : "  ", target_name, ni);
 
-                    if (ZUIMenuItem(ctx, label))
+                    if (ZUIMenuItem(ctx, label) && match)
                     {
-                        if (match)
+                        if (match->Hidden)
                         {
-                            if (match->Hidden)
+                            match->Hidden = false;
+                            if (DockTree)
                             {
-                                // Show: re-insert into split tree
-                                match->Hidden = false;
-                                if (DockTree)
-                                {
-                                    ZUIDockNode* target = FindLargestLeaf(DockTree->Root);
-                                    if (target)
-                                        ZUIDockSplitH(DockTree, target, 0.75f,
-                                                      target->ContentKey, match->DockKey);
-                                }
+                                ZUIDockNode* tgt = FindLargestLeaf(DockTree->Root);
+                                if (tgt)
+                                    ZUIDockSplitH(DockTree, tgt, 0.75f,
+                                                  tgt->ContentKey, match->DockKey);
                             }
-                            else
-                            {
-                                // Hide: queue for deferred close
-                                if (PendingCloseCount < kMaxPanels)
-                                    PendingCloseKeys[PendingCloseCount++] = match->DockKey;
-                            }
-                            LayoutDirty = true;
                         }
+                        else if (PendingCloseCount < kMaxPanels)
+                        {
+                            PendingCloseKeys[PendingCloseCount++] = match->DockKey;
+                        }
+                        LayoutDirty = true;
                     }
                 }
-                ZUIEndMenu(ctx);
             }
             ZUIEndMenu(ctx);
         }
