@@ -865,8 +865,10 @@ namespace ZEngine::UI
                     ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 ov->Size[0] = ZPx(active_w);
                 ov->Size[1] = ZPx(ctx->Style.TabBarOverlineSize);
-                ov->FloatPos[0] = active_x;
-                ov->FloatPos[1] = rect[1] - ctx->Style.TabBarBorderSize;  // above tab bar top
+                // FloatX/Y positions are RELATIVE to the parent box's ScreenMin.
+                // The panel box has ScreenMin = (rect[0], rect[1]), so subtract rect origin.
+                ov->FloatPos[0] = active_x - rect[0];   // relative: tab left edge
+                ov->FloatPos[1] = 0.f;                   // relative: top of tab bar
                 const float* ovc = panel_focused ? ctx->Theme.TabActiveBorder : ctx->Theme.TitleBarBg;
                 ZUIBoxSetColorArr(ov, ovc);
                 ov->EdgeSoftness = 0.f;
