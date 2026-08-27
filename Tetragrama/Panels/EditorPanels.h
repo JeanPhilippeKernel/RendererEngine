@@ -6,30 +6,50 @@ namespace Tetragrama::Panels
 {
     using namespace ZEngine::UI;
 
-    // Full-panel background with a vertically-centered placeholder label.
+    // Full-panel background with a vertically and horizontally centered placeholder label.
+    // Pass msg=nullptr to show no label (bare background only).
     static void EmptyPanelBg(ZUIContext* ctx, const char* key, const float col[4], const char* msg)
     {
         ZUIBox* bg = ZUIBeginColumn(ctx, key, ZFill(), ZFill());
         bg->Flags  = bg->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bg, col);
         bg->EdgeSoftness = 0.f;
-        // Top fill + label + bottom fill = vertically centered
+        if (msg && msg[0])
         {
-            char fk[32];
-            snprintf(fk, 32, "##ept_%s", key);
-            ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
-            f->Size[0] = ZFill();
-            f->Size[1] = ZFill();
-            ZUIPopBox(ctx);
-        }
-        ZUILabel(ctx, msg, ctx->Theme.TextDim);
-        {
-            char fk[32];
-            snprintf(fk, 32, "##epb_%s", key);
-            ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
-            f->Size[0] = ZFill();
-            f->Size[1] = ZFill();
-            ZUIPopBox(ctx);
+            // top fill
+            {
+                char fk[48];
+                snprintf(fk, 48, "##ept_%s", key);
+                ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+                f->Size[0] = ZFill();
+                f->Size[1] = ZFill();
+                ZUIPopBox(ctx);
+            }
+            // full-width centered label
+            {
+                char lk[48];
+                snprintf(lk, 48, "##epl_%s", key);
+                uint32_t mlen     = (uint32_t) strlen(msg);
+                ZUIBox*  lbl      = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawText);
+                lbl->Size[0]      = ZFill();
+                lbl->Size[1]      = ZText();
+                lbl->TextAlign    = ZUITextAlign::Center;
+                lbl->Label        = ZUIPushStr(&ctx->FrameArena, msg, mlen);
+                lbl->TextColor[0] = ctx->Theme.TextDim[0];
+                lbl->TextColor[1] = ctx->Theme.TextDim[1];
+                lbl->TextColor[2] = ctx->Theme.TextDim[2];
+                lbl->TextColor[3] = ctx->Theme.TextDim[3];
+                ZUIPopBox(ctx);
+            }
+            // bottom fill
+            {
+                char fk[48];
+                snprintf(fk, 48, "##epb_%s", key);
+                ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+                f->Size[0] = ZFill();
+                f->Size[1] = ZFill();
+                ZUIPopBox(ctx);
+            }
         }
         ZUIEndColumn(ctx);
     }
@@ -40,10 +60,11 @@ namespace Tetragrama::Panels
         {
             Title = "Hierarchy";
         }
-        void BuildContent(ZUIContext* ctx, float rect[4]) override
+        const char* PlaceholderText = "No scene loaded"; ///< Shown when panel has no content. Set to nullptr to hide.
+        void        BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
-            EmptyPanelBg(ctx, "##hier_bg", ctx->Theme.PanelBg, "No scene loaded");
+            EmptyPanelBg(ctx, "##hier_bg", ctx->Theme.PanelBg, PlaceholderText);
         }
     };
 
@@ -53,11 +74,12 @@ namespace Tetragrama::Panels
         {
             Title = "Viewport";
         }
-        void BuildContent(ZUIContext* ctx, float rect[4]) override
+        const char* PlaceholderText = "Viewport"; ///< Shown when panel has no content. Set to nullptr to hide.
+        void        BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
             const float c[4] = {0.09f, 0.09f, 0.095f, 1.f};
-            EmptyPanelBg(ctx, "##vp_bg", c, "Viewport");
+            EmptyPanelBg(ctx, "##vp_bg", c, PlaceholderText);
         }
     };
 
@@ -67,10 +89,11 @@ namespace Tetragrama::Panels
         {
             Title = "Inspector";
         }
-        void BuildContent(ZUIContext* ctx, float rect[4]) override
+        const char* PlaceholderText = "Select an entity"; ///< Shown when panel has no content. Set to nullptr to hide.
+        void        BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
-            EmptyPanelBg(ctx, "##insp_bg", ctx->Theme.PanelBg, "Select an entity");
+            EmptyPanelBg(ctx, "##insp_bg", ctx->Theme.PanelBg, PlaceholderText);
         }
     };
 
