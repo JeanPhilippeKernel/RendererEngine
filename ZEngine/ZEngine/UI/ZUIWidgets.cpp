@@ -1531,29 +1531,40 @@ namespace ZEngine::UI
         char     btn_key[80];
         snprintf(btn_key, sizeof(btn_key), "##combo_btn_%s", key);
 
-        // Preview row: bordered box + preview text + "v" arrow
-        ZUIBox* row     = ZUIBeginRow(ctx, btn_key, w, ZPx(ZUIGetFrameHeight(ctx)));
-        row->Flags      = row->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-        row->Padding[0] = ZUIGetFramePadX(ctx); // ImGui FramePadding.x
-        row->Padding[2] = 18.f;                 // arrow (14px) + 4px right margin
+        // Preview row: label fills available space, arrow is a fixed-width flow child at the end.
+        const float kArrowW = ctx->Style.FontSize + ZUIGetFramePadX(ctx);
+        ZUIBox*     row     = ZUIBeginRow(ctx, btn_key, w, ZPx(ZUIGetFrameHeight(ctx)));
+        row->Flags          = row->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+        row->Padding[0]     = ZUIGetFramePadX(ctx);
+        row->Padding[2]     = ZUIGetFramePadX(ctx);
         ZUIBoxSetCornerRadius(row, ctx->Style.FrameRounding);
         SetBgArr(row, ctx->Theme.InputBg);
         SetBdrArr(row, ctx->Theme.InputBorder);
         row->BorderThickness = 1.f;
 
-        ZUILabel(ctx, preview_label ? preview_label : "", ctx->Theme.TextDefault);
+        // Preview label: ZFill so it expands and pushes the arrow to the right
+        {
+            char lk[96];
+            snprintf(lk, sizeof(lk), "##cbl_%s", key);
+            ZUIBox* lbl  = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawText);
+            lbl->Size[0] = ZFill();
+            lbl->Size[1] = ZFill();
+            lbl->Label   = ZUIPushStr(&ctx->FrameArena, preview_label ? preview_label : "", preview_label ? (uint32_t) strlen(preview_label) : 0u);
+            SetTextColor(lbl, ctx->Theme.TextDefault);
+            ZUIPopBox(ctx);
+        }
 
-        // Dropdown arrow — always points down
-        ZUIBox* arrow      = ZUIPushBox(ctx, "##carrow", 8, ZUI_DrawTriArrow);
-        arrow->Size[0]     = ZPx(14.f);
-        arrow->Size[1]     = ZPx(19.f);
-        arrow->Flags       = arrow->Flags | ZUI_FloatX;
-        arrow->FloatPos[0] = w.Kind == ZUISizeKind::Fill ? 0.f : -18.f;
+        // Dropdown arrow — flow child, always at the right edge
+        char arrow_key[96];
+        snprintf(arrow_key, sizeof(arrow_key), "##carrow_%s", key);
+        ZUIBox* arrow  = ZUIPushBox(ctx, arrow_key, (uint32_t) strlen(arrow_key), ZUI_DrawTriArrow);
+        arrow->Size[0] = ZPx(kArrowW);
+        arrow->Size[1] = ZFill();
         SetTextColor(arrow, ctx->Theme.TextDim);
         {
             auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
             if (ps)
-                ps->UserData = 1.f;
+                ps->UserData = 1.f; // points down
         }
         ZUIPopBox(ctx);
 
