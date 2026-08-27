@@ -559,7 +559,9 @@ namespace ZEngine::UI
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         static const float kTransMenu[4] = {0.f, 0.f, 0.f, 0.f};
         if (enabled && !kb_focus)
-            ApplyHotActive(box, ctx, kTransMenu, ctx->Theme.RowHoverBg, ctx->Theme.RowHoverBg);
+            // ImGui: ImGuiCol_HeaderHovered on hover, ImGuiCol_HeaderActive on press
+            ApplyHotActive(box, ctx, kTransMenu,
+                           ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
         ZUIPopBox(ctx);
 
         bool activated = (enabled && (sig.Flags & ZUI_SignalClicked)) ||
@@ -590,9 +592,10 @@ namespace ZEngine::UI
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
         static const float kTransCombo[4] = {0.f, 0.f, 0.f, 0.f};
+        // ImGui: HeaderHovered on hover, HeaderActive on press (same as tree rows)
         ApplyHotActive(box, ctx,
                        selected ? ctx->Theme.RowSelectedBg : kTransCombo,
-                       ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
+                       ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
         ZUIPopBox(ctx);
 
         bool activated = (sig.Flags & ZUI_SignalClicked) ||
@@ -1290,7 +1293,7 @@ namespace ZEngine::UI
         // Lerp transparent → RowHoverBg → RowSelectedBg
         if (!(selected && *selected))
             ApplyHotActive(row, ctx, kTransparent,
-                           ctx->Theme.RowHoverBg, ctx->Theme.RowSelectedBg);
+                           ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
         ZUIEndRow(ctx);
 
         bool activated = (sig.Flags & ZUI_SignalClicked) ||

@@ -31,8 +31,22 @@ namespace ZEngine::UI
 
             if (under_cursor)
             {
-                if (box->Flags & ZUI_Clickable)  { new_hot        = box->Key; }
-                if (box->Flags & ZUI_Scrollable) { new_scroll_key = box->Key; }
+                // When a popup is open, only boxes INSIDE the popup receive hover —
+                // exactly as ImGui blocks input to windows below the modal/popup stack.
+                bool can_hover = (ctx->ActivePopupKey == 0 || ctx->ActivePopupBox == nullptr);
+                if (!can_hover)
+                {
+                    for (ZUIBox* p = box; p; p = p->Parent)
+                    {
+                        if (p == ctx->ActivePopupBox) { can_hover = true; break; }
+                    }
+                }
+
+                if (can_hover)
+                {
+                    if (box->Flags & ZUI_Clickable)  { new_hot        = box->Key; }
+                    if (box->Flags & ZUI_Scrollable) { new_scroll_key = box->Key; }
+                }
             }
 
             for (ZUIBox* child = box->FirstChild; child; child = child->NextSib)
