@@ -2633,7 +2633,7 @@ namespace ZEngine::UI
                 ZUIBox* caret      = ZUIPushBox(ctx, ck, (uint32_t) strlen(ck), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 caret->Size[0]     = ZPx(1.5f);
                 caret->Size[1]     = ZPx(ZUIGetFrameHeight(ctx) - fpy * 2.f);
-                caret->FloatPos[0] = ZUIGetFramePadX(ctx) + ts[0] * font->FontScale;
+                caret->FloatPos[0] = ZUIGetFramePadX(ctx) + ts[0]; // ts[0] already in logical px (ZUIMeasureText applies FontScale)
                 caret->FloatPos[1] = fpy;
                 ZUIBoxSetColorArr(caret, ctx->Theme.TextDefault);
                 caret->EdgeSoftness = 0.f;
