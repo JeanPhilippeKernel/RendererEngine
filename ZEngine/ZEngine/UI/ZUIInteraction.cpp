@@ -50,7 +50,10 @@ namespace ZEngine::UI
             }
 
             for (ZUIBox* child = box->FirstChild; child; child = child->NextSib)
+            {
                 if (stack_top < max) { stack[stack_top++] = child; }
+                // else: subtree silently skipped (acceptable degradation, not corruption)
+            }
         }
 
         ZReleaseScratch(scratch);
@@ -61,7 +64,7 @@ namespace ZEngine::UI
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, new_scroll_key);
             if (ps)
             {
-                ps->ScrollY -= ctx->ScrollDelta * 24.f;
+                ps->ScrollY -= ctx->ScrollDelta * ctx->Style.MouseScrollSpeed;
                 if (ps->ScrollY < 0.f) ps->ScrollY = 0.f;
                 if (ps->MaxScrollY > 0.f && ps->ScrollY > ps->MaxScrollY)
                     ps->ScrollY = ps->MaxScrollY;
@@ -132,11 +135,11 @@ namespace ZEngine::UI
         ZUIPersistentState* state = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
         if (state)
         {
-            float dt         = ctx->DeltaTime > 0.f ? ctx->DeltaTime : 0.016f;
+            float dt         = ctx->DeltaTime > 0.f ? ctx->DeltaTime : (1.f / 60.f);
             float hot_target = hovered ? 1.f : 0.f;
             float act_target = active  ? 1.f : 0.f;
-            state->HotT    += (hot_target - state->HotT)    * (1.f - expf(-20.f * dt));
-            state->ActiveT += (act_target - state->ActiveT) * (1.f - expf(-30.f * dt));
+            state->HotT    += (hot_target - state->HotT)    * (1.f - expf(-ctx->Style.HoverAnimSpeed  * dt));
+            state->ActiveT += (act_target - state->ActiveT) * (1.f - expf(-ctx->Style.ActiveAnimSpeed * dt));
         }
 
         return signal;
