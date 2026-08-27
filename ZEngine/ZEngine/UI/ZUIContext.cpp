@@ -26,12 +26,13 @@ namespace ZEngine::UI
 
     void ZUIBeginFrame(ZUIContext* ctx, float dt)
     {
+        ZUIStyleUpdate(&ctx->Style);  // recompute FrameHeight = FontSize + FramePadding.y*2
         ctx->FrameArena.Clear();
         ctx->Root         = nullptr;
         ctx->Current      = nullptr;
         ctx->DeltaTime    = dt;
         ctx->Time        += dt;
-        ctx->ResizeCursor = 0; // reset each frame; BuildDividers sets it when hovering a divider
+        ctx->ResizeCursor = 0;
         // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
         // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
         // must survive until ZUIEndFrame runs the interaction pass and widget logic.
@@ -164,7 +165,8 @@ namespace ZEngine::UI
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)
     {
-        ZUIBox* box = ZPushStructCtor(&ctx->FrameArena, ZUIBox); // ctor applies default initializers (TextureIndex=0xFFFFFFFF etc.)
+        ZUIBox* box = ZPushStructCtor(&ctx->FrameArena, ZUIBox);
+        ZENGINE_VALIDATE_ASSERT(box != nullptr, "ZUI FrameArena exhausted — increase FrameArenaBytes");
         box->Flags  = flags;
 
         // split key on '##': part before is the visible label, full string hashes the key
@@ -237,7 +239,10 @@ namespace ZEngine::UI
                 return &slot->State;
             }
         }
-        return nullptr; // table full — increase StateCapacity at init
+        // Table full — widgets that dereference the returned nullptr will crash.
+        // Increase StateCapacity in ZUIContextInit.
+        ZENGINE_VALIDATE_ASSERT(false, "ZUI state table full — increase StateCapacity");
+        return nullptr;
     }
 
     ZUIStr ZUIPushStr(ArenaAllocator* arena, const char* str, uint32_t len)
@@ -258,6 +263,66 @@ namespace ZEngine::UI
             hash *= 1099511628211ULL;
         }
         return hash ? hash : 1; // 0 is reserved for empty slots
+    }
+
+    // ---------------------------------------------------------------
+    // ZUIStylePushFloat / ZUIStylePop
+    // Maps a ZUIStyleVar enum to the corresponding float in ctx->Style,
+    // saves the old value on the stack, writes the new value.
+    // ---------------------------------------------------------------
+
+    static float* StyleVarToPtr(ZUIStyle* s, ZUIStyleVar var)
+    {
+        switch (var)
+        {
+            case ZUIStyleVar_Alpha:               return &s->Alpha;
+            case ZUIStyleVar_DisabledAlpha:       return &s->DisabledAlpha;
+            case ZUIStyleVar_FramePaddingX:       return &s->FramePadding[0];
+            case ZUIStyleVar_FramePaddingY:       return &s->FramePadding[1];
+            case ZUIStyleVar_ItemSpacingX:        return &s->ItemSpacing[0];
+            case ZUIStyleVar_ItemSpacingY:        return &s->ItemSpacing[1];
+            case ZUIStyleVar_ItemInnerSpacingX:   return &s->ItemInnerSpacing[0];
+            case ZUIStyleVar_ItemInnerSpacingY:   return &s->ItemInnerSpacing[1];
+            case ZUIStyleVar_FrameRounding:       return &s->FrameRounding;
+            case ZUIStyleVar_PopupRounding:       return &s->PopupRounding;
+            case ZUIStyleVar_ScrollbarRounding:   return &s->ScrollbarRounding;
+            case ZUIStyleVar_GrabRounding:        return &s->GrabRounding;
+            case ZUIStyleVar_TabRounding:         return &s->TabRounding;
+            case ZUIStyleVar_WindowBorderSize:    return &s->WindowBorderSize;
+            case ZUIStyleVar_FrameBorderSize:     return &s->FrameBorderSize;
+            case ZUIStyleVar_PopupBorderSize:     return &s->PopupBorderSize;
+            case ZUIStyleVar_TabBarBorderSize:    return &s->TabBarBorderSize;
+            case ZUIStyleVar_TabBarOverlineSize:  return &s->TabBarOverlineSize;
+            case ZUIStyleVar_IndentSpacing:       return &s->IndentSpacing;
+            case ZUIStyleVar_ScrollbarSize:       return &s->ScrollbarSize;
+            case ZUIStyleVar_GrabMinSize:         return &s->GrabMinSize;
+            case ZUIStyleVar_DockingFocusBorderWidth: return &s->DockingFocusBorderWidth;
+            case ZUIStyleVar_HoverAnimSpeed:      return &s->HoverAnimSpeed;
+            case ZUIStyleVar_ActiveAnimSpeed:     return &s->ActiveAnimSpeed;
+            default:
+                ZENGINE_VALIDATE_ASSERT(false, "ZUIStylePushFloat: unknown ZUIStyleVar");
+                return nullptr;
+        }
+    }
+
+    void ZUIStylePushFloat(ZUIContext* ctx, ZUIStyleVar var, float val)
+    {
+        ZENGINE_VALIDATE_ASSERT(ctx->StyleStackDepth < 64, "ZUIStyle push/pop stack overflow");
+        float* ptr = StyleVarToPtr(&ctx->Style, var);
+        if (!ptr) return;
+        ctx->StyleStack[ctx->StyleStackDepth++] = { var, *ptr };
+        *ptr = val;
+        ZUIStyleUpdate(&ctx->Style); // recompute derived fields if FramePadding changed
+    }
+
+    void ZUIStylePop(ZUIContext* ctx)
+    {
+        ZENGINE_VALIDATE_ASSERT(ctx->StyleStackDepth > 0, "ZUIStyle pop with empty stack");
+        if (ctx->StyleStackDepth == 0) return;
+        const auto& entry = ctx->StyleStack[--ctx->StyleStackDepth];
+        float* ptr = StyleVarToPtr(&ctx->Style, entry.Id);
+        if (ptr) *ptr = entry.Old;
+        ZUIStyleUpdate(&ctx->Style);
     }
 
 } // namespace ZEngine::UI
