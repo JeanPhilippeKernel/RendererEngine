@@ -221,9 +221,18 @@ namespace ZEngine::UI
         manager->DockTree->Focused = nullptr;
 
         // --- Restore panel state + view assignments ---
-        // Clear all current panel view assignments
+        // Snapshot current view assignments before clearing so we can restore
+        // panels that are NOT in the ini (stale DockKey after a rename, etc.).
+        // Without this, unmatched panels end up with ViewCount=0 → invisible.
+        struct ViewSnapshot { ZUIPanelView* Views[kMaxTabsPerPanel]; uint32_t Count; };
+        ViewSnapshot snapshots[kMaxPanels];
         for (uint32_t i = 0; i < manager->PanelCount; ++i)
+        {
+            snapshots[i].Count = manager->Panels[i].ViewCount;
+            for (uint32_t v = 0; v < manager->Panels[i].ViewCount; ++v)
+                snapshots[i].Views[v] = manager->Panels[i].Views[v];
             manager->Panels[i].ViewCount = 0;
+        }
 
         for (uint32_t pi = 0; pi < panel_count; ++pi)
         {
@@ -251,6 +260,21 @@ namespace ZEngine::UI
 
             if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
                 p->ActiveTab = p->ViewCount - 1;
+        }
+
+        // Restore view assignments for panels not found in the ini (stale/renamed keys).
+        // These keep their default AddView() assignments so the editor still renders.
+        for (uint32_t i = 0; i < manager->PanelCount; ++i)
+        {
+            ZUIPanel* p = &manager->Panels[i];
+            if (p->ViewCount == 0 && snapshots[i].Count > 0)
+            {
+                p->ViewCount = snapshots[i].Count;
+                for (uint32_t v = 0; v < snapshots[i].Count; ++v)
+                    p->Views[v] = snapshots[i].Views[v];
+                // Keep Hidden=false (panel was previously visible before the ini mismatch)
+                p->Hidden = false;
+            }
         }
 
         // Collapse hidden panels
