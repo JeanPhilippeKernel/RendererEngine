@@ -22,11 +22,10 @@ namespace Tetragrama::Panels
     {
         ZEngine::UI::ZUIPanelManager Manager;
 
-        HierarchyPanel       hierarchy;
-        ViewportPanel        viewport;
-        InspectorPanel       inspector;
-        OutputPanel          output;
-        ContentBrowserPanel  content;
+        HierarchyPanel  hierarchy;
+        ViewportPanel   viewport;
+        InspectorPanel  inspector;
+        OutputPanel     output;
 
         void Initialize(Tetragrama::Layers::ZUILayer* parent,
                         cstring name       = "PanelManager",
@@ -81,24 +80,22 @@ namespace Tetragrama::Panels
 
             auto* p_out  = Manager.AddPanel(ZUIDockHashName("Output"));
             Manager.AddView(p_out, &output);
-            Manager.AddView(p_out, &content); // Content Browser tab
 
-            // Ini persistence — load saved layout (all registered views for title matching)
-            ZUIPanelView* all_views[] = {
-                &hierarchy, &viewport, &inspector, &output, &content
-            };
+            // Ini persistence — v3 format (AutoHideTabBar support)
+            // Old v2 files are intentionally incompatible — delete zui_layout.ini to start fresh.
+            ZUIPanelView* all_views[] = { &hierarchy, &viewport, &inspector, &output };
             Manager.SetLayoutPath("zui_layout.ini");
-            ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 5); // no-op if file not found
-
-            // No central node — all panels have normal chrome and are fully dockable,
-            // including the Viewport. The central-node infrastructure (SetCentralPanel)
-            // is available if a passthrough viewport is ever needed in future.
+            ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 4); // no-op if file not found or v2
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override
         {
             if (!Visible) { return; }
-            Manager.BuildUI(ctx, 26.f, 24.f);
+            // Menu bar and status bar heights from style (not hardcoded).
+            // Both use GetFrameHeight() = FontSize + FramePadding.y*2 = 19px default.
+            float menu_h   = ZEngine::UI::ZUIGetFrameHeight(ctx);
+            float status_h = ZEngine::UI::ZUIGetFrameHeight(ctx);
+            Manager.BuildUI(ctx, menu_h, status_h);
         }
     };
 
