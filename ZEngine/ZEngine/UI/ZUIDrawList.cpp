@@ -614,6 +614,16 @@ namespace ZEngine::UI
         PathStroke(dl, col, false, thickness);
     }
 
+    void ZUIDrawListAddChevronDown(ZUIDrawList* dl, float cx, float cy, float half_w, float half_h, uint32_t col, float thickness)
+    {
+        // Single connected 3-point stroke: left-tip → apex → right-tip
+        // Using +0.5 offset (pixel-centre convention, matches ImGui AddPolyline)
+        PathLineTo(dl, cx - half_w + 0.5f, cy - half_h + 0.5f); // top-left
+        PathLineTo(dl, cx + 0.5f, cy + half_h + 0.5f);          // apex (bottom)
+        PathLineTo(dl, cx + half_w + 0.5f, cy - half_h + 0.5f); // top-right
+        PathStroke(dl, col, false, thickness);
+    }
+
     void ZUIDrawListAddPolylineFilled(ZUIDrawList* dl, const float* xs, const float* ys, int n, uint32_t col)
     {
         for (int i = 0; i < n; ++i)

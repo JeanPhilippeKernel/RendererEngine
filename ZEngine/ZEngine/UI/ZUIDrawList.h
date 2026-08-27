@@ -85,6 +85,8 @@ namespace ZEngine::UI
 
     // Shape primitives
     void            ZUIDrawListAddLine(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float thickness = 1.f);
+    // Draws a VS Code-style "∨" chevron as a single connected 3-point stroke.
+    void            ZUIDrawListAddChevronDown(ZUIDrawList* dl, float cx, float cy, float half_w, float half_h, uint32_t col, float thickness = 1.5f);
 
     // Anti-aliased filled convex polygon from an array of (x,y) pairs.
     void            ZUIDrawListAddPolylineFilled(ZUIDrawList* dl, const float* xs, const float* ys, int n, uint32_t col);
