@@ -1459,7 +1459,14 @@ namespace ZEngine::UI
         ZUIPopBox(ctx);
 
         if ((sig.Flags & ZUI_SignalClicked) && enabled)
-            ZUIOpenPopup(ctx, label, ctx->MousePos[0], ctx->MousePos[1] + 2.f);
+        {
+            // ImGui: menu popup opens at button's LEFT EDGE, BOTTOM of the menu bar.
+            // Use prev-frame screen coords from persistent state (updated by layout solve).
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, btn->Key);
+            float px = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : ctx->MousePos[0];
+            float py = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : (ctx->MousePos[1] + 26.f);
+            ZUIOpenPopup(ctx, label, px, py);
+        }
 
         return ZUIBeginPopup(ctx, label);
     }
