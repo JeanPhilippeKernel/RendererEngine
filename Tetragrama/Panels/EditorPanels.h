@@ -6,6 +6,34 @@ namespace Tetragrama::Panels
 {
     using namespace ZEngine::UI;
 
+    // Full-panel background with a vertically-centered placeholder label.
+    static void EmptyPanelBg(ZUIContext* ctx, const char* key, const float col[4], const char* msg)
+    {
+        ZUIBox* bg = ZUIBeginColumn(ctx, key, ZFill(), ZFill());
+        bg->Flags  = bg->Flags | ZUI_DrawBackground;
+        ZUIBoxSetColorArr(bg, col);
+        bg->EdgeSoftness = 0.f;
+        // Top fill + label + bottom fill = vertically centered
+        {
+            char fk[32];
+            snprintf(fk, 32, "##ept_%s", key);
+            ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+            f->Size[0] = ZFill();
+            f->Size[1] = ZFill();
+            ZUIPopBox(ctx);
+        }
+        ZUILabel(ctx, msg, ctx->Theme.TextDim);
+        {
+            char fk[32];
+            snprintf(fk, 32, "##epb_%s", key);
+            ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+            f->Size[0] = ZFill();
+            f->Size[1] = ZFill();
+            ZUIPopBox(ctx);
+        }
+        ZUIEndColumn(ctx);
+    }
+
     struct HierarchyPanel : ZUIPanelView
     {
         HierarchyPanel()
@@ -15,11 +43,7 @@ namespace Tetragrama::Panels
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
-            ZUIBox* bg = ZUIBeginColumn(ctx, "##hier_bg", ZFill(), ZFill());
-            bg->Flags  = bg->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
-            bg->EdgeSoftness = 0.f;
-            ZUIEndColumn(ctx);
+            EmptyPanelBg(ctx, "##hier_bg", ctx->Theme.PanelBg, "No scene loaded");
         }
     };
 
@@ -32,11 +56,8 @@ namespace Tetragrama::Panels
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
-            ZUIBox* bg = ZUIBeginColumn(ctx, "##vp_bg", ZFill(), ZFill());
-            bg->Flags  = bg->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColor(bg, 0.09f, 0.09f, 0.095f, 1.f);
-            bg->EdgeSoftness = 0.f;
-            ZUIEndColumn(ctx);
+            const float c[4] = {0.09f, 0.09f, 0.095f, 1.f};
+            EmptyPanelBg(ctx, "##vp_bg", c, "Viewport");
         }
     };
 
@@ -49,11 +70,7 @@ namespace Tetragrama::Panels
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
-            ZUIBox* bg = ZUIBeginColumn(ctx, "##insp_bg", ZFill(), ZFill());
-            bg->Flags  = bg->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
-            bg->EdgeSoftness = 0.f;
-            ZUIEndColumn(ctx);
+            EmptyPanelBg(ctx, "##insp_bg", ctx->Theme.PanelBg, "Select an entity");
         }
     };
 

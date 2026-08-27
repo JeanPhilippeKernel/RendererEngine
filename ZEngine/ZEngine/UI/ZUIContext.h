@@ -54,6 +54,7 @@ namespace ZEngine::UI
         float RowHoverBg[4]           = {0.306f, 0.788f, 0.690f, 0.09f}; // teal 9%
         float RowSelectedBg[4]        = {0.306f, 0.788f, 0.690f, 0.22f}; // teal 22%
         float RowRootBg[4]            = {0.306f, 0.788f, 0.690f, 0.11f}; // teal 11%
+        float SelectionBg[4]          = {0.207f, 0.514f, 0.894f, 0.45f}; // text selection (VS Code blue)
 
         // --- Status bar ---
         float StatusBarBg[4]          = {0.200f, 0.627f, 0.537f, 1.00f}; // slightly dark teal

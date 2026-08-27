@@ -404,7 +404,21 @@ namespace ZEngine::UI
                     ZUIMeasureText(ctx->GetFont(ZUIFontSize::Body), title, (uint32_t) strlen(title), ts);
                     text_w = ts[0];
                 }
-                float   gw       = fmaxf(text_w + ZUIGetFramePadX(ctx) * 4.f, 120.f);
+                float gw = fmaxf(text_w + ZUIGetFramePadX(ctx) * 4.f, 120.f);
+
+                // Drop shadow — pushed first so it renders behind the ghost boxes
+                {
+                    float   sx0       = Drag.GhostX - gw * 0.3f + ctx->Style.DropShadowOffset;
+                    float   sy0       = Drag.GhostY - gh * 0.5f + ctx->Style.DropShadowOffset;
+                    ZUIBox* shad      = ZUIPushBox(ctx, "##dg_shad", 8, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                    shad->Size[0]     = ZPx(gw);
+                    shad->Size[1]     = ZPx(gh + ghost_cnt_h);
+                    shad->FloatPos[0] = sx0;
+                    shad->FloatPos[1] = sy0;
+                    ZUIBoxSetColor(shad, 0.f, 0.f, 0.f, ctx->Style.DropShadowAlpha);
+                    shad->EdgeSoftness = 4.f;
+                    ZUIPopBox(ctx);
+                }
 
                 // Content box first (lower z-order):
                 ZUIBox* cnt      = ZUIPushBox(ctx, "##dg_cnt", 7, ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
@@ -1032,6 +1046,72 @@ namespace ZEngine::UI
         }
 
         // Bar signal — drag empty space = whole-panel drag
+        // Scroll arrows — appear when tabs overflow the bar width.
+        // Floated children of the bar so they pin to bar edges regardless of ScrollX.
+        {
+            ZUIPersistentState* bps = ZUIStateGetOrInsert(&ctx->StateStore, bar->Key);
+            if (bps && bps->MaxScrollX > 1.f)
+            {
+                float        bar_w   = rect[2] - rect[0];
+                float        arrow_w = tab_h; // square arrow button
+                const float* dim     = ctx->Theme.TextDim;
+
+                // Left arrow
+                if (bps->ScrollX > 0.5f)
+                {
+                    char lk[64];
+                    snprintf(lk, sizeof(lk), "##tsl_%llx", (unsigned long long) p->DockKey);
+                    ZUIBox* la      = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                    la->Size[0]     = ZPx(arrow_w);
+                    la->Size[1]     = ZPx(tab_h);
+                    la->FloatPos[0] = 0.f;
+                    la->FloatPos[1] = 0.f;
+                    la->TextAlign   = ZUITextAlign::Center;
+                    ZUIBoxSetColorArr(la, ctx->Theme.TitleBgActive);
+                    la->Label        = ZUIPushStr(&ctx->FrameArena, "<", 1);
+                    la->TextColor[0] = dim[0];
+                    la->TextColor[1] = dim[1];
+                    la->TextColor[2] = dim[2];
+                    la->TextColor[3] = 1.f;
+                    ZUISignal lsig   = ZUISignalFromBox(ctx, la);
+                    ZUIPopBox(ctx);
+                    if (lsig.Flags & ZUI_SignalClicked)
+                    {
+                        bps->ScrollX -= tab_h * 3.f;
+                        if (bps->ScrollX < 0.f)
+                            bps->ScrollX = 0.f;
+                    }
+                }
+
+                // Right arrow
+                if (bps->ScrollX < bps->MaxScrollX - 0.5f)
+                {
+                    char rk[64];
+                    snprintf(rk, sizeof(rk), "##tsr_%llx", (unsigned long long) p->DockKey);
+                    ZUIBox* ra      = ZUIPushBox(ctx, rk, (uint32_t) strlen(rk), ZUI_DrawBackground | ZUI_DrawText | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                    ra->Size[0]     = ZPx(arrow_w);
+                    ra->Size[1]     = ZPx(tab_h);
+                    ra->FloatPos[0] = bar_w - arrow_w;
+                    ra->FloatPos[1] = 0.f;
+                    ra->TextAlign   = ZUITextAlign::Center;
+                    ZUIBoxSetColorArr(ra, ctx->Theme.TitleBgActive);
+                    ra->Label        = ZUIPushStr(&ctx->FrameArena, ">", 1);
+                    ra->TextColor[0] = dim[0];
+                    ra->TextColor[1] = dim[1];
+                    ra->TextColor[2] = dim[2];
+                    ra->TextColor[3] = 1.f;
+                    ZUISignal rsig   = ZUISignalFromBox(ctx, ra);
+                    ZUIPopBox(ctx);
+                    if (rsig.Flags & ZUI_SignalClicked)
+                    {
+                        bps->ScrollX += tab_h * 3.f;
+                        if (bps->ScrollX > bps->MaxScrollX)
+                            bps->ScrollX = bps->MaxScrollX;
+                    }
+                }
+            }
+        }
+
         ZUISignal bar_sig = ZUISignalFromBox(ctx, bar);
         if (bar_sig.Flags & ZUI_SignalPressed)
         {
@@ -1283,14 +1363,34 @@ namespace ZEngine::UI
 
             if (highlight)
             {
+                // Full-span tinted band — wider than the grab strip so it's easy to see and grab.
+                // Band is 12 px wide centered on the divider line (vs 6 px grab area).
+                const float band_w = 12.f;
+                float       bx0, by0, bx1, by1;
+                if (!horizontal)
+                {
+                    float cx = (dx0 + dx1) * 0.5f;
+                    bx0      = cx - band_w * 0.5f;
+                    by0      = dy0;
+                    bx1      = cx + band_w * 0.5f;
+                    by1      = dy1;
+                }
+                else
+                {
+                    float cy = (dy0 + dy1) * 0.5f;
+                    bx0      = dx0;
+                    by0      = cy - band_w * 0.5f;
+                    bx1      = dx1;
+                    by1      = cy + band_w * 0.5f;
+                }
                 char hk[32];
                 snprintf(hk, sizeof(hk), "##sdivh_%u", di);
                 ZUIBox* ha      = ZUIPushBox(ctx, hk, (uint32_t) strlen(hk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                ha->Size[0]     = ZPx(dx1 - dx0);
-                ha->Size[1]     = ZPx(dy1 - dy0);
-                ha->FloatPos[0] = dx0;
-                ha->FloatPos[1] = dy0;
-                ZUIBoxSetColor(ha, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 0.25f);
+                ha->Size[0]     = ZPx(bx1 - bx0);
+                ha->Size[1]     = ZPx(by1 - by0);
+                ha->FloatPos[0] = bx0;
+                ha->FloatPos[1] = by0;
+                ZUIBoxSetColor(ha, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], dragging ? 0.35f : 0.18f);
                 ha->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
             }

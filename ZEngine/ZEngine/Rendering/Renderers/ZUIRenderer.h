@@ -34,7 +34,7 @@ namespace ZEngine::Rendering::Renderers
         float    Scale[2]     = {};
         float    Translate[2] = {};
         uint32_t TexIdx       = 0;
-        uint32_t _pad         = 0;
+        float    FbScale      = 1.f; // matches uFbScale in zui_draw.vert
     };
 
     struct ZUIRenderer : public IRenderer

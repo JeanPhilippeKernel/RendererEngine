@@ -546,6 +546,7 @@ namespace ZEngine::Rendering::Renderers
                 pc.Translate[0]        = payload.Translate[0];
                 pc.Translate[1]        = payload.Translate[1];
                 pc.TexIdx              = cmd.TexIdx;
+                pc.FbScale             = payload.FramebufferScale;
 
                 secondary_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ZUIDrawPushConstant), &pc);
                 secondary_cb->BindDescriptorSets(frame_index);

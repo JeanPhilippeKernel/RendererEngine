@@ -2614,21 +2614,35 @@ namespace ZEngine::UI
                     sb->Size[1]     = ZPx(ZUIGetFrameHeight(ctx) - fpy * 2.f);
                     sb->FloatPos[0] = ZUIGetFramePadX(ctx) + before_w;
                     sb->FloatPos[1] = fpy;
-                    ZUIBoxSetColor(sb, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 0.35f);
+                    ZUIBoxSetColorArr(sb, ctx->Theme.SelectionBg);
                     sb->EdgeSoftness = 0.f;
                     ZUIPopBox(ctx);
                 }
             }
 
-            // Cursor + text label on field
-            char display[512];
-            bool show_pipe = !has_sel() && (fmodf(ctx->Time, ctx->Style.CursorBlinkRate) < ctx->Style.CursorBlinkRate * 0.5f);
-            if (show_pipe)
-                snprintf(display, sizeof(display), "%.*s|%s", cpos, buf, buf + cpos);
-            else
-                snprintf(display, sizeof(display), "%s", buf);
-            uint32_t dlen = (uint32_t) Helpers::secure_strlen(display);
-            field->Label  = ZUIPushStr(&ctx->FrameArena, display, dlen);
+            // Cursor caret — 1.5 px drawn rect at the cursor X position (no |
+            // embedded in text, so character advance doesn't shift the layout)
+            bool show_caret = !has_sel() && (fmodf(ctx->Time, ctx->Style.CursorBlinkRate) < ctx->Style.CursorBlinkRate * 0.5f);
+            if (show_caret && font)
+            {
+                float ts[2] = {};
+                ZUIMeasureText(font, buf, cpos, ts);
+                float fpy = ZUIGetFramePadY(ctx);
+                char  ck[80];
+                snprintf(ck, sizeof(ck), "##fcaret_%s", key);
+                ZUIBox* caret      = ZUIPushBox(ctx, ck, (uint32_t) strlen(ck), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                caret->Size[0]     = ZPx(1.5f);
+                caret->Size[1]     = ZPx(ZUIGetFrameHeight(ctx) - fpy * 2.f);
+                caret->FloatPos[0] = ZUIGetFramePadX(ctx) + ts[0] * font->FontScale;
+                caret->FloatPos[1] = fpy;
+                ZUIBoxSetColorArr(caret, ctx->Theme.TextDefault);
+                caret->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
+
+            // Text label (cursor no longer embedded)
+            uint32_t dlen = (uint32_t) Helpers::secure_strlen(buf);
+            field->Label  = ZUIPushStr(&ctx->FrameArena, buf, dlen);
         }
         else
         {

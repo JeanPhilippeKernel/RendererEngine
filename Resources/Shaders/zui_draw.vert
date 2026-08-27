@@ -6,22 +6,27 @@ layout(location = 2) in vec4 aColor; // RGBA8 UNORM — hardware unpacks packed 
 
 layout(push_constant) uniform PC
 {
-    vec2 uScale;
-    vec2 uTranslate;
-    uint uTexIdx;
-    uint _pad;
+    vec2  uScale;
+    vec2  uTranslate;
+    uint  uTexIdx;
+    float uFbScale; // UIScale = fb/win; snaps vertices to nearest physical pixel
 }
 pc;
 
 layout(location = 0) out struct
 {
     vec4 Color;
-    vec4 TexData; // xy=UV, z=texIdx (matches imgui.vert convention)
+    vec4 TexData; // xy=UV, z=texIdx
 } Out;
 
 void main()
 {
-    Out.Color   = aColor;
-    Out.TexData = vec4(aUV, float(pc.uTexIdx), 0.0);
-    gl_Position = vec4(aPos * pc.uScale + pc.uTranslate, 0.0, 1.0);
+    Out.Color     = aColor;
+    Out.TexData   = vec4(aUV, float(pc.uTexIdx), 0.0);
+
+    // Snap to the nearest physical pixel before projecting.
+    // Prevents sub-pixel drift that blurs glyph quads on non-Retina displays.
+    float fs      = max(pc.uFbScale, 1.0);
+    vec2  snapped = round(aPos * fs) / fs;
+    gl_Position   = vec4(snapped * pc.uScale + pc.uTranslate, 0.0, 1.0);
 }
