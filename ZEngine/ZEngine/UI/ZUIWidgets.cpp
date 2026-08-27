@@ -557,11 +557,16 @@ namespace ZEngine::UI
         if (enabled) ctx->PopupBuildIdx++; // disabled items are invisible to keyboard nav
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
-        static const float kTransMenu[4] = {0.f, 0.f, 0.f, 0.f};
+
+        // ImGui uses INSTANT color switch (no lerp) for menu items.
+        // Reading ctx->HotKey / ctx->ActiveKey directly matches that behaviour.
         if (enabled && !kb_focus)
-            // ImGui: ImGuiCol_HeaderHovered on hover, ImGuiCol_HeaderActive on press
-            ApplyHotActive(box, ctx, kTransMenu,
-                           ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
+        {
+            bool is_hot    = (ctx->HotKey    == box->Key);
+            bool is_active = (ctx->ActiveKey == box->Key);
+            if      (is_active) ZUIBoxSetColorArr(box, ctx->Theme.HeaderActiveBg);
+            else if (is_hot)    ZUIBoxSetColorArr(box, ctx->Theme.HeaderHoveredBg);
+        }
         ZUIPopBox(ctx);
 
         bool activated = (enabled && (sig.Flags & ZUI_SignalClicked)) ||
@@ -591,11 +596,15 @@ namespace ZEngine::UI
         ctx->PopupBuildIdx++;
 
         ZUISignal sig = ZUISignalFromBox(ctx, box);
-        static const float kTransCombo[4] = {0.f, 0.f, 0.f, 0.f};
-        // ImGui: HeaderHovered on hover, HeaderActive on press (same as tree rows)
-        ApplyHotActive(box, ctx,
-                       selected ? ctx->Theme.RowSelectedBg : kTransCombo,
-                       ctx->Theme.HeaderHoveredBg, ctx->Theme.HeaderActiveBg);
+        // Instant hover (no lerp) — matching ImGui's popup item behaviour
+        if (!kb_focus)
+        {
+            bool is_hot    = (ctx->HotKey    == box->Key);
+            bool is_active = (ctx->ActiveKey == box->Key);
+            if      (is_active) ZUIBoxSetColorArr(box, ctx->Theme.HeaderActiveBg);
+            else if (is_hot)    ZUIBoxSetColorArr(box, ctx->Theme.HeaderHoveredBg);
+            else if (selected)  ZUIBoxSetColorArr(box, ctx->Theme.RowSelectedBg);
+        }
         ZUIPopBox(ctx);
 
         bool activated = (sig.Flags & ZUI_SignalClicked) ||

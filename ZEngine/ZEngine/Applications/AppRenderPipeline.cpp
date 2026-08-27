@@ -80,7 +80,7 @@ namespace ZEngine::Applications
         // ZPushStructCtor calls placement-new → default member initializers apply
         // (ZPushStruct only zero-fills, so ZUITheme colours would all be 0).
         ZUICtx = ZPushStructCtor(&LocalArena, ZEngine::UI::ZUIContext);
-        ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(4), ZMega(1), 4096, 4096);
+        ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(8), ZMega(2), 8192, 8192);
         for (int i = 0; i < 3; ++i)
         {
             LocalArena.CreateSubArena(ZMega(4), &ZUIPayloadArenas[i]);

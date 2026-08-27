@@ -41,8 +41,8 @@ namespace ZEngine::UI
         // Input interactive states
         float InputHoveredBg[4]   = {0.216f,0.216f,0.259f,1.00f}; // #373742
         float InputActiveBg[4]    = {0.216f,0.216f,0.259f,1.00f}; // same
-        float HeaderHoveredBg[4]  = {0.306f,0.788f,0.690f,0.28f}; // teal 28%
-        float HeaderActiveBg[4]   = {0.306f,0.788f,0.690f,0.45f}; // teal 45%
+        float HeaderHoveredBg[4]  = {0.306f,0.788f,0.690f,0.50f}; // teal 50% — ImGui ~0.80
+        float HeaderActiveBg[4]   = {0.306f,0.788f,0.690f,0.70f}; // teal 70%
 
         // --- Tabs ---
         float TabActiveBg[4]       = {0.102f,0.102f,0.125f,1.00f}; // PanelBg (active tab merges)
