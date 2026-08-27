@@ -628,7 +628,8 @@ namespace ZEngine::UI
             (void)should_close;
         }
 
-        // Content — apply WindowPadding
+        // Content — no WindowPadding for docked panels (editor panels fill edge-to-edge).
+        // WindowPadding will be applied when floating windows are implemented.
         ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
         if (view)
         {
@@ -636,10 +637,10 @@ namespace ZEngine::UI
             content->Flags  = content->Flags | ZUI_ClipChildren;
             content->EdgeSoftness = 0.f;
             float cr[4] = {
-                rect[0] + ctx->Style.WindowPadding[0],
-                rect[1] + header_h + ctx->Style.WindowPadding[1],
-                rect[2] - ctx->Style.WindowPadding[0],
-                rect[3] - ctx->Style.WindowPadding[1]
+                rect[0],
+                rect[1] + header_h,
+                rect[2],
+                rect[3]
             };
             view->BuildContent(ctx, cr);
             ZUIEndColumn(ctx);
