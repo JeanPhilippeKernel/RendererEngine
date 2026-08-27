@@ -152,7 +152,6 @@ namespace ZEngine::UI
 
         if (DockTree)
         {
-            ZUIDockAnimate(DockTree, ctx->DeltaTime);  // advance split animations
             float root_rect[4] = { 0.f, menu_h, sw, sh - status_h };
             ZUIDockLayout(DockTree, root_rect);
             SyncSplitDividers();

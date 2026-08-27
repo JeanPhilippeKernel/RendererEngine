@@ -79,13 +79,8 @@ namespace ZEngine::UI
 
         auto* left  = AllocNode(tree);
         auto* right = AllocNode(tree);
-        // Animation: left child opens from 1% to target; right derives from 1-left.
-        left->PctOfParent  = 0.01f;    // start nearly closed
-        left->TargetPct    = left_pct;
-        left->AnimT        = 0.f;      // kick off ease-out cubic animation
-        right->PctOfParent = 0.99f;    // complement at t=0
-        right->TargetPct   = 0.f;      // driven by sibling sync, not independent animation
-        right->AnimT       = -1.f;     // idle
+        left->PctOfParent  = left_pct;
+        right->PctOfParent = 1.f - left_pct;
         left->ContentKey   = left_key;
         right->ContentKey  = right_key;
 
@@ -103,12 +98,8 @@ namespace ZEngine::UI
 
         auto* top = AllocNode(tree);
         auto* bot = AllocNode(tree);
-        top->PctOfParent = 0.01f;
-        top->TargetPct   = top_pct;
-        top->AnimT       = 0.f;
-        bot->PctOfParent = 0.99f;
-        bot->TargetPct   = 0.f;
-        bot->AnimT       = -1.f;
+        top->PctOfParent = top_pct;
+        bot->PctOfParent = 1.f - top_pct;
         top->ContentKey  = top_key;
         bot->ContentKey  = bot_key;
 
