@@ -172,9 +172,9 @@ namespace ZEngine::UI
     // color[4] in linear [0,1]. Returns true when changed.
     bool ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4]);
 
-    // Animated loading arc. radius_px = visual size.
+    // Animated loading arc. radius_px = visual size. speed = animation frequency (rad/s).
     // Driven by ctx->Time — call every frame while loading.
-    void ZUISpinner(ZUIContext* ctx, const char* key, float radius_px = 10.f);
+    void ZUISpinner(ZUIContext* ctx, const char* key, float radius_px = 10.f, float speed = 5.f);
 
     // ---------------------------------------------------------------
     // Popup / overlay system
