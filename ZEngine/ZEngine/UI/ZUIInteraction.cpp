@@ -5,27 +5,34 @@ namespace ZEngine::UI
 {
     static bool PointInBox(const float pt[2], const ZUIBox* box)
     {
-        return pt[0] >= box->ScreenMin[0] && pt[0] <= box->ScreenMax[0] &&
-               pt[1] >= box->ScreenMin[1] && pt[1] <= box->ScreenMax[1];
+        return pt[0] >= box->ScreenMin[0] && pt[0] <= box->ScreenMax[0] && pt[1] >= box->ScreenMin[1] && pt[1] <= box->ScreenMax[1];
     }
 
     void ZUIInteractionPass(ZUIContext* ctx)
     {
-        if (!ctx->Root) { ctx->HotKey = 0; return; }
+        if (!ctx->Root)
+        {
+            ctx->HotKey = 0;
+            return;
+        }
 
-        uint32_t max       = ctx->MaxBoxesPerFrame;
-        auto     scratch   = ZGetScratch(&ctx->FrameArena);
-        ZUIBox** stack     = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
-        uint32_t stack_top = 0;
+        uint32_t max             = ctx->MaxBoxesPerFrame;
+        auto     scratch         = ZGetScratch(&ctx->FrameArena);
+        ZUIBox** stack           = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
+        uint32_t stack_top       = 0;
 
-        uint64_t new_hot        = 0;
-        uint64_t new_scroll_key = 0; // nearest scrollable box under cursor
+        uint64_t new_hot         = 0;
+        uint64_t new_scroll_key  = 0;
+        ZUIAxis  new_scroll_axis = ZUIAxis::Y; // axis of the nearest scrollable box
 
-        stack[stack_top++] = ctx->Root;
+        stack[stack_top++]       = ctx->Root;
         while (stack_top > 0)
         {
             ZUIBox* box = stack[--stack_top];
-            if (!box) { continue; }
+            if (!box)
+            {
+                continue;
+            }
 
             bool under_cursor = PointInBox(ctx->MousePos, box);
 
@@ -38,36 +45,62 @@ namespace ZEngine::UI
                 {
                     for (ZUIBox* p = box; p; p = p->Parent)
                     {
-                        if (p == ctx->ActivePopupBox) { can_hover = true; break; }
+                        if (p == ctx->ActivePopupBox)
+                        {
+                            can_hover = true;
+                            break;
+                        }
                     }
                 }
 
                 if (can_hover)
                 {
-                    if (box->Flags & ZUI_Clickable)  { new_hot        = box->Key; }
-                    if (box->Flags & ZUI_Scrollable) { new_scroll_key = box->Key; }
+                    if (box->Flags & ZUI_Clickable)
+                    {
+                        new_hot = box->Key;
+                    }
+                    if (box->Flags & ZUI_Scrollable)
+                    {
+                        new_scroll_key  = box->Key;
+                        new_scroll_axis = box->LayoutAxis;
+                    }
                 }
             }
 
             for (ZUIBox* child = box->FirstChild; child; child = child->NextSib)
             {
-                if (stack_top < max) { stack[stack_top++] = child; }
+                if (stack_top < max)
+                {
+                    stack[stack_top++] = child;
+                }
                 // else: subtree silently skipped (acceptable degradation, not corruption)
             }
         }
 
         ZReleaseScratch(scratch);
 
-        // Scroll: update persistent ScrollY for the nearest scrollable box under cursor
+        // Scroll: update ScrollX or ScrollY depending on the scrollable box's layout axis
         if (ctx->ScrollDelta != 0.f && new_scroll_key != 0)
         {
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, new_scroll_key);
             if (ps)
             {
-                ps->ScrollY -= ctx->ScrollDelta * ctx->Style.MouseScrollSpeed;
-                if (ps->ScrollY < 0.f) ps->ScrollY = 0.f;
-                if (ps->MaxScrollY > 0.f && ps->ScrollY > ps->MaxScrollY)
-                    ps->ScrollY = ps->MaxScrollY;
+                if (new_scroll_axis == ZUIAxis::X)
+                {
+                    ps->ScrollX -= ctx->ScrollDelta * ctx->Style.MouseScrollSpeed;
+                    if (ps->ScrollX < 0.f)
+                        ps->ScrollX = 0.f;
+                    if (ps->MaxScrollX > 0.f && ps->ScrollX > ps->MaxScrollX)
+                        ps->ScrollX = ps->MaxScrollX;
+                }
+                else
+                {
+                    ps->ScrollY -= ctx->ScrollDelta * ctx->Style.MouseScrollSpeed;
+                    if (ps->ScrollY < 0.f)
+                        ps->ScrollY = 0.f;
+                    if (ps->MaxScrollY > 0.f && ps->ScrollY > ps->MaxScrollY)
+                        ps->ScrollY = ps->MaxScrollY;
+                }
             }
         }
 
@@ -82,9 +115,15 @@ namespace ZEngine::UI
         }
 
         // Hot / active
-        if (!ctx->MouseDown[0]) { ctx->HotKey = new_hot; }
+        if (!ctx->MouseDown[0])
+        {
+            ctx->HotKey = new_hot;
+        }
 
-        if (ctx->MousePressed[0] && ctx->HotKey)  { ctx->ActiveKey = ctx->HotKey; }
+        if (ctx->MousePressed[0] && ctx->HotKey)
+        {
+            ctx->ActiveKey = ctx->HotKey;
+        }
         if (ctx->MouseReleased[0])
         {
             if (ctx->DragSourceKey != 0)
@@ -100,20 +139,29 @@ namespace ZEngine::UI
 
     ZUISignal ZUISignalFromBox(ZUIContext* ctx, ZUIBox* box)
     {
-        ZUISignal signal = {};
+        ZUISignal signal  = {};
 
-        bool hovered = (ctx->HotKey    == box->Key);
-        bool active  = (ctx->ActiveKey == box->Key);
+        bool      hovered = (ctx->HotKey == box->Key);
+        bool      active  = (ctx->ActiveKey == box->Key);
 
-        if (hovered)                                     { signal.Flags |= ZUI_SignalHovered; }
+        if (hovered)
+        {
+            signal.Flags |= ZUI_SignalHovered;
+        }
         if (active && ctx->MouseDown[0])
         {
             signal.Flags        |= ZUI_SignalHeld;
             signal.DragDelta[0]  = ctx->MousePos[0] - ctx->PrevMousePos[0];
             signal.DragDelta[1]  = ctx->MousePos[1] - ctx->PrevMousePos[1];
         }
-        if (ctx->MousePressed[0]  && hovered)            { signal.Flags |= ZUI_SignalPressed; }
-        if (ctx->MouseReleased[0] && active && hovered)  { signal.Flags |= ZUI_SignalClicked | ZUI_SignalReleased; }
+        if (ctx->MousePressed[0] && hovered)
+        {
+            signal.Flags |= ZUI_SignalPressed;
+        }
+        if (ctx->MouseReleased[0] && active && hovered)
+        {
+            signal.Flags |= ZUI_SignalClicked | ZUI_SignalReleased;
+        }
         if (ctx->ScrollDelta != 0.f && hovered)
         {
             signal.Flags       |= ZUI_SignalScrolled;
@@ -124,10 +172,14 @@ namespace ZEngine::UI
         if ((ctx->TabPressed || ctx->ShiftTabPressed) && (box->Flags & ZUI_Clickable))
         {
             uint64_t k = box->Key;
-            if (ctx->TabNavFirstKey == 0)                    ctx->TabNavFirstKey = k;
-            if (!ctx->TabNavSeenFocus)                       ctx->TabNavPrevKey  = k;
-            if (ctx->TabNavSeenFocus && !ctx->TabNavNextKey) ctx->TabNavNextKey  = k;
-            if (k == ctx->FocusKey)                          ctx->TabNavSeenFocus = true;
+            if (ctx->TabNavFirstKey == 0)
+                ctx->TabNavFirstKey = k;
+            if (!ctx->TabNavSeenFocus)
+                ctx->TabNavPrevKey = k;
+            if (ctx->TabNavSeenFocus && !ctx->TabNavNextKey)
+                ctx->TabNavNextKey = k;
+            if (k == ctx->FocusKey)
+                ctx->TabNavSeenFocus = true;
             ctx->TabNavLastKey = k;
         }
 
@@ -135,11 +187,11 @@ namespace ZEngine::UI
         ZUIPersistentState* state = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
         if (state)
         {
-            float dt         = ctx->DeltaTime > 0.f ? ctx->DeltaTime : (1.f / 60.f);
-            float hot_target = hovered ? 1.f : 0.f;
-            float act_target = active  ? 1.f : 0.f;
-            state->HotT    += (hot_target - state->HotT)    * (1.f - expf(-ctx->Style.HoverAnimSpeed  * dt));
-            state->ActiveT += (act_target - state->ActiveT) * (1.f - expf(-ctx->Style.ActiveAnimSpeed * dt));
+            float dt          = ctx->DeltaTime > 0.f ? ctx->DeltaTime : (1.f / 60.f);
+            float hot_target  = hovered ? 1.f : 0.f;
+            float act_target  = active ? 1.f : 0.f;
+            state->HotT      += (hot_target - state->HotT) * (1.f - expf(-ctx->Style.HoverAnimSpeed * dt));
+            state->ActiveT   += (act_target - state->ActiveT) * (1.f - expf(-ctx->Style.ActiveAnimSpeed * dt));
         }
 
         return signal;

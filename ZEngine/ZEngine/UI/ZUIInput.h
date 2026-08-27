@@ -6,7 +6,6 @@ namespace ZEngine::UI
 {
     struct ZUIContext;
 
-    // ---------------------------------------------------------------
     // ZUI Input Feed API
     //
     // Callers (e.g. Editor::ProcessEvent) translate their native event
@@ -19,7 +18,6 @@ namespace ZEngine::UI
     //   3. ZUIBeginFrame(ctx, dt)          — ZUI frame starts
     //   4. (build UI)
     //   5. ZUIEndFrame(ctx)
-    // ---------------------------------------------------------------
 
     // Must be called once before feeding events, before ZUIBeginFrame.
     // Clears MousePressed[], MouseReleased[], TextInput, ScrollDelta.
@@ -39,7 +37,6 @@ namespace ZEngine::UI
 
     // Key press or release. Modifier flags are the current state when the
     // key event fires (not just the modifier keys themselves).
-    void ZUIFeedKey(ZUIContext* ctx, ZUIKey key, bool pressed,
-                    bool ctrl, bool shift, bool alt);
+    void ZUIFeedKey(ZUIContext* ctx, ZUIKey key, bool pressed, bool ctrl, bool shift, bool alt);
 
 } // namespace ZEngine::UI

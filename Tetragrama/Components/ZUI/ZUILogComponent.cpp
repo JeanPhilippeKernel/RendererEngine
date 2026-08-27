@@ -13,8 +13,7 @@ namespace Tetragrama::Components
             ZEngine::Logging::Logger::RemoveEventHandler(m_cookie);
     }
 
-    void ZUILogComponent::Initialize(Tetragrama::Layers::ZUILayer* parent,
-                                     cstring name, bool visibility)
+    void ZUILogComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
     {
         ParentLayer = parent;
         Name        = name;
@@ -24,7 +23,7 @@ namespace Tetragrama::Components
 
     void ZUILogComponent::OnLogEntry(void* user, const ZEngine::Logging::LogMessage& msg)
     {
-        auto* self = static_cast<ZUILogComponent*>(user);
+        auto*    self = static_cast<ZUILogComponent*>(user);
         LogEntry e;
         secure_strncpy(e.Text, sizeof(e.Text), msg.Message ? msg.Message : "", sizeof(e.Text) - 1);
         e.Color[0] = msg.Color[0];
@@ -47,73 +46,84 @@ namespace Tetragrama::Components
 
     void ZUILogComponent::BuildUI(ZEngine::UI::ZUIContext* ctx)
     {
-        if (!Visible) { return; }
+        if (!Visible)
+        {
+            return;
+        }
 
         float sx = RegionW > 0 ? RegionX : 20.f;
         float sy = RegionW > 0 ? RegionY : 500.f;
         float sw = RegionW > 0 ? RegionW : kPanelW;
         float sh = RegionW > 0 ? RegionH : kPanelH;
 
-        if (RegionW == 0) { RegionX = sx; RegionY = sy; RegionW = sw; RegionH = sh; }
-        ZUIBox* panel    = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(RegionW), ZPx(RegionH));
-        panel->Flags = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
+        if (RegionW == 0)
+        {
+            RegionX = sx;
+            RegionY = sy;
+            RegionW = sw;
+            RegionH = sh;
+        }
+        ZUIBox* panel      = ZUIBeginColumn(ctx, "##zui_log_panel", ZPx(RegionW), ZPx(RegionH));
+        panel->Flags       = panel->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         panel->FloatPos[0] = RegionX;
         panel->FloatPos[1] = RegionY;
         ZUIBoxSetColorArr(panel, ctx->Theme.PanelBg);
-        panel->BorderColor[0] = ctx->Theme.PanelBorder[0];
-        panel->BorderColor[1] = ctx->Theme.PanelBorder[1];
-        panel->BorderColor[2] = ctx->Theme.PanelBorder[2];
-        panel->BorderColor[3] = ctx->Theme.PanelBorder[3];
-        panel->BorderColor[3] = 1.0f;
+        panel->BorderColor[0]  = ctx->Theme.PanelBorder[0];
+        panel->BorderColor[1]  = ctx->Theme.PanelBorder[1];
+        panel->BorderColor[2]  = ctx->Theme.PanelBorder[2];
+        panel->BorderColor[3]  = ctx->Theme.PanelBorder[3];
+        panel->BorderColor[3]  = 1.0f;
         panel->BorderThickness = 1.f;
         panel->EdgeSoftness    = 0.f;
 
         // --- Header row — draggable ---
-        ZUIBox* hdr = ZUIBeginRow(ctx, "##log_header", ZFill(), ZSPx(ctx, 28.f));
-        hdr->Flags  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        ZUIBox* hdr            = ZUIBeginRow(ctx, "##log_header", ZFill(), ZSPx(ctx, 28.f));
+        hdr->Flags             = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
         ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
-            ZUISpacer(ctx, 6.f);
-            ZUILabel(ctx, Name ? Name : "Console", ctx->Theme.TextDefault);
-            ZUISpacer(ctx, 8.f);
-            ZUISignal clear_sig = ZUIButton(ctx, "Clear##log");
-            ZUISignal drag_sig  = ZUISignalFromBox(ctx, hdr);
+        ZUISpacer(ctx, 6.f);
+        ZUILabel(ctx, Name ? Name : "Console", ctx->Theme.TextDefault);
+        ZUISpacer(ctx, 8.f);
+        ZUISignal clear_sig = ZUIButton(ctx, "Clear##log");
+        ZUISignal drag_sig  = ZUISignalFromBox(ctx, hdr);
         ZUIEndRow(ctx);
-        if ((drag_sig.Flags & ZUI_SignalHeld) &&
-            (drag_sig.DragDelta[0] != 0.f || drag_sig.DragDelta[1] != 0.f))
+        if ((drag_sig.Flags & ZUI_SignalHeld) && (drag_sig.DragDelta[0] != 0.f || drag_sig.DragDelta[1] != 0.f))
         {
-            RegionX += drag_sig.DragDelta[0];
-            RegionY += drag_sig.DragDelta[1];
-            Detached = true;
-            panel->FloatPos[0] = RegionX;
-            panel->FloatPos[1] = RegionY;
+            RegionX            += drag_sig.DragDelta[0];
+            RegionY            += drag_sig.DragDelta[1];
+            Detached            = true;
+            panel->FloatPos[0]  = RegionX;
+            panel->FloatPos[1]  = RegionY;
         }
-        if (drag_sig.Flags & ZUI_SignalDoubleClicked) { Detached = false; }
+        if (drag_sig.Flags & ZUI_SignalDoubleClicked)
+        {
+            Detached = false;
+        }
 
         ZUISeparator(ctx);
 
         // --- Search + level filter toolbar ---
         static const char* kLevelLabels[6] = {"Trace", "Info", "Warn", "Error", "Critical", "All"};
         ZUIBeginRow(ctx, "##log_toolbar", ZFill(), ZSPx(ctx, 24.f));
-            ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 4.f);
-            ZUITextField(ctx, "##log_search", m_search_buf, sizeof(m_search_buf), 160.f);
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Level:", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 4.f);
-            if (ZUIBeginCombo(ctx, "##log_lvl", kLevelLabels[m_filter_level], ZEngine::UI::ZPx(90.f)))
+        ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
+        ZUISpacer(ctx, 4.f);
+        ZUITextField(ctx, "##log_search", m_search_buf, sizeof(m_search_buf), 160.f);
+        ZUISpacer(ctx, 8.f);
+        ZUILabel(ctx, "Level:", ctx->Theme.TextDim);
+        ZUISpacer(ctx, 4.f);
+        if (ZUIBeginCombo(ctx, "##log_lvl", kLevelLabels[m_filter_level], ZEngine::UI::ZPx(90.f)))
+        {
+            for (int lvl = 0; lvl < 6; ++lvl)
             {
-                for (int lvl = 0; lvl < 6; ++lvl)
-                {
-                    bool sel = (m_filter_level == lvl);
-                    if (ZUIComboItem(ctx, kLevelLabels[lvl], sel))
-                        m_filter_level = lvl;
-                }
-                ZUIEndCombo(ctx);
+                bool sel = (m_filter_level == lvl);
+                if (ZUIComboItem(ctx, kLevelLabels[lvl], sel))
+                    m_filter_level = lvl;
             }
+            ZUIEndCombo(ctx);
+        }
         ZUIEndRow(ctx);
 
         // --- All log entries inside a scroll region ---
-        bool do_scroll;
+        bool    do_scroll;
         ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##log_scroll", ZFill(), ZFill());
         ZUIPaddingXY(scroll, 4.f, 2.f);
         {
@@ -122,8 +132,8 @@ namespace Tetragrama::Components
             do_scroll          = m_scroll_to_bottom;
             m_scroll_to_bottom = false;
 
-            int total = m_count < kMaxEntries ? m_count : kMaxEntries;
-            int start = (m_count >= kMaxEntries) ? m_head : 0;
+            int total          = m_count < kMaxEntries ? m_count : kMaxEntries;
+            int start          = (m_count >= kMaxEntries) ? m_head : 0;
 
             for (int i = 0; i < total; ++i)
             {
@@ -131,7 +141,7 @@ namespace Tetragrama::Components
 
                 // Level filter: skip entries below the selected minimum level.
                 // m_filter_level 5 == "All" — nothing skipped.
-                if (m_filter_level < 5 && e.Level < (uint8_t)m_filter_level)
+                if (m_filter_level < 5 && e.Level < (uint8_t) m_filter_level)
                     continue;
 
                 // Search filter (case-sensitive strstr)

@@ -30,6 +30,7 @@ namespace ZEngine
         Core::Memory::ArenaAllocator      InputArena            = {};
         Core::Memory::ArenaAllocator      ECSArena              = {};
         Core::Memory::ArenaAllocator      ImportPipelineArena   = {};
+        Core::Memory::ArenaAllocator      UIContextArena        = {};
 
         // Pointers (8 bytes each — grouped to pack cleanly)
         Hardwares::VulkanDevicePtr        Device                = nullptr;

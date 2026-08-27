@@ -4,7 +4,7 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    // Vertex layout shared by ZUIRenderer and the zui.vert / zui.frag shaders.
+    // Vertex layout shared by ZUIRenderer and zui_draw.vert / zui_draw.frag.
     struct UIDrawVert
     {
         typedef struct _vec2

@@ -3,19 +3,22 @@
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/ZUIRenderer.h>
 
-namespace ZEngine::UI { struct ZUIContext; }
+namespace ZEngine::UI
+{
+    struct ZUIContext;
+}
 
 namespace ZEngine::Applications
 {
     struct RenderPayload
     {
-        uint32_t                                   RenderTargetW      = 0;
-        uint32_t                                   RenderTargetH      = 0;
-        PaddedAtomic<bool>                         RenderUIOverlay    = {.value = false};
-        PaddedAtomic<bool>                         ResizeRenderTarget = {.value = false};
-        Rendering::Cameras::CameraPtr              Camera             = nullptr;
-        Rendering::Scenes::RenderScenePtr          Scene              = nullptr;
-        Rendering::Renderers::ZUIRenderPayload     ZUIOverlay         = {};
+        uint32_t                               RenderTargetW      = 0;
+        uint32_t                               RenderTargetH      = 0;
+        PaddedAtomic<bool>                     RenderUIOverlay    = {.value = false};
+        PaddedAtomic<bool>                     ResizeRenderTarget = {.value = false};
+        Rendering::Cameras::CameraPtr          Camera             = nullptr;
+        Rendering::Scenes::RenderScenePtr      Scene              = nullptr;
+        Rendering::Renderers::ZUIRenderPayload ZUIOverlay         = {};
     };
 
     struct AppRenderPipeline
@@ -27,7 +30,6 @@ namespace ZEngine::Applications
         PaddedAtomic<int>                        MailBoxBufferHead        = {.value = 0};
         PaddedAtomic<int>                        MailBoxBufferTail        = {.value = 0};
         RenderPayload                            RenderPayloads[3]        = {};
-        ZEngine::Core::Memory::ArenaAllocator    LocalArena               = {};
         ZEngine::Core::Memory::ArenaAllocator    ZUIPayloadArenas[3]      = {};
         ZEngine::UI::ZUIContext*                 ZUICtx                   = nullptr;
         Hardwares::VulkanDevicePtr               Device                   = nullptr;

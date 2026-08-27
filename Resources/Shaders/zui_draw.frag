@@ -8,12 +8,12 @@ layout(set = 1, binding = 2) uniform sampler LinearClampSampler;
 layout(location = 0) in struct
 {
     vec4 Color;
-    vec4 TexData;   // xy=UV, z=texIdx
+    vec4 TexData; // xy=UV, z=texIdx
 } In;
 
 void main()
 {
-    uint  texId  = uint(floor(In.TexData.z + 0.5));
-    vec4  texVal = texture(sampler2D(TextureArray[texId], LinearClampSampler), In.TexData.xy);
-    fColor       = In.Color * texVal;
+    uint texId  = uint(floor(In.TexData.z + 0.5));
+    vec4 texVal = texture(sampler2D(TextureArray[texId], LinearClampSampler), In.TexData.xy);
+    fColor      = In.Color * texVal;
 }

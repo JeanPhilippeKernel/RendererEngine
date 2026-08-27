@@ -1,15 +1,16 @@
+#include <GLFW/glfw3.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
-#include <ZEngine/Core/Memory/MemoryManager.h>
-#include <ZEngine/UI/ZUIContext.h>
-#include <ZEngine/Windows/CoreWindow.h>
-#include <GLFW/glfw3.h>
-#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
+#include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/Windows/CoreWindow.h>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -70,41 +71,41 @@ namespace ZEngine::Applications
     {
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
-        // Use the UIContext budget defined in MemoryBudgetConfig::Editor() (128 MB).
-        // Was: hardcoded ZMega(30) — a 30 MB orphan that bypassed the budget system.
-        using namespace ZEngine::Core::Memory;
-        Device->Arena->CreateSubArena(
-            MemoryBudgetConfig::Editor().UIContext.SizeBytes, &LocalArena);
-
-        SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ZUIRenderer   = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
+        SceneRenderer           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
+        ZUIRenderer             = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
 
         SceneRenderer->Initialize(Device);
         ZUIRenderer->Initialize(Device);
 
-        // ZPushStructCtor calls placement-new → default member initializers apply
-        ZUICtx = ZPushStructCtor(&LocalArena, ZEngine::UI::ZUIContext);
-        // FrameArena 32 MB: box pool + draw geometry + traversal stacks (~5 MB typical, 32 MB headroom)
-        // PersistentArena 1 MB: state table 8192×48 = 384 KB, comfortable margin
-        // ZUIPayloadArenas 9 MB × 3 = 27 MB: CPU-side GPU staging (peak ~2.5 MB, 3.6× headroom)
-        // Total committed: ~60 MB / 128 MB budgeted
-        ZEngine::UI::ZUIContextInit(ZUICtx, &LocalArena, ZMega(32), ZMega(1), 8192, 8192);
+        // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
+        // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
+        auto* ui_arena = &Engine::GetContext()->UIContextArena;
+        ZUICtx         = ZPushStructCtor(ui_arena, ZEngine::UI::ZUIContext);
+        ZEngine::UI::ZUIContextInit(ZUICtx, ui_arena, ZMega(32), ZMega(1), 8192, 8192);
         for (int i = 0; i < 3; ++i)
         {
-            LocalArena.CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
+            ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
         }
 
         Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
         Device->SwapchainPtr->OnSwapchainResizedCtx = this;
-
     }
 
     void AppRenderPipeline::Shutdown()
     {
         SceneRenderer->Deinitialize();
-        if (ZUIRenderer) { ZUIRenderer->Deinitialize(); }
-        if (ZUICtx)      { ZEngine::UI::ZUIContextDestroy(ZUICtx); }
-        for (int i = 0; i < 3; ++i) { ZUIPayloadArenas[i].Shutdown(); }
+        if (ZUIRenderer)
+        {
+            ZUIRenderer->Deinitialize();
+        }
+        if (ZUICtx)
+        {
+            ZEngine::UI::ZUIContextDestroy(ZUICtx);
+        }
+        for (int i = 0; i < 3; ++i)
+        {
+            ZUIPayloadArenas[i].Shutdown();
+        }
     }
 
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
@@ -178,7 +179,7 @@ namespace ZEngine::Applications
         {
             auto*                                                    rrm     = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
             auto*                                                    mgr     = Managers::AssetManager::Instance();
-            auto                                                     scratch = ZGetScratch(&LocalArena);
+            auto                                                     scratch = ZGetScratch(&Engine::GetContext()->UIContextArena);
 
             Core::Containers::Array<Rendering::Scenes::MeshInstance> instances;
             scene->GetInstancesSnapshot(scratch.Arena, instances);
@@ -294,14 +295,15 @@ namespace ZEngine::Applications
             // so panel positions and hit-testing must use the same coordinate space.
             if (Device->CurrentWindow)
             {
-                auto* native = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
+                auto* native        = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
                 float content_scale = 1.f;
                 if (native)
                 {
                     float xs = 1.f, ys = 1.f;
                     glfwGetWindowContentScale(native, &xs, &ys);
                     content_scale = (xs > ys ? xs : ys);
-                    if (content_scale < 0.5f) content_scale = 1.f;
+                    if (content_scale < 0.5f)
+                        content_scale = 1.f;
                 }
 
                 // Exact ImGui approach (imgui_impl_glfw.cpp GetWindowSizeAndFramebufferScale):
@@ -316,9 +318,9 @@ namespace ZEngine::Applications
                     glfwGetFramebufferSize(native, &fb_w, &fb_h);
                     if (win_w > 0 && win_h > 0)
                     {
-                        ZUICtx->ScreenW = (uint32_t)win_w;
-                        ZUICtx->ScreenH = (uint32_t)win_h;
-                        float s = (fb_w > 0) ? (float)fb_w / (float)win_w : 1.f;
+                        ZUICtx->ScreenW = (uint32_t) win_w;
+                        ZUICtx->ScreenH = (uint32_t) win_h;
+                        float s         = (fb_w > 0) ? (float) fb_w / (float) win_w : 1.f;
                         ZUICtx->UIScale = (s > 0.5f) ? s : 1.f;
                     }
                     else
@@ -336,9 +338,7 @@ namespace ZEngine::Applications
                 }
                 if (!ZUICtx->UIScaleLogged)
                 {
-                    ZENGINE_CORE_INFO(
-                        "[ZUI] UIScale={:.2f} Screen={}x{} (logical) ContentScale={:.2f}",
-                        ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, content_scale);
+                    ZENGINE_CORE_INFO("[ZUI] UIScale={:.2f} Screen={}x{} (logical) ContentScale={:.2f}", ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, content_scale);
                     ZUICtx->UIScaleLogged = true;
                 }
             }
@@ -363,12 +363,18 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::RenderOverlay(const RenderPayload& payload)
     {
-        if (ZUIRenderer) { ZUIRenderer->Submit(CurrentCmdBuf, payload.ZUIOverlay); }
+        if (ZUIRenderer)
+        {
+            ZUIRenderer->Submit(CurrentCmdBuf, payload.ZUIOverlay);
+        }
     }
 
     void AppRenderPipeline::EndOverlayFrame()
     {
-        if (ZUICtx) { ZEngine::UI::ZUIEndFrame(ZUICtx); }
+        if (ZUICtx)
+        {
+            ZEngine::UI::ZUIEndFrame(ZUICtx);
+        }
 
         // Apply resize cursor from the ZUI divider hover state + flush clipboard writes
         if (Device && Device->CurrentWindow)
@@ -382,16 +388,21 @@ namespace ZEngine::Applications
                     glfwSetClipboardString(gw, ZUICtx->ClipboardWrite);
                     ZUICtx->ClipboardWrite[0] = '\0';
                 }
-                int req = ZUICtx ? ZUICtx->ResizeCursor : 0;
+                int                req       = ZUICtx ? ZUICtx->ResizeCursor : 0;
                 // Lazily create standard cursors (created once, never destroyed — app lifetime)
                 static GLFWcursor* s_hresize = nullptr;
                 static GLFWcursor* s_vresize = nullptr;
-                if (!s_hresize) s_hresize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
-                if (!s_vresize) s_vresize = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
+                if (!s_hresize)
+                    s_hresize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+                if (!s_vresize)
+                    s_vresize = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
 
-                if      (req == 1 && s_hresize) glfwSetCursor(gw, s_hresize);
-                else if (req == 2 && s_vresize) glfwSetCursor(gw, s_vresize);
-                else                            glfwSetCursor(gw, nullptr); // restore default
+                if (req == 1 && s_hresize)
+                    glfwSetCursor(gw, s_hresize);
+                else if (req == 2 && s_vresize)
+                    glfwSetCursor(gw, s_vresize);
+                else
+                    glfwSetCursor(gw, nullptr); // restore default
             }
         }
     }

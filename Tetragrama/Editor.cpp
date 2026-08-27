@@ -1,16 +1,16 @@
 // New panel-manager-based UI (replaces old per-component system)
-#include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
+#include <GLFW/glfw3.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
-#include <GLFW/glfw3.h>
-#include <ZEngine/UI/ZUIContext.h>
-#include <ZEngine/UI/ZUIFont.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
-#include <ZEngine/Core/VFS/Registry/AssetRecord.h>
+#include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <ZEngine/Core/CoreEvent.h>
+#include <ZEngine/Core/VFS/Registry/AssetRecord.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/UI/ZUIFont.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -81,45 +81,44 @@ namespace Tetragrama
         // coordinates are also in physical pixels — the NDC transform handles the rest.
         if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
         {
-            constexpr const char* kFontPath =
-                "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
-            constexpr const char* kHeaderFontPath =
-                "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";
-            auto* ctx = RenderPipeline->ZUICtx;
+            constexpr const char* kFontPath       = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
+            constexpr const char* kHeaderFontPath = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";
+            auto*                 ctx             = RenderPipeline->ZUICtx;
 
             // UIScale = ContentScale on macOS (per Gemini analysis).
             // On other platforms = FbRatio (same behavior as before).
             // AppRenderPipeline::BeginOverlayFrame will override UIScale each frame;
             // here we bake fonts using ContentScale for visual density on Retina displays.
-            float content_scale = 1.f;
+            float                 content_scale   = 1.f;
             if (CurrentWindow)
             {
                 auto* gw = static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow());
-                if (gw) {
+                if (gw)
+                {
                     float xs = 1.f, ys = 1.f;
                     glfwGetWindowContentScale(gw, &xs, &ys);
                     content_scale = xs > ys ? xs : ys;
-                    if (content_scale < 0.5f) content_scale = 1.f;
+                    if (content_scale < 0.5f)
+                        content_scale = 1.f;
                 }
             }
-            ctx->UIScale = content_scale;  // fonts use ContentScale; BeginOverlayFrame confirms
+            ctx->UIScale = content_scale; // fonts use ContentScale; BeginOverlayFrame confirms
 
-            float kBody   = 13.f * content_scale;  // 26px at 2×Retina, 13px at 1×
-            if (kBody < 11.f) kBody = 11.f;
-            if (kBody > 52.f) kBody = 52.f;
-            float kSmall  = kBody * 0.80f;
-            float kHeader = kBody * 1.30f;
-            uint32_t win_w = CurrentWindow ? CurrentWindow->GetWidth() : 1280;
-            ZENGINE_CORE_INFO("[ZUI] FontSizes small={:.0f} body={:.0f} header={:.0f} (UIScale={:.1f} win_w={})",
-                              kSmall, kBody, kHeader, ctx->UIScale, win_w);
+            float kBody  = 13.f * content_scale; // 26px at 2×Retina, 13px at 1×
+            if (kBody < 11.f)
+                kBody = 11.f;
+            if (kBody > 52.f)
+                kBody = 52.f;
+            float    kSmall  = kBody * 0.80f;
+            float    kHeader = kBody * 1.30f;
+            uint32_t win_w   = CurrentWindow ? CurrentWindow->GetWidth() : 1280;
+            ZENGINE_CORE_INFO("[ZUI] FontSizes small={:.0f} body={:.0f} header={:.0f} (UIScale={:.1f} win_w={})", kSmall, kBody, kHeader, ctx->UIScale, win_w);
 
             // Bake all three fonts into one shared atlas — single GPU texture,
             // white pixel at (0,0), OversampleH=2 OversampleV=1 (ImGui default).
             auto scratch = ZGetScratch(&Memory->MainArena);
-            ctx->Atlas = ZEngine::UI::ZUIFontAtlasBake(
-                &ctx->PersistentArena, scratch.Arena, RenderPipeline->Device,
-                kFontPath, kSmall, kBody, kHeader, 32, 96,
-                kHeaderFontPath); // SemiBold for header size — sharper section labels
+            ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBody, kHeader, 32, 96,
+                                                         kHeaderFontPath); // SemiBold for header size — sharper section labels
             ZReleaseScratch(scratch);
 
             // FontScale = 1/ContentScale so that atlas-pixel metrics (baked at
@@ -128,16 +127,18 @@ namespace Tetragrama
             if (ctx->Atlas)
             {
                 float fs = (content_scale > 0.5f) ? (1.f / content_scale) : 1.f;
-                if (ctx->Atlas->Small)  ctx->Atlas->Small->FontScale  = fs;
-                if (ctx->Atlas->Body)   ctx->Atlas->Body->FontScale   = fs;
-                if (ctx->Atlas->Header) ctx->Atlas->Header->FontScale = fs;
+                if (ctx->Atlas->Small)
+                    ctx->Atlas->Small->FontScale = fs;
+                if (ctx->Atlas->Body)
+                    ctx->Atlas->Body->FontScale = fs;
+                if (ctx->Atlas->Header)
+                    ctx->Atlas->Header->FontScale = fs;
 
                 // Sync ZUIStyle.FontSize = logical body size so ZUIGetFrameHeight()
                 // and all derived metrics (19px = 13 + 3*2) are correct.
-                ctx->Style.FontSize = kBody;   // logical pixels, not atlas physical pixels
+                ctx->Style.FontSize = kBody; // logical pixels, not atlas physical pixels
                 ZUIStyleUpdate(&ctx->Style);
-                ZENGINE_CORE_INFO("[ZUI] Style.FontSize={:.0f}  FrameHeight={:.0f}",
-                                  ctx->Style.FontSize, ctx->Style.FrameHeight);
+                ZENGINE_CORE_INFO("[ZUI] Style.FontSize={:.0f}  FrameHeight={:.0f}", ctx->Style.FontSize, ctx->Style.FrameHeight);
             }
         }
 
@@ -148,17 +149,19 @@ namespace Tetragrama
     void Editor::ProcessEvent(ZEngine::Core::CoreEvent& e)
     {
         // Always route events to the window and ZUI layer
-        if (CurrentWindow) { CurrentWindow->OnEvent(e); }
-        if (ZUIUILayer)    { ZUIUILayer->OnEvent(e); }
+        if (CurrentWindow)
+        {
+            CurrentWindow->OnEvent(e);
+        }
+        if (ZUIUILayer)
+        {
+            ZUIUILayer->OnEvent(e);
+        }
 
         // Gate camera-controller mouse routing on viewport focus (Gap 3)
-        bool is_mouse_event = (e.GetType() == ZEngine::Core::EventType::MouseButtonPressed  ||
-                               e.GetType() == ZEngine::Core::EventType::MouseButtonReleased ||
-                               e.GetType() == ZEngine::Core::EventType::MouseMoved          ||
-                               e.GetType() == ZEngine::Core::EventType::MouseWheel);
+        bool is_mouse_event  = (e.GetType() == ZEngine::Core::EventType::MouseButtonPressed || e.GetType() == ZEngine::Core::EventType::MouseButtonReleased || e.GetType() == ZEngine::Core::EventType::MouseMoved || e.GetType() == ZEngine::Core::EventType::MouseWheel);
 
-        bool viewport_active = RenderPipeline && RenderPipeline->ZUICtx &&
-                               RenderPipeline->ZUICtx->ViewportHovered;
+        bool viewport_active = RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUICtx->ViewportHovered;
 
         if (CameraController && (!is_mouse_event || viewport_active))
         {
@@ -186,7 +189,10 @@ namespace Tetragrama
 
     void Editor::OnRenderUI()
     {
-        if (ZUIUILayer) { ZUIUILayer->Render(nullptr, nullptr); }
+        if (ZUIUILayer)
+        {
+            ZUIUILayer->Render(nullptr, nullptr);
+        }
     }
 
     void Editor::OnClosing() {}

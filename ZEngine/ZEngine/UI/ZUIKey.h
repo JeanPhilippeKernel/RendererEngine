@@ -10,19 +10,68 @@ namespace ZEngine::UI
         None = 0,
 
         // Printable (A-Z)
-        A, B, C, D, E, F, G, H, I, J, K, L, M,
-        N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+        I,
+        J,
+        K,
+        L,
+        M,
+        N,
+        O,
+        P,
+        Q,
+        R,
+        S,
+        T,
+        U,
+        V,
+        W,
+        X,
+        Y,
+        Z,
 
         // Digits (top row)
-        D0, D1, D2, D3, D4, D5, D6, D7, D8, D9,
+        D0,
+        D1,
+        D2,
+        D3,
+        D4,
+        D5,
+        D6,
+        D7,
+        D8,
+        D9,
 
         // Function
-        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+        F1,
+        F2,
+        F3,
+        F4,
+        F5,
+        F6,
+        F7,
+        F8,
+        F9,
+        F10,
+        F11,
+        F12,
 
         // Navigation
-        Left, Right, Up, Down,
-        Home, End,
-        PageUp, PageDown,
+        Left,
+        Right,
+        Up,
+        Down,
+        Home,
+        End,
+        PageUp,
+        PageDown,
         Tab,
 
         // Editing
@@ -34,23 +83,26 @@ namespace ZEngine::UI
         Space,
 
         // Modifiers (used as keys, not just flags)
-        LeftCtrl,  RightCtrl,
-        LeftShift, RightShift,
-        LeftAlt,   RightAlt,
+        LeftCtrl,
+        RightCtrl,
+        LeftShift,
+        RightShift,
+        LeftAlt,
+        RightAlt,
 
         // Misc
         CapsLock,
-        Grave,       // `~
-        Minus,       // -_
-        Equal,       // =+
-        LeftBracket, // [{
-        RightBracket,// ]}
-        Backslash,   // \|
-        Semicolon,   // ;:
-        Apostrophe,  // '"
-        Comma,       // ,<
-        Period,      // .>
-        Slash,       // /?
+        Grave,        // `~
+        Minus,        // -_
+        Equal,        // =+
+        LeftBracket,  // [{
+        RightBracket, // ]}
+        Backslash,    // \|
+        Semicolon,    // ;:
+        Apostrophe,   // '"
+        Comma,        // ,<
+        Period,       // .>
+        Slash,        // /?
 
         Count
     };

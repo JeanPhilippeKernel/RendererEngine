@@ -15,7 +15,6 @@ namespace ZEngine::UI
     //     against the provided view list (pass ALL registered ZUIPanelView* pointers)
     //   - Hidden panels are collapsed in the tree
     // Returns true on success, false if file not found or version mismatch.
-    bool ZUIDockLoad(ZUIPanelManager* manager, const char* path,
-                     ZUIPanelView** views, uint32_t view_count);
+    bool ZUIDockLoad(ZUIPanelManager* manager, const char* path, ZUIPanelView** views, uint32_t view_count);
 
 } // namespace ZEngine::UI

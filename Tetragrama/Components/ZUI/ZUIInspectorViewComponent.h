@@ -6,12 +6,10 @@ namespace Tetragrama::Components
     class ZUIInspectorViewComponent : public ZUIComponent
     {
     public:
-        ZUIInspectorViewComponent()          = default;
+        ZUIInspectorViewComponent()           = default;
         ~ZUIInspectorViewComponent() override = default;
 
-        void Initialize(Tetragrama::Layers::ZUILayer* parent,
-                        cstring name       = "Inspector",
-                        bool    visibility = true) override;
+        void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "Inspector", bool visibility = true) override;
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 

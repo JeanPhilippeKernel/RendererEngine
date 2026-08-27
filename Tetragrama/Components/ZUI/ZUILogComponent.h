@@ -8,12 +8,10 @@ namespace Tetragrama::Components
     class ZUILogComponent : public ZUIComponent
     {
     public:
-        ZUILogComponent()          = default;
+        ZUILogComponent() = default;
         ~ZUILogComponent() override;
 
-        void Initialize(Tetragrama::Layers::ZUILayer* parent,
-                        cstring name       = "Console",
-                        bool    visibility = true) override;
+        void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "Console", bool visibility = true) override;
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 
@@ -25,23 +23,23 @@ namespace Tetragrama::Components
             uint8_t Level     = 0;
         };
 
-        static constexpr int kMaxEntries    = 512;
-        static constexpr int kVisibleLines  = 12;  // entries shown without scroll
-        static constexpr float kPanelW      = 420.f;
-        static constexpr float kPanelH      = 310.f;
-        static constexpr float kEntryH      = 22.f;
+        static constexpr int   kMaxEntries         = 512;
+        static constexpr int   kVisibleLines       = 12; // entries shown without scroll
+        static constexpr float kPanelW             = 420.f;
+        static constexpr float kPanelH             = 310.f;
+        static constexpr float kEntryH             = 22.f;
 
-        LogEntry  m_ring[kMaxEntries] = {};
-        int       m_head              = 0;
-        int       m_count             = 0;
-        std::mutex m_mutex;
-        uint32_t  m_cookie            = 0;
-        char      m_search_buf[128]   = {};
-        int       m_filter_level      = 5;   // 5 = All
-        bool      m_scroll_to_bottom  = false;
+        LogEntry               m_ring[kMaxEntries] = {};
+        int                    m_head              = 0;
+        int                    m_count             = 0;
+        std::mutex             m_mutex;
+        uint32_t               m_cookie           = 0;
+        char                   m_search_buf[128]  = {};
+        int                    m_filter_level     = 5; // 5 = All
+        bool                   m_scroll_to_bottom = false;
 
-        void        PushEntry(const LogEntry& e);
-        static void OnLogEntry(void* ctx, const ZEngine::Logging::LogMessage& msg);
+        void                   PushEntry(const LogEntry& e);
+        static void            OnLogEntry(void* ctx, const ZEngine::Logging::LogMessage& msg);
     };
     ZDEFINE_PTR(ZUILogComponent);
 } // namespace Tetragrama::Components

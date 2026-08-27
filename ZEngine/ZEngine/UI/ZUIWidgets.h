@@ -5,236 +5,246 @@
 
 namespace ZEngine::UI
 {
-    // ---------------------------------------------------------------
-    // Size helpers — wrap ZUISize construction
-    // ---------------------------------------------------------------
+    // Size constructors — wrap ZUISize for use as function arguments.
 
-    inline ZUISize ZPx(float v)      { return {ZUISizeKind::Pixels,        v,    1.f}; }
-    // Logical pixel size. Coordinate system is already in logical units (glfwGetWindowSize
-    // space) so no UIScale multiplication is needed. Equivalent to ZPx(v).
-    // Kept as a named alias for clarity at call sites.
+    /// @brief Fixed pixel size (logical coordinates; no UIScale multiplication).
+    inline ZUISize ZPx(float v)
+    {
+        return {ZUISizeKind::Pixels, v, 1.f};
+    }
+    /// @brief Alias of ZPx — kept for call-site clarity.
     inline ZUISize ZSPx(const ZUIContext* /*ctx*/, float v)
     {
         return ZPx(v);
     }
-    inline ZUISize ZFill()           { return {ZUISizeKind::Fill,           0.f,  1.f}; }
-    inline ZUISize ZText()           { return {ZUISizeKind::Text,           0.f,  1.f}; }
-    inline ZUISize ZPct(float v)     { return {ZUISizeKind::ParentPercent,  v,    1.f}; }
-    inline ZUISize ZFit()            { return {ZUISizeKind::ChildrenSum,    0.f,  1.f}; }
+    /// @brief Fill all available space along the parent's layout axis.
+    inline ZUISize ZFill()
+    {
+        return {ZUISizeKind::Fill, 0.f, 1.f};
+    }
+    /// @brief Size to the rendered text width (includes FramePadding.x on each side).
+    inline ZUISize ZText()
+    {
+        return {ZUISizeKind::Text, 0.f, 1.f};
+    }
+    /// @brief Percentage of the parent's dimension.
+    /// @param v Fraction in [0, 1].
+    inline ZUISize ZPct(float v)
+    {
+        return {ZUISizeKind::ParentPercent, v, 1.f};
+    }
+    /// @brief Size to the sum of children (intrinsic fit).
+    inline ZUISize ZFit()
+    {
+        return {ZUISizeKind::ChildrenSum, 0.f, 1.f};
+    }
 
-    // ---------------------------------------------------------------
-    // Padding helpers — call immediately after ZUIBeginColumn/Row
-    // ---------------------------------------------------------------
+    // Padding helpers — call immediately after ZUIBeginColumn / ZUIBeginRow.
+
+    /// @brief Apply uniform padding on all four sides of @p box.
     inline void ZUIPadding(ZUIBox* box, float all)
     {
         box->Padding[0] = box->Padding[1] = box->Padding[2] = box->Padding[3] = all;
     }
+    /// @brief Apply separate horizontal and vertical padding to @p box.
     inline void ZUIPaddingXY(ZUIBox* box, float horiz, float vert)
     {
         box->Padding[0] = box->Padding[2] = horiz;
         box->Padding[1] = box->Padding[3] = vert;
     }
 
-    // ---------------------------------------------------------------
-    // Layout containers
-    // Push a container box and return it so the caller can override
-    // size / color before adding children. Always pair with EndXxx.
-    // ---------------------------------------------------------------
+    // Layout containers — always pair Begin with the matching End.
 
-    // Vertical stack — children laid out along Y axis
-    ZUIBox* ZUIBeginColumn(ZUIContext* ctx, const char* key,
-                           ZUISize w = ZFill(), ZUISize h = ZFit());
-    void    ZUIEndColumn(ZUIContext* ctx);
+    /// @brief Push a vertical stack; children are laid out along the Y axis.
+    /// @return The container box — override size/color before adding children.
+    ZUIBox*     ZUIBeginColumn(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFit());
+    void        ZUIEndColumn(ZUIContext* ctx);
 
-    // Horizontal stack — children laid out along X axis
-    ZUIBox* ZUIBeginRow(ZUIContext* ctx, const char* key,
-                        ZUISize w = ZFill(), ZUISize h = ZFit());
-    void    ZUIEndRow(ZUIContext* ctx);
+    /// @brief Push a horizontal stack; children are laid out along the X axis.
+    /// @return The container box.
+    ZUIBox*     ZUIBeginRow(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFit());
+    void        ZUIEndRow(ZUIContext* ctx);
 
-    // Vertically-scrollable clipped region. Children that overflow the
-    // height are scissored out; the user scrolls with the mouse wheel.
-    // Returns the container box (set Size / BgColor before adding children).
-    ZUIBox* ZUIBeginScrollRegion(ZUIContext* ctx, const char* key,
-                                 ZUISize w = ZFill(), ZUISize h = ZFill());
-    void    ZUIEndScrollRegion(ZUIContext* ctx);
+    /// @brief Push a vertically-scrollable clipped region.
+    ///
+    /// Children that overflow the height are scissored; the user scrolls with
+    /// the mouse wheel. Horizontal scroll is supported when LayoutAxis==X.
+    /// @return The container box — set Size / BgColor before adding children.
+    ZUIBox*     ZUIBeginScrollRegion(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFill());
+    void        ZUIEndScrollRegion(ZUIContext* ctx);
 
-    // Scroll the named region to the bottom on the next frame.
-    // Call once whenever new content is appended (e.g. new log entry).
-    void ZUIScrollToBottom(ZUIContext* ctx, const char* key);
+    /// @brief Request the named scroll region to jump to its bottom on the next frame.
+    /// @note Call once whenever new content is appended (e.g. a new log entry).
+    void        ZUIScrollToBottom(ZUIContext* ctx, const char* key);
 
-    // Read current scroll offset (useful for save/restore or position queries).
-    float ZUIGetScrollY(ZUIContext* ctx, const char* key);
+    /// @brief Read the current vertical scroll offset of the named region.
+    /// @return Scroll offset in logical pixels, or 0 if key not found.
+    float       ZUIGetScrollY(ZUIContext* ctx, const char* key);
 
-    // ---------------------------------------------------------------
     // Leaf widgets
-    // ---------------------------------------------------------------
 
-    // Static text — no interaction. Pass a font size for Small/Header variants.
-    void ZUILabel(ZUIContext* ctx, const char* text,
-                  const float color[4] = nullptr,
-                  ZUIFontSize size = ZUIFontSize::Body);
+    /// @brief Non-interactive text label.
+    /// @param text  Null-terminated string to display.
+    /// @param color RGBA color, or nullptr to use Theme.TextDefault.
+    /// @param size  Font variant (Body/Small/Header).
+    void        ZUILabel(ZUIContext* ctx, const char* text, const float color[4] = nullptr, ZUIFontSize size = ZUIFontSize::Body);
 
-    // ---------------------------------------------------------------
-    // Button family
-    // ---------------------------------------------------------------
+    /// @brief Standard push button.
+    /// @param w Width (default ZText() = label width + FramePadding.x × 2).
+    /// @param h Height (default = FrameHeight ≈ 19 px).
+    /// @return ZUISignal — check ZUI_SignalClicked for activation.
+    ZUISignal   ZUIButton(ZUIContext* ctx, const char* label, ZUISize w = ZText(), ZUISize h = ZPx(19.f));
 
-    // Regular button. Height default = 19px (ImGui GetFrameHeight). ZText() width
-    // auto-includes 4px left+right padding (FramePadding.x) via ZText() padding fix.
-    ZUISignal ZUIButton(ZUIContext* ctx, const char* label,
-                        ZUISize w = ZText(), ZUISize h = ZPx(19.f));
+    /// @brief Compact borderless button — safe inside rows and toolbars.
+    ZUISignal   ZUISmallButton(ZUIContext* ctx, const char* label);
 
-    // No border, 22 px tall, tight horizontal fit — safe inside rows/toolbars.
-    ZUISignal ZUISmallButton(ZUIContext* ctx, const char* label);
+    /// @brief Invisible hit-area box — no drawing; use for custom-drawn clickable regions.
+    ZUISignal   ZUIInvisibleButton(ZUIContext* ctx, const char* key, ZUISize w = ZText(), ZUISize h = ZPx(28.f));
 
-    // Invisible hit-area only — no drawing. Used for custom-drawn clickable regions.
-    ZUISignal ZUIInvisibleButton(ZUIContext* ctx, const char* key,
-                                  ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+    /// @brief Stateful toggle button — background brightens when @p *active is true.
+    /// @param active Toggled in-place on click.
+    /// @return true the frame @p *active changes.
+    bool        ZUIToggleButton(ZUIContext* ctx, const char* label, bool* active, ZUISize w = ZText(), ZUISize h = ZPx(28.f));
 
-    // Stateful toggle — background brightens when *active is true.
-    // Returns true the frame *active changes.
-    bool ZUIToggleButton(ZUIContext* ctx, const char* label, bool* active,
-                         ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+    /// @brief Clickable image drawn from the bindless texture array.
+    /// @param texture_index Bindless slot (e.g. TextureHandle::Index).
+    ZUISignal   ZUIImageButton(ZUIContext* ctx, const char* key, uint32_t texture_index, ZUISize w = ZPx(28.f), ZUISize h = ZPx(28.f));
 
-    // Image button — renders a texture rect, returns click signal.
-    ZUISignal ZUIImageButton(ZUIContext* ctx, const char* key,
-                              uint32_t texture_index,
-                              ZUISize w = ZPx(28.f), ZUISize h = ZPx(28.f));
+    /// @brief Begin a disabled scope — nested widgets skip Clickable and are visually dimmed.
+    void        ZUIBeginDisabled(ZUIContext* ctx);
+    void        ZUIEndDisabled(ZUIContext* ctx);
 
-    // ---------------------------------------------------------------
-    // Disabled state — nest freely; widgets inside skip Clickable + dim
-    // ---------------------------------------------------------------
-    void ZUIBeginDisabled(ZUIContext* ctx);
-    void ZUIEndDisabled(ZUIContext* ctx);
+    /// @brief 1 px horizontal divider line.
+    void        ZUISeparator(ZUIContext* ctx);
 
-    // 1 px horizontal divider
-    void ZUISeparator(ZUIContext* ctx);
+    /// @brief Empty gap of @p px pixels along the parent's layout axis.
+    void        ZUISpacer(ZUIContext* ctx, float px);
 
-    // Empty space of 'px' pixels along the parent's layout axis
-    void ZUISpacer(ZUIContext* ctx, float px);
+    /// @brief Collapsible tree row with a disclosure triangle.
+    /// @param open Toggled on click.
+    /// @return Signal from the row box (check ZUI_SignalClicked for external handling).
+    ZUISignal   ZUITreeNode(ZUIContext* ctx, const char* label, bool* open);
 
-    // Collapsible tree row with a disclosure indicator.
-    // *open is toggled on click. Returns signal from the row box.
-    ZUISignal ZUITreeNode(ZUIContext* ctx, const char* label, bool* open);
+    /// @brief Checkbox with a text label.
+    /// @param checked Toggled in-place on click.
+    /// @return true the frame @p *checked changes.
+    bool        ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked);
 
-    // ---------------------------------------------------------------
-    // Simple standalone widgets
-    // ---------------------------------------------------------------
+    /// @brief Radio button — sets @p *selected = index when clicked.
+    /// @return true when the value changes.
+    bool        ZUIRadioButton(ZUIContext* ctx, const char* label, int* selected, int index);
 
-    // 16×16 checkbox + label. Returns true when *checked changes.
-    bool ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked);
+    /// @brief Filled horizontal progress bar.
+    /// @param fraction  Progress in [0, 1].
+    /// @param overlay_text Optional label drawn centered on the bar (may be nullptr).
+    void        ZUIProgressBar(ZUIContext* ctx, const char* key, float fraction, ZUISize w = ZFill(), ZUISize h = ZPx(18.f), const char* overlay_text = nullptr);
 
-    // Radio button — sets *selected = index on click. Returns true when changed.
-    bool ZUIRadioButton(ZUIContext* ctx, const char* label, int* selected, int index);
+    /// @brief Show a tooltip near the cursor while @p sig contains ZUI_SignalHovered.
+    /// @note Call immediately after the relevant ZUISignalFromBox call.
+    void        ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text);
 
-    // Filled progress bar [0..1]. Optional label drawn on top when non-null.
-    void ZUIProgressBar(ZUIContext* ctx, const char* key, float fraction,
-                        ZUISize w = ZFill(), ZUISize h = ZPx(18.f),
-                        const char* overlay_text = nullptr);
+    /// @brief Full-width collapsible section header.
+    /// @param open In/out — toggled on click.
+    /// @return Current open state (same as @p *open after the call).
+    bool        ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open);
 
-    // Shows a tooltip box near the cursor when sig contains ZUI_SignalHovered.
-    // Call immediately after ZUISignalFromBox.
-    void ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text);
+    /// @brief Full-width selectable row.
+    /// @param selected Toggled in-place on click.
+    /// @return true the frame @p *selected changes.
+    bool        ZUISelectable(ZUIContext* ctx, const char* label, bool* selected, ZUISize h = ZPx(24.f));
 
-    // Full-width collapsible section header. Returns *open state.
-    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open);
+    /// @brief Horizontal separator with a centered label.
+    void        ZUISeparatorText(ZUIContext* ctx, const char* text);
 
-    // Full-width selectable row. *selected is toggled on click.
-    // Returns true the frame *selected changes.
-    bool ZUISelectable(ZUIContext* ctx, const char* label, bool* selected,
-                       ZUISize h = ZPx(24.f));
+    /// @brief Drag-to-edit a float value.
+    ///
+    /// Horizontal mouse drag changes @p *value by delta * speed.
+    /// Click to enter text-edit mode.
+    /// @return true if @p *value changed this frame.
+    bool        ZUIDragFloat(ZUIContext* ctx, const char* key, float* value, float speed = 0.05f, float width_px = 60.f);
 
-    // Horizontal separator with centred label text.
-    void ZUISeparatorText(ZUIContext* ctx, const char* text);
+    /// @brief Drag-to-edit an integer value. Same mechanics as ZUIDragFloat.
+    /// @return true if @p *value changed this frame.
+    bool        ZUIDragInt(ZUIContext* ctx, const char* key, int* value, float speed = 1.f, float width_px = 60.f);
 
-    // Drag to edit a single float value. Horizontal mouse drag changes *value
-    // by delta * speed. Returns true if *value changed this frame.
-    // width_px controls the box width; typically 60–80 px inside a row.
-    bool ZUIDragFloat(ZUIContext* ctx, const char* key,
-                      float* value, float speed = 0.05f, float width_px = 60.f);
+    /// @brief Three-component XYZ drag in a single compact row.
+    ///
+    /// Renders [X][Y][Z] drag boxes with colored axis labels.
+    /// @param component_w Per-component box width; 0 = equal distribution.
+    /// @return true if any component changed this frame.
+    bool        ZUIDragFloat3(ZUIContext* ctx, const char* key, float v[3], float speed = 0.05f, float component_w = 0.f);
 
-    // Drag to edit a single integer value. Same mechanics as DragFloat.
-    bool ZUIDragInt(ZUIContext* ctx, const char* key,
-                    int* value, float speed = 1.f, float width_px = 60.f);
+    /// @brief Text field that edits a float — click to focus, type, press Enter.
+    /// @return true when the value changes (on Enter or focus loss).
+    bool        ZUIInputFloat(ZUIContext* ctx, const char* key, float* value, float width_px = 80.f);
 
-    // Three-component float drag with colored X/Y/Z axis labels.
-    // Renders as a single compact row: [X drag][Y drag][Z drag]
-    // Returns true if any component changed this frame.
-    bool ZUIDragFloat3(ZUIContext* ctx, const char* key,
-                       float v[3], float speed = 0.05f, float component_w = 0.f);
+    /// @brief Inline color editor: swatch + hex label; clicking opens ZUIColorPicker4.
+    /// @param color RGBA in linear [0, 1].
+    /// @return true when changed.
+    bool        ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4]);
 
-    // Text field that edits a float — click to focus, type a value, press Enter.
-    // Returns true when value changes (on Enter or focus-loss).
-    bool ZUIInputFloat(ZUIContext* ctx, const char* key, float* value,
-                       float width_px = 80.f);
+    /// @brief Animated loading arc driven by ctx->Time.
+    /// @param radius_px Visual radius in logical pixels.
+    /// @param speed      Angular velocity in radians per second.
+    void        ZUISpinner(ZUIContext* ctx, const char* key, float radius_px = 10.f, float speed = 5.f);
 
-    // Inline color editor: small colored swatch + hex label.
-    // Clicking the swatch opens a ZUIColorPicker4 popup.
-    // color[4] in linear [0,1]. Returns true when changed.
-    bool ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4]);
-
-    // Animated loading arc. radius_px = visual size. speed = animation frequency (rad/s).
-    // Driven by ctx->Time — call every frame while loading.
-    void ZUISpinner(ZUIContext* ctx, const char* key, float radius_px = 10.f, float speed = 5.f);
-
-    // ---------------------------------------------------------------
     // Popup / overlay system
-    // ---------------------------------------------------------------
 
-    // Request this popup to open at the given position (defaults to current mouse pos).
-    void ZUIOpenPopup(ZUIContext* ctx, const char* key,
-                      float pos_x = -1.f, float pos_y = -1.f);
+    /// @brief Request a popup to open at the given screen position.
+    /// @param pos_x X position; -1 = current mouse X.
+    /// @param pos_y Y position; -1 = current mouse Y.
+    void        ZUIOpenPopup(ZUIContext* ctx, const char* key, float pos_x = -1.f, float pos_y = -1.f);
 
-    // Returns true while this popup is active; pushes a floated root-level column.
-    // Always pair with ZUIEndPopup when it returns true.
-    bool ZUIBeginPopup(ZUIContext* ctx, const char* key);
-    void ZUIEndPopup(ZUIContext* ctx);
+    /// @brief Begin building a popup.
+    ///
+    /// Pushes a floated root-level column. Always pair with ZUIEndPopup when
+    /// this returns true.
+    /// @return true while the popup is active.
+    bool        ZUIBeginPopup(ZUIContext* ctx, const char* key);
+    void        ZUIEndPopup(ZUIContext* ctx);
 
-    // Close whatever popup is currently open.
-    void ZUIClosePopup(ZUIContext* ctx);
+    /// @brief Close whichever popup is currently active.
+    void        ZUIClosePopup(ZUIContext* ctx);
 
-    // Convenience: opens a popup on right-click over the previous signal's box.
-    // Call immediately after ZUISignalFromBox; returns true if now active.
-    bool ZUIBeginPopupContextItem(ZUIContext* ctx, const char* key,
-                                  const ZUISignal& item_signal);
+    /// @brief Open a popup on right-click over the previous signal's box.
+    /// @param item_signal Signal obtained from ZUISignalFromBox immediately before.
+    /// @return true if the popup is now active.
+    bool        ZUIBeginPopupContextItem(ZUIContext* ctx, const char* key, const ZUISignal& item_signal);
 
-    // Menu item inside a popup — returns true on click (closes popup too).
-    bool ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
+    /// @brief Menu item inside a popup — returns true on click (also closes the popup).
+    bool        ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
 
-    // Combo item (selectable inside a ZUIBeginCombo popup).
-    // Returns true when clicked; closes the combo. selected=true tints the item.
-    bool ZUIComboItem(ZUIContext* ctx, const char* label, bool selected = false);
+    /// @brief Selectable item inside a ZUIBeginCombo popup.
+    /// @param selected true tints the item with RowSelectedBg.
+    /// @return true when clicked; also closes the combo.
+    bool        ZUIComboItem(ZUIContext* ctx, const char* label, bool selected = false);
 
-    // ---------------------------------------------------------------
     // Layout helpers
-    // ---------------------------------------------------------------
 
-    // Place the next item on the same line as the previous one.
-    // Note: spacing parameter is accepted but not applied; use ZUISpacer() for explicit gaps.
-    void ZUISameLine(ZUIContext* ctx, float spacing = 0.f);
+    /// @brief Place the next item on the same line as the previous one.
+    /// @note Use ZUISpacer() for explicit gaps rather than @p spacing.
+    void        ZUISameLine(ZUIContext* ctx, float spacing = 0.f);
 
-    // Simple fixed-column table. widths[] = per-column pixel widths;
-    // pass nullptr for equal distribution. Use ZUITableNextRow /
-    // ZUITableSetColumn to fill cells. Pair with ZUIEndTable.
-    void ZUIBeginTable(ZUIContext* ctx, const char* key, int columns,
-                       const float* widths = nullptr, ZUISize h = ZFit());
-    void ZUITableNextRow(ZUIContext* ctx);
-    void ZUITableSetColumn(ZUIContext* ctx, int col_index);
-    void ZUIEndTable(ZUIContext* ctx);
+    /// @brief Begin a simple fixed-column table.
+    /// @param col_count Number of columns.
+    /// @param widths    Per-column pixel widths; nullptr = equal distribution.
+    void        ZUIBeginTable(ZUIContext* ctx, const char* key, int columns, const float* widths = nullptr, ZUISize h = ZFit());
+    void        ZUITableNextRow(ZUIContext* ctx);
+    void        ZUITableSetColumn(ZUIContext* ctx, int col_index);
+    void        ZUIEndTable(ZUIContext* ctx);
 
-    // Set text alignment on a box returned by ZUIBeginColumn/Row or any
-    // ZUIBox* — e.g. ZUISetTextAlign(box, ZUITextAlign::Center).
-    inline void ZUISetTextAlign(ZUIBox* box, ZUITextAlign align) { box->TextAlign = align; }
+    /// @brief Set the text alignment on any ZUIBox.
+    inline void ZUISetTextAlign(ZUIBox* box, ZUITextAlign align)
+    {
+        box->TextAlign = align;
+    }
 
-    // ---------------------------------------------------------------
-    // Visual helpers (call on any ZUIBox* after pushing)
-    // ---------------------------------------------------------------
-
-    // Set a vertical gradient — top corners get top_rgba, bottom corners get bot_rgba.
+    /// @brief Apply a vertical gradient to @p box (top → bottom).
     inline void ZUISetGradient(ZUIBox* box, const float top[4], const float bot[4])
     {
         ZUIBoxSetGradientV(box, top, bot);
     }
-    // Convenience: solid top color, fade to transparent at bottom.
+    /// @brief Convenience gradient: solid color at top, transparent at bottom.
     inline void ZUISetGradientFade(ZUIBox* box, float r, float g, float b, float a)
     {
         const float top[4] = {r, g, b, a};
@@ -242,226 +252,204 @@ namespace ZEngine::UI
         ZUIBoxSetGradientV(box, top, bot);
     }
 
-    // ---------------------------------------------------------------
     // Complex widgets
-    // ---------------------------------------------------------------
 
-    // Tab bar. Usage:
-    //   ZUIBeginTabBar(ctx, "##tabs")
-    //   if (ZUIBeginTabItem(ctx, "Tab 1")) { ...content... ZUIEndTabItem(ctx); }
-    //   if (ZUIBeginTabItem(ctx, "Tab 2")) { ...content... ZUIEndTabItem(ctx); }
-    //   ZUIEndTabBar(ctx)
-    void ZUIBeginTabBar(ZUIContext* ctx, const char* key);
-    bool ZUIBeginTabItem(ZUIContext* ctx, const char* label);
-    void ZUIEndTabItem(ZUIContext* ctx);
-    void ZUIEndTabBar(ZUIContext* ctx);
+    /// @brief Begin a tab bar.
+    ///
+    /// @code
+    ///   ZUIBeginTabBar(ctx, "##tabs");
+    ///   if (ZUIBeginTabItem(ctx, "Tab A")) { /* content */ ZUIEndTabItem(ctx); }
+    ///   if (ZUIBeginTabItem(ctx, "Tab B")) { /* content */ ZUIEndTabItem(ctx); }
+    ///   ZUIEndTabBar(ctx);
+    /// @endcode
+    void    ZUIBeginTabBar(ZUIContext* ctx, const char* key);
+    bool    ZUIBeginTabItem(ZUIContext* ctx, const char* label);
+    void    ZUIEndTabItem(ZUIContext* ctx);
+    void    ZUIEndTabBar(ZUIContext* ctx);
 
-    // Scrollable list box — wraps a scroll region + Selectables.
-    // w/h control the visible area; items are added as ZUISelectable calls inside.
-    ZUIBox* ZUIBeginListBox(ZUIContext* ctx, const char* key,
-                             ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
+    /// @brief Scrollable list box wrapping a scroll region with Selectable items.
+    /// @return The container box.
+    ZUIBox* ZUIBeginListBox(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
     void    ZUIEndListBox(ZUIContext* ctx);
 
-    // Bounded horizontal slider — maps thumb position to [v_min, v_max].
-    // Returns true while value changes.
-    bool ZUISliderFloat(ZUIContext* ctx, const char* key, float* value,
-                        float v_min, float v_max,
-                        ZUISize w = ZFill(), ZUISize h = ZPx(24.f));
+    /// @brief Horizontal slider — maps thumb position linearly to [v_min, v_max].
+    /// @return true while the value changes.
+    bool    ZUISliderFloat(ZUIContext* ctx, const char* key, float* value, float v_min, float v_max, ZUISize w = ZFill(), ZUISize h = ZPx(24.f));
 
-    // Integer text field — editable with keyboard; clamped to [v_min, v_max].
-    // Returns true when value changes.
-    bool ZUIInputInt(ZUIContext* ctx, const char* key, int* value,
-                     int v_min = -0x7FFFFFFF, int v_max = 0x7FFFFFFF,
-                     ZUISize w = ZFill());
+    /// @brief Integer text field clamped to [v_min, v_max].
+    /// @return true when value changes.
+    bool    ZUIInputInt(ZUIContext* ctx, const char* key, int* value, int v_min = -0x7FFFFFFF, int v_max = 0x7FFFFFFF, ZUISize w = ZFill());
 
-    // Multi-line text input inside a scroll region.
-    // Returns true when buf changes.
-    bool ZUIInputTextMultiline(ZUIContext* ctx, const char* key,
-                                char* buf, uint32_t buf_size,
-                                ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
+    /// @brief Multi-line text input inside a scroll region.
+    /// @return true when @p buf changes.
+    bool    ZUIInputTextMultiline(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
 
-    // RGBA colour picker (hue bar + SV square + alpha bar).
-    // color[4] in linear [0,1]. Returns true when changed.
-    bool ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4]);
+    /// @brief RGBA colour picker (hue bar + SV square + alpha bar).
+    /// @param color RGBA in linear [0, 1]. Modified in-place.
+    /// @return true when changed.
+    bool    ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4]);
 
-    // ---------------------------------------------------------------
-    // Popup-based widgets
-    // ---------------------------------------------------------------
+    /// @brief Context menu — opens on right-click anywhere in the caller's region.
+    bool    ZUIBeginContextMenu(ZUIContext* ctx, const char* key);
+    void    ZUIEndContextMenu(ZUIContext* ctx);
 
-    // Context menu — opens on right-click anywhere in the caller's region.
-    // Pair with ZUIEndContextMenu when it returns true.
-    bool ZUIBeginContextMenu(ZUIContext* ctx, const char* key);
-    void ZUIEndContextMenu(ZUIContext* ctx);
+    /// @brief Dropdown combo box.
+    ///
+    /// @p preview_label is shown in the collapsed button.
+    /// Add ZUIComboItem / ZUISelectable items inside, then call ZUIEndCombo.
+    /// @return true while the dropdown is open.
+    bool    ZUIBeginCombo(ZUIContext* ctx, const char* key, const char* preview_label, ZUISize w = ZFill());
+    void    ZUIEndCombo(ZUIContext* ctx);
 
-    // Combo / dropdown.  preview_label is shown in the collapsed box.
-    // Returns true while the dropdown is open. Add ZUISelectable items inside.
-    bool ZUIBeginCombo(ZUIContext* ctx, const char* key,
-                       const char* preview_label, ZUISize w = ZFill());
-    void ZUIEndCombo(ZUIContext* ctx);
+    /// @brief Horizontal menu bar. Pair with ZUIEndMenuBar.
+    bool    ZUIBeginMenuBar(ZUIContext* ctx);
+    void    ZUIEndMenuBar(ZUIContext* ctx);
 
-    // Menu bar — call once per frame to get a horizontal toolbar row.
-    // Pair with ZUIEndMenuBar.
-    bool ZUIBeginMenuBar(ZUIContext* ctx);
-    void ZUIEndMenuBar(ZUIContext* ctx);
+    /// @brief Menu button inside a menu bar — opens a popup column on click.
+    bool    ZUIBeginMenu(ZUIContext* ctx, const char* label, bool enabled = true);
+    void    ZUIEndMenu(ZUIContext* ctx);
 
-    // Menu button inside a menu bar. Opens a popup column on click.
-    bool ZUIBeginMenu(ZUIContext* ctx, const char* label, bool enabled = true);
-    void ZUIEndMenu(ZUIContext* ctx);
+    /// @brief Open a modal dialog (dims background, cannot be dismissed by outside click).
+    void    ZUIOpenModal(ZUIContext* ctx, const char* key);
+    /// @return true while the modal is active.
+    bool    ZUIBeginModal(ZUIContext* ctx, const char* key, const char* title);
+    void    ZUIEndModal(ZUIContext* ctx);
 
-    // Modal — dims the background and shows a centred popup that cannot
-    // be dismissed by clicking outside.
-    void ZUIOpenModal(ZUIContext* ctx, const char* key);
-    bool ZUIBeginModal(ZUIContext* ctx, const char* key, const char* title);
-    void ZUIEndModal(ZUIContext* ctx);
+    // Plot widgets
 
-    // ---------------------------------------------------------------
-    // Plot widgets (ZUIDrawList-backed, ImGui PlotLines / PlotHistogram parity)
-    // ---------------------------------------------------------------
+    /// @brief Line chart over @p count samples.
+    /// @param v_scale_min Lower bound; FLT_MAX = auto-scale.
+    /// @param v_scale_max Upper bound; FLT_MAX = auto-scale.
+    void    ZUIPlotLines(ZUIContext* ctx, const char* key, const float* values, int count, float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f, const char* overlay_text = nullptr, ZUISize w = ZFill(), ZUISize h = ZPx(40.f));
 
-    // Line chart. values[count] are sampled in [v_scale_min, v_scale_max].
-    // Pass FLT_MAX for auto-scale. overlay_text is accepted but not rendered.
-    void ZUIPlotLines    (ZUIContext* ctx, const char* key, const float* values, int count,
-                          float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f,
-                          const char* overlay_text = nullptr,
-                          ZUISize w = ZFill(), ZUISize h = ZPx(40.f));
+    /// @brief Histogram over @p count samples. Same scale semantics as ZUIPlotLines.
+    void    ZUIPlotHistogram(ZUIContext* ctx, const char* key, const float* values, int count, float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f, const char* overlay_text = nullptr, ZUISize w = ZFill(), ZUISize h = ZPx(40.f));
 
-    void ZUIPlotHistogram(ZUIContext* ctx, const char* key, const float* values, int count,
-                          float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f,
-                          const char* overlay_text = nullptr,
-                          ZUISize w = ZFill(), ZUISize h = ZPx(40.f));
+    // ZUITreeView — recursive tree widget
 
-    // ---------------------------------------------------------------
-    // ZUITreeView — full-featured recursive tree (ImGui TreeNode parity)
-    // ---------------------------------------------------------------
-
+    /// @brief Per-instance configuration for ZUIBeginTreeView.
     struct ZUITreeViewConfig
     {
-        float RowH     = 19.f; // logical px (ImGui GetFrameHeight)
-        float IndentPx = 21.f; // px per depth level (ImGui IndentSpacing)
+        float RowH     = 19.f; ///< Row height in logical px (FrameHeight)
+        float IndentPx = 21.f; ///< Indent per depth level (IndentSpacing)
     };
 
-    // Wraps a scroll region. cfg=nullptr uses defaults.
-    ZUIBox* ZUIBeginTreeView(ZUIContext* ctx, const char* key,
-                             ZUISize w = ZFill(), ZUISize h = ZFill(),
-                             const ZUITreeViewConfig* cfg = nullptr);
+    /// @brief Push a tree view scroll region.
+    /// @param cfg Layout configuration; nullptr uses defaults.
+    /// @return The scroll container box.
+    ZUIBox* ZUIBeginTreeView(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFill(), const ZUITreeViewConfig* cfg = nullptr);
     void    ZUIEndTreeView(ZUIContext* ctx);
 
-    // Expandable node. Returns true when expanded — if true, add children then
-    // call ZUITreeViewEndNode. icon_col=nullptr = no icon.
-    // Returns true on click for external selection handling.
-    bool ZUITreeViewBeginNode(ZUIContext* ctx, const char* label,
-                              bool selected,
-                              const float icon_col[4] = nullptr,
-                              bool initial_open = false);
-    void ZUITreeViewEndNode(ZUIContext* ctx);
+    /// @brief Push an expandable tree node.
+    ///
+    /// If this returns true the node is expanded — add children, then
+    /// always call ZUITreeViewEndNode.
+    /// @param selected    Tints the row background.
+    /// @param icon_col    RGBA icon color; nullptr = no icon dot.
+    /// @param initial_open Whether the node starts expanded.
+    /// @return true when the node is expanded (content should be added).
+    bool    ZUITreeViewBeginNode(ZUIContext* ctx, const char* label, bool selected, const float icon_col[4] = nullptr, bool initial_open = false);
+    void    ZUITreeViewEndNode(ZUIContext* ctx);
 
-    // Leaf — no expand arrow. Returns true when clicked.
-    bool ZUITreeViewLeaf(ZUIContext* ctx, const char* label,
-                         bool selected,
-                         const float icon_col[4] = nullptr);
+    /// @brief Leaf row (no expand arrow).
+    /// @return true when clicked.
+    bool    ZUITreeViewLeaf(ZUIContext* ctx, const char* label, bool selected, const float icon_col[4] = nullptr);
 
-    // ---------------------------------------------------------------
-    // ZUIDataTable — sortable, resizable data table (ImGui Table parity)
-    // ---------------------------------------------------------------
+    // ZUIDataTable — sortable, resizable data table
 
+    /// @brief Column descriptor for ZUIBeginDataTable.
     struct ZUIDataTableColumn
     {
         const char* Label;
-        float       InitWidth;  // 0 = 100 logical px default
+        float       InitWidth; ///< 0 = 100 px default
         bool        Sortable;
         bool        Resizable;
     };
 
+    /// @brief Sort state returned by ZUIDataTableGetSortSpecs.
     struct ZUITableSortSpec
     {
-        int  ColumnIndex; // -1 = unsorted
+        int  ColumnIndex; ///< -1 = unsorted
         bool Ascending;
-        bool Changed;     // true the frame the sort spec changed
+        bool Changed; ///< true the frame the sort spec changed
     };
 
-    // Begin a data table. Returns false if clipped (still call EndDataTable).
-    bool ZUIBeginDataTable(ZUIContext* ctx, const char* key,
-                           int col_count, const ZUIDataTableColumn* cols,
-                           ZUISize h = ZFill());
+    /// @brief Begin a data table.
+    /// @param col_count Number of columns.
+    /// @param cols      Column descriptors (array of length col_count).
+    /// @return false if the table is off-screen (still call ZUIEndDataTable).
+    bool             ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h = ZFill());
 
-    // Render the sticky header row with labels + sort arrows.
-    // Call once, before any ZUIDataTableNextRow calls.
-    void ZUIDataTableHeadersRow(ZUIContext* ctx);
+    /// @brief Render the sticky header row with labels and sort arrows.
+    /// @note Must be called once before any ZUIDataTableNextRow calls.
+    void             ZUIDataTableHeadersRow(ZUIContext* ctx);
 
-    // Start the next data row. selected=true tints the row.
-    // Returns true if the row was clicked (for selection).
-    bool ZUIDataTableNextRow(ZUIContext* ctx, bool selected = false);
+    /// @brief Advance to the next data row.
+    /// @param selected Tints the row with RowSelectedBg when true.
+    /// @return true if the row was clicked.
+    bool             ZUIDataTableNextRow(ZUIContext* ctx, bool selected = false);
 
-    // Set the active column for the current row. Call before adding content.
-    void ZUIDataTableSetColumn(ZUIContext* ctx, int col);
+    /// @brief Set the active column cell for the current row.
+    void             ZUIDataTableSetColumn(ZUIContext* ctx, int col);
+    void             ZUIEndDataTable(ZUIContext* ctx);
 
-    // Close the table. Always pair with ZUIBeginDataTable.
-    void ZUIEndDataTable(ZUIContext* ctx);
-
-    // Returns current sort spec. Changed=true the frame the user clicked a header.
+    /// @return Current sort specification; Changed==true the frame a header was clicked.
     ZUITableSortSpec ZUIDataTableGetSortSpecs(ZUIContext* ctx);
 
-    // ---------------------------------------------------------------
-    // ZUIGridView — icon grid for content browsers and asset pickers
-    // ---------------------------------------------------------------
+    // ZUIGridView — icon grid for content browsers
 
-    // Begin a grid view with fixed-size cells that wrap automatically.
-    // item_w / item_h: cell dimensions in logical px.
-    // w / h: scroll region size.
-    ZUIBox* ZUIBeginGridView(ZUIContext* ctx, const char* key,
-                             float item_w, float item_h,
-                             ZUISize w = ZFill(), ZUISize h = ZFill());
+    /// @brief Push an auto-wrapping icon grid.
+    /// @param item_w Cell width in logical px.
+    /// @param item_h Cell height in logical px.
+    ZUIBox*          ZUIBeginGridView(ZUIContext* ctx, const char* key, float item_w, float item_h, ZUISize w = ZFill(), ZUISize h = ZFill());
 
-    // Advance to the next grid cell.
-    // Returns true if the cell was clicked (for external selection handling).
-    // selected=true tints the cell background.
-    bool ZUIGridViewNextItem(ZUIContext* ctx, const char* item_key, bool selected = false);
+    /// @brief Advance to the next grid cell.
+    /// @param selected Tints the cell background.
+    /// @return true when the cell is clicked.
+    bool             ZUIGridViewNextItem(ZUIContext* ctx, const char* item_key, bool selected = false);
+    void             ZUIGridViewEndItem(ZUIContext* ctx);
+    void             ZUIEndGridView(ZUIContext* ctx);
 
-    // Close a cell opened by ZUIGridViewNextItem. Always pair.
-    void ZUIGridViewEndItem(ZUIContext* ctx);
+    // Drag-and-drop
 
-    // Close the grid view. Always pair with ZUIBeginGridView.
-    void ZUIEndGridView(ZUIContext* ctx);
+    /// @brief Begin a drag source on @p box.
+    ///
+    /// When the box is held and the mouse has moved, records
+    /// ctx->DragSourceKey and copies @p payload so the next ZUIAcceptDrop
+    /// call can retrieve it.
+    void             ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box, const char* payload, uint32_t payload_len);
 
-    // ---------------------------------------------------------------
-    // Drag-and-drop helpers
-    // ---------------------------------------------------------------
+    /// @brief Accept a drop on @p box.
+    ///
+    /// Returns true exactly once — on the frame the drop fires.
+    /// @param out_buf  Receives the payload (null-terminated); may be nullptr.
+    /// @param out_size Capacity of @p out_buf.
+    bool             ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box, char* out_buf, uint32_t out_size);
 
-    // Call after ZUISignalFromBox for a source box. When the box is held and the
-    // mouse has moved, records ctx->DragSourceKey + copies payload so the next
-    // ZUIAcceptDrop call on the landing box can retrieve it.
-    void ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box,
-                            const char* payload, uint32_t payload_len);
+    /// @brief Display a texture in a box.
+    /// @param texture_index Bindless array slot (e.g. TextureHandle::Index).
+    void             ZUIImage(ZUIContext* ctx, const char* key, uint32_t texture_index, ZUISize w = ZFill(), ZUISize h = ZFill());
 
-    // Call after ZUISignalFromBox for a potential drop target.
-    // Returns true exactly once — on the BuildUI frame after the drop fires.
-    // Copies the payload into out_buf (null-terminated). out_buf may be nullptr.
-    bool ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box,
-                       char* out_buf, uint32_t out_size);
+    /// @brief Single-line editable text field with full selection and undo/redo.
+    ///
+    /// Keyboard shortcuts: Shift+Arrow to select, Ctrl+A to select all,
+    /// Ctrl+C/X/V for clipboard, Ctrl+Z/Y for undo/redo (8 levels).
+    /// Mouse: click to place cursor, drag to select.
+    /// @param buf      Editable buffer.
+    /// @param buf_size Capacity including the null terminator.
+    /// @return true if @p buf changed this frame.
+    bool             ZUITextField(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, float width_px = 160.f);
 
-    // Display a texture in a box. texture_index is the bindless array slot
-    // (e.g. TextureHandle::Index from SceneRenderer::GetFrameOutput()).
-    void ZUIImage(ZUIContext* ctx, const char* key,
-                  uint32_t texture_index, ZUISize w = ZFill(), ZUISize h = ZFill());
+    /// @brief Search box — ZUITextField with a dim icon and placeholder text.
+    /// @param placeholder Shown when @p buf is empty.
+    bool             ZUISearchBox(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, const char* placeholder = "Search...", ZUISize w = ZFill());
 
-    // Single-line editable text field. When focused (after a click), text-input
-    // events append to buf and backspace removes the last character.
-    // Returns true if buf changed this frame.
-    bool ZUITextField(ZUIContext* ctx, const char* key,
-                      char* buf, uint32_t buf_size, float width_px = 160.f);
-
-    // Search box — ZUITextField with a dim search icon on the left and
-    // placeholder text rendered when the buffer is empty.
-    bool ZUISearchBox(ZUIContext* ctx, const char* key,
-                      char* buf, uint32_t buf_size,
-                      const char* placeholder = "Search...",
-                      ZUISize w = ZFill());
-
-    // Thin (4 px) invisible-but-clickable resize strip. horizontal=true creates
-    // a full-width 4-px-tall strip (top/bottom split); false creates a 4-px-wide
-    // full-height strip (left/right split). While held, updates *value by
-    // DragDelta clamped to [min_v, max_v]. Returns true when actively dragging.
-    bool ZUIResizeHandle(ZUIContext* ctx, const char* key, float* value,
-                         float min_v, float max_v, bool horizontal);
+    /// @brief Thin invisible resize strip for manual splitter controls.
+    ///
+    /// @p horizontal = true → full-width 4 px tall (top/bottom split).
+    /// @p horizontal = false → full-height 4 px wide (left/right split).
+    /// While held, updates @p *value by DragDelta clamped to [min_v, max_v].
+    /// @return true when actively dragging.
+    bool             ZUIResizeHandle(ZUIContext* ctx, const char* key, float* value, float min_v, float max_v, bool horizontal);
 
 } // namespace ZEngine::UI

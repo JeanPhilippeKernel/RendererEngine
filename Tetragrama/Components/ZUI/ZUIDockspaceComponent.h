@@ -10,22 +10,20 @@ namespace Tetragrama::Components
     class ZUIDockspaceComponent : public ZUIComponent
     {
     public:
-        ZUIDockspaceComponent()          = default;
+        ZUIDockspaceComponent()           = default;
         ~ZUIDockspaceComponent() override = default;
 
-        void Initialize(Tetragrama::Layers::ZUILayer* parent,
-                        cstring name       = "Dockspace",
-                        bool    visibility = true) override;
+        void          Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "Dockspace", bool visibility = true) override;
 
-        void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
+        void          BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 
         // Panels registered here get their regions assigned each frame
-        ZUIComponent* Viewport   = nullptr;
-        ZUIComponent* Hierarchy  = nullptr;
-        ZUIComponent* Inspector  = nullptr;
-        ZUIComponent* Log        = nullptr;
-        ZUIComponent* Project    = nullptr;
-        ZUIComponent* StatusBar  = nullptr;
+        ZUIComponent* Viewport  = nullptr;
+        ZUIComponent* Hierarchy = nullptr;
+        ZUIComponent* Inspector = nullptr;
+        ZUIComponent* Log       = nullptr;
+        ZUIComponent* Project   = nullptr;
+        ZUIComponent* StatusBar = nullptr;
 
     private:
         ZEngine::UI::ZUIDockTree* m_dock_tree = nullptr;
@@ -33,18 +31,19 @@ namespace Tetragrama::Components
         // Workspace resize state — separate from the normal hit-test pass.
         // RAD Debugger style: dividers check mouse bounds directly, not through
         // the z-ordered box tree. This gives dividers priority over panel content.
-        struct Divider {
-            const char* leaf_name;   // which dock leaf to resize on drag
-            bool        horizontal;  // true = drag Y (top/bottom), false = drag X (left/right)
-            bool        use_near;    // true = divider on left/top edge; false = right/bottom edge
+        struct Divider
+        {
+            const char* leaf_name;  // which dock leaf to resize on drag
+            bool        horizontal; // true = drag Y (top/bottom), false = drag X (left/right)
+            bool        use_near;   // true = divider on left/top edge; false = right/bottom edge
             bool        dragging = false;
         };
         // leaf_name, horizontal, use_near(left/top vs right/bottom edge)
         Divider m_dividers[4] = {
             {"Hierarchy", false, false}, // vertical at hierarchy's RIGHT edge
-            {"Inspector", false, true},  // vertical at inspector's LEFT edge
-            {"Viewport",  true,  false}, // horizontal at viewport's BOTTOM edge
-            {"Log",       false, false}, // vertical at log's RIGHT edge
+            {"Inspector", false,  true}, // vertical at inspector's LEFT edge
+            { "Viewport",  true, false}, // horizontal at viewport's BOTTOM edge
+            {      "Log", false, false}, // vertical at log's RIGHT edge
         };
     };
     ZDEFINE_PTR(ZUIDockspaceComponent);

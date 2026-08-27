@@ -4,11 +4,13 @@
 #include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
-namespace ZEngine::Hardwares { struct VulkanDevice; }
+namespace ZEngine::Hardwares
+{
+    struct VulkanDevice;
+}
 
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
 
     struct ZUIGlyph
     {
@@ -23,18 +25,18 @@ namespace ZEngine::UI
 
     struct ZUIFont
     {
-        ZUIGlyph*  Glyphs         = nullptr;
-        uint32_t   GlyphCount     = 0;
-        uint32_t   FirstCodepoint = 32;
-        float      FontSize       = 0.f;
-        float      Ascent         = 0.f;
-        float      Descent        = 0.f;
-        float      LineGap        = 0.f;
-        float      LineHeight     = 0.f;
+        ZUIGlyph* Glyphs         = nullptr;
+        uint32_t  GlyphCount     = 0;
+        uint32_t  FirstCodepoint = 32;
+        float     FontSize       = 0.f;
+        float     Ascent         = 0.f;
+        float     Descent        = 0.f;
+        float     LineGap        = 0.f;
+        float     LineHeight     = 0.f;
         // Converts atlas-pixel metrics to logical screen coordinates.
         // Set to 1/UIScale (= 0.5 on Retina) after baking so glyph quads
         // render at the correct logical size even when baked at physical density.
-        float      FontScale      = 1.f;
+        float     FontScale      = 1.f;
     };
 
     // Single shared texture atlas — all fonts packed together (ImGui approach).
@@ -56,17 +58,8 @@ namespace ZEngine::UI
     // OversampleH=2, OversampleV=1 (ImGui default).
     // Permanent allocations (ZUIFontAtlas, ZUIFont[3], ZUIGlyph arrays) → persistent_arena.
     // Temporary baking buffers (TTF bytes, pixel maps) → temp_arena (caller releases it).
-    ZUIFontAtlas* ZUIFontAtlasBake(ArenaAllocator*          persistent_arena,
-                                   ArenaAllocator*          temp_arena,
-                                   Hardwares::VulkanDevice* device,
-                                   const char*              vfs_path,
-                                   float                    size_small,
-                                   float                    size_body,
-                                   float                    size_header,
-                                   uint32_t                 first_codepoint,
-                                   uint32_t                 codepoint_count,
-                                   const char*              header_vfs_path = nullptr);
+    ZUIFontAtlas* ZUIFontAtlasBake(ZEngine::Core::Memory::ArenaAllocator* persistent_arena, ZEngine::Core::Memory::ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path = nullptr);
 
-    void ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
+    void          ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
 
 } // namespace ZEngine::UI

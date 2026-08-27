@@ -18,13 +18,13 @@ namespace ZEngine::UI
 
     struct ZUISignal
     {
-        uint32_t Flags       = ZUI_SignalNone;
+        uint32_t Flags        = ZUI_SignalNone;
         float    DragDelta[2] = {};
         float    ScrollDelta  = 0.f;
     };
 
     // Called from ZUIEndFrame — walks the box tree and updates HotKey / ActiveKey on ctx
-    void ZUIInteractionPass(ZUIContext* ctx);
+    void      ZUIInteractionPass(ZUIContext* ctx);
 
     // Called per-widget after the build phase to query interaction state for a specific box.
     // Also advances HotT / ActiveT animation on the box's persistent state.

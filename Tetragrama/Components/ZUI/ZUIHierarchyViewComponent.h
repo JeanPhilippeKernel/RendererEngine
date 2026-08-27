@@ -10,12 +10,10 @@ namespace Tetragrama::Components
     class ZUIHierarchyViewComponent : public ZUIComponent
     {
     public:
-        ZUIHierarchyViewComponent()          = default;
+        ZUIHierarchyViewComponent()           = default;
         ~ZUIHierarchyViewComponent() override = default;
 
-        void Initialize(Tetragrama::Layers::ZUILayer* parent,
-                        cstring name       = "Hierarchy",
-                        bool    visibility = true) override;
+        void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "Hierarchy", bool visibility = true) override;
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 
@@ -31,8 +29,8 @@ namespace Tetragrama::Components
         bool                                                     m_rename_started   = false;
         uint64_t                                                 m_rename_focus_key = 0;
 
-        bool IsCollapsed(ZEngine::ECS::EntityID eid) const;
-        void ToggleCollapsed(ZEngine::ECS::EntityID eid);
+        bool                                                     IsCollapsed(ZEngine::ECS::EntityID eid) const;
+        void                                                     ToggleCollapsed(ZEngine::ECS::EntityID eid);
     };
     ZDEFINE_PTR(ZUIHierarchyViewComponent);
 } // namespace Tetragrama::Components

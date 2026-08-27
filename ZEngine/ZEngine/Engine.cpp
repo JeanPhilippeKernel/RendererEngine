@@ -98,6 +98,7 @@ namespace ZEngine
         // parent (glTF 64 MB + Assimp 128 MB + envmap 32 MB + editor ~414 MB).
         // Each Import() call ends with Arena.Clear() so the sub-arena is reused, not consumed.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
+        memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
