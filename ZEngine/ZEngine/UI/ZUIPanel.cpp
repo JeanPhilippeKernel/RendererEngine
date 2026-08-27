@@ -874,19 +874,6 @@ namespace ZEngine::UI
             }
         }
 
-        // BOTTOM SEPARATOR: TabBarBorderSize line with Separator color
-        {
-            char fk[48]; snprintf(fk, sizeof(fk), "##tbfloor_%llx", (unsigned long long)p->DockKey);
-            ZUIBox* fl = ZUIPushBox(ctx, fk, (uint32_t)strlen(fk),
-                                    ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-            fl->Size[0]     = ZPx(rect[2] - rect[0]);
-            fl->Size[1]     = ZPx(ctx->Style.TabBarBorderSize);  // was 1.f hardcoded
-            fl->FloatPos[0] = rect[0];
-            fl->FloatPos[1] = rect[3] - ctx->Style.TabBarBorderSize;
-            ZUIBoxSetColorArr(fl, ctx->Theme.Separator);  // was PanelBg — now correct separator color
-            fl->EdgeSoftness = 0.f;
-            ZUIPopBox(ctx);
-        }
     }
 
     // ---------------------------------------------------------------
