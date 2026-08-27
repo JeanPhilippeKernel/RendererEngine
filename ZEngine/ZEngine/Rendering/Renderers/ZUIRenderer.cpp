@@ -210,8 +210,8 @@ namespace ZEngine::Rendering::Renderers
             // --- Drop shadow (emitted first, renders behind everything) ---
             if (box->Flags & ZUI_DropShadow)
             {
-                float offset = 4.f;
-                uint32_t scol = ZUIPackColor(0.f, 0.f, 0.f, 0.38f);
+                float    offset = ctx->Style.DropShadowOffset;
+                uint32_t scol   = ZUIPackColor(0.f, 0.f, 0.f, ctx->Style.DropShadowAlpha);
                 ZUIDrawListAddRectFilled(&ctx->DrawList,
                     bx0 + offset, by0 + offset,
                     bx1 + offset, by1 + offset,
@@ -233,7 +233,7 @@ namespace ZEngine::Rendering::Renderers
                 auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
                 if (ps && ps->HotT > 0.01f)
                 {
-                    uint32_t oc = ZUIPackColor(0.5f, 0.5f, 0.56f, ps->HotT * 0.15f);
+                    uint32_t oc = ZUIPackColor(0.5f, 0.5f, 0.56f, ps->HotT * ctx->Style.HoverOverlayAlpha);
                     ZUIDrawListAddRectFilled(&ctx->DrawList, bx0, by0, bx1, by1, oc, cr, rf);
                 }
             }
@@ -285,7 +285,7 @@ namespace ZEngine::Rendering::Renderers
                 float box_h    = by1 - by0;
                 float text_top = floorf(by0 + (box_h - lh) * 0.5f);
                 float baseline = text_top + font->Ascent * fs;
-                float indent   = box->Padding[0] > 0.f ? box->Padding[0] : 4.f;
+                float indent   = box->Padding[0] > 0.f ? box->Padding[0] : ctx->Style.FramePadding[0];
                 float cx       = floorf(bx0 + indent);
 
                 if (box->TextAlign != ZUITextAlign::Left)
@@ -295,7 +295,7 @@ namespace ZEngine::Rendering::Renderers
                     if (box->TextAlign == ZUITextAlign::Center)
                         cx = floorf(bx0 + ((bx1 - bx0) - ts[0]) * 0.5f);
                     else
-                        cx = floorf(bx1 - ts[0] - 4.f);
+                        cx = floorf(bx1 - ts[0] - ctx->Style.FramePadding[0]);
                 }
 
                 uint32_t text_col = ZUIPackColor(box->TextColor);
