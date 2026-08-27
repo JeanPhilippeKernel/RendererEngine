@@ -614,7 +614,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // Phase 7 — complex widgets
+    // Complex widgets
     // ---------------------------------------------------------------
 
     void ZUIBeginTabBar(ZUIContext* ctx, const char* key)
@@ -628,7 +628,6 @@ namespace ZEngine::UI
         ctx->TabBarCurrentIdx  = 0;
 
         ZUIBox* outer = ZUIBeginColumn(ctx, key, ZFill(), ZFit());
-        ctx->TabBarOuterBox = outer;
 
         // Button row
         char row_key[64];
@@ -694,9 +693,8 @@ namespace ZEngine::UI
     {
         if (ctx->TabBarRowBox) { ZUIEndRow(ctx); } // close button row if no tab was active
         ZUIEndColumn(ctx); // close outer column
-        ctx->TabBarKey     = 0;
-        ctx->TabBarRowBox  = nullptr;
-        ctx->TabBarOuterBox = nullptr;
+        ctx->TabBarKey    = 0;
+        ctx->TabBarRowBox = nullptr;
     }
 
     ZUIBox* ZUIBeginListBox(ZUIContext* ctx, const char* key, ZUISize w, ZUISize h)
@@ -751,7 +749,7 @@ namespace ZEngine::UI
             fill->EdgeSoftness = 0.f;
             ZUIPopBox(ctx);
         }
-        // Thumb (8px square for now — Phase 2 upgrades to circle via ZUIDrawList)
+        // Thumb: rounded rect grip centered on the track
         {
             char tk[64]; snprintf(tk, sizeof(tk), "##sf_thumb_%s", key);
             ZUIBox* thumb = ZUIPushBox(ctx, tk, (uint32_t)strlen(tk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
@@ -992,7 +990,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // Phase 5 — layout improvements
+    // Layout helpers
     // ---------------------------------------------------------------
 
     void ZUISameLine(ZUIContext* ctx, float /*spacing*/)
@@ -1072,7 +1070,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // Phase 3 — simple standalone widgets
+    // Simple standalone widgets
     // ---------------------------------------------------------------
 
     bool ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked)
@@ -1335,7 +1333,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // Phase 4 — popup-based widgets
+    // Popup-based widgets
     // ---------------------------------------------------------------
 
     bool ZUIBeginContextMenu(ZUIContext* ctx, const char* key)
@@ -1568,51 +1566,6 @@ namespace ZEngine::UI
             out_buf[copy_len] = '\0';
         }
         return true;
-    }
-
-    // ---------------------------------------------------------------
-    // ZUIPanelDragHeader
-    // ---------------------------------------------------------------
-
-    bool ZUIPanelDragHeader(ZUIContext* ctx, const char* title,
-                            float* inout_x, float* inout_y, bool* detached)
-    {
-        char hdr_key[64];
-        snprintf(hdr_key, sizeof(hdr_key), "##pdh_%s", title);
-
-        ZUIBox* hdr   = ZUIBeginRow(ctx, hdr_key, ZFill(), ZSPx(ctx, 22.f));
-        hdr->Flags    = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        SetBgArr(hdr, ctx->Theme.HeaderBg);
-
-        // Drag indicator ("= ") in dim colour
-        ZUIBox* grip  = ZUIPushBox(ctx, "= ##grip", 8, ZUI_DrawText);
-        grip->Size[0] = ZPx(18.f);
-        grip->Size[1] = ZSPx(ctx, 22.f);
-        SetTextColor(grip, ctx->Theme.TextDim);
-        ZUIPopBox(ctx);
-
-        ZUILabel(ctx, title, ctx->Theme.TextDefault);
-
-        ZUISignal sig = ZUISignalFromBox(ctx, hdr);
-        ZUIEndRow(ctx);
-
-        bool moved = false;
-        if ((sig.Flags & ZUI_SignalHeld) &&
-            (sig.DragDelta[0] != 0.f || sig.DragDelta[1] != 0.f))
-        {
-            if (inout_x) { *inout_x += sig.DragDelta[0]; }
-            if (inout_y) { *inout_y += sig.DragDelta[1]; }
-            if (detached) { *detached = true; }
-            moved = true;
-        }
-
-        // Double-click snaps back to dockspace
-        if ((sig.Flags & ZUI_SignalDoubleClicked) && detached)
-        {
-            *detached = false;
-        }
-
-        return moved;
     }
 
     // ---------------------------------------------------------------
@@ -2564,9 +2517,8 @@ namespace ZEngine::UI
         ctx->DT_ColCount = col_count;
         ctx->DT_CurCol   = -1;
         ctx->DT_RowIndex = 0;
-        ctx->DT_InRow    = false;
-        ctx->DT_InHeader = false;
-        ctx->DT_RowBox   = nullptr;
+        ctx->DT_InRow  = false;
+        ctx->DT_RowBox = nullptr;
         ctx->DT_SortChanged = false;
 
         // Load column widths from persistent state; apply InitWidth for new tables

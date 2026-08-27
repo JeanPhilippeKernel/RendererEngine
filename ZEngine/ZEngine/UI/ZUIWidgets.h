@@ -117,7 +117,7 @@ namespace ZEngine::UI
     ZUISignal ZUITreeNode(ZUIContext* ctx, const char* label, bool* open);
 
     // ---------------------------------------------------------------
-    // Phase 3 — simple standalone widgets
+    // Simple standalone widgets
     // ---------------------------------------------------------------
 
     // 16×16 checkbox + label. Returns true when *checked changes.
@@ -205,10 +205,11 @@ namespace ZEngine::UI
     bool ZUIComboItem(ZUIContext* ctx, const char* label, bool selected = false);
 
     // ---------------------------------------------------------------
-    // Phase 5 — layout improvements
+    // Layout helpers
     // ---------------------------------------------------------------
 
     // Place the next item on the same line as the previous one.
+    // Note: spacing parameter is accepted but not applied; use ZUISpacer() for explicit gaps.
     void ZUISameLine(ZUIContext* ctx, float spacing = 0.f);
 
     // Simple fixed-column table. widths[] = per-column pixel widths;
@@ -225,7 +226,7 @@ namespace ZEngine::UI
     inline void ZUISetTextAlign(ZUIBox* box, ZUITextAlign align) { box->TextAlign = align; }
 
     // ---------------------------------------------------------------
-    // Phase 9 — visual helpers (call on any ZUIBox* after pushing)
+    // Visual helpers (call on any ZUIBox* after pushing)
     // ---------------------------------------------------------------
 
     // Set a vertical gradient — top corners get top_rgba, bottom corners get bot_rgba.
@@ -242,7 +243,7 @@ namespace ZEngine::UI
     }
 
     // ---------------------------------------------------------------
-    // Phase 7 — complex widgets
+    // Complex widgets
     // ---------------------------------------------------------------
 
     // Tab bar. Usage:
@@ -284,7 +285,7 @@ namespace ZEngine::UI
     bool ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4]);
 
     // ---------------------------------------------------------------
-    // Phase 4 — popup-based widgets
+    // Popup-based widgets
     // ---------------------------------------------------------------
 
     // Context menu — opens on right-click anywhere in the caller's region.
@@ -318,7 +319,7 @@ namespace ZEngine::UI
     // ---------------------------------------------------------------
 
     // Line chart. values[count] are sampled in [v_scale_min, v_scale_max].
-    // Pass FLT_MAX for auto-scale. overlay_text drawn centered when non-null.
+    // Pass FLT_MAX for auto-scale. overlay_text is accepted but not rendered.
     void ZUIPlotLines    (ZUIContext* ctx, const char* key, const float* values, int count,
                           float v_scale_min = 3.402823e+38f, float v_scale_max = 3.402823e+38f,
                           const char* overlay_text = nullptr,
@@ -335,9 +336,8 @@ namespace ZEngine::UI
 
     struct ZUITreeViewConfig
     {
-        float RowH      = 22.f; // logical px
-        float IndentPx  = 16.f; // px per depth level
-        float IconSize  = 10.f; // colored dot size
+        float RowH     = 19.f; // logical px (ImGui GetFrameHeight)
+        float IndentPx = 21.f; // px per depth level (ImGui IndentSpacing)
     };
 
     // Wraps a scroll region. cfg=nullptr uses defaults.
@@ -438,17 +438,6 @@ namespace ZEngine::UI
     // Copies the payload into out_buf (null-terminated). out_buf may be nullptr.
     bool ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box,
                        char* out_buf, uint32_t out_size);
-
-    // ---------------------------------------------------------------
-    // Panel drag header (gap 4)
-    // ---------------------------------------------------------------
-
-    // Renders a draggable title bar row (DrawBackground + Clickable).
-    // While held + mouse is moving, *inout_x and *inout_y are updated by DragDelta.
-    // Returns true if the panel was dragged this frame (position changed).
-    // Double-click resets *detached to false (snap back to dockspace).
-    bool ZUIPanelDragHeader(ZUIContext* ctx, const char* title,
-                            float* inout_x, float* inout_y, bool* detached);
 
     // Display a texture in a box. texture_index is the bindless array slot
     // (e.g. TextureHandle::Index from SceneRenderer::GetFrameOutput()).

@@ -10,25 +10,21 @@ namespace ZEngine::UI
     using namespace ZEngine::Core::Memory;
 
     // ---------------------------------------------------------------
-    // ZUITheme — single source of truth for every color in the editor.
-    // Widgets and components read from ctx->Theme instead of local constants.
-    // Swap the whole struct to apply a different theme at runtime.
-    // ---------------------------------------------------------------
-    // ZUITheme — colors matched to ImGui's StyleColorsDark() palette so the
-    // editor looks familiar to ImGui users and benefits from its years of polish.
+    // ZUITheme — single source of truth for all colors.
+    // Swap the whole struct at runtime to change the entire editor theme.
     struct ZUITheme
     {
         // ZodiacEngine Dark — cool blue-dark palette with teal #4EC9B0 accent.
         // Inspired by VS Code Dark+, GitHub Dark Dimmed and One Dark.
-        // Backgrounds carry a subtle cool-blue tint (+5% blue) to avoid
-        // flat gray monotony.  All values sRGB [0,1]; hex refs are approximate.
+        // Subtle +5% blue tint on backgrounds avoids flat gray monotony.
+        // All values sRGB [0,1]; hex refs are approximate.
 
         // --- Backgrounds (darkest → lightest) ---
         float WindowBg[4]       = {0.067f,0.067f,0.082f,1.00f}; // #111115  editor area
         float PanelBg[4]        = {0.102f,0.102f,0.125f,1.00f}; // #1a1a20  panel content
         float PanelBgAlt[4]     = {0.133f,0.133f,0.161f,1.00f}; // #222229  alt rows / headers
-        float TitleBarBg[4]     = {0.157f,0.157f,0.192f,1.00f}; // #282831  tab bar strip
-        float TitleBgActive[4]  = {0.157f,0.157f,0.192f,1.00f}; // same
+        float TitleBarBg[4]     = {0.157f,0.157f,0.192f,1.00f}; // #282831  tab bar (unfocused panel)
+        float TitleBgActive[4]  = {0.176f,0.176f,0.216f,1.00f}; // slightly lighter — focused panel
         float HeaderBg[4]       = {0.306f,0.788f,0.690f,0.18f}; // teal 18% collapsing header
         float MenuBarBg[4]      = {0.180f,0.180f,0.220f,1.00f}; // #2e2e38  menu + toolbar bars
         float InputBg[4]        = {0.180f,0.180f,0.220f,1.00f}; // #2e2e38  input fields
@@ -263,7 +259,6 @@ namespace ZEngine::UI
         int                TabBarSelectedIdx   = 0;  // which tab is open
         int                TabBarCurrentIdx    = 0;  // iteration counter
         bool               TabItemWasSelected  = false; // did last BeginTabItem match?
-        ZUIBox*            TabBarOuterBox      = nullptr;
         ZUIBox*            TabBarRowBox        = nullptr;
 
         // Basic table state (ZUIBeginTable / ZUIEndTable)
@@ -283,7 +278,6 @@ namespace ZEngine::UI
         int                DT_CurCol        = -1;
         int                DT_RowIndex      = 0;
         bool               DT_InRow         = false;
-        bool               DT_InHeader      = false;
         ZUIBox*            DT_RowBox        = nullptr;
         float*             DT_ColWidths     = nullptr; // FrameArena, size = DT_ColCount
         const void*        DT_Cols          = nullptr; // ZUIDataTableColumn* stored by BeginDataTable

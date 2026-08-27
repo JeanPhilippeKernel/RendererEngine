@@ -71,9 +71,6 @@ namespace ZEngine::UI
     // ---------------------------------------------------------------
     static constexpr uint32_t kMaxPanels   = 32;
     static constexpr float    kTabBarH     = 26.f;
-    static constexpr float    kMenuBarH    = 26.f;
-    static constexpr float    kTitleBarH   = 24.f; // floating panel title bar
-    static constexpr float    kResizeGrip  =  8.f; // bottom-right resize handle
     static constexpr float    kDivGrabW    =  6.f; // divider hit-test width
 
     struct ZUIPanelManager

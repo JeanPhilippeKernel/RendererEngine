@@ -146,8 +146,9 @@ namespace Tetragrama::Panels
         float metallic   = 0.f;
         float mat_color[4]  = {0.8f, 0.4f, 0.2f, 1.f};
         float emit_color[4] = {0.f,  0.f,  0.f,  1.f};
-        bool  cast_shadow = true;
-        int   mobility    = 2; // 0=Static 1=Stationary 2=Movable
+        bool  cast_shadow       = true;
+        bool  simulate_physics  = false;
+        int   mobility          = 2; // 0=Static 1=Stationary 2=Movable
         char  search_buf[64] = {};
 
         static constexpr float kLW = 110.f; // label column width
@@ -352,7 +353,7 @@ namespace Tetragrama::Panels
             if (ZUICollapsingHeader(ctx, "Physics", &phys_open))
             {
                 PropStart(ctx, "Simulate", "phys_sim");
-                ZUICheckbox(ctx, "##phys_sim_cb", &cast_shadow);
+                ZUICheckbox(ctx, "##phys_sim_cb", &simulate_physics);
                 PropEnd(ctx);
             }
 
@@ -550,7 +551,6 @@ namespace Tetragrama::Panels
                 ZUISpacer(ctx, 6.f);
 
                 static const char* kF[]        = {"All", "Info", "Warn", "Error"};
-                static const int   kKind[4]     = {-1, 0, 1, 2};
                 static const float kFCol[4][4] = {
                     {0.70f,0.70f,0.72f,1.f},
                     {0.53f,0.80f,0.53f,1.f},

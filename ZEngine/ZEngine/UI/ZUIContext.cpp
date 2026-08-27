@@ -35,9 +35,6 @@ namespace ZEngine::UI
         // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
         // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
         // must survive until ZUIEndFrame runs the interaction pass and widget logic.
-        // ──────────────────────────────────────────────────────────────────────────
-        // GLFW events fire before BeginFrame (in window->PollEvent) and must survive
-        // until ZUIEndFrame runs the interaction pass.
     }
 
     void ZUIEndFrame(ZUIContext* ctx)

@@ -91,8 +91,8 @@ namespace Tetragrama::Panels
             ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 5); // no-op if file not found
 
             // No central node — all panels have normal chrome and are fully dockable,
-            // including the Viewport. Mouse passthrough for 3D scene input is handled
-            // by ctx->ViewportHovered which ViewportPanel sets each frame.
+            // including the Viewport. The central-node infrastructure (SetCentralPanel)
+            // is available if a passthrough viewport is ever needed in future.
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override
