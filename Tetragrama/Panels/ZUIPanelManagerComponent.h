@@ -25,7 +25,7 @@ namespace Tetragrama::Panels
         HierarchyPanel  hierarchy;
         ViewportPanel   viewport;
         InspectorPanel  inspector;
-        OutputPanel     output;
+        ConsolePanel    output;
 
         void Initialize(Tetragrama::Layers::ZUILayer* parent,
                         cstring name       = "PanelManager",
