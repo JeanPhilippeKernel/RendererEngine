@@ -1363,36 +1363,39 @@ namespace ZEngine::UI
 
             if (highlight)
             {
-                // Full-span tinted band — wider than the grab strip so it's easy to see and grab.
-                // Band is 12 px wide centered on the divider line (vs 6 px grab area).
-                const float band_w = 12.f;
-                float       bx0, by0, bx1, by1;
-                if (!horizontal)
+                // Tinted hover band centered on the divider line.
+                // ZUIStyle.DockingHoverBandWidth controls the width (default 6 px); set to 0 to disable.
+                const float band_w = ctx->Style.DockingHoverBandWidth;
+                if (band_w > 0.f)
                 {
-                    float cx = (dx0 + dx1) * 0.5f;
-                    bx0      = cx - band_w * 0.5f;
-                    by0      = dy0;
-                    bx1      = cx + band_w * 0.5f;
-                    by1      = dy1;
+                    float bx0 = dx0, by0 = dy0, bx1 = dx1, by1 = dy1;
+                    if (!horizontal)
+                    {
+                        float cx = (dx0 + dx1) * 0.5f;
+                        bx0      = cx - band_w * 0.5f;
+                        by0      = dy0;
+                        bx1      = cx + band_w * 0.5f;
+                        by1      = dy1;
+                    }
+                    else
+                    {
+                        float cy = (dy0 + dy1) * 0.5f;
+                        bx0      = dx0;
+                        by0      = cy - band_w * 0.5f;
+                        bx1      = dx1;
+                        by1      = cy + band_w * 0.5f;
+                    }
+                    char hk[32];
+                    snprintf(hk, sizeof(hk), "##sdivh_%u", di);
+                    ZUIBox* ha      = ZUIPushBox(ctx, hk, (uint32_t) strlen(hk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                    ha->Size[0]     = ZPx(bx1 - bx0);
+                    ha->Size[1]     = ZPx(by1 - by0);
+                    ha->FloatPos[0] = bx0;
+                    ha->FloatPos[1] = by0;
+                    ZUIBoxSetColor(ha, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], dragging ? 0.35f : 0.18f);
+                    ha->EdgeSoftness = 0.f;
+                    ZUIPopBox(ctx);
                 }
-                else
-                {
-                    float cy = (dy0 + dy1) * 0.5f;
-                    bx0      = dx0;
-                    by0      = cy - band_w * 0.5f;
-                    bx1      = dx1;
-                    by1      = cy + band_w * 0.5f;
-                }
-                char hk[32];
-                snprintf(hk, sizeof(hk), "##sdivh_%u", di);
-                ZUIBox* ha      = ZUIPushBox(ctx, hk, (uint32_t) strlen(hk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                ha->Size[0]     = ZPx(bx1 - bx0);
-                ha->Size[1]     = ZPx(by1 - by0);
-                ha->FloatPos[0] = bx0;
-                ha->FloatPos[1] = by0;
-                ZUIBoxSetColor(ha, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], dragging ? 0.35f : 0.18f);
-                ha->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
             }
 
             char vk[32];

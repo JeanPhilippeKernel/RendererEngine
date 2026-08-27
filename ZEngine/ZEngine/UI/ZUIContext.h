@@ -182,6 +182,7 @@ namespace ZEngine::UI
         float DockingSeparatorSize       = 2.f; // ImGui: DockingSeparatorSize
         float DockingSeparatorSizeRest   = 1.f;
         float DockingGrabWidth           = 6.f;
+        float DockingHoverBandWidth      = 6.f; ///< Width of the tinted band shown on divider hover (px). Set to 0 to disable.
         float DockingDropZoneEdge        = 0.25f;
         float DockingDropPreviewAlpha    = 0.12f;
         float DockingDragThreshold       = 8.f;
