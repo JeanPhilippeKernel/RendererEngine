@@ -54,10 +54,12 @@ namespace ZEngine::UI
         float                              WhiteV = 0.f;
     };
 
-    // Pack Small + Body + Header fonts into one atlas in a single stbtt_pack_context pass.
-    // OversampleH=2, OversampleV=1 (ImGui default).
-    // Permanent allocations (ZUIFontAtlas, ZUIFont[3], ZUIGlyph arrays) → persistent_arena.
-    // Temporary baking buffers (TTF bytes, pixel maps) → temp_arena (caller releases it).
+    /// @brief Pack Small + Body + Header fonts into one shared atlas texture.
+    ///
+    /// Uses FreeType with FT_LOAD_FORCE_AUTOHINT for cross-platform quality.
+    /// Atlas layout handled by stb_rect_pack (1-px glyph padding to prevent UV bleed).
+    /// Permanent allocations (ZUIFontAtlas, ZUIFont[3], ZUIGlyph arrays) go to @p persistent_arena.
+    /// Temporary baking buffers (TTF bytes, FreeType bitmaps, pixel maps) go to @p temp_arena.
     ZUIFontAtlas* ZUIFontAtlasBake(ZEngine::Core::Memory::ArenaAllocator* persistent_arena, ZEngine::Core::Memory::ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path = nullptr);
 
     void          ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);

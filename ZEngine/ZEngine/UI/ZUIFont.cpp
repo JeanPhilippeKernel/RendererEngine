@@ -1,7 +1,5 @@
-// stb implementations — defined once here, linked into zEngineLib
+// stb_rect_pack is kept for atlas layout; stb_truetype replaced by FreeType.
 #define STB_RECT_PACK_IMPLEMENTATION
-#include <stb/stb_rect_pack.h>
-#define STB_TRUETYPE_IMPLEMENTATION
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/VFS/IVFSFile.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
@@ -9,7 +7,9 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/UI/ZUIFont.h>
-#include <stb/stb_truetype.h>
+#include <ft2build.h>
+#include <stb/stb_rect_pack.h>
+#include FT_FREETYPE_H
 
 using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Core::Containers;
@@ -19,21 +19,17 @@ namespace ZEngine::UI
 {
     using namespace ZEngine::Core::Memory;
 
-    ZUIFontAtlas* ZUIFontAtlasBake(ArenaAllocator* persistent_arena, ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path)
+    // Load a TTF file from the VFS into temp_arena. Returns nullptr on failure.
+    static uint8_t* LoadTTFFromVFS(const char* vfs_path, ArenaAllocator* temp_arena, uint64_t* out_size)
     {
-        // --- 1. Load TTF from VFS ---
         auto* vfs      = Engine::GetContext()->VFS;
         auto  path_res = VFSPath::Parse(vfs_path);
         if (!path_res.Succeeded())
-        {
             return nullptr;
-        }
 
         auto file_res = vfs->Open(path_res.Value(), VFSOpenFlags::Read);
         if (!file_res.Succeeded())
-        {
             return nullptr;
-        }
 
         auto* file     = file_res.Value();
         auto  size_res = file->Size();
@@ -43,77 +39,128 @@ namespace ZEngine::UI
             return nullptr;
         }
 
-        uint64_t           ttf_size = size_res.Value();
-        uint8_t*           ttf_data = ZPushArray(temp_arena, uint8_t, (uint32_t) ttf_size);
-        ArrayView<uint8_t> view{ttf_data, ttf_size};
+        uint64_t           sz   = size_res.Value();
+        uint8_t*           data = ZPushArray(temp_arena, uint8_t, (uint32_t) sz);
+        ArrayView<uint8_t> view{data, sz};
         file->ReadAll(view);
         vfs->Close(file);
 
-        // --- 2. Determine atlas size ---
-        // With 3 fonts (OversampleH=2, OversampleV=1) each glyph occupies
-        // roughly (size*2) × size pixels. At body=52px, 96 glyphs per font:
-        //   Small(35): 70×32 = 2240  → 96 × 2240 =  215K
-        //   Body (52): 104×47 = 4888 → 96 × 4888 =  470K
-        //   Header(62): 124×56 = 6944→ 96 × 6944 =  667K
-        //   Total ≈ 1.35M < 2048×1024=2M — fits in 2048×1024.
-        // Use 1024×2048 (portrait) for comfortable packing.
-        const uint32_t kAtlasW      = 1024;
-        const uint32_t kAtlasH      = 2048;
+        if (out_size)
+            *out_size = sz;
+        return data;
+    }
 
-        // --- 3. Allocate atlas pixel buffer (single channel, zero-init) ---
-        uint8_t*       single_ch    = ZPushArray(temp_arena, uint8_t, kAtlasW* kAtlasH);
+    ZUIFontAtlas* ZUIFontAtlasBake(ArenaAllocator* persistent_arena, ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path)
+    {
+        // 1. Load TTF data
+        uint64_t ttf_size = 0;
+        uint8_t* ttf_data = LoadTTFFromVFS(vfs_path, temp_arena, &ttf_size);
+        if (!ttf_data)
+            return nullptr;
 
-        // --- 4. Load optional header font (e.g. SemiBold for better hierarchy) ---
-        uint8_t*       hdr_ttf_data = ttf_data; // default: same font for all sizes
+        uint64_t hdr_size     = ttf_size;
+        uint8_t* hdr_ttf_data = ttf_data;
         if (header_vfs_path)
         {
-            auto hdr_res = vfs->Open(VFSPath::Parse(header_vfs_path).Value(), VFSOpenFlags::Read);
-            if (hdr_res.Succeeded())
+            uint8_t* hdr = LoadTTFFromVFS(header_vfs_path, temp_arena, &hdr_size);
+            if (hdr)
+                hdr_ttf_data = hdr;
+        }
+
+        // 2. Initialize FreeType
+        FT_Library ft_lib = nullptr;
+        if (FT_Init_FreeType(&ft_lib) != 0)
+            return nullptr;
+
+        FT_Face ft_body   = nullptr;
+        FT_Face ft_header = nullptr;
+        FT_New_Memory_Face(ft_lib, ttf_data, (FT_Long) ttf_size, 0, &ft_body);
+        if (hdr_ttf_data != ttf_data)
+            FT_New_Memory_Face(ft_lib, hdr_ttf_data, (FT_Long) hdr_size, 0, &ft_header);
+        else
+            ft_header = ft_body;
+
+        const float    kSizes[3]    = {size_small, size_body, size_header};
+        FT_Face        kFaces[3]    = {ft_body, ft_body, ft_header};
+        const int      kGlyphPad    = 1; // 1-px border so bilinear sampling never bleeds
+
+        // 3. Two-pass atlas packing
+        //    Pass A: render each glyph to measure its bitmap dimensions.
+        //    Pass B: render again into the atlas at stb_rect_pack positions.
+        const uint32_t kTotalGlyphs = 3 * codepoint_count;
+        stbrp_rect*    rects        = ZPushArray(temp_arena, stbrp_rect, kTotalGlyphs);
+
+        // Pass A — measure
+        for (int fi = 0; fi < 3; ++fi)
+        {
+            FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
+            for (uint32_t gi = 0; gi < codepoint_count; ++gi)
             {
-                auto* hdr_file = hdr_res.Value();
-                auto  hdr_size = hdr_file->Size();
-                if (hdr_size.Succeeded())
+                uint32_t ri       = (uint32_t) fi * codepoint_count + gi;
+                rects[ri].id      = (int) ri;
+                FT_UInt glyph_idx = FT_Get_Char_Index(kFaces[fi], first_codepoint + gi);
+                if (glyph_idx == 0 || FT_Load_Glyph(kFaces[fi], glyph_idx, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT) != 0)
                 {
-                    hdr_ttf_data = ZPushArray(temp_arena, uint8_t, (uint32_t) hdr_size.Value());
-                    ArrayView<uint8_t> hdr_view{hdr_ttf_data, hdr_size.Value()};
-                    hdr_file->ReadAll(hdr_view);
+                    rects[ri].w = rects[ri].h = 0;
+                    continue;
                 }
-                vfs->Close(hdr_file);
+                rects[ri].w = (stbrp_coord) (kFaces[fi]->glyph->bitmap.width + 2 * kGlyphPad);
+                rects[ri].h = (stbrp_coord) (kFaces[fi]->glyph->bitmap.rows + 2 * kGlyphPad);
             }
         }
 
-        // --- 5. Pack all three fonts in one stbtt_pack_context pass ---
-        const float       kSizes[3]    = {size_small, size_body, size_header};
-        uint8_t*          kFontData[3] = {ttf_data, ttf_data, hdr_ttf_data};
-        stbtt_packedchar* packed[3];
-        for (int i = 0; i < 3; ++i)
-            packed[i] = ZPushArray(temp_arena, stbtt_packedchar, codepoint_count);
+        // Pack
+        const uint32_t kAtlasW    = 1024;
+        const uint32_t kAtlasH    = 2048;
+        stbrp_context  pack_ctx   = {};
+        stbrp_node*    pack_nodes = ZPushArray(temp_arena, stbrp_node, kAtlasW);
+        stbrp_init_target(&pack_ctx, (int) kAtlasW, (int) kAtlasH, pack_nodes, (int) kAtlasW);
+        stbrp_pack_rects(&pack_ctx, rects, (int) kTotalGlyphs);
 
-        stbtt_pack_context pack_ctx = {};
-        stbtt_PackBegin(&pack_ctx, single_ch, (int) kAtlasW, (int) kAtlasH, 0, 1, nullptr);
-        stbtt_PackSetOversampling(&pack_ctx, 3, 1);
-        for (int i = 0; i < 3; ++i)
+        // Pass B — render into atlas
+        uint8_t* atlas_px = ZPushArray(temp_arena, uint8_t, kAtlasW* kAtlasH);
+        // White texel at (0,0) — used by solid-color draws
+        atlas_px[0]       = 255u;
+
+        for (int fi = 0; fi < 3; ++fi)
         {
-            stbtt_PackFontRange(&pack_ctx, kFontData[i], 0, kSizes[i], (int) first_codepoint, (int) codepoint_count, packed[i]);
+            FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
+            for (uint32_t gi = 0; gi < codepoint_count; ++gi)
+            {
+                uint32_t ri = (uint32_t) fi * codepoint_count + gi;
+                if (!rects[ri].was_packed || rects[ri].w == 0)
+                    continue;
+
+                FT_UInt glyph_idx = FT_Get_Char_Index(kFaces[fi], first_codepoint + gi);
+                if (glyph_idx == 0 || FT_Load_Glyph(kFaces[fi], glyph_idx, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT) != 0)
+                    continue;
+
+                FT_Bitmap& bmp   = kFaces[fi]->glyph->bitmap;
+                int        dst_x = (int) rects[ri].x + kGlyphPad;
+                int        dst_y = (int) rects[ri].y + kGlyphPad;
+
+                for (int row = 0; row < (int) bmp.rows; ++row)
+                {
+                    for (int col = 0; col < (int) bmp.width; ++col)
+                    {
+                        int dst       = (dst_y + row) * (int) kAtlasW + (dst_x + col);
+                        atlas_px[dst] = bmp.buffer[row * abs(bmp.pitch) + col];
+                    }
+                }
+            }
         }
-        stbtt_PackEnd(&pack_ctx);
 
-        // --- 5. Reserve pixel (0,0) as the white texel ---
-        // stbtt_PackBegin zero-fills and uses 1-px padding, so (0,0) is unused.
-        // Setting it to 255 gives a "solid white" UV that solid-color draws can use.
-        single_ch[0]  = 255u;
-
-        // --- 6. Expand single-channel to RGBA8 (white text, alpha-masked) ---
+        // 4. Expand single-channel → RGBA8 (white text, alpha-masked)
         uint8_t* rgba = ZPushArray(temp_arena, uint8_t, kAtlasW * kAtlasH * 4);
         for (uint32_t i = 0; i < kAtlasW * kAtlasH; ++i)
         {
             rgba[i * 4 + 0] = 255;
             rgba[i * 4 + 1] = 255;
             rgba[i * 4 + 2] = 255;
-            rgba[i * 4 + 3] = single_ch[i];
+            rgba[i * 4 + 3] = atlas_px[i];
         }
 
-        // --- 7. Upload to GPU (one texture for all fonts) ---
+        // 5. Upload to GPU
         Rendering::Textures::TextureHandle gpu_handle = {};
         if (device->RRM)
         {
@@ -122,61 +169,76 @@ namespace ZEngine::UI
         }
         device->TextureHandleToUpdates.Enqueue(gpu_handle);
 
-        // --- 8. Fill permanent ZUIFontAtlas ---
-        ZUIFontAtlas* atlas      = ZPushStruct(persistent_arena, ZUIFontAtlas);
-        atlas->Handle            = gpu_handle;
-        atlas->Width             = kAtlasW;
-        atlas->Height            = kAtlasH;
-        // White pixel sits at texel (0,0) — sample its centre
-        atlas->WhiteU            = 0.5f / (float) kAtlasW;
-        atlas->WhiteV            = 0.5f / (float) kAtlasH;
+        // 6. Build ZUIFontAtlas
+        ZUIFontAtlas* atlas = ZPushStruct(persistent_arena, ZUIFontAtlas);
+        atlas->Handle       = gpu_handle;
+        atlas->Width        = kAtlasW;
+        atlas->Height       = kAtlasH;
+        atlas->WhiteU       = 0.5f / (float) kAtlasW;
+        atlas->WhiteV       = 0.5f / (float) kAtlasH;
 
-        // --- 9. Fill per-font metrics ---
-        stbtt_fontinfo font_info = {};
-        stbtt_InitFont(&font_info, ttf_data, 0);
+        float     inv_w     = 1.f / (float) kAtlasW;
+        float     inv_h     = 1.f / (float) kAtlasH;
 
-        const char* kFontNames[3] = {"Small", "Body", "Header"};
-        ZUIFont**   kDsts[3]      = {&atlas->Small, &atlas->Body, &atlas->Header};
-        (void) kFontNames;
-
-        float inv_w = 1.f / (float) kAtlasW;
-        float inv_h = 1.f / (float) kAtlasH;
+        ZUIFont** kDsts[3]  = {&atlas->Small, &atlas->Body, &atlas->Header};
 
         for (int fi = 0; fi < 3; ++fi)
         {
-            float font_size  = kSizes[fi];
-            float scale      = stbtt_ScaleForPixelHeight(&font_info, font_size);
-
-            int   raw_ascent = 0, raw_descent = 0, raw_line_gap = 0;
-            stbtt_GetFontVMetrics(&font_info, &raw_ascent, &raw_descent, &raw_line_gap);
+            FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
 
             ZUIFont* font        = ZPushStruct(persistent_arena, ZUIFont);
             font->Glyphs         = ZPushArray(persistent_arena, ZUIGlyph, codepoint_count);
             font->GlyphCount     = codepoint_count;
             font->FirstCodepoint = first_codepoint;
-            font->FontSize       = font_size;
-            font->Ascent         = (float) raw_ascent * scale;
-            font->Descent        = (float) raw_descent * scale;
-            font->LineGap        = (float) raw_line_gap * scale;
-            font->LineHeight     = font->Ascent - font->Descent + font->LineGap;
+            font->FontSize       = kSizes[fi];
+
+            // FreeType metrics are in 26.6 fixed-point — shift right 6 to get pixels
+            font->Ascent         = (float) (kFaces[fi]->size->metrics.ascender >> 6);
+            font->Descent        = (float) (kFaces[fi]->size->metrics.descender >> 6); // negative
+            font->LineGap        = 0.f;
+            font->LineHeight     = (float) (kFaces[fi]->size->metrics.height >> 6);
 
             for (uint32_t gi = 0; gi < codepoint_count; ++gi)
             {
-                const stbtt_packedchar& pc = packed[fi][gi];
-                ZUIGlyph&               g  = font->Glyphs[gi];
-                g.U0                       = (float) pc.x0 * inv_w;
-                g.V0                       = (float) pc.y0 * inv_h;
-                g.U1                       = (float) pc.x1 * inv_w;
-                g.V1                       = (float) pc.y1 * inv_h;
-                g.OffsetX                  = pc.xoff;
-                g.OffsetY                  = pc.yoff;
-                g.Width                    = pc.xoff2 - pc.xoff;
-                g.Height                   = pc.yoff2 - pc.yoff;
-                g.AdvanceX                 = pc.xadvance;
+                ZUIGlyph& g         = font->Glyphs[gi];
+                uint32_t  ri        = (uint32_t) fi * codepoint_count + gi;
+
+                FT_UInt   glyph_idx = FT_Get_Char_Index(kFaces[fi], first_codepoint + gi);
+                if (glyph_idx == 0 || FT_Load_Glyph(kFaces[fi], glyph_idx, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT) != 0)
+                {
+                    // Missing glyph — advance only, no visible quad
+                    g          = {};
+                    g.AdvanceX = kSizes[fi] * 0.5f; // fallback width
+                    continue;
+                }
+
+                FT_GlyphSlot slot = kFaces[fi]->glyph;
+
+                g.OffsetX         = (float) slot->bitmap_left;
+                g.OffsetY         = -(float) slot->bitmap_top; // FT: positive = above baseline; ZUI: positive = below
+                g.Width           = (float) slot->bitmap.width;
+                g.Height          = (float) slot->bitmap.rows;
+                g.AdvanceX        = (float) (slot->advance.x >> 6);
+
+                if (rects[ri].was_packed && rects[ri].w > 0)
+                {
+                    int px0 = (int) rects[ri].x + kGlyphPad;
+                    int py0 = (int) rects[ri].y + kGlyphPad;
+                    g.U0    = (float) px0 * inv_w;
+                    g.V0    = (float) py0 * inv_h;
+                    g.U1    = (float) (px0 + (int) slot->bitmap.width) * inv_w;
+                    g.V1    = (float) (py0 + (int) slot->bitmap.rows) * inv_h;
+                }
             }
 
             *kDsts[fi] = font;
         }
+
+        // 7. Clean up FreeType (its own heap, not arena-tracked)
+        if (ft_header != ft_body)
+            FT_Done_Face(ft_header);
+        FT_Done_Face(ft_body);
+        FT_Done_FreeType(ft_lib);
 
         return atlas;
     }
@@ -195,9 +257,7 @@ namespace ZEngine::UI
             uint32_t cp  = (uint8_t) str[i];
             uint32_t idx = cp - font->FirstCodepoint;
             if (cp < font->FirstCodepoint || idx >= font->GlyphCount)
-            {
                 continue;
-            }
             width += font->Glyphs[idx].AdvanceX;
         }
         out_size[0] = width * font->FontScale;

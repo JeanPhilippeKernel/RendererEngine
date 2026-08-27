@@ -182,6 +182,18 @@ FetchContent_Declare(simdjson
 )
 set(SIMDJSON_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
 
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        VER-2-13-3
+)
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+
 FetchContent_Declare(fastgltf
     GIT_REPOSITORY https://github.com/spnda/fastgltf.git
     GIT_SHALLOW    TRUE
@@ -200,6 +212,7 @@ if(ZENGINE_TRACY)
 endif()
 
 FetchContent_MakeAvailable(
+  freetype
   fmt
   Vulkan-Headers
   Vulkan-Loader
@@ -284,6 +297,7 @@ target_link_libraries(External_libs
          fastgltf::fastgltf
          ufbx
          meshoptimizer
+         freetype
 )
 
 if(ZENGINE_TRACY)
