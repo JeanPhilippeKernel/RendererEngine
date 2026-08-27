@@ -688,14 +688,24 @@ namespace ZEngine::UI
 
             if (tab_closed)
             {
-                for (uint32_t j = ti; j+1 < p->ViewCount; ++j) p->Views[j] = p->Views[j+1];
-                --p->ViewCount;
-                if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
-                    p->ActiveTab = p->ViewCount - 1;
-                LayoutDirty = true;
-                if (p->ViewCount == 0 && PendingCloseCount < kMaxPanels)
+                if (p->ViewCount > 1)
                 {
-                    PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+                    // Multi-tab: remove this tab now — panel stays, visual is correct.
+                    for (uint32_t j = ti; j+1 < p->ViewCount; ++j) p->Views[j] = p->Views[j+1];
+                    --p->ViewCount;
+                    if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
+                        p->ActiveTab = p->ViewCount - 1;
+                    LayoutDirty = true;
+                }
+                else
+                {
+                    // Last tab: don't touch state this frame.
+                    // Queue the close exactly like RAD Debugger's double-buffered command:
+                    // panel renders normally for 1 frame (no empty-box flash),
+                    // then disappears with sibling expanding correctly on frame N+1.
+                    if (PendingCloseCount < kMaxPanels)
+                        PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+                    LayoutDirty = true;
                 }
                 break;
             }
