@@ -70,8 +70,10 @@ namespace ZEngine::UI
     // ZUIPanelManager
     // ---------------------------------------------------------------
     static constexpr uint32_t kMaxPanels   = 32;
-    static constexpr float    kTabBarH     = 26.f;
-    static constexpr float    kDivGrabW    =  6.f; // divider hit-test width
+    // Tab bar height and divider grab width are now in ZUIStyle:
+    //   ZUIGetFrameHeight(ctx)           — replaces kTabBarH
+    //   ctx->Style.DockingGrabWidth      — replaces kDivGrabW
+    //   ZUIDockMarkCentral(tree, key)    — replaces SetCentralPanel()
 
     struct ZUIPanelManager
     {
@@ -79,9 +81,6 @@ namespace ZEngine::UI
         ZUIPanel     Panels[kMaxPanels];
         uint32_t     PanelCount      = 0;
         uint32_t     FocusedPanelIdx = 0;
-
-        // Central node: the viewport panel key — rendered without chrome
-        uint64_t     CentralPanelKey = 0;
 
         // Ini persistence
         char         LayoutPath[256] = {};  // set before first BuildUI; empty = no persistence
@@ -99,7 +98,6 @@ namespace ZEngine::UI
 
         ZUIPanel* FindPanel(uint64_t dock_key);
 
-        void SetCentralPanel(uint64_t dock_key);
         void SetLayoutPath(const char* path);
 
     private:
