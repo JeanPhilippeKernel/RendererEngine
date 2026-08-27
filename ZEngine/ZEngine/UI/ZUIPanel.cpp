@@ -327,15 +327,14 @@ namespace ZEngine::UI
         }
         ZUISpacer(ctx, 2.f);
         if (ZUIBeginMenu(ctx, "Window")) {
-            ZUIMenuItem(ctx, "Reset Layout"); ZUISeparator(ctx);
-            for (uint32_t i = 0; i < PanelCount; ++i)
+            // ── Reset Layout ──────────────────────────────────────────
+            if (ZUIMenuItem(ctx, "Reset Layout"))
             {
-                ZUIPanel* p = &Panels[i];
-                if (p->ViewCount == 0) { continue; }
-                const char* name = p->Views[0] ? p->Views[0]->Title : "Panel";
-                char buf[80]; snprintf(buf, sizeof(buf), "%s##wm_%u", name, i);
-                if (ZUIMenuItem(ctx, buf) && p->Hidden)
+                // Unhide all hidden panels and re-insert them into the tree
+                for (uint32_t i = 0; i < PanelCount; ++i)
                 {
+                    ZUIPanel* p = &Panels[i];
+                    if (!p->Hidden || p->ViewCount == 0) { continue; }
                     p->Hidden = false;
                     if (DockTree)
                     {
@@ -344,8 +343,79 @@ namespace ZEngine::UI
                             ZUIDockSplitH(DockTree, target, 0.75f,
                                           target->ContentKey, p->DockKey);
                     }
-                    LayoutDirty = true;
                 }
+                // Delete saved layout so it restarts from default next launch
+                if (LayoutPath[0])
+                {
+                    remove(LayoutPath);
+                }
+                LayoutDirty = true;
+            }
+
+            ZUISeparator(ctx);
+
+            // ── Panel submenu — toggle individual panels ──────────────
+            // Shows: Hierarchy, Console, Inspector, Viewport
+            if (ZUIBeginMenu(ctx, "Panel"))
+            {
+                // Canonical panel names to show in the submenu
+                static const char* kPanelNames[] = {
+                    "Hierarchy", "Console", "Inspector", "Viewport"
+                };
+                static constexpr uint32_t kPanelNameCount = 4;
+
+                for (uint32_t ni = 0; ni < kPanelNameCount; ++ni)
+                {
+                    const char* target_name = kPanelNames[ni];
+
+                    // Find the panel with this title
+                    ZUIPanel* match = nullptr;
+                    uint32_t  match_idx = 0;
+                    for (uint32_t i = 0; i < PanelCount; ++i)
+                    {
+                        ZUIPanel* p = &Panels[i];
+                        if (p->ViewCount == 0) continue;
+                        const char* t = p->Views[0] ? p->Views[0]->Title : "";
+                        if (strcmp(t, target_name) == 0)
+                        {
+                            match = p; match_idx = i; break;
+                        }
+                    }
+
+                    // Build label: "✓ Name" when visible, "  Name" when hidden
+                    char label[96];
+                    if (match && !match->Hidden)
+                        snprintf(label, sizeof(label), "* %s##pmn_%u", target_name, ni);
+                    else
+                        snprintf(label, sizeof(label), "  %s##pmn_%u", target_name, ni);
+
+                    if (ZUIMenuItem(ctx, label))
+                    {
+                        if (match)
+                        {
+                            if (match->Hidden)
+                            {
+                                // Show: re-insert into split tree
+                                match->Hidden = false;
+                                if (DockTree)
+                                {
+                                    ZUIDockNode* target = FindLargestLeaf(DockTree->Root);
+                                    if (target)
+                                        ZUIDockSplitH(DockTree, target, 0.75f,
+                                                      target->ContentKey, match->DockKey);
+                                }
+                            }
+                            else
+                            {
+                                // Hide: queue for deferred close
+                                if (PendingCloseCount < kMaxPanels)
+                                    PendingCloseKeys[PendingCloseCount++] = match->DockKey;
+                            }
+                            LayoutDirty = true;
+                        }
+                    }
+                }
+                ZUIEndMenu(ctx);
             }
             ZUIEndMenu(ctx);
         }

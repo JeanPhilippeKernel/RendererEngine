@@ -63,7 +63,7 @@ namespace Tetragrama::Panels
 
     struct OutputPanel : ZUIPanelView
     {
-        OutputPanel() { Title = "Output"; }
+        OutputPanel() { Title = "Console"; }
 
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {

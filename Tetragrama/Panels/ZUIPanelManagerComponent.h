@@ -66,7 +66,7 @@ namespace Tetragrama::Panels
             ZUIDockSplitV(Manager.DockTree, center,
                           1.f - kBottom,
                           ZUIDockHashName("Viewport"),
-                          ZUIDockHashName("Output"));
+                          ZUIDockHashName("Console"));
 
             // Register panels
             auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
@@ -78,7 +78,7 @@ namespace Tetragrama::Panels
             auto* p_insp = Manager.AddPanel(ZUIDockHashName("Inspector"));
             Manager.AddView(p_insp, &inspector);
 
-            auto* p_out  = Manager.AddPanel(ZUIDockHashName("Output"));
+            auto* p_out  = Manager.AddPanel(ZUIDockHashName("Console"));
             Manager.AddView(p_out, &output);
 
             // Ini persistence — v3 format (AutoHideTabBar support)
