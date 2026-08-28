@@ -535,7 +535,7 @@ namespace ZEngine::UI
         {
             auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, ind->Key);
             if (ps)
-                ps->UserData = (open && *open) ? 1.f : 0.f;
+                ps->UserData = (open && *open) ? 2.f : 3.f; // chevron: ∨ expanded, › collapsed
         }
         ZUIPopBox(ctx);
 

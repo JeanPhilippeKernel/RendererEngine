@@ -304,6 +304,10 @@ namespace ZEngine::UI
 
         BuildMenuBar(ctx, sw, menu_h);
 
+        // Input pass — hit zones added first (early children of ##pm_bg).
+        // LIFO traversal processes early children last → win ctx->HotKey over panel content.
+        BuildDividerHitZones(ctx);
+
         Drag.HoverNode = nullptr;
         Drag.DropZone  = ZUIDropZone::None; // reset each frame; set by BuildDropZones below
         if (DockTree)
@@ -367,7 +371,8 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);
         }
 
-        BuildDividers(ctx);
+        // Render pass — visual lines added last (late children of ##pm_bg → drawn on top of panels).
+        BuildDividerVisuals(ctx);
 
         // Drag ghost
         if (Drag.Active)
@@ -1228,15 +1233,14 @@ namespace ZEngine::UI
 
     // BuildDividers — dynamic from dock tree
 
-    void ZUIPanelManager::BuildDividers(ZUIContext* ctx)
+    // Input pass — added FIRST to ##pm_bg so hit zones are last-processed by the LIFO
+    // interaction traversal → always win ctx->HotKey over any panel content underneath.
+    void ZUIPanelManager::BuildDividerHitZones(ZUIContext* ctx)
     {
-        // Signal-based resize — mirrors ZUIPaneSash and ImGui/RAD input-ownership model.
-        // The hit zone box is ZUI_Clickable so it sets ctx->HotKey / ctx->ActiveKey on press.
-        // ZUISignalFromBox drives start/stop/delta — no manual cursor-position checks needed.
-        // Any widget under the hit zone (e.g. Inspector section headers) receives
-        // ZUI_SignalHeld = false when this box owns ActiveKey, eliminating false drags.
         if (!DockTree)
             return;
+        float grab_half = ctx->Style.DockingGrabWidth * 0.5f;
+        float band_w    = ctx->Style.DockingHoverBandWidth;
 
         for (uint32_t di = 0; di < m_split_divider_count; ++di)
         {
@@ -1245,9 +1249,6 @@ namespace ZEngine::UI
                 continue;
             ZUIDockNode* child1     = snode->First;
             bool         horizontal = (snode->SplitAxis == ZUIAxis::Y);
-            float        grab_half  = ctx->Style.DockingGrabWidth * 0.5f;
-
-            // Divider screen rect (full span of the split)
             float        dx0, dy0, dx1, dy1;
             if (!horizontal)
             {
@@ -1265,10 +1266,8 @@ namespace ZEngine::UI
                 dx1      = snode->RectMax[0];
                 dy1      = ey + grab_half;
             }
+            ZUISignal ha_sig = {};
 
-            // Hit zone — centered band of DockingHoverBandWidth, covers full perpendicular span
-            ZUISignal   ha_sig = {};
-            const float band_w = ctx->Style.DockingHoverBandWidth;
             if (band_w > 0.f)
             {
                 float bx0, by0, bx1, by1;
@@ -1296,12 +1295,11 @@ namespace ZEngine::UI
                 ha->FloatPos[0]  = bx0;
                 ha->FloatPos[1]  = by0;
                 ha->EdgeSoftness = 0.f;
-                ZUIBoxSetColor(ha, 0.f, 0.f, 0.f, 0.f); // transparent; tinted below after signal
+                ZUIBoxSetColor(ha, 0.f, 0.f, 0.f, 0.f);
                 ha_sig = ZUISignalFromBox(ctx, ha);
                 ZUIPopBox(ctx);
             }
 
-            // Signal-based drag — identical pattern to ZUIPaneSash
             bool& dragging = m_split_dividers[di].Dragging;
             if (ha_sig.Flags & ZUI_SignalPressed)
                 dragging = true;
@@ -1310,7 +1308,6 @@ namespace ZEngine::UI
                 dragging    = false;
                 LayoutDirty = true;
             }
-
             if (ha_sig.Flags & ZUI_SignalHeld)
             {
                 float delta = horizontal ? ha_sig.DragDelta[1] : ha_sig.DragDelta[0];
@@ -1318,13 +1315,53 @@ namespace ZEngine::UI
                     ZUIDockResize(DockTree, child1, delta);
             }
 
-            bool active    = (ha_sig.Flags & (ZUI_SignalHovered | ZUI_SignalHeld)) || dragging;
-            bool highlight = active;
-            if (active)
+            // Cursor — use in_rect for immediate feedback (signal has 1-frame lag)
+            float mx = ctx->MousePos[0], my = ctx->MousePos[1];
+            if ((mx >= dx0 && mx <= dx1 && my >= dy0 && my <= dy1) || dragging)
                 ctx->ResizeCursor = horizontal ? 2 : 1;
+        }
+    }
 
-            float lw    = highlight ? ctx->Style.DockingSeparatorSize : ctx->Style.DockingSeparatorSizeRest;
-            float vc[4] = {ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], highlight ? 1.f : 0.35f};
+    // Render pass — added LAST to ##pm_bg so the visual line is always drawn on top of panels.
+    void ZUIPanelManager::BuildDividerVisuals(ZUIContext* ctx)
+    {
+        if (!DockTree)
+            return;
+        float grab_half = ctx->Style.DockingGrabWidth * 0.5f;
+        float mx = ctx->MousePos[0], my = ctx->MousePos[1];
+
+        for (uint32_t di = 0; di < m_split_divider_count; ++di)
+        {
+            ZUIDockNode* snode = m_split_dividers[di].Node;
+            if (!snode || !snode->First || !snode->First->Next)
+                continue;
+            ZUIDockNode* child1     = snode->First;
+            bool         horizontal = (snode->SplitAxis == ZUIAxis::Y);
+            float        dx0, dy0, dx1, dy1;
+            if (!horizontal)
+            {
+                float ex = child1->RectMax[0];
+                dx0      = ex - grab_half;
+                dy0      = snode->RectMin[1];
+                dx1      = ex + grab_half;
+                dy1      = snode->RectMax[1];
+            }
+            else
+            {
+                float ey = child1->RectMax[1];
+                dx0      = snode->RectMin[0];
+                dy0      = ey - grab_half;
+                dx1      = snode->RectMax[0];
+                dy1      = ey + grab_half;
+            }
+            (void) child1;
+
+            bool  dragging  = m_split_dividers[di].Dragging;
+            bool  in_rect   = (mx >= dx0 && mx <= dx1 && my >= dy0 && my <= dy1);
+            bool  highlight = in_rect || dragging;
+
+            float lw        = highlight ? ctx->Style.DockingSeparatorSize : ctx->Style.DockingSeparatorSizeRest;
+            float vc[4]     = {ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], highlight ? 1.f : 0.35f};
             if (!highlight)
             {
                 vc[0] = ctx->Theme.Separator[0];

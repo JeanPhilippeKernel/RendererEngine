@@ -149,7 +149,8 @@ namespace ZEngine::UI
         void                      BuildDockedPanel(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
         void                      BuildTabBar(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
         void                      BuildDropZones(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
-        void                      BuildDividers(ZUIContext* ctx);
+        void                      BuildDividerHitZones(ZUIContext* ctx); ///< Input pass — first; owns ActiveKey for resize
+        void                      BuildDividerVisuals(ZUIContext* ctx);  ///< Render pass — last; always on top of panels
         void                      CommitDrop(ZUIPanel* src, uint32_t tab_idx, ZUIDockNode* dst, ZUIDropZone zone);
         void                      FocusPanel(uint32_t idx);
         void                      SyncSplitDividers();

@@ -51,18 +51,142 @@ namespace Tetragrama::Panels
         ZUIEndColumn(ctx);
     }
 
-    // ── Stub panels ───────────────────────────────────────────────────────────
-
+    // ── Hierarchy panel ───────────────────────────────────────────────────────
+    //
+    // Tree view of scene entities — up to 9 levels of nesting.
+    // ZUITreeNode uses the VS Code chevron (∨/›) built-in.
+    // Indentation via wrapper column Padding[0] = depth * IndentSpacing.
+    //
     struct HierarchyPanel : ZUIPanelView
     {
+        struct Node
+        {
+            const char* name;
+            int         parent; // -1 = root
+        };
+
+        static constexpr int  kN         = 22;
+
+        // Sample scene — deepest path: World → Player → Armature → Hips → Spine
+        //                              → Chest → Shoulder R → UpperArm R
+        //                              → LowerArm R → Hand R  (depth 9)
+        static constexpr Node kNodes[kN] = {
+            {      "World", -1}, // 0  depth 0
+            {     "Camera",  0}, // 1  depth 1
+            {"Main Camera",  1}, // 2  depth 2
+            {   "Lighting",  0}, // 3  depth 1
+            {"Directional",  3}, // 4  depth 2
+            {"Point Light",  3}, // 5  depth 2
+            {     "Player",  0}, // 6  depth 1
+            {   "Armature",  6}, // 7  depth 2
+            {       "Hips",  7}, // 8  depth 3
+            {      "Spine",  8}, // 9  depth 4
+            {      "Chest",  9}, // 10 depth 5
+            { "Shoulder R", 10}, // 11 depth 6
+            { "UpperArm R", 11}, // 12 depth 7
+            { "LowerArm R", 12}, // 13 depth 8
+            {     "Hand R", 13}, // 14 depth 9  ← max depth
+            { "Shoulder L", 10}, // 15 depth 6
+            { "UpperArm L", 15}, // 16 depth 7
+            { "LowerArm L", 16}, // 17 depth 8
+            {     "Hand L", 17}, // 18 depth 9
+            {"Environment",  0}, // 19 depth 1
+            {     "Ground", 19}, // 20 depth 2
+            {      "Trees", 19}, // 21 depth 2
+        };
+
+        bool m_open[kN] = {true, true, false, true, false, false, true, true, true, true, true, true, true, true, false, true, true, true, false, true, false, false};
+        int  m_selected = -1;
+
         HierarchyPanel()
         {
             Title = "Hierarchy";
         }
+
+        int Depth(int i) const
+        {
+            int d = 0, p = kNodes[i].parent;
+            while (p >= 0)
+            {
+                d++;
+                p = kNodes[p].parent;
+            }
+            return d;
+        }
+
+        bool HasChildren(int i) const
+        {
+            for (int j = 0; j < kN; j++)
+                if (kNodes[j].parent == i)
+                    return true;
+            return false;
+        }
+
+        bool AncestorCollapsed(int i) const
+        {
+            int p = kNodes[i].parent;
+            while (p >= 0)
+            {
+                if (!m_open[p])
+                    return true;
+                p = kNodes[p].parent;
+            }
+            return false;
+        }
+
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
+            using namespace ZEngine::UI;
             (void) rect;
-            EmptyPanelBg(ctx, "##hier_bg", ctx->Theme.PanelBg, "No scene loaded");
+
+            const float hdrH = ZUIGetFrameHeight(ctx);
+
+            ZUIBox*     bg   = ZUIBeginScrollRegion(ctx, "##hier_sr", ZFill(), ZFill());
+            bg->Flags        = bg->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
+            bg->EdgeSoftness = 0.f;
+
+            ZUISpacer(ctx, 4.f);
+
+            for (int i = 0; i < kN; i++)
+            {
+                if (AncestorCollapsed(i))
+                    continue;
+
+                float indent   = (float) Depth(i) * ctx->Style.IndentSpacing;
+                bool  has_chld = HasChildren(i);
+                bool  is_sel   = (m_selected == i);
+                char  ck[32];
+                snprintf(ck, sizeof(ck), "##hn%d", i);
+
+                // Wrapper column — provides indentation via left padding
+                ZUIBox* col       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(hdrH));
+                col->Padding[0]   = indent;
+                col->EdgeSoftness = 0.f;
+                if (is_sel)
+                {
+                    col->Flags = col->Flags | ZUI_DrawBackground;
+                    ZUIBoxSetColorArr(col, ctx->Theme.RowSelectedBg);
+                }
+
+                if (has_chld)
+                {
+                    ZUISignal sig = ZUITreeNode(ctx, kNodes[i].name, &m_open[i]);
+                    if (sig.Flags & ZUI_SignalClicked)
+                        m_selected = i;
+                }
+                else
+                {
+                    // Leaf — indent to align label with parent tree-node text
+                    bool sel = is_sel;
+                    if (ZUISelectable(ctx, kNodes[i].name, &sel, ZPx(hdrH)))
+                        m_selected = i;
+                }
+
+                ZUIEndColumn(ctx);
+            }
+
+            ZUIEndScrollRegion(ctx);
         }
     };
 
