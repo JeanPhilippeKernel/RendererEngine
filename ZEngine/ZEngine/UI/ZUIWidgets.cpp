@@ -124,8 +124,7 @@ namespace ZEngine::UI
         if (sb && sb->Key)
         {
             // Update HotT for the scroll region — drives scrollbar auto-hide alpha
-            ZUISignal scroll_sig = ZUISignalFromBox(ctx, sb);
-            (void) scroll_sig;
+            ZUISignalFromBox(ctx, sb);
 
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, sb->Key);
             if (ps && ps->MaxScrollY > 1.f && ps->ScreenMaxX > ps->ScreenMinX)
@@ -1353,10 +1352,9 @@ namespace ZEngine::UI
         circle->BorderThickness = 1.f;
         ZUIBoxSetCornerRadius(circle, ctx->Style.FontSize * 0.5f); // full circle
         SetTextColor(circle, ctx->Theme.CheckMark);
-        ZUISignal dot_sig = ZUISignalFromBox(ctx, circle);
+        ZUISignalFromBox(ctx, circle);
         ApplyHotActive(circle, ctx, ctx->Theme.InputBg, ctx->Theme.InputHoveredBg, ctx->Theme.InputActiveBg);
         ZUIPopBox(ctx);
-        (void) dot_sig;
 
         ZUISpacer(ctx, ZUIGetInnerSpac(ctx)); // ImGui ItemInnerSpacing.x
         ZUILabel(ctx, label, ctx->Disabled ? ctx->Theme.TextDim : ctx->Theme.TextDefault);

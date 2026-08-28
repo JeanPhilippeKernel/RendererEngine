@@ -54,7 +54,6 @@ namespace Tetragrama::Layers
         event_dispatcher.Dispatch<MouseButtonPressedEvent>(std::bind(&ZUILayer::OnMouseButtonPressed, this, std::placeholders::_1));
         event_dispatcher.Dispatch<MouseButtonReleasedEvent>(std::bind(&ZUILayer::OnMouseButtonReleased, this, std::placeholders::_1));
         event_dispatcher.Dispatch<MouseButtonMovedEvent>(std::bind(&ZUILayer::OnMouseButtonMoved, this, std::placeholders::_1));
-        event_dispatcher.Dispatch<MouseButtonWheelEvent>(std::bind(&ZUILayer::OnMouseButtonWheelMoved, this, std::placeholders::_1));
         event_dispatcher.Dispatch<TextInputEvent>(std::bind(&ZUILayer::OnTextInputRaised, this, std::placeholders::_1));
         return false;
     }
@@ -306,13 +305,9 @@ namespace Tetragrama::Layers
         return false;
     }
 
-    bool ZUILayer::OnMouseButtonWheelMoved(MouseButtonWheelEvent& e)
+    bool ZUILayer::OnMouseButtonWheelMoved(MouseButtonWheelEvent& /*e*/)
     {
-        if (!m_ctx)
-        {
-            return false;
-        }
-        m_ctx->ScrollDelta += (float) e.GetOffetY();
+        // Scroll is handled by the GLFW callback registered in Initialize.
         return false;
     }
 

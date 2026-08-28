@@ -91,7 +91,6 @@ namespace Tetragrama::Panels
     {
         // ── Config ─────────────────────────────────────────────────────────
         static constexpr int         N              = 6;
-        static constexpr float       kHdrH_fallback = 19.f;
         static constexpr float       kMinH          = 80.f; // minimum expanded content height
         static constexpr float       kSashH         = 6.f;  // resize grip height
 
@@ -557,23 +556,6 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 10.f);
             ZUISeparator(ctx);
             ZUISpacer(ctx, 6.f);
-
-            ZUIBeginRow(ctx, "##con_h1", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Shift+Arrow   select text", ctx->Theme.TextDim);
-            ZUIEndRow(ctx);
-            ZUIBeginRow(ctx, "##con_h2", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Ctrl+A        select all", ctx->Theme.TextDim);
-            ZUIEndRow(ctx);
-            ZUIBeginRow(ctx, "##con_h3", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Ctrl+Z / Y    undo / redo", ctx->Theme.TextDim);
-            ZUIEndRow(ctx);
-            ZUIBeginRow(ctx, "##con_h4", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Arrow Up/Down navigate combo", ctx->Theme.TextDim);
-            ZUIEndRow(ctx);
 
             ZUIEndColumn(ctx);
         }
