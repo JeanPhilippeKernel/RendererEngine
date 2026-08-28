@@ -128,14 +128,23 @@ namespace Tetragrama::Panels
             const float          kSashH = 4.f;
             const float          fw     = rect[2] - rect[0] - 100.f - 16.f;
 
-            // Detect press on a section header by Y-range (scroll-approximate, no key needed)
+            // Open scroll region first so we can read its ScrollY for accurate header detection
+            ZUIBox*              bg     = ZUIBeginScrollRegion(ctx, "##insp_sr", ZFill(), ZFill());
+            bg->Flags                   = bg->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
+            bg->EdgeSoftness             = 0.f;
+
+            ZUIPersistentState* sr_ps    = ZUIStateGetOrInsert(&ctx->StateStore, bg->Key);
+            const float         scroll_y = sr_ps ? sr_ps->ScrollY : 0.f;
+
+            // Detect press on a section header by Y-range (scroll-corrected)
             if (ctx->MousePressed[0] && !m_drag_active)
             {
                 float run = 0.f;
                 m_drag_di = -1;
                 for (int di = 0; di < N; di++)
                 {
-                    float y0 = rect[1] + run;
+                    float y0 = rect[1] - scroll_y + run;
                     float y1 = y0 + kHdrH;
                     if (ctx->MousePos[1] >= y0 && ctx->MousePos[1] < y1)
                     {
@@ -195,12 +204,6 @@ namespace Tetragrama::Panels
                 m_drag_di     = -1;
                 m_drag_active = false;
             }
-
-            // One parent scroll region wrapping all sections
-            ZUIBox* bg = ZUIBeginScrollRegion(ctx, "##insp_sr", ZFill(), ZFill());
-            bg->Flags  = bg->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
-            bg->EdgeSoftness         = 0.f;
 
             const char* ghost_label  = nullptr;
             bool        drop_changes = m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1;
