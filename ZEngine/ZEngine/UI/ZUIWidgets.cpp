@@ -1908,13 +1908,18 @@ namespace ZEngine::UI
         }
         ZUIPopBox(ctx);
 
-        if ((sig.Flags & ZUI_SignalClicked) && enabled)
+        // Open on click; or on hover-switch when another menu popup is already open.
+        // Signal-based hover won't fire here because the interaction pass blocks non-popup
+        // boxes from receiving ctx->HotKey when a popup is open.  Use a direct cursor-vs-
+        // ScreenRect check (prev-frame coords) instead — same pattern as BuildDividers.
+        ZUIPersistentState* ps            = ZUIStateGetOrInsert(&ctx->StateStore, btn->Key);
+        bool                cursor_over   = ps && ps->ScreenMaxX > ps->ScreenMinX && ctx->MousePos[0] >= ps->ScreenMinX && ctx->MousePos[0] <= ps->ScreenMaxX && ctx->MousePos[1] >= ps->ScreenMinY && ctx->MousePos[1] <= ps->ScreenMaxY;
+        bool                any_menu_open = (ctx->PopupStackSize > 0 && !is_open);
+        if (enabled && ((sig.Flags & ZUI_SignalClicked) || (any_menu_open && cursor_over)))
         {
             // ImGui: menu popup opens at button's LEFT EDGE, BOTTOM of the menu bar.
-            // Use prev-frame screen coords from persistent state (updated by layout solve).
-            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, btn->Key);
-            float               px = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : ctx->MousePos[0];
-            float               py = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : (ctx->MousePos[1] + 26.f);
+            float px = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : ctx->MousePos[0];
+            float py = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : (ctx->MousePos[1] + 26.f);
             ZUIOpenPopup(ctx, label, px, py);
         }
 
@@ -1936,7 +1941,7 @@ namespace ZEngine::UI
 
         // Row: [label][fill][› chevron][right-pad]
         ZUIBox*  row        = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
-        row->Flags          = row->Flags | ZUI_Clickable;
+        row->Flags          = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
         row->Padding[0]     = ZUIGetFramePadX(ctx) * 2.f;
         row->EdgeSoftness   = 0.f;
 
@@ -1989,6 +1994,18 @@ namespace ZEngine::UI
                 ZUIBoxSetColorArr(row, ctx->Theme.HeaderHoveredBg);
         }
         ZUIEndRow(ctx);
+
+        // Close submenu when cursor leaves both the row and the popup — standard menu UX.
+        // Uses prev-frame ScreenRect (persistent state) since boxes are rebuilt each frame.
+        if (is_open)
+        {
+            auto cursor_in = [&](uint64_t key) -> bool {
+                ZUIPersistentState* s = ZUIStateGetOrInsert(&ctx->StateStore, key);
+                return s && s->ScreenMaxX > s->ScreenMinX && ctx->MousePos[0] >= s->ScreenMinX && ctx->MousePos[0] <= s->ScreenMaxX && ctx->MousePos[1] >= s->ScreenMinY && ctx->MousePos[1] <= s->ScreenMaxY;
+            };
+            if (!cursor_in(row->Key) && !cursor_in(popup_hash))
+                ctx->PopupStackSize = ctx->PopupBuildDepth; // pop Panels and anything deeper
+        }
 
         // Open submenu popup on hover — to the right of the parent popup.
         // Use the row's own ScreenMaxX once laid out; fall back to the parent

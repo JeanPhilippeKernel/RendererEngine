@@ -472,11 +472,9 @@ namespace ZEngine::UI
             }
 
             ZUISeparator(ctx);
-            ZUISeparatorText(ctx, "Panels");
 
-            // Panel visibility — toggle individual panels
-            // Note: ZUIBeginMenu nesting not yet supported (single ActivePopupKey).
-            // Panels listed directly in the Window menu under a "Panels" group header.
+            // Panels submenu — fly-out to the right (popup stack supports nested menus)
+            if (ZUIBeginSubMenu(ctx, "Panels"))
             {
                 static const char*        kPanelNames[]   = {"Hierarchy", "Console", "Inspector", "Viewport"};
                 static constexpr uint32_t kPanelNameCount = 4;
@@ -488,10 +486,8 @@ namespace ZEngine::UI
                     ZUIPanel*   match       = nullptr;
                     for (uint32_t i = 0; i < PanelCount; ++i)
                     {
-                        ZUIPanel* p = &Panels[i];
-                        if (p->ViewCount == 0)
-                            continue;
-                        const char* t = p->Views[0] ? p->Views[0]->Title : "";
+                        ZUIPanel*   p = &Panels[i];
+                        const char* t = (p->ViewCount > 0 && p->Views[0]) ? p->Views[0]->Title : "";
                         if (strcmp(t, target_name) == 0)
                         {
                             match = p;
@@ -499,12 +495,11 @@ namespace ZEngine::UI
                         }
                     }
 
-                    // "* Name" = visible   "  Name" = hidden
-                    char label[96];
                     bool visible = match && !match->Hidden;
-                    snprintf(label, sizeof(label), "%s%s##pmn_%u", visible ? "* " : "  ", target_name, ni);
+                    char lbl[96];
+                    snprintf(lbl, sizeof(lbl), "%s  %s##pmn_%u", visible ? "[x]" : "[ ]", target_name, ni);
 
-                    if (ZUIMenuItem(ctx, label) && match)
+                    if (ZUIMenuItem(ctx, lbl) && match)
                     {
                         if (match->Hidden)
                         {
@@ -517,12 +512,11 @@ namespace ZEngine::UI
                             }
                         }
                         else if (PendingCloseCount < kMaxPanels)
-                        {
                             PendingCloseKeys[PendingCloseCount++] = match->DockKey;
-                        }
                         LayoutDirty = true;
                     }
                 }
+                ZUIEndSubMenu(ctx);
             }
             ZUIEndMenu(ctx);
         }
