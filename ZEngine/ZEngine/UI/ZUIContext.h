@@ -199,7 +199,7 @@ namespace ZEngine::UI
         float DropShadowAlpha            = 0.38f;
         float HoverOverlayAlpha          = 0.15f;
         float MouseScrollSpeed           = 48.f; // px per scroll unit (VS Code uses ~50)
-        float ScrollSmoothSpeed          = 20.f; // exponential-lerp speed toward ScrollYTarget
+        float ScrollSmoothSpeed          = 35.f; // exponential-lerp speed — 20 was too slow (28% first-frame); 35 → 44% first-frame, ~90ms settle
 
         // Plot
         float PlotLineThickness          = 1.5f;
