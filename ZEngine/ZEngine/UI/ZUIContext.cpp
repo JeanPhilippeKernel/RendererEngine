@@ -9,6 +9,8 @@ namespace ZEngine::UI
 
     void ZUIContextInit(ZUIContext* ctx, ArenaAllocator* parent, size_t FrameArenaBytes, size_t PersistentArenaBytes, uint32_t StateCapacity, uint32_t MaxBoxesPerFrame)
     {
+        ZENGINE_VALIDATE_ASSERT(StateCapacity > 0 && (StateCapacity & (StateCapacity - 1)) == 0, "ZUIContextInit: StateCapacity must be a power of two — hash probing is bitmasked");
+
         parent->CreateSubArena(FrameArenaBytes, &ctx->FrameArena);
         parent->CreateSubArena(PersistentArenaBytes, &ctx->PersistentArena);
 

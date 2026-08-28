@@ -89,29 +89,25 @@ namespace ZEngine::UI
                 float max_x       = fmaxf(ps->MaxScrollX, 0.f);
                 bool  changed     = false;
 
-                // Clamp helper — only upper-clamps when max > 0 (layout may not have run yet)
+                // Clamp to [lo, hi]. When MaxScrollY is 0 (first frame, no overflow yet),
+                // hi == 0 and the upper clamp correctly prevents any scroll accumulation.
                 auto  clampScroll = [](float v, float lo, float hi) {
                     if (v < lo)
                         v = lo;
-                    if (hi > 0.f && v > hi)
+                    if (v > hi)
                         v = hi;
                     return v;
                 };
 
-                // Mouse wheel — sets target for smooth animation; also nudges ScrollY
-                // directly so the first tick is always visible even before the lerp catches up.
+                // Mouse wheel — RAD Debugger model: only the target is written here.
+                // ZUIBeginScrollRegion animates ScrollY toward ScrollYTarget each frame.
+                // Writing both here would make them always equal, killing the animation.
                 if (ctx->ScrollDelta != 0.f)
                 {
                     if (new_scroll_axis == ZUIAxis::X)
-                    {
                         ps->ScrollXTarget = clampScroll(ps->ScrollXTarget - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_x);
-                        ps->ScrollX       = clampScroll(ps->ScrollX - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_x);
-                    }
                     else
-                    {
                         ps->ScrollYTarget = clampScroll(ps->ScrollYTarget - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_y);
-                        ps->ScrollY       = clampScroll(ps->ScrollY - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_y);
-                    }
                     changed = true;
                 }
 

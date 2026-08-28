@@ -86,9 +86,12 @@ namespace ZEngine::UI
         box->LayoutAxis        = ZUIAxis::Y;
 
         // Smooth scroll — RAD Debugger model:
-        //   ScrollYTarget  written by wheel input (ZUIInteractionPass); ScrollY animated toward it.
-        //   MaxScrollY     owned by the layout pass (bottom-up from child extents); read-only here.
-        //   Snap < 2px     prevents infinite micro-oscillation (RAD: abs(off - target) < 2 → snap).
+        //   Wheel input writes only ScrollYTarget (ZUIInteractionPass).
+        //   Each frame here ScrollY animates toward that target via exponential lerp.
+        //   Snap < 2px prevents infinite micro-oscillation.
+        //   Clamps are unconditional — MaxScrollY == 0 on first frame correctly
+        //   clamps to [0,0], and the `> 0` guard that was here previously let
+        //   ScrollYTarget accumulate unbounded on first-frame wheel events.
         ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
         if (ps)
         {
@@ -100,7 +103,7 @@ namespace ZEngine::UI
                 ps->ScrollY = ps->ScrollYTarget;
             if (ps->ScrollY < 0.f)
                 ps->ScrollY = 0.f;
-            if (ps->MaxScrollY > 0.f && ps->ScrollY > ps->MaxScrollY)
+            if (ps->ScrollY > ps->MaxScrollY)
                 ps->ScrollY = ps->MaxScrollY;
 
             ps->ScrollX += (ps->ScrollXTarget - ps->ScrollX) * alpha;
@@ -108,7 +111,7 @@ namespace ZEngine::UI
                 ps->ScrollX = ps->ScrollXTarget;
             if (ps->ScrollX < 0.f)
                 ps->ScrollX = 0.f;
-            if (ps->MaxScrollX > 0.f && ps->ScrollX > ps->MaxScrollX)
+            if (ps->ScrollX > ps->MaxScrollX)
                 ps->ScrollX = ps->MaxScrollX;
         }
 
@@ -126,7 +129,11 @@ namespace ZEngine::UI
             // Update HotT for the scroll region — drives scrollbar auto-hide alpha
             ZUISignalFromBox(ctx, sb);
 
-            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, sb->Key);
+            // kScrollbarShowDuration: seconds the scrollbar stays visible after a scroll event.
+            // Shared by vertical and horizontal scrollbar sections — change in one place.
+            static constexpr float kScrollbarShowDuration = 0.5f;
+
+            ZUIPersistentState*    ps                     = ZUIStateGetOrInsert(&ctx->StateStore, sb->Key);
             if (ps && ps->MaxScrollY > 1.f && ps->ScreenMaxX > ps->ScreenMinX)
             {
                 float sx0 = ps->ScreenMinX, sy0 = ps->ScreenMinY;
@@ -136,7 +143,7 @@ namespace ZEngine::UI
                 // Advance show timer; keep alive while smooth scroll animation is running
                 ps->ScrollbarShowTimer = fmaxf(0.f, ps->ScrollbarShowTimer - dt);
                 if (fabsf(ps->ScrollY - ps->ScrollYTarget) > 0.5f)
-                    ps->ScrollbarShowTimer = fmaxf(ps->ScrollbarShowTimer, 0.3f);
+                    ps->ScrollbarShowTimer = fmaxf(ps->ScrollbarShowTimer, kScrollbarShowDuration * 0.6f);
 
                 float track_h   = sy1 - sy0;
                 float content_h = track_h + ps->MaxScrollY;
@@ -149,7 +156,7 @@ namespace ZEngine::UI
 
                 // Visibility: floor (always discoverable) + scroll-timer + hover — VS Code model.
                 // Floor keeps a faint hint at rest; timer flashes full on wheel/drag; hover sustains it.
-                float       vis_timer = ps->ScrollbarShowTimer / 0.5f;
+                float       vis_timer = ps->ScrollbarShowTimer / kScrollbarShowDuration;
                 float       vis       = fmaxf(fmaxf(ps->HotT, vis_timer), ctx->Style.ScrollbarAutoHideAlpha);
                 const float kBarW     = ctx->Style.ScrollbarSize;
 
@@ -198,7 +205,7 @@ namespace ZEngine::UI
                     // Sync both: immediate position (no lerp lag while dragging) + target
                     ps->ScrollY            = new_scroll;
                     ps->ScrollYTarget      = new_scroll;
-                    ps->ScrollbarShowTimer = 0.5f;
+                    ps->ScrollbarShowTimer = kScrollbarShowDuration;
                 }
                 ZUIPopBox(ctx);
             }
@@ -219,7 +226,7 @@ namespace ZEngine::UI
                 const float kBarH       = ctx->Style.ScrollbarSize;
                 float       thumb_x_rel = (ps->MaxScrollX > 0.f) ? (ps->ScrollX / ps->MaxScrollX) * (track_w - thumb_w) : 0.f;
                 float       bar_y_h     = (sy1 - kBarH) - sy0; // bottom edge, relative to scroll region top
-                float       vis_h       = fmaxf(fmaxf(ps->HotT, ps->ScrollbarShowTimer / 0.5f), ctx->Style.ScrollbarAutoHideAlpha);
+                float       vis_h       = fmaxf(fmaxf(ps->HotT, ps->ScrollbarShowTimer / kScrollbarShowDuration), ctx->Style.ScrollbarAutoHideAlpha);
 
                 // Track
                 char        htrk[64];
@@ -253,12 +260,16 @@ namespace ZEngine::UI
 
                 if ((htsig.Flags & ZUI_SignalHeld) && htsig.DragDelta[0] != 0.f)
                 {
-                    float ratio  = (track_w - thumb_w) > 0.f ? ps->MaxScrollX / (track_w - thumb_w) : 0.f;
-                    ps->ScrollX += htsig.DragDelta[0] * ratio;
-                    if (ps->ScrollX < 0.f)
-                        ps->ScrollX = 0.f;
-                    if (ps->ScrollX > ps->MaxScrollX)
-                        ps->ScrollX = ps->MaxScrollX;
+                    float ratio      = (track_w - thumb_w) > 0.f ? ps->MaxScrollX / (track_w - thumb_w) : 0.f;
+                    float new_scroll = ps->ScrollX + htsig.DragDelta[0] * ratio;
+                    if (new_scroll < 0.f)
+                        new_scroll = 0.f;
+                    if (new_scroll > ps->MaxScrollX)
+                        new_scroll = ps->MaxScrollX;
+                    // Sync both so the lerp doesn't snap back to the old target on release
+                    ps->ScrollX            = new_scroll;
+                    ps->ScrollXTarget      = new_scroll;
+                    ps->ScrollbarShowTimer = kScrollbarShowDuration;
                 }
                 ZUIPopBox(ctx);
             }
@@ -271,7 +282,14 @@ namespace ZEngine::UI
         uint64_t            hash = ZUIHashStr(key, (uint32_t) strlen(key));
         ZUIPersistentState* ps   = ZUIStateGetOrInsert(&ctx->StateStore, hash);
         if (ps)
-            ps->ScrollY = 1e9f; // clamped to MaxScrollY by layout pass
+        {
+            // 1e9f is clamped to MaxScrollY by ZUIBeginScrollRegion on the next frame.
+            // Both must be set: ScrollY drives this frame's layout, ScrollYTarget drives
+            // subsequent frames. Setting only ScrollY lets the lerp animate back to the
+            // old target over the next ~15 frames.
+            ps->ScrollY       = 1e9f;
+            ps->ScrollYTarget = 1e9f;
+        }
     }
 
     float ZUIGetScrollY(ZUIContext* ctx, const char* key)

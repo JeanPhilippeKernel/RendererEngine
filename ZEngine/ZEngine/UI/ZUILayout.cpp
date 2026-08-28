@@ -73,14 +73,21 @@ namespace ZEngine::UI
                         if (axis == layout)
                         {
                             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
-                                accum += c->ComputedSize[axis];
+                            {
+                                bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                                if (!floated)
+                                    accum += c->ComputedSize[axis];
+                            }
                         }
                         else
                         {
                             float mx = 0.f;
                             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
-                                if (c->ComputedSize[axis] > mx)
+                            {
+                                bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                                if (!floated && c->ComputedSize[axis] > mx)
                                     mx = c->ComputedSize[axis];
+                            }
                             accum = mx + ps + pe;
                         }
                         box->ComputedSize[axis] = accum;
@@ -160,10 +167,12 @@ namespace ZEngine::UI
         // proportionally to absorb the overflow. Prevents panel content from
         // bleeding outside its bounds. Strictness 1.0 = rigid, 0.0 = fully
         // flexible. ZFill defaults to Strictness=0, ZPx to Strictness=1.
+        // Scroll regions are intentionally skipped — their content is meant to
+        // overflow so that MaxScrollY > 0; constraining it defeats scrolling.
         for (uint32_t i = 0; i < node_count; ++i)
         {
             ZUIBox* box = nodes[i];
-            if (!box->FirstChild)
+            if (!box->FirstChild || (box->Flags & ZUI_Scrollable))
             {
                 continue;
             }
@@ -251,14 +260,7 @@ namespace ZEngine::UI
                     }
                     else if (axis == layout)
                     {
-                        float ps     = PadStart(parent, axis);
-                        float scroll = 0.f;
-                        if (!box->PrevSib && (parent->Flags & ZUI_Scrollable))
-                        {
-                            ZUIPersistentState* ps_state = ZUIStateGetOrInsert(&ctx->StateStore, parent->Key);
-                            if (ps_state)
-                                scroll = (axis == 1) ? ps_state->ScrollY : ps_state->ScrollX;
-                        }
+                        float   ps        = PadStart(parent, axis);
                         // Skip floated siblings — they are positioned absolutely and must not
                         // advance the flow cursor for the non-floated children that follow them.
                         ZUIBox* prev_flow = box->PrevSib;
@@ -266,12 +268,27 @@ namespace ZEngine::UI
                         {
                             bool pf = (axis == 0) ? !!(prev_flow->Flags & ZUI_FloatX) : !!(prev_flow->Flags & ZUI_FloatY);
                             if (!pf)
-                            {
                                 break;
-                            }
                             prev_flow = prev_flow->PrevSib;
                         }
-                        box->ScreenMin[axis] = prev_flow ? prev_flow->ScreenMax[axis] : parent->ScreenMin[axis] + ps - scroll;
+                        if (prev_flow)
+                        {
+                            box->ScreenMin[axis] = prev_flow->ScreenMax[axis];
+                        }
+                        else
+                        {
+                            // First non-floated child: origin is parent start minus scroll offset.
+                            // Guard is prev_flow == nullptr (not !PrevSib) so that a box whose
+                            // only preceding siblings are all floated still gets the scroll applied.
+                            float scroll = 0.f;
+                            if (parent->Flags & ZUI_Scrollable)
+                            {
+                                ZUIPersistentState* ps_state = ZUIStateGetOrInsert(&ctx->StateStore, parent->Key);
+                                if (ps_state)
+                                    scroll = (axis == 1) ? ps_state->ScrollY : ps_state->ScrollX;
+                            }
+                            box->ScreenMin[axis] = parent->ScreenMin[axis] + ps - scroll;
+                        }
                     }
                     else
                     {
@@ -299,6 +316,10 @@ namespace ZEngine::UI
         }
 
         // Pass 4 — compute MaxScrollY / MaxScrollX for every ZUI_Scrollable box.
+        // Floated children (scrollbar track/thumb) are excluded — they don't
+        // contribute to scrollable content and would inflate MaxScroll otherwise.
+        // Padding is subtracted from the visible size: the effective viewport is
+        // box.ComputedSize - padding, not the full box size.
         for (uint32_t i = 0; i < node_count; ++i)
         {
             ZUIBox* box = nodes[i];
@@ -310,9 +331,13 @@ namespace ZEngine::UI
             int   layout  = (int) box->LayoutAxis;
             float content = 0.f;
             for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
-                content += c->ComputedSize[layout];
+            {
+                bool floated = (layout == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                if (!floated)
+                    content += c->ComputedSize[layout];
+            }
 
-            float visible    = box->ComputedSize[layout];
+            float visible    = box->ComputedSize[layout] - PadStart(box, layout) - PadEnd(box, layout);
             float max_scroll = content - visible;
             if (max_scroll < 0.f)
                 max_scroll = 0.f;
