@@ -1515,9 +1515,10 @@ namespace ZEngine::UI
 
     void ZUIPaneSash(ZUIContext* ctx, const char* key, float* heights, const bool* opens, int n, int boundary, float min_h)
     {
-        // 4 px invisible-but-clickable horizontal strip.
-        // On hover: shows subtle teal tint + NS cursor.
-        // On drag: greedy cascade applied to heights[].
+        // 4 px clickable horizontal strip between sections.
+        // At rest:  dim separator line (Separator color).
+        // On hover: subtle teal tint + NS resize cursor.
+        // On drag:  greedy cascade applied to heights[].
         ZUIBox* sash       = ZUIPushBox(ctx, key, (uint32_t) strlen(key), ZUI_DrawBackground | ZUI_Clickable);
         sash->Size[0]      = ZFill();
         sash->Size[1]      = ZPx(4.f);
@@ -1526,12 +1527,12 @@ namespace ZEngine::UI
         bool hot           = (ctx->HotKey == sash->Key) || (ctx->ActiveKey == sash->Key);
         if (hot)
         {
-            ZUIBoxSetColor(sash, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], hot && ctx->ActiveKey == sash->Key ? 0.50f : 0.20f);
+            ZUIBoxSetColor(sash, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], ctx->ActiveKey == sash->Key ? 0.50f : 0.20f);
             ctx->ResizeCursor = 2; // NS cursor
         }
         else
         {
-            ZUIBoxSetColor(sash, 0.f, 0.f, 0.f, 0.f);
+            ZUIBoxSetColor(sash, ctx->Theme.Separator[0], ctx->Theme.Separator[1], ctx->Theme.Separator[2], 0.30f);
         }
 
         ZUISignal sig = ZUISignalFromBox(ctx, sash);
