@@ -15,7 +15,7 @@ using namespace ZEngine::UI;
 namespace Tetragrama::Components
 {
     static constexpr float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
-    static constexpr float kMenuH   = 26.f;
+    static constexpr float kMenuH   = 28.f;
     static constexpr float kStatusH = 28.f;
     static constexpr float kLeftW   = 0.18f;
     static constexpr float kRightW  = 0.22f;

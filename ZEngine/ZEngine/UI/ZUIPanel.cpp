@@ -349,8 +349,14 @@ namespace ZEngine::UI
             sbar->FloatPos[1] = sh - status_h;
             ZUIBoxSetColorArr(sbar, ctx->Theme.StatusBarBg);
             sbar->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 10.f);
-            ZUILabel(ctx, "ZEngine Editor", ctx->Theme.TextDefault);
+
+            // Left — engine identity
+            ZUISpacer(ctx, 12.f);
+            ZUILabel(ctx, "ZEngine", ctx->Theme.TextDefault);
+            ZUISpacer(ctx, 6.f);
+            ZUILabel(ctx, "Editor", ctx->Theme.TextDim);
+
+            // Fill
             {
                 char    fk[] = "##sbf";
                 ZUIBox* sf   = ZUIPushBox(ctx, fk, 5, ZUI_None);
@@ -358,16 +364,33 @@ namespace ZEngine::UI
                 sf->Size[1]  = ZPx(status_h);
                 ZUIPopBox(ctx);
             }
+
+            // Right — performance + scale
             {
-                char  buf[48];
                 float fps = (ctx->DeltaTime > 0.0005f && ctx->DeltaTime < 1.f) ? (1.f / ctx->DeltaTime) : 0.f;
+
+                // UIScale
+                {
+                    char scale_buf[24];
+                    snprintf(scale_buf, sizeof(scale_buf), "UIScale %.1f", (double) ctx->UIScale);
+                    ZUILabel(ctx, scale_buf, ctx->Theme.TextDim);
+                }
+
+                ZUISpacer(ctx, 10.f);
+                static const float kSep[4] = {1.f, 1.f, 1.f, 0.25f};
+                ZUILabel(ctx, "|", kSep);
+                ZUISpacer(ctx, 10.f);
+
+                // FPS — color-coded: normal / warn / error
                 if (fps > 0.f)
-                    snprintf(buf, sizeof(buf), "%.0f fps  |  UIScale %.1f", (double) fps, (double) ctx->UIScale);
-                else
-                    snprintf(buf, sizeof(buf), "UIScale %.1f", (double) ctx->UIScale);
-                ZUILabel(ctx, buf, ctx->Theme.TextDefault);
-                ZUISpacer(ctx, 12.f);
+                {
+                    const float* fps_col = (fps >= 55.f) ? ctx->Theme.TextDefault : (fps >= 30.f) ? ctx->Theme.TextWarn : ctx->Theme.TextError;
+                    char         fps_buf[24];
+                    snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double) fps);
+                    ZUILabel(ctx, fps_buf, fps_col);
+                }
             }
+            ZUISpacer(ctx, 14.f);
             ZUIEndRow(ctx);
         }
 
