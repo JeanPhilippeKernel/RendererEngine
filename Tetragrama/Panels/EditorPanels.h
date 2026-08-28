@@ -1,4 +1,16 @@
 #pragma once
+#include <Tetragrama/Editor.h>
+#include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Layers/ZUILayer.h>
+#include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/Components/CameraComponent.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/ParentComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/UI/ZUIPanel.h>
 #include <ZEngine/UI/ZUIWidgets.h>
@@ -59,140 +71,620 @@ namespace Tetragrama::Panels
 
     // ── Hierarchy panel ───────────────────────────────────────────────────────
     //
-    // Tree view of scene entities — up to 9 levels of nesting.
-    // ZUITreeNode uses the VS Code chevron (∨/›) built-in.
-    // Indentation via wrapper column Padding[0] = depth * IndentSpacing.
+    // Real ECS actor tree with DFS traversal, inline rename, context menu,
+    // drag-and-drop reparenting, search filter, and two-column layout.
+    // VS Code chevrons (∨/›) via ZUI_DrawTriArrow + UserData 2.f/3.f.
     //
     struct HierarchyPanel : ZUIPanelView
     {
-        struct Node
-        {
-            const char* name;
-            int         parent; // -1 = root
-        };
-
-        static constexpr int  kN         = 22;
-
-        // Sample scene — deepest path: World → Player → Armature → Hips → Spine
-        //                              → Chest → Shoulder R → UpperArm R
-        //                              → LowerArm R → Hand R  (depth 9)
-        static constexpr Node kNodes[kN] = {
-            {      "World", -1}, // 0  depth 0
-            {     "Camera",  0}, // 1  depth 1
-            {"Main Camera",  1}, // 2  depth 2
-            {   "Lighting",  0}, // 3  depth 1
-            {"Directional",  3}, // 4  depth 2
-            {"Point Light",  3}, // 5  depth 2
-            {     "Player",  0}, // 6  depth 1
-            {   "Armature",  6}, // 7  depth 2
-            {       "Hips",  7}, // 8  depth 3
-            {      "Spine",  8}, // 9  depth 4
-            {      "Chest",  9}, // 10 depth 5
-            { "Shoulder R", 10}, // 11 depth 6
-            { "UpperArm R", 11}, // 12 depth 7
-            { "LowerArm R", 12}, // 13 depth 8
-            {     "Hand R", 13}, // 14 depth 9  ← max depth
-            { "Shoulder L", 10}, // 15 depth 6
-            { "UpperArm L", 15}, // 16 depth 7
-            { "LowerArm L", 16}, // 17 depth 8
-            {     "Hand L", 17}, // 18 depth 9
-            {"Environment",  0}, // 19 depth 1
-            {     "Ground", 19}, // 20 depth 2
-            {      "Trees", 19}, // 21 depth 2
-        };
-
-        bool m_open[kN] = {true, true, false, true, false, false, true, true, true, true, true, true, true, true, false, true, true, true, false, true, false, false};
-        int  m_selected = -1;
-
         HierarchyPanel()
         {
             Title = "Hierarchy";
         }
 
-        int Depth(int i) const
-        {
-            int d = 0, p = kNodes[i].parent;
-            while (p >= 0)
-            {
-                d++;
-                p = kNodes[p].parent;
-            }
-            return d;
-        }
+        // Set by ZUIPanelManagerComponent::Initialize before first BuildContent call
+        Tetragrama::Layers::ZUILayer* m_layer                    = nullptr;
 
-        bool HasChildren(int i) const
+        // Search bar buffer
+        char                          m_search[128]              = {};
+
+        // Inline rename state
+        ZEngine::ECS::EntityID        m_rename_id                = {};
+        char                          m_rename_buf[128]          = {};
+        bool                          m_rename_started           = false;
+        uint64_t                      m_rename_fkey              = 0;
+
+        // Collapsed-entity set (linear scan, sufficient for small-medium scenes)
+        static constexpr int          kMaxCollapsed              = 256;
+        ZEngine::ECS::EntityID        m_collapsed[kMaxCollapsed] = {};
+        int                           m_ncollapsed               = 0;
+        bool                          m_root_open                = true;
+
+        bool                          IsCollapsed(ZEngine::ECS::EntityID id) const
         {
-            for (int j = 0; j < kN; j++)
-                if (kNodes[j].parent == i)
+            for (int i = 0; i < m_ncollapsed; ++i)
+                if (m_collapsed[i] == id)
                     return true;
             return false;
         }
 
-        bool AncestorCollapsed(int i) const
+        void ToggleCollapsed(ZEngine::ECS::EntityID id)
         {
-            int p = kNodes[i].parent;
-            while (p >= 0)
+            for (int i = 0; i < m_ncollapsed; ++i)
             {
-                if (!m_open[p])
-                    return true;
-                p = kNodes[p].parent;
+                if (m_collapsed[i] == id)
+                {
+                    m_collapsed[i] = m_collapsed[--m_ncollapsed];
+                    return;
+                }
             }
-            return false;
+            if (m_ncollapsed < kMaxCollapsed)
+                m_collapsed[m_ncollapsed++] = id;
         }
 
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
+            using namespace ZEngine;
+            using namespace ZEngine::ECS;
+            using namespace ZEngine::ECS::Components;
+            using namespace ZEngine::Helpers;
             using namespace ZEngine::UI;
+
             (void) rect;
 
-            const float hdrH = ZUIGetFrameHeight(ctx);
+            // Guard — need app, scene, and actor manager
+            if (!m_layer || !m_layer->CurrentApp)
+            {
+                EmptyPanelBg(ctx, "##hier_empty", ctx->Theme.PanelBg, nullptr);
+                return;
+            }
+            auto* app   = reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp);
+            auto* scene = reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene);
+            auto* eng   = Engine::GetContext();
+            if (!scene || !eng || !eng->ActorManager)
+            {
+                EmptyPanelBg(ctx, "##hier_empty", ctx->Theme.PanelBg, nullptr);
+                return;
+            }
 
-            ZUIBox*     bg   = ZUIBeginScrollRegion(ctx, "##hier_sr", ZFill(), ZFill());
-            bg->Flags        = bg->Flags | ZUI_DrawBackground;
+            float   fh = ZUIGetFrameHeight(ctx);
+
+            ZUIBox* bg = ZUIBeginColumn(ctx, "##hier_bg", ZFill(), ZFill());
+            bg->Flags  = bg->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
             bg->EdgeSoftness = 0.f;
 
-            ZUISpacer(ctx, 4.f);
+            // ── Toolbar: search | Add actor ───────────────────────────────────────
+            ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 6.f);
+            ZUISearchBox(ctx, "##hier_search", m_search, sizeof(m_search), "Search...", ZFill());
+            ZUISpacer(ctx, 6.f);
+            bool do_add = (ZUISmallButton(ctx, "+##hier").Flags & ZUI_SignalClicked) != 0;
+            ZUISpacer(ctx, 6.f);
+            ZUIEndRow(ctx);
 
-            for (int i = 0; i < kN; i++)
+            // ── Column header ─────────────────────────────────────────────────────
+            ZUIBox* ch = ZUIBeginRow(ctx, "##hier_ch", ZFill(), ZPx(fh));
+            ch->Flags  = ch->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColorArr(ch, ctx->Theme.TitleBarBg);
+            ZUISpacer(ctx, 6.f);
+            ZUILabel(ctx, "Item Label", ctx->Theme.TextDim);
+            { // fill + right-aligned "Type" label
+                ZUIBox* f  = ZUIPushBox(ctx, "##hch_fill", 10, ZUI_None);
+                f->Size[0] = ZFill();
+                f->Size[1] = ZPx(fh);
+                ZUIPopBox(ctx);
+            }
+            ZUILabel(ctx, "Type", ctx->Theme.TextDim);
+            ZUISpacer(ctx, 6.f);
+            ZUIEndRow(ctx);
+
+            ZUISeparator(ctx);
+
+            // ── DFS tree build ────────────────────────────────────────────────────
+            uint32_t n = eng->ActorManager->Count();
+            if (n == 0)
             {
-                if (AncestorCollapsed(i))
-                    continue;
-
-                float indent   = (float) Depth(i) * ctx->Style.IndentSpacing;
-                bool  has_chld = HasChildren(i);
-                bool  is_sel   = (m_selected == i);
-                char  ck[32];
-                snprintf(ck, sizeof(ck), "##hn%d", i);
-
-                // Wrapper column — provides indentation via left padding
-                ZUIBox* col       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(hdrH));
-                col->Padding[0]   = indent;
-                col->EdgeSoftness = 0.f;
-                if (is_sel)
-                {
-                    col->Flags = col->Flags | ZUI_DrawBackground;
-                    ZUIBoxSetColorArr(col, ctx->Theme.RowSelectedBg);
-                }
-
-                if (has_chld)
-                {
-                    ZUISignal sig = ZUITreeNode(ctx, kNodes[i].name, &m_open[i]);
-                    if (sig.Flags & ZUI_SignalClicked)
-                        m_selected = i;
-                }
-                else
-                {
-                    // Leaf — indent to align label with parent tree-node text
-                    bool sel = is_sel;
-                    if (ZUISelectable(ctx, kNodes[i].name, &sel, ZPx(hdrH)))
-                        m_selected = i;
-                }
-
+                // Empty scene — show placeholder and skip tree
                 ZUIEndColumn(ctx);
+                return;
             }
 
+            static constexpr uint32_t kMaxN = 512;
+            uint32_t                  nc    = n < kMaxN ? n : kMaxN;
+
+            struct OutlinerNode
+            {
+                ActorHandle Handle;
+                EntityID    EID;
+                EntityID    Parent;
+            };
+            OutlinerNode* nodes       = ZPushArray(&ctx->FrameArena, OutlinerNode, nc + 1);
+            uint32_t*     first_child = ZPushArray(&ctx->FrameArena, uint32_t, nc + 1);
+            uint32_t*     next_sib    = ZPushArray(&ctx->FrameArena, uint32_t, nc + 1);
+            uint32_t      actual_nc   = 0;
+            for (uint32_t i = 0; i < nc + 1; ++i)
+            {
+                first_child[i] = UINT32_MAX;
+                next_sib[i]    = UINT32_MAX;
+            }
+            eng->ActorManager->ForEach([&](ActorHandle h, Actor* actor) {
+                if (actual_nc >= nc)
+                    return;
+                auto* pc           = actor->GetComponent<ParentComponent>();
+                nodes[actual_nc++] = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY};
+            });
+            nc                = actual_nc;
+
+            // Build child/sibling linkage
+            uint32_t* eid_idx = ZPushArray(&ctx->FrameArena, uint32_t, nc + 1);
+            for (uint32_t i = 0; i < nc + 1; ++i)
+                eid_idx[i] = UINT32_MAX;
+            for (uint32_t i = 0; i < nc; ++i)
+                eid_idx[nodes[i].EID.Index % (nc + 1)] = i; // simple modulo slot (good enough for display)
+            // Full linear-scan linkage (robust for all sizes)
+            for (uint32_t i = 0; i < nc; ++i)
+            {
+                if (nodes[i].Parent == INVALID_ENTITY)
+                    continue;
+                for (uint32_t j = 0; j < nc; ++j)
+                {
+                    if (nodes[j].EID == nodes[i].Parent)
+                    {
+                        next_sib[i]    = first_child[j];
+                        first_child[j] = i;
+                        break;
+                    }
+                }
+            }
+            (void) eid_idx;
+
+            struct DFSEntry
+            {
+                uint32_t idx;
+                int      depth;
+            };
+            DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, nc * 2 + 2);
+            int       sp  = 0;
+            for (int i = (int) nc - 1; i >= 0; --i)
+                if (nodes[i].Parent == INVALID_ENTITY)
+                    stk[sp++] = {(uint32_t) i, 0};
+
+            // Type icon colors
+            static const float kColLight[4]  = {1.00f, 0.85f, 0.20f, 1.f};
+            static const float kColCamera[4] = {0.45f, 0.85f, 0.55f, 1.f};
+            static const float kColMesh[4]   = {0.55f, 0.75f, 0.90f, 1.f};
+            static const float kColColl[4]   = {0.85f, 0.65f, 0.15f, 1.f};
+            static const float kColActor[4]  = {0.55f, 0.55f, 0.60f, 1.f};
+            static const float kSelBg[4]     = {0.26f, 0.44f, 0.70f, 0.50f};
+            static const float kTransBg[4]   = {0.42f, 0.42f, 0.48f, 0.f};
+            static const float kDim[4]       = {0.55f, 0.55f, 0.60f, 1.f};
+            static const float kWorldIcon[4] = {0.35f, 0.80f, 0.45f, 1.f};
+
+            // ── Scroll region ─────────────────────────────────────────────────────
+            ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
+
+            // World root row
+            {
+                ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(fh));
+                root_row->Flags  = root_row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+                ZUIBoxSetColor(root_row, 0.30f, 0.30f, 0.36f, 0.18f);
+                ZUISpacer(ctx, 6.f);
+
+                // VS Code chevron disclosure (ZUI_DrawTriArrow, UserData 2=∨ 3=›)
+                {
+                    ZUIBox* arr  = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawTriArrow | ZUI_Clickable);
+                    arr->Size[0] = ZPx(fh);
+                    arr->Size[1] = ZPx(fh);
+                    auto* ps     = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
+                    if (ps)
+                        ps->UserData = m_root_open ? 2.f : 3.f;
+                    ZUISignal asig = ZUISignalFromBox(ctx, arr);
+                    ZUIPopBox(ctx);
+                    if (asig.Flags & ZUI_SignalClicked)
+                        m_root_open = !m_root_open;
+                }
+                // World icon
+                {
+                    ZUIBox* icon  = ZUIPushBox(ctx, "W##ti_root", 10, ZUI_DrawBackground);
+                    icon->Size[0] = ZPx(14.f);
+                    icon->Size[1] = ZPx(14.f);
+                    ZUIBoxSetColorArr(icon, kWorldIcon);
+                    ZUIBoxSetCornerRadius(icon, 2.f);
+                    ZUIPopBox(ctx);
+                }
+                ZUISpacer(ctx, 4.f);
+
+                const char* sname = (scene->Name && scene->Name[0]) ? scene->Name : "Scene";
+                ZUILabel(ctx, sname);
+                { // fill + "World" type label
+                    ZUIBox* f  = ZUIPushBox(ctx, "##rf", 4, ZUI_None);
+                    f->Size[0] = ZFill();
+                    f->Size[1] = ZPx(fh);
+                    ZUIPopBox(ctx);
+                }
+                ZUILabel(ctx, "World", kDim);
+                ZUISpacer(ctx, 6.f);
+                ZUIEndRow(ctx);
+            }
+
+            // Pending deferred mutations (applied after DFS to avoid invalidating the tree)
+            ActorHandle pending_delete          = {};
+            ActorHandle pending_duplicate       = {};
+            ActorHandle pending_reparent_child  = {};
+            ActorHandle pending_reparent_parent = {};
+            bool        pending_detach          = false;
+            ActorHandle pending_detach_handle   = {};
+
+            // ── Actor rows (DFS) ──────────────────────────────────────────────────
+            if (m_root_open)
+            {
+                while (sp > 0)
+                {
+                    DFSEntry e     = stk[--sp];
+                    uint32_t ni    = e.idx;
+                    Actor*   actor = eng->ActorManager->Access(nodes[ni].Handle);
+                    if (!actor)
+                        continue;
+
+                    // Search filter
+                    auto*       nc_comp = actor->GetComponent<NameComponent>();
+                    const char* label   = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+                    if (m_search[0] && !ContainsCI(label, m_search))
+                    {
+                        // skip but still expand children so search works deep
+                        bool has_ch  = (first_child[ni] != UINT32_MAX);
+                        bool is_open = has_ch && !IsCollapsed(nodes[ni].EID);
+                        if (has_ch && is_open)
+                        {
+                            uint32_t c = first_child[ni];
+                            while (c != UINT32_MAX)
+                            {
+                                stk[sp++] = {c, e.depth + 1};
+                                c         = next_sib[c];
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Determine type info
+                    char         type_char;
+                    const float* type_col;
+                    const char*  type_str;
+                    bool         has_ch = (first_child[ni] != UINT32_MAX);
+                    if (actor->HasComponent<LightComponent>())
+                    {
+                        type_char = 'L';
+                        type_col  = kColLight;
+                        type_str  = "Light";
+                    }
+                    else if (actor->HasComponent<CameraComponent>())
+                    {
+                        type_char = 'C';
+                        type_col  = kColCamera;
+                        type_str  = "Camera";
+                    }
+                    else if (actor->HasComponent<MeshComponent>())
+                    {
+                        type_char = 'M';
+                        type_col  = kColMesh;
+                        type_str  = "Mesh";
+                    }
+                    else if (has_ch)
+                    {
+                        type_char = 'F';
+                        type_col  = kColColl;
+                        type_str  = "Folder";
+                    }
+                    else
+                    {
+                        type_char = 'A';
+                        type_col  = kColActor;
+                        type_str  = "Actor";
+                    }
+
+                    bool  is_open  = has_ch && !IsCollapsed(nodes[ni].EID);
+                    bool  selected = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
+                    bool  renaming = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
+                    float indent   = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
+
+                    char  row_key[64];
+                    snprintf(row_key, sizeof(row_key), "##hr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+
+                    ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
+                    row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+                    ZUIBoxSetColorArr(row, selected ? kSelBg : kTransBg);
+
+                    ZUISpacer(ctx, indent);
+
+                    // VS Code chevron disclosure or leaf spacer
+                    if (has_ch)
+                    {
+                        char arr_key[64];
+                        snprintf(arr_key, sizeof(arr_key), "##arr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBox* arr  = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
+                        arr->Size[0] = ZPx(fh);
+                        arr->Size[1] = ZPx(fh);
+                        auto* ps     = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
+                        if (ps)
+                            ps->UserData = is_open ? 2.f : 3.f; // ∨ / ›
+                        ZUISignal asig = ZUISignalFromBox(ctx, arr);
+                        ZUIPopBox(ctx);
+                        if (asig.Flags & ZUI_SignalClicked)
+                            ToggleCollapsed(nodes[ni].EID);
+                    }
+                    else
+                    {
+                        ZUISpacer(ctx, fh);
+                    }
+
+                    // Type icon (14×14 colored square)
+                    {
+                        char ik[32];
+                        snprintf(ik, sizeof(ik), "%c##ti_%u_%u", type_char, nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBox* icon  = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawBackground);
+                        icon->Size[0] = ZPx(14.f);
+                        icon->Size[1] = ZPx(14.f);
+                        ZUIBoxSetColorArr(icon, type_col);
+                        ZUIBoxSetCornerRadius(icon, 2.f);
+                        ZUIPopBox(ctx);
+                    }
+                    ZUISpacer(ctx, 4.f);
+
+                    // Actor name or inline rename field
+                    if (renaming)
+                    {
+                        char tf_key[64];
+                        snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        uint64_t fkey_before = ctx->FocusKey;
+                        ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
+                        uint64_t fkey_after = ctx->FocusKey;
+
+                        if (m_rename_started)
+                        {
+                            m_rename_started = false;
+                            m_rename_fkey    = 0;
+                        }
+                        else if (m_rename_fkey != 0 && fkey_after != m_rename_fkey)
+                        {
+                            // Focus left the rename field — commit
+                            if (nc_comp && m_rename_buf[0])
+                                secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1);
+                            m_rename_id   = {};
+                            m_rename_fkey = 0;
+                        }
+                        if (fkey_before != fkey_after && fkey_after != 0)
+                            m_rename_fkey = fkey_after;
+                    }
+                    else
+                    {
+                        ZUILabel(ctx, label);
+                    }
+
+                    // Fill spacer + type column
+                    {
+                        ZUIBox* f  = ZUIPushBox(ctx, "##hf", 4, ZUI_None);
+                        f->Size[0] = ZFill();
+                        f->Size[1] = ZPx(fh);
+                        ZUIPopBox(ctx);
+                    }
+                    ZUILabel(ctx, type_str, kDim);
+                    ZUISpacer(ctx, 6.f);
+
+                    ZUISignal row_sig = ZUISignalFromBox(ctx, row);
+                    ZUIEndRow(ctx);
+
+                    // Single-click → select
+                    if (row_sig.Flags & ZUI_SignalClicked)
+                        scene->SelectedActorHandle = nodes[ni].Handle;
+
+                    // Double-click → start rename
+                    if (!renaming && (row_sig.Flags & ZUI_SignalDoubleClicked))
+                    {
+                        m_rename_id      = nodes[ni].EID;
+                        m_rename_started = true;
+                        m_rename_fkey    = 0;
+                        secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                    }
+
+                    // Context menu (right-click)
+                    if (ZUIBeginPopupContextItem(ctx, "##actor_ctx", row_sig))
+                    {
+                        if (ZUIMenuItem(ctx, "Rename"))
+                        {
+                            m_rename_id      = nodes[ni].EID;
+                            m_rename_started = true;
+                            m_rename_fkey    = 0;
+                            secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                        }
+                        if (ZUIMenuItem(ctx, "Duplicate"))
+                            pending_duplicate = nodes[ni].Handle;
+                        if (ZUIMenuItem(ctx, "Delete"))
+                            pending_delete = nodes[ni].Handle;
+                        if (nodes[ni].Parent != INVALID_ENTITY && ZUIMenuItem(ctx, "Remove from Parent"))
+                        {
+                            pending_detach        = true;
+                            pending_detach_handle = nodes[ni].Handle;
+                        }
+                        ZUIEndPopup(ctx);
+                    }
+
+                    // Drag source (payload = ActorHandle)
+                    ZUIBeginDragSource(ctx, row, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
+
+                    // Drop target (reparent on drop)
+                    char drop_buf[sizeof(ActorHandle)] = {};
+                    if (ZUIAcceptDrop(ctx, row, drop_buf, sizeof(drop_buf)))
+                    {
+                        ActorHandle dragged = {};
+                        secure_memcpy(&dragged, sizeof(dragged), drop_buf, sizeof(drop_buf));
+                        if (dragged.Valid() && (dragged.Index != nodes[ni].Handle.Index || dragged.Generation != nodes[ni].Handle.Generation))
+                        {
+                            pending_reparent_child  = dragged;
+                            pending_reparent_parent = nodes[ni].Handle;
+                        }
+                    }
+
+                    // Expand children
+                    if (has_ch && is_open)
+                    {
+                        uint32_t c = first_child[ni];
+                        while (c != UINT32_MAX)
+                        {
+                            stk[sp++] = {c, e.depth + 1};
+                            c         = next_sib[c];
+                        }
+                    }
+                } // while DFS
+
+                // Root drop zone — drop here to detach actor from parent
+                {
+                    ZUIBox* drop_row                   = ZUIBeginRow(ctx, "##hier_root_dz", ZFill(), ZPx(fh * 0.5f));
+                    drop_row->Flags                    = drop_row->Flags | ZUI_Clickable;
+                    char drop_buf[sizeof(ActorHandle)] = {};
+                    if (ZUIAcceptDrop(ctx, drop_row, drop_buf, sizeof(drop_buf)))
+                    {
+                        ActorHandle dragged = {};
+                        secure_memcpy(&dragged, sizeof(dragged), drop_buf, sizeof(drop_buf));
+                        if (dragged.Valid())
+                        {
+                            pending_detach        = true;
+                            pending_detach_handle = dragged;
+                        }
+                    }
+                    ZUIEndRow(ctx);
+                }
+            } // if m_root_open
+
             ZUIEndScrollRegion(ctx);
+
+            // ── Deferred mutations ────────────────────────────────────────────────
+
+            auto DeleteActor = [&](ActorHandle h) {
+                Actor* a = eng->ActorManager->Access(h);
+                if (!a)
+                    return;
+                auto* mc = a->GetComponent<MeshComponent>();
+                if (mc && mc->RenderInstanceId != UINT32_MAX)
+                    scene->RemoveMeshInstance(mc->RenderInstanceId, eng->RenderResourceManager);
+                if (scene->SelectedActorHandle.Index == h.Index && scene->SelectedActorHandle.Generation == h.Generation)
+                    scene->SelectedActorHandle = {};
+                if (m_rename_id.IsValid())
+                {
+                    m_rename_id   = {};
+                    m_rename_fkey = 0;
+                }
+                eng->ActorManager->Destroy(h);
+            };
+
+            if (pending_reparent_child.Valid() && pending_reparent_parent.Valid())
+            {
+                Actor* child  = eng->ActorManager->Access(pending_reparent_child);
+                Actor* parent = eng->ActorManager->Access(pending_reparent_parent);
+                if (child && parent)
+                {
+                    EntityID pid = parent->GetEntityID();
+                    auto*    pc  = child->GetComponent<ParentComponent>();
+                    if (pc)
+                        pc->Parent = pid;
+                    else
+                    {
+                        ParentComponent npc = {};
+                        npc.Parent          = pid;
+                        child->AddComponent<ParentComponent>(npc);
+                    }
+                }
+            }
+            if (pending_detach && pending_detach_handle.Valid())
+            {
+                Actor* a = eng->ActorManager->Access(pending_detach_handle);
+                if (a)
+                    a->RemoveComponent<ParentComponent>();
+            }
+            if (pending_duplicate.Valid())
+            {
+                Actor* src = eng->ActorManager->Access(pending_duplicate);
+                if (src)
+                {
+                    ActorHandle dh = eng->ActorManager->Create();
+                    Actor*      da = eng->ActorManager->Access(dh);
+                    if (da)
+                    {
+                        NameComponent nc_new = {};
+                        auto*         nc_src = src->GetComponent<NameComponent>();
+                        if (nc_src && nc_src->Value[0])
+                        {
+                            secure_strncpy(nc_new.Value, sizeof(nc_new.Value), nc_src->Value, sizeof(nc_src->Value));
+                            uint32_t nl = (uint32_t) secure_strlen(nc_new.Value);
+                            if (nl + 5 < sizeof(nc_new.Value))
+                                secure_strncpy(nc_new.Value + nl, sizeof(nc_new.Value) - nl, " Copy", 5);
+                        }
+                        else
+                            secure_strncpy(nc_new.Value, sizeof(nc_new.Value), "Actor Copy", 10);
+                        da->AddComponent<NameComponent>(nc_new);
+                        auto* tc = src->GetComponent<TransformComponent>();
+                        da->AddComponent<TransformComponent>(tc ? *tc : TransformComponent{});
+                        scene->SelectedActorHandle = dh;
+                    }
+                }
+            }
+            if (pending_delete.Valid())
+                DeleteActor(pending_delete);
+
+            // Add actor (toolbar + button)
+            if (do_add)
+            {
+                ActorHandle nh = eng->ActorManager->Create();
+                Actor*      na = eng->ActorManager->Access(nh);
+                if (na)
+                {
+                    NameComponent nc_new = {};
+                    secure_strncpy(nc_new.Value, sizeof(nc_new.Value), "Actor", 5);
+                    na->AddComponent<NameComponent>(nc_new);
+                    na->AddComponent<TransformComponent>({});
+                    scene->SelectedActorHandle = nh;
+                }
+            }
+
+            // ── Status bar ───────────────────────────────────────────────────────
+            ZUISeparator(ctx);
+            ZUIBox* sb = ZUIBeginRow(ctx, "##hier_sb", ZFill(), ZPx(fh));
+            sb->Flags  = sb->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColorArr(sb, ctx->Theme.TitleBarBg);
+            ZUISpacer(ctx, 6.f);
+            {
+                char status[64];
+                int  total = (int) eng->ActorManager->Count();
+                if (scene->SelectedActorHandle.Valid())
+                    snprintf(status, sizeof(status), "%d actor%s (1 selected)", total, total == 1 ? "" : "s");
+                else
+                    snprintf(status, sizeof(status), "%d actor%s", total, total == 1 ? "" : "s");
+                ZUILabel(ctx, status, kDim);
+            }
+            ZUIEndRow(ctx);
+
+            ZUIEndColumn(ctx);
+        }
+
+    private:
+        // Case-insensitive substring search (same as ConsolePanel)
+        static bool ContainsCI(const char* haystack, const char* needle)
+        {
+            if (!needle[0])
+                return true;
+            for (; *haystack; ++haystack)
+            {
+                const char* h = haystack;
+                const char* n = needle;
+                while (*h && *n && tolower((unsigned char) *h) == tolower((unsigned char) *n))
+                {
+                    ++h;
+                    ++n;
+                }
+                if (!*n)
+                    return true;
+            }
+            return false;
         }
     };
 
