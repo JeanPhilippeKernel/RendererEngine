@@ -738,32 +738,30 @@ namespace Tetragrama::Panels
 
             ZUISpacer(ctx, 6.f);
 
-            // ── Row 1: search field ───────────────────────────────────────────────
-            ZUIBeginRow(ctx, "##con_r1", ZFill(), ZPx(fh));
+            // ── Toolbar: search | Filters popup | Clear | auto-scroll ─────────────
+            ZUIBeginRow(ctx, "##con_tb", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Search", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 6.f);
-            ZUITextField(ctx, "##con_search", m_search, sizeof(m_search), fmaxf(pw - 90.f, 80.f));
+            ZUISearchBox(ctx, "##con_search", m_search, sizeof(m_search), "Search Log...", ZPx(fmaxf(pw * 0.50f, 120.f)));
             ZUISpacer(ctx, 8.f);
-            ZUIEndRow(ctx);
 
-            ZUISpacer(ctx, 4.f);
-
-            // ── Row 2: level + actions ────────────────────────────────────────────
-            ZUIBeginRow(ctx, "##con_r2", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Level", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 6.f);
-            if (ZUIBeginCombo(ctx, "##con_lvl", kLevels[m_filter_level], ZPx(90.f)))
+            // "Filters" button — label shows active level when not All
+            char flt_label[32];
+            if (m_filter_level == 0)
+                snprintf(flt_label, sizeof(flt_label), "Filters v");
+            else
+                snprintf(flt_label, sizeof(flt_label), "Filters: %s v", kLevels[m_filter_level]);
+            ZUISignal flt_sig = ZUIButton(ctx, flt_label);
+            if (flt_sig.Flags & ZUI_SignalClicked)
+                ZUIOpenPopup(ctx, "##con_flt");
+            if (ZUIBeginPopup(ctx, "##con_flt"))
             {
                 for (int i = 0; i < 6; ++i)
-                    if (ZUIComboItem(ctx, kLevels[i], m_filter_level == i))
+                    if (ZUIMenuItemEx(ctx, kLevels[i], nullptr, m_filter_level == i))
                         m_filter_level = i;
-                ZUIEndCombo(ctx);
+                ZUIEndPopup(ctx);
             }
+
             ZUISpacer(ctx, 8.f);
-            bool do_copy = (ZUISmallButton(ctx, "Copy##con").Flags & ZUI_SignalClicked) != 0;
-            ZUISpacer(ctx, 4.f);
             bool do_clear = (ZUISmallButton(ctx, "Clear##con").Flags & ZUI_SignalClicked) != 0;
             ZUISpacer(ctx, 8.f);
             // atomic<bool> — load to local, pass pointer, store result back
@@ -796,23 +794,6 @@ namespace Tetragrama::Panels
 
                 int total = (m_count >= kMaxEntries) ? kMaxEntries : m_count;
                 int start = (m_count >= kMaxEntries) ? m_head : 0;
-
-                if (do_copy)
-                {
-                    char* dst     = ctx->ClipboardWrite;
-                    int   cap     = (int) sizeof(ctx->ClipboardWrite) - 1;
-                    int   written = 0;
-                    for (int i = 0; i < total && written < cap; ++i)
-                    {
-                        const LogEntry& e = m_ring[(start + i) % kMaxEntries];
-                        if (!PassesFilter(e))
-                            continue;
-                        int n = snprintf(dst + written, cap - written, "%s\n", e.Text);
-                        if (n > 0)
-                            written += n;
-                    }
-                    dst[written] = '\0';
-                }
 
                 for (int i = 0; i < total; ++i)
                 {
