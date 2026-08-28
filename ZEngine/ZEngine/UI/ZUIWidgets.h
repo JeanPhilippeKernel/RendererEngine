@@ -150,9 +150,11 @@ namespace ZEngine::UI
     ///   ZUI_SignalClicked → toggle already applied to *open
     ///   ZUI_SignalHeld    → header held; DragDelta[1] available for threshold accumulation
     ///
-    /// @param bg_color Optional RGBA background override; nullptr = transparent.
+    /// @param bg_color         Optional RGBA background override; nullptr = transparent.
+    /// @param show_focus_border Draw a 1px teal focus ring when focused (default true).
+    ///                          Pass false to suppress it — e.g. mini-panel section stacks.
     /// @return Interaction signal from the header box.
-    ZUISignal   ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color = nullptr);
+    ZUISignal   ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color = nullptr, bool show_focus_border = true);
 
     /// @brief 4 px horizontal drag sash between two adjacent collapsible sections.
     ///

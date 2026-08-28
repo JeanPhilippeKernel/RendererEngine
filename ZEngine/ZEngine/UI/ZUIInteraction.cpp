@@ -79,28 +79,80 @@ namespace ZEngine::UI
 
         ZReleaseScratch(scratch);
 
-        // Scroll: update ScrollX or ScrollY depending on the scrollable box's layout axis
-        if (ctx->ScrollDelta != 0.f && new_scroll_key != 0)
+        // Scroll input — both wheel and keyboard write to ScrollYTarget.
+        // ZUIBeginScrollRegion lerps ScrollY toward ScrollYTarget each frame (smooth scroll).
+        // MaxScrollY is owned by the layout pass; we only read it here for clamping.
+        if (new_scroll_key != 0)
         {
             ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, new_scroll_key);
             if (ps)
             {
-                if (new_scroll_axis == ZUIAxis::X)
+                float max_y       = fmaxf(ps->MaxScrollY, 0.f);
+                float max_x       = fmaxf(ps->MaxScrollX, 0.f);
+                bool  changed     = false;
+
+                // Clamp helper — only upper-clamps when max > 0 (layout may not have run yet)
+                auto  clampScroll = [](float v, float lo, float hi) {
+                    if (v < lo)
+                        v = lo;
+                    if (hi > 0.f && v > hi)
+                        v = hi;
+                    return v;
+                };
+
+                // Mouse wheel — sets target for smooth animation; also nudges ScrollY
+                // directly so the first tick is always visible even before the lerp catches up.
+                if (ctx->ScrollDelta != 0.f)
                 {
-                    ps->ScrollX -= ctx->ScrollDelta * ctx->Style.MouseScrollSpeed;
-                    if (ps->ScrollX < 0.f)
-                        ps->ScrollX = 0.f;
-                    if (ps->MaxScrollX > 0.f && ps->ScrollX > ps->MaxScrollX)
-                        ps->ScrollX = ps->MaxScrollX;
+                    if (new_scroll_axis == ZUIAxis::X)
+                    {
+                        ps->ScrollXTarget = clampScroll(ps->ScrollXTarget - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_x);
+                        ps->ScrollX       = clampScroll(ps->ScrollX - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_x);
+                    }
+                    else
+                    {
+                        ps->ScrollYTarget = clampScroll(ps->ScrollYTarget - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_y);
+                        ps->ScrollY       = clampScroll(ps->ScrollY - ctx->ScrollDelta * ctx->Style.MouseScrollSpeed, 0.f, max_y);
+                    }
+                    changed = true;
                 }
-                else
+
+                // Keyboard scroll — active when no widget holds focus.
+                // Uses instant snap (sets ScrollY = ScrollYTarget) for crisp keypress feel.
+                // Step = 5 × FrameHeight ≈ ImGui's 5 × FontSize rule.
+                if (ctx->FocusKey == 0)
                 {
-                    ps->ScrollY -= ctx->ScrollDelta * ctx->Style.MouseScrollSpeed;
-                    if (ps->ScrollY < 0.f)
-                        ps->ScrollY = 0.f;
-                    if (ps->MaxScrollY > 0.f && ps->ScrollY > ps->MaxScrollY)
-                        ps->ScrollY = ps->MaxScrollY;
+                    float kLine = ctx->Style.FrameHeight * 5.f;
+                    bool  kb    = false;
+                    if (ctx->ArrowUpPressed)
+                    {
+                        ps->ScrollYTarget = clampScroll(ps->ScrollYTarget - kLine, 0.f, max_y);
+                        kb                = true;
+                    }
+                    if (ctx->ArrowDownPressed)
+                    {
+                        ps->ScrollYTarget = clampScroll(ps->ScrollYTarget + kLine, 0.f, max_y);
+                        kb                = true;
+                    }
+                    if (ctx->HomePressed)
+                    {
+                        ps->ScrollYTarget = 0.f;
+                        kb                = true;
+                    }
+                    if (ctx->EndPressed)
+                    {
+                        ps->ScrollYTarget = max_y;
+                        kb                = true;
+                    }
+                    if (kb)
+                    {
+                        ps->ScrollY = ps->ScrollYTarget; // instant snap for keyboard
+                        changed     = true;
+                    }
                 }
+
+                if (changed)
+                    ps->ScrollbarShowTimer = 0.5f; // show scrollbar for 500ms after any scroll input
             }
         }
 

@@ -4,6 +4,7 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/EventDispatcher.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIInput.h>
 #include <ZEngine/UI/ZUIWidgets.h>
@@ -16,14 +17,33 @@ using namespace ZEngine::Windows::Events;
 
 namespace Tetragrama::Layers
 {
-    void ZUILayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Applications::GameApplicationPtr app)
+    // File-static ZUI context pointer — used by the chained GLFW scroll callback below.
+    // Single ZUILayer instance per process, so a static is safe.
+    static ZEngine::UI::ZUIContext* s_zui_ctx_for_scroll = nullptr;
+
+    void                            ZUILayer::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, ZEngine::Applications::GameApplicationPtr app)
     {
         Arena      = arena;
         CurrentApp = app;
         m_ctx      = app->RenderPipeline ? app->RenderPipeline->ZUICtx : nullptr;
-        // Components carved sub-arenas from LocalArena in their Initialize() calls.
-        // Without this, LocalArena has no backing memory → CreateSubArena asserts.
         arena->CreateSubArena(ZMega(4), &LocalArena);
+
+        // Engine::Initialize registers a GLFW scroll callback that overrides GameWindow's,
+        // so MouseButtonWheelEvent never fires for ZUI.  Register here (AFTER Engine::Initialize)
+        // so our callback wins.  We chain both consumers: InputManager (FlyCamera) + ZUIContext.
+        s_zui_ctx_for_scroll = m_ctx;
+        if (app->CurrentWindow)
+        {
+            auto* native = static_cast<GLFWwindow*>(app->CurrentWindow->GetNativeWindow());
+            glfwSetScrollCallback(native, [](GLFWwindow*, double /*x*/, double y) {
+                auto* eng = ZEngine::Engine::GetContext();
+                if (eng && eng->InputManager)
+                    eng->InputManager->AccumulateScroll(y);
+                // Clamp to ±1 per event so trackpad momentum doesn't overshoot
+                if (s_zui_ctx_for_scroll)
+                    s_zui_ctx_for_scroll->ScrollDelta += (float) std::clamp(y, -1.0, 1.0);
+            });
+        }
     }
 
     bool ZUILayer::OnEvent(ZEngine::Core::CoreEvent& event)

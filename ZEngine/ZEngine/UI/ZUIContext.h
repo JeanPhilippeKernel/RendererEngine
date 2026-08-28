@@ -73,9 +73,9 @@ namespace ZEngine::UI
 
         // Scrollbar
         float ScrollbarBg[4]          = {0.000f, 0.000f, 0.000f, 0.00f}; // transparent
-        float ScrollbarGrab[4]        = {0.216f, 0.216f, 0.259f, 1.00f}; // #373742
-        float ScrollbarGrabHov[4]     = {0.318f, 0.318f, 0.380f, 1.00f}; // lighter
-        float ScrollbarGrabAct[4]     = {0.306f, 0.788f, 0.690f, 0.80f}; // teal drag
+        float ScrollbarGrab[4]        = {0.420f, 0.420f, 0.420f, 0.40f}; // VS Code scrollbarSlider.background
+        float ScrollbarGrabHov[4]     = {0.620f, 0.620f, 0.620f, 0.65f}; // VS Code scrollbarSlider.hoverBackground
+        float ScrollbarGrabAct[4]     = {0.740f, 0.740f, 0.740f, 0.80f}; // VS Code scrollbarSlider.activeBackground
 
         // Plot
         float PlotLines[4]            = {0.306f, 0.788f, 0.690f, 0.80f};
@@ -147,9 +147,9 @@ namespace ZEngine::UI
         float TabMinWidthForClose        = 0.f; // ImGui: TabMinWidthForCloseButton
 
         // Scrollbar
-        float ScrollbarSize              = 14.f; // ImGui: ScrollbarSize
-        float ScrollbarMinThumbPx        = 16.f;
-        float ScrollbarAutoHideAlpha     = 0.08f;
+        float ScrollbarSize              = 10.f;  // VS Code: 10px thin scrollbar
+        float ScrollbarMinThumbPx        = 20.f;  // VS Code: reasonable minimum thumb
+        float ScrollbarAutoHideAlpha     = 0.15f; // floor alpha at rest — VS Code sidebar keeps a faint hint
 
         // Grab
         float GrabMinSize                = 12.f; // ImGui: GrabMinSize
@@ -198,7 +198,8 @@ namespace ZEngine::UI
         float DropShadowOffset           = 4.f;
         float DropShadowAlpha            = 0.38f;
         float HoverOverlayAlpha          = 0.15f;
-        float MouseScrollSpeed           = 24.f;
+        float MouseScrollSpeed           = 48.f; // px per scroll unit (VS Code uses ~50)
+        float ScrollSmoothSpeed          = 20.f; // exponential-lerp speed toward ScrollYTarget
 
         // Plot
         float PlotLineThickness          = 1.5f;
@@ -251,18 +252,21 @@ namespace ZEngine::UI
 
     struct ZUIPersistentState
     {
-        float   HotT        = 0.f;
-        float   ActiveT     = 0.f;
-        float   ScrollX     = 0.f;
-        float   ScrollY     = 0.f;
-        float   MaxScrollY  = 0.f; // set by layout solver; clamped in interaction pass
-        float   UserData    = -1.f;
-        float   ScreenMinX  = 0.f;
-        float   ScreenMinY  = 0.f;
-        float   ScreenMaxX  = 0.f;
-        float   ScreenMaxY  = 0.f;
-        float   MaxScrollX  = 0.f; // set by layout solver for ZUI_Scrollable+LayoutAxis::X
-        int32_t SelectStart = -1;  // text selection anchor (-1 = no selection)
+        float   HotT               = 0.f;
+        float   ActiveT            = 0.f;
+        float   ScrollX            = 0.f; // current (animated) scroll position
+        float   ScrollY            = 0.f;
+        float   ScrollXTarget      = 0.f; // destination; wheel input writes here; ScrollX lerps toward it
+        float   ScrollYTarget      = 0.f;
+        float   MaxScrollY         = 0.f; // set by layout solver; clamped in interaction pass
+        float   ScrollbarShowTimer = 0.f; // seconds remaining; reset on scroll/drag; drives scrollbar alpha
+        float   UserData           = -1.f;
+        float   ScreenMinX         = 0.f;
+        float   ScreenMinY         = 0.f;
+        float   ScreenMaxX         = 0.f;
+        float   ScreenMaxY         = 0.f;
+        float   MaxScrollX         = 0.f; // set by layout solver for ZUI_Scrollable+LayoutAxis::X
+        int32_t SelectStart        = -1;  // text selection anchor (-1 = no selection)
     };
 
     struct ZUIPersistentSlot
