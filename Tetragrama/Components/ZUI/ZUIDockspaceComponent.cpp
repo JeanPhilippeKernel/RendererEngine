@@ -107,6 +107,25 @@ namespace Tetragrama::Components
         ZUIBoxSetCornerRadius(bg, 0.f);
         bg->EdgeSoftness = 0.f;
 
+        // Platform-aware shortcut display strings
+#if defined(__APPLE__)
+        static constexpr const char* kMod          = "Cmd+";
+        static constexpr const char* kModShift     = "Cmd+Shift+";
+        static constexpr const char* kQuitShortcut = "Cmd+Q";
+#else
+        static constexpr const char* kMod          = "Ctrl+";
+        static constexpr const char* kModShift     = "Ctrl+Shift+";
+        static constexpr const char* kQuitShortcut = "Alt+F4";
+#endif
+        char sc_new[24], sc_open[24], sc_save[24], sc_save_as[24], sc_undo[24], sc_redo[24], sc_all[24];
+        snprintf(sc_new, sizeof(sc_new), "%sN", kMod);
+        snprintf(sc_open, sizeof(sc_open), "%sO", kMod);
+        snprintf(sc_save, sizeof(sc_save), "%sS", kMod);
+        snprintf(sc_save_as, sizeof(sc_save_as), "%sS", kModShift);
+        snprintf(sc_undo, sizeof(sc_undo), "%sZ", kMod);
+        snprintf(sc_redo, sizeof(sc_redo), "%sY", kMod);
+        snprintf(sc_all, sizeof(sc_all), "%sA", kMod);
+
         // --- Menu bar ---
         if (ZUIBeginMenuBar(ctx))
         {
@@ -117,23 +136,20 @@ namespace Tetragrama::Components
             {
                 auto* file_app = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
 
-                if (ZUIMenuItem(ctx, "New Scene"))
+                if (ZUIMenuItemEx(ctx, "New Scene", sc_new))
                 {
-                    // Reset scene: deselect actor, clear scene actors
                     if (file_app && file_app->CurrentScene)
                     {
                         auto* scene                = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
                         scene->SelectedActorHandle = {};
                     }
                 }
-                if (ZUIMenuItem(ctx, "Open Scene..."))
+                if (ZUIMenuItemEx(ctx, "Open Scene...", sc_open))
                 {
-                    // Navigate the Project Browser to select a .zescene
-                    // (no system file dialog — user uses the Project panel)
                     ZENGINE_CORE_INFO("[Editor] Use the Project panel to locate and drop a .zescene into the viewport")
                 }
                 ZUISeparator(ctx);
-                if (ZUIMenuItem(ctx, "Save Scene"))
+                if (ZUIMenuItemEx(ctx, "Save Scene", sc_save))
                 {
                     if (file_app && file_app->CurrentScene && file_app->Configuration)
                     {
@@ -143,9 +159,8 @@ namespace Tetragrama::Components
                         ZENGINE_CORE_INFO("[Editor] Scene saved")
                     }
                 }
-                if (ZUIMenuItem(ctx, "Save Scene As..."))
+                if (ZUIMenuItemEx(ctx, "Save Scene As...", sc_save_as))
                 {
-                    // Same as Save for now (path is determined by scene config)
                     if (file_app && file_app->CurrentScene)
                     {
                         auto*                              scene = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
@@ -154,15 +169,13 @@ namespace Tetragrama::Components
                     }
                 }
                 ZUISeparator(ctx);
-                if (ZUIMenuItem(ctx, "Quit"))
+                if (ZUIMenuItemEx(ctx, "Quit", kQuitShortcut))
                 {
                     if (file_app && file_app->CurrentWindow)
                     {
                         auto* glfw_win = static_cast<GLFWwindow*>(file_app->CurrentWindow->GetNativeWindow());
                         if (glfw_win)
-                        {
                             glfwSetWindowShouldClose(glfw_win, GLFW_TRUE);
-                        }
                     }
                 }
                 ZUIEndMenu(ctx);
@@ -172,16 +185,15 @@ namespace Tetragrama::Components
             // "Edit" menu
             if (ZUIBeginMenu(ctx, "Edit"))
             {
-                if (ZUIMenuItem(ctx, "Undo", false))
+                if (ZUIMenuItemEx(ctx, "Undo", sc_undo, false, false))
                 {
                 }
-                if (ZUIMenuItem(ctx, "Redo", false))
+                if (ZUIMenuItemEx(ctx, "Redo", sc_redo, false, false))
                 {
                 }
                 ZUISeparator(ctx);
-                if (ZUIMenuItem(ctx, "Select All"))
+                if (ZUIMenuItemEx(ctx, "Select All", sc_all))
                 {
-                    // Select first actor (full multi-select not yet supported)
                     if (ParentLayer && ParentLayer->CurrentApp)
                     {
                         auto* edit_app   = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
@@ -189,7 +201,6 @@ namespace Tetragrama::Components
                         auto* eng        = ZEngine::Engine::GetContext();
                         if (edit_scene && eng && eng->ActorManager && eng->ActorManager->Count() > 0)
                         {
-                            // Select the first valid actor via ForEach
                             bool found = false;
                             eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*) {
                                 if (!found)
@@ -205,20 +216,14 @@ namespace Tetragrama::Components
             }
             ZUISpacer(ctx, 4.f);
 
-            // "View" menu — checkable panel toggles (checkmark = visible)
+            // "View" menu — checkable toggles using ZUIMenuItemEx selected state
             if (ZUIBeginMenu(ctx, "View"))
             {
                 auto vis_item = [&](const char* label, ZUIComponent* cmp) {
                     if (!cmp)
-                    {
                         return;
-                    }
-                    char buf[80];
-                    snprintf(buf, sizeof(buf), "%s  %s##vm", cmp->Visible ? "[x]" : "[ ]", label);
-                    if (ZUIMenuItem(ctx, buf))
-                    {
+                    if (ZUIMenuItemEx(ctx, label, nullptr, cmp->Visible))
                         cmp->Visible = !cmp->Visible;
-                    }
                 };
                 vis_item("Scene", Viewport);
                 vis_item("Hierarchy", Hierarchy);

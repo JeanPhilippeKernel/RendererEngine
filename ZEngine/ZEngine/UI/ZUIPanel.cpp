@@ -496,10 +496,7 @@ namespace ZEngine::UI
                     }
 
                     bool visible = match && !match->Hidden;
-                    char lbl[96];
-                    snprintf(lbl, sizeof(lbl), "%s  %s##pmn_%u", visible ? "[x]" : "[ ]", target_name, ni);
-
-                    if (ZUIMenuItem(ctx, lbl) && match)
+                    if (ZUIMenuItemEx(ctx, target_name, nullptr, visible) && match)
                     {
                         if (match->Hidden)
                         {
