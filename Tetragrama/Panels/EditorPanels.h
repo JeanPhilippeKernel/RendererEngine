@@ -90,198 +90,312 @@ namespace Tetragrama::Panels
             Title = "Inspector";
         }
 
-        // Section open/close state (6 sections total)
-        bool                   m_open[6]      = {true, true, true, false, false, false};
-        // 0=Transform 1=MeshRenderer 2=RigidBody 3=Lighting 4=AudioSource 5=Script
+        // Display-order arrays: index = display position.
+        // m_order maps display position → section type (0=Transform..5=Script).
+        // m_h and m_open are keyed by display position and travel with the section on reorder.
+        int                          m_order[6]     = {0, 1, 2, 3, 4, 5};
+        bool                         m_open[6]      = {true, true, true, false, false, false};
+        float                        m_h[6]         = {200.f, 80.f, 100.f, 80.f, 60.f, 80.f};
+        static constexpr float       kMinH          = 30.f;
 
-        // Content heights. Transform (index 0) is the "flex" section — large initial
-        // height so it fills available space. Others start smaller.
-        float                  m_h[6]         = {200.f, 80.f, 100.f, 80.f, 60.f, 80.f};
-        static constexpr float kMinH          = 30.f;
+        // Drag-reorder transient state (not serialized)
+        int                          m_drag_di      = -1;
+        bool                         m_drag_active  = false;
+        float                        m_drag_press_y = 0.f;
+        int                          m_drop_slot    = 0;
 
-        // Component values
-        float                  m_position[3]  = {0.f, 0.f, 0.f};
-        float                  m_rotation[3]  = {0.f, 0.f, 0.f};
-        float                  m_scale[3]     = {1.f, 1.f, 1.f};
-        bool                   m_cast_shadows = true, m_receive_shadows = true;
-        float                  m_mass        = 1.f;
-        bool                   m_use_gravity = true, m_is_kinematic = false;
-        float                  m_light_intensity = 1.f, m_light_range = 10.f;
-        float                  m_light_color[3] = {1.f, 1.f, 1.f};
-        float                  m_audio_volume   = 1.f;
-        bool                   m_audio_loop = false, m_audio_play_awake = true;
+        // Component data keyed by section type (m_order[di])
+        float                        m_position[3]  = {0.f, 0.f, 0.f};
+        float                        m_rotation[3]  = {0.f, 0.f, 0.f};
+        float                        m_scale[3]     = {1.f, 1.f, 1.f};
+        bool                         m_cast_shadows = true, m_receive_shadows = true;
+        float                        m_mass        = 1.f;
+        bool                         m_use_gravity = true, m_is_kinematic = false;
+        float                        m_light_intensity = 1.f, m_light_range = 10.f;
+        float                        m_light_color[3] = {1.f, 1.f, 1.f};
+        float                        m_audio_volume   = 1.f;
+        bool                         m_audio_loop = false, m_audio_play_awake = true;
 
-        void                   BuildContent(ZUIContext* ctx, float rect[4]) override
+        static constexpr const char* kSectionLabels[6] = {"Transform", "Mesh Renderer", "Rigid Body", "Lighting", "Audio Source", "Script"};
+
+        void                         BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             using namespace ZEngine::UI;
             (void) rect;
 
-            // VS Code layout: one parent scroll region wrapping all sections.
-            // Resize is handled by ZUIPaneSash between sections, not by dragging headers.
-            // Header = click-to-toggle only (pointer cursor, no resize affordance).
+            static constexpr int N      = 6;
+            const float          kHdrH  = ZUIGetFrameHeight(ctx);
+            const float          kSashH = 4.f;
+            const float          fw     = rect[2] - rect[0] - 100.f - 16.f;
+
+            // Detect press on a section header by Y-range (scroll-approximate, no key needed)
+            if (ctx->MousePressed[0] && !m_drag_active)
+            {
+                float run = 0.f;
+                m_drag_di = -1;
+                for (int di = 0; di < N; di++)
+                {
+                    float y0 = rect[1] + run;
+                    float y1 = y0 + kHdrH;
+                    if (ctx->MousePos[1] >= y0 && ctx->MousePos[1] < y1)
+                    {
+                        m_drag_di      = di;
+                        m_drag_press_y = ctx->MousePos[1];
+                        break;
+                    }
+                    run += kHdrH + (m_open[di] ? m_h[di] : 0.f) + kSashH;
+                }
+            }
+
+            if (m_drag_di >= 0 && ctx->MouseDown[0] && !m_drag_active)
+            {
+                if (fabsf(ctx->MousePos[1] - m_drag_press_y) > 8.f)
+                    m_drag_active = true;
+            }
+
+            if (m_drag_active)
+            {
+                float delta = ctx->MousePos[1] - m_drag_press_y;
+                m_drop_slot = m_drag_di + (int) roundf(delta / (kHdrH + kSashH));
+                if (m_drop_slot < 0)
+                    m_drop_slot = 0;
+                if (m_drop_slot > N)
+                    m_drop_slot = N;
+            }
+
+            if (ctx->MouseReleased[0] && m_drag_di >= 0)
+            {
+                if (m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1)
+                {
+                    // Rotate m_order, m_h, m_open all by the same permutation
+                    int   old_s    = m_order[m_drag_di];
+                    float old_h    = m_h[m_drag_di];
+                    bool  old_open = m_open[m_drag_di];
+                    for (int i = m_drag_di; i < N - 1; i++)
+                    {
+                        m_order[i] = m_order[i + 1];
+                        m_h[i]     = m_h[i + 1];
+                        m_open[i]  = m_open[i + 1];
+                    }
+                    int ins = (m_drop_slot > m_drag_di) ? m_drop_slot - 1 : m_drop_slot;
+                    if (ins < 0)
+                        ins = 0;
+                    if (ins >= N)
+                        ins = N - 1;
+                    for (int i = N - 1; i > ins; i--)
+                    {
+                        m_order[i] = m_order[i - 1];
+                        m_h[i]     = m_h[i - 1];
+                        m_open[i]  = m_open[i - 1];
+                    }
+                    m_order[ins] = old_s;
+                    m_h[ins]     = old_h;
+                    m_open[ins]  = old_open;
+                }
+                m_drag_di     = -1;
+                m_drag_active = false;
+            }
+
+            // One parent scroll region wrapping all sections
             ZUIBox* bg = ZUIBeginScrollRegion(ctx, "##insp_sr", ZFill(), ZFill());
             bg->Flags  = bg->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
             bg->EdgeSoftness         = 0.f;
 
-            static constexpr int N   = 6; // total number of sections
-            const float          fw  = rect[2] - rect[0] - 100.f - 16.f;
-            auto                 Row = [&](const char* rk) {
-                ZUIBeginRow(ctx, rk, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
+            const char* ghost_label  = nullptr;
+            bool        drop_changes = m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1;
+
+            auto        Row          = [&](const char* rk) {
+                ZUIBeginRow(ctx, rk, ZFill(), ZPx(kHdrH));
                 ZUISpacer(ctx, 8.f);
             };
-            auto EndRow     = [&]() { ZUIEndRow(ctx); };
+            auto EndRow = [&]() { ZUIEndRow(ctx); };
 
-            // Helper: render the fixed-height content area for an open section
-            auto ContentBox = [&](const char* k, int idx) -> bool {
-                if (!m_open[idx])
-                    return false;
-                ZUIBox* c       = ZUIBeginColumn(ctx, k, ZFill(), ZPx(m_h[idx]));
-                c->Flags        = c->Flags | ZUI_ClipChildren;
-                c->EdgeSoftness = 0.f;
-                return true;
-            };
-            auto EndContent = [&]() { ZUIEndColumn(ctx); };
-
-            // Transform (index 0) — the "flex" section: large height, fills remaining space
-            ZUICollapsingHeader(ctx, "Transform", &m_open[0]);
-            if (ContentBox("##ct", 0))
+            for (int di = 0; di < N; di++)
             {
-                ZUISpacer(ctx, 2.f);
-                Row("##ip_pos");
-                ZUILabel(ctx, "Position", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_p", m_position, 0.1f, fw / 3.f);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_rot");
-                ZUILabel(ctx, "Rotation", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_r", m_rotation, 0.5f, fw / 3.f);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_scl");
-                ZUILabel(ctx, "Scale", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_s", m_scale, 0.05f, fw / 3.f);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                EndContent();
+                int  s      = m_order[di];
+                bool is_src = m_drag_active && (di == m_drag_di);
+                char ck[32], sk[16];
+
+                // 2px teal drop indicator before this slot
+                if (drop_changes && m_drop_slot == di)
+                {
+                    ZUIBox* ind       = ZUIPushBox(ctx, "##dind", 6, ZUI_DrawBackground);
+                    ind->Size[0]      = ZFill();
+                    ind->Size[1]      = ZPx(2.f);
+                    ind->EdgeSoftness = 0.f;
+                    ZUIBoxSetColor(ind, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 1.f);
+                    ZUIPopBox(ctx);
+                }
+
+                if (is_src)
+                {
+                    // Thin teal-border placeholder at source slot while dragging
+                    ghost_label         = kSectionLabels[s];
+                    ZUIBox* ph          = ZUIPushBox(ctx, "##drag_ph", 9, ZUI_DrawBorder);
+                    ph->Size[0]         = ZFill();
+                    ph->Size[1]         = ZPx(kHdrH);
+                    ph->EdgeSoftness    = 0.f;
+                    ph->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
+                    ph->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
+                    ph->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
+                    ph->BorderColor[3]  = 0.30f;
+                    ph->BorderThickness = 1.f;
+                    ZUIPopBox(ctx);
+                }
+                else
+                {
+                    ZUICollapsingHeader(ctx, kSectionLabels[s], &m_open[di]);
+
+                    if (m_open[di])
+                    {
+                        snprintf(ck, sizeof(ck), "##cc%d", di);
+                        ZUIBox* c       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(m_h[di]));
+                        c->Flags        = c->Flags | ZUI_ClipChildren;
+                        c->EdgeSoftness = 0.f;
+                        ZUISpacer(ctx, 2.f);
+                        switch (s)
+                        {
+                            case 0: // Transform
+                                Row("##ip_pos");
+                                ZUILabel(ctx, "Position", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat3(ctx, "##ip_p", m_position, 0.1f, fw / 3.f);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_rot");
+                                ZUILabel(ctx, "Rotation", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat3(ctx, "##ip_r", m_rotation, 0.5f, fw / 3.f);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_scl");
+                                ZUILabel(ctx, "Scale", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat3(ctx, "##ip_s", m_scale, 0.05f, fw / 3.f);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                break;
+                            case 1: // Mesh Renderer
+                                Row("##ip_cs");
+                                ZUILabel(ctx, "Cast Shadows", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUICheckbox(ctx, "##ip_csc", &m_cast_shadows);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_rs");
+                                ZUILabel(ctx, "Recv Shadows", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUICheckbox(ctx, "##ip_rsc", &m_receive_shadows);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                break;
+                            case 2: // Rigid Body
+                                Row("##ip_ms");
+                                ZUILabel(ctx, "Mass", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat(ctx, "##ip_mv", &m_mass, 0.1f, fw);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_ug");
+                                ZUILabel(ctx, "Use Gravity", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUICheckbox(ctx, "##ip_ugc", &m_use_gravity);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_km");
+                                ZUILabel(ctx, "Kinematic", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUICheckbox(ctx, "##ip_kmc", &m_is_kinematic);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                break;
+                            case 3: // Lighting
+                                Row("##ip_li");
+                                ZUILabel(ctx, "Intensity", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat(ctx, "##ip_in", &m_light_intensity, 0.05f, fw);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_lr");
+                                ZUILabel(ctx, "Range", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat(ctx, "##ip_rn", &m_light_range, 0.5f, fw);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_lc");
+                                ZUILabel(ctx, "Color", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat3(ctx, "##ip_lco", m_light_color, 0.01f, fw / 3.f);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                break;
+                            case 4: // Audio Source
+                                Row("##ip_av");
+                                ZUILabel(ctx, "Volume", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUIDragFloat(ctx, "##ip_vol", &m_audio_volume, 0.02f, fw);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_al");
+                                ZUILabel(ctx, "Loop", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUICheckbox(ctx, "##ip_lp", &m_audio_loop);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                Row("##ip_pa");
+                                ZUILabel(ctx, "Play Awake", ctx->Theme.TextDim);
+                                ZUISpacer(ctx, 4.f);
+                                ZUICheckbox(ctx, "##ip_paw", &m_audio_play_awake);
+                                ZUISpacer(ctx, 8.f);
+                                EndRow();
+                                break;
+                            case 5: // Script
+                                ZUILabel(ctx, "No script attached", ctx->Theme.TextDim);
+                                break;
+                        }
+                        ZUIEndColumn(ctx);
+                    }
+                }
+
+                if (di < N - 1)
+                {
+                    snprintf(sk, sizeof(sk), "##sk%d", di);
+                    ZUIPaneSash(ctx, sk, m_h, m_open, N, di, kMinH);
+                }
             }
-            ZUIPaneSash(ctx, "##s01", m_h, m_open, N, 0, kMinH); // sash between 0↕1
 
-            // Mesh Renderer (index 1)
-            ZUICollapsingHeader(ctx, "Mesh Renderer", &m_open[1]);
-            if (ContentBox("##cm", 1))
+            // Drop indicator at end of list
+            if (drop_changes && m_drop_slot == N)
             {
-                ZUISpacer(ctx, 2.f);
-                Row("##ip_cs");
-                ZUILabel(ctx, "Cast Shadows", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_csc", &m_cast_shadows);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_rs");
-                ZUILabel(ctx, "Recv Shadows", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_rsc", &m_receive_shadows);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                EndContent();
-            }
-            ZUIPaneSash(ctx, "##s12", m_h, m_open, N, 1, kMinH); // sash between 1↕2
-
-            // Rigid Body (index 2)
-            ZUICollapsingHeader(ctx, "Rigid Body", &m_open[2]);
-            if (ContentBox("##crb", 2))
-            {
-                ZUISpacer(ctx, 2.f);
-                Row("##ip_ms");
-                ZUILabel(ctx, "Mass", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat(ctx, "##ip_mv", &m_mass, 0.1f, fw);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_ug");
-                ZUILabel(ctx, "Use Gravity", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_ugc", &m_use_gravity);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_km");
-                ZUILabel(ctx, "Kinematic", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_kmc", &m_is_kinematic);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                EndContent();
-            }
-            ZUIPaneSash(ctx, "##s23", m_h, m_open, N, 2, kMinH); // sash between 2↕3
-
-            // Lighting (index 3) — collapsed by default
-            ZUICollapsingHeader(ctx, "Lighting", &m_open[3]);
-            if (ContentBox("##clt", 3))
-            {
-                ZUISpacer(ctx, 2.f);
-                Row("##ip_li");
-                ZUILabel(ctx, "Intensity", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat(ctx, "##ip_in", &m_light_intensity, 0.05f, fw);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_lr");
-                ZUILabel(ctx, "Range", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat(ctx, "##ip_rn", &m_light_range, 0.5f, fw);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_lc");
-                ZUILabel(ctx, "Color", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat3(ctx, "##ip_lco", m_light_color, 0.01f, fw / 3.f);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                EndContent();
-            }
-            ZUIPaneSash(ctx, "##s34", m_h, m_open, N, 3, kMinH); // sash between 3↕4
-
-            // Audio Source (index 4)
-            ZUICollapsingHeader(ctx, "Audio Source", &m_open[4]);
-            if (ContentBox("##cau", 4))
-            {
-                ZUISpacer(ctx, 2.f);
-                Row("##ip_av");
-                ZUILabel(ctx, "Volume", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUIDragFloat(ctx, "##ip_vol", &m_audio_volume, 0.02f, fw);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_al");
-                ZUILabel(ctx, "Loop", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_lp", &m_audio_loop);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                Row("##ip_pa");
-                ZUILabel(ctx, "Play Awake", ctx->Theme.TextDim);
-                ZUISpacer(ctx, 4.f);
-                ZUICheckbox(ctx, "##ip_paw", &m_audio_play_awake);
-                ZUISpacer(ctx, 8.f);
-                EndRow();
-                EndContent();
-            }
-            ZUIPaneSash(ctx, "##s45", m_h, m_open, N, 4, kMinH); // sash between 4↕5
-
-            // Script (index 5) — placeholder, collapsed by default
-            ZUICollapsingHeader(ctx, "Script", &m_open[5]);
-            if (ContentBox("##csc", 5))
-            {
-                ZUISpacer(ctx, 4.f);
-                ZUILabel(ctx, "No script attached", ctx->Theme.TextDim);
-                EndContent();
+                ZUIBox* ind       = ZUIPushBox(ctx, "##dind_e", 8, ZUI_DrawBackground);
+                ind->Size[0]      = ZFill();
+                ind->Size[1]      = ZPx(2.f);
+                ind->EdgeSoftness = 0.f;
+                ZUIBoxSetColor(ind, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 1.f);
+                ZUIPopBox(ctx);
             }
 
             ZUIEndScrollRegion(ctx);
+
+            // Ghost header rendered after scroll region so it paints on top
+            if (ghost_label)
+            {
+                ZUIBox* ghost       = ZUIBeginRow(ctx, "##insp_ghost", ZFill(), ZPx(kHdrH));
+                ghost->Flags        = ghost->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
+                ghost->FloatPos[0]  = 0.f;
+                ghost->FloatPos[1]  = ctx->MousePos[1] - rect[1] - kHdrH * 0.5f;
+                ghost->EdgeSoftness = 0.f;
+                ZUIBoxSetColorArr(ghost, ctx->Theme.TitleBgActive);
+                ghost->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
+                ghost->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
+                ghost->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
+                ghost->BorderColor[3]  = 0.8f;
+                ghost->BorderThickness = 1.f;
+                ZUISpacer(ctx, ZUIGetFramePadX(ctx));
+                ZUILabel(ctx, ghost_label, ctx->Theme.TextDefault);
+                ZUIEndRow(ctx);
+            }
         }
     };
 
