@@ -124,6 +124,12 @@ namespace ZEngine::UI
         {
             ctx->ActiveKey = ctx->HotKey;
         }
+        // Clear keyboard focus when the user clicks empty space (no widget under cursor).
+        // Mirrors VS Code/ImGui: section header border, text field cursor, etc. all clear.
+        if (ctx->MousePressed[0] && !ctx->HotKey)
+        {
+            ctx->FocusKey = 0;
+        }
         if (ctx->MouseReleased[0])
         {
             if (ctx->DragSourceKey != 0)

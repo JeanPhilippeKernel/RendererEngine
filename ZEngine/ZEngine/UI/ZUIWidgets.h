@@ -143,14 +143,31 @@ namespace ZEngine::UI
     /// @note Call immediately after the relevant ZUISignalFromBox call.
     void        ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text);
 
-    /// @brief Full-width collapsible section header.
-    /// @param open        In/out — toggled on click.
-    /// @param out_drag_dy Optional output. When non-null the top drag strip becomes active:
-    ///                    receives DragDelta[1] while held (negative = dragged UP = section
-    ///                    grows, positive = DOWN = shrinks). The caller applies multi-section
-    ///                    cascade resize logic with this delta.
+    /// @brief Full-width collapsible section header — click to toggle, no drag.
+    ///
+    /// VS Code-style: header is click-only (pointer cursor). Resize is handled
+    /// by a separate ZUIPaneSash placed between adjacent sections.
+    ///
+    /// @param bg_color Optional RGBA background; nullptr = transparent.
     /// @return Current open state.
-    bool        ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, float* out_drag_dy = nullptr, float = 0.f);
+    bool        ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color = nullptr);
+
+    /// @brief 4 px horizontal drag sash between two adjacent collapsible sections.
+    ///
+    /// Positioned in the layout immediately between the bottom of section[boundary]
+    /// and the header of section[boundary+1]. On drag applies VS Code's greedy
+    /// cascade resize:
+    ///   delta > 0 (drag DOWN) → sections above boundary grow, sections below shrink
+    ///   delta < 0 (drag UP)   → sections above shrink, sections below grow
+    /// Each side absorbs as much delta as it can (respecting min_h) before passing
+    /// the remainder to the next section in that direction.
+    ///
+    /// @param heights   Content-height array for all N sections (in/out).
+    /// @param opens     Open-state array (collapsed sections are skipped in resize).
+    /// @param n         Total number of sections.
+    /// @param boundary  Index of the section ABOVE this sash (sash sits after section[boundary]).
+    /// @param min_h     Minimum content height per section (default 30 px).
+    void        ZUIPaneSash(ZUIContext* ctx, const char* key, float* heights, const bool* opens, int n, int boundary, float min_h = 30.f);
 
     /// @brief Full-width selectable row.
     /// @param selected Toggled in-place on click.

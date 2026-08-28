@@ -1405,24 +1405,26 @@ namespace ZEngine::UI
         ctx->Current = saved;
     }
 
-    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, float* out_drag_dy, float /*resize_min*/)
+    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color)
     {
         char key[256];
         snprintf(key, sizeof(key), "##ch_%s", label);
 
-        ZUIBox* hdr     = ZUIBeginRow(ctx, key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
-        hdr->Flags      = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
-        hdr->Padding[0] = ZUIGetFramePadX(ctx);
-        ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
+        ZUIBox* hdr                 = ZUIBeginRow(ctx, key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
+        hdr->Flags                  = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
+        hdr->Padding[0]             = ZUIGetFramePadX(ctx);
+        static const float kNone[4] = {};
+        ZUIBoxSetColorArr(hdr, bg_color ? bg_color : kNone);
         hdr->LayoutAxis   = ZUIAxis::X;
         hdr->EdgeSoftness = 0.f;
 
         bool is_open      = open && *open;
         bool is_focused   = (ctx->FocusKey == hdr->Key);
 
-        char arrow_key[272];
-        snprintf(arrow_key, sizeof(arrow_key), "##ch_arr_%s", label);
-        ZUIBox* arrow  = ZUIPushBox(ctx, arrow_key, (uint32_t) strlen(arrow_key), ZUI_DrawTriArrow);
+        // VS Code chevron: ∨ expanded (UserData 2), › collapsed (UserData 3)
+        char ak[272];
+        snprintf(ak, sizeof(ak), "##ch_arr_%s", label);
+        ZUIBox* arrow  = ZUIPushBox(ctx, ak, (uint32_t) strlen(ak), ZUI_DrawTriArrow);
         arrow->Size[0] = ZPx(ctx->Style.FontSize);
         arrow->Size[1] = ZFill();
         SetTextColor(arrow, ctx->Theme.TextDim);
@@ -1437,46 +1439,9 @@ namespace ZEngine::UI
         ZUILabel(ctx, label, ctx->Theme.TextDefault);
 
         ZUISignal sig = ZUISignalFromBox(ctx, hdr);
-        ApplyHotActive(hdr, ctx, ctx->Theme.TitleBarBg, ctx->Theme.TitleBgActive, ctx->Theme.TitleBgActive);
+        ApplyHotActive(hdr, ctx, bg_color ? bg_color : kNone, ctx->Theme.TitleBgActive, ctx->Theme.TitleBgActive);
 
-        // Drag strip — appears on hover (like panel dividers), 4px clickable, NS cursor.
-        // Reports DragDelta[1] via out_drag_dy; the caller handles multi-section resize.
-        if (out_drag_dy)
-            *out_drag_dy = 0.f;
-        {
-            char dk[272];
-            snprintf(dk, sizeof(dk), "##ch_drag_%s", label);
-            bool        has_drag = (out_drag_dy != nullptr);
-            ZUIBoxFlags sf       = ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
-            if (has_drag)
-                sf = sf | ZUI_Clickable;
-            ZUIBox* strip       = ZUIPushBox(ctx, dk, (uint32_t) strlen(dk), sf);
-            strip->Size[0]      = {ZUISizeKind::ParentPercent, 1.f, 1.f};
-            strip->Size[1]      = ZPx(4.f);
-            strip->FloatPos[0]  = 0.f;
-            strip->FloatPos[1]  = 0.f;
-            strip->EdgeSoftness = 0.f;
-
-            bool strip_hot      = (ctx->HotKey == strip->Key) || (ctx->ActiveKey == strip->Key);
-            bool hdr_hot        = (ctx->HotKey == hdr->Key) || (ctx->ActiveKey == hdr->Key);
-            // Visible only on hover — hidden at rest (matches VS Code divider behaviour)
-            if (strip_hot || hdr_hot)
-                ZUIBoxSetColor(strip, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], strip_hot ? 0.70f : 0.30f);
-            else
-                ZUIBoxSetColor(strip, 0.f, 0.f, 0.f, 0.f);
-
-            if (has_drag)
-            {
-                ZUISignal ds = ZUISignalFromBox(ctx, strip);
-                if ((ds.Flags & ZUI_SignalHeld) && out_drag_dy)
-                    *out_drag_dy = ds.DragDelta[1];
-                if (strip_hot)
-                    ctx->ResizeCursor = 2;
-            }
-            ZUIPopBox(ctx);
-        }
-
-        // 1px teal border — only while focused; clears when focus moves away
+        // 1px teal focus border; clears when clicking elsewhere
         if (is_focused)
         {
             hdr->Flags           = hdr->Flags | ZUI_DrawBorder;
@@ -1497,6 +1462,83 @@ namespace ZEngine::UI
                 *open = !(*open);
         }
         return open ? *open : false;
+    }
+
+    // Greedy cascade for ZUIPaneSash.
+    // Walks up-side [boundary..0] absorbing delta, then down-side [boundary+1..n-1]
+    // absorbing the remainder (with opposite sign).
+    static void PaneSashResize(float* heights, const bool* opens, int n, int boundary, float delta, float min_h)
+    {
+        if (fabsf(delta) < 0.05f)
+            return;
+
+        // Pass 1: apply +delta upward from boundary
+        float rem = delta;
+        for (int i = boundary; i >= 0 && fabsf(rem) > 0.05f; --i)
+        {
+            if (!opens[i])
+                continue;
+            if (rem > 0.f)
+            {
+                heights[i] += rem; // grow freely (no hard max)
+                rem         = 0.f;
+            }
+            else
+            {
+                float give  = fminf(-rem, heights[i] - min_h);
+                heights[i] -= give;
+                rem        += give;
+            }
+        }
+
+        // Pass 2: compensate downward — down side absorbs -(total absorbed by up)
+        float compensate = -(delta - rem);
+        for (int i = boundary + 1; i < n && fabsf(compensate) > 0.05f; ++i)
+        {
+            if (!opens[i])
+                continue;
+            if (compensate < 0.f)
+            {
+                // down side must shrink
+                float give  = fminf(-compensate, heights[i] - min_h);
+                heights[i] -= give;
+                compensate += give;
+            }
+            else
+            {
+                // down side grows
+                heights[i] += compensate;
+                compensate  = 0.f;
+            }
+        }
+    }
+
+    void ZUIPaneSash(ZUIContext* ctx, const char* key, float* heights, const bool* opens, int n, int boundary, float min_h)
+    {
+        // 4 px invisible-but-clickable horizontal strip.
+        // On hover: shows subtle teal tint + NS cursor.
+        // On drag: greedy cascade applied to heights[].
+        ZUIBox* sash       = ZUIPushBox(ctx, key, (uint32_t) strlen(key), ZUI_DrawBackground | ZUI_Clickable);
+        sash->Size[0]      = ZFill();
+        sash->Size[1]      = ZPx(4.f);
+        sash->EdgeSoftness = 0.f;
+
+        bool hot           = (ctx->HotKey == sash->Key) || (ctx->ActiveKey == sash->Key);
+        if (hot)
+        {
+            ZUIBoxSetColor(sash, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], hot && ctx->ActiveKey == sash->Key ? 0.50f : 0.20f);
+            ctx->ResizeCursor = 2; // NS cursor
+        }
+        else
+        {
+            ZUIBoxSetColor(sash, 0.f, 0.f, 0.f, 0.f);
+        }
+
+        ZUISignal sig = ZUISignalFromBox(ctx, sash);
+        ZUIPopBox(ctx);
+
+        if ((sig.Flags & ZUI_SignalHeld) && fabsf(sig.DragDelta[1]) > 0.05f)
+            PaneSashResize(heights, opens, n, boundary, sig.DragDelta[1], min_h);
     }
 
     bool ZUISelectable(ZUIContext* ctx, const char* label, bool* selected, ZUISize h)
