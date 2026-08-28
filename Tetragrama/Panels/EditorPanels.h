@@ -2,6 +2,8 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/UI/ZUIPanel.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -644,18 +646,20 @@ namespace Tetragrama::Panels
             uint8_t Level     = 0;
         };
 
+        // kLevels[0] = "All" (show everything); kLevels[1..5] map to LogLevel 0..4.
+        // Putting "All" first matches standard log panel convention.
         static constexpr int         kMaxEntries         = 512;
-        static constexpr const char* kLevels[]           = {"Trace", "Info", "Warn", "Error", "Critical", "All"};
+        static constexpr const char* kLevels[]           = {"All", "Trace", "Info", "Warn", "Error", "Critical"};
 
         LogEntry                     m_ring[kMaxEntries] = {};
         int                          m_head              = 0;
         int                          m_count             = 0;
         std::mutex                   m_mutex;
-        uint32_t                     m_cookie         = 0;
-        bool                         m_initialized    = false;
-        char                         m_search[128]    = {};
-        int                          m_filter_level   = 5; // 5 = All; 0..4 = exact LogLevel
-        bool                         m_auto_scroll    = true;
+        uint32_t                     m_cookie       = 0;
+        bool                         m_initialized  = false;
+        char                         m_search[128]  = {};
+        int                          m_filter_level = 0;  // 0 = All; 1..5 = exact LogLevel 0..4
+        std::atomic<bool>            m_auto_scroll{true}; // atomic: read on logger thread, written on UI thread
         bool                         m_scroll_pending = false;
 
         void                         PushEntry(const LogEntry& e)
@@ -665,7 +669,7 @@ namespace Tetragrama::Panels
             m_head         = (m_head + 1) % kMaxEntries;
             if (m_count < kMaxEntries)
                 ++m_count;
-            if (m_auto_scroll)
+            if (m_auto_scroll.load(std::memory_order_relaxed))
                 m_scroll_pending = true;
         }
 
@@ -687,6 +691,35 @@ namespace Tetragrama::Panels
             self->PushEntry(e);
         }
 
+        // Case-insensitive substring search
+        static bool ContainsCI(const char* haystack, const char* needle)
+        {
+            if (!needle[0])
+                return true;
+            for (; *haystack; ++haystack)
+            {
+                const char* h = haystack;
+                const char* n = needle;
+                while (*h && *n && tolower((unsigned char) *h) == tolower((unsigned char) *n))
+                {
+                    ++h;
+                    ++n;
+                }
+                if (!*n)
+                    return true;
+            }
+            return false;
+        }
+
+        bool PassesFilter(const LogEntry& e) const
+        {
+            if (m_filter_level > 0 && e.Level != (uint8_t) (m_filter_level - 1))
+                return false;
+            if (m_search[0] && !ContainsCI(e.Text, m_search))
+                return false;
+            return true;
+        }
+
         void BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             if (!m_initialized)
@@ -696,6 +729,7 @@ namespace Tetragrama::Panels
             }
 
             float   pw = rect[2] - rect[0];
+            float   fh = ZUIGetFrameHeight(ctx);
 
             ZUIBox* bg = ZUIBeginColumn(ctx, "##con_bg", ZFill(), ZFill());
             bg->Flags  = bg->Flags | ZUI_DrawBackground;
@@ -704,12 +738,19 @@ namespace Tetragrama::Panels
 
             ZUISpacer(ctx, 6.f);
 
-            // ── Toolbar ──────────────────────────────────────────────────────────
-            ZUIBeginRow(ctx, "##con_tb", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
+            // ── Row 1: search field ───────────────────────────────────────────────
+            ZUIBeginRow(ctx, "##con_r1", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "Search", ctx->Theme.TextDim);
             ZUISpacer(ctx, 6.f);
-            ZUITextField(ctx, "##con_search", m_search, sizeof(m_search), pw * 0.30f);
+            ZUITextField(ctx, "##con_search", m_search, sizeof(m_search), fmaxf(pw - 90.f, 80.f));
+            ZUISpacer(ctx, 8.f);
+            ZUIEndRow(ctx);
+
+            ZUISpacer(ctx, 4.f);
+
+            // ── Row 2: level + actions ────────────────────────────────────────────
+            ZUIBeginRow(ctx, "##con_r2", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "Level", ctx->Theme.TextDim);
             ZUISpacer(ctx, 6.f);
@@ -725,7 +766,10 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 4.f);
             bool do_clear = (ZUISmallButton(ctx, "Clear##con").Flags & ZUI_SignalClicked) != 0;
             ZUISpacer(ctx, 8.f);
-            ZUICheckbox(ctx, "##con_as", &m_auto_scroll);
+            // atomic<bool> — load to local, pass pointer, store result back
+            bool as = m_auto_scroll.load(std::memory_order_relaxed);
+            ZUICheckbox(ctx, "##con_as", &as);
+            m_auto_scroll.store(as, std::memory_order_relaxed);
             ZUISpacer(ctx, 4.f);
             ZUILabel(ctx, "Auto-scroll", ctx->Theme.TextDim);
             ZUISpacer(ctx, 8.f);
@@ -750,6 +794,7 @@ namespace Tetragrama::Panels
                     m_search[0] = '\0';
                 }
 
+                int total = (m_count >= kMaxEntries) ? kMaxEntries : m_count;
                 int start = (m_count >= kMaxEntries) ? m_head : 0;
 
                 if (do_copy)
@@ -757,12 +802,10 @@ namespace Tetragrama::Panels
                     char* dst     = ctx->ClipboardWrite;
                     int   cap     = (int) sizeof(ctx->ClipboardWrite) - 1;
                     int   written = 0;
-                    for (int i = 0; i < m_count && written < cap; ++i)
+                    for (int i = 0; i < total && written < cap; ++i)
                     {
                         const LogEntry& e = m_ring[(start + i) % kMaxEntries];
-                        if (m_filter_level < 5 && e.Level != (uint8_t) m_filter_level)
-                            continue;
-                        if (m_search[0] && !strstr(e.Text, m_search))
+                        if (!PassesFilter(e))
                             continue;
                         int n = snprintf(dst + written, cap - written, "%s\n", e.Text);
                         if (n > 0)
@@ -771,12 +814,10 @@ namespace Tetragrama::Panels
                     dst[written] = '\0';
                 }
 
-                for (int i = 0; i < m_count; ++i)
+                for (int i = 0; i < total; ++i)
                 {
                     const LogEntry& e = m_ring[(start + i) % kMaxEntries];
-                    if (m_filter_level < 5 && e.Level != (uint8_t) m_filter_level)
-                        continue;
-                    if (m_search[0] && !strstr(e.Text, m_search))
+                    if (!PassesFilter(e))
                         continue;
                     ZUILabel(ctx, e.Text, e.Color);
                 }
