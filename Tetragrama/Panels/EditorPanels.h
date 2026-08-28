@@ -16,7 +16,6 @@ namespace Tetragrama::Panels
         bg->EdgeSoftness = 0.f;
         if (msg && msg[0])
         {
-            // top fill
             {
                 char fk[48];
                 snprintf(fk, 48, "##ept_%s", key);
@@ -25,7 +24,6 @@ namespace Tetragrama::Panels
                 f->Size[1] = ZFill();
                 ZUIPopBox(ctx);
             }
-            // full-width centered label
             {
                 char lk[48];
                 snprintf(lk, 48, "##epl_%s", key);
@@ -41,7 +39,6 @@ namespace Tetragrama::Panels
                 lbl->TextColor[3] = ctx->Theme.TextDim[3];
                 ZUIPopBox(ctx);
             }
-            // bottom fill
             {
                 char fk[48];
                 snprintf(fk, 48, "##epb_%s", key);
@@ -60,7 +57,7 @@ namespace Tetragrama::Panels
         {
             Title = "Hierarchy";
         }
-        const char* PlaceholderText = "No scene loaded"; ///< Shown when panel has no content. Set to nullptr to hide.
+        const char* PlaceholderText = "No scene loaded"; ///< Shown when panel has no content.
         void        BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
@@ -74,7 +71,7 @@ namespace Tetragrama::Panels
         {
             Title = "Viewport";
         }
-        const char* PlaceholderText = "Viewport"; ///< Shown when panel has no content. Set to nullptr to hide.
+        const char* PlaceholderText = "Viewport"; ///< Shown when panel has no content.
         void        BuildContent(ZUIContext* ctx, float rect[4]) override
         {
             (void) rect;
@@ -83,6 +80,15 @@ namespace Tetragrama::Panels
         }
     };
 
+    /// Inspector panel with VS Code-style collapsible sections.
+    ///
+    /// Interactions:
+    ///   - Click header  → collapse/expand
+    ///   - Drag sash     → resize adjacent sections (greedy cascade)
+    ///   - Drag header   → reorder sections vertically
+    ///     Source slot   → thin teal border placeholder
+    ///     Target header → teal background highlight (VS Code drop-target model)
+    ///     Ghost         → labeled header floating at cursor
     struct InspectorPanel : ZUIPanelView
     {
         InspectorPanel()
@@ -90,9 +96,9 @@ namespace Tetragrama::Panels
             Title = "Inspector";
         }
 
-        // Display-order arrays: index = display position.
-        // m_order maps display position → section type (0=Transform..5=Script).
-        // m_h and m_open are keyed by display position and travel with the section on reorder.
+        // Display-order arrays — index is display position.
+        // m_order[di] = section type at position di  (0=Transform … 5=Script).
+        // m_h and m_open are stored per display position and travel with the section on reorder.
         int                          m_order[6]     = {0, 1, 2, 3, 4, 5};
         bool                         m_open[6]      = {true, true, true, false, false, false};
         float                        m_h[6]         = {200.f, 80.f, 100.f, 80.f, 60.f, 80.f};
@@ -104,7 +110,7 @@ namespace Tetragrama::Panels
         float                        m_drag_press_y = 0.f;
         int                          m_drop_slot    = 0;
 
-        // Component data keyed by section type (m_order[di])
+        // Component data — keyed by section type (m_order[di])
         float                        m_position[3]  = {0.f, 0.f, 0.f};
         float                        m_rotation[3]  = {0.f, 0.f, 0.f};
         float                        m_scale[3]     = {1.f, 1.f, 1.f};
@@ -116,7 +122,7 @@ namespace Tetragrama::Panels
         float                        m_audio_volume   = 1.f;
         bool                         m_audio_loop = false, m_audio_play_awake = true;
 
-        static constexpr const char* kSectionLabels[6] = {"Transform", "Mesh Renderer", "Rigid Body", "Lighting", "Audio Source", "Script"};
+        static constexpr const char* kLabels[6] = {"Transform", "Mesh Renderer", "Rigid Body", "Lighting", "Audio Source", "Script"};
 
         void                         BuildContent(ZUIContext* ctx, float rect[4]) override
         {
@@ -128,23 +134,24 @@ namespace Tetragrama::Panels
             const float          kSashH = 4.f;
             const float          fw     = rect[2] - rect[0] - 100.f - 16.f;
 
-            // Open scroll region first so we can read its ScrollY for accurate header detection
+            // Open the scroll region first so ScrollY is available for hit detection
             ZUIBox*              bg     = ZUIBeginScrollRegion(ctx, "##insp_sr", ZFill(), ZFill());
             bg->Flags                   = bg->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
-            bg->EdgeSoftness             = 0.f;
+            bg->EdgeSoftness          = 0.f;
 
-            ZUIPersistentState* sr_ps    = ZUIStateGetOrInsert(&ctx->StateStore, bg->Key);
-            const float         scroll_y = sr_ps ? sr_ps->ScrollY : 0.f;
+            ZUIPersistentState* sr_ps = ZUIStateGetOrInsert(&ctx->StateStore, bg->Key);
+            const float         scy   = sr_ps ? sr_ps->ScrollY : 0.f;
 
-            // Detect press on a section header by Y-range (scroll-corrected)
+            // ── Drag state machine ─────────────────────────────────────────────
+
             if (ctx->MousePressed[0] && !m_drag_active)
             {
                 float run = 0.f;
                 m_drag_di = -1;
                 for (int di = 0; di < N; di++)
                 {
-                    float y0 = rect[1] - scroll_y + run;
+                    float y0 = rect[1] - scy + run;
                     float y1 = y0 + kHdrH;
                     if (ctx->MousePos[1] >= y0 && ctx->MousePos[1] < y1)
                     {
@@ -176,7 +183,6 @@ namespace Tetragrama::Panels
             {
                 if (m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1)
                 {
-                    // Rotate m_order, m_h, m_open all by the same permutation
                     int   old_s    = m_order[m_drag_di];
                     float old_h    = m_h[m_drag_di];
                     bool  old_open = m_open[m_drag_di];
@@ -205,9 +211,14 @@ namespace Tetragrama::Panels
                 m_drag_active = false;
             }
 
-            const char* ghost_label  = nullptr;
-            bool        drop_changes = m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1;
+            // ── Section list ───────────────────────────────────────────────────
 
+            // Drop-target highlight color — teal fill passed as bg_color to the target header.
+            // Only applied when the drop would actually change the order.
+            bool        drop_changes = m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1;
+            float       drop_hi[4]   = {ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 0.22f};
+
+            const char* ghost_label  = nullptr;
             auto        Row          = [&](const char* rk) {
                 ZUIBeginRow(ctx, rk, ZFill(), ZPx(kHdrH));
                 ZUISpacer(ctx, 8.f);
@@ -220,21 +231,10 @@ namespace Tetragrama::Panels
                 bool is_src = m_drag_active && (di == m_drag_di);
                 char ck[32], sk[16];
 
-                // 2px teal drop indicator before this slot
-                if (drop_changes && m_drop_slot == di)
-                {
-                    ZUIBox* ind       = ZUIPushBox(ctx, "##dind", 6, ZUI_DrawBackground);
-                    ind->Size[0]      = ZFill();
-                    ind->Size[1]      = ZPx(2.f);
-                    ind->EdgeSoftness = 0.f;
-                    ZUIBoxSetColor(ind, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 1.f);
-                    ZUIPopBox(ctx);
-                }
-
                 if (is_src)
                 {
-                    // Thin teal-border placeholder at source slot while dragging
-                    ghost_label         = kSectionLabels[s];
+                    // Source slot: thin teal border placeholder — section is "in the air"
+                    ghost_label         = kLabels[s];
                     ZUIBox* ph          = ZUIPushBox(ctx, "##drag_ph", 9, ZUI_DrawBorder);
                     ph->Size[0]         = ZFill();
                     ph->Size[1]         = ZPx(kHdrH);
@@ -248,7 +248,9 @@ namespace Tetragrama::Panels
                 }
                 else
                 {
-                    ZUICollapsingHeader(ctx, kSectionLabels[s], &m_open[di]);
+                    // Drop target: highlight the header row of the section we will land before
+                    const float* hdr_col = (drop_changes && m_drop_slot == di) ? drop_hi : nullptr;
+                    ZUICollapsingHeader(ctx, kLabels[s], &m_open[di], hdr_col);
 
                     if (m_open[di])
                     {
@@ -368,20 +370,20 @@ namespace Tetragrama::Panels
                 }
             }
 
-            // Drop indicator at end of list
+            // Drop at end of list: teal bar after the last section (no header exists there)
             if (drop_changes && m_drop_slot == N)
             {
-                ZUIBox* ind       = ZUIPushBox(ctx, "##dind_e", 8, ZUI_DrawBackground);
+                ZUIBox* ind       = ZUIPushBox(ctx, "##dind_end", 9, ZUI_DrawBackground);
                 ind->Size[0]      = ZFill();
-                ind->Size[1]      = ZPx(2.f);
+                ind->Size[1]      = ZPx(kHdrH);
                 ind->EdgeSoftness = 0.f;
-                ZUIBoxSetColor(ind, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], 1.f);
+                ZUIBoxSetColor(ind, drop_hi[0], drop_hi[1], drop_hi[2], drop_hi[3]);
                 ZUIPopBox(ctx);
             }
 
             ZUIEndScrollRegion(ctx);
 
-            // Ghost header rendered after scroll region so it paints on top
+            // Ghost header — floated after the scroll region so it renders on top
             if (ghost_label)
             {
                 ZUIBox* ghost       = ZUIBeginRow(ctx, "##insp_ghost", ZFill(), ZPx(kHdrH));
@@ -425,7 +427,6 @@ namespace Tetragrama::Panels
 
             ZUISpacer(ctx, 8.f);
 
-            // Search field — test text selection + undo/redo
             ZUIBeginRow(ctx, "##con_row1", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "Search", ctx->Theme.TextDim);
@@ -436,7 +437,6 @@ namespace Tetragrama::Panels
 
             ZUISpacer(ctx, 6.f);
 
-            // Filter field — second text field (undo stack is independent)
             ZUIBeginRow(ctx, "##con_row2", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "Filter", ctx->Theme.TextDim);
@@ -447,7 +447,6 @@ namespace Tetragrama::Panels
 
             ZUISpacer(ctx, 6.f);
 
-            // Level combo — test keyboard navigation
             ZUIBeginRow(ctx, "##con_row3", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "Level ", ctx->Theme.TextDim);
@@ -465,7 +464,6 @@ namespace Tetragrama::Panels
             ZUISeparator(ctx);
             ZUISpacer(ctx, 6.f);
 
-            // Help text
             ZUIBeginRow(ctx, "##con_hint1", ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
             ZUISpacer(ctx, 8.f);
             ZUILabel(ctx, "Shift+Arrow   select text", ctx->Theme.TextDim);
