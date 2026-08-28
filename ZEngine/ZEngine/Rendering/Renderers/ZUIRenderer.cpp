@@ -461,6 +461,74 @@ namespace ZEngine::Rendering::Renderers
                     }
                 }
             }
+
+            // --- Actor-type icon (ZUI_DrawActorIcon) ---
+            // Icon shape is selected by ZUIPersistentState::UserData (ZUI_ICON_* constants).
+            // Color comes from TextColor.  Geometry mirrors ImGui DrawTypeIcon() exactly.
+            if (box->Flags & ZUI_DrawActorIcon)
+            {
+                auto*    ps    = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
+                float    itype = ps ? ps->UserData : ZUI_ICON_ACTOR;
+                float    cx    = (bx0 + bx1) * 0.5f;
+                float    cy    = (by0 + by1) * 0.5f;
+                float    sz    = fminf(bx1 - bx0, by1 - by0);
+                uint32_t cc    = ZUIPackColor(box->TextColor);
+
+                if (itype < 10.5f) // ZUI_ICON_WORLD = 10
+                {
+                    float r = sz * 0.40f;
+                    ZUIDrawListAddCircle(&ctx->DrawList, cx, cy, r, cc, 16, 1.2f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - r, cy, cx + r, cy, cc, 1.0f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, cy - r, cx, cy + r, cc, 1.0f);
+                }
+                else if (itype < 11.5f) // ZUI_ICON_LIGHT = 11
+                {
+                    float r    = sz * 0.20f;
+                    float ray  = sz * 0.40f;
+                    float diag = ray * 0.70f;
+                    float rd   = r * 0.70f;
+                    ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, r, cc, 8);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, cy - ray, cx, cy - r, cc, 1.2f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, cy + r, cx, cy + ray, cc, 1.2f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - ray, cy, cx - r, cy, cc, 1.2f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx + r, cy, cx + ray, cy, cc, 1.2f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - diag, cy - diag, cx - rd, cy - rd, cc, 1.0f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx + rd, cy - rd, cx + diag, cy - diag, cc, 1.0f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - diag, cy + diag, cx - rd, cy + rd, cc, 1.0f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx + rd, cy + rd, cx + diag, cy + diag, cc, 1.0f);
+                }
+                else if (itype < 12.5f) // ZUI_ICON_MESH = 12
+                {
+                    float hw = sz * 0.28f, hh = sz * 0.28f, d = sz * 0.16f;
+                    float bx = cx - hw, by = cy;
+                    ZUIDrawListAddRect(&ctx->DrawList, bx, by, bx + hw * 2, by + hh * 2, cc, 0.f, 0xF, 1.0f);
+                    ZUIDrawListAddRect(&ctx->DrawList, bx + d, by - d, bx + hw * 2 + d, by + hh * 2 - d, cc, 0.f, 0xF, 0.6f);
+                    ZUIDrawListAddLine(&ctx->DrawList, bx, by, bx + d, by - d, cc, 0.6f);
+                    ZUIDrawListAddLine(&ctx->DrawList, bx + hw * 2, by, bx + hw * 2 + d, by - d, cc, 0.6f);
+                    ZUIDrawListAddLine(&ctx->DrawList, bx, by + hh * 2, bx + d, by + hh * 2 - d, cc, 0.6f);
+                }
+                else if (itype < 13.5f) // ZUI_ICON_CAMERA = 13
+                {
+                    float bw = sz * 0.55f, bh = sz * 0.40f;
+                    float ibx = bx0 + sz * 0.05f, iby = cy - bh * 0.5f;
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, ibx, iby, ibx + bw, iby + bh, cc, 1.5f);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, ibx + bw, iby + bh * 0.1f, ibx + bw + sz * 0.25f, cy, ibx + bw, iby + bh * 0.9f, cc);
+                }
+                else if (itype < 14.5f) // ZUI_ICON_FOLDER = 14
+                {
+                    float fw = sz * 0.80f, fh = sz * 0.65f;
+                    float fix = bx0 + (sz - fw) * 0.5f;
+                    float fiy = by0 + sz - fh;
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy + fh * 0.28f, fix + fw, fiy + fh, cc, 1.5f);
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy, fix + fw * 0.44f, fiy + fh * 0.32f, cc, 1.5f);
+                }
+                else // ZUI_ICON_ACTOR = 15 (diamond)
+                {
+                    float r = sz * 0.35f;
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy - r, cx + r, cy, cx, cy + r, cc);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy - r, cx, cy + r, cx - r, cy, cc);
+                }
+            }
         }
 
         // Pop remaining clip rects

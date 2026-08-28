@@ -47,9 +47,18 @@ namespace ZEngine::UI
         ZUI_DropShadow     = 1 << 11, // dark offset rect emitted behind background
         ZUI_DrawPlotLines  = 1 << 12, // line chart; data in Label.Ptr/Len, range in Padding
         ZUI_DrawPlotBars   = 1 << 13, // bar chart; same data layout as DrawPlotLines
+        ZUI_DrawActorIcon  = 1 << 14, // actor-type icon; shape from UserData (see ZUI_ICON_* constants)
     };
 
-    inline ZUIBoxFlags operator|(ZUIBoxFlags a, ZUIBoxFlags b)
+    // Icon type constants for ZUI_DrawActorIcon (stored in ZUIPersistentState::UserData)
+    static constexpr float ZUI_ICON_WORLD  = 10.f; // globe with crosshairs
+    static constexpr float ZUI_ICON_LIGHT  = 11.f; // sun — filled circle + radiating lines
+    static constexpr float ZUI_ICON_MESH   = 12.f; // 3-D box wireframe
+    static constexpr float ZUI_ICON_CAMERA = 13.f; // camera body + lens triangle
+    static constexpr float ZUI_ICON_FOLDER = 14.f; // two-rect folder shape
+    static constexpr float ZUI_ICON_ACTOR  = 15.f; // diamond
+
+    inline ZUIBoxFlags     operator|(ZUIBoxFlags a, ZUIBoxFlags b)
     {
         return static_cast<ZUIBoxFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
     }

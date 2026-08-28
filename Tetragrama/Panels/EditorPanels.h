@@ -290,17 +290,16 @@ namespace Tetragrama::Panels
                 }
                 // World icon
                 {
-                    ZUIBox* icon       = ZUIPushBox(ctx, "W##ti_root", 10, ZUI_DrawBackground | ZUI_DrawText);
+                    ZUIBox* icon       = ZUIPushBox(ctx, "##ti_root", 9, ZUI_DrawActorIcon);
                     icon->Size[0]      = ZPx(14.f);
                     icon->Size[1]      = ZPx(14.f);
-                    icon->Label        = ZUIPushStr(&ctx->FrameArena, "W", 1);
-                    icon->TextAlign    = ZUITextAlign::Center;
-                    icon->TextColor[0] = 1.f;
-                    icon->TextColor[1] = 1.f;
-                    icon->TextColor[2] = 1.f;
-                    icon->TextColor[3] = 1.f;
-                    ZUIBoxSetColorArr(icon, kWorldIcon);
-                    ZUIBoxSetCornerRadius(icon, 2.f);
+                    icon->TextColor[0] = kWorldIcon[0];
+                    icon->TextColor[1] = kWorldIcon[1];
+                    icon->TextColor[2] = kWorldIcon[2];
+                    icon->TextColor[3] = kWorldIcon[3];
+                    auto* wps          = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
+                    if (wps)
+                        wps->UserData = ZUI_ICON_WORLD;
                     ZUIPopBox(ctx);
                 }
                 ZUISpacer(ctx, 4.f);
@@ -358,39 +357,39 @@ namespace Tetragrama::Panels
                     }
 
                     // Determine type info
-                    char         type_char;
                     const float* type_col;
                     const char*  type_str;
+                    float        icon_type;
                     bool         has_ch = (first_child[ni] != UINT32_MAX);
                     if (actor->HasComponent<LightComponent>())
                     {
-                        type_char = 'L';
                         type_col  = kColLight;
                         type_str  = "Light";
+                        icon_type = ZUI_ICON_LIGHT;
                     }
                     else if (actor->HasComponent<CameraComponent>())
                     {
-                        type_char = 'C';
                         type_col  = kColCamera;
                         type_str  = "Camera";
+                        icon_type = ZUI_ICON_CAMERA;
                     }
                     else if (actor->HasComponent<MeshComponent>())
                     {
-                        type_char = 'M';
                         type_col  = kColMesh;
                         type_str  = "Mesh";
+                        icon_type = ZUI_ICON_MESH;
                     }
                     else if (has_ch)
                     {
-                        type_char = 'F';
                         type_col  = kColColl;
                         type_str  = "Folder";
+                        icon_type = ZUI_ICON_FOLDER;
                     }
                     else
                     {
-                        type_char = 'A';
                         type_col  = kColActor;
                         type_str  = "Actor";
+                        icon_type = ZUI_ICON_ACTOR;
                     }
 
                     bool  is_open  = has_ch && !IsCollapsed(nodes[ni].EID);
@@ -432,22 +431,20 @@ namespace Tetragrama::Panels
                         ZUISpacer(ctx, fh);
                     }
 
-                    // Type icon (14×14 colored square with centered letter)
+                    // Type icon (14×14) — custom actor-type geometry via ZUI_DrawActorIcon
                     {
                         char ik[32];
-                        snprintf(ik, sizeof(ik), "%c##ti_%u_%u", type_char, nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        ZUIBox* icon       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawBackground | ZUI_DrawText);
+                        snprintf(ik, sizeof(ik), "##ti_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBox* icon       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
                         icon->Size[0]      = ZPx(14.f);
                         icon->Size[1]      = ZPx(14.f);
-                        char lch[2]        = {type_char, '\0'};
-                        icon->Label        = ZUIPushStr(&ctx->FrameArena, lch, 1);
-                        icon->TextAlign    = ZUITextAlign::Center;
-                        icon->TextColor[0] = 1.f;
-                        icon->TextColor[1] = 1.f;
-                        icon->TextColor[2] = 1.f;
-                        icon->TextColor[3] = 1.f;
-                        ZUIBoxSetColorArr(icon, type_col);
-                        ZUIBoxSetCornerRadius(icon, 2.f);
+                        icon->TextColor[0] = type_col[0];
+                        icon->TextColor[1] = type_col[1];
+                        icon->TextColor[2] = type_col[2];
+                        icon->TextColor[3] = type_col[3];
+                        auto* ips          = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
+                        if (ips)
+                            ips->UserData = icon_type;
                         ZUIPopBox(ctx);
                     }
                     ZUISpacer(ctx, 4.f);
