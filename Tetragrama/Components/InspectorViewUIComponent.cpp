@@ -186,6 +186,37 @@ namespace
         ImGui::PopID();
     }
 
+    void AddComponentPopup(Scene& scene, EntityID id)
+    {
+        if (!ImGui::BeginPopup("##add_component_popup"))
+            return;
+
+        const ArchetypeMask mask = scene.GetMask(id);
+        bool                any  = false;
+
+        ComponentReflectionRegistry::Get().ForEach([&](const ComponentMeta& meta) {
+            if (MaskHas(mask, meta.TypeID))
+            {
+                return; // already on the entity
+            }
+            if (!meta.Add)
+            {
+                return;
+            }
+            if (ImGui::Selectable(meta.TypeName))
+            {
+                scene.AddComponentRaw(id, meta.TypeID);
+            }
+        });
+
+        if (!any)
+        {
+            ImGui::TextDisabled("No components left to add");
+        }
+
+        ImGui::EndPopup();
+    }
+
     void DrawEntityComponents(Scene& scene, EntityID id)
     {
         static constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_NoPadInnerX | ImGuiTableFlags_NoPadOuterX;
@@ -326,7 +357,9 @@ namespace Tetragrama::Components
             float tx = btn_scr.x + 8.f;
             cdl->AddText({tx, ty}, IM_COL32(90, 210, 120, 255), "+");
             cdl->AddText({tx + ImGui::CalcTextSize("+").x + 5.f, ty}, ImGui::GetColorU32(ImGuiCol_Text), "Add");
-            (void) add_clicked;
+            if (add_clicked)
+                ImGui::OpenPopup("##add_component_popup");
+            AddComponentPopup(*ctx->Scene, actor->GetEntityID());
 
             ImGui::EndChild();
             ImGui::PopStyleColor();
