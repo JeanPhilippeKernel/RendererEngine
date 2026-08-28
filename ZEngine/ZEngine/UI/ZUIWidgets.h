@@ -355,6 +355,12 @@ namespace ZEngine::UI
     bool    ZUIBeginMenu(ZUIContext* ctx, const char* label, bool enabled = true);
     void    ZUIEndMenu(ZUIContext* ctx);
 
+    /// @brief Submenu item — renders like ZUIMenuItem but with a right-aligned › chevron.
+    ///        Opens a popup to the right on hover, positioned at the item's right edge.
+    ///        Pair with ZUIEndSubMenu.
+    bool    ZUIBeginSubMenu(ZUIContext* ctx, const char* label, bool enabled = true);
+    void    ZUIEndSubMenu(ZUIContext* ctx);
+
     /// @brief Open a modal dialog (dims background, cannot be dismissed by outside click).
     void    ZUIOpenModal(ZUIContext* ctx, const char* key);
     /// @return true while the modal is active.

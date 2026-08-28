@@ -228,6 +228,30 @@ namespace Tetragrama::Components
                 ZUIEndMenu(ctx);
             }
 
+            ZUISpacer(ctx, 4.f);
+
+            // "Window" menu — panel submenu
+            if (ZUIBeginMenu(ctx, "Window"))
+            {
+                if (ZUIBeginSubMenu(ctx, "Panels"))
+                {
+                    auto panel_item = [&](const char* name, ZUIComponent* cmp) {
+                        if (!cmp)
+                            return;
+                        char buf[80];
+                        snprintf(buf, sizeof(buf), "%s  %s##wp", cmp->Visible ? "[x]" : "[ ]", name);
+                        if (ZUIMenuItem(ctx, buf))
+                            cmp->Visible = !cmp->Visible;
+                    };
+                    panel_item("Inspector", Inspector);
+                    panel_item("Console", Log);
+                    panel_item("Hierarchy", Hierarchy);
+                    panel_item("Viewport", Viewport);
+                    ZUIEndSubMenu(ctx);
+                }
+                ZUIEndMenu(ctx);
+            }
+
             ZUILabel(ctx, " | ", k_dim);
 
             // Scene name

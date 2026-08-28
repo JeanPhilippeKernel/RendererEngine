@@ -578,48 +578,47 @@ namespace ZEngine::UI
 
     void ZUIOpenPopup(ZUIContext* ctx, const char* key, float pos_x, float pos_y)
     {
-        ctx->OpenPopupKey  = ZUIHashStr(key, (uint32_t) strlen(key));
-        ctx->PopupPos[0]   = (pos_x >= 0.f) ? pos_x : ctx->MousePos[0];
-        ctx->PopupPos[1]   = (pos_y >= 0.f) ? pos_y : ctx->MousePos[1];
-        ctx->PopupNavIdx   = -1;
-        ctx->PopupBuildIdx = 0;
-        // PopupDesiredW is set by the CALLER before ZUIOpenPopup when a specific
-        // width is required (e.g. combo matches button width). It persists until
-        // ZUIBeginPopup consumes it.  Reset it here only if the caller didn't set
-        // it (i.e. it's still 0 from a prior clear), so menu popups get the default.
-        // Callers that want a specific width set PopupDesiredW BEFORE calling us.
+        ctx->PendingPopupKey   = ZUIHashStr(key, (uint32_t) strlen(key));
+        ctx->PendingPopupDepth = ctx->PopupBuildDepth; // open at the caller's render depth
+        ctx->PendingPopupPosX  = (pos_x >= 0.f) ? pos_x : ctx->MousePos[0];
+        ctx->PendingPopupPosY  = (pos_y >= 0.f) ? pos_y : ctx->MousePos[1];
+        ctx->PopupNavIdx       = -1;
+        ctx->PopupBuildIdx     = 0;
     }
 
     bool ZUIBeginPopup(ZUIContext* ctx, const char* key)
     {
-        uint64_t hash = ZUIHashStr(key, (uint32_t) strlen(key));
-        if (ctx->ActivePopupKey != hash)
-        {
+        uint64_t hash  = ZUIHashStr(key, (uint32_t) strlen(key));
+        uint32_t depth = ctx->PopupBuildDepth;
+        if (depth >= ctx->PopupStackSize || ctx->PopupStack[depth].Key != hash)
             return false;
-        }
 
         // Reset item counter each frame the popup builds
-        ctx->PopupBuildIdx     = 0;
+        ctx->PopupBuildIdx = 0;
+        ctx->PopupBuildDepth++; // inner content is one level deeper
 
-        // Escape to root so the popup renders on top of everything else
-        ctx->PopupSavedParent  = ctx->Current;
-        ctx->Current           = ctx->Root;
+        // Escape to root so the popup renders on top of everything else.
+        // Save current parent per-entry so nested popups don't clobber each other.
+        ctx->PopupStack[depth].SavedParent = ctx->Current;
+        ctx->Current                       = ctx->Root;
 
-        uint32_t len           = (uint32_t) strlen(key);
-        ZUIBox*  popup         = ZUIPushBox(ctx, key, len, ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow | ZUI_ClipChildren | ZUI_FloatX | ZUI_FloatY);
-        popup->Size[0]         = ZFit();
-        popup->Size[1]         = ZFit();
-        popup->FloatPos[0]     = ctx->PopupPos[0];
-        popup->FloatPos[1]     = ctx->PopupPos[1];
-        popup->LayoutAxis      = ZUIAxis::Y;
-        popup->BorderThickness = 1.f;
-        popup->EdgeSoftness    = 0.5f;
+        float    px                        = ctx->PopupStack[depth].PosX;
+        float    py                        = ctx->PopupStack[depth].PosY;
+        uint32_t len                       = (uint32_t) strlen(key);
+        ZUIBox*  popup                     = ZUIPushBox(ctx, key, len, ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow | ZUI_ClipChildren | ZUI_FloatX | ZUI_FloatY);
+        popup->Size[0]                     = ZFit();
+        popup->Size[1]                     = ZFit();
+        popup->FloatPos[0]                 = px;
+        popup->FloatPos[1]                 = py;
+        popup->LayoutAxis                  = ZUIAxis::Y;
+        popup->BorderThickness             = 1.f;
+        popup->EdgeSoftness                = 0.5f;
         ZUIBoxSetCornerRadius(popup, ctx->Style.PopupRounding);
         popup->Padding[0] = popup->Padding[2] = ctx->Style.PopupInnerPaddingX;
         SetBgArr(popup, ctx->Theme.PopupBg);
         SetBdrArr(popup, ctx->Theme.PanelBorder);
 
-        ctx->ActivePopupBox = popup;
+        ctx->PopupStack[depth].Box = popup; // register for hover + close-on-press detection
 
         // Minimum-width sizer: breaks the ZFit↔ZFill circular dependency.
         // ZFit popup width = max(sizer_width, children widths).
@@ -640,15 +639,20 @@ namespace ZEngine::UI
 
     void ZUIEndPopup(ZUIContext* ctx)
     {
-        ctx->PopupBuildCount = ctx->PopupBuildIdx;     // save item count for next-frame nav clamping
-        ZUIPopBox(ctx);                                // pop the popup box
-        ctx->Current          = ctx->PopupSavedParent; // restore original parent
-        ctx->PopupSavedParent = nullptr;
+        ctx->PopupBuildCount = ctx->PopupBuildIdx;
+        if (ctx->PopupBuildDepth > 0)
+            ctx->PopupBuildDepth--;
+        ZUIPopBox(ctx);
+        // Restore ctx->Current from the per-entry saved parent (works for nested popups)
+        uint32_t depth = ctx->PopupBuildDepth; // depth of the popup we just closed
+        if (depth < ctx->PopupStackSize)
+            ctx->Current = ctx->PopupStack[depth].SavedParent;
     }
 
     void ZUIClosePopup(ZUIContext* ctx)
     {
-        ctx->ActivePopupKey = 0;
+        ctx->PopupStackSize  = 0; // close all open popups (menu item confirmed)
+        ctx->PopupBuildDepth = 0;
     }
 
     bool ZUIBeginPopupContextItem(ZUIContext* ctx, const char* key, const ZUISignal& item_signal)
@@ -1825,7 +1829,7 @@ namespace ZEngine::UI
         // not already open. ArrowDown while open is handled by ZUIBeginFrame popup nav;
         // re-calling ZUIOpenPopup every frame resets the popup position and causes flicker.
         uint64_t popup_hash   = ZUIHashStr(key, (uint32_t) strlen(key));
-        bool     already_open = (ctx->ActivePopupKey == popup_hash);
+        bool     already_open = (ctx->PopupBuildDepth < ctx->PopupStackSize && ctx->PopupStack[ctx->PopupBuildDepth].Key == popup_hash);
         bool     open_popup   = (sig.Flags & ZUI_SignalClicked) || (!already_open && is_focused && (ctx->SpacePressed || ctx->EnterPressed || ctx->ArrowDownPressed));
         if (open_popup)
         {
@@ -1883,7 +1887,7 @@ namespace ZEngine::UI
 
         // Check if this menu's popup is currently open
         uint64_t popup_hash = ZUIHashStr(label, (uint32_t) strlen(label));
-        bool     is_open    = (ctx->ActivePopupKey == popup_hash);
+        bool     is_open    = (ctx->PopupBuildDepth < ctx->PopupStackSize && ctx->PopupStack[ctx->PopupBuildDepth].Key == popup_hash);
 
         // When open: teal highlight matching the VS Code Dark+ accent
         if (is_open && enabled)
@@ -1917,6 +1921,109 @@ namespace ZEngine::UI
         return ZUIBeginPopup(ctx, label);
     }
     void ZUIEndMenu(ZUIContext* ctx)
+    {
+        ZUIEndPopup(ctx);
+    }
+
+    bool ZUIBeginSubMenu(ZUIContext* ctx, const char* label, bool enabled)
+    {
+        char row_key[128], popup_key[128];
+        snprintf(row_key, sizeof(row_key), "##smrow_%s", label);
+        snprintf(popup_key, sizeof(popup_key), "##smpop_%s", label);
+
+        uint64_t popup_hash = ZUIHashStr(popup_key, (uint32_t) strlen(popup_key));
+        bool     is_open    = (ctx->PopupBuildDepth < ctx->PopupStackSize && ctx->PopupStack[ctx->PopupBuildDepth].Key == popup_hash);
+
+        // Row: [label][fill][› chevron][right-pad]
+        ZUIBox*  row        = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
+        row->Flags          = row->Flags | ZUI_Clickable;
+        row->Padding[0]     = ZUIGetFramePadX(ctx) * 2.f;
+        row->EdgeSoftness   = 0.f;
+
+        bool kb_focus       = enabled && (ctx->PopupNavIdx >= 0 && ctx->PopupBuildIdx == ctx->PopupNavIdx);
+        if (enabled)
+            ctx->PopupBuildIdx++;
+
+        if (kb_focus || is_open)
+            ZUIBoxSetColorArr(row, ctx->Theme.HeaderHoveredBg);
+        else
+            ZUIBoxSetColor(row, 0.f, 0.f, 0.f, 0.f);
+
+        ZUILabel(ctx, label, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+
+        // Fill — pushes chevron to the right edge
+        {
+            char fk[64];
+            snprintf(fk, sizeof(fk), "##smfill_%s", label);
+            ZUIBox* f  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+            f->Size[0] = ZFill();
+            f->Size[1] = ZFill();
+            ZUIPopBox(ctx);
+        }
+
+        // Right-pointing › chevron — always 3.f (submenu opens sideways, never ∨)
+        {
+            char ak[128];
+            snprintf(ak, sizeof(ak), "##smarr_%s", label);
+            ZUIBox* arrow  = ZUIPushBox(ctx, ak, (uint32_t) strlen(ak), ZUI_DrawTriArrow);
+            arrow->Size[0] = ZPx(ctx->Style.FontSize);
+            arrow->Size[1] = ZFill();
+            SetTextColor(arrow, enabled ? ctx->Theme.TextDim : ctx->Theme.TextDim);
+            {
+                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
+                if (ps)
+                    ps->UserData = 3.f;
+            }
+            ZUIPopBox(ctx);
+        }
+        ZUISpacer(ctx, ZUIGetFramePadX(ctx));
+
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+
+        if (enabled && !kb_focus && !is_open)
+        {
+            bool hot = (ctx->HotKey == row->Key), act = (ctx->ActiveKey == row->Key);
+            if (act)
+                ZUIBoxSetColorArr(row, ctx->Theme.HeaderActiveBg);
+            else if (hot)
+                ZUIBoxSetColorArr(row, ctx->Theme.HeaderHoveredBg);
+        }
+        ZUIEndRow(ctx);
+
+        // Open submenu popup on hover — to the right of the parent popup.
+        // Use the row's own ScreenMaxX once laid out; fall back to the parent
+        // popup box's right edge on the first frame (before layout runs).
+        if (enabled && (sig.Flags & (ZUI_SignalHovered | ZUI_SignalClicked)) && !is_open)
+        {
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, row->Key);
+            float               px = 0.f;
+            float               py = ctx->MousePos[1];
+            if (ps && ps->ScreenMaxX > 0.f)
+            {
+                px = ps->ScreenMaxX;
+                py = ps->ScreenMinY;
+            }
+            else
+            {
+                // First frame — use parent popup's right edge from its persistent state
+                uint32_t par_depth = (ctx->PopupBuildDepth > 0) ? ctx->PopupBuildDepth - 1 : 0;
+                ZUIBox*  par_box   = (par_depth < ctx->PopupStackSize) ? ctx->PopupStack[par_depth].Box : nullptr;
+                if (par_box)
+                {
+                    ZUIPersistentState* pps = ZUIStateGetOrInsert(&ctx->StateStore, par_box->Key);
+                    if (pps && pps->ScreenMaxX > 0.f)
+                        px = pps->ScreenMaxX;
+                }
+                if (px == 0.f)
+                    px = ctx->MousePos[0];
+            }
+            ZUIOpenPopup(ctx, popup_key, px, py);
+        }
+
+        return ZUIBeginPopup(ctx, popup_key);
+    }
+
+    void ZUIEndSubMenu(ZUIContext* ctx)
     {
         ZUIEndPopup(ctx);
     }
@@ -1975,15 +2082,15 @@ namespace ZEngine::UI
             ZUISeparator(ctx);
         }
 
-        ctx->PopupSavedParent = saved; // reuse popup save for restore
+        ctx->ModalSavedParent = saved;
         return true;
     }
 
     void ZUIEndModal(ZUIContext* ctx)
     {
         ZUIPopBox(ctx); // pop modal panel
-        ctx->Current          = ctx->PopupSavedParent;
-        ctx->PopupSavedParent = nullptr;
+        ctx->Current          = ctx->ModalSavedParent;
+        ctx->ModalSavedParent = nullptr;
     }
 
     // Drag-and-drop helpers

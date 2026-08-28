@@ -40,17 +40,15 @@ namespace ZEngine::UI
             {
                 // When a popup is open, only boxes INSIDE the popup receive hover —
                 // exactly as ImGui blocks input to windows below the modal/popup stack.
-                bool can_hover = (ctx->ActivePopupKey == 0 || ctx->ActivePopupBox == nullptr);
+                // A box can be hovered when no popup is open, or when it is inside
+                // any popup in the stack (supports nested menus + submenus).
+                bool can_hover = (ctx->PopupStackSize == 0);
                 if (!can_hover)
                 {
-                    for (ZUIBox* p = box; p; p = p->Parent)
-                    {
-                        if (p == ctx->ActivePopupBox)
-                        {
-                            can_hover = true;
-                            break;
-                        }
-                    }
+                    for (ZUIBox* p = box; p && !can_hover; p = p->Parent)
+                        for (uint32_t pi = 0; pi < ctx->PopupStackSize && !can_hover; pi++)
+                            if (p == ctx->PopupStack[pi].Box)
+                                can_hover = true;
                 }
 
                 if (can_hover)
@@ -156,14 +154,23 @@ namespace ZEngine::UI
             }
         }
 
-        // Close popup when any mouse button is pressed outside its bounds.
-        // (Right-click to open via ZUIBeginPopupContextItem sets OpenPopupKey, which
-        // only promotes to ActivePopupKey at end of frame — so no spurious close.)
+        // Close popups when pressing outside — pops from innermost outward.
+        // Pressing inside popup N but outside popup N+1 closes only popup N+1.
         bool any_pressed = ctx->MousePressed[0] || ctx->MousePressed[1];
-        if (any_pressed && ctx->ActivePopupKey != 0 && ctx->ActivePopupBox)
+        if (any_pressed && ctx->PopupStackSize > 0)
         {
-            if (!PointInBox(ctx->MousePos, ctx->ActivePopupBox))
-                ctx->ActivePopupKey = 0;
+            // Find the deepest popup whose box contains the cursor
+            int inside = -1;
+            for (int pi = (int) ctx->PopupStackSize - 1; pi >= 0; pi--)
+            {
+                if (ctx->PopupStack[pi].Box && PointInBox(ctx->MousePos, ctx->PopupStack[pi].Box))
+                {
+                    inside = pi;
+                    break;
+                }
+            }
+            // Close all popups deeper than 'inside' (inside == -1 → close all)
+            ctx->PopupStackSize = (inside < 0) ? 0u : (uint32_t) (inside + 1);
         }
 
         // Hot / active

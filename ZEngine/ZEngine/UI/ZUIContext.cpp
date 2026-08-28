@@ -28,11 +28,15 @@ namespace ZEngine::UI
     {
         ZUIStyleUpdate(&ctx->Style); // recompute FrameHeight = FontSize + FramePadding.y*2
         ctx->FrameArena.Clear();
-        ctx->Root          = nullptr;
-        ctx->Current       = nullptr;
-        ctx->DeltaTime     = dt;
-        ctx->Time         += dt;
-        ctx->ResizeCursor  = 0;
+        ctx->Root             = nullptr;
+        ctx->Current          = nullptr;
+        ctx->DeltaTime        = dt;
+        ctx->Time            += dt;
+        ctx->ResizeCursor     = 0;
+        ctx->PopupBuildDepth  = 0; // reset render depth; rebuilt during each BuildUI pass
+        // Clear stale popup Box* pointers — boxes are re-created each frame in FrameArena
+        for (uint32_t i = 0; i < ctx->PopupStackSize; i++)
+            ctx->PopupStack[i].Box = nullptr;
         // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
         // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
         // must survive until ZUIEndFrame runs the interaction pass and widget logic.
@@ -103,18 +107,17 @@ namespace ZEngine::UI
         ctx->EnterPressed  = false;
         ctx->SpacePressed  = false;
 
-        // Popup keyboard navigation (combo/menu items — Up/Down arrows cycle)
-        if (ctx->ActivePopupKey != 0)
+        // Popup keyboard navigation (applies to the innermost open popup)
+        if (ctx->PopupStackSize > 0)
         {
             int count = ctx->PopupBuildCount > 0 ? ctx->PopupBuildCount : 1;
             if (ctx->ArrowDownPressed)
                 ctx->PopupNavIdx = (ctx->PopupNavIdx + 1) % count;
             if (ctx->ArrowUpPressed)
                 ctx->PopupNavIdx = (ctx->PopupNavIdx <= 0) ? (count - 1) : (ctx->PopupNavIdx - 1);
-            // Escape or Tab closes popup without selecting
             if (ctx->EscapePressed || ctx->TabPressed || ctx->ShiftTabPressed)
             {
-                ctx->ActivePopupKey = 0;
+                ctx->PopupStackSize = 0; // close all popups on escape
                 ctx->PopupNavIdx    = -1;
             }
         }
@@ -167,14 +170,17 @@ namespace ZEngine::UI
         ctx->CtrlYPressed         = false;
         ctx->DeletePressed        = false;
 
-        // Popup: promote open request → active; reset per-frame box pointer
-        if (ctx->OpenPopupKey != 0)
+        // Apply pending popup open — truncate stack to target depth then push.
+        if (ctx->PendingPopupKey != 0)
         {
-            ctx->ActivePopupKey = ctx->OpenPopupKey;
-            ctx->OpenPopupKey   = 0;
+            uint32_t depth = ctx->PendingPopupDepth;
+            if (depth <= ctx->PopupStackSize) // can only open at/above current depth
+            {
+                ctx->PopupStackSize                    = depth; // close any deeper popups
+                ctx->PopupStack[ctx->PopupStackSize++] = {ctx->PendingPopupKey, nullptr, nullptr, ctx->PendingPopupPosX, ctx->PendingPopupPosY};
+            }
+            ctx->PendingPopupKey = 0;
         }
-        ctx->ActivePopupBox   = nullptr; // rebuilt fresh each frame
-        ctx->PopupSavedParent = nullptr;
     }
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)

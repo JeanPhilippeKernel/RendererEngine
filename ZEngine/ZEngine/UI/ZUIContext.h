@@ -348,135 +348,152 @@ namespace ZEngine::UI
             ZUIStyleVar Id;
             float       Old;
         };
-        ZUIStyleEntry          StyleStack[64]  = {};
-        uint32_t               StyleStackDepth = 0;
+        ZUIStyleEntry             StyleStack[64]  = {};
+        uint32_t                  StyleStackDepth = 0;
 
         // active color theme — swap to retheme the whole UI at runtime
-        ZUITheme               Theme;
+        ZUITheme                  Theme;
 
         // Vector draw list — populated by PreparePayload each frame (FrameArena-backed)
-        ZUIDrawList            DrawList;
+        ZUIDrawList               DrawList;
 
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
-        uint32_t               ScreenW              = 1280;
-        uint32_t               ScreenH              = 720;
+        uint32_t                  ScreenW              = 1280;
+        uint32_t                  ScreenH              = 720;
         // display content scale (glfwGetWindowContentScale); 1.0=standard, 2.0=Retina.
         // Widgets multiply logical pixel sizes by this to stay readable at any DPI.
-        float                  UIScale              = 1.f;
+        float                     UIScale              = 1.f;
         // guard against per-frame ContentScale log spam — log only once
-        bool                   UIScaleLogged        = false;
+        bool                      UIScaleLogged        = false;
 
         // drag-and-drop — source is set by ZUIBeginDragSource while a box is held+moving;
         // drop result (DragDropFired/DragTargetKey) is set by ZUIInteractionPass on mouse-release
         // and cleared at the START of the next ZUIEndFrame so BuildUI can read it
-        uint64_t               DragSourceKey        = 0;
-        char                   DragPayload[512]     = {};
-        uint32_t               DragPayloadLen       = 0;
-        bool                   DragDropFired        = false;
-        uint64_t               DragTargetKey        = 0;
+        uint64_t                  DragSourceKey        = 0;
+        char                      DragPayload[512]     = {};
+        uint32_t                  DragPayloadLen       = 0;
+        bool                      DragDropFired        = false;
+        uint64_t                  DragTargetKey        = 0;
 
         // set by ZUISceneViewportComponent each BuildUI frame; read by Editor::ProcessEvent
         // to gate camera-controller mouse routing
-        bool                   ViewportHovered      = false;
-        int                    ResizeCursor         = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
+        bool                      ViewportHovered      = false;
+        int                       ResizeCursor         = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
 
         // Modifier key state — written by ZUILayer::OnKeyPressed/Released
-        bool                   CtrlDown             = false;
-        bool                   ShiftDown            = false;
-        bool                   AltDown              = false;
+        bool                      CtrlDown             = false;
+        bool                      ShiftDown            = false;
+        bool                      AltDown              = false;
 
         // Tab focus navigation — set by ZUILayer, consumed by ZUIEndFrame
-        bool                   TabPressed           = false;
-        bool                   ShiftTabPressed      = false;
-        bool                   EscapePressed        = false; // clear FocusKey
-        bool                   EnterPressed         = false; // confirm / deactivate field
-        bool                   SpacePressed         = false; // activate focused button
-        bool                   ArrowUpPressed       = false; // nudge drag float / combo nav
-        bool                   ArrowDownPressed     = false;
-        bool                   ArrowLeftPressed     = false; // text cursor left
-        bool                   ArrowRightPressed    = false; // text cursor right
-        bool                   HomePressed          = false; // cursor to start of field
-        bool                   EndPressed           = false; // cursor to end of field
-        bool                   CtrlCPressed         = false;
-        bool                   CtrlXPressed         = false;
-        bool                   CtrlBackspacePressed = false;
-        bool                   CtrlAPressed         = false;
-        bool                   CtrlZPressed         = false; // undo
-        bool                   CtrlYPressed         = false; // redo
-        bool                   DeletePressed        = false; // forward-delete at cursor
+        bool                      TabPressed           = false;
+        bool                      ShiftTabPressed      = false;
+        bool                      EscapePressed        = false; // clear FocusKey
+        bool                      EnterPressed         = false; // confirm / deactivate field
+        bool                      SpacePressed         = false; // activate focused button
+        bool                      ArrowUpPressed       = false; // nudge drag float / combo nav
+        bool                      ArrowDownPressed     = false;
+        bool                      ArrowLeftPressed     = false; // text cursor left
+        bool                      ArrowRightPressed    = false; // text cursor right
+        bool                      HomePressed          = false; // cursor to start of field
+        bool                      EndPressed           = false; // cursor to end of field
+        bool                      CtrlCPressed         = false;
+        bool                      CtrlXPressed         = false;
+        bool                      CtrlBackspacePressed = false;
+        bool                      CtrlAPressed         = false;
+        bool                      CtrlZPressed         = false; // undo
+        bool                      CtrlYPressed         = false; // redo
+        bool                      DeletePressed        = false; // forward-delete at cursor
         // Held state for key-repeat (same mechanism as BackspaceHeld)
-        bool                   ArrowLeftHeld        = false;
-        bool                   ArrowRightHeld       = false;
-        bool                   ArrowUpHeld          = false;
-        bool                   ArrowDownHeld        = false;
-        bool                   DeleteHeld           = false;
-        float                  ArrowRepeatTimer     = 0.f;
+        bool                      ArrowLeftHeld        = false;
+        bool                      ArrowRightHeld       = false;
+        bool                      ArrowUpHeld          = false;
+        bool                      ArrowDownHeld        = false;
+        bool                      DeleteHeld           = false;
+        float                     ArrowRepeatTimer     = 0.f;
         // Per-frame tracking updated in ZUISignalFromBox during the build pass
-        uint64_t               TabNavNextKey        = 0; // first clickable after FocusKey
-        uint64_t               TabNavPrevKey        = 0; // last clickable before FocusKey
-        uint64_t               TabNavFirstKey       = 0; // first clickable seen (wraparound)
-        uint64_t               TabNavLastKey        = 0; // last clickable seen (Shift+Tab wrap)
-        bool                   TabNavSeenFocus      = false;
+        uint64_t                  TabNavNextKey        = 0; // first clickable after FocusKey
+        uint64_t                  TabNavPrevKey        = 0; // last clickable before FocusKey
+        uint64_t                  TabNavFirstKey       = 0; // first clickable seen (wraparound)
+        uint64_t                  TabNavLastKey        = 0; // last clickable seen (Shift+Tab wrap)
+        bool                      TabNavSeenFocus      = false;
 
         // Input repeat — ZUIEndFrame advances the timer; after RepeatDelay
         // it fires BackspacePressed / ArrowPressed at RepeatRate hz
-        float                  KeyRepeatTimer       = 0.f;
-        static constexpr float kRepeatDelay         = 0.45f; // s before first repeat
-        static constexpr float kRepeatRate          = 0.04f; // s between repeats
+        float                     KeyRepeatTimer       = 0.f;
+        static constexpr float    kRepeatDelay         = 0.45f; // s before first repeat
+        static constexpr float    kRepeatRate          = 0.04f; // s between repeats
 
         // ZUIBeginDisabled / ZUIEndDisabled — widgets skip Clickable and dim colours
-        bool                   Disabled             = false;
-        int                    DisabledDepth        = 0; // supports nesting
+        bool                      Disabled             = false;
+        int                       DisabledDepth        = 0; // supports nesting
 
-        // Popup system
-        // ZUIOpenPopup → sets OpenPopupKey; ZUIEndFrame promotes to ActivePopupKey.
-        // ZUIBeginPopup returns true when active and pushes a floated root-level box.
-        uint64_t               OpenPopupKey         = 0; // requested this frame
-        uint64_t               ActiveModalKey       = 0; // modal (cannot close by clicking outside)
+        // Popup stack — supports nested popups (menus + submenus).
+        // ZUIOpenPopup queues a push at the current PopupBuildDepth.
+        // ZUIEndFrame applies the pending push (truncating deeper entries first).
+        // ZUIBeginPopup renders if the key matches PopupStack[PopupBuildDepth]
+        //   and increments PopupBuildDepth for nested content.
+        // ZUIClosePopup clears the entire stack.
+        // Interaction pass pops from innermost outward when pressing outside.
+        static constexpr uint32_t kMaxPopupDepth       = 8;
+        struct ZUIPopupEntry
+        {
+            uint64_t Key         = 0;
+            ZUIBox*  Box         = nullptr; // set by ZUIBeginPopup; valid this frame
+            ZUIBox*  SavedParent = nullptr; // ctx->Current before popup opened; restored on End
+            float    PosX        = 0.f;
+            float    PosY        = 0.f;
+        };
+        ZUIPopupEntry PopupStack[kMaxPopupDepth] = {};
+        uint32_t      PopupStackSize             = 0; // active popup count
+        uint32_t      PopupBuildDepth            = 0; // current render depth (reset in BeginFrame)
+        uint64_t      PendingPopupKey            = 0; // queued by ZUIOpenPopup, applied in EndFrame
+        uint32_t      PendingPopupDepth          = 0;
+        float         PendingPopupPosX           = 0.f;
+        float         PendingPopupPosY           = 0.f;
+        uint64_t      ActiveModalKey             = 0; // modal (cannot close by clicking outside)
 
         // Tab bar state (single-level; reset by ZUIBeginTabBar)
-        uint64_t               TabBarKey            = 0;     // hash of active tab bar
-        int                    TabBarSelectedIdx    = 0;     // which tab is open
-        int                    TabBarCurrentIdx     = 0;     // iteration counter
-        bool                   TabItemWasSelected   = false; // did last BeginTabItem match?
-        ZUIBox*                TabBarRowBox         = nullptr;
+        uint64_t      TabBarKey                  = 0;     // hash of active tab bar
+        int           TabBarSelectedIdx          = 0;     // which tab is open
+        int           TabBarCurrentIdx           = 0;     // iteration counter
+        bool          TabItemWasSelected         = false; // did last BeginTabItem match?
+        ZUIBox*       TabBarRowBox               = nullptr;
 
         // Basic table state (ZUIBeginTable / ZUIEndTable)
-        int                    TableColumns         = 0;
-        int                    TableCurrentCol      = -1;
-        float*                 TableColWidths       = nullptr; // FrameArena array
-        ZUIBox*                TableRowBox          = nullptr;
+        int           TableColumns               = 0;
+        int           TableCurrentCol            = -1;
+        float*        TableColWidths             = nullptr; // FrameArena array
+        ZUIBox*       TableRowBox                = nullptr;
 
         // TreeView state (ZUIBeginTreeView / ZUIEndTreeView)
-        int                    TV_Depth             = 0;
-        float                  TV_IndentPx          = 21.f; // px per depth level — ImGui IndentSpacing
-        float                  TV_RowH              = 22.f; // logical row height
+        int           TV_Depth                   = 0;
+        float         TV_IndentPx                = 21.f; // px per depth level — ImGui IndentSpacing
+        float         TV_RowH                    = 22.f; // logical row height
 
         // DataTable state (ZUIBeginDataTable / ZUIEndDataTable)
-        uint64_t               DT_Key               = 0;
-        int                    DT_ColCount          = 0;
-        int                    DT_CurCol            = -1;
-        int                    DT_RowIndex          = 0;
-        bool                   DT_InRow             = false;
-        ZUIBox*                DT_RowBox            = nullptr;
-        float*                 DT_ColWidths         = nullptr; // FrameArena, size = DT_ColCount
-        const void*            DT_Cols              = nullptr; // ZUIDataTableColumn* stored by BeginDataTable
-        int                    DT_SortCol           = -1;      // -1 = unsorted
-        bool                   DT_SortAsc           = true;
-        bool                   DT_SortChanged       = false;
+        uint64_t      DT_Key                     = 0;
+        int           DT_ColCount                = 0;
+        int           DT_CurCol                  = -1;
+        int           DT_RowIndex                = 0;
+        bool          DT_InRow                   = false;
+        ZUIBox*       DT_RowBox                  = nullptr;
+        float*        DT_ColWidths               = nullptr; // FrameArena, size = DT_ColCount
+        const void*   DT_Cols                    = nullptr; // ZUIDataTableColumn* stored by BeginDataTable
+        int           DT_SortCol                 = -1;      // -1 = unsorted
+        bool          DT_SortAsc                 = true;
+        bool          DT_SortChanged             = false;
 
         // GridView state (ZUIBeginGridView / ZUIEndGridView)
-        float                  GV_ItemW             = 0.f;
-        float                  GV_ItemH             = 0.f;
-        int                    GV_MaxCols           = 1;
-        int                    GV_CurCol            = 0;
-        int                    GV_CurRow            = 0;
-        bool                   GV_RowOpen           = false;
-        float                  PopupPos[2]          = {};      // screen position to open at
-        float                  PopupDesiredW        = 0.f;     // optional fixed width (set by ZUIBeginCombo)
-        uint64_t               ActivePopupKey       = 0;       // currently shown popup (frame-to-frame)
-        ZUIBox*                ActivePopupBox       = nullptr; // set by ZUIBeginPopup; valid this frame
-        ZUIBox*                PopupSavedParent     = nullptr; // ctx->Current saved during popup build
+        float         GV_ItemW                   = 0.f;
+        float         GV_ItemH                   = 0.f;
+        int           GV_MaxCols                 = 1;
+        int           GV_CurCol                  = 0;
+        int           GV_CurRow                  = 0;
+        bool          GV_RowOpen                 = false;
+        float         PopupPos[2]                = {};      // unused — kept for ABI; pos now in PopupStack entry
+        float         PopupDesiredW              = 0.f;     // optional fixed width (set by ZUIBeginCombo)
+        ZUIBox*       ModalSavedParent           = nullptr; // ctx->Current saved by ZUIBeginModal
         // Text field undo / redo
         // Per-field stacks stored in context (only the focused field uses them).
         // Undo: push BEFORE edit → Ctrl+Z pops and restores. Redo: push current
