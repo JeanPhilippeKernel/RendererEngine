@@ -451,6 +451,10 @@ namespace ZEngine::UI
     /// @return Current sort specification; Changed==true the frame a header was clicked.
     ZUITableSortSpec ZUIDataTableGetSortSpecs(ZUIContext* ctx);
 
+    /// @brief Full interaction signal for the current row — click, double-click, drag, scroll.
+    /// Call any time after ZUIDataTableNextRow and before the next ZUIDataTableNextRow call.
+    ZUISignal        ZUIDataTableRowSignal(ZUIContext* ctx);
+
     // ZUIGridView — icon grid for content browsers
 
     /// @brief Push an auto-wrapping icon grid.

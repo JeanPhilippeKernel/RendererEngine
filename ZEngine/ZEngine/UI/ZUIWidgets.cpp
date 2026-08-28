@@ -3952,6 +3952,15 @@ namespace ZEngine::UI
         return spec;
     }
 
+    ZUISignal ZUIDataTableRowSignal(ZUIContext* ctx)
+    {
+        if (!ctx->DT_RowBox)
+        {
+            return {};
+        }
+        return ZUISignalFromBox(ctx, ctx->DT_RowBox);
+    }
+
     // ZUISearchBox
 
     bool ZUISearchBox(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, const char* placeholder, ZUISize w)

@@ -130,8 +130,6 @@ namespace Tetragrama::Panels
             using namespace ZEngine::Helpers;
             using namespace ZEngine::UI;
 
-            (void) rect;
-
             // Guard — need app, scene, and actor manager
             if (!m_layer || !m_layer->CurrentApp)
             {
@@ -148,13 +146,14 @@ namespace Tetragrama::Panels
             }
 
             float   fh = ZUIGetFrameHeight(ctx);
+            float   pw = (rect[2] - rect[0] > 1.f) ? rect[2] - rect[0] : 200.f;
 
             ZUIBox* bg = ZUIBeginColumn(ctx, "##hier_bg", ZFill(), ZFill());
             bg->Flags  = bg->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
             bg->EdgeSoftness = 0.f;
 
-            // ── Toolbar: search | Add actor ───────────────────────────────────────
+            // ── Toolbar ──────────────────────────────────────────────────────────
             ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 6.f);
             ZUISearchBox(ctx, "##hier_search", m_search, sizeof(m_search), "Search...", ZFill());
@@ -163,35 +162,19 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 6.f);
             ZUIEndRow(ctx);
 
-            // ── Column header ─────────────────────────────────────────────────────
-            ZUIBox* ch = ZUIBeginRow(ctx, "##hier_ch", ZFill(), ZPx(fh));
-            ch->Flags  = ch->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(ch, ctx->Theme.TitleBarBg);
-            ZUISpacer(ctx, 6.f);
-            ZUILabel(ctx, "Item Label", ctx->Theme.TextDim);
-            { // fill + right-aligned "Type" label
-                ZUIBox* f  = ZUIPushBox(ctx, "##hch_fill", 10, ZUI_None);
-                f->Size[0] = ZFill();
-                f->Size[1] = ZPx(fh);
-                ZUIPopBox(ctx);
-            }
-            ZUILabel(ctx, "Type", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 6.f);
-            ZUIEndRow(ctx);
-
-            ZUISeparator(ctx);
+            // ── 3-column table: Item Label (60%) | Type (25%) | Level (15%) ──────
+            // Mirrors ImGui::TableSetupColumn("Item Label", WidthStretch, 0.60f) etc.
+            ZUIDataTableColumn cols[3] = {
+                {"Item Label", fmaxf(pw * 0.60f, 100.f), false,  true},
+                {      "Type", fmaxf(pw * 0.25f,  50.f), false, false},
+                {     "Level", fmaxf(pw * 0.15f,  40.f), false, false},
+            };
 
             // ── DFS tree build ────────────────────────────────────────────────────
-            uint32_t n = eng->ActorManager->Count();
-            if (n == 0)
-            {
-                // Empty scene — show placeholder and skip tree
-                ZUIEndColumn(ctx);
-                return;
-            }
+            uint32_t                  actor_n = eng->ActorManager->Count();
 
-            static constexpr uint32_t kMaxN = 512;
-            uint32_t                  nc    = n < kMaxN ? n : kMaxN;
+            static constexpr uint32_t kMaxN   = 512;
+            uint32_t                  nc      = actor_n < kMaxN ? actor_n : kMaxN;
 
             struct OutlinerNode
             {
@@ -203,7 +186,7 @@ namespace Tetragrama::Panels
             uint32_t*     first_child = ZPushArray(&ctx->FrameArena, uint32_t, nc + 1);
             uint32_t*     next_sib    = ZPushArray(&ctx->FrameArena, uint32_t, nc + 1);
             uint32_t      actual_nc   = 0;
-            for (uint32_t i = 0; i < nc + 1; ++i)
+            for (uint32_t i = 0; i <= nc; ++i)
             {
                 first_child[i] = UINT32_MAX;
                 next_sib[i]    = UINT32_MAX;
@@ -214,15 +197,7 @@ namespace Tetragrama::Panels
                 auto* pc           = actor->GetComponent<ParentComponent>();
                 nodes[actual_nc++] = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY};
             });
-            nc                = actual_nc;
-
-            // Build child/sibling linkage
-            uint32_t* eid_idx = ZPushArray(&ctx->FrameArena, uint32_t, nc + 1);
-            for (uint32_t i = 0; i < nc + 1; ++i)
-                eid_idx[i] = UINT32_MAX;
-            for (uint32_t i = 0; i < nc; ++i)
-                eid_idx[nodes[i].EID.Index % (nc + 1)] = i; // simple modulo slot (good enough for display)
-            // Full linear-scan linkage (robust for all sizes)
+            nc = actual_nc;
             for (uint32_t i = 0; i < nc; ++i)
             {
                 if (nodes[i].Parent == INVALID_ENTITY)
@@ -237,8 +212,6 @@ namespace Tetragrama::Panels
                     }
                 }
             }
-            (void) eid_idx;
-
             struct DFSEntry
             {
                 uint32_t idx;
@@ -250,28 +223,34 @@ namespace Tetragrama::Panels
                 if (nodes[i].Parent == INVALID_ENTITY)
                     stk[sp++] = {(uint32_t) i, 0};
 
-            // Type icon colors
-            static const float kColLight[4]  = {1.00f, 0.85f, 0.20f, 1.f};
-            static const float kColCamera[4] = {0.45f, 0.85f, 0.55f, 1.f};
-            static const float kColMesh[4]   = {0.55f, 0.75f, 0.90f, 1.f};
-            static const float kColColl[4]   = {0.85f, 0.65f, 0.15f, 1.f};
-            static const float kColActor[4]  = {0.55f, 0.55f, 0.60f, 1.f};
-            static const float kSelBg[4]     = {0.26f, 0.44f, 0.70f, 0.50f};
-            static const float kTransBg[4]   = {0.42f, 0.42f, 0.48f, 0.f};
-            static const float kDim[4]       = {0.55f, 0.55f, 0.60f, 1.f};
-            static const float kWorldIcon[4] = {0.35f, 0.80f, 0.45f, 1.f};
+            // Icon colors
+            static const float kColLight[4]           = {1.00f, 0.85f, 0.20f, 1.f};
+            static const float kColCamera[4]          = {0.45f, 0.85f, 0.55f, 1.f};
+            static const float kColMesh[4]            = {0.55f, 0.75f, 0.90f, 1.f};
+            static const float kColColl[4]            = {0.85f, 0.65f, 0.15f, 1.f};
+            static const float kColActor[4]           = {0.55f, 0.55f, 0.60f, 1.f};
+            static const float kWorldIcon[4]          = {0.35f, 0.80f, 0.45f, 1.f};
+            static const float kDim[4]                = {0.55f, 0.55f, 0.60f, 1.f};
 
-            // ── Scroll region ─────────────────────────────────────────────────────
+            // Deferred mutations — applied after DFS to avoid invalidating the tree
+            ActorHandle        pending_delete         = {};
+            ActorHandle        pending_duplicate      = {};
+            ActorHandle        pending_reparent_child = {};
+            ActorHandle        pending_reparent_par   = {};
+            bool               pending_detach         = false;
+            ActorHandle        pending_detach_h       = {};
+
+            // ── Scroll region + DataTable ─────────────────────────────────────────
             ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
+            ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFit());
+            ZUIDataTableHeadersRow(ctx);
 
-            // World root row
+            // World root row (always shown, acts as drop target to detach from parent)
             {
-                ZUIBox* root_row = ZUIBeginRow(ctx, "##sc_root", ZFill(), ZPx(fh));
-                root_row->Flags  = root_row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-                ZUIBoxSetColor(root_row, 0.30f, 0.30f, 0.36f, 0.18f);
-                ZUISpacer(ctx, 6.f);
+                ZUIDataTableNextRow(ctx, false);
+                ZUIDataTableSetColumn(ctx, 0);
 
-                // VS Code chevron disclosure (ZUI_DrawTriArrow, UserData 2=∨ 3=›)
+                // Disclosure chevron
                 {
                     ZUIBox* arr       = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawTriArrow | ZUI_Clickable);
                     arr->Size[0]      = ZPx(fh);
@@ -297,33 +276,32 @@ namespace Tetragrama::Panels
                     icon->TextColor[1] = kWorldIcon[1];
                     icon->TextColor[2] = kWorldIcon[2];
                     icon->TextColor[3] = kWorldIcon[3];
-                    auto* wps          = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
-                    if (wps)
-                        wps->UserData = ZUI_ICON_WORLD;
+                    auto* ps           = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
+                    if (ps)
+                        ps->UserData = ZUI_ICON_WORLD;
                     ZUIPopBox(ctx);
                 }
                 ZUISpacer(ctx, 4.f);
-
                 const char* sname = (scene->Name && scene->Name[0]) ? scene->Name : "Scene";
                 ZUILabel(ctx, sname);
-                { // fill + "World" type label
-                    ZUIBox* f  = ZUIPushBox(ctx, "##rf", 4, ZUI_None);
-                    f->Size[0] = ZFill();
-                    f->Size[1] = ZPx(fh);
-                    ZUIPopBox(ctx);
-                }
-                ZUILabel(ctx, "World", kDim);
-                ZUISpacer(ctx, 6.f);
-                ZUIEndRow(ctx);
-            }
 
-            // Pending deferred mutations (applied after DFS to avoid invalidating the tree)
-            ActorHandle pending_delete          = {};
-            ActorHandle pending_duplicate       = {};
-            ActorHandle pending_reparent_child  = {};
-            ActorHandle pending_reparent_parent = {};
-            bool        pending_detach          = false;
-            ActorHandle pending_detach_handle   = {};
+                ZUIDataTableSetColumn(ctx, 1);
+                ZUILabel(ctx, "World", kDim);
+
+                ZUIDataTableSetColumn(ctx, 2);
+                // Root is a drop target: dropping here detaches the actor from its parent
+                char drop_root[sizeof(ActorHandle)] = {};
+                if (ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_root, sizeof(drop_root)))
+                {
+                    ActorHandle dragged = {};
+                    secure_memcpy(&dragged, sizeof(dragged), drop_root, sizeof(drop_root));
+                    if (dragged.Valid())
+                    {
+                        pending_detach   = true;
+                        pending_detach_h = dragged;
+                    }
+                }
+            }
 
             // ── Actor rows (DFS) ──────────────────────────────────────────────────
             if (m_root_open)
@@ -336,15 +314,15 @@ namespace Tetragrama::Panels
                     if (!actor)
                         continue;
 
-                    // Search filter
                     auto*       nc_comp = actor->GetComponent<NameComponent>();
                     const char* label   = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+
+                    // Search filter — skip row but still expand children
                     if (m_search[0] && !ContainsCI(label, m_search))
                     {
-                        // skip but still expand children so search works deep
-                        bool has_ch  = (first_child[ni] != UINT32_MAX);
-                        bool is_open = has_ch && !IsCollapsed(nodes[ni].EID);
-                        if (has_ch && is_open)
+                        bool has_ch    = (first_child[ni] != UINT32_MAX);
+                        bool is_open_s = has_ch && !IsCollapsed(nodes[ni].EID);
+                        if (has_ch && is_open_s)
                         {
                             uint32_t c = first_child[ni];
                             while (c != UINT32_MAX)
@@ -356,7 +334,7 @@ namespace Tetragrama::Panels
                         continue;
                     }
 
-                    // Determine type info
+                    // Type determination
                     const float* type_col;
                     const char*  type_str;
                     float        icon_type;
@@ -392,21 +370,20 @@ namespace Tetragrama::Panels
                         icon_type = ZUI_ICON_ACTOR;
                     }
 
-                    bool  is_open  = has_ch && !IsCollapsed(nodes[ni].EID);
-                    bool  selected = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
-                    bool  renaming = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
-                    float indent   = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
+                    bool      is_open     = has_ch && !IsCollapsed(nodes[ni].EID);
+                    bool      selected    = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
+                    bool      renaming    = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
+                    float     indent      = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
 
-                    char  row_key[64];
-                    snprintf(row_key, sizeof(row_key), "##hr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                    // Row — ZUIDataTableNextRow handles selection bg, alternating rows, click
+                    bool      row_clicked = ZUIDataTableNextRow(ctx, selected);
+                    ZUISignal row_sig     = ZUIDataTableRowSignal(ctx);
 
-                    ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
-                    row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-                    ZUIBoxSetColorArr(row, selected ? kSelBg : kTransBg);
-
+                    // Col 0: tree content
+                    ZUIDataTableSetColumn(ctx, 0);
                     ZUISpacer(ctx, indent);
 
-                    // VS Code chevron disclosure or leaf spacer
+                    // VS Code chevron (∨/›) or leaf spacer
                     if (has_ch)
                     {
                         char arr_key[64];
@@ -420,7 +397,7 @@ namespace Tetragrama::Panels
                         arr->TextColor[3] = kDim[3];
                         auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
                         if (ps)
-                            ps->UserData = is_open ? 2.f : 3.f; // ∨ / ›
+                            ps->UserData = is_open ? 2.f : 3.f;
                         ZUISignal asig = ZUISignalFromBox(ctx, arr);
                         ZUIPopBox(ctx);
                         if (asig.Flags & ZUI_SignalClicked)
@@ -431,7 +408,7 @@ namespace Tetragrama::Panels
                         ZUISpacer(ctx, fh);
                     }
 
-                    // Type icon (14×14) — custom actor-type geometry via ZUI_DrawActorIcon
+                    // Type icon
                     {
                         char ik[32];
                         snprintf(ik, sizeof(ik), "##ti_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
@@ -442,61 +419,54 @@ namespace Tetragrama::Panels
                         icon->TextColor[1] = type_col[1];
                         icon->TextColor[2] = type_col[2];
                         icon->TextColor[3] = type_col[3];
-                        auto* ips          = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
-                        if (ips)
-                            ips->UserData = icon_type;
+                        auto* ps           = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
+                        if (ps)
+                            ps->UserData = icon_type;
                         ZUIPopBox(ctx);
                     }
                     ZUISpacer(ctx, 4.f);
 
-                    // Actor name or inline rename field
+                    // Actor name or inline rename
                     if (renaming)
                     {
                         char tf_key[64];
                         snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        uint64_t fkey_before = ctx->FocusKey;
+                        uint64_t fk_before = ctx->FocusKey;
                         ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
-                        uint64_t fkey_after = ctx->FocusKey;
-
+                        uint64_t fk_after = ctx->FocusKey;
                         if (m_rename_started)
                         {
                             m_rename_started = false;
                             m_rename_fkey    = 0;
                         }
-                        else if (m_rename_fkey != 0 && fkey_after != m_rename_fkey)
+                        else if (m_rename_fkey != 0 && fk_after != m_rename_fkey)
                         {
-                            // Focus left the rename field — commit
                             if (nc_comp && m_rename_buf[0])
                                 secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1);
                             m_rename_id   = {};
                             m_rename_fkey = 0;
                         }
-                        if (fkey_before != fkey_after && fkey_after != 0)
-                            m_rename_fkey = fkey_after;
+                        if (fk_before != fk_after && fk_after != 0)
+                            m_rename_fkey = fk_after;
                     }
                     else
                     {
                         ZUILabel(ctx, label);
                     }
 
-                    // Fill spacer + type column
-                    {
-                        ZUIBox* f  = ZUIPushBox(ctx, "##hf", 4, ZUI_None);
-                        f->Size[0] = ZFill();
-                        f->Size[1] = ZPx(fh);
-                        ZUIPopBox(ctx);
-                    }
+                    // Col 1: type
+                    ZUIDataTableSetColumn(ctx, 1);
                     ZUILabel(ctx, type_str, kDim);
-                    ZUISpacer(ctx, 6.f);
 
-                    ZUISignal row_sig = ZUISignalFromBox(ctx, row);
-                    ZUIEndRow(ctx);
+                    // Col 2: level
+                    ZUIDataTableSetColumn(ctx, 2);
+                    ZUILabel(ctx, "Default", kDim);
 
-                    // Single-click → select
-                    if (row_sig.Flags & ZUI_SignalClicked)
+                    // Selection
+                    if (row_clicked)
                         scene->SelectedActorHandle = nodes[ni].Handle;
 
-                    // Double-click → start rename
+                    // Double-click → inline rename
                     if (!renaming && (row_sig.Flags & ZUI_SignalDoubleClicked))
                     {
                         m_rename_id      = nodes[ni].EID;
@@ -505,7 +475,7 @@ namespace Tetragrama::Panels
                         secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
                     }
 
-                    // Context menu (right-click)
+                    // Context menu (right-click on row)
                     if (ZUIBeginPopupContextItem(ctx, "##actor_ctx", row_sig))
                     {
                         if (ZUIMenuItem(ctx, "Rename"))
@@ -521,29 +491,27 @@ namespace Tetragrama::Panels
                             pending_delete = nodes[ni].Handle;
                         if (nodes[ni].Parent != INVALID_ENTITY && ZUIMenuItem(ctx, "Remove from Parent"))
                         {
-                            pending_detach        = true;
-                            pending_detach_handle = nodes[ni].Handle;
+                            pending_detach   = true;
+                            pending_detach_h = nodes[ni].Handle;
                         }
                         ZUIEndPopup(ctx);
                     }
 
-                    // Drag source (payload = ActorHandle)
-                    ZUIBeginDragSource(ctx, row, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
-
-                    // Drop target (reparent on drop)
+                    // Drag source + drop target for reparenting
+                    ZUIBeginDragSource(ctx, ctx->DT_RowBox, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
                     char drop_buf[sizeof(ActorHandle)] = {};
-                    if (ZUIAcceptDrop(ctx, row, drop_buf, sizeof(drop_buf)))
+                    if (ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_buf, sizeof(drop_buf)))
                     {
                         ActorHandle dragged = {};
                         secure_memcpy(&dragged, sizeof(dragged), drop_buf, sizeof(drop_buf));
                         if (dragged.Valid() && (dragged.Index != nodes[ni].Handle.Index || dragged.Generation != nodes[ni].Handle.Generation))
                         {
-                            pending_reparent_child  = dragged;
-                            pending_reparent_parent = nodes[ni].Handle;
+                            pending_reparent_child = dragged;
+                            pending_reparent_par   = nodes[ni].Handle;
                         }
                     }
 
-                    // Expand children
+                    // Expand children (DFS)
                     if (has_ch && is_open)
                     {
                         uint32_t c = first_child[ni];
@@ -553,27 +521,10 @@ namespace Tetragrama::Panels
                             c         = next_sib[c];
                         }
                     }
-                } // while DFS
-
-                // Root drop zone — drop here to detach actor from parent
-                {
-                    ZUIBox* drop_row                   = ZUIBeginRow(ctx, "##hier_root_dz", ZFill(), ZPx(fh * 0.5f));
-                    drop_row->Flags                    = drop_row->Flags | ZUI_Clickable;
-                    char drop_buf[sizeof(ActorHandle)] = {};
-                    if (ZUIAcceptDrop(ctx, drop_row, drop_buf, sizeof(drop_buf)))
-                    {
-                        ActorHandle dragged = {};
-                        secure_memcpy(&dragged, sizeof(dragged), drop_buf, sizeof(drop_buf));
-                        if (dragged.Valid())
-                        {
-                            pending_detach        = true;
-                            pending_detach_handle = dragged;
-                        }
-                    }
-                    ZUIEndRow(ctx);
                 }
-            } // if m_root_open
+            }
 
+            ZUIEndDataTable(ctx);
             ZUIEndScrollRegion(ctx);
 
             // ── Deferred mutations ────────────────────────────────────────────────
@@ -595,10 +546,10 @@ namespace Tetragrama::Panels
                 eng->ActorManager->Destroy(h);
             };
 
-            if (pending_reparent_child.Valid() && pending_reparent_parent.Valid())
+            if (pending_reparent_child.Valid() && pending_reparent_par.Valid())
             {
                 Actor* child  = eng->ActorManager->Access(pending_reparent_child);
-                Actor* parent = eng->ActorManager->Access(pending_reparent_parent);
+                Actor* parent = eng->ActorManager->Access(pending_reparent_par);
                 if (child && parent)
                 {
                     EntityID pid = parent->GetEntityID();
@@ -613,9 +564,9 @@ namespace Tetragrama::Panels
                     }
                 }
             }
-            if (pending_detach && pending_detach_handle.Valid())
+            if (pending_detach && pending_detach_h.Valid())
             {
-                Actor* a = eng->ActorManager->Access(pending_detach_handle);
+                Actor* a = eng->ActorManager->Access(pending_detach_h);
                 if (a)
                     a->RemoveComponent<ParentComponent>();
             }
@@ -638,7 +589,9 @@ namespace Tetragrama::Panels
                                 secure_strncpy(nc_new.Value + nl, sizeof(nc_new.Value) - nl, " Copy", 5);
                         }
                         else
+                        {
                             secure_strncpy(nc_new.Value, sizeof(nc_new.Value), "Actor Copy", 10);
+                        }
                         da->AddComponent<NameComponent>(nc_new);
                         auto* tc = src->GetComponent<TransformComponent>();
                         da->AddComponent<TransformComponent>(tc ? *tc : TransformComponent{});
@@ -649,7 +602,6 @@ namespace Tetragrama::Panels
             if (pending_delete.Valid())
                 DeleteActor(pending_delete);
 
-            // Add actor (toolbar + button)
             if (do_add)
             {
                 ActorHandle nh = eng->ActorManager->Create();
@@ -685,7 +637,6 @@ namespace Tetragrama::Panels
         }
 
     private:
-        // Case-insensitive substring search (same as ConsolePanel)
         static bool ContainsCI(const char* haystack, const char* needle)
         {
             if (!needle[0])
