@@ -273,10 +273,14 @@ namespace Tetragrama::Panels
 
                 // VS Code chevron disclosure (ZUI_DrawTriArrow, UserData 2=∨ 3=›)
                 {
-                    ZUIBox* arr  = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawTriArrow | ZUI_Clickable);
-                    arr->Size[0] = ZPx(fh);
-                    arr->Size[1] = ZPx(fh);
-                    auto* ps     = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
+                    ZUIBox* arr       = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawTriArrow | ZUI_Clickable);
+                    arr->Size[0]      = ZPx(fh);
+                    arr->Size[1]      = ZPx(fh);
+                    arr->TextColor[0] = kDim[0];
+                    arr->TextColor[1] = kDim[1];
+                    arr->TextColor[2] = kDim[2];
+                    arr->TextColor[3] = kDim[3];
+                    auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
                     if (ps)
                         ps->UserData = m_root_open ? 2.f : 3.f;
                     ZUISignal asig = ZUISignalFromBox(ctx, arr);
@@ -286,9 +290,15 @@ namespace Tetragrama::Panels
                 }
                 // World icon
                 {
-                    ZUIBox* icon  = ZUIPushBox(ctx, "W##ti_root", 10, ZUI_DrawBackground);
-                    icon->Size[0] = ZPx(14.f);
-                    icon->Size[1] = ZPx(14.f);
+                    ZUIBox* icon       = ZUIPushBox(ctx, "W##ti_root", 10, ZUI_DrawBackground | ZUI_DrawText);
+                    icon->Size[0]      = ZPx(14.f);
+                    icon->Size[1]      = ZPx(14.f);
+                    icon->Label        = ZUIPushStr(&ctx->FrameArena, "W", 1);
+                    icon->TextAlign    = ZUITextAlign::Center;
+                    icon->TextColor[0] = 1.f;
+                    icon->TextColor[1] = 1.f;
+                    icon->TextColor[2] = 1.f;
+                    icon->TextColor[3] = 1.f;
                     ZUIBoxSetColorArr(icon, kWorldIcon);
                     ZUIBoxSetCornerRadius(icon, 2.f);
                     ZUIPopBox(ctx);
@@ -402,10 +412,14 @@ namespace Tetragrama::Panels
                     {
                         char arr_key[64];
                         snprintf(arr_key, sizeof(arr_key), "##arr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        ZUIBox* arr  = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
-                        arr->Size[0] = ZPx(fh);
-                        arr->Size[1] = ZPx(fh);
-                        auto* ps     = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
+                        ZUIBox* arr       = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
+                        arr->Size[0]      = ZPx(fh);
+                        arr->Size[1]      = ZPx(fh);
+                        arr->TextColor[0] = kDim[0];
+                        arr->TextColor[1] = kDim[1];
+                        arr->TextColor[2] = kDim[2];
+                        arr->TextColor[3] = kDim[3];
+                        auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
                         if (ps)
                             ps->UserData = is_open ? 2.f : 3.f; // ∨ / ›
                         ZUISignal asig = ZUISignalFromBox(ctx, arr);
@@ -418,13 +432,20 @@ namespace Tetragrama::Panels
                         ZUISpacer(ctx, fh);
                     }
 
-                    // Type icon (14×14 colored square)
+                    // Type icon (14×14 colored square with centered letter)
                     {
                         char ik[32];
                         snprintf(ik, sizeof(ik), "%c##ti_%u_%u", type_char, nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        ZUIBox* icon  = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawBackground);
-                        icon->Size[0] = ZPx(14.f);
-                        icon->Size[1] = ZPx(14.f);
+                        ZUIBox* icon       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawBackground | ZUI_DrawText);
+                        icon->Size[0]      = ZPx(14.f);
+                        icon->Size[1]      = ZPx(14.f);
+                        char lch[2]        = {type_char, '\0'};
+                        icon->Label        = ZUIPushStr(&ctx->FrameArena, lch, 1);
+                        icon->TextAlign    = ZUITextAlign::Center;
+                        icon->TextColor[0] = 1.f;
+                        icon->TextColor[1] = 1.f;
+                        icon->TextColor[2] = 1.f;
+                        icon->TextColor[3] = 1.f;
                         ZUIBoxSetColorArr(icon, type_col);
                         ZUIBoxSetCornerRadius(icon, 2.f);
                         ZUIPopBox(ctx);
