@@ -293,7 +293,8 @@ namespace Tetragrama::Panels
                     const float* hcol  = col_tgt ? hi : nullptr;
                     ZUISignal    sig   = ZUICollapsingHeader(ctx, kLabels[s], &m_open[di], hcol);
 
-                    // Drag detection via signal: accumulate DragDelta until threshold
+                    // Drag detection via signal — suppressed naturally when the divider hit zone
+                    // owns ctx->ActiveKey, since ZUI_SignalHeld requires ActiveKey == header->Key.
                     if (!m_drag_active && (sig.Flags & ZUI_SignalHeld))
                     {
                         m_drag_acc_y += sig.DragDelta[1];

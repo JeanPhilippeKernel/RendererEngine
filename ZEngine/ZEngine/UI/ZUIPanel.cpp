@@ -1230,9 +1230,13 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::BuildDividers(ZUIContext* ctx)
     {
+        // Signal-based resize — mirrors ZUIPaneSash and ImGui/RAD input-ownership model.
+        // The hit zone box is ZUI_Clickable so it sets ctx->HotKey / ctx->ActiveKey on press.
+        // ZUISignalFromBox drives start/stop/delta — no manual cursor-position checks needed.
+        // Any widget under the hit zone (e.g. Inspector section headers) receives
+        // ZUI_SignalHeld = false when this box owns ActiveKey, eliminating false drags.
         if (!DockTree)
             return;
-        float mx = ctx->MousePos[0], my = ctx->MousePos[1];
 
         for (uint32_t di = 0; di < m_split_divider_count; ++di)
         {
@@ -1242,6 +1246,8 @@ namespace ZEngine::UI
             ZUIDockNode* child1     = snode->First;
             bool         horizontal = (snode->SplitAxis == ZUIAxis::Y);
             float        grab_half  = ctx->Style.DockingGrabWidth * 0.5f;
+
+            // Divider screen rect (full span of the split)
             float        dx0, dy0, dx1, dy1;
             if (!horizontal)
             {
@@ -1260,74 +1266,70 @@ namespace ZEngine::UI
                 dy1      = ey + grab_half;
             }
 
-            bool  in_rect  = (mx >= dx0 && mx <= dx1 && my >= dy0 && my <= dy1);
+            // Hit zone — centered band of DockingHoverBandWidth, covers full perpendicular span
+            ZUISignal   ha_sig = {};
+            const float band_w = ctx->Style.DockingHoverBandWidth;
+            if (band_w > 0.f)
+            {
+                float bx0, by0, bx1, by1;
+                if (!horizontal)
+                {
+                    float cx = (dx0 + dx1) * 0.5f;
+                    bx0      = cx - band_w * 0.5f;
+                    by0      = dy0;
+                    bx1      = cx + band_w * 0.5f;
+                    by1      = dy1;
+                }
+                else
+                {
+                    float cy = (dy0 + dy1) * 0.5f;
+                    bx0      = dx0;
+                    by0      = cy - band_w * 0.5f;
+                    bx1      = dx1;
+                    by1      = cy + band_w * 0.5f;
+                }
+                char hk[32];
+                snprintf(hk, sizeof(hk), "##sdivh_%u", di);
+                ZUIBox* ha       = ZUIPushBox(ctx, hk, (uint32_t) strlen(hk), ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                ha->Size[0]      = ZPx(bx1 - bx0);
+                ha->Size[1]      = ZPx(by1 - by0);
+                ha->FloatPos[0]  = bx0;
+                ha->FloatPos[1]  = by0;
+                ha->EdgeSoftness = 0.f;
+                ZUIBoxSetColor(ha, 0.f, 0.f, 0.f, 0.f); // transparent; tinted below after signal
+                ha_sig = ZUISignalFromBox(ctx, ha);
+                ZUIPopBox(ctx);
+            }
+
+            // Signal-based drag — identical pattern to ZUIPaneSash
             bool& dragging = m_split_dividers[di].Dragging;
-            if (ctx->MousePressed[0] && in_rect)
+            if (ha_sig.Flags & ZUI_SignalPressed)
                 dragging = true;
             if (ctx->MouseReleased[0] && dragging)
             {
                 dragging    = false;
                 LayoutDirty = true;
             }
-            else if (ctx->MouseReleased[0])
-                dragging = false;
 
-            if (dragging && ctx->MouseDown[0])
+            if (ha_sig.Flags & ZUI_SignalHeld)
             {
-                float delta = horizontal ? (ctx->MousePos[1] - ctx->PrevMousePos[1]) : (ctx->MousePos[0] - ctx->PrevMousePos[0]);
+                float delta = horizontal ? ha_sig.DragDelta[1] : ha_sig.DragDelta[0];
                 if (delta != 0.f)
                     ZUIDockResize(DockTree, child1, delta);
             }
 
-            if (in_rect || dragging)
+            bool active    = (ha_sig.Flags & (ZUI_SignalHovered | ZUI_SignalHeld)) || dragging;
+            bool highlight = active;
+            if (active)
                 ctx->ResizeCursor = horizontal ? 2 : 1;
 
-            bool  highlight = in_rect || dragging;
-            float lw        = highlight ? ctx->Style.DockingSeparatorSize : ctx->Style.DockingSeparatorSizeRest;
-            float vc[4]     = {ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], highlight ? 1.f : 0.35f};
-            // Rest-state color from theme
+            float lw    = highlight ? ctx->Style.DockingSeparatorSize : ctx->Style.DockingSeparatorSizeRest;
+            float vc[4] = {ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], highlight ? 1.f : 0.35f};
             if (!highlight)
             {
                 vc[0] = ctx->Theme.Separator[0];
                 vc[1] = ctx->Theme.Separator[1];
                 vc[2] = ctx->Theme.Separator[2];
-            }
-
-            if (highlight)
-            {
-                // Tinted hover band centered on the divider line.
-                // ZUIStyle.DockingHoverBandWidth controls the width (default 6 px); set to 0 to disable.
-                const float band_w = ctx->Style.DockingHoverBandWidth;
-                if (band_w > 0.f)
-                {
-                    float bx0 = dx0, by0 = dy0, bx1 = dx1, by1 = dy1;
-                    if (!horizontal)
-                    {
-                        float cx = (dx0 + dx1) * 0.5f;
-                        bx0      = cx - band_w * 0.5f;
-                        by0      = dy0;
-                        bx1      = cx + band_w * 0.5f;
-                        by1      = dy1;
-                    }
-                    else
-                    {
-                        float cy = (dy0 + dy1) * 0.5f;
-                        bx0      = dx0;
-                        by0      = cy - band_w * 0.5f;
-                        bx1      = dx1;
-                        by1      = cy + band_w * 0.5f;
-                    }
-                    char hk[32];
-                    snprintf(hk, sizeof(hk), "##sdivh_%u", di);
-                    ZUIBox* ha      = ZUIPushBox(ctx, hk, (uint32_t) strlen(hk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                    ha->Size[0]     = ZPx(bx1 - bx0);
-                    ha->Size[1]     = ZPx(by1 - by0);
-                    ha->FloatPos[0] = bx0;
-                    ha->FloatPos[1] = by0;
-                    ZUIBoxSetColor(ha, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], dragging ? 0.35f : 0.18f);
-                    ha->EdgeSoftness = 0.f;
-                    ZUIPopBox(ctx);
-                }
             }
 
             char vk[32];
