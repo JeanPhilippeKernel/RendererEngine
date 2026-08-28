@@ -249,6 +249,7 @@ namespace Tetragrama::Panels
             {
                 ZUIDataTableNextRow(ctx, false);
                 ZUIDataTableSetColumn(ctx, 0);
+                ZUIBeginRow(ctx, "##tr0_root", ZFill(), ZFill()); // horizontal layout inside cell
 
                 // Disclosure chevron
                 {
@@ -284,6 +285,7 @@ namespace Tetragrama::Panels
                 ZUISpacer(ctx, 4.f);
                 const char* sname = (scene->Name && scene->Name[0]) ? scene->Name : "Scene";
                 ZUILabel(ctx, sname);
+                ZUIEndRow(ctx); // close horizontal layout
 
                 ZUIDataTableSetColumn(ctx, 1);
                 ZUILabel(ctx, "World", kDim);
@@ -379,8 +381,13 @@ namespace Tetragrama::Panels
                     bool      row_clicked = ZUIDataTableNextRow(ctx, selected);
                     ZUISignal row_sig     = ZUIDataTableRowSignal(ctx);
 
-                    // Col 0: tree content
+                    // Col 0: tree content — inner row for horizontal layout inside the cell column
                     ZUIDataTableSetColumn(ctx, 0);
+                    {
+                        char rk0[64];
+                        snprintf(rk0, sizeof(rk0), "##tr0_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBeginRow(ctx, rk0, ZFill(), ZFill());
+                    }
                     ZUISpacer(ctx, indent);
 
                     // VS Code chevron (∨/›) or leaf spacer
@@ -453,6 +460,7 @@ namespace Tetragrama::Panels
                     {
                         ZUILabel(ctx, label);
                     }
+                    ZUIEndRow(ctx); // close horizontal layout for col 0
 
                     // Col 1: type
                     ZUIDataTableSetColumn(ctx, 1);
