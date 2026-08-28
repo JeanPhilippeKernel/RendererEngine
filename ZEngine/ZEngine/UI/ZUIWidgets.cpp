@@ -1515,24 +1515,37 @@ namespace ZEngine::UI
 
     void ZUIPaneSash(ZUIContext* ctx, const char* key, float* heights, const bool* opens, int n, int boundary, float min_h)
     {
-        // 4 px clickable horizontal strip between sections.
-        // At rest:  dim separator line (Separator color).
-        // On hover: subtle teal tint + NS resize cursor.
-        // On drag:  greedy cascade applied to heights[].
-        ZUIBox* sash       = ZUIPushBox(ctx, key, (uint32_t) strlen(key), ZUI_DrawBackground | ZUI_Clickable);
+        // Hit zone: 4 px transparent clickable strip — wide enough to grab easily.
+        // Visual:   1 px line centered inside the hit zone, mirroring BuildDividers architecture.
+        // At rest:  Separator color.  On hover: teal tint + NS cursor.
+        ZUIBox* sash       = ZUIPushBox(ctx, key, (uint32_t) strlen(key), ZUI_Clickable);
         sash->Size[0]      = ZFill();
         sash->Size[1]      = ZPx(4.f);
         sash->EdgeSoftness = 0.f;
 
         bool hot           = (ctx->HotKey == sash->Key) || (ctx->ActiveKey == sash->Key);
         if (hot)
-        {
-            ZUIBoxSetColor(sash, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], ctx->ActiveKey == sash->Key ? 0.50f : 0.20f);
             ctx->ResizeCursor = 2; // NS cursor
-        }
-        else
+
+        // 1 px visual line centered vertically in the 4 px hit zone
         {
-            ZUIBoxSetColor(sash, ctx->Theme.Separator[0], ctx->Theme.Separator[1], ctx->Theme.Separator[2], 0.30f);
+            char vk[264];
+            snprintf(vk, sizeof(vk), "##sv_%s", key);
+            ZUIBox* vis       = ZUIPushBox(ctx, vk, (uint32_t) strlen(vk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+            vis->Size[0]      = ZFill();
+            vis->Size[1]      = ZPx(1.f);
+            vis->FloatPos[0]  = 0.f;
+            vis->FloatPos[1]  = 1.5f; // 1.5 px from sash top → centered in 4 px
+            vis->EdgeSoftness = 0.f;
+            if (hot)
+            {
+                ZUIBoxSetColor(vis, ctx->Theme.TabActiveBorder[0], ctx->Theme.TabActiveBorder[1], ctx->Theme.TabActiveBorder[2], ctx->ActiveKey == sash->Key ? 0.50f : 0.35f);
+            }
+            else
+            {
+                ZUIBoxSetColor(vis, ctx->Theme.Separator[0], ctx->Theme.Separator[1], ctx->Theme.Separator[2], ctx->Theme.Separator[3]);
+            }
+            ZUIPopBox(ctx);
         }
 
         ZUISignal sig = ZUISignalFromBox(ctx, sash);
