@@ -143,14 +143,16 @@ namespace ZEngine::UI
     /// @note Call immediately after the relevant ZUISignalFromBox call.
     void        ZUISetTooltip(ZUIContext* ctx, const ZUISignal& sig, const char* text);
 
-    /// @brief Full-width collapsible section header — click to toggle, no drag.
+    /// @brief Full-width collapsible section header — behaves as a mini-panel in a vertical stack.
     ///
-    /// VS Code-style: header is click-only (pointer cursor). Resize is handled
-    /// by a separate ZUIPaneSash placed between adjacent sections.
+    /// Click toggles open/close internally (no close button). The returned ZUISignal exposes
+    /// the full interaction state so the owning stack can detect drag for section reorder:
+    ///   ZUI_SignalClicked → toggle already applied to *open
+    ///   ZUI_SignalHeld    → header held; DragDelta[1] available for threshold accumulation
     ///
-    /// @param bg_color Optional RGBA background; nullptr = transparent.
-    /// @return Current open state.
-    bool        ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color = nullptr);
+    /// @param bg_color Optional RGBA background override; nullptr = transparent.
+    /// @return Interaction signal from the header box.
+    ZUISignal   ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color = nullptr);
 
     /// @brief 4 px horizontal drag sash between two adjacent collapsible sections.
     ///
@@ -168,6 +170,27 @@ namespace ZEngine::UI
     /// @param boundary  Index of the section ABOVE this sash (sash sits after section[boundary]).
     /// @param min_h     Minimum content height per section (default 30 px).
     void        ZUIPaneSash(ZUIContext* ctx, const char* key, float* heights, const bool* opens, int n, int boundary, float min_h = 30.f);
+
+    // ── Shared drag / drop-zone helpers (used by panel docking and section stack) ──────
+
+    /// @brief Teal drop-zone fill with border — matches panel docking `DockingDropPreviewAlpha`.
+    ///
+    /// Rendered as ZUI_FloatX | ZUI_FloatY; @p float_x / @p float_y are relative to the
+    /// current parent box (##pm_bg → absolute screen coords; panel content → panel-relative).
+    void        ZUIDropZoneFill(ZUIContext* ctx, const char* key, float float_x, float float_y, float w, float h);
+
+    /// @brief 2px solid teal horizontal divider rendered in flow.
+    /// Marks the exact insertion boundary between sections or panels.
+    void        ZUIDockDividerH(ZUIContext* ctx, const char* key);
+
+    /// @brief Full drag ghost: drop-shadow + content-body stub + labeled header row.
+    ///
+    /// @p cursor_x / @p cursor_y are in the current parent's coordinate space.
+    /// The ghost is offset so the cursor sits at ~30 % of the ghost width horizontally
+    /// and is vertically centered on cursor_y.
+    void        ZUIDockGhostHeader(ZUIContext* ctx, const char* key, const char* label, float cursor_x, float cursor_y);
+
+    // ──────────────────────────────────────────────────────────────────────────────────
 
     /// @brief Full-width selectable row.
     /// @param selected Toggled in-place on click.

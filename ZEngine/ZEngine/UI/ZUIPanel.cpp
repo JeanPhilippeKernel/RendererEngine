@@ -395,62 +395,7 @@ namespace ZEngine::UI
                     title = sp->Views[Drag.SrcTabIdx]->Title;
                 }
 
-                float gh          = ZUIGetFrameHeight(ctx);
-                float ghost_cnt_h = ctx->Style.TabGhostContentH;
-                float text_w      = 80.f; // fallback
-                if (ctx->GetFont(ZUIFontSize::Body) && title)
-                {
-                    float ts[2] = {0.f, 0.f};
-                    ZUIMeasureText(ctx->GetFont(ZUIFontSize::Body), title, (uint32_t) strlen(title), ts);
-                    text_w = ts[0];
-                }
-                float gw = fmaxf(text_w + ZUIGetFramePadX(ctx) * 4.f, 120.f);
-
-                // Drop shadow — pushed first so it renders behind the ghost boxes
-                {
-                    float   sx0       = Drag.GhostX - gw * 0.3f + ctx->Style.DropShadowOffset;
-                    float   sy0       = Drag.GhostY - gh * 0.5f + ctx->Style.DropShadowOffset;
-                    ZUIBox* shad      = ZUIPushBox(ctx, "##dg_shad", 8, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                    shad->Size[0]     = ZPx(gw);
-                    shad->Size[1]     = ZPx(gh + ghost_cnt_h);
-                    shad->FloatPos[0] = sx0;
-                    shad->FloatPos[1] = sy0;
-                    ZUIBoxSetColor(shad, 0.f, 0.f, 0.f, ctx->Style.DropShadowAlpha);
-                    shad->EdgeSoftness = 4.f;
-                    ZUIPopBox(ctx);
-                }
-
-                // Content box first (lower z-order):
-                ZUIBox* cnt      = ZUIPushBox(ctx, "##dg_cnt", 7, ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
-                cnt->Size[0]     = ZPx(gw);
-                cnt->Size[1]     = ZPx(ghost_cnt_h);
-                cnt->FloatPos[0] = Drag.GhostX - gw * 0.3f;
-                cnt->FloatPos[1] = Drag.GhostY - gh * 0.5f + gh;
-                ZUIBoxSetColorArr(cnt, ctx->Theme.PanelBg);
-                cnt->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
-                cnt->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
-                cnt->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                cnt->BorderColor[3]  = 0.70f;
-                cnt->BorderThickness = 1.f;
-                cnt->EdgeSoftness    = 0.f;
-                ZUIPopBox(ctx);
-
-                // Tab bar row (on top):
-                ZUIBox* ghost      = ZUIBeginRow(ctx, "##drag_ghost", ZPx(gw), ZPx(gh));
-                ghost->Flags       = ghost->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
-                ghost->FloatPos[0] = Drag.GhostX - gw * 0.3f;
-                ghost->FloatPos[1] = Drag.GhostY - gh * 0.5f;
-                ZUIBoxSetColorArr(ghost, ctx->Theme.TitleBgActive);
-                ZUIBoxSetTopRadius(ghost, ctx->Style.TabRounding);
-                ghost->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
-                ghost->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
-                ghost->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                ghost->BorderColor[3]  = 0.90f;
-                ghost->BorderThickness = 1.f;
-                ghost->EdgeSoftness    = 0.f;
-                ZUISpacer(ctx, ZUIGetFramePadX(ctx));
-                ZUILabel(ctx, title, ctx->Theme.TextDefault);
-                ZUIEndRow(ctx);
+                ZUIDockGhostHeader(ctx, "##drag_ghost", title, Drag.GhostX, Drag.GhostY);
             }
         }
 
@@ -1261,22 +1206,9 @@ namespace ZEngine::UI
                 default:
                     break;
             }
-            const float* ac = ctx->Theme.TabActiveBorder;
-            char         pk[40];
+            char pk[40];
             snprintf(pk, sizeof(pk), "##dz_prev_%llx", (unsigned long long) p->DockKey);
-            ZUIBox* prev      = ZUIPushBox(ctx, pk, (uint32_t) strlen(pk), ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
-            prev->Size[0]     = ZPx(px1 - px0);
-            prev->Size[1]     = ZPx(py1 - py0);
-            prev->FloatPos[0] = px0;
-            prev->FloatPos[1] = py0;
-            ZUIBoxSetColor(prev, ac[0], ac[1], ac[2], ctx->Style.DockingDropPreviewAlpha);
-            prev->BorderColor[0]  = ac[0];
-            prev->BorderColor[1]  = ac[1];
-            prev->BorderColor[2]  = ac[2];
-            prev->BorderColor[3]  = 0.80f;
-            prev->BorderThickness = 2.f;
-            prev->EdgeSoftness    = 0.f;
-            ZUIPopBox(ctx);
+            ZUIDropZoneFill(ctx, pk, px0, py0, px1 - px0, py1 - py0);
         }
 
         Drag.DropZone = zone;

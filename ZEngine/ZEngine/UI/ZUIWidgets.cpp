@@ -1405,7 +1405,7 @@ namespace ZEngine::UI
         ctx->Current = saved;
     }
 
-    bool ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color)
+    ZUISignal ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color)
     {
         char key[256];
         snprintf(key, sizeof(key), "##ch_%s", label);
@@ -1461,7 +1461,7 @@ namespace ZEngine::UI
             if (open)
                 *open = !(*open);
         }
-        return open ? *open : false;
+        return sig;
     }
 
     // Greedy cascade for ZUIPaneSash.
@@ -1553,6 +1553,102 @@ namespace ZEngine::UI
 
         if ((sig.Flags & ZUI_SignalHeld) && fabsf(sig.DragDelta[1]) > 0.05f)
             PaneSashResize(heights, opens, n, boundary, sig.DragDelta[1], min_h);
+    }
+
+    void ZUIDropZoneFill(ZUIContext* ctx, const char* key, float float_x, float float_y, float w, float h)
+    {
+        const float* ac    = ctx->Theme.TabActiveBorder;
+        ZUIBox*      prev  = ZUIPushBox(ctx, key, (uint32_t) strlen(key), ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
+        prev->Size[0]      = ZPx(w);
+        prev->Size[1]      = ZPx(h);
+        prev->FloatPos[0]  = float_x;
+        prev->FloatPos[1]  = float_y;
+        prev->EdgeSoftness = 0.f;
+        ZUIBoxSetColor(prev, ac[0], ac[1], ac[2], ctx->Style.DockingDropPreviewAlpha);
+        prev->BorderColor[0]  = ac[0];
+        prev->BorderColor[1]  = ac[1];
+        prev->BorderColor[2]  = ac[2];
+        prev->BorderColor[3]  = 0.80f;
+        prev->BorderThickness = 2.f;
+        ZUIPopBox(ctx);
+    }
+
+    void ZUIDockDividerH(ZUIContext* ctx, const char* key)
+    {
+        const float* ac = ctx->Theme.TabActiveBorder;
+        ZUIBox*      d  = ZUIPushBox(ctx, key, (uint32_t) strlen(key), ZUI_DrawBackground);
+        d->Size[0]      = ZFill();
+        d->Size[1]      = ZPx(2.f);
+        d->EdgeSoftness = 0.f;
+        ZUIBoxSetColor(d, ac[0], ac[1], ac[2], 1.f);
+        ZUIPopBox(ctx);
+    }
+
+    void ZUIDockGhostHeader(ZUIContext* ctx, const char* key, const char* label, float cursor_x, float cursor_y)
+    {
+        float gh     = ZUIGetFrameHeight(ctx);
+        float cnt_h  = ctx->Style.TabGhostContentH;
+
+        float text_w = 80.f;
+        if (ctx->GetFont(ZUIFontSize::Body) && label)
+        {
+            float ts[2] = {0.f, 0.f};
+            ZUIMeasureText(ctx->GetFont(ZUIFontSize::Body), label, (uint32_t) strlen(label), ts);
+            text_w = ts[0];
+        }
+        float        gw  = fmaxf(text_w + ZUIGetFramePadX(ctx) * 4.f, 120.f);
+        float        px  = cursor_x - gw * 0.3f;
+        float        py  = cursor_y - gh * 0.5f;
+        const float* ac  = ctx->Theme.TabActiveBorder;
+        float        off = ctx->Style.DropShadowOffset;
+
+        // Drop shadow
+        char         sk[272];
+        snprintf(sk, sizeof(sk), "##%s_s", key);
+        ZUIBox* shad       = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+        shad->Size[0]      = ZPx(gw);
+        shad->Size[1]      = ZPx(gh + cnt_h);
+        shad->FloatPos[0]  = px + off;
+        shad->FloatPos[1]  = py + off;
+        shad->EdgeSoftness = 4.f;
+        ZUIBoxSetColor(shad, 0.f, 0.f, 0.f, ctx->Style.DropShadowAlpha);
+        ZUIPopBox(ctx);
+
+        // Content body stub
+        char ck[272];
+        snprintf(ck, sizeof(ck), "##%s_c", key);
+        ZUIBox* cnt       = ZUIPushBox(ctx, ck, (uint32_t) strlen(ck), ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
+        cnt->Size[0]      = ZPx(gw);
+        cnt->Size[1]      = ZPx(cnt_h);
+        cnt->FloatPos[0]  = px;
+        cnt->FloatPos[1]  = py + gh;
+        cnt->EdgeSoftness = 0.f;
+        ZUIBoxSetColorArr(cnt, ctx->Theme.PanelBg);
+        cnt->BorderColor[0]  = ac[0];
+        cnt->BorderColor[1]  = ac[1];
+        cnt->BorderColor[2]  = ac[2];
+        cnt->BorderColor[3]  = 0.70f;
+        cnt->BorderThickness = 1.f;
+        ZUIPopBox(ctx);
+
+        // Header row
+        char hk[272];
+        snprintf(hk, sizeof(hk), "##%s_h", key);
+        ZUIBox* ghost       = ZUIBeginRow(ctx, hk, ZPx(gw), ZPx(gh));
+        ghost->Flags        = ghost->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
+        ghost->FloatPos[0]  = px;
+        ghost->FloatPos[1]  = py;
+        ghost->EdgeSoftness = 0.f;
+        ZUIBoxSetColorArr(ghost, ctx->Theme.TitleBgActive);
+        ZUIBoxSetTopRadius(ghost, ctx->Style.TabRounding);
+        ghost->BorderColor[0]  = ac[0];
+        ghost->BorderColor[1]  = ac[1];
+        ghost->BorderColor[2]  = ac[2];
+        ghost->BorderColor[3]  = 0.90f;
+        ghost->BorderThickness = 1.f;
+        ZUISpacer(ctx, ZUIGetFramePadX(ctx));
+        ZUILabel(ctx, label, ctx->Theme.TextDefault);
+        ZUIEndRow(ctx);
     }
 
     bool ZUISelectable(ZUIContext* ctx, const char* label, bool* selected, ZUISize h)
