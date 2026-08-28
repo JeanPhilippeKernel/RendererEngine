@@ -2114,19 +2114,25 @@ namespace ZEngine::UI
         }
         ZUIEndRow(ctx);
 
-        // Close submenu when cursor leaves the row, popup, and the movement-toward-submenu
-        // triangle (apex = previous mouse pos, base = left edge of submenu with ±8 px padding).
-        // This prevents accidental close while the user is moving diagonally toward the submenu.
+        // Close submenu when cursor leaves both the row and the popup.
+        // Triangle heuristic (ImGui style): if the cursor is moving toward the submenu
+        // popup (apex = prev cursor, base = left edge of popup ±8px), suppress the close.
+        // Guard: skip entirely on the first frame the popup is open (ScreenMaxX == 0)
+        // because the layout pass hasn't positioned the popup yet — coordinates are invalid
+        // and both the rect and triangle checks would incorrectly fire the close.
         if (is_open)
         {
-            auto cursor_in = [&](uint64_t key) -> bool {
-                ZUIPersistentState* s = ZUIStateGetOrInsert(&ctx->StateStore, key);
-                return s && s->ScreenMaxX > s->ScreenMinX && ctx->MousePos[0] >= s->ScreenMinX && ctx->MousePos[0] <= s->ScreenMaxX && ctx->MousePos[1] >= s->ScreenMinY && ctx->MousePos[1] <= s->ScreenMaxY;
-            };
             ZUIPersistentState* sub_ps = ZUIStateGetOrInsert(&ctx->StateStore, popup_hash);
-            bool                in_tri = sub_ps && MenuTriangleContains(ctx->PrevMousePos[0], ctx->PrevMousePos[1], sub_ps->ScreenMinX, sub_ps->ScreenMinY - 8.f, sub_ps->ScreenMinX, sub_ps->ScreenMaxY + 8.f, ctx->MousePos[0], ctx->MousePos[1]);
-            if (!cursor_in(row->Key) && !cursor_in(popup_hash) && !in_tri)
-                ctx->PopupStackSize = ctx->PopupBuildDepth; // pop Panels and anything deeper
+            if (sub_ps && sub_ps->ScreenMaxX > 0.f) // popup has been laid out at least once
+            {
+                auto cursor_in = [&](uint64_t key) -> bool {
+                    ZUIPersistentState* s = ZUIStateGetOrInsert(&ctx->StateStore, key);
+                    return s && s->ScreenMaxX > s->ScreenMinX && ctx->MousePos[0] >= s->ScreenMinX && ctx->MousePos[0] <= s->ScreenMaxX && ctx->MousePos[1] >= s->ScreenMinY && ctx->MousePos[1] <= s->ScreenMaxY;
+                };
+                bool in_tri = MenuTriangleContains(ctx->PrevMousePos[0], ctx->PrevMousePos[1], sub_ps->ScreenMinX, sub_ps->ScreenMinY - 8.f, sub_ps->ScreenMinX, sub_ps->ScreenMaxY + 8.f, ctx->MousePos[0], ctx->MousePos[1]);
+                if (!cursor_in(row->Key) && !cursor_in(popup_hash) && !in_tri)
+                    ctx->PopupStackSize = ctx->PopupBuildDepth;
+            }
         }
 
         // Open submenu popup on hover — to the right of the parent popup.
