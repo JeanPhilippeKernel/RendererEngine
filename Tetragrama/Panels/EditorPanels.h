@@ -744,21 +744,14 @@ namespace Tetragrama::Panels
             ZUISearchBox(ctx, "##con_search", m_search, sizeof(m_search), "Search Log...", ZPx(fmaxf(pw * 0.50f, 120.f)));
             ZUISpacer(ctx, 8.f);
 
-            // "Filters" button — label shows active level when not All
-            char flt_label[32];
-            if (m_filter_level == 0)
-                snprintf(flt_label, sizeof(flt_label), "Filters v");
-            else
-                snprintf(flt_label, sizeof(flt_label), "Filters: %s v", kLevels[m_filter_level]);
-            ZUISignal flt_sig = ZUIButton(ctx, flt_label);
-            if (flt_sig.Flags & ZUI_SignalClicked)
-                ZUIOpenPopup(ctx, "##con_flt");
-            if (ZUIBeginPopup(ctx, "##con_flt"))
+            // Filters dropdown — shows "Filters" when All, level name when filtered
+            const char* flt_preview = (m_filter_level == 0) ? "Filters" : kLevels[m_filter_level];
+            if (ZUIBeginCombo(ctx, "##con_flt", flt_preview, ZPx(100.f)))
             {
                 for (int i = 0; i < 6; ++i)
-                    if (ZUIMenuItemEx(ctx, kLevels[i], nullptr, m_filter_level == i))
+                    if (ZUIComboItem(ctx, kLevels[i], m_filter_level == i))
                         m_filter_level = i;
-                ZUIEndPopup(ctx);
+                ZUIEndCombo(ctx);
             }
 
             ZUISpacer(ctx, 8.f);
