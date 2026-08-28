@@ -260,6 +260,9 @@ namespace ZEngine::UI
     /// @brief Menu item inside a popup — returns true on click (also closes the popup).
     bool        ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
 
+    /// @brief Extended menu item — checkmark, keyboard shortcut, enabled flag.
+    bool        ZUIMenuItemEx(ZUIContext* ctx, const char* label, const char* shortcut = nullptr, bool selected = false, bool enabled = true);
+
     /// @brief Selectable item inside a ZUIBeginCombo popup.
     /// @param selected true tints the item with RowSelectedBg.
     /// @return true when clicked; also closes the combo.

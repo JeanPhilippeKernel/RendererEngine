@@ -115,6 +115,11 @@ namespace ZEngine::UI
                 ctx->PopupNavIdx = (ctx->PopupNavIdx + 1) % count;
             if (ctx->ArrowUpPressed)
                 ctx->PopupNavIdx = (ctx->PopupNavIdx <= 0) ? (count - 1) : (ctx->PopupNavIdx - 1);
+            if (ctx->ArrowLeftPressed && ctx->PopupStackSize > 1)
+            {
+                ctx->PopupStackSize--; // close innermost submenu
+                ctx->PopupNavIdx = -1;
+            }
             if (ctx->EscapePressed || ctx->TabPressed || ctx->ShiftTabPressed)
             {
                 ctx->PopupStackSize = 0; // close all popups on escape

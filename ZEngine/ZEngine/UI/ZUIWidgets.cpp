@@ -714,6 +714,109 @@ namespace ZEngine::UI
         return false;
     }
 
+    bool ZUIMenuItemEx(ZUIContext* ctx, const char* label, const char* shortcut, bool selected, bool enabled)
+    {
+        char box_key[128];
+        snprintf(box_key, sizeof(box_key), "##miex_%s", label);
+
+        ZUIBox* box = ZUIBeginRow(ctx, box_key, ZFill(), ZPx(ZUIGetFrameHeight(ctx)));
+        box->Flags  = ZUIBoxFlags((box->Flags & ~ZUI_DrawText) | ZUI_DrawBackground);
+        if (enabled)
+            box->Flags = box->Flags | ZUI_Clickable;
+        box->EdgeSoftness = 0.f;
+
+        bool kb_focus     = enabled && (ctx->PopupNavIdx >= 0 && ctx->PopupBuildIdx == ctx->PopupNavIdx);
+        if (kb_focus)
+            ZUIBoxSetColorArr(box, ctx->Theme.RowHoverBg);
+        else
+            ZUIBoxSetColor(box, 0.f, 0.f, 0.f, 0.f);
+
+        if (enabled)
+            ctx->PopupBuildIdx++;
+
+        // 1. Checkmark slot — fixed width = FontSize, always present for column alignment
+        {
+            char ck[128];
+            snprintf(ck, sizeof(ck), "##miex_ck_%s", label);
+            ZUIBox* chk  = ZUIPushBox(ctx, ck, (uint32_t) strlen(ck), selected ? ZUI_DrawText : ZUI_None);
+            chk->Size[0] = ZPx(ctx->Style.FontSize);
+            chk->Size[1] = ZFill();
+            if (selected)
+            {
+                chk->Label = ZUIPushStr(&ctx->FrameArena, "\xe2\x9c\x93", 3); // UTF-8 checkmark
+                SetTextColor(chk, ctx->Theme.CheckMark);
+            }
+            ZUIPopBox(ctx);
+        }
+
+        // 2. Left spacer
+        ZUISpacer(ctx, ZUIGetFramePadX(ctx));
+
+        // 3. Label — ZFill
+        {
+            char lk[128];
+            snprintf(lk, sizeof(lk), "##miex_lbl_%s", label);
+            ZUIBox* lbl  = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawText);
+            lbl->Size[0] = ZFill();
+            lbl->Size[1] = ZFill();
+            lbl->Label   = ZUIPushStr(&ctx->FrameArena, label, (uint32_t) strlen(label));
+            SetTextColor(lbl, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+            ZUIPopBox(ctx);
+        }
+
+        // 4. Fill spacer — pushes shortcut to the right
+        {
+            char fk[128];
+            snprintf(fk, sizeof(fk), "##miex_fill_%s", label);
+            ZUIBox* fill  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+            fill->Size[0] = ZFill();
+            fill->Size[1] = ZFill();
+            ZUIPopBox(ctx);
+        }
+
+        // 5. Shortcut text (optional)
+        if (shortcut && shortcut[0])
+        {
+            char sk[128];
+            snprintf(sk, sizeof(sk), "##miex_sc_%s", label);
+            ZUIBox* sc  = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk), ZUI_DrawText);
+            sc->Size[0] = ZText();
+            sc->Size[1] = ZFill();
+            sc->Label   = ZUIPushStr(&ctx->FrameArena, shortcut, (uint32_t) strlen(shortcut));
+            SetTextColor(sc, ctx->Theme.TextDim);
+            ZUIPopBox(ctx);
+            ZUISpacer(ctx, ZUIGetFramePadX(ctx) * 2.f);
+        }
+
+        // 6. Right padding
+        ZUISpacer(ctx, ZUIGetFramePadX(ctx));
+
+        ZUISignal sig = ZUISignalFromBox(ctx, box);
+
+        if (enabled && !kb_focus)
+        {
+            bool is_hot    = (ctx->HotKey == box->Key);
+            bool is_active = (ctx->ActiveKey == box->Key);
+            if (is_active)
+                ZUIBoxSetColorArr(box, ctx->Theme.HeaderActiveBg);
+            else if (is_hot)
+                ZUIBoxSetColorArr(box, ctx->Theme.HeaderHoveredBg);
+        }
+        ZUIEndRow(ctx);
+
+        // Drag-selection: mouse pressed elsewhere in popup, released over this item
+        bool drag_release = ctx->MouseReleased[0] && ctx->HotKey == box->Key && ctx->ActiveKey != 0 && ctx->ActiveKey != box->Key;
+
+        bool activated    = (enabled && (sig.Flags & ZUI_SignalClicked)) || drag_release || (kb_focus && (ctx->EnterPressed || ctx->SpacePressed));
+        if (activated)
+        {
+            ZUIClosePopup(ctx);
+            ctx->PopupNavIdx = -1;
+            return true;
+        }
+        return false;
+    }
+
     bool ZUIComboItem(ZUIContext* ctx, const char* label, bool selected)
     {
         uint32_t len    = (uint32_t) strlen(label);
@@ -1917,6 +2020,8 @@ namespace ZEngine::UI
         bool                any_menu_open = (ctx->PopupStackSize > 0 && !is_open);
         if (enabled && ((sig.Flags & ZUI_SignalClicked) || (any_menu_open && cursor_over)))
         {
+            if (any_menu_open)
+                ctx->PopupStackSize = 0; // close current menu so new one opens cleanly next frame
             // ImGui: menu popup opens at button's LEFT EDGE, BOTTOM of the menu bar.
             float px = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : ctx->MousePos[0];
             float py = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : (ctx->MousePos[1] + 26.f);
@@ -1928,6 +2033,20 @@ namespace ZEngine::UI
     void ZUIEndMenu(ZUIContext* ctx)
     {
         ZUIEndPopup(ctx);
+    }
+
+    // Returns true when point (px, py) lies inside the triangle defined by apex A and
+    // base vertices B1/B2.  Used to give the mouse a grace period while moving toward
+    // an open submenu popup (ImGui triangle-heuristic).
+    static bool MenuTriangleContains(float ax, float ay, float b1x, float b1y, float b2x, float b2y, float px, float py)
+    {
+        auto  cross   = [](float x1, float y1, float x2, float y2, float qx, float qy) -> float { return (qx - x1) * (y2 - y1) - (qy - y1) * (x2 - x1); };
+        float d1      = cross(ax, ay, b1x, b1y, px, py);
+        float d2      = cross(b1x, b1y, b2x, b2y, px, py);
+        float d3      = cross(b2x, b2y, ax, ay, px, py);
+        bool  has_neg = (d1 < 0.f) || (d2 < 0.f) || (d3 < 0.f);
+        bool  has_pos = (d1 > 0.f) || (d2 > 0.f) || (d3 > 0.f);
+        return !(has_neg && has_pos);
     }
 
     bool ZUIBeginSubMenu(ZUIContext* ctx, const char* label, bool enabled)
@@ -1995,15 +2114,18 @@ namespace ZEngine::UI
         }
         ZUIEndRow(ctx);
 
-        // Close submenu when cursor leaves both the row and the popup — standard menu UX.
-        // Uses prev-frame ScreenRect (persistent state) since boxes are rebuilt each frame.
+        // Close submenu when cursor leaves the row, popup, and the movement-toward-submenu
+        // triangle (apex = previous mouse pos, base = left edge of submenu with ±8 px padding).
+        // This prevents accidental close while the user is moving diagonally toward the submenu.
         if (is_open)
         {
             auto cursor_in = [&](uint64_t key) -> bool {
                 ZUIPersistentState* s = ZUIStateGetOrInsert(&ctx->StateStore, key);
                 return s && s->ScreenMaxX > s->ScreenMinX && ctx->MousePos[0] >= s->ScreenMinX && ctx->MousePos[0] <= s->ScreenMaxX && ctx->MousePos[1] >= s->ScreenMinY && ctx->MousePos[1] <= s->ScreenMaxY;
             };
-            if (!cursor_in(row->Key) && !cursor_in(popup_hash))
+            ZUIPersistentState* sub_ps = ZUIStateGetOrInsert(&ctx->StateStore, popup_hash);
+            bool                in_tri = sub_ps && MenuTriangleContains(ctx->PrevMousePos[0], ctx->PrevMousePos[1], sub_ps->ScreenMinX, sub_ps->ScreenMinY - 8.f, sub_ps->ScreenMinX, sub_ps->ScreenMaxY + 8.f, ctx->MousePos[0], ctx->MousePos[1]);
+            if (!cursor_in(row->Key) && !cursor_in(popup_hash) && !in_tri)
                 ctx->PopupStackSize = ctx->PopupBuildDepth; // pop Panels and anything deeper
         }
 
@@ -2023,6 +2145,33 @@ namespace ZEngine::UI
             else
             {
                 // First frame — use parent popup's right edge from its persistent state
+                uint32_t par_depth = (ctx->PopupBuildDepth > 0) ? ctx->PopupBuildDepth - 1 : 0;
+                ZUIBox*  par_box   = (par_depth < ctx->PopupStackSize) ? ctx->PopupStack[par_depth].Box : nullptr;
+                if (par_box)
+                {
+                    ZUIPersistentState* pps = ZUIStateGetOrInsert(&ctx->StateStore, par_box->Key);
+                    if (pps && pps->ScreenMaxX > 0.f)
+                        px = pps->ScreenMaxX;
+                }
+                if (px == 0.f)
+                    px = ctx->MousePos[0];
+            }
+            ZUIOpenPopup(ctx, popup_key, px, py);
+        }
+
+        // Arrow-Right on a focused or hovered submenu row opens the submenu immediately.
+        if (enabled && !is_open && (ctx->FocusKey == row->Key || ctx->HotKey == row->Key) && ctx->ArrowRightPressed)
+        {
+            ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, row->Key);
+            float               px = 0.f;
+            float               py = ctx->MousePos[1];
+            if (ps && ps->ScreenMaxX > 0.f)
+            {
+                px = ps->ScreenMaxX;
+                py = ps->ScreenMinY;
+            }
+            else
+            {
                 uint32_t par_depth = (ctx->PopupBuildDepth > 0) ? ctx->PopupBuildDepth - 1 : 0;
                 ZUIBox*  par_box   = (par_depth < ctx->PopupStackSize) ? ctx->PopupStack[par_depth].Box : nullptr;
                 if (par_box)
