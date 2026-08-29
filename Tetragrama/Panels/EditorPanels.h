@@ -799,7 +799,8 @@ namespace Tetragrama::Panels
 
         Tetragrama::Layers::ZUILayer* m_layer        = nullptr;
         char                          m_search[128]  = {};
-        bool                          m_sec_open[64] = {}; // per TypeID, initialized to true
+        char                          m_category[64] = "All"; // active category pill ("All" = no filter)
+        bool                          m_sec_open[64] = {};    // per TypeID, initialized to true
         bool                          m_sec_init     = false;
 
         static constexpr float        kLabelW        = 96.f;
@@ -836,48 +837,38 @@ namespace Tetragrama::Panels
                 ZUIPopBox(ctx);
             }
 
-            // X — red bar + DragFloat
+            // Helper: axis pill (colored bg + "X/Y/Z" letter) + DragFloat
+            struct AxisPill
             {
-                char xk[48];
-                snprintf(xk, sizeof(xk), "##barR_%s", row_key);
-                ZUIBox* bar  = ZUIPushBox(ctx, xk, (uint32_t) strlen(xk), ZUI_DrawBackground);
-                bar->Size[0] = ZPx(3.f);
-                bar->Size[1] = ZPx(fh);
-                ZUIBoxSetColorArr(bar, kBarR);
-                bar->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
-                char fk[48];
-                snprintf(fk, sizeof(fk), "##x_%s", row_key);
-                any |= ZUIDragFloat(ctx, fk, &v[0], speed, w3);
-            }
-            // Y — green bar + DragFloat
-            {
-                char yk[48];
-                snprintf(yk, sizeof(yk), "##barG_%s", row_key);
-                ZUIBox* bar  = ZUIPushBox(ctx, yk, (uint32_t) strlen(yk), ZUI_DrawBackground);
-                bar->Size[0] = ZPx(3.f);
-                bar->Size[1] = ZPx(fh);
-                ZUIBoxSetColorArr(bar, kBarG);
-                bar->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
-                char fk[48];
-                snprintf(fk, sizeof(fk), "##y_%s", row_key);
-                any |= ZUIDragFloat(ctx, fk, &v[1], speed, w3);
-            }
-            // Z — blue bar + DragFloat
-            {
-                char zk[48];
-                snprintf(zk, sizeof(zk), "##barB_%s", row_key);
-                ZUIBox* bar  = ZUIPushBox(ctx, zk, (uint32_t) strlen(zk), ZUI_DrawBackground);
-                bar->Size[0] = ZPx(3.f);
-                bar->Size[1] = ZPx(fh);
-                ZUIBoxSetColorArr(bar, kBarB);
-                bar->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
-                char fk[48];
-                snprintf(fk, sizeof(fk), "##z_%s", row_key);
-                any |= ZUIDragFloat(ctx, fk, &v[2], speed, w3);
-            }
+                static void Draw(ZUIContext* c, const char* pill_key, const char* drag_key, const float col[4], float* val, float sp, float w, float h)
+                {
+                    // Colored pill badge "X/Y/Z"
+                    ZUIBox* pill        = ZUIPushBox(c, pill_key, (uint32_t) strlen(pill_key), ZUI_DrawBackground | ZUI_DrawText);
+                    pill->Size[0]       = ZPx(14.f);
+                    pill->Size[1]       = ZPx(h);
+                    // Uppercase axis letter: "##x_…" → 'X', "##y_…" → 'Y', "##z_…" → 'Z'
+                    char axis_letter[2] = {(char) (drag_key[2] - 32), '\0'};
+                    pill->Label         = ZUIPushStr(&c->FrameArena, axis_letter, 1);
+                    pill->TextAlign     = ZUITextAlign::Center;
+                    ZUIBoxSetColorArr(pill, col);
+                    ZUIBoxSetCornerRadius(pill, 2.f);
+                    pill->TextColor[0] = pill->TextColor[1] = pill->TextColor[2] = 1.f;
+                    pill->TextColor[3]                                           = 1.f;
+                    ZUIPopBox(c);
+                    ZUIDragFloat(c, drag_key, val, sp, w);
+                }
+            };
+            char fxk[48], fyk[48], fzk[48];
+            snprintf(fxk, sizeof(fxk), "##x_%s", row_key + 2);
+            snprintf(fyk, sizeof(fyk), "##y_%s", row_key + 2);
+            snprintf(fzk, sizeof(fzk), "##z_%s", row_key + 2);
+            char pxk[48], pyk[48], pzk[48];
+            snprintf(pxk, sizeof(pxk), "##px_%s", row_key + 2);
+            snprintf(pyk, sizeof(pyk), "##py_%s", row_key + 2);
+            snprintf(pzk, sizeof(pzk), "##pz_%s", row_key + 2);
+            AxisPill::Draw(ctx, pxk, fxk, kBarR, &v[0], speed, w3, fh);
+            AxisPill::Draw(ctx, pyk, fyk, kBarG, &v[1], speed, w3, fh);
+            AxisPill::Draw(ctx, pzk, fzk, kBarB, &v[2], speed, w3, fh);
             ZUISpacer(ctx, 6.f); // trailing
 
             ZUIEndRow(ctx);
@@ -1195,7 +1186,7 @@ namespace Tetragrama::Panels
                 ZUIBeginRow(ctx, "##insp_hdr_r", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (nc_comp)
-                    ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), ZFill());
+                    ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 24.f, 80.f));
                 else
                     ZUILabel(ctx, "Actor", ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 8.f);
@@ -1211,6 +1202,88 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 6.f);
             ZUIEndRow(ctx);
 
+            // ── Category pill buttons (UE5-style filter row) ──────────────────────
+            // Collect unique categories for components on this actor
+            {
+                static constexpr int kMaxCats       = 16;
+                const char*          cats[kMaxCats] = {};
+                int                  cat_n          = 0;
+                const ArchetypeMask  cat_mask       = actor->GetComponentMask();
+                const auto&          cat_reg        = ComponentReflectionRegistry::Get();
+
+                cat_reg.ForEach([&](const ComponentMeta& m) {
+                    if (!MaskHas(cat_mask, m.TypeID) || !m.Category)
+                        return;
+                    // Check not already in list
+                    for (int ci = 0; ci < cat_n; ++ci)
+                        if (cats[ci] && strcmp(cats[ci], m.Category) == 0)
+                            return;
+                    if (cat_n < kMaxCats)
+                        cats[cat_n++] = m.Category;
+                });
+
+                if (cat_n > 0)
+                {
+                    ZUISpacer(ctx, 4.f);
+                    // Pill button colors
+                    static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal — active (matches "All" blue in UE5)
+                    static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark — inactive
+
+                    ZUIBeginRow(ctx, "##cat_pills", ZFill(), ZPx(fh + 4.f));
+                    ZUISpacer(ctx, 6.f);
+
+                    // "All" pill
+                    {
+                        bool    is_all = (strcmp(m_category, "All") == 0);
+                        ZUIBox* btn    = ZUIPushBox(ctx, "##cpAll", 7, ZUI_Clickable | ZUI_DrawBackground | ZUI_DrawText);
+                        float   tw     = 28.f;
+                        btn->Size[0]   = ZPx(tw);
+                        btn->Size[1]   = ZPx(fh);
+                        btn->Label     = ZUIPushStr(&ctx->FrameArena, "All", 3);
+                        btn->TextAlign = ZUITextAlign::Center;
+                        ZUIBoxSetColorArr(btn, is_all ? kPillAct : kPillRest);
+                        ZUIBoxSetCornerRadius(btn, 3.f);
+                        btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
+                        btn->TextColor[3]                                         = 1.f;
+                        ZUISignal sig                                             = ZUISignalFromBox(ctx, btn);
+                        ZUIPopBox(ctx);
+                        if (sig.Flags & ZUI_SignalClicked)
+                            ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), "All", 3);
+                        ZUISpacer(ctx, 4.f);
+                    }
+
+                    // One pill per category
+                    for (int ci = 0; ci < cat_n; ++ci)
+                    {
+                        if (!cats[ci])
+                            continue;
+                        bool is_active = (strcmp(m_category, cats[ci]) == 0);
+                        char pill_key[48];
+                        snprintf(pill_key, sizeof(pill_key), "##cp_%d", ci);
+                        uint32_t clen   = (uint32_t) strlen(cats[ci]);
+                        // Approximate pill width from name length
+                        float    pill_w = fmaxf((float) clen * 7.f + 10.f, 40.f);
+
+                        ZUIBox*  btn    = ZUIPushBox(ctx, pill_key, (uint32_t) strlen(pill_key), ZUI_Clickable | ZUI_DrawBackground | ZUI_DrawText);
+                        btn->Size[0]    = ZPx(pill_w);
+                        btn->Size[1]    = ZPx(fh);
+                        btn->Label      = ZUIPushStr(&ctx->FrameArena, cats[ci], clen);
+                        btn->TextAlign  = ZUITextAlign::Center;
+                        ZUIBoxSetColorArr(btn, is_active ? kPillAct : kPillRest);
+                        ZUIBoxSetCornerRadius(btn, 3.f);
+                        btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
+                        btn->TextColor[3]                                         = 1.f;
+                        ZUISignal sig                                             = ZUISignalFromBox(ctx, btn);
+                        ZUIPopBox(ctx);
+                        if (sig.Flags & ZUI_SignalClicked)
+                            ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), cats[ci], sizeof(m_category) - 1);
+                        ZUISpacer(ctx, 4.f);
+                    }
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 4.f);
+                }
+            }
+
             ZUISeparator(ctx);
 
             // ── Scroll region ─────────────────────────────────────────────────────
@@ -1225,6 +1298,14 @@ namespace Tetragrama::Panels
             registry.ForEach([&](const ComponentMeta& meta) {
                 if (!MaskHas(mask, meta.TypeID))
                     return;
+
+                // Category pill filter
+                bool all_cats = (strcmp(m_category, "All") == 0);
+                if (!all_cats && (!meta.Category || strcmp(meta.Category, m_category) != 0))
+                {
+                    ++comp_idx;
+                    return;
+                }
 
                 // Search filter on component name
                 if (m_search[0])
