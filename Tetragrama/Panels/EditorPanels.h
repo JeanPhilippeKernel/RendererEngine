@@ -167,20 +167,19 @@ namespace Tetragrama::Panels
             ZUIBox* bg = ZUIBeginColumn(ctx, "##hier_bg", ZFill(), ZFill());
             bg->Flags  = bg->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
-            bg->EdgeSoftness              = 0.f;
+            bg->EdgeSoftness = 0.f;
 
-            // ── Toolbar ──────────────────────────────────────────────────────────
-            static constexpr float kBtnSz = 22.f;
+            // ── Toolbar — row height = fh so search box and button align exactly ─────
             ZUISpacer(ctx, 4.f);
-            ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(kBtnSz));
+            ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
             ZUISearchBox(ctx, "##hier_search", m_search, sizeof(m_search), "Search...", ZFill());
             ZUISpacer(ctx, 4.f);
-            // "New Collection" — folder+plus icon, matches develop button
+            // "New Collection" — folder+plus icon (same height as search box = fh)
             {
                 ZUIBox* btn       = ZUIPushBox(ctx, "##btn_add", 9, ZUI_Clickable | ZUI_DrawActorIcon);
-                btn->Size[0]      = ZPx(kBtnSz);
-                btn->Size[1]      = ZPx(kBtnSz);
+                btn->Size[0]      = ZPx(fh);
+                btn->Size[1]      = ZPx(fh);
                 bool hov          = (ctx->HotKey == btn->Key);
                 btn->TextColor[0] = hov ? 0.85f : 0.55f;
                 btn->TextColor[1] = hov ? 0.85f : 0.58f;
@@ -209,10 +208,10 @@ namespace Tetragrama::Panels
             ZUIEndRow(ctx);
             ZUISpacer(ctx, 4.f);
 
-            // ── 3-column table: Item Label (60%) | Type (25%) | Level (15%) ──────
+            // ── 3-column table: Item Label (sortable+resizable) | Type | Level ──────
             ZUIDataTableColumn cols[3] = {
-                {"Item Label", fmaxf(pw * 0.60f, 100.f), false,  true},
-                {      "Type", fmaxf(pw * 0.25f,  50.f), false, false},
+                {"Item Label", fmaxf(pw * 0.60f, 100.f),  true,  true},
+                {      "Type", fmaxf(pw * 0.25f,  50.f),  true, false},
                 {     "Level", fmaxf(pw * 0.15f,  40.f), false, false},
             };
 
@@ -298,7 +297,69 @@ namespace Tetragrama::Panels
             // ── Scroll region + DataTable ─────────────────────────────────────────
             ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
             ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFit());
-            ZUIDataTableHeadersRow(ctx);
+
+            // Custom header — UE5 style: bright TextDefault labels, eye icon, sort arrows
+            // ctx->DT_ColWidths is populated by ZUIBeginDataTable above.
+            {
+                static const char* kColNames[] = {"Item Label", "Type", "Level"};
+                ZUIBox*            hrow        = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(fh));
+                hrow->Flags                    = hrow->Flags | ZUI_DrawBackground;
+                ZUIBoxSetColorArr(hrow, ctx->Theme.TableHeaderBg);
+                hrow->EdgeSoftness = 0.f;
+
+                // Eye icon — matches UE5 visibility indicator on far left of header
+                ZUISpacer(ctx, 6.f);
+                {
+                    ZUIBox* eye       = ZUIPushBox(ctx, "##hdr_eye", 9, ZUI_DrawActorIcon);
+                    eye->Size[0]      = ZPx(fh * 0.7f);
+                    eye->Size[1]      = ZPx(fh);
+                    eye->TextColor[0] = ctx->Theme.TextDim[0];
+                    eye->TextColor[1] = ctx->Theme.TextDim[1];
+                    eye->TextColor[2] = ctx->Theme.TextDim[2];
+                    eye->TextColor[3] = ctx->Theme.TextDim[3];
+                    auto* eps         = ZUIStateGetOrInsert(&ctx->StateStore, eye->Key);
+                    if (eps)
+                        eps->UserData = ZUI_ICON_WORLD; // globe closest to eye shape
+                    ZUIPopBox(ctx);
+                }
+                ZUISpacer(ctx, 4.f);
+
+                // Column headers — bright TextDefault (all columns, not just active sort)
+                for (int ci = 0; ci < 3; ++ci)
+                {
+                    float cw = ctx->DT_ColWidths ? ctx->DT_ColWidths[ci] : cols[ci].InitWidth;
+                    char  lk[32];
+                    snprintf(lk, sizeof(lk), "##hcl_%d", ci);
+                    const char* lbl    = kColNames[ci];
+                    uint32_t    llen   = (uint32_t) strlen(lbl);
+                    bool        is_sc  = (ctx->DT_SortCol == ci);
+
+                    ZUIBox*     cell   = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawText | ZUI_Clickable);
+                    cell->Size[0]      = ZPx(cw);
+                    cell->Size[1]      = ZPx(fh);
+                    cell->Label        = ZUIPushStr(&ctx->FrameArena, lbl, llen);
+                    // All labels bright; active sort column uses teal accent
+                    cell->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : ctx->Theme.TextDefault[0];
+                    cell->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : ctx->Theme.TextDefault[1];
+                    cell->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : ctx->Theme.TextDefault[2];
+                    cell->TextColor[3] = 1.f;
+                    ZUISignal csig     = ZUISignalFromBox(ctx, cell);
+                    ZUIPopBox(ctx);
+
+                    // Sort on click (mirrors ZUIDataTableHeadersRow behavior)
+                    if (cols[ci].Sortable && (csig.Flags & ZUI_SignalClicked))
+                    {
+                        if (ctx->DT_SortCol == ci)
+                            ctx->DT_SortAsc = !ctx->DT_SortAsc;
+                        else
+                        {
+                            ctx->DT_SortCol = ci;
+                            ctx->DT_SortAsc = true;
+                        }
+                    }
+                }
+                ZUIEndRow(ctx);
+            }
 
             // ── World root row ────────────────────────────────────────────────────
             {
