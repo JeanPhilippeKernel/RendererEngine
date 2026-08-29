@@ -816,10 +816,11 @@ namespace Tetragrama::Panels
             static const float kBarB[4] = {0.35f, 0.55f, 0.90f, 1.f};
 
             const float        fh       = ZUIGetFrameHeight(ctx);
-            const float        w3       = fmaxf((pw - kLabelW - 24.f) / 3.f, 36.f);
+            const float        w3       = fmaxf((pw - kLabelW - 36.f) / 3.f, 32.f);
             bool               any      = false;
 
             ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 8.f); // leading indent — fields are inset from section edge
 
             // Label
             {
@@ -877,6 +878,7 @@ namespace Tetragrama::Panels
                 snprintf(fk, sizeof(fk), "##z_%s", row_key);
                 any |= ZUIDragFloat(ctx, fk, &v[2], speed, w3);
             }
+            ZUISpacer(ctx, 6.f); // trailing
 
             ZUIEndRow(ctx);
             return any;
@@ -895,7 +897,8 @@ namespace Tetragrama::Panels
 
             void* ptr = static_cast<char*>(comp_data) + fd.Offset;
             float fh  = ZUIGetFrameHeight(ctx);
-            float wid = fmaxf(pw - kLabelW - 8.f, 40.f);
+            // 8px leading + kLabelW + 6px trailing = adjusted widget width
+            float wid = fmaxf(pw - kLabelW - 22.f, 36.f);
 
             // Build a stable unique key from component + field indices
             char  row_key[48];
@@ -933,6 +936,7 @@ namespace Tetragrama::Panels
 
             // All other types: two-column row (label | widget)
             ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 8.f); // leading indent — aligns with Vec3Row
 
             {
                 ZUIBox* lbl       = ZUIPushBox(ctx, "##lbl", 5, ZUI_DrawText);
@@ -1111,6 +1115,7 @@ namespace Tetragrama::Panels
                     break;
             }
 
+            ZUISpacer(ctx, 6.f); // trailing
             ZUIEndRow(ctx);
         }
 
@@ -1179,22 +1184,24 @@ namespace Tetragrama::Panels
 
             // ── Actor header — name editing ───────────────────────────────────────
             {
-                ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZPx(fh * 2.f));
+                ZUIBox* hdr = ZUIBeginColumn(ctx, "##insp_hdr", ZFill(), ZPx(fh + 16.f));
                 hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
                 ZUIBoxSetColor(hdr, 0.18f, 0.18f, 0.22f, 1.f);
                 hdr->EdgeSoftness = 0.f;
-                ZUISpacer(ctx, 8.f);
+                hdr->Padding[1]   = 6.f; // top padding — vertically centers the field
+                hdr->Padding[3]   = 6.f; // bottom padding
 
-                auto* nc_comp = actor->GetComponent<NameComponent>();
+                auto* nc_comp     = actor->GetComponent<NameComponent>();
+                ZUIBeginRow(ctx, "##insp_hdr_r", ZFill(), ZPx(fh));
+                ZUISpacer(ctx, 8.f);
                 if (nc_comp)
-                {
-                    ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), pw - 24.f);
-                }
+                    ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), ZFill());
                 else
-                {
                     ZUILabel(ctx, "Actor", ctx->Theme.TextDefault);
-                }
+                ZUISpacer(ctx, 8.f);
                 ZUIEndRow(ctx);
+
+                ZUIEndColumn(ctx);
             }
 
             // ── Search bar ────────────────────────────────────────────────────────
@@ -1207,7 +1214,8 @@ namespace Tetragrama::Panels
             ZUISeparator(ctx);
 
             // ── Scroll region ─────────────────────────────────────────────────────
-            ZUIBeginScrollRegion(ctx, "##insp_scroll", ZFill(), ZFill());
+            ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##insp_scroll", ZFill(), ZFill());
+            ZUIPaddingXY(scroll, 0.f, 4.f); // 4px top/bottom breathing room
 
             // ── Reflection-driven component sections ──────────────────────────────
             ArchetypeMask mask     = actor->GetComponentMask();
@@ -1246,12 +1254,13 @@ namespace Tetragrama::Panels
 
                 if (m_sec_open[open_idx])
                 {
-                    ZUISpacer(ctx, 4.f);
+                    ZUISpacer(ctx, 6.f);
                     for (uint32_t fi = 0; fi < meta.FieldCount; ++fi)
                         DrawZUIField(ctx, meta.Fields[fi], comp_data, pw, comp_idx, fi);
-                    ZUISpacer(ctx, 4.f);
+                    ZUISpacer(ctx, 6.f);
                     ZUISeparator(ctx);
                 }
+                ZUISpacer(ctx, 2.f); // small gap between sections
 
                 ++comp_idx;
             });
