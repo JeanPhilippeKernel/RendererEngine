@@ -1,6 +1,6 @@
-#include <Tetragrama/Panels/InspectorPanel.h>
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Panels/InspectorPanel.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <ZEngine/ECS/ArchetypeMask.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
@@ -14,14 +14,19 @@
 
 namespace Tetragrama::Panels
 {
+    using namespace ZEngine;
+    using namespace ZEngine::ECS;
+    using namespace ZEngine::ECS::Components;
+    using namespace ZEngine::Helpers;
+    using namespace ZEngine::UI;
+
     static constexpr float kLabelW = 96.f;
 
     // ── Vec3Row ───────────────────────────────────────────────────────────────
     // Three DragFloats with colored 3px left-edge bars (R=red, G=green, B=blue).
     // Matches develop Vec3Row() + ImDrawList colored bar approach.
-    static bool Vec3Row(ZEngine::UI::ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw)
+    static bool            Vec3Row(ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw)
     {
-        using namespace ZEngine::UI;
         // Axis bar colors — matches develop: R(215,90,80) G(100,200,110) B(90,140,230)
         static const float kBarR[4] = {0.84f, 0.35f, 0.31f, 1.f};
         static const float kBarG[4] = {0.39f, 0.78f, 0.43f, 1.f};
@@ -102,11 +107,8 @@ namespace Tetragrama::Panels
     // ── DrawZUIField ──────────────────────────────────────────────────────────
     // Widget dispatch by FieldType. Two-column row: dim label (kLabelW) + widget.
     // Matches develop DrawField() translated to ZUI widget calls.
-    static void DrawZUIField(ZEngine::UI::ZUIContext* ctx, const ZEngine::ECS::FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
+    static void DrawZUIField(ZUIContext* ctx, const FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
     {
-        using namespace ZEngine::UI;
-        using namespace ZEngine::ECS;
-
         if (fd.Hidden)
             return;
 
@@ -336,14 +338,8 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
     }
 
-    void InspectorPanel::BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4])
+    void InspectorPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
-        using namespace ZEngine;
-        using namespace ZEngine::ECS;
-        using namespace ZEngine::ECS::Components;
-        using namespace ZEngine::Helpers;
-        using namespace ZEngine::UI;
-
         // Guard
         if (!m_layer || !m_layer->CurrentApp)
         {

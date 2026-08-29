@@ -1,6 +1,6 @@
-#include <Tetragrama/Panels/HierarchyPanel.h>
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Panels/HierarchyPanel.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/ECS/Components/CameraComponent.h>
@@ -18,6 +18,12 @@
 
 namespace Tetragrama::Panels
 {
+    using namespace ZEngine;
+    using namespace ZEngine::ECS;
+    using namespace ZEngine::ECS::Components;
+    using namespace ZEngine::Helpers;
+    using namespace ZEngine::UI;
+
     static bool ContainsCI(const char* haystack, const char* needle)
     {
         if (!needle[0])
@@ -64,14 +70,8 @@ namespace Tetragrama::Panels
             m_collapsed[m_ncollapsed++] = id;
     }
 
-    void HierarchyPanel::BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4])
+    void HierarchyPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
-        using namespace ZEngine;
-        using namespace ZEngine::ECS;
-        using namespace ZEngine::ECS::Components;
-        using namespace ZEngine::Helpers;
-        using namespace ZEngine::UI;
-
         // Guard — need app, scene, and actor manager
         if (!m_layer || !m_layer->CurrentApp)
         {

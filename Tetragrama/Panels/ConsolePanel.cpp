@@ -5,6 +5,8 @@
 
 namespace Tetragrama::Panels
 {
+    using namespace ZEngine::UI;
+
     static bool ContainsCI(const char* haystack, const char* needle)
     {
         if (!needle[0])
@@ -73,10 +75,8 @@ namespace Tetragrama::Panels
         return true;
     }
 
-    void ConsolePanel::BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4])
+    void ConsolePanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
-        using namespace ZEngine::UI;
-
         if (!m_initialized)
         {
             m_cookie      = ZEngine::Logging::Logger::AddEventHandler({OnLogEntry, this});
