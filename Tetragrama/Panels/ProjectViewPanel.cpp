@@ -37,7 +37,7 @@ namespace Tetragrama::Panels
             return kCpp;
         if (e0 == 'h' && (e1 == 'p' || e1 == 0))
             return kH;
-        if (e0 == 'g' && e1 == 'l')
+        if (e0 == 'g' && e1 == 'l' && tolower((unsigned char) ext[2]) == 's')
             return kShader;
         if (e0 == 'v' && e1 == 'e')
             return kShader; // .vert
@@ -66,7 +66,7 @@ namespace Tetragrama::Panels
             return "Scripts";
         if (e0 == 'h' && (e1 == 'p' || e1 == 0))
             return "Scripts";
-        if (e0 == 'g' && e1 == 'l')
+        if (e0 == 'g' && e1 == 'l' && tolower((unsigned char) ext[2]) == 's')
             return "Shaders";
         if (e0 == 'v' && e1 == 'e')
             return "Shaders";
@@ -414,7 +414,7 @@ namespace Tetragrama::Panels
 
                     // ── Card column ───────────────────────────────────────────
                     char         ck[32];
-                    snprintf(ck, sizeof(ck), "##pvc_%d", vis[ei]);
+                    snprintf(ck, sizeof(ck), "##pvc_%d_%d", r, c);
                     float   cw   = kCardW - 8.f;
                     ZUIBox* card = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
                     card->Flags  = card->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
@@ -454,11 +454,15 @@ namespace Tetragrama::Panels
                         const float* icon_col = e.is_dir ? kFolderCol : ExtColor(e.name);
 
                         ZUISpacer(ctx, top_pad);
-                        ZUIBeginRow(ctx, "##pvicr", ZFill(), ZPx(isz));
+                        {
+                            char rk2[32];
+                            snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
+                            ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
+                        }
                         ZUISpacer(ctx, side_pad); // center horizontally (#6)
 
                         char ik[32];
-                        snprintf(ik, sizeof(ik), "##pvico_%d", vis[ei]);
+                        snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
                         ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
                         ico->Size[0]      = ZPx(isz);
                         ico->Size[1]      = ZPx(isz);
@@ -478,7 +482,7 @@ namespace Tetragrama::Panels
                     // ── Footer strip (dark overlay with bottom rounding) (#1) ──
                     {
                         char ftk[32];
-                        snprintf(ftk, sizeof(ftk), "##pvft_%d", vis[ei]);
+                        snprintf(ftk, sizeof(ftk), "##pvft_%d_%d", r, c);
                         ZUIBox* footer = ZUIBeginColumn(ctx, ftk, ZFill(), ZPx(footer_h));
                         footer->Flags  = footer->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
                         ZUIBoxSetColor(footer, 0.06f, 0.06f, 0.08f, 0.92f); // footer strip — opaque, slightly blue-dark
@@ -502,7 +506,7 @@ namespace Tetragrama::Panels
                                 secure_strncpy(display, sizeof(display), e.name, sizeof(display) - 1);
 
                             char fnk[32];
-                            snprintf(fnk, sizeof(fnk), "##pvfn_%d", vis[ei]);
+                            snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
                             uint32_t nl      = (uint32_t) strlen(display);
                             ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
                             lb->Size[0]      = ZFill();
@@ -520,7 +524,7 @@ namespace Tetragrama::Panels
                         {
                             const char* type_lbl = e.is_dir ? "Folder" : TypeCategory(e.name);
                             char        tlk[32];
-                            snprintf(tlk, sizeof(tlk), "##pvtl_%d", vis[ei]);
+                            snprintf(tlk, sizeof(tlk), "##pvtl_%d_%d", r, c);
                             uint32_t tl       = (uint32_t) strlen(type_lbl);
                             ZUIBox*  tlb      = ZUIPushBox(ctx, tlk, (uint32_t) strlen(tlk), ZUI_DrawText);
                             tlb->Size[0]      = ZFill();
