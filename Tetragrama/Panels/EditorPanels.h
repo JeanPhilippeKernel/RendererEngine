@@ -871,7 +871,7 @@ namespace Tetragrama::Panels
             AxisPill::Draw(ctx, pxk, fxk, kBarR, &v[0], speed, w3, fh);
             AxisPill::Draw(ctx, pyk, fyk, kBarG, &v[1], speed, w3, fh);
             AxisPill::Draw(ctx, pzk, fzk, kBarB, &v[2], speed, w3, fh);
-            ZUISpacer(ctx, 6.f); // trailing
+            ZUISpacer(ctx, 8.f); // trailing — matches leading
 
             ZUIEndRow(ctx);
             return any;
@@ -890,11 +890,13 @@ namespace Tetragrama::Panels
 
             void* ptr = static_cast<char*>(comp_data) + fd.Offset;
             float fh  = ZUIGetFrameHeight(ctx);
-            // 8px leading + kLabelW + 6px trailing = adjusted widget width
-            float wid = fmaxf(pw - kLabelW - 22.f, 36.f);
+            float wid = fmaxf(pw - kLabelW - 24.f, 36.f); // 8px leading + 8px trailing
 
-            // Build a stable unique key from component + field indices
-            char  row_key[48];
+            // Vertical breathing room — same 3px gap above every field row,
+            // current and future types all get it for free here.
+            ZUISpacer(ctx, 3.f);
+
+            char row_key[48];
             snprintf(row_key, sizeof(row_key), "##frow_%u_%u", comp_idx, field_idx);
 
             // Vec3f is handled by Vec3Row (full-row layout with colored bars)
@@ -1108,7 +1110,7 @@ namespace Tetragrama::Panels
                     break;
             }
 
-            ZUISpacer(ctx, 6.f); // trailing
+            ZUISpacer(ctx, 8.f); // trailing — matches leading
             ZUIEndRow(ctx);
         }
 
