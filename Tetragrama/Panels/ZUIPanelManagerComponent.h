@@ -26,6 +26,7 @@ namespace Tetragrama::Panels
         ViewportPanel                viewport;
         InspectorPanel               inspector;
         ConsolePanel                 output;
+        ProjectViewPanel             project;
 
         void                         Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "PanelManager", bool visibility = true) override
         {
@@ -42,6 +43,7 @@ namespace Tetragrama::Panels
             Manager.Init(arena);
             hierarchy.m_layer = parent;
             inspector.m_layer = parent;
+            project.m_layer   = parent;
 
             using namespace ZEngine::UI;
 
@@ -59,8 +61,12 @@ namespace Tetragrama::Panels
 
             ZUIDockNode* center = mid_right->First;
 
-            // center V-split: Viewport | Output
-            ZUIDockSplitV(Manager.DockTree, center, 1.f - kBottom, ZUIDockHashName("Viewport"), ZUIDockHashName("Console"));
+            // center V-split: Viewport | bottom strip (Console + Project)
+            ZUIDockSplitV(Manager.DockTree, center, 1.f - kBottom, ZUIDockHashName("Viewport"), 0);
+
+            // bottom strip H-split: Console (40%) | Project (60%)
+            ZUIDockNode* bottom_node = center->Last;
+            ZUIDockSplitH(Manager.DockTree, bottom_node, 0.40f, ZUIDockHashName("Console"), ZUIDockHashName("Project"));
 
             // Register panels
             auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
@@ -75,11 +81,13 @@ namespace Tetragrama::Panels
             auto* p_out = Manager.AddPanel(ZUIDockHashName("Console"));
             Manager.AddView(p_out, &output);
 
-            // Ini persistence — v3 format (AutoHideTabBar support)
-            // Old v2 files are intentionally incompatible — delete zui_layout.ini to start fresh.
-            ZUIPanelView* all_views[] = {&hierarchy, &viewport, &inspector, &output};
+            auto* p_proj = Manager.AddPanel(ZUIDockHashName("Project"));
+            Manager.AddView(p_proj, &project);
+
+            // Ini persistence — v3 format. Delete zui_layout.ini to start fresh.
+            ZUIPanelView* all_views[] = {&hierarchy, &viewport, &inspector, &output, &project};
             Manager.SetLayoutPath("zui_layout.ini");
-            ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 4); // no-op if file not found or v2
+            ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 5); // no-op if file not found
         }
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override
