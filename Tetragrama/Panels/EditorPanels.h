@@ -171,8 +171,9 @@ namespace Tetragrama::Panels
 
             // ── Toolbar ──────────────────────────────────────────────────────────
             static constexpr float kBtnSz = 22.f;
+            ZUISpacer(ctx, 4.f);
             ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(kBtnSz));
-            ZUISpacer(ctx, 6.f);
+            ZUISpacer(ctx, 8.f);
             ZUISearchBox(ctx, "##hier_search", m_search, sizeof(m_search), "Search...", ZFill());
             ZUISpacer(ctx, 4.f);
             // "New Collection" — folder+plus icon, matches develop button
@@ -204,8 +205,9 @@ namespace Tetragrama::Panels
                     }
                 }
             }
-            ZUISpacer(ctx, 6.f);
+            ZUISpacer(ctx, 8.f);
             ZUIEndRow(ctx);
+            ZUISpacer(ctx, 4.f);
 
             // ── 3-column table: Item Label (60%) | Type (25%) | Level (15%) ──────
             ZUIDataTableColumn cols[3] = {
