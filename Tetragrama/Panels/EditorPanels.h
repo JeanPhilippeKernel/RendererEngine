@@ -104,6 +104,12 @@ namespace Tetragrama::Panels
         // Drag-reparent tooltip — name of the actor being dragged (set in drag source section)
         char                          m_drag_label[128]          = {};
 
+        // Panel-level double-click tracking (ZUISignalFromBox is called twice per row,
+        // so we track in the panel to avoid double-firing)
+        uint32_t                      m_last_click_idx           = UINT32_MAX;
+        uint32_t                      m_last_click_gen           = 0;
+        float                         m_last_click_time          = -1.f;
+
         bool                          IsCollapsed(ZEngine::ECS::EntityID id) const
         {
             for (int i = 0; i < m_ncollapsed; ++i)
@@ -512,17 +518,31 @@ namespace Tetragrama::Panels
                     ZUIDataTableSetColumn(ctx, 2);
                     ZUILabel(ctx, "Default", kDim);
 
-                    // Selection
+                    // Selection + panel-level double-click tracking.
+                    // ZUISignalFromBox is called twice per row (DataTableNextRow + DataTableRowSignal)
+                    // so double-click must be tracked here, not in ZUISignalFromBox.
                     if (row_clicked)
-                        scene->SelectedActorHandle = nodes[ni].Handle;
-
-                    // Double-click → rename
-                    if (!renaming && (row_sig.Flags & ZUI_SignalDoubleClicked))
                     {
-                        m_rename_id      = nodes[ni].EID;
-                        m_rename_started = true;
-                        m_rename_fkey    = 0;
-                        secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                        scene->SelectedActorHandle = nodes[ni].Handle;
+                        float now                  = ctx->Time;
+                        if (m_last_click_idx == nodes[ni].Handle.Index && m_last_click_gen == nodes[ni].Handle.Generation && now - m_last_click_time < 0.30f)
+                        {
+                            // Double-click on name/icon area → start rename
+                            if (!renaming)
+                            {
+                                m_rename_id      = nodes[ni].EID;
+                                m_rename_started = true;
+                                m_rename_fkey    = 0;
+                                secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                            }
+                            m_last_click_idx = UINT32_MAX; // consume
+                        }
+                        else
+                        {
+                            m_last_click_idx  = nodes[ni].Handle.Index;
+                            m_last_click_gen  = nodes[ni].Handle.Generation;
+                            m_last_click_time = now;
+                        }
                     }
 
                     // Context menu
@@ -550,15 +570,22 @@ namespace Tetragrama::Panels
                     if (ctx->DragSourceKey != 0 && ctx->DT_RowBox && ctx->DragSourceKey == ctx->DT_RowBox->Key)
                         secure_strncpy(m_drag_label, sizeof(m_drag_label), label, sizeof(m_drag_label) - 1);
 
-                    char drop_buf[sizeof(ActorHandle)] = {};
-                    if (ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_buf, sizeof(drop_buf)))
+                    // Bounds-based drop: ZUIAcceptDrop checks DragTargetKey == row->Key but
+                    // for rows with clickable children (chevron), DragTargetKey = child key.
+                    // Use prev-frame screen rect to correctly accept drops on ANY actor type.
+                    if (ctx->DragDropFired && ctx->DragPayloadLen >= (uint32_t) sizeof(ActorHandle) && ctx->DT_RowBox)
                     {
-                        ActorHandle dragged = {};
-                        secure_memcpy(&dragged, sizeof(dragged), drop_buf, sizeof(drop_buf));
-                        if (dragged.Valid() && (dragged.Index != nodes[ni].Handle.Index || dragged.Generation != nodes[ni].Handle.Generation))
+                        auto* drps   = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
+                        bool  in_row = drps && drps->ScreenMaxX > drps->ScreenMinX && ctx->MousePos[0] >= drps->ScreenMinX && ctx->MousePos[0] <= drps->ScreenMaxX && ctx->MousePos[1] >= drps->ScreenMinY && ctx->MousePos[1] <= drps->ScreenMaxY;
+                        if (in_row)
                         {
-                            pending_reparent_child  = dragged;
-                            pending_reparent_parent = nodes[ni].EID;
+                            ActorHandle dragged = {};
+                            secure_memcpy(&dragged, sizeof(dragged), ctx->DragPayload, sizeof(ActorHandle));
+                            if (dragged.Valid() && (dragged.Index != nodes[ni].Handle.Index || dragged.Generation != nodes[ni].Handle.Generation))
+                            {
+                                pending_reparent_child  = dragged;
+                                pending_reparent_parent = nodes[ni].EID;
+                            }
                         }
                     }
 
@@ -602,13 +629,21 @@ namespace Tetragrama::Panels
                 ZUIEndRow(ctx);
                 ZUIDataTableSetColumn(ctx, 1);
                 ZUIDataTableSetColumn(ctx, 2);
-                char drop_root[sizeof(ActorHandle)] = {};
-                if (ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_root, sizeof(drop_root)))
+                // Bounds-based drop for root zone (same reason as actor rows)
+                if (ctx->DragDropFired && ctx->DragPayloadLen >= (uint32_t) sizeof(ActorHandle) && ctx->DT_RowBox)
                 {
-                    ActorHandle dragged = {};
-                    secure_memcpy(&dragged, sizeof(dragged), drop_root, sizeof(drop_root));
-                    if (dragged.Valid())
-                        pending_reparent_parent = INVALID_ENTITY, pending_reparent_child = dragged;
+                    auto* rzps    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
+                    bool  in_zone = rzps && rzps->ScreenMaxX > rzps->ScreenMinX && ctx->MousePos[0] >= rzps->ScreenMinX && ctx->MousePos[0] <= rzps->ScreenMaxX && ctx->MousePos[1] >= rzps->ScreenMinY && ctx->MousePos[1] <= rzps->ScreenMaxY;
+                    if (in_zone)
+                    {
+                        ActorHandle dragged = {};
+                        secure_memcpy(&dragged, sizeof(dragged), ctx->DragPayload, sizeof(ActorHandle));
+                        if (dragged.Valid())
+                        {
+                            pending_reparent_parent = INVALID_ENTITY;
+                            pending_reparent_child  = dragged;
+                        }
+                    }
                 }
             }
 
