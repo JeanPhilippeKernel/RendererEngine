@@ -819,11 +819,13 @@ namespace Tetragrama::Panels
             static const float kBarB[4] = {0.35f, 0.55f, 0.90f, 1.f};
 
             const float        fh       = ZUIGetFrameHeight(ctx);
-            const float        w3       = fmaxf((pw - kLabelW - 36.f) / 3.f, 32.f);
+            // Layout: [8 lead][label][3 bar][w3][4 gap][3 bar][w3][4 gap][3 bar][w3][8 trail]
+            // Fixed overhead (excl. label): 8+3+4+3+4+3+8 = 33px
+            const float        w3       = fmaxf((pw - kLabelW - 33.f) / 3.f, 32.f);
             bool               any      = false;
 
             ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f); // leading indent — fields are inset from section edge
+            ZUISpacer(ctx, 8.f);
 
             // Label
             {
@@ -839,39 +841,50 @@ namespace Tetragrama::Panels
                 ZUIPopBox(ctx);
             }
 
-            // Helper: axis pill (colored bg + "X/Y/Z" letter) + DragFloat
-            struct AxisPill
+            // X — thin 3px colored bar + DragFloat
             {
-                static void Draw(ZUIContext* c, const char* pill_key, const char* drag_key, const float col[4], float* val, float sp, float w, float h)
-                {
-                    // Colored pill badge "X/Y/Z"
-                    ZUIBox* pill        = ZUIPushBox(c, pill_key, (uint32_t) strlen(pill_key), ZUI_DrawBackground | ZUI_DrawText);
-                    pill->Size[0]       = ZPx(14.f);
-                    pill->Size[1]       = ZPx(h);
-                    // Uppercase axis letter: "##x_…" → 'X', "##y_…" → 'Y', "##z_…" → 'Z'
-                    char axis_letter[2] = {(char) (drag_key[2] - 32), '\0'};
-                    pill->Label         = ZUIPushStr(&c->FrameArena, axis_letter, 1);
-                    pill->TextAlign     = ZUITextAlign::Center;
-                    ZUIBoxSetColorArr(pill, col);
-                    ZUIBoxSetCornerRadius(pill, 2.f);
-                    pill->TextColor[0] = pill->TextColor[1] = pill->TextColor[2] = 1.f;
-                    pill->TextColor[3]                                           = 1.f;
-                    ZUIPopBox(c);
-                    ZUIDragFloat(c, drag_key, val, sp, w);
-                }
-            };
-            char fxk[48], fyk[48], fzk[48];
-            snprintf(fxk, sizeof(fxk), "##x_%s", row_key + 2);
-            snprintf(fyk, sizeof(fyk), "##y_%s", row_key + 2);
-            snprintf(fzk, sizeof(fzk), "##z_%s", row_key + 2);
-            char pxk[48], pyk[48], pzk[48];
-            snprintf(pxk, sizeof(pxk), "##px_%s", row_key + 2);
-            snprintf(pyk, sizeof(pyk), "##py_%s", row_key + 2);
-            snprintf(pzk, sizeof(pzk), "##pz_%s", row_key + 2);
-            AxisPill::Draw(ctx, pxk, fxk, kBarR, &v[0], speed, w3, fh);
-            AxisPill::Draw(ctx, pyk, fyk, kBarG, &v[1], speed, w3, fh);
-            AxisPill::Draw(ctx, pzk, fzk, kBarB, &v[2], speed, w3, fh);
-            ZUISpacer(ctx, 8.f); // trailing — matches leading
+                char bk[48], fk[48];
+                snprintf(bk, sizeof(bk), "##bx_%s", row_key + 2);
+                snprintf(fk, sizeof(fk), "##x_%s", row_key + 2);
+                ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
+                bar->Size[0] = ZPx(3.f);
+                bar->Size[1] = ZPx(fh);
+                ZUIBoxSetColorArr(bar, kBarR);
+                bar->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                any |= ZUIDragFloat(ctx, fk, &v[0], speed, w3);
+            }
+            ZUISpacer(ctx, 4.f); // gap between X and Y groups
+
+            // Y — thin 3px colored bar + DragFloat
+            {
+                char bk[48], fk[48];
+                snprintf(bk, sizeof(bk), "##by_%s", row_key + 2);
+                snprintf(fk, sizeof(fk), "##y_%s", row_key + 2);
+                ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
+                bar->Size[0] = ZPx(3.f);
+                bar->Size[1] = ZPx(fh);
+                ZUIBoxSetColorArr(bar, kBarG);
+                bar->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                any |= ZUIDragFloat(ctx, fk, &v[1], speed, w3);
+            }
+            ZUISpacer(ctx, 4.f); // gap between Y and Z groups
+
+            // Z — thin 3px colored bar + DragFloat
+            {
+                char bk[48], fk[48];
+                snprintf(bk, sizeof(bk), "##bz_%s", row_key + 2);
+                snprintf(fk, sizeof(fk), "##z_%s", row_key + 2);
+                ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
+                bar->Size[0] = ZPx(3.f);
+                bar->Size[1] = ZPx(fh);
+                ZUIBoxSetColorArr(bar, kBarB);
+                bar->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                any |= ZUIDragFloat(ctx, fk, &v[2], speed, w3);
+            }
+            ZUISpacer(ctx, 8.f); // trailing
 
             ZUIEndRow(ctx);
             return any;
