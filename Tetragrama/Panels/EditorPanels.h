@@ -1196,11 +1196,13 @@ namespace Tetragrama::Panels
             }
 
             // ── Search bar ────────────────────────────────────────────────────────
+            ZUISpacer(ctx, 4.f);
             ZUIBeginRow(ctx, "##insp_search_row", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 6.f);
+            ZUISpacer(ctx, 8.f);
             ZUISearchBox(ctx, "##insp_search", m_search, sizeof(m_search), "Search Details...", ZFill());
-            ZUISpacer(ctx, 6.f);
+            ZUISpacer(ctx, 8.f);
             ZUIEndRow(ctx);
+            ZUISpacer(ctx, 4.f);
 
             // ── Category pill buttons (UE5-style filter row) ──────────────────────
             // Collect unique categories for components on this actor
