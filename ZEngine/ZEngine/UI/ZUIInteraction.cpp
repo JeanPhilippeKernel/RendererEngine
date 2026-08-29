@@ -219,7 +219,8 @@ namespace ZEngine::UI
         {
             signal.Flags |= ZUI_SignalPressed;
         }
-        if (ctx->MouseReleased[0] && active && hovered)
+        // DragSourceKey != 0 means a drag is in progress — release is a drop, not a click.
+        if (ctx->MouseReleased[0] && active && hovered && ctx->DragSourceKey == 0)
         {
             signal.Flags |= ZUI_SignalClicked | ZUI_SignalReleased;
         }

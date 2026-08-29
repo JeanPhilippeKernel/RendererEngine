@@ -101,7 +101,9 @@ namespace Tetragrama::Panels
         int                           m_ncollapsed               = 0;
         bool                          m_root_open                = true;
 
-        // Drag-reparent tooltip — name of the actor being dragged (set in drag source section)
+        // Drag-reparent: panel owns drag state because ZUIInteractionPass clears
+        // DragPayloadLen=0 on mouse release (before BuildContent sees DragDropFired=true)
+        ZEngine::ECS::ActorHandle     m_dragging_actor           = {};
         char                          m_drag_label[128]          = {};
 
         // Panel-level double-click tracking (ZUISignalFromBox is called twice per row,
@@ -486,23 +488,27 @@ namespace Tetragrama::Panels
                     {
                         char tf_key[64];
                         snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        uint64_t fk_before = ctx->FocusKey;
-                        ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
-                        uint64_t fk_after = ctx->FocusKey;
+
+                        // On the first frame: auto-focus the field immediately.
+                        // Previous approach waited for the user to click — if they clicked
+                        // elsewhere instead, m_rename_fkey stayed 0 and rename never committed.
                         if (m_rename_started)
                         {
+                            m_rename_fkey    = ZUIHashStr(tf_key, (uint32_t) strlen(tf_key));
+                            ctx->FocusKey    = m_rename_fkey;
                             m_rename_started = false;
-                            m_rename_fkey    = 0;
                         }
-                        else if (m_rename_fkey != 0 && fk_after != m_rename_fkey)
+
+                        ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
+
+                        // Commit when focus leaves the field (Enter clears FocusKey via ZUIEndFrame)
+                        if (m_rename_fkey != 0 && ctx->FocusKey != m_rename_fkey)
                         {
                             if (nc_comp && m_rename_buf[0])
                                 secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1);
                             m_rename_id   = {};
                             m_rename_fkey = 0;
                         }
-                        if (fk_before != fk_after && fk_after != 0)
-                            m_rename_fkey = fk_after;
                     }
                     else
                     {
@@ -565,27 +571,25 @@ namespace Tetragrama::Panels
                         ZUIEndPopup(ctx);
                     }
 
-                    // Drag source + drop target (reparent)
+                    // Drag source — store handle in panel state (DragPayloadLen is cleared by
+                    // ZUIInteractionPass on release, before the next BuildContent sees DragDropFired)
                     ZUIBeginDragSource(ctx, ctx->DT_RowBox, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
                     if (ctx->DragSourceKey != 0 && ctx->DT_RowBox && ctx->DragSourceKey == ctx->DT_RowBox->Key)
+                    {
+                        m_dragging_actor = nodes[ni].Handle;
                         secure_strncpy(m_drag_label, sizeof(m_drag_label), label, sizeof(m_drag_label) - 1);
+                    }
 
-                    // Bounds-based drop: ZUIAcceptDrop checks DragTargetKey == row->Key but
-                    // for rows with clickable children (chevron), DragTargetKey = child key.
-                    // Use prev-frame screen rect to correctly accept drops on ANY actor type.
-                    if (ctx->DragDropFired && ctx->DragPayloadLen >= (uint32_t) sizeof(ActorHandle) && ctx->DT_RowBox)
+                    // Drop target — bounds-based: DragTargetKey = deepest clickable child (chevron),
+                    // not the outer row. Use prev-frame ScreenRect + panel-owned m_dragging_actor.
+                    if (ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
                     {
                         auto* drps   = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
                         bool  in_row = drps && drps->ScreenMaxX > drps->ScreenMinX && ctx->MousePos[0] >= drps->ScreenMinX && ctx->MousePos[0] <= drps->ScreenMaxX && ctx->MousePos[1] >= drps->ScreenMinY && ctx->MousePos[1] <= drps->ScreenMaxY;
-                        if (in_row)
+                        if (in_row && (m_dragging_actor.Index != nodes[ni].Handle.Index || m_dragging_actor.Generation != nodes[ni].Handle.Generation))
                         {
-                            ActorHandle dragged = {};
-                            secure_memcpy(&dragged, sizeof(dragged), ctx->DragPayload, sizeof(ActorHandle));
-                            if (dragged.Valid() && (dragged.Index != nodes[ni].Handle.Index || dragged.Generation != nodes[ni].Handle.Generation))
-                            {
-                                pending_reparent_child  = dragged;
-                                pending_reparent_parent = nodes[ni].EID;
-                            }
+                            pending_reparent_child  = m_dragging_actor;
+                            pending_reparent_parent = nodes[ni].EID;
                         }
                     }
 
@@ -629,20 +633,15 @@ namespace Tetragrama::Panels
                 ZUIEndRow(ctx);
                 ZUIDataTableSetColumn(ctx, 1);
                 ZUIDataTableSetColumn(ctx, 2);
-                // Bounds-based drop for root zone (same reason as actor rows)
-                if (ctx->DragDropFired && ctx->DragPayloadLen >= (uint32_t) sizeof(ActorHandle) && ctx->DT_RowBox)
+                // Root drop zone — use m_dragging_actor (DragPayloadLen=0 on drop frame)
+                if (ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
                 {
                     auto* rzps    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
                     bool  in_zone = rzps && rzps->ScreenMaxX > rzps->ScreenMinX && ctx->MousePos[0] >= rzps->ScreenMinX && ctx->MousePos[0] <= rzps->ScreenMaxX && ctx->MousePos[1] >= rzps->ScreenMinY && ctx->MousePos[1] <= rzps->ScreenMaxY;
                     if (in_zone)
                     {
-                        ActorHandle dragged = {};
-                        secure_memcpy(&dragged, sizeof(dragged), ctx->DragPayload, sizeof(ActorHandle));
-                        if (dragged.Valid())
-                        {
-                            pending_reparent_parent = INVALID_ENTITY;
-                            pending_reparent_child  = dragged;
-                        }
+                        pending_reparent_parent = INVALID_ENTITY;
+                        pending_reparent_child  = m_dragging_actor;
                     }
                 }
             }
@@ -677,6 +676,10 @@ namespace Tetragrama::Panels
             {
                 m_drag_label[0] = '\0';
             }
+            // DragDropFired fires on every mouse release during a drag (hit or miss).
+            // Consume m_dragging_actor so it doesn't match next frame.
+            if (ctx->DragDropFired)
+                m_dragging_actor = {};
 
             // ── Deferred mutations — exact develop pattern ────────────────────────
 
