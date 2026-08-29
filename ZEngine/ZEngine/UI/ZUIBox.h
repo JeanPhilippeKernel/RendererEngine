@@ -51,12 +51,14 @@ namespace ZEngine::UI
     };
 
     // Icon type constants for ZUI_DrawActorIcon (stored in ZUIPersistentState::UserData)
-    static constexpr float ZUI_ICON_WORLD  = 10.f; // globe with crosshairs
-    static constexpr float ZUI_ICON_LIGHT  = 11.f; // sun — filled circle + radiating lines
-    static constexpr float ZUI_ICON_MESH   = 12.f; // 3-D box wireframe
-    static constexpr float ZUI_ICON_CAMERA = 13.f; // camera body + lens triangle
-    static constexpr float ZUI_ICON_FOLDER = 14.f; // two-rect folder shape
-    static constexpr float ZUI_ICON_ACTOR  = 15.f; // diamond
+    static constexpr float ZUI_ICON_WORLD          = 10.f; // globe with crosshairs
+    static constexpr float ZUI_ICON_LIGHT          = 11.f; // sun — filled circle + radiating lines
+    static constexpr float ZUI_ICON_MESH           = 12.f; // 3-D box wireframe
+    static constexpr float ZUI_ICON_CAMERA         = 13.f; // camera body + lens triangle
+    static constexpr float ZUI_ICON_FOLDER         = 14.f; // two-rect folder shape
+    static constexpr float ZUI_ICON_ACTOR          = 15.f; // diamond
+    static constexpr float ZUI_ICON_COLLECTION_ADD = 20.f; // folder + embedded "+" cross (New Collection button)
+    static constexpr float ZUI_ICON_GEAR           = 21.f; // outer ring + inner dot (Settings button)
 
     inline ZUIBoxFlags     operator|(ZUIBoxFlags a, ZUIBoxFlags b)
     {

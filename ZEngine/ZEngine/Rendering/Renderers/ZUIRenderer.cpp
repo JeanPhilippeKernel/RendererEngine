@@ -522,7 +522,31 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy + fh * 0.28f, fix + fw, fiy + fh, cc, 1.5f);
                     ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy, fix + fw * 0.44f, fiy + fh * 0.32f, cc, 1.5f);
                 }
-                else // ZUI_ICON_ACTOR = 15 (diamond)
+                else if (itype < 20.5f) // ZUI_ICON_COLLECTION_ADD = 20: folder shape + "+" cross
+                {
+                    // Folder shape (mirrors develop DrawTypeIcon / ICON_FOLDER)
+                    float fw = sz * 0.80f, fh = sz * 0.65f;
+                    float fix = bx0 + (sz - fw) * 0.5f;
+                    float fiy = by0 + sz - fh;
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy + fh * 0.28f, fix + fw, fiy + fh, cc, 1.5f);
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy, fix + fw * 0.44f, fiy + fh * 0.32f, cc, 1.5f);
+
+                    // "+" cross centered on the folder body, with shadow for depth
+                    float    body_cy = fiy + fh * 0.28f + (fh * 0.72f) * 0.5f;
+                    float    arm     = sz * 0.15f;
+                    uint32_t shadow  = ZUIPackColor(0.14f, 0.15f, 0.18f, 1.f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - arm, body_cy, cx + arm, body_cy, shadow, 2.5f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, body_cy - arm, cx, body_cy + arm, shadow, 2.5f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - arm, body_cy, cx + arm, body_cy, cc, 1.5f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, body_cy - arm, cx, body_cy + arm, cc, 1.5f);
+                }
+                else if (itype < 21.5f) // ZUI_ICON_GEAR = 21: outer ring + inner dot
+                {
+                    float gs = sz * 0.45f;
+                    ZUIDrawListAddCircle(&ctx->DrawList, cx, cy, gs * 0.5f, cc, 8, 1.5f);
+                    ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, gs * 0.2f, cc, 8);
+                }
+                else // ZUI_ICON_ACTOR = 15 (diamond) — default fallback
                 {
                     float r = sz * 0.35f;
                     ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy - r, cx + r, cy, cx, cy + r, cc);
