@@ -489,7 +489,7 @@ namespace Tetragrama::Panels
                         ZUIBoxSetBottomRadius(footer, kRounding);
                         footer->EdgeSoftness = 0.f;
 
-                        ZUISpacer(ctx, 4.f);
+                        ZUISpacer(ctx, 6.f);
 
                         // ── Filename — left-aligned, truncated with ellipsis (#2, #7) ──
                         {
@@ -635,6 +635,7 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 8.f);
         }
 
+        ZUISpacer(ctx, 16.f); // bottom margin inside scroll
         ZUIEndScrollRegion(ctx);
     }
 
