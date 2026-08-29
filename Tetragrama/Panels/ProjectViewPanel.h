@@ -34,12 +34,16 @@ namespace Tetragrama::Panels
         };
         static constexpr int kMaxEntries = 512;
         Entry                m_entries[kMaxEntries];
-        int                  m_nentries        = 0;
-        char                 m_listed_str[512] = {}; // path of last successful List
-        bool                 m_needs_refresh   = true;
+        int                  m_nentries             = 0;
+        char                 m_listed_str[512]      = {}; // path of last successful List
+        bool                 m_needs_refresh        = true;
 
         // ── Search ───────────────────────────────────────────────────────────
-        char                 m_search[256]     = {};
+        char                 m_search[256]          = {};
+
+        // Panel-level double-click (ZUI_SignalDoubleClicked not yet set in framework)
+        char                 m_last_click_path[512] = {};
+        float                m_last_click_time      = -1.f;
 
         // ── Modal popups ──────────────────────────────────────────────────────
         enum class Modal

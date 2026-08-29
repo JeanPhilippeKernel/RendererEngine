@@ -298,100 +298,218 @@ namespace Tetragrama::Panels
     void ProjectViewPanel::DrawGrid(ZUIContext* ctx, float pw, float ph)
     {
         (void) ph;
+
+        // ── Develop-exact grid constants ──────────────────────────────────────
+        // columnCount = max(1, panelWidth / (thumbnail_size + padding))  [develop line ~540]
+        static const float kThumbSz      = 80.f; // m_thumbnail_size in develop
+        static const float kPadding      = 16.f;
+        static const float kCardW        = kThumbSz + kPadding;
+        static const float kRounding     = 4.f;
         static const float kFolderCol[4] = {0.85f, 0.65f, 0.15f, 1.f};
-        static const float kSelBg[4]     = {0.26f, 0.44f, 0.70f, 0.35f};
 
-        const float        item_w        = 88.f;
-        const float        item_h        = 96.f;
+        float              fh            = ZUIGetFrameHeight(ctx);
+        float              footer_h      = fh * 2.f + 8.f; // 2-line footer strip
+        float              card_h        = kThumbSz + footer_h;
+        int                col_count     = (int) (pw / kCardW);
+        if (col_count < 1)
+            col_count = 1;
 
-        ZUIBeginScrollRegion(ctx, "##pv_grid_scroll", ZFill(), ZFill());
-        ZUIBeginGridView(ctx, "##pv_grid", item_w, item_h);
-
-        bool  search_active = (m_search[0] != '\0');
-        float fh            = ZUIGetFrameHeight(ctx);
-
+        // ── Collect filtered visible entries ──────────────────────────────────
+        static int vis[kMaxEntries];
+        int        nvis = 0;
         for (int i = 0; i < m_nentries; ++i)
         {
             const Entry& e = m_entries[i];
-
-            // Search filter (case-insensitive)
-            if (search_active)
+            if (!m_search[0])
             {
-                bool match = false;
-                for (const char* h = e.name; *h && !match; ++h)
+                vis[nvis++] = i;
+                continue;
+            }
+            // case-insensitive substring
+            bool match = false;
+            for (const char* h = e.name; *h && !match; ++h)
+            {
+                const char *p = h, *n = m_search;
+                while (*p && *n && tolower((unsigned char) *p) == tolower((unsigned char) *n))
                 {
-                    const char* n = m_search;
-                    const char* p = h;
-                    while (*p && *n && tolower((unsigned char) *p) == tolower((unsigned char) *n))
-                    {
-                        ++p;
-                        ++n;
-                    }
-                    if (!*n)
-                        match = true;
+                    ++p;
+                    ++n;
                 }
-                if (!match)
-                    continue;
+                if (!*n)
+                    match = true;
             }
-
-            char item_key[64];
-            snprintf(item_key, sizeof(item_key), "##pvi_%d", i);
-            bool clicked = ZUIGridViewNextItem(ctx, item_key);
-
-            // ── Icon area (top 60px) ──────────────────────────────────────────
-            {
-                const float* col = e.is_dir ? kFolderCol : ExtColor(e.name);
-                char         ik[64];
-                snprintf(ik, sizeof(ik), "##gico_%d", i);
-                ZUIBox* icon  = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawBackground);
-                icon->Size[0] = ZPx(item_w - 16.f);
-                icon->Size[1] = ZPx(56.f);
-                ZUIBoxSetColorArr(icon, col);
-                ZUIBoxSetCornerRadius(icon, 4.f);
-                icon->EdgeSoftness = 0.5f;
-                ZUIPopBox(ctx);
-            }
-            ZUISpacer(ctx, 4.f);
-
-            // ── Filename (bottom) ─────────────────────────────────────────────
-            {
-                char lk[64];
-                snprintf(lk, sizeof(lk), "##gnm_%d", i);
-                uint32_t llen     = (uint32_t) strlen(e.name);
-                ZUIBox*  lbl      = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawText);
-                lbl->Size[0]      = ZPx(item_w - 8.f);
-                lbl->Size[1]      = ZPx(fh * 1.5f);
-                lbl->Label        = ZUIPushStr(&ctx->FrameArena, e.name, llen);
-                lbl->TextAlign    = ZUITextAlign::Center;
-                lbl->TextColor[0] = ctx->Theme.TextDefault[0];
-                lbl->TextColor[1] = ctx->Theme.TextDefault[1];
-                lbl->TextColor[2] = ctx->Theme.TextDefault[2];
-                lbl->TextColor[3] = ctx->Theme.TextDefault[3];
-                ZUIPopBox(ctx);
-            }
-
-            ZUIGridViewEndItem(ctx);
-
-            // Double-click: navigate into directory
-            if (clicked && e.is_dir)
-            {
-                auto res = VFSPath::Parse(e.full_path);
-                if (res.Succeeded())
-                {
-                    m_current_dir   = res.Value();
-                    m_needs_refresh = true;
-                }
-            }
-
-            // Right-click context menu on tile
-            {
-                char ctx_key[64];
-                snprintf(ctx_key, sizeof(ctx_key), "##tile_ctx_%d", i);
-                // We use the last signal from GridViewNextItem — approximate via HotKey check
-            }
+            if (match)
+                vis[nvis++] = i;
         }
 
-        ZUIEndGridView(ctx);
+        // ── Scroll region ─────────────────────────────────────────────────────
+        ZUIBeginScrollRegion(ctx, "##pv_scroll", ZFill(), ZFill());
+        ZUISpacer(ctx, 8.f);
+
+        for (int r = 0; r * col_count < nvis; ++r)
+        {
+            char rk[32];
+            snprintf(rk, sizeof(rk), "##pvrow_%d", r);
+            ZUIBeginRow(ctx, rk, ZFill(), ZPx(card_h));
+            ZUISpacer(ctx, 8.f);
+
+            for (int c = 0; c < col_count; ++c)
+            {
+                int ei = r * col_count + c;
+
+                if (ei >= nvis)
+                {
+                    // Empty filler to preserve row structure
+                    char fk[32];
+                    snprintf(fk, sizeof(fk), "##pvfil_%d_%d", r, c);
+                    ZUIBox* fil  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
+                    fil->Size[0] = ZPx(kCardW);
+                    ZUIPopBox(ctx);
+                }
+                else
+                {
+                    const Entry& e        = m_entries[vis[ei]];
+                    const float* icon_col = e.is_dir ? kFolderCol : ExtColor(e.name);
+
+                    // ── Card column ───────────────────────────────────────────
+                    char         ck[32];
+                    snprintf(ck, sizeof(ck), "##pvc_%d", vis[ei]);
+                    ZUIBox* card  = ZUIBeginColumn(ctx, ck, ZPx(kCardW - 8.f), ZPx(card_h));
+                    card->Flags   = card->Flags | ZUI_DrawBackground | ZUI_Clickable;
+                    bool card_hov = (ctx->HotKey == card->Key);
+                    // Card body bg: dark background, brighter on hover (matches develop)
+                    ZUIBoxSetColor(card, card_hov ? 0.27f : 0.16f, card_hov ? 0.27f : 0.16f, card_hov ? 0.33f : 0.20f, card_hov ? 0.90f : 0.70f);
+                    ZUIBoxSetCornerRadius(card, kRounding);
+                    card->EdgeSoftness = 0.5f;
+
+                    // ── Icon area ─────────────────────────────────────────────
+                    ZUISpacer(ctx, 6.f);
+                    {
+                        char ik[32];
+                        snprintf(ik, sizeof(ik), "##pvico_%d", vis[ei]);
+                        ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
+                        float   isz       = kThumbSz * 0.70f;
+                        ico->Size[0]      = ZPx(isz);
+                        ico->Size[1]      = ZPx(isz);
+                        ico->TextColor[0] = icon_col[0];
+                        ico->TextColor[1] = icon_col[1];
+                        ico->TextColor[2] = icon_col[2];
+                        ico->TextColor[3] = icon_col[3];
+                        auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
+                        if (ips)
+                            ips->UserData = e.is_dir ? ZUI_ICON_FOLDER : ZUI_ICON_ACTOR;
+                        ZUIPopBox(ctx);
+                    }
+
+                    // ── Footer strip ──────────────────────────────────────────
+                    ZUISpacer(ctx, 4.f);
+                    {
+                        char fnk[32];
+                        snprintf(fnk, sizeof(fnk), "##pvfn_%d", vis[ei]);
+                        uint32_t nlen     = (uint32_t) strlen(e.name);
+                        ZUIBox*  lbl      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
+                        lbl->Size[0]      = ZFill();
+                        lbl->Size[1]      = ZPx(fh * 2.f);
+                        lbl->Label        = ZUIPushStr(&ctx->FrameArena, e.name, nlen);
+                        lbl->TextAlign    = ZUITextAlign::Center;
+                        lbl->TextColor[0] = ctx->Theme.TextDefault[0];
+                        lbl->TextColor[1] = ctx->Theme.TextDefault[1];
+                        lbl->TextColor[2] = ctx->Theme.TextDefault[2];
+                        lbl->TextColor[3] = ctx->Theme.TextDefault[3];
+                        ZUIPopBox(ctx);
+                    }
+
+                    ZUISignal card_sig = ZUISignalFromBox(ctx, card);
+                    ZUIEndColumn(ctx);
+
+                    // Panel-level double-click (same pattern as HierarchyPanel)
+                    if (card_sig.Flags & ZUI_SignalClicked)
+                    {
+                        float now = ctx->Time;
+                        if (strcmp(m_last_click_path, e.full_path) == 0 && now - m_last_click_time < 0.30f && e.is_dir)
+                        {
+                            auto res = VFSPath::Parse(e.full_path);
+                            if (res.Succeeded())
+                            {
+                                m_current_dir   = res.Value();
+                                m_needs_refresh = true;
+                            }
+                            m_last_click_path[0] = '\0';
+                        }
+                        else
+                        {
+                            secure_strncpy(m_last_click_path, sizeof(m_last_click_path), e.full_path, sizeof(m_last_click_path) - 1);
+                            m_last_click_time = now;
+                        }
+                    }
+
+                    // Drag source for files (develop: CONTENT_BROWSER_FILE_DRAG_OP payload)
+                    if (!e.is_dir)
+                        ZUIBeginDragSource(ctx, card, e.full_path, (uint32_t) strlen(e.full_path));
+
+                    // Right-click context menu
+                    if (ZUIBeginPopupContextItem(ctx, "##pv_tile_ctx", card_sig))
+                    {
+                        if (e.is_dir)
+                        {
+                            if (ZUIMenuItem(ctx, "Create Folder"))
+                            {
+                                m_modal        = Modal::CreateFolder;
+                                m_modal_target = m_current_dir;
+                                m_modal_opened = false;
+                            }
+                            if (ZUIMenuItem(ctx, "Rename"))
+                            {
+                                m_modal = Modal::RenameItem;
+                                auto r  = VFSPath::Parse(e.full_path);
+                                if (r.Succeeded())
+                                    m_modal_target = r.Value();
+                                m_modal_is_dir = true;
+                                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), e.name, sizeof(m_modal_buf) - 1);
+                                m_modal_opened = false;
+                            }
+                            if (ZUIMenuItem(ctx, "Delete"))
+                            {
+                                m_modal = Modal::DeleteItem;
+                                auto r  = VFSPath::Parse(e.full_path);
+                                if (r.Succeeded())
+                                    m_modal_target = r.Value();
+                                m_modal_is_dir = true;
+                                m_modal_opened = false;
+                            }
+                        }
+                        else
+                        {
+                            if (ZUIMenuItem(ctx, "Rename"))
+                            {
+                                m_modal = Modal::RenameItem;
+                                auto r  = VFSPath::Parse(e.full_path);
+                                if (r.Succeeded())
+                                    m_modal_target = r.Value();
+                                m_modal_is_dir = false;
+                                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), e.name, sizeof(m_modal_buf) - 1);
+                                m_modal_opened = false;
+                            }
+                            if (ZUIMenuItem(ctx, "Delete"))
+                            {
+                                m_modal = Modal::DeleteItem;
+                                auto r  = VFSPath::Parse(e.full_path);
+                                if (r.Succeeded())
+                                    m_modal_target = r.Value();
+                                m_modal_is_dir = false;
+                                m_modal_opened = false;
+                            }
+                        }
+                        ZUIEndPopup(ctx);
+                    }
+                }
+                ZUISpacer(ctx, 8.f); // gap between cards
+            }
+
+            ZUIEndRow(ctx);
+            ZUISpacer(ctx, 8.f); // gap between rows
+        }
+
         ZUIEndScrollRegion(ctx);
     }
 
