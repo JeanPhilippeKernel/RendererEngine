@@ -51,6 +51,18 @@ namespace ZEngine::ECS
             m_scene->RemoveComponent<T>(m_entity_id);
         }
 
+        // Reflection-driven access — returns void* to component data keyed by TypeID.
+        [[nodiscard]] void* GetComponentRaw(ComponentTypeID type_id)
+        {
+            return m_scene ? m_scene->GetComponentRaw(m_entity_id, type_id) : nullptr;
+        }
+
+        // Bitmask of all components currently on this entity — used with MaskHas().
+        [[nodiscard]] ArchetypeMask GetComponentMask() const
+        {
+            return m_scene ? m_scene->GetMask(m_entity_id) : ArchetypeMask{};
+        }
+
         virtual void OnCreate() {}
         virtual void OnDestroy() {}
         virtual void OnTick(float dt) {}

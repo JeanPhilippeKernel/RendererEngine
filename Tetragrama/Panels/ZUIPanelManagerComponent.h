@@ -40,7 +40,8 @@ namespace Tetragrama::Panels
             }
 
             Manager.Init(arena);
-            hierarchy.m_layer = parent; // gives HierarchyPanel access to CurrentApp/ActorManager
+            hierarchy.m_layer = parent;
+            inspector.m_layer = parent;
 
             using namespace ZEngine::UI;
 

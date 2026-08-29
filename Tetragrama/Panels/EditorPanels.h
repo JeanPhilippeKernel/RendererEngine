@@ -4,12 +4,16 @@
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/ArchetypeMask.h>
 #include <ZEngine/ECS/Components/CameraComponent.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/Reflection/BuiltInComponentReflection.h>
+#include <ZEngine/ECS/Reflection/ComponentMeta.h>
+#include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/Logger.h>
@@ -782,415 +786,478 @@ namespace Tetragrama::Panels
 
     // ── Inspector panel ───────────────────────────────────────────────────────
     //
-    // Six mini-panel sections in a vertical stack.
-    // Each section is a ZUICollapsingHeader (click = collapse/expand, no close).
-    // Drag header to reorder using panel-docking visual helpers.
-    // Sash (resize) appears only below expanded sections.
+    // Reflection-driven: iterates ComponentReflectionRegistry::ForEach for the
+    // selected actor, draws every registered component with ZUI widgets.
+    // Matches develop InspectorViewUIComponent architecture translated to ZUI.
     //
     struct InspectorPanel : ZUIPanelView
     {
-        // ── Config ─────────────────────────────────────────────────────────
-        static constexpr int         N              = 6;
-        static constexpr float       kMinH          = 80.f; // minimum expanded content height
-        static constexpr float       kSashH         = 6.f;  // resize grip height
-
-        // ── Section display state (indexed by display position) ────────────
-        int                          m_order[N]     = {0, 1, 2, 3, 4, 5}; // section type at each display slot
-        bool                         m_open[N]      = {true, true, true, false, false, false};
-        float                        m_h[N]         = {200.f, 80.f, 100.f, 80.f, 80.f, 80.f};
-
-        // ── Drag-reorder state ─────────────────────────────────────────────
-        int                          m_drag_di      = -1;
-        bool                         m_drag_active  = false;
-        float                        m_drag_acc_y   = 0.f;
-        int                          m_drop_slot    = 0;
-        bool                         m_drop_is_bot  = false;
-
-        // ── Component data (by section type) ──────────────────────────────
-        float                        m_position[3]  = {0.f, 0.f, 0.f};
-        float                        m_rotation[3]  = {0.f, 0.f, 0.f};
-        float                        m_scale[3]     = {1.f, 1.f, 1.f};
-        bool                         m_cast_shadows = true, m_receive_shadows = true;
-        float                        m_mass        = 1.f;
-        bool                         m_use_gravity = true, m_is_kinematic = false;
-        float                        m_light_intensity = 1.f, m_light_range = 10.f;
-        float                        m_light_color[3] = {1.f, 1.f, 1.f};
-        float                        m_audio_volume   = 1.f;
-        bool                         m_audio_loop = false, m_audio_play_awake = true;
-
-        static constexpr const char* kLabels[N] = {"Transform", "Mesh Renderer", "Rigid Body", "Lighting", "Audio Source", "Script"};
-
         InspectorPanel()
         {
             Title = "Inspector";
         }
 
-        // Content height for section at display position di, clamped to kMinH
-        float ContentH(int di) const
-        {
-            return fmaxf(m_h[di], kMinH);
-        }
+        Tetragrama::Layers::ZUILayer* m_layer        = nullptr;
+        char                          m_search[128]  = {};
+        bool                          m_sec_open[64] = {}; // per TypeID, initialized to true
+        bool                          m_sec_init     = false;
 
-        // Total scroll-content height for section di (placeholder height when source)
-        float SectionRunH(int di, float hdrH) const
-        {
-            if (di == m_drag_di)
-                return hdrH;
-            float h    = hdrH + (m_open[di] ? ContentH(di) : 0.f);
-            float sash = (m_open[di] && di < N - 1) ? kSashH : 0.f;
-            return h + sash;
-        }
+        static constexpr float        kLabelW        = 96.f;
 
-        void BuildContent(ZUIContext* ctx, float rect[4]) override
+        // ── ZUIVec3Row ────────────────────────────────────────────────────────
+        // Three DragFloats with colored 3px left-edge bars (R=red, G=green, B=blue).
+        // Matches develop Vec3Row() + ImDrawList colored bar approach.
+        static bool                   Vec3Row(ZEngine::UI::ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw)
         {
             using namespace ZEngine::UI;
-            (void) rect;
+            // Axis bar colors — matches develop: R(215,90,80) G(100,200,110) B(90,140,230)
+            static const float kBarR[4] = {0.84f, 0.35f, 0.31f, 1.f};
+            static const float kBarG[4] = {0.39f, 0.78f, 0.43f, 1.f};
+            static const float kBarB[4] = {0.35f, 0.55f, 0.90f, 1.f};
 
-            const float hdrH  = ZUIGetFrameHeight(ctx);
-            const float sectW = rect[2] - rect[0];
-            const float fw    = sectW - 100.f - 16.f;
+            const float        fh       = ZUIGetFrameHeight(ctx);
+            const float        w3       = fmaxf((pw - kLabelW - 24.f) / 3.f, 36.f);
+            bool               any      = false;
 
-            // ── Open scroll region ────────────────────────────────────────
-            ZUIBox*     sr    = ZUIBeginScrollRegion(ctx, "##insp_sr", ZFill(), ZFill());
-            sr->Flags         = sr->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(sr, ctx->Theme.PanelBg);
-            sr->EdgeSoftness         = 0.f;
+            ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
 
-            ZUIPersistentState* srps = ZUIStateGetOrInsert(&ctx->StateStore, sr->Key);
-            const float         scy  = srps ? srps->ScrollY : 0.f;
-
-            // ── Drop slot from cursor ─────────────────────────────────────
-            if (m_drag_active)
+            // Label
             {
-                float crel    = ctx->MousePos[1] - rect[1] + scy;
-                float run     = 0.f;
-                m_drop_slot   = 0;
-                m_drop_is_bot = false;
-                for (int di = 0; di < N; di++)
+                ZUIBox* lbl       = ZUIPushBox(ctx, "##lbl", 5, ZUI_DrawText);
+                lbl->Size[0]      = ZPx(kLabelW);
+                lbl->Size[1]      = ZPx(fh);
+                uint32_t llen     = (uint32_t) strlen(label);
+                lbl->Label        = ZUIPushStr(&ctx->FrameArena, label, llen);
+                lbl->TextColor[0] = ctx->Theme.TextDim[0];
+                lbl->TextColor[1] = ctx->Theme.TextDim[1];
+                lbl->TextColor[2] = ctx->Theme.TextDim[2];
+                lbl->TextColor[3] = ctx->Theme.TextDim[3];
+                ZUIPopBox(ctx);
+            }
+
+            // X — red bar + DragFloat
+            {
+                char xk[48];
+                snprintf(xk, sizeof(xk), "##barR_%s", row_key);
+                ZUIBox* bar  = ZUIPushBox(ctx, xk, (uint32_t) strlen(xk), ZUI_DrawBackground);
+                bar->Size[0] = ZPx(3.f);
+                bar->Size[1] = ZPx(fh);
+                ZUIBoxSetColorArr(bar, kBarR);
+                bar->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                char fk[48];
+                snprintf(fk, sizeof(fk), "##x_%s", row_key);
+                any |= ZUIDragFloat(ctx, fk, &v[0], speed, w3);
+            }
+            // Y — green bar + DragFloat
+            {
+                char yk[48];
+                snprintf(yk, sizeof(yk), "##barG_%s", row_key);
+                ZUIBox* bar  = ZUIPushBox(ctx, yk, (uint32_t) strlen(yk), ZUI_DrawBackground);
+                bar->Size[0] = ZPx(3.f);
+                bar->Size[1] = ZPx(fh);
+                ZUIBoxSetColorArr(bar, kBarG);
+                bar->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                char fk[48];
+                snprintf(fk, sizeof(fk), "##y_%s", row_key);
+                any |= ZUIDragFloat(ctx, fk, &v[1], speed, w3);
+            }
+            // Z — blue bar + DragFloat
+            {
+                char zk[48];
+                snprintf(zk, sizeof(zk), "##barB_%s", row_key);
+                ZUIBox* bar  = ZUIPushBox(ctx, zk, (uint32_t) strlen(zk), ZUI_DrawBackground);
+                bar->Size[0] = ZPx(3.f);
+                bar->Size[1] = ZPx(fh);
+                ZUIBoxSetColorArr(bar, kBarB);
+                bar->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                char fk[48];
+                snprintf(fk, sizeof(fk), "##z_%s", row_key);
+                any |= ZUIDragFloat(ctx, fk, &v[2], speed, w3);
+            }
+
+            ZUIEndRow(ctx);
+            return any;
+        }
+
+        // ── DrawZUIField ──────────────────────────────────────────────────────
+        // Widget dispatch by FieldType. Two-column row: dim label (kLabelW) + widget.
+        // Matches develop DrawField() translated to ZUI widget calls.
+        static void DrawZUIField(ZEngine::UI::ZUIContext* ctx, const ZEngine::ECS::FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
+        {
+            using namespace ZEngine::UI;
+            using namespace ZEngine::ECS;
+
+            if (fd.Hidden)
+                return;
+
+            void* ptr = static_cast<char*>(comp_data) + fd.Offset;
+            float fh  = ZUIGetFrameHeight(ctx);
+            float wid = fmaxf(pw - kLabelW - 8.f, 40.f);
+
+            // Build a stable unique key from component + field indices
+            char  row_key[48];
+            snprintf(row_key, sizeof(row_key), "##frow_%u_%u", comp_idx, field_idx);
+
+            // Vec3f is handled by Vec3Row (full-row layout with colored bars)
+            if (fd.Type == FieldType::Vec3f)
+            {
+                float* fv         = static_cast<float*>(ptr);
+
+                // Rotation fields stored in radians — display in degrees
+                bool   is_radians = (fd.Tooltip && strstr(fd.Tooltip, "radians") != nullptr);
+                float  display[3] = {fv[0], fv[1], fv[2]};
+                if (is_radians)
                 {
-                    float sh  = SectionRunH(di, hdrH);
-                    float top = run, bot = run + sh;
-                    if (crel >= top && crel < bot)
+                    display[0] = fv[0] * 57.2957795f;
+                    display[1] = fv[1] * 57.2957795f;
+                    display[2] = fv[2] * 57.2957795f;
+                }
+
+                if (Vec3Row(ctx, row_key, fd.Name, display, is_radians ? 1.0f : 0.05f, pw) && is_radians)
+                {
+                    fv[0] = display[0] * 0.01745329f; // deg → rad
+                    fv[1] = display[1] * 0.01745329f;
+                    fv[2] = display[2] * 0.01745329f;
+                }
+                else if (!is_radians)
+                {
+                    fv[0] = display[0];
+                    fv[1] = display[1];
+                    fv[2] = display[2];
+                }
+                return;
+            }
+
+            // All other types: two-column row (label | widget)
+            ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
+
+            {
+                ZUIBox* lbl       = ZUIPushBox(ctx, "##lbl", 5, ZUI_DrawText);
+                lbl->Size[0]      = ZPx(kLabelW);
+                lbl->Size[1]      = ZPx(fh);
+                uint32_t llen     = (uint32_t) strlen(fd.Name);
+                lbl->Label        = ZUIPushStr(&ctx->FrameArena, fd.Name, llen);
+                lbl->TextColor[0] = ctx->Theme.TextDim[0];
+                lbl->TextColor[1] = ctx->Theme.TextDim[1];
+                lbl->TextColor[2] = ctx->Theme.TextDim[2];
+                lbl->TextColor[3] = ctx->Theme.TextDim[3];
+                ZUIPopBox(ctx);
+            }
+
+            char wkey[48];
+            snprintf(wkey, sizeof(wkey), "##fv_%u_%u", comp_idx, field_idx);
+
+            bool disabled = fd.ReadOnly;
+            (void) disabled; // TODO: ZUIBeginDisabled when implemented
+
+            switch (fd.Type)
+            {
+                case FieldType::Bool:
+                    ZUICheckbox(ctx, wkey, static_cast<bool*>(ptr));
+                    break;
+
+                case FieldType::Int8:
+                case FieldType::Int16:
+                case FieldType::Int32:
+                {
+                    int32_t val = 0;
+                    if (fd.Type == FieldType::Int8)
+                        val = *static_cast<int8_t*>(ptr);
+                    else if (fd.Type == FieldType::Int16)
+                        val = *static_cast<int16_t*>(ptr);
+                    else
+                        val = *static_cast<int32_t*>(ptr);
+                    if (ZUIDragInt(ctx, wkey, &val, 1.f, wid))
                     {
-                        if (di != m_drag_di && m_open[di])
-                        {
-                            bool bot_half = crel >= top + sh * 0.5f;
-                            m_drop_slot   = bot_half ? di + 1 : di;
-                            m_drop_is_bot = bot_half;
-                        }
+                        if (fd.Type == FieldType::Int8)
+                            *static_cast<int8_t*>(ptr) = (int8_t) val;
+                        else if (fd.Type == FieldType::Int16)
+                            *static_cast<int16_t*>(ptr) = (int16_t) val;
                         else
+                            *static_cast<int32_t*>(ptr) = val;
+                    }
+                    break;
+                }
+
+                case FieldType::Int64:
+                case FieldType::UInt8:
+                case FieldType::UInt16:
+                case FieldType::UInt32:
+                case FieldType::UInt64:
+                {
+                    // Display as read-only formatted string for now
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "%lld", (long long) *(int64_t*) ptr);
+                    ZUILabel(ctx, buf, ctx->Theme.TextDefault);
+                    break;
+                }
+
+                case FieldType::Float:
+                {
+                    ZUIDragFloat(ctx, wkey, static_cast<float*>(ptr), 0.05f, wid);
+                    break;
+                }
+
+                case FieldType::Double:
+                {
+                    float f = (float) *static_cast<double*>(ptr);
+                    if (ZUIDragFloat(ctx, wkey, &f, 0.05f, wid))
+                        *static_cast<double*>(ptr) = (double) f;
+                    break;
+                }
+
+                case FieldType::Vec2f:
+                {
+                    float* fv = static_cast<float*>(ptr);
+                    float  w2 = fmaxf(wid * 0.5f, 36.f);
+                    char   xk[48], yk[48];
+                    snprintf(xk, sizeof(xk), "##v2x_%u_%u", comp_idx, field_idx);
+                    snprintf(yk, sizeof(yk), "##v2y_%u_%u", comp_idx, field_idx);
+                    ZUIDragFloat(ctx, xk, &fv[0], 0.05f, w2);
+                    ZUIDragFloat(ctx, yk, &fv[1], 0.05f, w2);
+                    break;
+                }
+
+                case FieldType::Vec4f:
+                {
+                    float* fv = static_cast<float*>(ptr);
+                    float  w4 = fmaxf(wid * 0.25f, 28.f);
+                    for (int ax = 0; ax < 4; ++ax)
+                    {
+                        char ak[48];
+                        snprintf(ak, sizeof(ak), "##v4_%d_%u_%u", ax, comp_idx, field_idx);
+                        ZUIDragFloat(ctx, ak, &fv[ax], 0.05f, w4);
+                    }
+                    break;
+                }
+
+                case FieldType::String:
+                {
+                    uint32_t cap = fd.StringCap > 0 ? fd.StringCap : 256u;
+                    ZUITextField(ctx, wkey, static_cast<char*>(ptr), cap, wid);
+                    break;
+                }
+
+                case FieldType::AssetUUID:
+                {
+                    // Read-only UUID string
+                    const char* uuid_str = static_cast<const char*>(ptr);
+                    ZUILabel(ctx, uuid_str && uuid_str[0] ? uuid_str : "(none)", ctx->Theme.TextDefault);
+                    break;
+                }
+
+                case FieldType::Enum:
+                {
+                    // Read current value (size-dispatched)
+                    int64_t cur = 0;
+                    switch (fd.Size)
+                    {
+                        case 1:
+                            cur = (int64_t) *static_cast<uint8_t*>(ptr);
+                            break;
+                        case 2:
+                            cur = (int64_t) *static_cast<uint16_t*>(ptr);
+                            break;
+                        case 4:
+                            cur = (int64_t) *static_cast<uint32_t*>(ptr);
+                            break;
+                        case 8:
+                            cur = *static_cast<int64_t*>(ptr);
+                            break;
+                    }
+                    // Find preview label
+                    const char* preview = "?";
+                    for (uint32_t ei = 0; ei < fd.EnumCount; ++ei)
+                        if (fd.EnumValues[ei].Value == cur)
                         {
-                            m_drop_slot = di;
+                            preview = fd.EnumValues[ei].Name;
+                            break;
                         }
-                        break;
-                    }
-                    m_drop_slot = (crel < top) ? di : di + 1;
-                    if (crel < top)
-                        break;
-                    run += sh;
-                }
-                m_drop_slot = (m_drop_slot < 0) ? 0 : (m_drop_slot > N ? N : m_drop_slot);
-            }
-
-            // Cancel drag if cursor exits the inspector panel rect — sections are vertical-only
-            if (m_drag_active)
-            {
-                bool inside = ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[3];
-                if (!inside)
-                {
-                    m_drag_di     = -1;
-                    m_drag_active = false;
-                    m_drag_acc_y  = 0.f;
-                    m_drop_is_bot = false;
-                }
-            }
-
-            // ── Commit reorder ────────────────────────────────────────────
-            if (ctx->MouseReleased[0] && m_drag_di >= 0)
-            {
-                if (m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1)
-                {
-                    int   os = m_order[m_drag_di];
-                    float oh = m_h[m_drag_di];
-                    bool  oo = m_open[m_drag_di];
-                    for (int i = m_drag_di; i < N - 1; i++)
+                    if (ZUIBeginCombo(ctx, wkey, preview, ZPx(wid)))
                     {
-                        m_order[i] = m_order[i + 1];
-                        m_h[i]     = m_h[i + 1];
-                        m_open[i]  = m_open[i + 1];
+                        for (uint32_t ei = 0; ei < fd.EnumCount; ++ei)
+                        {
+                            bool sel = (fd.EnumValues[ei].Value == cur);
+                            if (ZUIComboItem(ctx, fd.EnumValues[ei].Name, sel))
+                            {
+                                int64_t nv = fd.EnumValues[ei].Value;
+                                switch (fd.Size)
+                                {
+                                    case 1:
+                                        *static_cast<uint8_t*>(ptr) = (uint8_t) nv;
+                                        break;
+                                    case 2:
+                                        *static_cast<uint16_t*>(ptr) = (uint16_t) nv;
+                                        break;
+                                    case 4:
+                                        *static_cast<uint32_t*>(ptr) = (uint32_t) nv;
+                                        break;
+                                    case 8:
+                                        *static_cast<int64_t*>(ptr) = nv;
+                                        break;
+                                }
+                            }
+                        }
+                        ZUIEndCombo(ctx);
                     }
-                    int ins = (m_drop_slot > m_drag_di) ? m_drop_slot - 1 : m_drop_slot;
-                    ins     = (ins < 0) ? 0 : (ins >= N ? N - 1 : ins);
-                    for (int i = N - 1; i > ins; i--)
-                    {
-                        m_order[i] = m_order[i - 1];
-                        m_h[i]     = m_h[i - 1];
-                        m_open[i]  = m_open[i - 1];
-                    }
-                    m_order[ins] = os;
-                    m_h[ins]     = oh;
-                    m_open[ins]  = oo;
+                    break;
                 }
-                m_drag_di     = -1;
-                m_drag_active = false;
-                m_drag_acc_y  = 0.f;
-                m_drop_is_bot = false;
+
+                default:
+                    ZUILabel(ctx, "(unsupported)", ctx->Theme.TextDim);
+                    break;
             }
 
-            bool            drop_chg  = m_drag_active && m_drop_slot != m_drag_di && m_drop_slot != m_drag_di + 1;
-            const float*    tb        = ctx->Theme.TabActiveBorder;
+            ZUIEndRow(ctx);
+        }
 
-            // ── Section loop ──────────────────────────────────────────────
-            const char*     ghost_lbl = nullptr;
-            constexpr float kTopPad   = 6.f;
-            float           run_y     = kTopPad;
-            ZUISpacer(ctx, kTopPad);
+        void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override
+        {
+            using namespace ZEngine;
+            using namespace ZEngine::ECS;
+            using namespace ZEngine::ECS::Components;
+            using namespace ZEngine::Helpers;
+            using namespace ZEngine::UI;
 
-            auto Row = [&](const char* rk) {
-                ZUIBeginRow(ctx, rk, ZFill(), ZPx(hdrH));
-                ZUISpacer(ctx, 8.f);
-            };
-            auto EndRow = [&]() { ZUIEndRow(ctx); };
-
-            for (int di = 0; di < N; di++)
+            // Guard
+            if (!m_layer || !m_layer->CurrentApp)
             {
-                int  s      = m_order[di];
-                bool is_src = m_drag_active && (di == m_drag_di);
-                char ck[32];
+                EmptyPanelBg(ctx, "##insp_empty", ctx->Theme.PanelBg, nullptr);
+                return;
+            }
+            auto* app   = reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp);
+            auto* scene = reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene);
+            auto* eng   = Engine::GetContext();
+            if (!scene || !eng || !eng->ActorManager)
+            {
+                EmptyPanelBg(ctx, "##insp_empty", ctx->Theme.PanelBg, nullptr);
+                return;
+            }
 
-                // Source slot: border placeholder
-                if (is_src)
+            // Initialize section-open state to all-true on first call
+            if (!m_sec_init)
+            {
+                for (int i = 0; i < 64; ++i)
+                    m_sec_open[i] = true;
+                m_sec_init = true;
+            }
+
+            float   fh = ZUIGetFrameHeight(ctx);
+            float   pw = (rect[2] - rect[0] > 1.f) ? rect[2] - rect[0] : 220.f;
+
+            ZUIBox* bg = ZUIBeginColumn(ctx, "##insp_bg", ZFill(), ZFill());
+            bg->Flags  = bg->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
+            bg->EdgeSoftness = 0.f;
+
+            // ── No-selection guard ────────────────────────────────────────────────
+            Actor* actor     = scene->SelectedActorHandle.Valid() ? eng->ActorManager->Access(scene->SelectedActorHandle) : nullptr;
+            if (!actor)
+            {
+                ZUIBeginScrollRegion(ctx, "##insp_empty_scroll", ZFill(), ZFill());
+                ZUISpacer(ctx, 12.f);
                 {
-                    ghost_lbl           = kLabels[s];
-                    ZUIBox* ph          = ZUIPushBox(ctx, "##ph", 4, ZUI_DrawBorder);
-                    ph->Size[0]         = ZFill();
-                    ph->Size[1]         = ZPx(hdrH);
-                    ph->EdgeSoftness    = 0.f;
-                    ph->BorderColor[0]  = tb[0];
-                    ph->BorderColor[1]  = tb[1];
-                    ph->BorderColor[2]  = tb[2];
-                    ph->BorderColor[3]  = 0.30f;
-                    ph->BorderThickness = 1.f;
+                    ZUIBox* lbl       = ZUIPushBox(ctx, "##no_sel", 8, ZUI_DrawText);
+                    lbl->Size[0]      = ZFill();
+                    lbl->Size[1]      = ZText();
+                    lbl->TextAlign    = ZUITextAlign::Center;
+                    uint32_t tlen     = 17;
+                    lbl->Label        = ZUIPushStr(&ctx->FrameArena, "No actor selected", tlen);
+                    lbl->TextColor[0] = ctx->Theme.TextDim[0];
+                    lbl->TextColor[1] = ctx->Theme.TextDim[1];
+                    lbl->TextColor[2] = ctx->Theme.TextDim[2];
+                    lbl->TextColor[3] = ctx->Theme.TextDim[3];
                     ZUIPopBox(ctx);
-                    run_y += hdrH;
-                    continue;
                 }
-
-                // Drop zone visual — before this section
-                bool  top_tgt = drop_chg && (m_drop_slot == di) && m_open[di] && !m_drop_is_bot;
-                bool  bot_tgt = drop_chg && (m_drop_slot == di + 1) && m_open[di] && m_drop_is_bot;
-                bool  col_tgt = drop_chg && (m_drop_slot == di) && !m_open[di] && !m_drop_is_bot;
-
-                float sec_top = run_y - scy;
-
-                if (top_tgt)
-                    ZUIDockDividerH(ctx, "##dtop");
-
-                // Header — collapsed target gets teal highlight
-                {
-                    float        hi[4] = {tb[0], tb[1], tb[2], 0.22f};
-                    const float* hcol  = col_tgt ? hi : nullptr;
-                    ZUISignal    sig   = ZUICollapsingHeader(ctx, kLabels[s], &m_open[di], hcol);
-
-                    // Drag detection via signal — suppressed naturally when the divider hit zone
-                    // owns ctx->ActiveKey, since ZUI_SignalHeld requires ActiveKey == header->Key.
-                    if (!m_drag_active && (sig.Flags & ZUI_SignalHeld))
-                    {
-                        m_drag_acc_y += sig.DragDelta[1];
-                        if (fabsf(m_drag_acc_y) > 8.f)
-                        {
-                            m_drag_active = true;
-                            m_drag_di     = di;
-                            m_drag_acc_y  = 0.f;
-                        }
-                    }
-                }
-
-                // Content
-                if (m_open[di])
-                {
-                    float cH     = ContentH(di);
-                    float half_h = (hdrH + cH) * 0.5f;
-
-                    snprintf(ck, sizeof(ck), "##cc%d", di);
-                    ZUIBox* c       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(cH));
-                    c->Flags        = c->Flags | ZUI_ClipChildren;
-                    c->EdgeSoftness = 0.f;
-                    ZUISpacer(ctx, 2.f);
-
-                    switch (s)
-                    {
-                        case 0: // Transform
-                            Row("##r_pos");
-                            ZUILabel(ctx, "Position", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat3(ctx, "##pos", m_position, 0.1f, fw / 3.f);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_rot");
-                            ZUILabel(ctx, "Rotation", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat3(ctx, "##rot", m_rotation, 0.5f, fw / 3.f);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_scl");
-                            ZUILabel(ctx, "Scale", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat3(ctx, "##scl", m_scale, 0.05f, fw / 3.f);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            break;
-                        case 1: // Mesh Renderer
-                            Row("##r_cs");
-                            ZUILabel(ctx, "Cast Shadows", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUICheckbox(ctx, "##cs", &m_cast_shadows);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_rs");
-                            ZUILabel(ctx, "Recv Shadows", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUICheckbox(ctx, "##rs", &m_receive_shadows);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            break;
-                        case 2: // Rigid Body
-                            Row("##r_ms");
-                            ZUILabel(ctx, "Mass", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat(ctx, "##ms", &m_mass, 0.1f, fw);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_ug");
-                            ZUILabel(ctx, "Use Gravity", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUICheckbox(ctx, "##ug", &m_use_gravity);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_km");
-                            ZUILabel(ctx, "Kinematic", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUICheckbox(ctx, "##km", &m_is_kinematic);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            break;
-                        case 3: // Lighting
-                            Row("##r_li");
-                            ZUILabel(ctx, "Intensity", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat(ctx, "##li", &m_light_intensity, 0.05f, fw);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_lr");
-                            ZUILabel(ctx, "Range", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat(ctx, "##lr", &m_light_range, 0.5f, fw);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_lc");
-                            ZUILabel(ctx, "Color", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat3(ctx, "##lc", m_light_color, 0.01f, fw / 3.f);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            break;
-                        case 4: // Audio Source
-                            Row("##r_av");
-                            ZUILabel(ctx, "Volume", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUIDragFloat(ctx, "##av", &m_audio_volume, 0.02f, fw);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_al");
-                            ZUILabel(ctx, "Loop", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUICheckbox(ctx, "##al", &m_audio_loop);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            Row("##r_pa");
-                            ZUILabel(ctx, "Play Awake", ctx->Theme.TextDim);
-                            ZUISpacer(ctx, 4.f);
-                            ZUICheckbox(ctx, "##pa", &m_audio_play_awake);
-                            ZUISpacer(ctx, 8.f);
-                            EndRow();
-                            break;
-                        case 5: // Script
-                            ZUILabel(ctx, "No script attached", ctx->Theme.TextDim);
-                            break;
-                    }
-
-                    ZUIEndColumn(ctx);
-
-                    // Sash — after expanded sections only
-                    if (di < N - 1)
-                    {
-                        char sk[16], vk[16];
-                        snprintf(sk, sizeof(sk), "##sk%d", di);
-                        snprintf(vk, sizeof(vk), "##sv%d", di);
-
-                        ZUIBox* sash       = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk), ZUI_Clickable);
-                        sash->Size[0]      = ZFill();
-                        sash->Size[1]      = ZPx(kSashH);
-                        sash->EdgeSoftness = 0.f;
-
-                        bool shot          = (ctx->HotKey == sash->Key) || (ctx->ActiveKey == sash->Key);
-                        if (shot)
-                            ctx->ResizeCursor = 2;
-
-                        ZUIBox* vis       = ZUIPushBox(ctx, vk, (uint32_t) strlen(vk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                        vis->Size[0]      = ZFill();
-                        vis->Size[1]      = ZPx(2.f);
-                        vis->FloatPos[0]  = 0.f;
-                        vis->FloatPos[1]  = (kSashH - 2.f) * 0.5f;
-                        vis->EdgeSoftness = shot ? (ctx->ActiveKey == sash->Key ? 3.f : 2.f) : 0.f;
-                        if (shot)
-                            ZUIBoxSetColor(vis, tb[0], tb[1], tb[2], ctx->ActiveKey == sash->Key ? 0.70f : 0.50f);
-                        else
-                            ZUIBoxSetColor(vis, ctx->Theme.Separator[0], ctx->Theme.Separator[1], ctx->Theme.Separator[2], ctx->Theme.Separator[3]);
-                        ZUIPopBox(ctx);
-
-                        ZUISignal ssig = ZUISignalFromBox(ctx, sash);
-                        ZUIPopBox(ctx);
-
-                        if ((ssig.Flags & ZUI_SignalHeld) && fabsf(ssig.DragDelta[1]) > 0.05f)
-                            m_h[di] = fmaxf(m_h[di] + ssig.DragDelta[1], kMinH);
-                    }
-
-                    // Drop zone teal fill — floated sibling after section wrapper
-                    if (top_tgt || bot_tgt)
-                    {
-                        float fill_y = sec_top + (bot_tgt ? half_h : 0.f);
-                        char  dzk[16];
-                        snprintf(dzk, sizeof(dzk), "##dz%d", di);
-                        ZUIDropZoneFill(ctx, dzk, 0.f, fill_y, sectW, half_h);
-                    }
-
-                    // 2px divider after section (bottom-half target)
-                    if (bot_tgt)
-                        ZUIDockDividerH(ctx, "##dbot");
-                }
-
-                run_y += SectionRunH(di, hdrH);
+                ZUIEndScrollRegion(ctx);
+                ZUIEndColumn(ctx);
+                return;
             }
 
-            // Divider at end of list
-            if (drop_chg && m_drop_slot == N)
-                ZUIDockDividerH(ctx, "##dend");
+            // ── Actor header — name editing ───────────────────────────────────────
+            {
+                ZUIBox* hdr = ZUIBeginRow(ctx, "##insp_hdr", ZFill(), ZPx(fh * 2.f));
+                hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
+                ZUIBoxSetColor(hdr, 0.18f, 0.18f, 0.22f, 1.f);
+                hdr->EdgeSoftness = 0.f;
+                ZUISpacer(ctx, 8.f);
+
+                auto* nc_comp = actor->GetComponent<NameComponent>();
+                if (nc_comp)
+                {
+                    ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), pw - 24.f);
+                }
+                else
+                {
+                    ZUILabel(ctx, "Actor", ctx->Theme.TextDefault);
+                }
+                ZUIEndRow(ctx);
+            }
+
+            // ── Search bar ────────────────────────────────────────────────────────
+            ZUIBeginRow(ctx, "##insp_search_row", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 6.f);
+            ZUISearchBox(ctx, "##insp_search", m_search, sizeof(m_search), "Search Details...", ZFill());
+            ZUISpacer(ctx, 6.f);
+            ZUIEndRow(ctx);
+
+            ZUISeparator(ctx);
+
+            // ── Scroll region ─────────────────────────────────────────────────────
+            ZUIBeginScrollRegion(ctx, "##insp_scroll", ZFill(), ZFill());
+
+            // ── Reflection-driven component sections ──────────────────────────────
+            ArchetypeMask mask     = actor->GetComponentMask();
+            uint32_t      comp_idx = 0;
+            const auto&   registry = ComponentReflectionRegistry::Get();
+
+            registry.ForEach([&](const ComponentMeta& meta) {
+                if (!MaskHas(mask, meta.TypeID))
+                    return;
+
+                // Search filter on component name
+                if (m_search[0])
+                {
+                    bool name_matches = (strstr(meta.TypeName, m_search) != nullptr);
+                    // Also check if any field name matches
+                    bool field_match  = false;
+                    for (uint32_t fi = 0; fi < meta.FieldCount && !field_match; ++fi)
+                        if (!meta.Fields[fi].Hidden && strstr(meta.Fields[fi].Name, m_search))
+                            field_match = true;
+                    if (!name_matches && !field_match)
+                    {
+                        ++comp_idx;
+                        return;
+                    }
+                }
+
+                void* comp_data = actor->GetComponentRaw(meta.TypeID);
+                if (!comp_data)
+                {
+                    ++comp_idx;
+                    return;
+                }
+
+                uint32_t open_idx = meta.TypeID < 64u ? meta.TypeID : 0u;
+                ZUICollapsingHeader(ctx, meta.TypeName, &m_sec_open[open_idx]);
+
+                if (m_sec_open[open_idx])
+                {
+                    ZUISpacer(ctx, 4.f);
+                    for (uint32_t fi = 0; fi < meta.FieldCount; ++fi)
+                        DrawZUIField(ctx, meta.Fields[fi], comp_data, pw, comp_idx, fi);
+                    ZUISpacer(ctx, 4.f);
+                    ZUISeparator(ctx);
+                }
+
+                ++comp_idx;
+            });
 
             ZUIEndScrollRegion(ctx);
-
-            // Ghost — floated after scroll region, panel-content coords.
-            // cx is centered in the inspector width so the ghost never renders over other panels.
-            // cy is clamped to stay within the panel height.
-            if (ghost_lbl)
-            {
-                float panel_h = rect[3] - rect[1];
-                float ghost_h = hdrH + ctx->Style.TabGhostContentH;
-                float cx      = sectW * 0.5f; // centered — ghost stays inside inspector
-                float cy      = ctx->MousePos[1] - rect[1];
-                cy            = fmaxf(ghost_h * 0.5f, fminf(cy, panel_h - ghost_h * 0.5f));
-                ZUIDockGhostHeader(ctx, "##ghost", ghost_lbl, cx, cy);
-            }
+            ZUIEndColumn(ctx);
         }
     };
 
