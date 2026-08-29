@@ -317,33 +317,41 @@ namespace Tetragrama::Panels
     void ProjectViewPanel::DrawFilters(ZUIContext* ctx)
     {
         float                fh            = ZUIGetFrameHeight(ctx);
+        float                row_h         = fh + 4.f; // taller than default for readability
 
         static const char*   kCategories[] = {"All", "Folders", "Scenes", "Models", "Textures", "Scripts", "Shaders", "Other"};
         static constexpr int kNCats        = 8;
 
-        static const float   kActBg[4]     = {0.22f, 0.63f, 0.69f, 0.90f}; // teal active
-        static const float   kRestBg[4]    = {0.f, 0.f, 0.f, 0.f};         // transparent inactive
+        static const float   kActBg[4]     = {0.22f, 0.63f, 0.69f, 1.f}; // teal — fully opaque when active
+        static const float   kHovBg[4]     = {1.f, 1.f, 1.f, 0.06f};     // subtle white hover
+        static const float   kRestBg[4]    = {0.f, 0.f, 0.f, 0.f};
 
         ZUIBeginScrollRegion(ctx, "##pv_flt_scroll", ZFill(), ZFill());
-        ZUISpacer(ctx, 4.f);
+        ZUISpacer(ctx, 8.f);
 
         for (int i = 0; i < kNCats; ++i)
         {
             bool active = (strcmp(m_type_filter, kCategories[i]) == 0);
             char rk[32];
             snprintf(rk, sizeof(rk), "##pv_flt_%d", i);
-            ZUIBox* row = ZUIBeginRow(ctx, rk, ZFill(), ZPx(fh));
+            ZUIBox* row = ZUIBeginRow(ctx, rk, ZFill(), ZPx(row_h));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-            ZUIBoxSetColorArr(row, active ? kActBg : kRestBg);
+            bool hov    = (ctx->HotKey == row->Key);
+            if (active)
+                ZUIBoxSetColorArr(row, kActBg);
+            else if (hov)
+                ZUIBoxSetColorArr(row, kHovBg);
+            else
+                ZUIBoxSetColorArr(row, kRestBg);
+            ZUIBoxSetCornerRadius(row, 3.f);
             row->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, kCategories[i],
-                     active ? ctx->Theme.TextDefault : ctx->Theme.TextDefault); // all bright — they're clickable
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, kCategories[i], ctx->Theme.TextDefault); // always bright — these are clickable filters
             ZUISignal s = ZUISignalFromBox(ctx, row);
             ZUIEndRow(ctx);
             if (s.Flags & ZUI_SignalClicked)
                 secure_strncpy(m_type_filter, sizeof(m_type_filter), kCategories[i], sizeof(m_type_filter) - 1);
-            ZUISpacer(ctx, 2.f);
+            ZUISpacer(ctx, 3.f);
         }
 
         ZUIEndScrollRegion(ctx);
@@ -352,24 +360,23 @@ namespace Tetragrama::Panels
     // ── Content grid (right area) ─────────────────────────────────────────────
     void ProjectViewPanel::DrawGrid(ZUIContext* ctx, float pw)
     {
-        // ── Card constants — matches develop RenderContentTile proportions ─────
-        static const float kThumbSz      = 80.f; // thumbnail zone height
-        static const float kPadding      = 16.f;
-        static const float kCardW        = kThumbSz + kPadding;
-        static const float kRounding     = 4.f;
-        // Icon size: develop uses sz*0.85; ZUI previously used 0.70 — fixed (#5)
+        // ── Card constants ────────────────────────────────────────────────────
+        static const float kThumbSz      = 96.f; // wider: more icon room (was 80)
+        static const float kPadding      = 20.f;
+        static const float kCardW        = kThumbSz + kPadding; // 116px
+        static const float kRounding     = 6.f;
         static const float kIconRatio    = 0.85f;
-        static const float kFolderCol[4] = {0.85f, 0.65f, 0.15f, 1.f}; // amber
+        static const float kFolderCol[4] = {0.85f, 0.65f, 0.15f, 1.f};
 
         float              fh            = ZUIGetFrameHeight(ctx);
-        float              footer_h      = fh * 2.f + 10.f; // two text rows + padding
+        float              footer_h      = fh * 2.f + 18.f; // more vertical breathing room
         float              card_h        = kThumbSz + footer_h;
         int                col_count     = (int) (pw / kCardW);
         if (col_count < 1)
             col_count = 1;
 
-        // Max display name chars: ~11 per line × 2 lines (avoid overflow in footer)
-        static constexpr int kMaxNameChars = 22;
+        // ~13 chars/line × 2 lines = 26 (wider card allows more before ellipsis)
+        static constexpr int kMaxNameChars = 26;
 
         // Collect filtered entries
         static int           vis[kMaxEntries];
@@ -379,7 +386,7 @@ namespace Tetragrama::Panels
                 vis[nvis++] = i;
 
         ZUIBeginScrollRegion(ctx, "##pv_grid_scroll", ZFill(), ZFill());
-        ZUISpacer(ctx, 8.f);
+        ZUISpacer(ctx, 16.f);
 
         for (int r = 0; r * col_count < nvis; ++r)
         {
@@ -474,7 +481,7 @@ namespace Tetragrama::Panels
                         snprintf(ftk, sizeof(ftk), "##pvft_%d", vis[ei]);
                         ZUIBox* footer = ZUIBeginColumn(ctx, ftk, ZFill(), ZPx(footer_h));
                         footer->Flags  = footer->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
-                        ZUIBoxSetColor(footer, 0.f, 0.f, 0.f, 0.55f); // dark overlay
+                        ZUIBoxSetColor(footer, 0.06f, 0.06f, 0.08f, 0.92f); // footer strip — opaque, slightly blue-dark
                         ZUIBoxSetBottomRadius(footer, kRounding);
                         footer->EdgeSoftness = 0.f;
 
@@ -520,10 +527,10 @@ namespace Tetragrama::Panels
                             tlb->Size[1]      = ZPx(fh);
                             tlb->Label        = ZUIPushStr(&ctx->FrameArena, type_lbl, tl);
                             tlb->Padding[0]   = 4.f; // left indent (#2)
-                            tlb->TextColor[0] = ctx->Theme.TextDim[0];
-                            tlb->TextColor[1] = ctx->Theme.TextDim[1];
-                            tlb->TextColor[2] = ctx->Theme.TextDim[2];
-                            tlb->TextColor[3] = ctx->Theme.TextDim[3];
+                            tlb->TextColor[0] = 0.70f;
+                            tlb->TextColor[1] = 0.70f;
+                            tlb->TextColor[2] = 0.75f; // slight blue tint
+                            tlb->TextColor[3] = 1.f;
                             ZUIPopBox(ctx);
                         }
 
@@ -805,7 +812,7 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 4.f);
             ZUIBeginRow(ctx, "##pv_src_hdr", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "SOURCES", ctx->Theme.TextDefault);
+            ZUILabel(ctx, "Sources", ctx->Theme.TextDefault);
             ZUIEndRow(ctx);
             ZUISeparator(ctx);
 
@@ -860,7 +867,7 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 4.f);
             ZUIBeginRow(ctx, "##pv_flt_hdr", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "FILTERS", ctx->Theme.TextDefault);
+            ZUILabel(ctx, "Filters", ctx->Theme.TextDefault);
             ZUIEndRow(ctx);
             ZUISeparator(ctx);
 
