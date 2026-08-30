@@ -214,20 +214,19 @@ namespace ZEngine::UI
 
                 if (ctx->ActiveKey == xhash && ctx->HotKey == xhash)
                 {
-                    if (p->ViewCount > 1)
+                    if (p->Views[ti])
+                        p->Views[ti]->Visible = false; // hide; status bar can re-show
+                    // Advance ActiveTab to the next visible tab
+                    if (p->ActiveTab == ti)
                     {
-                        // Remove this tab — panel keeps rendering with fewer tabs
-                        for (uint32_t j = ti; j + 1 < p->ViewCount; ++j)
-                            p->Views[j] = p->Views[j + 1];
-                        --p->ViewCount;
-                        if (p->ActiveTab >= p->ViewCount && p->ViewCount > 0)
-                            p->ActiveTab = p->ViewCount - 1;
-                    }
-                    else
-                    {
-                        // Last tab — panel disappears this frame
-                        if (PendingCloseCount < kMaxPanels)
-                            PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+                        for (uint32_t ni = 0; ni < p->ViewCount; ++ni)
+                        {
+                            if (p->Views[ni] && p->Views[ni]->Visible)
+                            {
+                                p->ActiveTab = ni;
+                                break;
+                            }
+                        }
                     }
                     LayoutDirty = true;
                     goto next_panel; // only one close per panel per frame
