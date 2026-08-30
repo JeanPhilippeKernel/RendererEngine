@@ -3681,8 +3681,10 @@ namespace ZEngine::UI
             }
         }
 
-        // Outer container (full-width column that clips)
-        ZUIBeginColumn(ctx, key, ZFill(), h);
+        // Outer container — ClipChildren so the 9999px separators don't bleed out
+        ZUIBox* outer_col = ZUIBeginColumn(ctx, key, ZFill(), h);
+        outer_col->Flags  = outer_col->Flags | ZUI_ClipChildren;
+        outer_col->EdgeSoftness = 0.f;
 
         // Vertical separators — FirstChild so LIFO renders them last (on top).
         // Height is ZPx(0) now; patched to the real table height in ZUIEndDataTable
@@ -3702,7 +3704,7 @@ namespace ZEngine::UI
                 ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
                                              ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 sep->Size[0]     = ZPx(1.f);
-                sep->Size[1]     = ZPx(0.f); // patched in ZUIEndDataTable
+                sep->Size[1]     = ZPx(9999.f); // clipped by outer ZUI_ClipChildren
                 sep->FloatPos[0] = x;
                 sep->FloatPos[1] = 0.f;
                 ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderStrong);
@@ -3954,8 +3956,14 @@ namespace ZEngine::UI
 
         char  ck[48];
         snprintf(ck, sizeof(ck), "##dtcell_%llu_%d_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex, col);
-        ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
-        ZUISpacer(ctx, ctx->Style.CellPadding[0]); // left padding
+        ZUIBox* cc    = ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
+        cc->Padding[0] = ctx->Style.CellPadding[0]; // horizontal left indent (matches header)
+        // Vertical centering: top spacer = half the dead space above the text
+        {
+            float pad_y = fmaxf(0.f, (kDT_RowH - ZUIGetFrameHeight(ctx)) * 0.5f);
+            if (pad_y > 0.5f)
+                ZUISpacer(ctx, pad_y);
+        }
     }
 
     void ZUIEndDataTable(ZUIContext* ctx)
@@ -3971,18 +3979,7 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);
             ctx->DT_InRow = false;
         }
-        // Patch separator heights: header + bottom border + all data rows
-        if (ctx->DT_SepBoxes && ctx->DT_ColCount > 1)
-        {
-            float total_h = kDT_HeaderH + 1.f /* bottom border */ + (float) ctx->DT_RowIndex * kDT_RowH;
-            for (int i = 0; i < ctx->DT_ColCount - 1; ++i)
-            {
-                if (ctx->DT_SepBoxes[i])
-                    ctx->DT_SepBoxes[i]->Size[1] = ZPx(total_h);
-            }
-        }
         ctx->DT_SepBoxes = nullptr;
-
         ZUIEndColumn(ctx); // outer container
         ctx->DT_ColCount = 0;
     }

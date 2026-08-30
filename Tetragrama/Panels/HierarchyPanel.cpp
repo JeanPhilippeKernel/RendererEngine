@@ -222,7 +222,7 @@ namespace Tetragrama::Panels
 
         // ── Scroll region + DataTable ─────────────────────────────────────────
         ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
-        ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFit());
+        ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFill());
 
         // Custom header — UE5 style: bright TextDefault labels, eye icon, sort arrows
         // ctx->DT_ColWidths is populated by ZUIBeginDataTable above.
