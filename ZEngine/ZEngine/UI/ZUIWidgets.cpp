@@ -3639,7 +3639,7 @@ namespace ZEngine::UI
         return table_key ^ ((uint64_t) col * 2654435761ULL);
     }
 
-    bool ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h)
+    bool ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h, uint32_t flags)
     {
         ctx->DT_Key         = ZUIHashStr(key, (uint32_t) strlen(key));
         ctx->DT_ColCount    = col_count;
@@ -3660,9 +3660,14 @@ namespace ZEngine::UI
         for (int i = 0; i < col_count; ++i)
             total_init += (cols && cols[i].InitWidth > 0.f) ? cols[i].InitWidth : kDT_ColDefault;
 
+        // Proportional resize only when ZUIDataTableFlags_ProportionalResize is set.
+        // Default: columns keep their stored pixel widths regardless of panel resize.
+        bool prop_resize = (flags & ZUIDataTableFlags_ProportionalResize) != 0;
+
         auto* total_s    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kTotalWSuffix);
         float prev_total = (total_s && total_s->UserData > 1.f) ? total_s->UserData : -1.f;
-        float scale      = (prev_total > 1.f && total_init > 1.f && fabsf(total_init - prev_total) > 1.f)
+        float scale      = (prop_resize && prev_total > 1.f && total_init > 1.f
+                            && fabsf(total_init - prev_total) > 1.f)
                            ? total_init / prev_total : 1.f;
 
         for (int i = 0; i < col_count; ++i)
@@ -3672,8 +3677,8 @@ namespace ZEngine::UI
             if (s && s->UserData > 1.f)
             {
                 float w = s->UserData * scale;
-                w = fmaxf(w, 30.f);    // minimum column width
-                s->UserData = w;
+                w = fmaxf(w, 30.f);
+                if (prop_resize) s->UserData = w; // only persist the scaled value if proportional
                 ctx->DT_ColWidths[i] = w;
             }
             else
@@ -3682,7 +3687,7 @@ namespace ZEngine::UI
                 if (s) s->UserData   = init;
             }
         }
-        if (total_s) total_s->UserData = total_init;
+        if (prop_resize && total_s) total_s->UserData = total_init;
 
         // Load sort state
         {

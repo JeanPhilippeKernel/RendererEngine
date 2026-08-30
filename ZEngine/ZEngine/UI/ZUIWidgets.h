@@ -412,6 +412,12 @@ namespace ZEngine::UI
 
     // ZUIDataTable — sortable, resizable data table
 
+    enum ZUIDataTableFlags : uint32_t
+    {
+        ZUIDataTableFlags_None               = 0,
+        ZUIDataTableFlags_ProportionalResize = 1 << 0, ///< rescale column widths proportionally when the panel is resized
+    };
+
     /// @brief Column descriptor for ZUIBeginDataTable.
     struct ZUIDataTableColumn
     {
@@ -433,7 +439,7 @@ namespace ZEngine::UI
     /// @param col_count Number of columns.
     /// @param cols      Column descriptors (array of length col_count).
     /// @return false if the table is off-screen (still call ZUIEndDataTable).
-    bool             ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h = ZFill());
+    bool             ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h = ZFill(), uint32_t flags = ZUIDataTableFlags_None);
 
     /// @brief Render the sticky header row with labels and sort arrows.
     /// @note Must be called once before any ZUIDataTableNextRow calls.
