@@ -213,42 +213,33 @@ namespace Tetragrama::Panels
         ZUISeparator(ctx);
         ZUISpacer(ctx, 6.f);
 
-        // ── Filter pill row (UE5-style horizontal filter) ─────────────────────
+        // ── Filter pill row — same visual style as InspectorPanel category pills
         {
-            static const char* kPills[]    = {"General","Mesh","Material","Animation","LOD","All"};
-            static const char* kPillKeys[] = {
-                "##pf_gen","##pf_mesh","##pf_mat","##pf_anim","##pf_lod","##pf_all"
-            };
-            ZUIBeginRow(ctx, "##imp_filter_row", ZFill(), ZPx(fh + 6.f));
-            ZUISpacer(ctx, 8.f);
+            static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal active
+            static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark inactive
+            static const char* kPills[]     = {"General","Mesh","Material","Animation","LOD","All"};
+            static const char* kPillKeys[]  = {"##pf0","##pf1","##pf2","##pf3","##pf4","##pf5"};
+
+            ZUIBeginRow(ctx, "##imp_filter_row", ZFill(), ZPx(fh + 4.f));
+            ZUISpacer(ctx, 6.f);
             for (int pi = 0; pi < 6; ++pi)
             {
                 bool disabled = (pi == 3 || pi == 4);
                 if (disabled) ZUIBeginDisabled(ctx);
 
-                bool    act  = (m_options_filter == pi);
-                uint32_t pln = (uint32_t)strlen(kPills[pi]);
+                bool     act   = (m_options_filter == pi);
+                uint32_t plen  = (uint32_t)strlen(kPills[pi]);
+                float    pill_w = fmaxf((float)plen * 7.f + 10.f, 40.f);
+
                 ZUIBox* pb   = ZUIPushBox(ctx, kPillKeys[pi], (uint32_t)strlen(kPillKeys[pi]),
                                           ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-                pb->Size[0]    = ZText();
-                pb->Size[1]    = ZPx(fh + 4.f);
-                pb->Label      = ZUIPushStr(&ctx->FrameArena, kPills[pi], pln);
-                pb->TextAlign  = ZUITextAlign::Center;
-                pb->Padding[0] = 10.f;
-                pb->Padding[2] = 10.f;
+                pb->Size[0]  = ZPx(pill_w);
+                pb->Size[1]  = ZPx(fh);
+                pb->Label    = ZUIPushStr(&ctx->FrameArena, kPills[pi], plen);
+                pb->TextAlign = ZUITextAlign::Center;
+                ZUIBoxSetColorArr(pb, act ? kPillAct : kPillRest);
                 ZUIBoxSetCornerRadius(pb, 3.f);
-                if (act)
-                {
-                    ZUIBoxSetColorArr(pb, ctx->Theme.TabActiveBg);
-                    pb->TextColor[0] = pb->TextColor[1] = pb->TextColor[2] = pb->TextColor[3] = 1.f;
-                }
-                else
-                {
-                    bool hov = (ctx->HotKey == pb->Key);
-                    ZUIBoxSetColor(pb, 1.f, 1.f, 1.f, hov ? 0.07f : 0.f);
-                    pb->TextColor[0] = ctx->Theme.TextDim[0]; pb->TextColor[1] = ctx->Theme.TextDim[1];
-                    pb->TextColor[2] = ctx->Theme.TextDim[2]; pb->TextColor[3] = 1.f;
-                }
+                pb->TextColor[0] = pb->TextColor[1] = pb->TextColor[2] = pb->TextColor[3] = 1.f;
                 ZUISignal psig = ZUISignalFromBox(ctx, pb);
                 ZUIPopBox(ctx);
                 ZUISpacer(ctx, 4.f);
