@@ -39,7 +39,8 @@ namespace Tetragrama::Panels
             return;
 
         // Scratch arena for ImportConfiguration strings — carved from layer arena
-        layer->LocalArena.CreateSubArena(ZMega(4), &m_local_arena);
+        // ZKilo(64): ~8 path strings × ≤512 bytes each — a few KB is all we need
+        layer->LocalArena.CreateSubArena(ZKilo(64), &m_local_arena);
 
         // Importer arenas carved from the engine's ImportPipeline budget so all
         // import memory — engine importers and editor importers — is budget-tracked.
