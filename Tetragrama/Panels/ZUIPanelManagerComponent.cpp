@@ -44,8 +44,8 @@ namespace Tetragrama::Panels
         auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
         Manager.AddView(p_hier, &hierarchy);
 
-        auto* p_vp       = Manager.AddPanel(ZUIDockHashName("Viewport"));
-        p_vp->Closeable  = false; // Main viewport is permanent — no close button
+        viewport.Closeable = false; // Main viewport is permanent — no close button
+        auto* p_vp         = Manager.AddPanel(ZUIDockHashName("Viewport"));
         Manager.AddView(p_vp, &viewport);
 
         auto* p_insp = Manager.AddPanel(ZUIDockHashName("Inspector"));

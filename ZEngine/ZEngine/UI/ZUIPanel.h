@@ -16,6 +16,7 @@ namespace ZEngine::UI
         const char* Title                                         = "Panel"; ///< Displayed in the tab bar
         uint64_t    Key                                           = 0;       ///< Optional stable key; 0 = derive from Title
         bool        Visible                                       = true;
+        bool        Closeable                                     = true;  ///< false = no close button on this tab (e.g. main viewport)
         float       TabColor[4]                                   = {0.f, 0.f, 0.f, 0.f}; ///< Per-tab accent (alpha=0 → theme default)
 
         virtual ~ZUIPanelView()                                   = default;
@@ -39,7 +40,6 @@ namespace ZEngine::UI
         uint32_t      ViewCount               = 0;
         uint32_t      ActiveTab               = 0;
         bool          Hidden                  = false; ///< Closed by user; restorable from Window menu
-        bool          Closeable              = true;  ///< false = no close button (e.g. main viewport)
 
         bool          ReorderActive           = false;
         uint32_t      ReorderTabIdx           = 0;

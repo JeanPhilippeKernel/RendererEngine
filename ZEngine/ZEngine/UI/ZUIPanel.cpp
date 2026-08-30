@@ -198,7 +198,7 @@ namespace ZEngine::UI
         for (uint32_t i = 0; i < PanelCount; ++i)
         {
             ZUIPanel* p = &Panels[i];
-            if (p->Hidden || p->ViewCount == 0 || !p->Closeable)
+            if (p->Hidden || p->ViewCount == 0)
             {
                 continue;
             }
@@ -206,6 +206,8 @@ namespace ZEngine::UI
             // Tab bar close buttons
             for (uint32_t ti = 0; ti < p->ViewCount; ++ti)
             {
+                if (p->Views[ti] && !p->Views[ti]->Closeable)
+                    continue;
                 char xkey[64];
                 snprintf(xkey, sizeof(xkey), "x##x_%llx_%u", (unsigned long long) p->DockKey, ti);
                 uint64_t xhash = ZUIHashStr(xkey, (uint32_t) strlen(xkey));
@@ -234,11 +236,12 @@ namespace ZEngine::UI
 
             // Single-view title strip close button
             {
+                bool strip_closeable = (p->ActiveTab < p->ViewCount && p->Views[p->ActiveTab]) ? p->Views[p->ActiveTab]->Closeable : true;
                 char txk[56];
                 snprintf(txk, sizeof(txk), "x##tx_%llx", (unsigned long long) p->DockKey);
                 uint64_t txhash = ZUIHashStr(txk, (uint32_t) strlen(txk));
 
-                if (ctx->ActiveKey == txhash && ctx->HotKey == txhash)
+                if (strip_closeable && ctx->ActiveKey == txhash && ctx->HotKey == txhash)
                 {
                     if (PendingCloseCount < kMaxPanels)
                         PendingCloseKeys[PendingCloseCount++] = p->DockKey;
@@ -677,7 +680,8 @@ namespace ZEngine::UI
 
             // x close (hover-only) — suppressed for non-closeable panels (e.g. main viewport)
             bool should_close = false;
-            bool ph           = p->Closeable && (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
+            bool active_view_closeable = (p->ActiveTab < p->ViewCount && p->Views[p->ActiveTab]) ? p->Views[p->ActiveTab]->Closeable : true;
+            bool ph           = active_view_closeable && (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
             if (ph)
             {
                 char xk[56];
@@ -841,7 +845,8 @@ namespace ZEngine::UI
             bool tab_closed = false;
             {
                 float btn_sz     = ctx->Style.FontSize;
-                bool  show_close = p->Closeable && (is_active || tab_hovered);
+                bool  view_closeable = p->Views[ti] ? p->Views[ti]->Closeable : true;
+                bool  show_close     = view_closeable && (is_active || tab_hovered);
                 ZUISpacer(ctx, ZUIGetInnerSpac(ctx));
 
                 char xkey[64];
