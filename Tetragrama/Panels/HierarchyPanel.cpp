@@ -233,58 +233,61 @@ namespace Tetragrama::Panels
             ZUIBoxSetColorArr(hrow, ctx->Theme.TableHeaderBg);
             hrow->EdgeSoftness = 0.f;
 
-            // Eye icon — matches UE5 visibility indicator on far left of header
-            ZUISpacer(ctx, 6.f);
-            {
-                ZUIBox* eye       = ZUIPushBox(ctx, "##hdr_eye", 9, ZUI_DrawActorIcon);
-                eye->Size[0]      = ZPx(fh * 0.7f);
-                eye->Size[1]      = ZPx(fh);
-                eye->TextColor[0] = ctx->Theme.TextDim[0];
-                eye->TextColor[1] = ctx->Theme.TextDim[1];
-                eye->TextColor[2] = ctx->Theme.TextDim[2];
-                eye->TextColor[3] = ctx->Theme.TextDim[3];
-                auto* eps         = ZUIStateGetOrInsert(&ctx->StateStore, eye->Key);
-                if (eps)
-                    eps->UserData = ZUI_ICON_WORLD; // globe closest to eye shape
-                ZUIPopBox(ctx);
-            }
-            ZUISpacer(ctx, 4.f);
-
-            // Column headers — bright TextDefault (all columns, not just active sort)
+            // Column header cells — each cell is ZPx(cw) wide starting at x=0,
+            // exactly matching data column cell boundaries (no prefix offset).
+            // Eye icon lives INSIDE column 0 (same as develop branch).
             for (int ci = 0; ci < 3; ++ci)
             {
-                float cw = ctx->DT_ColWidths ? ctx->DT_ColWidths[ci] : cols[ci].InitWidth;
-                char  lk[32];
-                snprintf(lk, sizeof(lk), "##hcl_%d", ci);
-                const char* lbl    = kColNames[ci];
-                uint32_t    llen   = (uint32_t) strlen(lbl);
-                bool        is_sc  = (ctx->DT_SortCol == ci);
+                float       cw    = ctx->DT_ColWidths ? ctx->DT_ColWidths[ci] : cols[ci].InitWidth;
+                const char* lbl   = kColNames[ci];
+                uint32_t    llen  = (uint32_t) strlen(lbl);
+                bool        is_sc = (ctx->DT_SortCol == ci);
 
-                ZUIBox*     cell   = ZUIPushBox(ctx, lk, (uint32_t) strlen(lk), ZUI_DrawText | ZUI_Clickable);
-                cell->Size[0]      = ZPx(cw);
-                cell->Size[1]      = ZPx(fh);
-                cell->Label        = ZUIPushStr(&ctx->FrameArena, lbl, llen);
-                // All labels bright; active sort column uses teal accent
-                cell->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : ctx->Theme.TextDefault[0];
-                cell->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : ctx->Theme.TextDefault[1];
-                cell->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : ctx->Theme.TextDefault[2];
-                cell->TextColor[3] = 1.f;
-                ZUISignal csig     = ZUISignalFromBox(ctx, cell);
+                // Cell container (X-axis row inside the header row)
+                char  cellk[32]; snprintf(cellk, sizeof(cellk), "##hcell_%d", ci);
+                ZUIBox* cell_row = ZUIBeginRow(ctx, cellk, ZPx(cw), ZPx(fh));
+                (void) cell_row;
+
+                // Column 0 gets the eye icon before the label
+                if (ci == 0)
+                {
+                    ZUISpacer(ctx, 4.f);
+                    ZUIBox* eye  = ZUIPushBox(ctx, "##hdr_eye", 9, ZUI_DrawActorIcon);
+                    eye->Size[0] = ZPx(fh * 0.7f);
+                    eye->Size[1] = ZPx(fh);
+                    eye->TextColor[0] = ctx->Theme.TextDim[0]; eye->TextColor[1] = ctx->Theme.TextDim[1];
+                    eye->TextColor[2] = ctx->Theme.TextDim[2]; eye->TextColor[3] = ctx->Theme.TextDim[3];
+                    auto* eps = ZUIStateGetOrInsert(&ctx->StateStore, eye->Key);
+                    if (eps) eps->UserData = ZUI_ICON_WORLD;
+                    ZUIPopBox(ctx);
+                    ZUISpacer(ctx, 4.f);
+                }
+                else
+                {
+                    ZUISpacer(ctx, 6.f); // same left indent as data Padding[0]
+                }
+
+                // Label — teal if sort column, bright otherwise
+                ZUIBox* lbox     = ZUIPushBox(ctx, lbl, llen, ZUI_DrawText | ZUI_Clickable);
+                lbox->Size[0]    = ZText();
+                lbox->Size[1]    = ZPx(fh);
+                lbox->Label      = ZUIPushStr(&ctx->FrameArena, lbl, llen);
+                lbox->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : ctx->Theme.TextDefault[0];
+                lbox->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : ctx->Theme.TextDefault[1];
+                lbox->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : ctx->Theme.TextDefault[2];
+                lbox->TextColor[3] = 1.f;
+                ZUISignal csig   = ZUISignalFromBox(ctx, lbox);
                 ZUIPopBox(ctx);
 
-                // Sort on click (mirrors ZUIDataTableHeadersRow behavior)
+                ZUIEndRow(ctx); // cell_row
+
                 if (cols[ci].Sortable && (csig.Flags & ZUI_SignalClicked))
                 {
-                    if (ctx->DT_SortCol == ci)
-                        ctx->DT_SortAsc = !ctx->DT_SortAsc;
-                    else
-                    {
-                        ctx->DT_SortCol = ci;
-                        ctx->DT_SortAsc = true;
-                    }
+                    if (ctx->DT_SortCol == ci) ctx->DT_SortAsc = !ctx->DT_SortAsc;
+                    else { ctx->DT_SortCol = ci; ctx->DT_SortAsc = true; }
                 }
             }
-            ZUIEndRow(ctx);
+            ZUIEndRow(ctx); // hrow
         }
 
         // ── World root row ────────────────────────────────────────────────────
