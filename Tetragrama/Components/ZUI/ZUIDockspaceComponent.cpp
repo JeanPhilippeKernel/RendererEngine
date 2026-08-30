@@ -182,21 +182,6 @@ namespace Tetragrama::Components
                 ZUIEndMenu(ctx);
             }
 
-            ZUILabel(ctx, " | ", k_dim);
-
-            // Scene name
-            if (ParentLayer && ParentLayer->CurrentApp)
-            {
-                auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
-                if (app->Configuration)
-                {
-                    const char* sname = app->Configuration->ActiveSceneName.empty() ? "-" : app->Configuration->ActiveSceneName.c_str();
-                    char        scene_buf[128];
-                    snprintf(scene_buf, sizeof(scene_buf), "Scene: %s", sname);
-                    ZUILabel(ctx, scene_buf, k_dim);
-                }
-            }
-
             ZUIEndMenuBar(ctx);
         }
 
