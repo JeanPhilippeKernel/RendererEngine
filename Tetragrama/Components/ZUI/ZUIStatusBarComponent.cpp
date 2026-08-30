@@ -48,7 +48,7 @@ namespace Tetragrama::Components
         bar->BorderColor[1]  = ctx->Theme.PanelBorder[1];
         bar->BorderColor[2]  = ctx->Theme.PanelBorder[2];
         bar->BorderColor[3]  = ctx->Theme.PanelBorder[3];
-        bar->BorderThickness = 1.f;
+        bar->BorderThickness = 0.5f;
         bar->EdgeSoftness    = 0.f;
 
         // Vertically center children
