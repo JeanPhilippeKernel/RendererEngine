@@ -364,7 +364,10 @@ namespace ZEngine::Rendering::Renderers
                 if (range < 1e-6f)
                     range = 1.f;
                 float    pw = bx1 - bx0, ph = by1 - by0;
-                uint32_t pcol   = ZUIPackColor(ctx->Theme.PlotLines);
+                // Per-box color override: use TextColor when alpha > 0, else theme default
+                uint32_t pcol = (box->TextColor[3] > 0.f)
+                                ? ZUIPackColor(box->TextColor)
+                                : ZUIPackColor(ctx->Theme.PlotLines);
                 // Emit line segments (n-1 segments for n data points)
                 float    prev_x = bx0;
                 float    v0     = (data[0] - v_min) / range;

@@ -221,18 +221,22 @@ namespace Tetragrama::Panels
 
                 float cap_mb = (s.Capacity > 0) ? (float)s.Capacity / (1024.f * 1024.f) : 1.f;
 
-                ZUIBeginRow(ctx, "##mp_plotrow", ZFill(), ZPx(42.f));
+                ZUIBeginRow(ctx, "##mp_plotrow", ZFill(), ZPx(32.f));
                 ZUISpacer(ctx, 10.f);
 
                 ZUIBox* plot    = ZUIPushBox(ctx, kPlotKeys[i], (uint32_t)strlen(kPlotKeys[i]),
                                             ZUI_DrawBackground | ZUI_DrawPlotLines);
-                plot->Size[0]   = ZPx(content_w - 26.f);
-                plot->Size[1]   = ZFill();
-                plot->Label.Ptr = (const char*)d;
-                plot->Label.Len = (uint32_t)n;
-                plot->Padding[0] = 0.f;
-                plot->Padding[2] = cap_mb;
+                plot->Size[0]      = ZPx(content_w - 26.f);
+                plot->Size[1]      = ZFill();
+                plot->Label.Ptr    = (const char*)d;
+                plot->Label.Len    = (uint32_t)n;
+                plot->Padding[0]   = 0.f;
+                plot->Padding[2]   = cap_mb;
                 ZUIBoxSetColor(plot, 0.10f, 0.10f, 0.12f, 1.f);
+                plot->TextColor[0] = col[0]; // line color matches usage level
+                plot->TextColor[1] = col[1];
+                plot->TextColor[2] = col[2];
+                plot->TextColor[3] = 0.85f;
                 plot->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
 
@@ -240,7 +244,7 @@ namespace Tetragrama::Panels
                 ZUISpacer(ctx, 2.f);
             }
 
-            ZUISpacer(ctx, 10.f); // gap between arenas
+            ZUISpacer(ctx, 6.f); // gap between arenas
         }
 
         ZUISpacer(ctx, 8.f);
