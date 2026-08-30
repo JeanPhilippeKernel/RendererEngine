@@ -215,7 +215,7 @@ namespace ZEngine::UI
                 if (ctx->ActiveKey == xhash && ctx->HotKey == xhash)
                 {
                     if (p->Views[ti])
-                        p->Views[ti]->Visible = false; // hide; status bar can re-show
+                        p->Views[ti]->Visible = false;
                     // Advance ActiveTab to the next visible tab
                     if (p->ActiveTab == ti)
                     {
@@ -228,8 +228,17 @@ namespace ZEngine::UI
                             }
                         }
                     }
+                    // If no views remain visible, collapse the dock node this frame.
+                    bool any_visible = false;
+                    for (uint32_t vi2 = 0; vi2 < p->ViewCount; ++vi2)
+                        if (p->Views[vi2] && p->Views[vi2]->Visible) { any_visible = true; break; }
+                    if (!any_visible && PendingCloseCount < kMaxPanels)
+                    {
+                        p->Hidden = true;
+                        PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+                    }
                     LayoutDirty = true;
-                    goto next_panel; // only one close per panel per frame
+                    goto next_panel;
                 }
             }
 
