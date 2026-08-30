@@ -28,6 +28,7 @@ namespace Tetragrama::Panels
         ConsolePanel          output;
         ProjectViewPanel      project;
         MemoryProfilerPanel   profiler;
+        AssetImporterPanel    importer;
 
         void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "PanelManager", bool visibility = true) override;
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;

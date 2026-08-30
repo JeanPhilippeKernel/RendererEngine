@@ -79,6 +79,15 @@ namespace Tetragrama::Components
                         scene->SelectedActorHandle = {};
                     }
                 }
+                if (ZUIMenuItemEx(ctx, "Import New Asset...", nullptr))
+                {
+                    if (file_app && file_app->Configuration)
+                    {
+                        file_app->Configuration->ShowImporter  = true;
+                        file_app->Configuration->FocusImporter = true;
+                    }
+                }
+                ZUISeparator(ctx);
                 if (ZUIMenuItemEx(ctx, "Open Scene...", sc_open))
                 {
                     ZENGINE_CORE_INFO("[Editor] Use the Project panel to locate and drop a .zescene into the viewport")

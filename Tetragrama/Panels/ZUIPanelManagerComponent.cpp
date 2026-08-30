@@ -51,14 +51,17 @@ namespace Tetragrama::Panels
 
         auto* p_out = Manager.AddPanel(ZUIDockHashName("Console"));
         Manager.AddView(p_out, &output);
-        Manager.AddView(p_out, &profiler); // Profiler shares the Console panel as a tab
+        Manager.AddView(p_out, &profiler);  // Profiler shares the Console panel as a tab
+        Manager.AddView(p_out, &importer);  // Importer shares the Console panel as a tab
 
         auto* p_proj = Manager.AddPanel(ZUIDockHashName("Project"));
         Manager.AddView(p_proj, &project);
 
-        ZUIPanelView* all_views[] = {&hierarchy, &viewport, &inspector, &output, &project, &profiler};
+        importer.Initialize(parent); // allocate importers from ImportPipeline budget
+
+        ZUIPanelView* all_views[] = {&hierarchy, &viewport, &inspector, &output, &project, &profiler, &importer};
         Manager.SetLayoutPath("zui_layout.ini");
-        ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 6);
+        ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 7);
     }
 
     void ZUIPanelManagerComponent::BuildUI(ZUIContext* ctx)
