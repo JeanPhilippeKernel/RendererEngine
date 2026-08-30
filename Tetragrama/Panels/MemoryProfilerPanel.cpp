@@ -174,8 +174,8 @@ namespace Tetragrama::Panels
                     "##pfo","##pfp","##pfq","##pfr","##pfs","##pft","##pfu","##pfv",
                 };
 
-                ZUISpacer(ctx, 2.f);
-                ZUIBeginRow(ctx, "##mp_pbrow", ZFill(), ZPx(1.f));
+                ZUISpacer(ctx, 3.f);
+                ZUIBeginRow(ctx, "##mp_pbrow", ZFill(), ZPx(10.f));
                 ZUISpacer(ctx, 10.f);
 
                 float bar_available = fmaxf(1.f, content_w - 26.f);
@@ -221,13 +221,13 @@ namespace Tetragrama::Panels
 
                 float cap_mb = (s.Capacity > 0) ? (float)s.Capacity / (1024.f * 1024.f) : 1.f;
 
-                ZUIBeginRow(ctx, "##mp_plotrow", ZFill(), ZPx(1.f));
+                ZUIBeginRow(ctx, "##mp_plotrow", ZFill(), ZPx(42.f));
                 ZUISpacer(ctx, 10.f);
 
                 ZUIBox* plot    = ZUIPushBox(ctx, kPlotKeys[i], (uint32_t)strlen(kPlotKeys[i]),
                                             ZUI_DrawBackground | ZUI_DrawPlotLines);
                 plot->Size[0]   = ZPx(content_w - 26.f);
-                plot->Size[1]   = ZPx(40.f);
+                plot->Size[1]   = ZFill();
                 plot->Label.Ptr = (const char*)d;
                 plot->Label.Len = (uint32_t)n;
                 plot->Padding[0] = 0.f;
