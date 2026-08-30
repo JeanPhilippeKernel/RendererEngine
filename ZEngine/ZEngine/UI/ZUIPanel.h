@@ -99,6 +99,7 @@ namespace ZEngine::UI
 
         char             LayoutPath[256]              = {}; ///< Set before first BuildUI; empty = no persistence
         bool             LayoutDirty                  = false;
+        bool             DrawMenuBar                  = true; ///< false = external shell owns the menu bar
 
         uint64_t         PendingCloseKeys[kMaxPanels] = {};
         uint32_t         PendingCloseCount            = 0;
@@ -133,6 +134,11 @@ namespace ZEngine::UI
         /// @brief Set the ini file path for layout persistence.
         /// @param path Relative or absolute path; empty string disables saving.
         void             SetLayoutPath(const char* path);
+
+        // Shell API — used by ZUIDockspaceComponent's Layout settings page.
+        void             ResetLayout();
+        void             SetPanelVisible(const char* name, bool visible);
+        bool             IsPanelVisible(const char* name) const;
 
     private:
         struct SplitDivider

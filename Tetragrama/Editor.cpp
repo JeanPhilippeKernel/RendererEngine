@@ -75,6 +75,7 @@ namespace Tetragrama
         // Registered after PanelManager so it renders on top.
         auto* shell = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIDockspaceComponent);
         shell->Initialize(ZUIUILayer, "EditorShell");
+        shell->ShellPanelManager = &pm->Manager;
         ZUIUILayer->AddComponent(shell);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());

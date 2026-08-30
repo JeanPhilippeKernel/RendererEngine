@@ -204,9 +204,23 @@ namespace Tetragrama::Components
                 stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
             };
 
-            // Window container
+            // Dim backdrop — covers full screen, click-outside to close
+            {
+                ZUIBox* dim    = ZUIPushBox(ctx, "##stg_dim", 9, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                dim->Size[0]   = ZPx(sw);
+                dim->Size[1]   = ZPx(sh);
+                dim->FloatPos[0] = 0.f;
+                dim->FloatPos[1] = 0.f;
+                ZUIBoxSetColor(dim, 0.f, 0.f, 0.f, 0.55f);
+                ZUISignal dim_sig = ZUISignalFromBox(ctx, dim);
+                ZUIPopBox(ctx);
+                if (dim_sig.Flags & ZUI_SignalClicked)
+                    m_settings_open = false;
+            }
+
+            // Modal window — centered
             ZUIBox* win      = ZUIBeginColumn(ctx, "##stg_win", ZPx(kW), ZPx(kH));
-            win->Flags       = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
+            win->Flags       = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
             win->FloatPos[0] = (sw - kW) * 0.5f;
             win->FloatPos[1] = (sh - kH) * 0.5f;
             ZUIBoxSetColorArr(win, ctx->Theme.WindowBg);
@@ -267,10 +281,10 @@ namespace Tetragrama::Components
             side->EdgeSoftness = 0.f;
             ZUISpacer(ctx, 6.f);
             {
-                static const char* kPages[3]    = {"Grid", "Renderer", "Theme"};
-                static const char* kNavKeys[3]  = {"##nav_0", "##nav_1", "##nav_2"};
-                static const uint32_t kNKLen[3] = {7, 7, 7};
-                for (int pi = 0; pi < 3; ++pi)
+                static const char* kPages[4]    = {"Grid", "Renderer", "Theme", "Layout"};
+                static const char* kNavKeys[4]  = {"##nav_0", "##nav_1", "##nav_2", "##nav_3"};
+                static const uint32_t kNKLen[4] = {7, 7, 7, 7};
+                for (int pi = 0; pi < 4; ++pi)
                 {
                     bool    act  = (m_settings_page == pi);
                     uint32_t pln = (uint32_t)strlen(kPages[pi]);
@@ -408,6 +422,39 @@ namespace Tetragrama::Components
                     if (tsig.Flags & ZUI_SignalClicked) s_active_theme = ti;
                     ZUISpacer(ctx, 8.f);
                 }
+                ZUIEndRow(ctx);
+            }
+            else if (m_settings_page == 3 && ShellPanelManager) // Layout
+            {
+                static const char* kPanelNames[4] = {"Hierarchy", "Console", "Inspector", "Viewport"};
+                static const char* kRowKeys[4]    = {"##lp_r0", "##lp_r1", "##lp_r2", "##lp_r3"};
+                static const char* kCbKeys[4]     = {"##lp_c0", "##lp_c1", "##lp_c2", "##lp_c3"};
+
+                ZUISpacer(ctx, 10.f);
+                ZUILabel(ctx, "Panels", ctx->Theme.TextDefault);
+                ZUISpacer(ctx, 8.f);
+
+                for (int ni = 0; ni < 4; ++ni)
+                {
+                    bool vis  = ShellPanelManager->IsPanelVisible(kPanelNames[ni]);
+                    bool prev = vis;
+                    ZUIBeginRow(ctx, kRowKeys[ni], ZFill(), ZPx(fh + 4.f));
+                    ZUISpacer(ctx, 10.f);
+                    ZUICheckbox(ctx, kCbKeys[ni], &vis);
+                    ZUISpacer(ctx, 6.f);
+                    ZUILabel(ctx, kPanelNames[ni], ctx->Theme.TextDefault);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 2.f);
+                    if (vis != prev)
+                        ShellPanelManager->SetPanelVisible(kPanelNames[ni], vis);
+                }
+
+                ZUISpacer(ctx, 14.f);
+                ZUIBeginRow(ctx, "##lp_rst_r", ZFill(), ZPx(fh + 4.f));
+                ZUISpacer(ctx, 10.f);
+                ZUISignal rst_sig = ZUIButton(ctx, "Reset Layout##lp_rst");
+                if (rst_sig.Flags & ZUI_SignalClicked)
+                    ShellPanelManager->ResetLayout();
                 ZUIEndRow(ctx);
             }
 

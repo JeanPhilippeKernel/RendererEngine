@@ -302,7 +302,8 @@ namespace ZEngine::UI
         ZUIBoxSetColorArr(bg, ctx->Theme.WindowBg);
         bg->EdgeSoftness = 0.f;
 
-        BuildMenuBar(ctx, sw, menu_h);
+        if (DrawMenuBar)
+            BuildMenuBar(ctx, sw, menu_h);
 
         // Input pass — hit zones added first (early children of ##pm_bg).
         // LIFO traversal processes early children last → win ctx->HotKey over panel content.
@@ -1533,6 +1534,66 @@ namespace ZEngine::UI
                 src->Hidden = true;
             }
         }
+    }
+
+    void ZUIPanelManager::ResetLayout()
+    {
+        for (uint32_t i = 0; i < PanelCount; ++i)
+        {
+            ZUIPanel* p = &Panels[i];
+            if (!p->Hidden || p->ViewCount == 0)
+                continue;
+            p->Hidden = false;
+            if (DockTree)
+            {
+                ZUIDockNode* t = FindLargestLeaf(DockTree->Root);
+                if (t)
+                    ZUIDockSplitH(DockTree, t, 0.5f, t->ContentKey, p->DockKey);
+            }
+        }
+        if (LayoutPath[0])
+            remove(LayoutPath);
+        LayoutDirty = true;
+    }
+
+    void ZUIPanelManager::SetPanelVisible(const char* name, bool visible)
+    {
+        for (uint32_t i = 0; i < PanelCount; ++i)
+        {
+            ZUIPanel*   p = &Panels[i];
+            const char* t = (p->ViewCount > 0 && p->Views[0]) ? p->Views[0]->Title : "";
+            if (strcmp(t, name) != 0)
+                continue;
+            if (visible && p->Hidden)
+            {
+                p->Hidden = false;
+                if (DockTree)
+                {
+                    ZUIDockNode* tgt = FindLargestLeaf(DockTree->Root);
+                    if (tgt)
+                        ZUIDockSplitH(DockTree, tgt, 0.5f, tgt->ContentKey, p->DockKey);
+                }
+            }
+            else if (!visible && !p->Hidden)
+            {
+                if (PendingCloseCount < kMaxPanels)
+                    PendingCloseKeys[PendingCloseCount++] = p->DockKey;
+            }
+            LayoutDirty = true;
+            break;
+        }
+    }
+
+    bool ZUIPanelManager::IsPanelVisible(const char* name) const
+    {
+        for (uint32_t i = 0; i < PanelCount; ++i)
+        {
+            const ZUIPanel* p = &Panels[i];
+            const char*     t = (p->ViewCount > 0 && p->Views[0]) ? p->Views[0]->Title : "";
+            if (strcmp(t, name) == 0)
+                return !p->Hidden;
+        }
+        return false;
     }
 
 } // namespace ZEngine::UI

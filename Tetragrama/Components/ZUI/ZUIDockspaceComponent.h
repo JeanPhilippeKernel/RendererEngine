@@ -1,6 +1,7 @@
 #pragma once
 #include <Tetragrama/Components/ZUI/ZUIComponent.h>
 #include <ZEngine/UI/ZUIDockspace.h>
+#include <ZEngine/UI/ZUIPanel.h>
 
 namespace Tetragrama::Components
 {
@@ -16,6 +17,10 @@ namespace Tetragrama::Components
         void          Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "Dockspace", bool visibility = true) override;
 
         void          BuildUI(ZEngine::UI::ZUIContext* ctx) override;
+
+        // Set by Editor.cpp after both PanelManager and Shell are initialized.
+        // Provides access to panel visibility and layout reset from the Settings window.
+        ZEngine::UI::ZUIPanelManager* ShellPanelManager = nullptr;
 
         // Panels registered here get their regions assigned each frame
         ZUIComponent* Viewport  = nullptr;

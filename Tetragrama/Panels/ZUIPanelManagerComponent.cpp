@@ -19,6 +19,7 @@ namespace Tetragrama::Panels
         }
 
         Manager.Init(arena);
+        Manager.DrawMenuBar = false; // ZUIDockspaceComponent (shell) owns the menu bar
         hierarchy.m_layer = parent;
         inspector.m_layer = parent;
         project.m_layer   = parent;
