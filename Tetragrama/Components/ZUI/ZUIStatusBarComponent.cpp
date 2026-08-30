@@ -1,13 +1,19 @@
+// clang-format off
 #include <Tetragrama/Components/ZUI/ZUIStatusBarComponent.h>
 #include <Tetragrama/Editor.h>
+#include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
+// clang-format on
 
 using namespace ZEngine::UI;
+using namespace ZEngine::ECS;
+using namespace ZEngine::ECS::Components;
 
 namespace Tetragrama::Components
 {
-
     void ZUIStatusBarComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
     {
         ParentLayer = parent;
@@ -18,26 +24,20 @@ namespace Tetragrama::Components
     void ZUIStatusBarComponent::BuildUI(ZUIContext* ctx)
     {
         if (!Visible || !ParentLayer || !ParentLayer->CurrentApp)
-        {
             return;
-        }
 
-        auto* app                = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
 
-        // Update smoothed frame time
         m_frame_times[m_ft_head] = ctx->DeltaTime;
         m_ft_head                = (m_ft_head + 1) % kFtSamples;
         float sum                = 0.f;
         for (int i = 0; i < kFtSamples; ++i)
-        {
             sum += m_frame_times[i];
-        }
-        m_smoothed_dt    = sum / (float) kFtSamples;
+        m_smoothed_dt = sum / (float) kFtSamples;
 
-        float   sw       = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
-        float   sy       = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
+        float sw = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
+        float sy = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
 
-        // Bar: full-width, bottom-anchored
         ZUIBox* bar      = ZUIBeginRow(ctx, "##status_bar", ZPx(sw), ZPx(kBarH));
         bar->Flags       = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         bar->FloatPos[0] = RegionW > 0 ? RegionX : 0.f;
@@ -52,45 +52,43 @@ namespace Tetragrama::Components
 
         ZUISpacer(ctx, 6.f);
 
-        // Console toggle
+        // Console toggle — teal signature color
         {
             bool      on = app->Configuration->ShowConsole;
-            ZUISignal s  = ZUIButton(ctx, on ? "Console##on" : "Console##off");
-            if (on)
-            {
-                ZUIBox* btn = ctx->Current ? ctx->Current->LastChild : nullptr;
-                (void) btn; // future: tint button with k_on color
-            }
+            ZUISignal s  = ZUIButton(ctx, "Console##sb_con");
             if (s.Flags & ZUI_SignalClicked)
             {
-                app->Configuration->ShowConsole  = !on;
-                app->Configuration->FocusConsole = !on;
+                on                               = !on;
+                app->Configuration->ShowConsole  = on;
+                app->Configuration->FocusConsole = on;
             }
         }
 
         ZUISpacer(ctx, 4.f);
 
-        // Browser toggle
+        // Content Browser toggle — amber signature color
         {
             bool      on = app->Configuration->ShowContentBrowser;
-            ZUISignal s  = ZUIButton(ctx, on ? "Browser##on" : "Browser##off");
+            ZUISignal s  = ZUIButton(ctx, "Browser##sb_bro");
             if (s.Flags & ZUI_SignalClicked)
             {
-                app->Configuration->ShowContentBrowser  = !on;
-                app->Configuration->FocusContentBrowser = !on;
+                on                                       = !on;
+                app->Configuration->ShowContentBrowser  = on;
+                app->Configuration->FocusContentBrowser = on;
             }
         }
 
         ZUISpacer(ctx, 4.f);
 
-        // Importer toggle
+        // Importer toggle — indigo signature color
         {
             bool      on = app->Configuration->ShowImporter;
-            ZUISignal s  = ZUIButton(ctx, on ? "Importer##on" : "Importer##off");
+            ZUISignal s  = ZUIButton(ctx, "Importer##sb_imp");
             if (s.Flags & ZUI_SignalClicked)
             {
-                app->Configuration->ShowImporter  = !on;
-                app->Configuration->FocusImporter = !on;
+                on                               = !on;
+                app->Configuration->ShowImporter  = on;
+                app->Configuration->FocusImporter = on;
             }
         }
 
@@ -101,8 +99,46 @@ namespace Tetragrama::Components
         // Scene name
         ZUILabel(ctx, "Scene:", ctx->Theme.TextDim);
         ZUISpacer(ctx, 4.f);
-        const char* scene_name = (app->Configuration && !app->Configuration->ActiveSceneName.empty()) ? app->Configuration->ActiveSceneName.c_str() : "-";
+        const char* scene_name =
+            (app->Configuration && !app->Configuration->ActiveSceneName.empty())
+                ? app->Configuration->ActiveSceneName.c_str()
+                : "-";
         ZUILabel(ctx, scene_name, ctx->Theme.TextDefault);
+
+        ZUISpacer(ctx, 10.f);
+        ZUILabel(ctx, "|", ctx->Theme.TextDim);
+        ZUISpacer(ctx, 10.f);
+
+        // Selected actor name + actor count
+        {
+            auto* eng        = ZEngine::Engine::GetContext();
+            auto* edit_scene = app->CurrentScene ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+            const char* sel  = nullptr;
+
+            if (edit_scene && edit_scene->SelectedActorHandle.Valid() && eng && eng->ActorManager)
+            {
+                Actor* actor = eng->ActorManager->Access(edit_scene->SelectedActorHandle);
+                if (actor)
+                {
+                    auto* nc = actor->GetComponent<NameComponent>();
+                    sel      = (nc && nc->Value[0]) ? nc->Value : "Actor";
+                }
+            }
+
+            if (sel)
+                ZUILabel(ctx, sel, ctx->Theme.TextDefault);
+            else
+                ZUILabel(ctx, "Nothing selected", ctx->Theme.TextDim);
+
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, "|", ctx->Theme.TextDim);
+            ZUISpacer(ctx, 10.f);
+
+            uint32_t cnt = eng && eng->ActorManager ? eng->ActorManager->Count() : 0;
+            char     cnt_buf[32];
+            snprintf(cnt_buf, sizeof(cnt_buf), "Actors: %u", cnt);
+            ZUILabel(ctx, cnt_buf, ctx->Theme.TextDim);
+        }
 
         ZUISpacer(ctx, 10.f);
         ZUILabel(ctx, "|", ctx->Theme.TextDim);
@@ -113,22 +149,24 @@ namespace Tetragrama::Components
         {
             auto pos = app->CameraController->GetPosition();
             char cam_buf[64];
-            snprintf(cam_buf, sizeof(cam_buf), "X:%.1f  Y:%.1f  Z:%.1f", (double) pos.x, (double) pos.y, (double) pos.z);
+            snprintf(cam_buf, sizeof(cam_buf), "X:%.1f  Y:%.1f  Z:%.1f",
+                     (double) pos.x, (double) pos.y, (double) pos.z);
             ZUILabel(ctx, cam_buf, ctx->Theme.TextDim);
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, "|", ctx->Theme.TextDim);
+            ZUISpacer(ctx, 10.f);
         }
-
-        ZUISpacer(ctx, 10.f);
-        ZUILabel(ctx, "|", ctx->Theme.TextDim);
-        ZUISpacer(ctx, 10.f);
 
         // FPS
         {
             float fps = m_smoothed_dt > 0.f ? 1.f / m_smoothed_dt : 0.f;
             char  fps_buf[32];
-            snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms", (double) fps, (double) (m_smoothed_dt * 1000.f));
+            snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms",
+                     (double) fps, (double) (m_smoothed_dt * 1000.f));
             ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
         }
 
         ZUIEndRow(ctx);
     }
+
 } // namespace Tetragrama::Components
