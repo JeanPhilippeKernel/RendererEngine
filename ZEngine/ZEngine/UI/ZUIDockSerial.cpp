@@ -473,6 +473,19 @@ namespace ZEngine::UI
                 ZUIDockSplitH(manager->DockTree, tgt, 0.5f, tgt->ContentKey, p->DockKey);
         }
 
+        // If all views of a panel are invisible (restored from .ini), treat as hidden.
+        for (uint32_t i = 0; i < manager->PanelCount; ++i)
+        {
+            ZUIPanel* p = &manager->Panels[i];
+            if (p->Hidden || p->ViewCount == 0)
+                continue;
+            bool any_visible = false;
+            for (uint32_t vi = 0; vi < p->ViewCount; ++vi)
+                if (p->Views[vi] && p->Views[vi]->Visible) { any_visible = true; break; }
+            if (!any_visible)
+                p->Hidden = true;
+        }
+
         // Collapse hidden panels
         for (uint32_t i = 0; i < manager->PanelCount; ++i)
         {
