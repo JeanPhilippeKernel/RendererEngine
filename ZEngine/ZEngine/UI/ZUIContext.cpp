@@ -36,9 +36,10 @@ namespace ZEngine::UI
         ctx->Time            += dt;
         ctx->ResizeCursor     = 0;
         ctx->PopupBuildDepth  = 0; // reset render depth; rebuilt during each BuildUI pass
-        // Clear stale popup Box* pointers — boxes are re-created each frame in FrameArena
+        // Clear stale Box* pointers — boxes are re-created each frame in FrameArena
         for (uint32_t i = 0; i < ctx->PopupStackSize; i++)
             ctx->PopupStack[i].Box = nullptr;
+        ctx->ModalBox = nullptr; // re-set each frame by whoever owns the active modal
         // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
         // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
         // must survive until ZUIEndFrame runs the interaction pass and widget logic.

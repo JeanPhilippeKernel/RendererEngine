@@ -235,9 +235,11 @@ namespace Tetragrama::Components
                     m_settings_open = false;
             }
 
-            // Modal window — centered
+            // Modal window — centered.
+            // Register as ModalBox so the interaction pass restricts hover to this subtree.
             ZUIBox* win      = ZUIBeginColumn(ctx, "##stg_win", ZPx(kW), ZPx(kH));
             win->Flags       = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
+            ctx->ModalBox    = win;
             win->FloatPos[0] = (sw - kW) * 0.5f;
             win->FloatPos[1] = (sh - kH) * 0.5f;
             ZUIBoxSetColorArr(win, ctx->Theme.WindowBg);

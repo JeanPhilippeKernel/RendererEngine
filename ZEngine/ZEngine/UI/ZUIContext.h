@@ -494,6 +494,7 @@ namespace ZEngine::UI
         float         PopupPos[2]                = {};      // unused — kept for ABI; pos now in PopupStack entry
         float         PopupDesiredW              = 0.f;     // optional fixed width (set by ZUIBeginCombo)
         ZUIBox*       ModalSavedParent           = nullptr; // ctx->Current saved by ZUIBeginModal
+        ZUIBox*       ModalBox                   = nullptr; // active modal panel; set each frame while modal is open
         // Text field undo / redo
         // Per-field stacks stored in context (only the focused field uses them).
         // Undo: push BEFORE edit → Ctrl+Z pops and restores. Redo: push current

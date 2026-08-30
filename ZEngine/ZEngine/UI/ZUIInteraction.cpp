@@ -38,13 +38,21 @@ namespace ZEngine::UI
 
             if (under_cursor)
             {
-                // When a popup is open, only boxes INSIDE the popup receive hover —
-                // exactly as ImGui blocks input to windows below the modal/popup stack.
-                // A box can be hovered when no popup is open, or when it is inside
-                // any popup in the stack (supports nested menus + submenus).
-                bool can_hover = (ctx->PopupStackSize == 0);
-                if (!can_hover)
+                // When a modal is active, only boxes INSIDE the modal panel receive hover.
+                // When a popup is open, only boxes INSIDE a popup receive hover.
+                // Both checks mirror ImGui's modal/popup input-blocking behaviour.
+                bool can_hover = true;
+
+                if (ctx->ModalBox)
                 {
+                    can_hover = false;
+                    for (ZUIBox* p = box; p && !can_hover; p = p->Parent)
+                        if (p == ctx->ModalBox) can_hover = true;
+                }
+
+                if (can_hover && ctx->PopupStackSize > 0)
+                {
+                    can_hover = false;
                     for (ZUIBox* p = box; p && !can_hover; p = p->Parent)
                         for (uint32_t pi = 0; pi < ctx->PopupStackSize && !can_hover; pi++)
                             if (p == ctx->PopupStack[pi].Box)
