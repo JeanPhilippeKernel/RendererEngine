@@ -255,16 +255,29 @@ namespace Tetragrama::Panels
         // ── Filtered settings (scroll region) ─────────────────────────────────
         ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
         {
-            // Section header helper
+            // Section header with collapse/expand chevron (same ZUI_DrawTriArrow as Hierarchy)
             static constexpr float kLblW = 140.f;
-            auto sec_hdr = [&](const char* key, const char* label) {
-                ZUISpacer(ctx, 10.f);
-                ZUIBeginRow(ctx, key, ZFill(), ZPx(fh));
+            auto sec_hdr = [&](const char* row_key, const char* arr_key, const char* label, bool* open) -> bool {
                 ZUISpacer(ctx, 8.f);
+                ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
+                ZUISpacer(ctx, 8.f);
+                // Chevron
+                ZUIBox* arr   = ZUIPushBox(ctx, arr_key, (uint32_t)strlen(arr_key),
+                                           ZUI_DrawTriArrow | ZUI_Clickable);
+                arr->Size[0]  = ZPx(fh); arr->Size[1] = ZPx(fh);
+                arr->TextColor[0] = ctx->Theme.TextDim[0]; arr->TextColor[1] = ctx->Theme.TextDim[1];
+                arr->TextColor[2] = ctx->Theme.TextDim[2]; arr->TextColor[3] = ctx->Theme.TextDim[3];
+                auto* aps = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
+                if (aps) aps->UserData = *open ? 2.f : 3.f; // 2=▼ expanded, 3=▶ collapsed
+                ZUISignal asig = ZUISignalFromBox(ctx, arr);
+                ZUIPopBox(ctx);
+                ZUISpacer(ctx, 4.f);
                 ZUILabel(ctx, label, ctx->Theme.TextDim);
                 ZUIEndRow(ctx);
                 ZUISeparator(ctx);
-                ZUISpacer(ctx, 6.f);
+                ZUISpacer(ctx, 4.f);
+                if (asig.Flags & ZUI_SignalClicked) *open = !*open;
+                return *open;
             };
             // 2-column row helper (label left, widget fills right)
 #define IMP_ROW_BEGIN(key) ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); ZUISpacer(ctx, 8.f); ZUIBeginColumn(ctx, key"_l", ZPx(kLblW), ZFill());
@@ -280,35 +293,46 @@ namespace Tetragrama::Panels
             bool show_anim = (m_options_filter == 3 || m_options_filter == 5);
             bool show_lod  = (m_options_filter == 4 || m_options_filter == 5);
 
-            // ── General / Common ──────────────────────────────────────────────
-            if (show_gen)
-            {
-                sec_hdr("##imp_s_gen", "Common");
+            // Collapse state per section (persist within session)
+            static bool s_gen_open  = true, s_mesh_open = true, s_mat_open  = true;
+            static bool s_anim_open = true, s_lod_open  = true;
 
+            // ── General / Common ──────────────────────────────────────────────
+            if (show_gen && sec_hdr("##imp_s_gen_r","##imp_s_gen_a","Common", &s_gen_open))
+            {
                 IMP_CB_ROW_BEGIN("##imp_usn_r")
                 ZUICheckbox(ctx, "##imp_usn", &m_use_source_name);
                 IMP_CB_ROW_END("Use Source Name for Asset")
 
+                // Asset Name — always show field; disabled when using source name
                 IMP_ROW_BEGIN("##imp_aname_r")
                 IMP_ROW_MID("Asset Name")
                 {
                     char fn_buf[256] = {};
-                    auto pr = VFSPath::Parse(m_path_buf);
-                    if (pr.Succeeded()) { auto s = pr.Value().Stem(); snprintf(fn_buf, sizeof(fn_buf), "%.*s", (int)s.Length, s.Data); }
-                    if (m_use_source_name) { ZUIBeginDisabled(ctx); ZUITextField(ctx, "##imp_name_dis", fn_buf, sizeof(fn_buf), 0.f); ZUIEndDisabled(ctx); }
+                    if (m_use_source_name)
+                    {
+                        auto pr = VFSPath::Parse(m_path_buf);
+                        if (pr.Succeeded()) { auto s = pr.Value().Stem(); snprintf(fn_buf, sizeof(fn_buf), "%.*s", (int)s.Length, s.Data); }
+                        ZUIBeginDisabled(ctx);
+                        ZUITextField(ctx, "##imp_name_dis", fn_buf, sizeof(fn_buf), 0.f);
+                        ZUIEndDisabled(ctx);
+                    }
                     else ZUITextField(ctx, "##imp_name", m_instance_name, sizeof(m_instance_name), 0.f);
                 }
                 IMP_ROW_END
 
+                // Offset Uniform Scale — fixed-width input (not full-width drag)
                 IMP_ROW_BEGIN("##imp_scale_r")
                 IMP_ROW_MID("Offset Uniform Scale")
-                ZUIDragFloat(ctx, "##imp_scale", &m_scale, 0.01f, 80.f);
+                ZUIInputFloat(ctx, "##imp_scale", &m_scale, 80.f);
                 IMP_ROW_END
 
+                // Axis Up — fixed-width combo
                 IMP_ROW_BEGIN("##imp_axis_r")
                 IMP_ROW_MID("Axis Up")
                 {
                     static const char* kAxes[] = {"Y-Up", "Z-Up"};
+                    ctx->PopupDesiredW = 120.f;
                     if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index]))
                     {
                         for (int i = 0; i < 2; ++i)
@@ -317,17 +341,18 @@ namespace Tetragrama::Panels
                     }
                 }
                 IMP_ROW_END
+                ZUISpacer(ctx, 4.f);
             }
 
             // ── Mesh ──────────────────────────────────────────────────────────
-            if (show_mesh)
+            if (show_mesh && sec_hdr("##imp_s_mesh_r","##imp_s_mesh_a","Common Meshes", &s_mesh_open))
             {
-                sec_hdr("##imp_s_mesh", "Common Meshes");
-
+                // Normals — fixed-width combo
                 IMP_ROW_BEGIN("##imp_nrm_r")
                 IMP_ROW_MID("Normals")
                 {
                     static const char* kNrm[] = {"Off","Flat","Smooth"};
+                    ctx->PopupDesiredW = 120.f;
                     if (ZUIBeginCombo(ctx, "##imp_normals", kNrm[m_normals_mode]))
                     {
                         for (int i = 0; i < 3; ++i)
@@ -353,13 +378,12 @@ namespace Tetragrama::Panels
                     IMP_CB_ROW_END("Keep Sections Separate")
                     ZUIEndDisabled(ctx);
                 }
+                ZUISpacer(ctx, 4.f);
             }
 
             // ── Material ──────────────────────────────────────────────────────
-            if (show_mat)
+            if (show_mat && sec_hdr("##imp_s_mat_r","##imp_s_mat_a","Materials", &s_mat_open))
             {
-                sec_hdr("##imp_s_mat", "Materials");
-
                 IMP_CB_ROW_BEGIN("##imp_imat_r")
                 ZUICheckbox(ctx, "##imp_imat", &m_import_materials);
                 IMP_CB_ROW_END("Import Materials")
@@ -367,21 +391,25 @@ namespace Tetragrama::Panels
                 IMP_CB_ROW_BEGIN("##imp_itex_r")
                 ZUICheckbox(ctx, "##imp_itex", &m_import_textures);
                 IMP_CB_ROW_END("Import Textures")
+                ZUISpacer(ctx, 4.f);
             }
 
             // ── Animation (disabled) ──────────────────────────────────────────
             if (show_anim)
             {
                 ZUIBeginDisabled(ctx);
-                sec_hdr("##imp_s_anim", "Common Skeletal Meshes and Animations");
-                static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
-                IMP_CB_ROW_BEGIN("##imp_ia_r")  ZUICheckbox(ctx, "##imp_ia",  &s_import_anims);  IMP_CB_ROW_END("Import Animations")
-                IMP_CB_ROW_BEGIN("##imp_ioa_r") ZUICheckbox(ctx, "##imp_ioa", &s_only_anims);    IMP_CB_ROW_END("Import Only Animations")
-                IMP_CB_ROW_BEGIN("##imp_ibt_r") ZUICheckbox(ctx, "##imp_ibt", &s_bone_tracks);   IMP_CB_ROW_END("Import Bone Tracks")
-                ZUISpacer(ctx, 4.f);
-                ZUIBeginRow(ctx, "##imp_anim_hint", ZFill(), ZPx(fh)); ZUISpacer(ctx, 8.f);
-                ZUILabel(ctx, "Animation import requires skeletal mesh support.", ctx->Theme.TextDim);
-                ZUIEndRow(ctx);
+                sec_hdr("##imp_s_anim_r","##imp_s_anim_a","Common Skeletal Meshes and Animations", &s_anim_open);
+                if (s_anim_open)
+                {
+                    static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
+                    IMP_CB_ROW_BEGIN("##imp_ia_r")  ZUICheckbox(ctx, "##imp_ia",  &s_import_anims);  IMP_CB_ROW_END("Import Animations")
+                    IMP_CB_ROW_BEGIN("##imp_ioa_r") ZUICheckbox(ctx, "##imp_ioa", &s_only_anims);    IMP_CB_ROW_END("Import Only Animations")
+                    IMP_CB_ROW_BEGIN("##imp_ibt_r") ZUICheckbox(ctx, "##imp_ibt", &s_bone_tracks);   IMP_CB_ROW_END("Import Bone Tracks")
+                    ZUISpacer(ctx, 4.f);
+                    ZUIBeginRow(ctx, "##imp_anim_hint", ZFill(), ZPx(fh)); ZUISpacer(ctx, 8.f);
+                    ZUILabel(ctx, "Animation import requires skeletal mesh support.", ctx->Theme.TextDim);
+                    ZUIEndRow(ctx); ZUISpacer(ctx, 4.f);
+                }
                 ZUIEndDisabled(ctx);
             }
 
@@ -389,17 +417,20 @@ namespace Tetragrama::Panels
             if (show_lod)
             {
                 ZUIBeginDisabled(ctx);
-                sec_hdr("##imp_s_lod", "LOD");
-                static bool s_import_lods = false;
-                static int  s_max_lods    = 4;
-                IMP_CB_ROW_BEGIN("##imp_il_r") ZUICheckbox(ctx, "##imp_il", &s_import_lods); IMP_CB_ROW_END("Import LODs")
-                IMP_ROW_BEGIN("##imp_lod_n_r") IMP_ROW_MID("Max LOD Count")
-                ZUISliderFloat(ctx, "##imp_lod_n", (float*)&s_max_lods, 1.f, 8.f);
-                IMP_ROW_END
-                ZUISpacer(ctx, 4.f);
-                ZUIBeginRow(ctx, "##imp_lod_hint", ZFill(), ZPx(fh)); ZUISpacer(ctx, 8.f);
-                ZUILabel(ctx, "LOD support requires virtual geometry streaming.", ctx->Theme.TextDim);
-                ZUIEndRow(ctx);
+                sec_hdr("##imp_s_lod_r","##imp_s_lod_a","LOD", &s_lod_open);
+                if (s_lod_open)
+                {
+                    static bool s_import_lods = false;
+                    static int  s_max_lods    = 4;
+                    IMP_CB_ROW_BEGIN("##imp_il_r") ZUICheckbox(ctx, "##imp_il", &s_import_lods); IMP_CB_ROW_END("Import LODs")
+                    IMP_ROW_BEGIN("##imp_lod_n_r") IMP_ROW_MID("Max LOD Count")
+                    ZUIInputFloat(ctx, "##imp_lod_n", (float*)&s_max_lods, 80.f);
+                    IMP_ROW_END
+                    ZUISpacer(ctx, 4.f);
+                    ZUIBeginRow(ctx, "##imp_lod_hint", ZFill(), ZPx(fh)); ZUISpacer(ctx, 8.f);
+                    ZUILabel(ctx, "LOD support requires virtual geometry streaming.", ctx->Theme.TextDim);
+                    ZUIEndRow(ctx); ZUISpacer(ctx, 4.f);
+                }
                 ZUIEndDisabled(ctx);
             }
 
