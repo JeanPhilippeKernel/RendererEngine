@@ -342,7 +342,7 @@ namespace ZEngine::UI
         }
 
         // Status bar
-        if (status_h > 0.f)
+        if (status_h > 0.f && DrawBuiltinStatusBar)
         {
             ZUIBox* sbar      = ZUIBeginRow(ctx, "##pm_sbar", ZPx(sw), ZPx(status_h));
             sbar->Flags       = sbar->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;

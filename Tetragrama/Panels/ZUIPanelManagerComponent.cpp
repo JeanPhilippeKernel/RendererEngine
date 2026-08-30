@@ -19,7 +19,8 @@ namespace Tetragrama::Panels
         }
 
         Manager.Init(arena);
-        Manager.DrawMenuBar = false; // ZUIDockspaceComponent (shell) owns the menu bar
+        Manager.DrawMenuBar          = false; // ZUIDockspaceComponent (shell) owns the menu bar
+        Manager.DrawBuiltinStatusBar = false; // ZUIStatusBarComponent owns the status bar
         hierarchy.m_layer = parent;
         inspector.m_layer = parent;
         project.m_layer   = parent;
@@ -71,7 +72,7 @@ namespace Tetragrama::Panels
             return;
         }
         float menu_h   = ZUIGetFrameHeight(ctx);
-        float status_h = ZUIGetFrameHeight(ctx);
+        float status_h = 28.f; // matches ZUIStatusBarComponent::kBarH
         Manager.BuildUI(ctx, menu_h, status_h);
     }
 

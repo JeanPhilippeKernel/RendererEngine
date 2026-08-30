@@ -42,13 +42,20 @@ namespace Tetragrama::Components
         bar->Flags       = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
         bar->FloatPos[0] = RegionW > 0 ? RegionX : 0.f;
         bar->FloatPos[1] = sy;
-        ZUIBoxSetColorArr(bar, ctx->Theme.StatusBarBg);
+        // Background and border follow active theme
+        ZUIBoxSetColorArr(bar, ctx->Theme.TitleBarBg);
         bar->BorderColor[0]  = ctx->Theme.PanelBorder[0];
         bar->BorderColor[1]  = ctx->Theme.PanelBorder[1];
         bar->BorderColor[2]  = ctx->Theme.PanelBorder[2];
         bar->BorderColor[3]  = ctx->Theme.PanelBorder[3];
         bar->BorderThickness = 1.f;
         bar->EdgeSoftness    = 0.f;
+
+        // Vertically center children
+        float fh        = ZUIGetFrameHeight(ctx);
+        float vpad      = fmaxf(0.f, (kBarH - fh) * 0.5f);
+        bar->Padding[1] = vpad;
+        bar->Padding[3] = vpad;
 
         ZUISpacer(ctx, 6.f);
 
@@ -129,15 +136,6 @@ namespace Tetragrama::Components
                 ZUILabel(ctx, sel, ctx->Theme.TextDefault);
             else
                 ZUILabel(ctx, "Nothing selected", ctx->Theme.TextDim);
-
-            ZUISpacer(ctx, 10.f);
-            ZUILabel(ctx, "|", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 10.f);
-
-            uint32_t cnt = eng && eng->ActorManager ? eng->ActorManager->Count() : 0;
-            char     cnt_buf[32];
-            snprintf(cnt_buf, sizeof(cnt_buf), "Actors: %u", cnt);
-            ZUILabel(ctx, cnt_buf, ctx->Theme.TextDim);
         }
 
         ZUISpacer(ctx, 10.f);

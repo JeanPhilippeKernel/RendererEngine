@@ -5,6 +5,7 @@
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
 #include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
+#include <Tetragrama/Components/ZUI/ZUIStatusBarComponent.h>
 #include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
@@ -77,6 +78,10 @@ namespace Tetragrama
         shell->Initialize(ZUIUILayer, "EditorShell");
         shell->ShellPanelManager = &pm->Manager;
         ZUIUILayer->AddComponent(shell);
+
+        auto* sbar = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIStatusBarComponent);
+        sbar->Initialize(ZUIUILayer, "StatusBar");
+        ZUIUILayer->AddComponent(sbar);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 

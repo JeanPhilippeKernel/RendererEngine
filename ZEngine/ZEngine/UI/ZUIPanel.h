@@ -99,7 +99,8 @@ namespace ZEngine::UI
 
         char             LayoutPath[256]              = {}; ///< Set before first BuildUI; empty = no persistence
         bool             LayoutDirty                  = false;
-        bool             DrawMenuBar                  = true; ///< false = external shell owns the menu bar
+        bool             DrawMenuBar                  = true;  ///< false = external shell owns the menu bar
+        bool             DrawBuiltinStatusBar         = true;  ///< false = external component owns the status bar
 
         uint64_t         PendingCloseKeys[kMaxPanels] = {};
         uint32_t         PendingCloseCount            = 0;
