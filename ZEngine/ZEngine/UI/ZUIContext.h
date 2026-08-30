@@ -174,8 +174,8 @@ namespace ZEngine::UI
         float DataTableDefaultColumnW    = 100.f; // ZUIDataTable fallback column width
 
         // Animation
-        float HoverAnimSpeed             = 20.f; // expf(-HoverAnimSpeed * dt)
-        float ActiveAnimSpeed            = 30.f; // expf(-ActiveAnimSpeed * dt)
+        float HoverAnimSpeed             = 50.f; // expf(-HoverAnimSpeed * dt)  ~65ms to 95%
+        float ActiveAnimSpeed            = 60.f; // expf(-ActiveAnimSpeed * dt) ~50ms to 95%
         float CursorBlinkRate            = 1.f;  // text cursor blink period in seconds
 
         // Docking

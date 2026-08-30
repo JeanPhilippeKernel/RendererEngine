@@ -163,6 +163,7 @@ namespace ZEngine::UI
         }
         ctx->ScrollDelta          = 0.f;
         ctx->TextInputLen         = 0;
+        ctx->TextInput[0]         = '\0';
         ctx->BackspacePressed     = false;
         ctx->ArrowUpPressed       = false;
         ctx->ArrowDownPressed     = false;

@@ -34,9 +34,12 @@ namespace ZEngine::UI
     static void ApplyHotActive(ZUIBox* box, ZUIContext* ctx, const float rest[4], const float hov[4], const float act[4])
     {
         ZUIPersistentState* st = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
-        if (!st)
-            return;
-        float ht = st->HotT, at = st->ActiveT;
+        float ht = st ? st->HotT    : 0.f;
+        float at = st ? st->ActiveT : 0.f;
+        // Floor to 50% on first hover frame so the transition is visible immediately.
+        // The lerp in ZUISignalFromBox catches up to 1.0 within a few frames.
+        if (ctx->HotKey    == box->Key) ht = ht > 0.5f ? ht : 0.5f;
+        if (ctx->ActiveKey == box->Key) at = 1.f;
         for (int ch = 0; ch < 4; ++ch)
         {
             float col = rest[ch] + (hov[ch] - rest[ch]) * ht + (act[ch] - hov[ch]) * at;
