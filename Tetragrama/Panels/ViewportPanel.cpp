@@ -126,7 +126,7 @@ namespace Tetragrama::Panels
 
             // Grid toggle button — cyan theme
             {
-                static const float kCol[4] = {0.30f, 0.80f, 0.90f, 1.f};
+                static const float kCol[4] = {0.78f, 0.78f, 0.80f, 1.f};
                 bool  act = m_grid_enabled;
                 ZUIBox* b = ZUIPushBox(ctx, "##vp_bg0", 8, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
                 b->Size[0] = ZFill();   // fills toolbar width — icon renderer uses sz=min(w,h)=kBtnSz
