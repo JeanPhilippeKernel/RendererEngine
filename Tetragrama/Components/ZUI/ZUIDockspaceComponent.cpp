@@ -193,9 +193,11 @@ namespace Tetragrama::Components
         // --- Engine Settings window ---
         if (m_settings_open)
         {
-            static constexpr float kW     = 600.f;
-            static constexpr float kH     = 420.f;
             static constexpr float kSideW = 140.f;
+            static constexpr float kMinW  = 400.f;
+            static constexpr float kMinH  = 300.f;
+            float& kW = m_modal_w; // alias for readability
+            float& kH = m_modal_h;
             float fh = ZUIGetFrameHeight(ctx);
 
             auto* stg_app   = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
@@ -207,6 +209,13 @@ namespace Tetragrama::Components
                 stg_scene->GridDirty[1].value.store(true, std::memory_order_release);
                 stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
             };
+
+            // Lazy center on first open
+            if (m_modal_x < 0.f)
+            {
+                m_modal_x = (sw - kW) * 0.5f;
+                m_modal_y = (sh - kH) * 0.5f;
+            }
 
             // Dim backdrop — visual only; NOT Clickable (a clickable full-screen sibling
             // visited after the window in LIFO traversal would overwrite HotKey for all
@@ -228,9 +237,8 @@ namespace Tetragrama::Components
             }
             else
             {
-                float wx0 = (sw - kW) * 0.5f, wy0 = (sh - kH) * 0.5f;
-                bool outside = ctx->MousePos[0] < wx0 || ctx->MousePos[0] > wx0 + kW
-                            || ctx->MousePos[1] < wy0 || ctx->MousePos[1] > wy0 + kH;
+                bool outside = ctx->MousePos[0] < m_modal_x || ctx->MousePos[0] > m_modal_x + kW
+                            || ctx->MousePos[1] < m_modal_y || ctx->MousePos[1] > m_modal_y + kH;
                 if (ctx->MouseReleased[0] && outside)
                     m_settings_open = false;
             }
@@ -240,8 +248,8 @@ namespace Tetragrama::Components
             ZUIBox* win      = ZUIBeginColumn(ctx, "##stg_win", ZPx(kW), ZPx(kH));
             win->Flags       = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
             ctx->ModalBox    = win;
-            win->FloatPos[0] = (sw - kW) * 0.5f;
-            win->FloatPos[1] = (sh - kH) * 0.5f;
+            win->FloatPos[0] = m_modal_x;
+            win->FloatPos[1] = m_modal_y;
             ZUIBoxSetColorArr(win, ctx->Theme.WindowBg);
             ZUIBoxSetCornerRadius(win, 5.f);
             win->BorderThickness = 1.f;
@@ -254,7 +262,7 @@ namespace Tetragrama::Components
             // Title bar
             {
                 ZUIBox* tbar  = ZUIBeginRow(ctx, "##stg_tbar", ZFill(), ZPx(fh + 4.f));
-                tbar->Flags   = tbar->Flags | ZUI_DrawBackground;
+                tbar->Flags   = tbar->Flags | ZUI_DrawBackground | ZUI_Clickable;
                 ZUIBoxSetColorArr(tbar, ctx->Theme.TitleBarBg);
                 ZUIBoxSetTopRadius(tbar, 5.f);
                 tbar->EdgeSoftness = 0.f;
@@ -278,6 +286,15 @@ namespace Tetragrama::Components
                 ZUISignal xsig = ZUISignalFromBox(ctx, xb);
                 ZUIPopBox(ctx);
                 if (xsig.Flags & ZUI_SignalClicked) m_settings_open = false;
+
+                // Drag title bar to move modal
+                if (ctx->ActiveKey == tbar->Key && ctx->MouseDown[0])
+                {
+                    float dx = ctx->MousePos[0] - ctx->PrevMousePos[0];
+                    float dy = ctx->MousePos[1] - ctx->PrevMousePos[1];
+                    m_modal_x = fmaxf(0.f, fminf(m_modal_x + dx, sw - kW));
+                    m_modal_y = fmaxf(0.f, fminf(m_modal_y + dy, sh - kH));
+                }
                 ZUIEndRow(ctx);
             }
 
@@ -479,6 +496,28 @@ namespace Tetragrama::Components
 
             ZUIEndColumn(ctx); // content
             ZUIEndRow(ctx);    // body
+
+            // Bottom-right resize handle — floated inside modal, 12×12
+            {
+                static constexpr float kGrip = 14.f;
+                ZUIBox* rh     = ZUIPushBox(ctx, "##stg_grip", 10, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                rh->Size[0]    = ZPx(kGrip); rh->Size[1] = ZPx(kGrip);
+                rh->FloatPos[0] = kW - kGrip;
+                rh->FloatPos[1] = kH - kGrip;
+                bool ghov = (ctx->HotKey == rh->Key);
+                ZUIBoxSetColor(rh, 1.f, 1.f, 1.f, ghov ? 0.18f : 0.07f);
+                ZUIBoxSetCornerRadius(rh, 3.f);
+                ZUIPopBox(ctx);
+
+                if (ctx->ActiveKey == rh->Key && ctx->MouseDown[0])
+                {
+                    float dx = ctx->MousePos[0] - ctx->PrevMousePos[0];
+                    float dy = ctx->MousePos[1] - ctx->PrevMousePos[1];
+                    kW = fmaxf(kMinW, fminf(kW + dx, sw - m_modal_x));
+                    kH = fmaxf(kMinH, fminf(kH + dy, sh - m_modal_y));
+                }
+            }
+
             ZUIEndColumn(ctx); // window
         }
 
