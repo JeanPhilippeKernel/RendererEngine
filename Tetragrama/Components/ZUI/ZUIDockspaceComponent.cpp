@@ -204,17 +204,25 @@ namespace Tetragrama::Components
                 stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
             };
 
-            // Dim backdrop — covers full screen, click-outside to close
+            // Dim backdrop — visual only; NOT Clickable (a clickable full-screen sibling
+            // visited after the window in LIFO traversal would overwrite HotKey for all
+            // window children). Click-outside is detected via bounds check below instead.
             {
-                ZUIBox* dim    = ZUIPushBox(ctx, "##stg_dim", 9, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
-                dim->Size[0]   = ZPx(sw);
-                dim->Size[1]   = ZPx(sh);
+                ZUIBox* dim      = ZUIPushBox(ctx, "##stg_dim", 9, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                dim->Size[0]     = ZPx(sw);
+                dim->Size[1]     = ZPx(sh);
                 dim->FloatPos[0] = 0.f;
                 dim->FloatPos[1] = 0.f;
                 ZUIBoxSetColor(dim, 0.f, 0.f, 0.f, 0.55f);
-                ZUISignal dim_sig = ZUISignalFromBox(ctx, dim);
                 ZUIPopBox(ctx);
-                if (dim_sig.Flags & ZUI_SignalClicked)
+            }
+
+            // Click-outside detection using known window bounds (layout-independent)
+            {
+                float wx0 = (sw - kW) * 0.5f, wy0 = (sh - kH) * 0.5f;
+                bool outside = ctx->MousePos[0] < wx0 || ctx->MousePos[0] > wx0 + kW
+                            || ctx->MousePos[1] < wy0 || ctx->MousePos[1] > wy0 + kH;
+                if (ctx->MouseReleased[0] && outside)
                     m_settings_open = false;
             }
 
