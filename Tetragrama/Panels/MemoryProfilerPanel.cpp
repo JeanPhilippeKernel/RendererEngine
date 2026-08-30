@@ -79,20 +79,19 @@ namespace Tetragrama::Panels
             ZUIBeginRow(ctx, "##mp_hdr", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 10.f);
 
-            // Total used / total capacity
+            // Total = root arena (MainArena, first registered) — its offset IS the
+            // real physical memory in use; sub-arenas are slices of it, not additional.
             if (arena_count > 0)
             {
-                uint64_t total_used = 0, total_cap = 0;
-                for (uint32_t i = 0; i < arena_count; ++i)
-                {
-                    total_used += stats[i].CurrentOffset;
-                    total_cap  += stats[i].Capacity;
-                }
+                const ArenaStats& root = stats[0];
                 char buf_used[32], buf_cap[32];
-                FormatBytes(buf_used, sizeof(buf_used), total_used);
-                FormatBytes(buf_cap,  sizeof(buf_cap),  total_cap);
+                FormatBytes(buf_used, sizeof(buf_used), root.CurrentOffset);
+                FormatBytes(buf_cap,  sizeof(buf_cap),  root.Capacity);
+                float root_pct = (root.Capacity > 0)
+                               ? (float)root.CurrentOffset / (float)root.Capacity * 100.f
+                               : 0.f;
                 char hdr[96];
-                snprintf(hdr, sizeof(hdr), "Total: %s / %s", buf_used, buf_cap);
+                snprintf(hdr, sizeof(hdr), "Total: %s / %s  (%.0f%%)", buf_used, buf_cap, root_pct);
                 ZUILabel(ctx, hdr, ctx->Theme.TextDefault);
             }
             else
