@@ -110,7 +110,7 @@ namespace Tetragrama::Panels
         }
 
         ZUISpacer(ctx, 8.f);
-        bool do_clear = (ZUISmallButton(ctx, "Clear##con").Flags & ZUI_SignalClicked) != 0;
+        bool do_clear = (ZUIButton(ctx, "Clear##con").Flags & ZUI_SignalClicked) != 0;
         ZUISpacer(ctx, 8.f);
         // atomic<bool> — load to local, pass pointer, store result back
         bool as = m_auto_scroll.load(std::memory_order_relaxed);
