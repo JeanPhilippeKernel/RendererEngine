@@ -21,28 +21,6 @@ namespace Tetragrama::Components
         ParentLayer = parent;
         Name        = name;
         Visible     = visibility;
-
-        // Build the dockspace split tree once at startup
-        auto* arena = ParentLayer ? &ParentLayer->LocalArena : nullptr;
-        if (arena)
-        {
-            m_dock_tree = ZUIDockTreeCreate(arena);
-
-            // Root: H split → left 18% (Hierarchy) | right 82%
-            ZUIDockSplitH(m_dock_tree, m_dock_tree->Root, kLeftW, ZUIDockHashName("Hierarchy"), 0);
-
-            // Right child of root: H split → left 78% (center) | right 22% (Inspector)
-            ZUIDockNode* right_node = m_dock_tree->Root->Last;
-            ZUIDockSplitH(m_dock_tree, right_node, 1.f - kRightW, 0, ZUIDockHashName("Inspector"));
-
-            // Center child: V split → top 75% (Viewport) | bottom 25%
-            ZUIDockNode* center_node = right_node->First;
-            ZUIDockSplitV(m_dock_tree, center_node, 1.f - kBottomH, ZUIDockHashName("Viewport"), 0);
-
-            // Bottom child: H split → left 40% (Log) | right 60% (Project)
-            ZUIDockNode* bottom_node = center_node->Last;
-            ZUIDockSplitH(m_dock_tree, bottom_node, 0.40f, ZUIDockHashName("Log"), ZUIDockHashName("Project"));
-        }
     }
 
     void ZUIDockspaceComponent::BuildUI(ZUIContext* ctx)
@@ -55,12 +33,14 @@ namespace Tetragrama::Components
         float sw = (float) ctx->ScreenW;
         float sh = (float) ctx->ScreenH;
 
-        // Transparent full-screen overlay — renders on top of ZUIPanelManagerComponent.
-        // Contains only the menu bar and floating overlays (settings window, etc.).
+        // Full-screen overlay — alpha=0 background so ZFill() children resolve
+        // correctly, but visually transparent. Renders on top of PanelManagerComponent.
         ZUIBox* bg      = ZUIBeginColumn(ctx, "##dockspace_bg", ZPx(sw), ZPx(sh));
-        bg->Flags       = bg->Flags | ZUI_FloatX | ZUI_FloatY;
+        bg->Flags       = bg->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
         bg->FloatPos[0] = 0.f;
         bg->FloatPos[1] = 0.f;
+        ZUIBoxSetColor(bg, 0.f, 0.f, 0.f, 0.f);
+        bg->EdgeSoftness = 0.f;
 
         // Platform-aware shortcut display strings
 #if defined(__APPLE__)
