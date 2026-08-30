@@ -50,11 +50,12 @@ namespace Tetragrama::Panels
         float fh = ZUIGetFrameHeight(ctx);
         float content_w = rect[2] - rect[0];
 
-        // Fetch stats and update history
+        // Fetch stats — array must be init'd with an arena before GetStats pushes into it
         ZEngine::Core::Containers::Array<ArenaStats> stats;
+        stats.init(&ctx->FrameArena, 32);
         MemoryProfiler::GetStats(stats);
 
-        uint32_t arena_count = (uint32_t)stats.Size();
+        uint32_t arena_count = (uint32_t)stats.size();
 
         // Sync history count
         if ((int)arena_count > m_history_count)
