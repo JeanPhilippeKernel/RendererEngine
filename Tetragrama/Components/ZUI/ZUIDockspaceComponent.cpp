@@ -261,6 +261,7 @@ namespace Tetragrama::Components
                 ZUIBoxSetColorArr(tbar, ctx->Theme.TitleBarBg);
                 ZUIBoxSetTopRadius(tbar, 5.f);
                 tbar->EdgeSoftness = 0.f;
+                tbar->Padding[1]   = (kTbarH - fh) * 0.5f; // vertically center children
 
                 ZUISpacer(ctx, 14.f);
                 ZUILabel(ctx, "Engine Settings", ctx->Theme.TextDefault);
@@ -269,15 +270,23 @@ namespace Tetragrama::Components
                 fill->Size[0] = ZFill(); fill->Size[1] = ZPx(1.f);
                 ZUIPopBox(ctx);
 
-                // Close button
+                // Close button — red bg on hover
                 ZUIBox* xb    = ZUIPushBox(ctx, "##stg_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
                 xb->Size[0]   = ZPx(kTbarH); xb->Size[1] = ZPx(kTbarH);
                 xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
                 xb->TextAlign = ZUITextAlign::Center;
                 bool xhov     = (ctx->HotKey == xb->Key);
-                ZUIBoxSetColor(xb, 1.f, 1.f, 1.f, xhov ? 0.12f : 0.f);
-                xb->TextColor[0] = ctx->Theme.TextDim[0]; xb->TextColor[1] = ctx->Theme.TextDim[1];
-                xb->TextColor[2] = ctx->Theme.TextDim[2]; xb->TextColor[3] = 1.f;
+                if (xhov)
+                {
+                    ZUIBoxSetColor(xb, 0.82f, 0.15f, 0.15f, 1.f);
+                    xb->TextColor[0] = xb->TextColor[1] = xb->TextColor[2] = xb->TextColor[3] = 1.f;
+                }
+                else
+                {
+                    ZUIBoxSetColor(xb, 0.f, 0.f, 0.f, 0.f);
+                    xb->TextColor[0] = ctx->Theme.TextDim[0]; xb->TextColor[1] = ctx->Theme.TextDim[1];
+                    xb->TextColor[2] = ctx->Theme.TextDim[2]; xb->TextColor[3] = 1.f;
+                }
                 ZUISignal xsig = ZUISignalFromBox(ctx, xb);
                 ZUIPopBox(ctx);
                 if (xsig.Flags & ZUI_SignalClicked) m_settings_open = false;
