@@ -26,9 +26,9 @@ namespace Tetragrama::Panels
         project.m_layer   = parent;
         viewport.m_layer  = parent;
 
-        constexpr float kLeft   = 0.18f;
-        constexpr float kRight  = 0.22f;
-        constexpr float kBottom = 0.25f;
+        constexpr float kLeft   = 0.14f; // Viewport-focused default
+        constexpr float kRight  = 0.18f;
+        constexpr float kBottom = 0.22f;
 
         ZUIDockSplitH(Manager.DockTree, Manager.DockTree->Root, kLeft, ZUIDockHashName("Hierarchy"), 0);
 
@@ -44,7 +44,8 @@ namespace Tetragrama::Panels
         auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
         Manager.AddView(p_hier, &hierarchy);
 
-        auto* p_vp = Manager.AddPanel(ZUIDockHashName("Viewport"));
+        auto* p_vp       = Manager.AddPanel(ZUIDockHashName("Viewport"));
+        p_vp->Closeable  = false; // Main viewport is permanent — no close button
         Manager.AddView(p_vp, &viewport);
 
         auto* p_insp = Manager.AddPanel(ZUIDockHashName("Inspector"));

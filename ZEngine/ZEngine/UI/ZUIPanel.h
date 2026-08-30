@@ -39,6 +39,7 @@ namespace ZEngine::UI
         uint32_t      ViewCount               = 0;
         uint32_t      ActiveTab               = 0;
         bool          Hidden                  = false; ///< Closed by user; restorable from Window menu
+        bool          Closeable              = true;  ///< false = no close button (e.g. main viewport)
 
         bool          ReorderActive           = false;
         uint32_t      ReorderTabIdx           = 0;

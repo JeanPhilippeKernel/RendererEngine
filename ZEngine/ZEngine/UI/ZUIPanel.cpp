@@ -198,7 +198,7 @@ namespace ZEngine::UI
         for (uint32_t i = 0; i < PanelCount; ++i)
         {
             ZUIPanel* p = &Panels[i];
-            if (p->Hidden || p->ViewCount == 0)
+            if (p->Hidden || p->ViewCount == 0 || !p->Closeable)
             {
                 continue;
             }
@@ -675,9 +675,9 @@ namespace ZEngine::UI
                 ZUIPopBox(ctx);
             }
 
-            // x close (hover-only)
+            // x close (hover-only) — suppressed for non-closeable panels (e.g. main viewport)
             bool should_close = false;
-            bool ph           = (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
+            bool ph           = p->Closeable && (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
             if (ph)
             {
                 char xk[56];
@@ -841,7 +841,7 @@ namespace ZEngine::UI
             bool tab_closed = false;
             {
                 float btn_sz     = ctx->Style.FontSize;
-                bool  show_close = is_active || tab_hovered;
+                bool  show_close = p->Closeable && (is_active || tab_hovered);
                 ZUISpacer(ctx, ZUIGetInnerSpac(ctx));
 
                 char xkey[64];
