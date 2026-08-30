@@ -3684,6 +3684,30 @@ namespace ZEngine::UI
         // Outer container (full-width column that clips)
         ZUIBeginColumn(ctx, key, ZFill(), h);
 
+        // Vertical column separators — added HERE as FirstChild so LIFO rendering
+        // processes them LAST (on top of all row backgrounds).
+        // x positions from DT_ColWidths; ZFill() height spans the full table.
+        // Mirrors ImGui BeginTable BordersInnerV: one line per inner boundary.
+        if (col_count > 1 && ctx->DT_ColWidths)
+        {
+            float x = 0.f;
+            for (int i = 0; i < col_count - 1; ++i)
+            {
+                x += ctx->DT_ColWidths[i];
+                char sk[48];
+                snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
+                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
+                                             ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                sep->Size[0]     = ZPx(1.f);
+                sep->Size[1]     = ZFill();
+                sep->FloatPos[0] = x;
+                sep->FloatPos[1] = 0.f;
+                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderLight);
+                sep->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
+        }
+
         // Store cols in FrameArena for HeadersRow
         if (cols)
         {
@@ -3943,32 +3967,6 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);
             ctx->DT_InRow = false;
         }
-        // Vertical column separators — one per inner boundary, full table height.
-        // Drawn as floated children of the outer container so they:
-        //   • span header + all data rows in a single unbroken line
-        //   • share the same x-coordinate source (DT_ColWidths) as ZUIDataTableSetColumn
-        //   • do not consume any cell width budget
-        // Mirrors ImGui's BordersInnerV background-channel approach.
-        if (ctx->DT_ColWidths && ctx->DT_ColCount > 1)
-        {
-            float x = 0.f;
-            for (int i = 0; i < ctx->DT_ColCount - 1; ++i)
-            {
-                x += ctx->DT_ColWidths[i];
-                char sk[48];
-                snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
-                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
-                                             ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                sep->Size[0]     = ZPx(1.f);
-                sep->Size[1]     = ZFill(); // fills outer container height
-                sep->FloatPos[0] = x;
-                sep->FloatPos[1] = 0.f;
-                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderLight);
-                sep->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
-            }
-        }
-
         ZUIEndColumn(ctx); // outer container
         ctx->DT_ColCount = 0;
     }
