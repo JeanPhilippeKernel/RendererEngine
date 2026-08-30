@@ -3702,7 +3702,7 @@ namespace ZEngine::UI
                 sep->Size[1]     = ZFill();
                 sep->FloatPos[0] = x;
                 sep->FloatPos[1] = 0.f;
-                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderLight);
+                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderStrong);
                 sep->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
             }
