@@ -3922,6 +3922,20 @@ namespace ZEngine::UI
         char  ck[48];
         snprintf(ck, sizeof(ck), "##dtcell_%llu_%d_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex, col);
         ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
+
+        // Vertical column separator — 1px at left edge of every non-first column
+        if (col > 0)
+        {
+            char sk[56];
+            snprintf(sk, sizeof(sk), "##dtsep_%llu_%d_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex, col);
+            ZUIBox* sep  = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk), ZUI_DrawBackground);
+            sep->Size[0] = ZPx(1.f);
+            sep->Size[1] = ZFill();
+            ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderLight);
+            sep->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+        }
+
         ZUISpacer(ctx, ctx->Style.CellPadding[0]); // left padding
     }
 
