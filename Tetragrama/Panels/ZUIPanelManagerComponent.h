@@ -22,11 +22,12 @@ namespace Tetragrama::Panels
     {
         ZEngine::UI::ZUIPanelManager Manager;
 
-        HierarchyPanel   hierarchy;
-        ViewportPanel    viewport;
-        InspectorPanel   inspector;
-        ConsolePanel     output;
-        ProjectViewPanel project;
+        HierarchyPanel        hierarchy;
+        ViewportPanel         viewport;
+        InspectorPanel        inspector;
+        ConsolePanel          output;
+        ProjectViewPanel      project;
+        MemoryProfilerPanel   profiler;
 
         void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "PanelManager", bool visibility = true) override;
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;

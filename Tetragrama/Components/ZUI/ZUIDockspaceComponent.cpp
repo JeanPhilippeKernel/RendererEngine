@@ -167,8 +167,9 @@ namespace Tetragrama::Components
             // "Performances" menu
             if (ZUIBeginMenu(ctx, "Performances"))
             {
-                if (ZUIMenuItemEx(ctx, "Memory Profiler", nullptr, m_perf_open))
-                    m_perf_open = !m_perf_open;
+                bool prof_vis = ShellPanelManager && ShellPanelManager->IsPanelVisible("Profiler");
+                if (ZUIMenuItemEx(ctx, "Memory Profiler", nullptr, prof_vis) && ShellPanelManager)
+                    ShellPanelManager->SetPanelVisible("Profiler", !prof_vis);
                 ZUIEndMenu(ctx);
             }
 
@@ -475,14 +476,14 @@ namespace Tetragrama::Components
             }
             else if (m_settings_page == 3 && ShellPanelManager) // Layout
             {
-                static const char* kPanelNames[4] = {"Hierarchy", "Console", "Inspector", "Viewport"};
-                static const char* kRowKeys[4]    = {"##lp_r0", "##lp_r1", "##lp_r2", "##lp_r3"};
-                static const char* kCbKeys[4]     = {"##lp_c0", "##lp_c1", "##lp_c2", "##lp_c3"};
+                static const char* kPanelNames[5] = {"Hierarchy", "Console", "Inspector", "Viewport", "Profiler"};
+                static const char* kRowKeys[5]    = {"##lp_r0", "##lp_r1", "##lp_r2", "##lp_r3", "##lp_r4"};
+                static const char* kCbKeys[5]     = {"##lp_c0", "##lp_c1", "##lp_c2", "##lp_c3", "##lp_c4"};
 
                 ZUILabel(ctx, "Panels", ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 10.f);
 
-                for (int ni = 0; ni < 4; ++ni)
+                for (int ni = 0; ni < 5; ++ni)
                 {
                     bool vis  = ShellPanelManager->IsPanelVisible(kPanelNames[ni]);
                     bool prev = vis;
