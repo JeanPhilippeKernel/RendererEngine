@@ -546,6 +546,44 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddCircle(&ctx->DrawList, cx, cy, gs * 0.5f, cc, 8, 1.5f);
                     ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, gs * 0.2f, cc, 8);
                 }
+                else if (itype < 22.5f) // ZUI_ICON_GRID = 22: 3×3 grid lines (port of develop icon_grid)
+                {
+                    float gm  = sz * 0.17f;
+                    float gx0 = bx0 + gm, gy0 = by0 + gm;
+                    float gs2 = sz - gm * 2.f;
+                    for (int gi = 1; gi <= 3; ++gi)
+                    {
+                        float tx = gx0 + gs2 * gi / 4.f, ty = gy0 + gs2 * gi / 4.f;
+                        ZUIDrawListAddLine(&ctx->DrawList, tx, gy0,        tx, gy0 + gs2, cc, 1.2f);
+                        ZUIDrawListAddLine(&ctx->DrawList, gx0, ty, gx0 + gs2, ty,        cc, 1.2f);
+                    }
+                }
+                else if (itype < 23.5f) // ZUI_ICON_TRANSLATE = 23: 4-way arrow cross (port of develop icon_translate)
+                {
+                    float r = sz * 0.28f, al = r * 0.9f, aw = r * 0.35f, inset = aw * 0.3f;
+                    ZUIDrawListAddLine(&ctx->DrawList, cx, cy - r, cx, cy + r, cc, 1.5f);
+                    ZUIDrawListAddLine(&ctx->DrawList, cx - r, cy, cx + r, cy, cc, 1.5f);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy - r - al, cx - aw, cy - r + inset, cx + aw, cy - r + inset, cc);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy + r + al, cx - aw, cy + r - inset, cx + aw, cy + r - inset, cc);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx + r + al, cy, cx + r - inset, cy - aw, cx + r - inset, cy + aw, cc);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx - r - al, cy, cx - r + inset, cy - aw, cx - r + inset, cy + aw, cc);
+                }
+                else if (itype < 24.5f) // ZUI_ICON_ROTATE = 24: circle + arrowhead (port of develop icon_rotate)
+                {
+                    float r  = sz * 0.28f;
+                    float aw = r * 0.40f;
+                    ZUIDrawListAddCircle(&ctx->DrawList, cx, cy, r, cc, 24, 1.8f);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx + r, cy - aw * 0.4f, cx + r + aw * 0.7f, cy, cx + r, cy + aw * 0.4f, cc);
+                }
+                else if (itype < 25.5f) // ZUI_ICON_SCALE = 25: square + corner dots (port of develop icon_scale)
+                {
+                    float r   = sz * 0.28f, h = r * 0.75f, dot = r * 0.22f;
+                    ZUIDrawListAddRect(&ctx->DrawList, cx - h, cy - h, cx + h, cy + h, cc, 0.f, 0xF, 1.5f);
+                    ZUIDrawListAddCircleFilled(&ctx->DrawList, cx - h, cy - h, dot, cc, 6);
+                    ZUIDrawListAddCircleFilled(&ctx->DrawList, cx + h, cy - h, dot, cc, 6);
+                    ZUIDrawListAddCircleFilled(&ctx->DrawList, cx - h, cy + h, dot, cc, 6);
+                    ZUIDrawListAddCircleFilled(&ctx->DrawList, cx + h, cy + h, dot, cc, 6);
+                }
                 else // ZUI_ICON_ACTOR = 15 (diamond) — default fallback
                 {
                     float r = sz * 0.35f;

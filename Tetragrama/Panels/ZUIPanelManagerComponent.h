@@ -44,6 +44,7 @@ namespace Tetragrama::Panels
             hierarchy.m_layer = parent;
             inspector.m_layer = parent;
             project.m_layer   = parent;
+            viewport.m_layer  = parent;
 
             using namespace ZEngine::UI;
 

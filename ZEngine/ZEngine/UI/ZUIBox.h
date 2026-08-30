@@ -59,6 +59,10 @@ namespace ZEngine::UI
     static constexpr float ZUI_ICON_ACTOR          = 15.f; // diamond
     static constexpr float ZUI_ICON_COLLECTION_ADD = 20.f; // folder + embedded "+" cross (New Collection button)
     static constexpr float ZUI_ICON_GEAR           = 21.f; // outer ring + inner dot (Settings button)
+    static constexpr float ZUI_ICON_GRID           = 22.f; // 3×3 grid lines (viewport grid toggle)
+    static constexpr float ZUI_ICON_TRANSLATE      = 23.f; // 4-way arrow cross (gizmo translate)
+    static constexpr float ZUI_ICON_ROTATE         = 24.f; // circle + arrowhead (gizmo rotate)
+    static constexpr float ZUI_ICON_SCALE          = 25.f; // square + corner dots (gizmo scale)
 
     inline ZUIBoxFlags     operator|(ZUIBoxFlags a, ZUIBoxFlags b)
     {
