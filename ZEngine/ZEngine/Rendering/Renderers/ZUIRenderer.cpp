@@ -546,11 +546,10 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddCircle(&ctx->DrawList, cx, cy, gs * 0.5f, cc, 8, 1.5f);
                     ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, gs * 0.2f, cc, 8);
                 }
-                else if (itype < 22.5f) // ZUI_ICON_GRID = 22: 3×3 grid lines (port of develop icon_grid)
+                else if (itype < 22.5f) // ZUI_ICON_GRID = 22: 3×3 grid lines, centered on cx/cy
                 {
-                    float gm  = sz * 0.17f;
-                    float gx0 = bx0 + gm, gy0 = by0 + gm;
-                    float gs2 = sz - gm * 2.f;
+                    float gs2 = sz * 0.66f;
+                    float gx0 = cx - gs2 * 0.5f, gy0 = cy - gs2 * 0.5f;
                     for (int gi = 1; gi <= 3; ++gi)
                     {
                         float tx = gx0 + gs2 * gi / 4.f, ty = gy0 + gs2 * gi / 4.f;

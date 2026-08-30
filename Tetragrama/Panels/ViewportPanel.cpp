@@ -108,22 +108,19 @@ namespace Tetragrama::Panels
 
         // --- Overlay toolbar: vertical, floated top-left at (8, 8) ---
         {
-            static constexpr float kBtnSz = 28.f;
-            static constexpr float kSepH  = 1.f;
-            static constexpr float kPad   = 2.f;
-            float                  tb_h   = kPad + kBtnSz + kSepH + kBtnSz * 3.f + kPad;
+            static constexpr float kBtnSz  = 28.f;  // button height (also min draw size)
+            static constexpr float kTbW    = 36.f;  // toolbar width — 4px padding each side
+            static constexpr float kSepH   = 1.f;
+            static constexpr float kPad    = 5.f;   // top / bottom inner padding
+            static constexpr float kGap    = 4.f;   // gap between buttons
+            static constexpr float kSepGap = 4.f;   // gap on each side of separator
+            float tb_h = kPad + kBtnSz + kSepGap + kSepH + kSepGap
+                       + kBtnSz + kGap + kBtnSz + kGap + kBtnSz + kPad;
 
-            ZUIBox* tb   = ZUIBeginColumn(ctx, "##vp_tb", ZPx(kBtnSz), ZPx(tb_h));
-            tb->Flags    = tb->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
+            ZUIBox* tb   = ZUIBeginColumn(ctx, "##vp_tb", ZPx(kTbW), ZPx(tb_h));
+            tb->Flags    = tb->Flags | ZUI_FloatX | ZUI_FloatY;
             tb->FloatPos[0] = 8.f;
             tb->FloatPos[1] = 8.f;
-            ZUIBoxSetColor(tb, 0.09f, 0.09f, 0.09f, 0.82f);
-            ZUIBoxSetCornerRadius(tb, 4.f);
-            tb->BorderThickness = 1.f;
-            tb->BorderColor[0]  = 0.25f;
-            tb->BorderColor[1]  = 0.25f;
-            tb->BorderColor[2]  = 0.28f;
-            tb->BorderColor[3]  = 1.f;
 
             ZUISpacer(ctx, kPad);
 
@@ -132,7 +129,7 @@ namespace Tetragrama::Panels
                 static const float kCol[4] = {0.30f, 0.80f, 0.90f, 1.f};
                 bool  act = m_grid_enabled;
                 ZUIBox* b = ZUIPushBox(ctx, "##vp_bg0", 8, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
-                b->Size[0] = ZPx(kBtnSz);
+                b->Size[0] = ZFill();   // fills toolbar width — icon renderer uses sz=min(w,h)=kBtnSz
                 b->Size[1] = ZPx(kBtnSz);
                 bool hov   = (ctx->HotKey == b->Key);
                 if (act)
@@ -155,7 +152,8 @@ namespace Tetragrama::Panels
                     m_grid_enabled = !m_grid_enabled;
             }
 
-            // 1px separator between grid and TRS
+            // Separator with breathing room
+            ZUISpacer(ctx, kSepGap);
             {
                 ZUIBox* sep  = ZUIPushBox(ctx, "##vp_sep", 8, ZUI_DrawBackground);
                 sep->Size[0] = ZFill();
@@ -163,6 +161,7 @@ namespace Tetragrama::Panels
                 ZUIBoxSetColor(sep, 0.30f, 0.30f, 0.32f, 0.50f);
                 ZUIPopBox(ctx);
             }
+            ZUISpacer(ctx, kSepGap);
 
             // Translate / Rotate / Scale buttons
             struct BtnDef
@@ -180,11 +179,12 @@ namespace Tetragrama::Panels
 
             for (int i = 0; i < 3; ++i)
             {
+                if (i > 0) ZUISpacer(ctx, kGap);
                 const BtnDef& d   = kBtns[i];
                 bool          act = (m_gizmo_op == d.op);
                 ZUIBox*       b   = ZUIPushBox(ctx, d.key, (uint32_t) strlen(d.key),
                                              ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
-                b->Size[0]        = ZPx(kBtnSz);
+                b->Size[0]        = ZFill();   // fills toolbar width
                 b->Size[1]        = ZPx(kBtnSz);
                 bool hov          = (ctx->HotKey == b->Key);
                 if (act)
