@@ -336,9 +336,15 @@ namespace Tetragrama::Panels
             snprintf(rk, sizeof(rk), "##pv_flt_%d", i);
             ZUIBox* row = ZUIBeginRow(ctx, rk, ZFill(), ZPx(row_h));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-            bool hov    = (ctx->HotKey == row->Key);
+            bool hov      = (ctx->HotKey == row->Key);
+            bool pressing = !active && (ctx->ActiveKey == row->Key);
             if (active)
                 ZUIBoxSetColorArr(row, kActBg);
+            else if (pressing)
+            {
+                static const float kPressBg[4] = {1.f, 1.f, 1.f, 0.12f};
+                ZUIBoxSetColorArr(row, kPressBg);
+            }
             else if (hov)
                 ZUIBoxSetColorArr(row, kHovBg);
             else
@@ -418,11 +424,14 @@ namespace Tetragrama::Panels
                     float   cw   = kCardW - 8.f;
                     ZUIBox* card = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
                     card->Flags  = card->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-                    hov          = (ctx->HotKey == card->Key);
+                    hov              = (ctx->HotKey == card->Key);
+                    bool pressing    = !sel && (ctx->ActiveKey == card->Key);
 
-                    // Card bg: solid dark (no transparency — matches UE5 opaque cards)
-                    ZUIBoxSetColor(card, hov ? 0.25f : 0.16f, hov ? 0.25f : 0.16f, hov ? 0.30f : 0.19f,
-                                   1.f); // fully opaque (#1)
+                    // Card bg: solid dark — pressing < hover < rest
+                    float rb = pressing ? 0.22f : hov ? 0.25f : 0.16f;
+                    float gb = pressing ? 0.22f : hov ? 0.25f : 0.16f;
+                    float bb = pressing ? 0.26f : hov ? 0.30f : 0.19f;
+                    ZUIBoxSetColor(card, rb, gb, bb, 1.f);
                     ZUIBoxSetCornerRadius(card, kRounding);
                     card->EdgeSoftness = 0.5f;
 

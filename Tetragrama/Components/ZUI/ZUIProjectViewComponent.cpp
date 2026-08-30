@@ -185,7 +185,9 @@ namespace Tetragrama::Components
             // --- Row: icon square + name + ext tag ---
             ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-            ZUIBoxSetColor(row, 0.45f, 0.45f, 0.50f, 0.f); // transparent, hover fades in
+            bool row_hov = (ctx->HotKey == row->Key);
+            bool row_act = (ctx->ActiveKey == row->Key);
+            ZUIBoxSetColor(row, 0.45f, 0.45f, 0.50f, row_act ? 0.20f : row_hov ? 0.12f : 0.f);
 
             ZUISpacer(ctx, 4.f);
             // Type icon — 14×14 colored square

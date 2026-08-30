@@ -283,27 +283,26 @@ namespace Tetragrama::Components
                 ttl->TextColor[2] = ctx->Theme.TextDefault[2]; ttl->TextColor[3] = ctx->Theme.TextDefault[3];
                 ZUIPopBox(ctx);
 
-                // Close button — red bg on hover
+                // Close button — red bg on hover, darker red on press
                 ZUIBox* xb    = ZUIPushBox(ctx, "##stg_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
                 xb->Size[0]   = ZPx(kTbarH); xb->Size[1] = ZPx(kTbarH);
                 xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
                 xb->TextAlign = ZUITextAlign::Center;
                 bool xhov     = (ctx->HotKey == xb->Key);
-                if (xhov)
-                {
+                bool xact     = (ctx->ActiveKey == xb->Key);
+                if (xact)
+                    ZUIBoxSetColor(xb, 0.62f, 0.08f, 0.08f, 1.f);
+                else if (xhov)
                     ZUIBoxSetColor(xb, 0.82f, 0.15f, 0.15f, 1.f);
-                    xb->TextColor[0] = xb->TextColor[1] = xb->TextColor[2] = xb->TextColor[3] = 1.f;
-                }
                 else
-                {
                     ZUIBoxSetColor(xb, 0.f, 0.f, 0.f, 0.f);
-                    xb->TextColor[0] = ctx->Theme.TextDim[0]; xb->TextColor[1] = ctx->Theme.TextDim[1];
-                    xb->TextColor[2] = ctx->Theme.TextDim[2]; xb->TextColor[3] = 1.f;
-                }
+                xb->TextColor[0] = xb->TextColor[1] = xb->TextColor[2] = 1.f;
+                xb->TextColor[3] = (xhov || xact) ? 1.f : 0.6f;
                 ZUISignal xsig = ZUISignalFromBox(ctx, xb);
                 ZUIPopBox(ctx);
                 if (xsig.Flags & ZUI_SignalClicked) m_settings_open = false;
 
+                ZUISignalFromBox(ctx, tbar); // consume hot/active state for drag
                 // Drag title bar to move modal
                 if (ctx->ActiveKey == tbar->Key && ctx->MouseDown[0])
                 {
@@ -463,15 +462,17 @@ namespace Tetragrama::Components
                 for (int ti = 0; ti < 2; ++ti)
                 {
                     bool tact = (s_active_theme == ti);
+                    bool thov = !tact && (ctx->HotKey == ZUIHashStr(kThemeKeys[ti], (uint32_t)strlen(kThemeKeys[ti])));
                     ZUIBox* tc = ZUIBeginColumn(ctx, kThemeKeys[ti], ZPx(110.f), ZFill());
                     tc->Flags  = tc->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
                     float bg   = (ti == 0) ? 0.10f : 0.88f;
-                    ZUIBoxSetColor(tc, bg, bg, ti==0 ? 0.12f : 0.90f, 1.f);
+                    float bga  = thov ? bg + 0.06f : bg;
+                    ZUIBoxSetColor(tc, bga, bga, ti==0 ? bga + 0.02f : bga + 0.02f, 1.f);
                     ZUIBoxSetCornerRadius(tc, 4.f);
-                    tc->BorderThickness = tact ? 2.f : 1.f;
-                    tc->BorderColor[0]  = tact ? ctx->Theme.TabActiveBorder[0] : 0.28f;
-                    tc->BorderColor[1]  = tact ? ctx->Theme.TabActiveBorder[1] : 0.28f;
-                    tc->BorderColor[2]  = tact ? ctx->Theme.TabActiveBorder[2] : 0.32f;
+                    tc->BorderThickness = tact ? 2.f : (thov ? 1.5f : 1.f);
+                    tc->BorderColor[0]  = tact ? ctx->Theme.TabActiveBorder[0] : (thov ? 0.50f : 0.28f);
+                    tc->BorderColor[1]  = tact ? ctx->Theme.TabActiveBorder[1] : (thov ? 0.50f : 0.28f);
+                    tc->BorderColor[2]  = tact ? ctx->Theme.TabActiveBorder[2] : (thov ? 0.55f : 0.32f);
                     tc->BorderColor[3]  = 1.f;
                     ZUISpacer(ctx, 20.f);
                     float lc[4] = {ti==0 ? 0.9f : 0.1f, ti==0 ? 0.9f : 0.1f, ti==0 ? 0.9f : 0.1f, 1.f};
@@ -527,8 +528,10 @@ namespace Tetragrama::Components
                 rh->FloatPos[0] = kW - kGrip;
                 rh->FloatPos[1] = kH - kGrip;
                 bool ghov = (ctx->HotKey == rh->Key);
-                ZUIBoxSetColor(rh, 1.f, 1.f, 1.f, ghov ? 0.18f : 0.07f);
+                bool gact = (ctx->ActiveKey == rh->Key);
+                ZUIBoxSetColor(rh, 1.f, 1.f, 1.f, gact ? 0.30f : ghov ? 0.18f : 0.07f);
                 ZUIBoxSetCornerRadius(rh, 3.f);
+                ZUISignalFromBox(ctx, rh); // consume hot/active state for drag
                 ZUIPopBox(ctx);
 
                 if (ctx->ActiveKey == rh->Key && ctx->MouseDown[0])

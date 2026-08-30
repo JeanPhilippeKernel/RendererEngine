@@ -272,9 +272,10 @@ namespace Tetragrama::Panels
                 lbox->Size[0]    = ZText();
                 lbox->Size[1]    = ZPx(fh);
                 lbox->Label      = ZUIPushStr(&ctx->FrameArena, lbl, llen);
-                lbox->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : ctx->Theme.TextDefault[0];
-                lbox->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : ctx->Theme.TextDefault[1];
-                lbox->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : ctx->Theme.TextDefault[2];
+                bool lhov = !is_sc && (ctx->HotKey == lbox->Key);
+                lbox->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : lhov ? 1.f : ctx->Theme.TextDefault[0];
+                lbox->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : lhov ? 1.f : ctx->Theme.TextDefault[1];
+                lbox->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : lhov ? 1.f : ctx->Theme.TextDefault[2];
                 lbox->TextColor[3] = 1.f;
                 ZUISignal csig   = ZUISignalFromBox(ctx, lbox);
                 ZUIPopBox(ctx);
@@ -301,10 +302,11 @@ namespace Tetragrama::Panels
                 ZUIBox* arr       = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawTriArrow | ZUI_Clickable);
                 arr->Size[0]      = ZPx(fh);
                 arr->Size[1]      = ZPx(fh);
-                arr->TextColor[0] = kDim[0];
-                arr->TextColor[1] = kDim[1];
-                arr->TextColor[2] = kDim[2];
-                arr->TextColor[3] = kDim[3];
+                bool arr_hov      = (ctx->HotKey == arr->Key);
+                arr->TextColor[0] = arr_hov ? ctx->Theme.TextDefault[0] : kDim[0];
+                arr->TextColor[1] = arr_hov ? ctx->Theme.TextDefault[1] : kDim[1];
+                arr->TextColor[2] = arr_hov ? ctx->Theme.TextDefault[2] : kDim[2];
+                arr->TextColor[3] = arr_hov ? ctx->Theme.TextDefault[3] : kDim[3];
                 auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
                 if (ps)
                     ps->UserData = m_root_open ? 2.f : 3.f;
@@ -444,10 +446,11 @@ namespace Tetragrama::Panels
                     ZUIBox* arr       = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
                     arr->Size[0]      = ZPx(fh);
                     arr->Size[1]      = ZPx(fh);
-                    arr->TextColor[0] = kDim[0];
-                    arr->TextColor[1] = kDim[1];
-                    arr->TextColor[2] = kDim[2];
-                    arr->TextColor[3] = kDim[3];
+                    bool arr_hov      = (ctx->HotKey == arr->Key);
+                    arr->TextColor[0] = arr_hov ? ctx->Theme.TextDefault[0] : kDim[0];
+                    arr->TextColor[1] = arr_hov ? ctx->Theme.TextDefault[1] : kDim[1];
+                    arr->TextColor[2] = arr_hov ? ctx->Theme.TextDefault[2] : kDim[2];
+                    arr->TextColor[3] = arr_hov ? ctx->Theme.TextDefault[3] : kDim[3];
                     auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
                     if (ps)
                         ps->UserData = !collapsed ? 2.f : 3.f; // ∨ expanded / › collapsed

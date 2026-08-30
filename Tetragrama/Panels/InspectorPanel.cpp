@@ -450,7 +450,8 @@ namespace Tetragrama::Panels
             {
                 ZUISpacer(ctx, 4.f);
                 // Pill button colors
-                static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal — active (matches "All" blue in UE5)
+                static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal — active
+                static const float kPillHov[4]  = {0.28f, 0.28f, 0.33f, 1.f}; // slightly brighter — hover
                 static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark — inactive
 
                 ZUIBeginRow(ctx, "##cat_pills", ZFill(), ZPx(fh + 4.f));
@@ -465,7 +466,8 @@ namespace Tetragrama::Panels
                     btn->Size[1]   = ZPx(fh);
                     btn->Label     = ZUIPushStr(&ctx->FrameArena, "All", 3);
                     btn->TextAlign = ZUITextAlign::Center;
-                    ZUIBoxSetColorArr(btn, is_all ? kPillAct : kPillRest);
+                    bool pill_hov = !is_all && (ctx->HotKey == btn->Key);
+                    ZUIBoxSetColorArr(btn, is_all ? kPillAct : pill_hov ? kPillHov : kPillRest);
                     ZUIBoxSetCornerRadius(btn, 3.f);
                     btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
                     btn->TextColor[3]                                         = 1.f;
@@ -493,7 +495,8 @@ namespace Tetragrama::Panels
                     btn->Size[1]    = ZPx(fh);
                     btn->Label      = ZUIPushStr(&ctx->FrameArena, cats[ci], clen);
                     btn->TextAlign  = ZUITextAlign::Center;
-                    ZUIBoxSetColorArr(btn, is_active ? kPillAct : kPillRest);
+                    bool pill_hov = !is_active && (ctx->HotKey == btn->Key);
+                    ZUIBoxSetColorArr(btn, is_active ? kPillAct : pill_hov ? kPillHov : kPillRest);
                     ZUIBoxSetCornerRadius(btn, 3.f);
                     btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
                     btn->TextColor[3]                                         = 1.f;

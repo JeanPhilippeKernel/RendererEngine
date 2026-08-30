@@ -131,14 +131,17 @@ namespace Tetragrama::Panels
                 ZUIBox* b = ZUIPushBox(ctx, "##vp_bg0", 8, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
                 b->Size[0] = ZFill();   // fills toolbar width — icon renderer uses sz=min(w,h)=kBtnSz
                 b->Size[1] = ZPx(kBtnSz);
-                bool hov   = (ctx->HotKey == b->Key);
+                bool hov      = (ctx->HotKey == b->Key);
+                bool pressing = !act && (ctx->ActiveKey == b->Key);
                 if (act)
                     ZUIBoxSetColor(b, kCol[0] * 0.25f, kCol[1] * 0.25f, kCol[2] * 0.25f, 0.92f);
+                else if (pressing)
+                    ZUIBoxSetColor(b, 0.20f, 0.20f, 0.20f, 0.95f);
                 else if (hov)
                     ZUIBoxSetColor(b, 0.30f, 0.30f, 0.30f, 0.90f);
                 else
                     ZUIBoxSetColor(b, 0.12f, 0.12f, 0.12f, 0.70f);
-                float dim        = (act || hov) ? 1.f : 0.55f;
+                float dim        = (act || hov || pressing) ? 1.f : 0.55f;
                 b->TextColor[0]  = kCol[0] * dim;
                 b->TextColor[1]  = kCol[1] * dim;
                 b->TextColor[2]  = kCol[2] * dim;
@@ -187,13 +190,16 @@ namespace Tetragrama::Panels
                 b->Size[0]        = ZFill();   // fills toolbar width
                 b->Size[1]        = ZPx(kBtnSz);
                 bool hov          = (ctx->HotKey == b->Key);
+                bool pressing     = !act && (ctx->ActiveKey == b->Key);
                 if (act)
                     ZUIBoxSetColor(b, d.col[0] * 0.25f, d.col[1] * 0.25f, d.col[2] * 0.25f, 0.92f);
+                else if (pressing)
+                    ZUIBoxSetColor(b, 0.20f, 0.20f, 0.20f, 0.95f);
                 else if (hov)
                     ZUIBoxSetColor(b, 0.30f, 0.30f, 0.30f, 0.90f);
                 else
                     ZUIBoxSetColor(b, 0.12f, 0.12f, 0.12f, 0.70f);
-                float dim        = (act || hov) ? 1.f : 0.55f;
+                float dim        = (act || hov || pressing) ? 1.f : 0.55f;
                 b->TextColor[0]  = d.col[0] * dim;
                 b->TextColor[1]  = d.col[1] * dim;
                 b->TextColor[2]  = d.col[2] * dim;

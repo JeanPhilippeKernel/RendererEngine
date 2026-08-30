@@ -216,6 +216,7 @@ namespace Tetragrama::Panels
         // ── Filter pill row — same visual style as InspectorPanel category pills
         {
             static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal active
+            static const float kPillHov[4]  = {0.28f, 0.28f, 0.33f, 1.f}; // hover
             static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark inactive
             static const char* kPills[]     = {"General","Mesh","Material","Animation","LOD","All"};
             static const char* kPillKeys[]  = {"##pf0","##pf1","##pf2","##pf3","##pf4","##pf5"};
@@ -237,7 +238,8 @@ namespace Tetragrama::Panels
                 pb->Size[1]  = ZPx(fh);
                 pb->Label    = ZUIPushStr(&ctx->FrameArena, kPills[pi], plen);
                 pb->TextAlign = ZUITextAlign::Center;
-                ZUIBoxSetColorArr(pb, act ? kPillAct : kPillRest);
+                bool pill_hov = !act && !disabled && (ctx->HotKey == pb->Key);
+                ZUIBoxSetColorArr(pb, act ? kPillAct : pill_hov ? kPillHov : kPillRest);
                 ZUIBoxSetCornerRadius(pb, 3.f);
                 pb->TextColor[0] = pb->TextColor[1] = pb->TextColor[2] = pb->TextColor[3] = 1.f;
                 ZUISignal psig = ZUISignalFromBox(ctx, pb);
