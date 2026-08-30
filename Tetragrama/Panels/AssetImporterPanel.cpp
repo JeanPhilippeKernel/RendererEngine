@@ -213,141 +213,212 @@ namespace Tetragrama::Panels
         ZUISeparator(ctx);
         ZUISpacer(ctx, 6.f);
 
-        // Tab bar
-        ZUIBeginTabBar(ctx, "##imp_tabs");
-
-        if (ZUIBeginTabItem(ctx, "General"))
+        // ── Filter pill row (UE5-style horizontal filter) ─────────────────────
         {
-            ZUISpacer(ctx, 6.f);
-            ZUICheckbox(ctx, "Use Source Name##imp_usn", &m_use_source_name);
-            ZUISpacer(ctx, 4.f);
+            static const char* kPills[]    = {"General","Mesh","Material","Animation","LOD","All"};
+            static const char* kPillKeys[] = {
+                "##pf_gen","##pf_mesh","##pf_mat","##pf_anim","##pf_lod","##pf_all"
+            };
+            ZUIBeginRow(ctx, "##imp_filter_row", ZFill(), ZPx(fh + 6.f));
+            ZUISpacer(ctx, 8.f);
+            for (int pi = 0; pi < 6; ++pi)
             {
-                ZUIBeginRow(ctx, "##imp_aname_r", ZFill(), ZPx(fh + 4.f));
+                bool disabled = (pi == 3 || pi == 4);
+                if (disabled) ZUIBeginDisabled(ctx);
+
+                bool    act  = (m_options_filter == pi);
+                uint32_t pln = (uint32_t)strlen(kPills[pi]);
+                ZUIBox* pb   = ZUIPushBox(ctx, kPillKeys[pi], (uint32_t)strlen(kPillKeys[pi]),
+                                          ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
+                pb->Size[0]    = ZText();
+                pb->Size[1]    = ZPx(fh + 4.f);
+                pb->Label      = ZUIPushStr(&ctx->FrameArena, kPills[pi], pln);
+                pb->TextAlign  = ZUITextAlign::Center;
+                pb->Padding[0] = 10.f;
+                pb->Padding[2] = 10.f;
+                ZUIBoxSetCornerRadius(pb, 3.f);
+                if (act)
+                {
+                    ZUIBoxSetColorArr(pb, ctx->Theme.TabActiveBg);
+                    pb->TextColor[0] = pb->TextColor[1] = pb->TextColor[2] = pb->TextColor[3] = 1.f;
+                }
+                else
+                {
+                    bool hov = (ctx->HotKey == pb->Key);
+                    ZUIBoxSetColor(pb, 1.f, 1.f, 1.f, hov ? 0.07f : 0.f);
+                    pb->TextColor[0] = ctx->Theme.TextDim[0]; pb->TextColor[1] = ctx->Theme.TextDim[1];
+                    pb->TextColor[2] = ctx->Theme.TextDim[2]; pb->TextColor[3] = 1.f;
+                }
+                ZUISignal psig = ZUISignalFromBox(ctx, pb);
+                ZUIPopBox(ctx);
+                ZUISpacer(ctx, 4.f);
+                if (!disabled && (psig.Flags & ZUI_SignalClicked))
+                    m_options_filter = pi;
+
+                if (disabled) ZUIEndDisabled(ctx);
+            }
+            ZUIEndRow(ctx);
+        }
+        ZUISeparator(ctx);
+
+        // ── Filtered settings (scroll region) ─────────────────────────────────
+        ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
+        {
+            // Section header helper
+            static constexpr float kLblW = 140.f;
+            auto sec_hdr = [&](const char* key, const char* label) {
+                ZUISpacer(ctx, 10.f);
+                ZUIBeginRow(ctx, key, ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
-                ZUIBox* lc = ZUIBeginColumn(ctx, "##imp_aname_l", ZPx(100.f), ZFill());
-                ZUILabel(ctx, "Asset Name", ctx->Theme.TextDefault);
-                ZUIEndColumn(ctx);
-                if (m_use_source_name)
+                ZUILabel(ctx, label, ctx->Theme.TextDim);
+                ZUIEndRow(ctx);
+                ZUISeparator(ctx);
+                ZUISpacer(ctx, 6.f);
+            };
+            // 2-column row helper (label left, widget fills right)
+#define IMP_ROW_BEGIN(key) ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); ZUISpacer(ctx, 8.f); ZUIBeginColumn(ctx, key"_l", ZPx(kLblW), ZFill());
+#define IMP_ROW_MID(label) ZUILabel(ctx, label, ctx->Theme.TextDefault); ZUIEndColumn(ctx);
+#define IMP_ROW_END ZUISpacer(ctx, 8.f); ZUIEndRow(ctx); ZUISpacer(ctx, 3.f);
+            // Checkbox row (checkbox left, label right)
+#define IMP_CB_ROW_BEGIN(key) ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); ZUISpacer(ctx, 8.f);
+#define IMP_CB_ROW_END(label) ZUISpacer(ctx, 8.f); ZUILabel(ctx, label, ctx->Theme.TextDefault); ZUIEndRow(ctx); ZUISpacer(ctx, 3.f);
+
+            bool show_gen  = (m_options_filter == 0 || m_options_filter == 5);
+            bool show_mesh = (m_options_filter == 1 || m_options_filter == 5);
+            bool show_mat  = (m_options_filter == 2 || m_options_filter == 5);
+            bool show_anim = (m_options_filter == 3 || m_options_filter == 5);
+            bool show_lod  = (m_options_filter == 4 || m_options_filter == 5);
+
+            // ── General / Common ──────────────────────────────────────────────
+            if (show_gen)
+            {
+                sec_hdr("##imp_s_gen", "Common");
+
+                IMP_CB_ROW_BEGIN("##imp_usn_r")
+                ZUICheckbox(ctx, "##imp_usn", &m_use_source_name);
+                IMP_CB_ROW_END("Use Source Name for Asset")
+
+                IMP_ROW_BEGIN("##imp_aname_r")
+                IMP_ROW_MID("Asset Name")
                 {
                     char fn_buf[256] = {};
                     auto pr = VFSPath::Parse(m_path_buf);
                     if (pr.Succeeded()) { auto s = pr.Value().Stem(); snprintf(fn_buf, sizeof(fn_buf), "%.*s", (int)s.Length, s.Data); }
+                    if (m_use_source_name) { ZUIBeginDisabled(ctx); ZUITextField(ctx, "##imp_name_dis", fn_buf, sizeof(fn_buf), 0.f); ZUIEndDisabled(ctx); }
+                    else ZUITextField(ctx, "##imp_name", m_instance_name, sizeof(m_instance_name), 0.f);
+                }
+                IMP_ROW_END
+
+                IMP_ROW_BEGIN("##imp_scale_r")
+                IMP_ROW_MID("Offset Uniform Scale")
+                ZUIDragFloat(ctx, "##imp_scale", &m_scale, 0.01f, 80.f);
+                IMP_ROW_END
+
+                IMP_ROW_BEGIN("##imp_axis_r")
+                IMP_ROW_MID("Axis Up")
+                {
+                    static const char* kAxes[] = {"Y-Up", "Z-Up"};
+                    if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index]))
+                    {
+                        for (int i = 0; i < 2; ++i)
+                            if (ZUIComboItem(ctx, kAxes[i], m_axis_index == i)) m_axis_index = i;
+                        ZUIEndCombo(ctx);
+                    }
+                }
+                IMP_ROW_END
+            }
+
+            // ── Mesh ──────────────────────────────────────────────────────────
+            if (show_mesh)
+            {
+                sec_hdr("##imp_s_mesh", "Common Meshes");
+
+                IMP_ROW_BEGIN("##imp_nrm_r")
+                IMP_ROW_MID("Normals")
+                {
+                    static const char* kNrm[] = {"Off","Flat","Smooth"};
+                    if (ZUIBeginCombo(ctx, "##imp_normals", kNrm[m_normals_mode]))
+                    {
+                        for (int i = 0; i < 3; ++i)
+                            if (ZUIComboItem(ctx, kNrm[i], m_normals_mode == i)) m_normals_mode = i;
+                        ZUIEndCombo(ctx);
+                    }
+                }
+                IMP_ROW_END
+
+                IMP_CB_ROW_BEGIN("##imp_mv_r")
+                ZUICheckbox(ctx, "##imp_mv", &m_merge_vertices);
+                IMP_CB_ROW_END("Merge Identical Vertices")
+
+                IMP_CB_ROW_BEGIN("##imp_fuv_r")
+                ZUICheckbox(ctx, "##imp_fuv", &m_flip_uvs);
+                IMP_CB_ROW_END("Flip UVs")
+
+                {
+                    static bool s_keep_sections = false;
                     ZUIBeginDisabled(ctx);
-                    ZUITextField(ctx, "##imp_name_dis", fn_buf, sizeof(fn_buf), 0.f);
+                    IMP_CB_ROW_BEGIN("##imp_ks_r")
+                    ZUICheckbox(ctx, "##imp_ks", &s_keep_sections);
+                    IMP_CB_ROW_END("Keep Sections Separate")
                     ZUIEndDisabled(ctx);
                 }
-                else
-                {
-                    ZUITextField(ctx, "##imp_name", m_instance_name, sizeof(m_instance_name), 0.f);
-                }
-                ZUIEndRow(ctx);
             }
-            ZUISpacer(ctx, 4.f);
-            {
-                ZUIBeginRow(ctx, "##imp_scale_r", ZFill(), ZPx(fh + 4.f));
-                ZUISpacer(ctx, 8.f);
-                ZUIBox* lc = ZUIBeginColumn(ctx, "##imp_scale_l", ZPx(100.f), ZFill());
-                ZUILabel(ctx, "Uniform Scale", ctx->Theme.TextDefault);
-                ZUIEndColumn(ctx);
-                ZUIDragFloat(ctx, "##imp_scale", &m_scale, 0.01f, 80.f);
-                ZUIEndRow(ctx);
-            }
-            ZUISpacer(ctx, 4.f);
-            {
-                ZUIBeginRow(ctx, "##imp_axis_r", ZFill(), ZPx(fh + 4.f));
-                ZUISpacer(ctx, 8.f);
-                ZUIBox* lc = ZUIBeginColumn(ctx, "##imp_axis_l", ZPx(100.f), ZFill());
-                ZUILabel(ctx, "Axis Up", ctx->Theme.TextDefault);
-                ZUIEndColumn(ctx);
-                static const char* kAxes[] = {"Y-Up", "Z-Up"};
-                if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index]))
-                {
-                    for (int i = 0; i < 2; ++i)
-                        if (ZUIComboItem(ctx, kAxes[i], m_axis_index == i))
-                            m_axis_index = i;
-                    ZUIEndCombo(ctx);
-                }
-                ZUIEndRow(ctx);
-            }
-            ZUISpacer(ctx, 6.f);
-            ZUIEndTabItem(ctx);
-        }
 
-        if (ZUIBeginTabItem(ctx, "Mesh"))
-        {
-            ZUISpacer(ctx, 6.f);
+            // ── Material ──────────────────────────────────────────────────────
+            if (show_mat)
             {
-                ZUIBeginRow(ctx, "##imp_nrm_r", ZFill(), ZPx(fh + 4.f));
-                ZUISpacer(ctx, 8.f);
-                ZUIBox* lc = ZUIBeginColumn(ctx, "##imp_nrm_l", ZPx(100.f), ZFill());
-                ZUILabel(ctx, "Normals", ctx->Theme.TextDefault);
-                ZUIEndColumn(ctx);
-                static const char* kNormals[] = {"Off", "Flat", "Smooth"};
-                if (ZUIBeginCombo(ctx, "##imp_normals", kNormals[m_normals_mode]))
-                {
-                    for (int i = 0; i < 3; ++i)
-                        if (ZUIComboItem(ctx, kNormals[i], m_normals_mode == i))
-                            m_normals_mode = i;
-                    ZUIEndCombo(ctx);
-                }
-                ZUIEndRow(ctx);
+                sec_hdr("##imp_s_mat", "Materials");
+
+                IMP_CB_ROW_BEGIN("##imp_imat_r")
+                ZUICheckbox(ctx, "##imp_imat", &m_import_materials);
+                IMP_CB_ROW_END("Import Materials")
+
+                IMP_CB_ROW_BEGIN("##imp_itex_r")
+                ZUICheckbox(ctx, "##imp_itex", &m_import_textures);
+                IMP_CB_ROW_END("Import Textures")
             }
-            ZUISpacer(ctx, 4.f);
-            ZUICheckbox(ctx, "Merge Identical Vertices##imp_mv", &m_merge_vertices);
-            ZUISpacer(ctx, 4.f);
-            ZUICheckbox(ctx, "Flip UVs##imp_fuv", &m_flip_uvs);
-            ZUISpacer(ctx, 4.f);
+
+            // ── Animation (disabled) ──────────────────────────────────────────
+            if (show_anim)
             {
-                static bool s_keep_sections = false;
                 ZUIBeginDisabled(ctx);
-                ZUICheckbox(ctx, "Keep Sections Separate##imp_ks", &s_keep_sections);
+                sec_hdr("##imp_s_anim", "Common Skeletal Meshes and Animations");
+                static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
+                IMP_CB_ROW_BEGIN("##imp_ia_r")  ZUICheckbox(ctx, "##imp_ia",  &s_import_anims);  IMP_CB_ROW_END("Import Animations")
+                IMP_CB_ROW_BEGIN("##imp_ioa_r") ZUICheckbox(ctx, "##imp_ioa", &s_only_anims);    IMP_CB_ROW_END("Import Only Animations")
+                IMP_CB_ROW_BEGIN("##imp_ibt_r") ZUICheckbox(ctx, "##imp_ibt", &s_bone_tracks);   IMP_CB_ROW_END("Import Bone Tracks")
+                ZUISpacer(ctx, 4.f);
+                ZUIBeginRow(ctx, "##imp_anim_hint", ZFill(), ZPx(fh)); ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, "Animation import requires skeletal mesh support.", ctx->Theme.TextDim);
+                ZUIEndRow(ctx);
                 ZUIEndDisabled(ctx);
             }
-            ZUISpacer(ctx, 6.f);
-            ZUIEndTabItem(ctx);
-        }
 
-        if (ZUIBeginTabItem(ctx, "Material"))
-        {
-            ZUISpacer(ctx, 6.f);
-            ZUICheckbox(ctx, "Import Materials##imp_imat", &m_import_materials);
-            ZUISpacer(ctx, 4.f);
-            ZUICheckbox(ctx, "Import Textures##imp_itex", &m_import_textures);
-            ZUISpacer(ctx, 6.f);
-            ZUIEndTabItem(ctx);
-        }
+            // ── LOD (disabled) ────────────────────────────────────────────────
+            if (show_lod)
+            {
+                ZUIBeginDisabled(ctx);
+                sec_hdr("##imp_s_lod", "LOD");
+                static bool s_import_lods = false;
+                static int  s_max_lods    = 4;
+                IMP_CB_ROW_BEGIN("##imp_il_r") ZUICheckbox(ctx, "##imp_il", &s_import_lods); IMP_CB_ROW_END("Import LODs")
+                IMP_ROW_BEGIN("##imp_lod_n_r") IMP_ROW_MID("Max LOD Count")
+                ZUISliderFloat(ctx, "##imp_lod_n", (float*)&s_max_lods, 1.f, 8.f);
+                IMP_ROW_END
+                ZUISpacer(ctx, 4.f);
+                ZUIBeginRow(ctx, "##imp_lod_hint", ZFill(), ZPx(fh)); ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, "LOD support requires virtual geometry streaming.", ctx->Theme.TextDim);
+                ZUIEndRow(ctx);
+                ZUIEndDisabled(ctx);
+            }
 
-        ZUIBeginDisabled(ctx);
-        if (ZUIBeginTabItem(ctx, "Animation"))
-        {
-            ZUISpacer(ctx, 6.f);
-            static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
-            ZUICheckbox(ctx, "Import Animations##imp_ia",     &s_import_anims);
-            ZUISpacer(ctx, 4.f);
-            ZUICheckbox(ctx, "Import Only Animations##imp_ioa", &s_only_anims);
-            ZUISpacer(ctx, 4.f);
-            ZUICheckbox(ctx, "Import Bone Tracks##imp_ibt",   &s_bone_tracks);
-            ZUISpacer(ctx, 4.f);
-            ZUILabel(ctx, "Animation import requires skeletal mesh support.", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 6.f);
-            ZUIEndTabItem(ctx);
+#undef IMP_ROW_BEGIN
+#undef IMP_ROW_MID
+#undef IMP_ROW_END
+#undef IMP_CB_ROW_BEGIN
+#undef IMP_CB_ROW_END
         }
-        if (ZUIBeginTabItem(ctx, "LOD"))
-        {
-            ZUISpacer(ctx, 6.f);
-            static bool s_import_lods = false;
-            static int  s_max_lods    = 4;
-            ZUICheckbox(ctx, "Import LODs##imp_il", &s_import_lods);
-            ZUISpacer(ctx, 4.f);
-            ZUISliderFloat(ctx, "##imp_lod_count", (float*)&s_max_lods, 1.f, 8.f);
-            ZUISpacer(ctx, 4.f);
-            ZUILabel(ctx, "LOD support requires virtual geometry streaming.", ctx->Theme.TextDim);
-            ZUISpacer(ctx, 6.f);
-            ZUIEndTabItem(ctx);
-        }
-        ZUIEndDisabled(ctx);
-
-        ZUIEndTabBar(ctx);
+        ZUIEndScrollRegion(ctx);
 
         ZUISeparator(ctx);
         ZUISpacer(ctx, 6.f);

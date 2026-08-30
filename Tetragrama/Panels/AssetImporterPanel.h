@@ -54,6 +54,7 @@ namespace Tetragrama::Panels
         bool  m_import_materials   = true;
         bool  m_import_textures    = true;
         bool  m_same_settings      = false;
+        int   m_options_filter     = 5; // 0=General 1=Mesh 2=Material 3=Anim 4=LOD 5=All
 
         // Pending ECS actor creation — written on bg thread, consumed on main thread
         struct PendingActor
