@@ -155,7 +155,11 @@ namespace Tetragrama::Components
             if (ZUIBeginMenu(ctx, "Settings"))
             {
                 if (ZUIMenuItemEx(ctx, "Engine", nullptr, m_settings_open))
+                {
                     m_settings_open = !m_settings_open;
+                    if (m_settings_open)
+                        m_settings_just_opened = true;
+                }
                 ZUIEndMenu(ctx);
             }
             ZUISpacer(ctx, 4.f);
@@ -217,7 +221,12 @@ namespace Tetragrama::Components
                 ZUIPopBox(ctx);
             }
 
-            // Click-outside detection using known window bounds (layout-independent)
+            // Click-outside: skip on the opening frame to avoid same-frame close
+            if (m_settings_just_opened)
+            {
+                m_settings_just_opened = false;
+            }
+            else
             {
                 float wx0 = (sw - kW) * 0.5f, wy0 = (sh - kH) * 0.5f;
                 bool outside = ctx->MousePos[0] < wx0 || ctx->MousePos[0] > wx0 + kW

@@ -34,8 +34,9 @@ namespace Tetragrama::Components
         ZEngine::UI::ZUIDockTree* m_dock_tree = nullptr;
 
         // Engine Settings window
-        bool m_settings_open = false;
-        int  m_settings_page = 0; // 0=Grid, 1=Renderer, 2=Theme
+        bool m_settings_open        = false;
+        bool m_settings_just_opened = false; // skip click-outside on the opening frame
+        int  m_settings_page        = 0; // 0=Grid, 1=Renderer, 2=Theme
 
         // Performances window
         bool m_perf_open = false;
