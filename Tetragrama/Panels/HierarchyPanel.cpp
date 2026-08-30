@@ -136,9 +136,9 @@ namespace Tetragrama::Panels
 
         // ── 3-column table: Item Label (sortable+resizable) | Type | Level ──────
         ZUIDataTableColumn cols[3] = {
-            {"Item Label", fmaxf(pw * 0.60f, 100.f),  true,  true},
-            {      "Type", fmaxf(pw * 0.25f,  50.f),  true, false},
-            {     "Level", fmaxf(pw * 0.15f,  40.f), false, false},
+            {"Item Label", fmaxf(pw * 0.55f, 100.f),  true,  true},
+            {      "Type", fmaxf(pw * 0.22f,  48.f),  true, false},
+            {     "Level", fmaxf(pw * 0.23f,  58.f), false, false},
         };
 
         // ── O(n) DFS tree build — exact develop algorithm ─────────────────────
