@@ -206,7 +206,7 @@ namespace ZEngine::UI
             // Tab bar close buttons
             for (uint32_t ti = 0; ti < p->ViewCount; ++ti)
             {
-                if (p->Views[ti] && !p->Views[ti]->Closeable)
+                if (!p->Views[ti] || !p->Views[ti]->Closeable || !p->Views[ti]->Visible)
                     continue;
                 char xkey[64];
                 snprintf(xkey, sizeof(xkey), "x##x_%llx_%u", (unsigned long long) p->DockKey, ti);
@@ -235,7 +235,8 @@ namespace ZEngine::UI
 
             // Single-view title strip close button
             {
-                bool strip_closeable = (p->ActiveTab < p->ViewCount && p->Views[p->ActiveTab]) ? p->Views[p->ActiveTab]->Closeable : true;
+                ZUIPanelView* av     = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
+                bool strip_closeable = av && av->Closeable && av->Visible;
                 char txk[56];
                 snprintf(txk, sizeof(txk), "x##tx_%llx", (unsigned long long) p->DockKey);
                 uint64_t txhash = ZUIHashStr(txk, (uint32_t) strlen(txk));
