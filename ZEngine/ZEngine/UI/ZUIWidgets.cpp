@@ -3649,21 +3649,40 @@ namespace ZEngine::UI
         ctx->DT_RowBox      = nullptr;
         ctx->DT_SortChanged = false;
 
-        // Load column widths from persistent state; apply InitWidth for new tables
-        ctx->DT_ColWidths   = ZPushArray(&ctx->FrameArena, float, col_count);
+        // Load column widths — proportionally rescale when the panel is resized.
+        // InitWidth values re-derive from panel width (pw) each frame, so their
+        // sum changes when the panel resizes. Compare with the last stored total
+        // and scale all stored widths by the same ratio to keep user resize ratios.
+        static constexpr uint64_t kTotalWSuffix = 0x544F54574944ULL;
+        ctx->DT_ColWidths = ZPushArray(&ctx->FrameArena, float, col_count);
+
+        float total_init = 0.f;
+        for (int i = 0; i < col_count; ++i)
+            total_init += (cols && cols[i].InitWidth > 0.f) ? cols[i].InitWidth : kDT_ColDefault;
+
+        auto* total_s    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kTotalWSuffix);
+        float prev_total = (total_s && total_s->UserData > 1.f) ? total_s->UserData : -1.f;
+        float scale      = (prev_total > 1.f && total_init > 1.f && fabsf(total_init - prev_total) > 1.f)
+                           ? total_init / prev_total : 1.f;
+
         for (int i = 0; i < col_count; ++i)
         {
             auto* s    = ZUIStateGetOrInsert(&ctx->StateStore, DT_ColKey(ctx->DT_Key, i));
             float init = (cols && cols[i].InitWidth > 0.f) ? cols[i].InitWidth : kDT_ColDefault;
-            if (s && s->UserData > 1.f) // already set
-                ctx->DT_ColWidths[i] = s->UserData;
+            if (s && s->UserData > 1.f)
+            {
+                float w = s->UserData * scale;
+                w = fmaxf(w, 30.f);    // minimum column width
+                s->UserData = w;
+                ctx->DT_ColWidths[i] = w;
+            }
             else
             {
                 ctx->DT_ColWidths[i] = init;
-                if (s)
-                    s->UserData = init;
+                if (s) s->UserData   = init;
             }
         }
+        if (total_s) total_s->UserData = total_init;
 
         // Load sort state
         {
