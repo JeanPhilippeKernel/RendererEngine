@@ -3722,7 +3722,7 @@ namespace ZEngine::UI
             // Outer header cell box (clickable when sortable)
             char  ck[56];
             snprintf(ck, sizeof(ck), "##dthc_%llu_%d", (unsigned long long) ctx->DT_Key, i);
-            ZUIBoxFlags cell_flags = ZUI_DrawBackground | ZUI_DrawBorder;
+            ZUIBoxFlags cell_flags = ZUI_DrawBackground;
             if (sortable)
                 cell_flags = cell_flags | ZUI_Clickable;
             ZUIBox* cell     = ZUIPushBox(ctx, ck, (uint32_t) strlen(ck), cell_flags);
@@ -3730,18 +3730,11 @@ namespace ZEngine::UI
             cell->Size[1]    = ZPx(header_h);
             cell->LayoutAxis = ZUIAxis::X;
 
-            // Hover tint on sortable headers
+            // Hover tint on sortable headers; no per-cell border (separators drawn at table level)
             bool cell_hot    = (ctx->HotKey == cell->Key);
-            if (cell_hot && sortable)
-                ZUIBoxSetColorArr(cell, ctx->Theme.TableBorderLight);
-            else
-                ZUIBoxSetColorArr(cell, ctx->Theme.TableHeaderBg);
-            cell->BorderColor[0]  = ctx->Theme.TableBorderStrong[0];
-            cell->BorderColor[1]  = ctx->Theme.TableBorderStrong[1];
-            cell->BorderColor[2]  = ctx->Theme.TableBorderStrong[2];
-            cell->BorderColor[3]  = ctx->Theme.TableBorderStrong[3];
-            cell->BorderThickness = 1.f;
-            cell->EdgeSoftness    = 0.f;
+            ZUIBoxSetColorArr(cell, (cell_hot && sortable) ? ctx->Theme.TableBorderLight
+                                                           : ctx->Theme.TableHeaderBg);
+            cell->EdgeSoftness = 0.f;
 
             // Left padding
             char sp1k[32];
@@ -3836,6 +3829,18 @@ namespace ZEngine::UI
         }
 
         ZUIEndRow(ctx);
+
+        // Single full-width bottom border below the header row (replaces per-cell ZUI_DrawBorder)
+        {
+            char bk[48];
+            snprintf(bk, sizeof(bk), "##dthdrborder_%llu", (unsigned long long) ctx->DT_Key);
+            ZUIBox* bsep  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
+            bsep->Size[0] = ZFill();
+            bsep->Size[1] = ZPx(1.f);
+            ZUIBoxSetColorArr(bsep, ctx->Theme.TableBorderStrong);
+            bsep->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+        }
     }
 
     bool ZUIDataTableNextRow(ZUIContext* ctx, bool selected)
@@ -3922,20 +3927,6 @@ namespace ZEngine::UI
         char  ck[48];
         snprintf(ck, sizeof(ck), "##dtcell_%llu_%d_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex, col);
         ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
-
-        // Vertical column separator — 1px at left edge of every non-first column
-        if (col > 0)
-        {
-            char sk[56];
-            snprintf(sk, sizeof(sk), "##dtsep_%llu_%d_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex, col);
-            ZUIBox* sep  = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk), ZUI_DrawBackground);
-            sep->Size[0] = ZPx(1.f);
-            sep->Size[1] = ZFill();
-            ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderLight);
-            sep->EdgeSoftness = 0.f;
-            ZUIPopBox(ctx);
-        }
-
         ZUISpacer(ctx, ctx->Style.CellPadding[0]); // left padding
     }
 
@@ -3952,6 +3943,32 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);
             ctx->DT_InRow = false;
         }
+        // Vertical column separators — one per inner boundary, full table height.
+        // Drawn as floated children of the outer container so they:
+        //   • span header + all data rows in a single unbroken line
+        //   • share the same x-coordinate source (DT_ColWidths) as ZUIDataTableSetColumn
+        //   • do not consume any cell width budget
+        // Mirrors ImGui's BordersInnerV background-channel approach.
+        if (ctx->DT_ColWidths && ctx->DT_ColCount > 1)
+        {
+            float x = 0.f;
+            for (int i = 0; i < ctx->DT_ColCount - 1; ++i)
+            {
+                x += ctx->DT_ColWidths[i];
+                char sk[48];
+                snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
+                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
+                                             ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                sep->Size[0]     = ZPx(1.f);
+                sep->Size[1]     = ZFill(); // fills outer container height
+                sep->FloatPos[0] = x;
+                sep->FloatPos[1] = 0.f;
+                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderLight);
+                sep->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
+        }
+
         ZUIEndColumn(ctx); // outer container
         ctx->DT_ColCount = 0;
     }
