@@ -479,6 +479,7 @@ namespace ZEngine::UI
         bool          DT_InRow                   = false;
         ZUIBox*       DT_RowBox                  = nullptr;
         float*        DT_ColWidths               = nullptr; // FrameArena, size = DT_ColCount
+        ZUIBox**      DT_SepBoxes               = nullptr; // FrameArena, size = DT_ColCount-1; height patched in EndDataTable
         const void*   DT_Cols                    = nullptr; // ZUIDataTableColumn* stored by BeginDataTable
         int           DT_SortCol                 = -1;      // -1 = unsorted
         bool          DT_SortAsc                 = true;

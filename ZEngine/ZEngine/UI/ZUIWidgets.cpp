@@ -3684,13 +3684,16 @@ namespace ZEngine::UI
         // Outer container (full-width column that clips)
         ZUIBeginColumn(ctx, key, ZFill(), h);
 
-        // Vertical column separators — added HERE as FirstChild so LIFO rendering
-        // processes them LAST (on top of all row backgrounds).
-        // x positions from DT_ColWidths; ZFill() height spans the full table.
-        // Mirrors ImGui BeginTable BordersInnerV: one line per inner boundary.
+        // Vertical separators — FirstChild so LIFO renders them last (on top).
+        // Height is ZPx(0) now; patched to the real table height in ZUIEndDataTable
+        // once all rows have been added and DT_RowIndex is final.
+        // ZFill() cannot be used here because the outer container is ZFit() —
+        // ZFit() height = sum of non-floated children → remaining for ZFill() = 0.
+        ctx->DT_SepBoxes = nullptr;
         if (col_count > 1 && ctx->DT_ColWidths)
         {
-            float x = 0.f;
+            ctx->DT_SepBoxes = ZPushArray(&ctx->FrameArena, ZUIBox*, col_count - 1);
+            float x          = 0.f;
             for (int i = 0; i < col_count - 1; ++i)
             {
                 x += ctx->DT_ColWidths[i];
@@ -3699,12 +3702,13 @@ namespace ZEngine::UI
                 ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
                                              ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 sep->Size[0]     = ZPx(1.f);
-                sep->Size[1]     = ZFill();
+                sep->Size[1]     = ZPx(0.f); // patched in ZUIEndDataTable
                 sep->FloatPos[0] = x;
                 sep->FloatPos[1] = 0.f;
                 ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderStrong);
                 sep->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
+                ctx->DT_SepBoxes[i] = sep;
             }
         }
 
@@ -3967,6 +3971,18 @@ namespace ZEngine::UI
             ZUIEndRow(ctx);
             ctx->DT_InRow = false;
         }
+        // Patch separator heights: header + bottom border + all data rows
+        if (ctx->DT_SepBoxes && ctx->DT_ColCount > 1)
+        {
+            float total_h = kDT_HeaderH + 1.f /* bottom border */ + (float) ctx->DT_RowIndex * kDT_RowH;
+            for (int i = 0; i < ctx->DT_ColCount - 1; ++i)
+            {
+                if (ctx->DT_SepBoxes[i])
+                    ctx->DT_SepBoxes[i]->Size[1] = ZPx(total_h);
+            }
+        }
+        ctx->DT_SepBoxes = nullptr;
+
         ZUIEndColumn(ctx); // outer container
         ctx->DT_ColCount = 0;
     }
