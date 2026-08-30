@@ -28,6 +28,13 @@ namespace Tetragrama::Components
     private:
         ZEngine::UI::ZUIDockTree* m_dock_tree = nullptr;
 
+        // Engine Settings window
+        bool m_settings_open = false;
+        int  m_settings_page = 0; // 0=Grid, 1=Renderer, 2=Theme
+
+        // Performances window
+        bool m_perf_open = false;
+
         // Workspace resize state — separate from the normal hit-test pass.
         // RAD Debugger style: dividers check mouse bounds directly, not through
         // the z-ordered box tree. This gives dividers priority over panel content.

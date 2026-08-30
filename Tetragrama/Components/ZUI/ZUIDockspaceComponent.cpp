@@ -15,23 +15,6 @@ using namespace ZEngine::UI;
 namespace Tetragrama::Components
 {
     static constexpr float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
-    static constexpr float kMenuH   = 28.f;
-    static constexpr float kStatusH = 28.f;
-    static constexpr float kLeftW   = 0.18f;
-    static constexpr float kRightW  = 0.22f;
-    static constexpr float kBottomH = 0.25f;
-
-    static void            AssignRegion(ZUIComponent* cmp, float x, float y, float w, float h)
-    {
-        if (!cmp || cmp->Detached)
-        {
-            return;
-        }
-        cmp->RegionX = x;
-        cmp->RegionY = y;
-        cmp->RegionW = w;
-        cmp->RegionH = h;
-    }
 
     void ZUIDockspaceComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
     {
@@ -69,43 +52,15 @@ namespace Tetragrama::Components
             return;
         }
 
-        float sw       = (float) ctx->ScreenW;
-        float sh       = (float) ctx->ScreenH;
-        float menu_h   = kMenuH * ctx->UIScale;
-        float status_h = kStatusH * ctx->UIScale;
+        float sw = (float) ctx->ScreenW;
+        float sh = (float) ctx->ScreenH;
 
-        // Recompute dock rects from the current window size
-        if (m_dock_tree)
-        {
-            const float root_rect[4] = {0.f, menu_h, sw, sh - status_h};
-            ZUIDockLayout(m_dock_tree, root_rect);
-
-            auto AssignFromDock = [&](ZUIComponent* cmp, const char* panel_name) {
-                if (!cmp || cmp->Detached)
-                {
-                    return;
-                }
-                float r[4];
-                if (ZUIDockRectForKey(m_dock_tree, ZUIDockHashName(panel_name), r))
-                    AssignRegion(cmp, r[0], r[1], r[2] - r[0], r[3] - r[1]);
-            };
-
-            AssignFromDock(Hierarchy, "Hierarchy");
-            AssignFromDock(Inspector, "Inspector");
-            AssignFromDock(Viewport, "Viewport");
-            AssignFromDock(Log, "Log");
-            AssignFromDock(Project, "Project");
-        }
-        AssignRegion(StatusBar, 0.f, sh - status_h, sw, status_h);
-
-        // --- Full-screen background ---
+        // Transparent full-screen overlay — renders on top of ZUIPanelManagerComponent.
+        // Contains only the menu bar and floating overlays (settings window, etc.).
         ZUIBox* bg      = ZUIBeginColumn(ctx, "##dockspace_bg", ZPx(sw), ZPx(sh));
-        bg->Flags       = bg->Flags | ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY;
+        bg->Flags       = bg->Flags | ZUI_FloatX | ZUI_FloatY;
         bg->FloatPos[0] = 0.f;
         bg->FloatPos[1] = 0.f;
-        ZUIBoxSetColorArr(bg, ctx->Theme.WindowBg);
-        ZUIBoxSetCornerRadius(bg, 0.f);
-        bg->EdgeSoftness = 0.f;
 
         // Platform-aware shortcut display strings
 #if defined(__APPLE__)
@@ -216,20 +171,20 @@ namespace Tetragrama::Components
             }
             ZUISpacer(ctx, 4.f);
 
-            // "View" menu — checkable toggles using ZUIMenuItemEx selected state
-            if (ZUIBeginMenu(ctx, "View"))
+            // "Settings" menu
+            if (ZUIBeginMenu(ctx, "Settings"))
             {
-                auto vis_item = [&](const char* label, ZUIComponent* cmp) {
-                    if (!cmp)
-                        return;
-                    if (ZUIMenuItemEx(ctx, label, nullptr, cmp->Visible))
-                        cmp->Visible = !cmp->Visible;
-                };
-                vis_item("Scene", Viewport);
-                vis_item("Hierarchy", Hierarchy);
-                vis_item("Inspector", Inspector);
-                vis_item("Console", Log);
-                vis_item("Project", Project);
+                if (ZUIMenuItemEx(ctx, "Engine", nullptr, m_settings_open))
+                    m_settings_open = !m_settings_open;
+                ZUIEndMenu(ctx);
+            }
+            ZUISpacer(ctx, 4.f);
+
+            // "Performances" menu
+            if (ZUIBeginMenu(ctx, "Performances"))
+            {
+                if (ZUIMenuItemEx(ctx, "Memory Profiler", nullptr, m_perf_open))
+                    m_perf_open = !m_perf_open;
                 ZUIEndMenu(ctx);
             }
 
@@ -251,85 +206,234 @@ namespace Tetragrama::Components
             ZUIEndMenuBar(ctx);
         }
 
-        // --- Workspace resize dividers (RAD Debugger style) ---
-        // Direct mouse-bound tracking — bypasses z-ordered hit-test so dividers
-        // always have priority over panel content, regardless of render order.
-        if (m_dock_tree)
+        // --- Engine Settings window ---
+        if (m_settings_open)
         {
-            static constexpr float kDivW = 6.f; // grab width in logical px
+            static constexpr float kW     = 600.f;
+            static constexpr float kH     = 420.f;
+            static constexpr float kSideW = 140.f;
+            float fh = ZUIGetFrameHeight(ctx);
 
-            for (int di = 0; di < 4; ++di)
+            auto* stg_app   = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto* stg_scene = stg_app ? reinterpret_cast<EditorScenePtr>(stg_app->CurrentScene) : nullptr;
+
+            auto mark_grid_dirty = [stg_scene]() {
+                if (!stg_scene) return;
+                stg_scene->GridDirty[0].value.store(true, std::memory_order_release);
+                stg_scene->GridDirty[1].value.store(true, std::memory_order_release);
+                stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
+            };
+
+            // Window container
+            ZUIBox* win      = ZUIBeginColumn(ctx, "##stg_win", ZPx(kW), ZPx(kH));
+            win->Flags       = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
+            win->FloatPos[0] = (sw - kW) * 0.5f;
+            win->FloatPos[1] = (sh - kH) * 0.5f;
+            ZUIBoxSetColorArr(win, ctx->Theme.WindowBg);
+            ZUIBoxSetCornerRadius(win, 5.f);
+            win->BorderThickness = 1.f;
+            win->BorderColor[0]  = ctx->Theme.PanelBorder[0];
+            win->BorderColor[1]  = ctx->Theme.PanelBorder[1];
+            win->BorderColor[2]  = ctx->Theme.PanelBorder[2];
+            win->BorderColor[3]  = 1.f;
+            win->EdgeSoftness    = 0.f;
+
+            // Title bar
             {
-                Divider& div   = m_dividers[di];
-                float    lr[4] = {};
-                if (!ZUIDockRectForKey(m_dock_tree, ZUIDockHashName(div.leaf_name), lr))
-                    continue;
+                ZUIBox* tbar  = ZUIBeginRow(ctx, "##stg_tbar", ZFill(), ZPx(fh + 4.f));
+                tbar->Flags   = tbar->Flags | ZUI_DrawBackground;
+                ZUIBoxSetColorArr(tbar, ctx->Theme.TitleBarBg);
+                ZUIBoxSetTopRadius(tbar, 5.f);
+                tbar->EdgeSoftness = 0.f;
 
-                // Divider rect: at the right/bottom (or left/top if use_near) edge of the leaf
-                float dx0, dy0, dx1, dy1;
-                if (!div.horizontal)
-                { // vertical divider (left|right split)
-                    float edge_x = div.use_near ? lr[0] : lr[2];
-                    dx0          = edge_x - kDivW * 0.5f;
-                    dy0          = lr[1];
-                    dx1          = edge_x + kDivW * 0.5f;
-                    dy1          = lr[3];
-                }
-                else
-                { // horizontal divider (top|bottom split)
-                    float edge_y = div.use_near ? lr[1] : lr[3];
-                    dx0          = lr[0];
-                    dy0          = edge_y - kDivW * 0.5f;
-                    dx1          = lr[2];
-                    dy1          = edge_y + kDivW * 0.5f;
-                }
+                ZUISpacer(ctx, 10.f);
+                ZUILabel(ctx, "Engine Settings", ctx->Theme.TextDefault);
 
-                float mx = ctx->MousePos[0], my = ctx->MousePos[1];
-                bool  in_rect = (mx >= dx0 && mx <= dx1 && my >= dy0 && my <= dy1);
+                ZUIBox* fill  = ZUIPushBox(ctx, "##stg_tf", 7, ZUI_None);
+                fill->Size[0] = ZFill(); fill->Size[1] = ZPx(1.f);
+                ZUIPopBox(ctx);
 
-                // Start drag when mouse pressed in divider area
-                if (ctx->MousePressed[0] && in_rect)
-                    div.dragging = true;
-                if (ctx->MouseReleased[0])
-                    div.dragging = false;
+                // Close button
+                ZUIBox* xb    = ZUIPushBox(ctx, "##stg_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
+                xb->Size[0]   = ZPx(fh + 4.f); xb->Size[1] = ZPx(fh + 4.f);
+                xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
+                xb->TextAlign = ZUITextAlign::Center;
+                bool xhov     = (ctx->HotKey == xb->Key);
+                ZUIBoxSetColor(xb, 1.f, 1.f, 1.f, xhov ? 0.12f : 0.f);
+                xb->TextColor[0] = ctx->Theme.TextDim[0]; xb->TextColor[1] = ctx->Theme.TextDim[1];
+                xb->TextColor[2] = ctx->Theme.TextDim[2]; xb->TextColor[3] = 1.f;
+                ZUISignal xsig = ZUISignalFromBox(ctx, xb);
+                ZUIPopBox(ctx);
+                if (xsig.Flags & ZUI_SignalClicked) m_settings_open = false;
+                ZUIEndRow(ctx);
+            }
 
-                // Apply resize while dragging
-                if (div.dragging && ctx->MouseDown[0])
-                {
-                    float delta = div.horizontal ? (ctx->MousePos[1] - ctx->PrevMousePos[1]) : (ctx->MousePos[0] - ctx->PrevMousePos[0]);
-                    if (delta != 0.f)
-                    {
-                        uint64_t     key  = ZUIDockHashName(div.leaf_name);
-                        ZUIDockNode* leaf = ZUIDockFindLeaf(m_dock_tree, key);
-                        if (leaf)
-                            ZUIDockResize(m_dock_tree, leaf, delta);
-                    }
-                }
-
-                // Visual indicator: thin colored line at the divider, brighter on hover/drag
-                bool  highlight  = in_rect || div.dragging;
-                float vis_col[4] = {highlight ? 0.45f : 0.22f, highlight ? 0.55f : 0.28f, highlight ? 0.70f : 0.35f, 1.f};
-                char  vis_key[32];
-                snprintf(vis_key, sizeof(vis_key), "##divvis_%d", di);
-                ZUIBox* vis = ZUIPushBox(ctx, vis_key, (uint32_t) strlen(vis_key), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                if (!div.horizontal)
-                {
-                    vis->Size[0]     = ZPx(1.f);
-                    vis->Size[1]     = ZPx(dy1 - dy0);
-                    vis->FloatPos[0] = (dx0 + dx1) * 0.5f;
-                    vis->FloatPos[1] = dy0;
-                }
-                else
-                {
-                    vis->Size[0]     = ZPx(dx1 - dx0);
-                    vis->Size[1]     = ZPx(1.f);
-                    vis->FloatPos[0] = dx0;
-                    vis->FloatPos[1] = (dy0 + dy1) * 0.5f;
-                }
-                vis->EdgeSoftness = 0.f;
-                ZUIBoxSetColorArr(vis, vis_col);
+            // Separator under title
+            {
+                ZUIBox* sep  = ZUIPushBox(ctx, "##stg_hsep", 10, ZUI_DrawBackground);
+                sep->Size[0] = ZFill(); sep->Size[1] = ZPx(1.f);
+                ZUIBoxSetColor(sep, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 1.f);
+                sep->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
             }
+
+            // Body row: sidebar | separator | content
+            ZUIBeginRow(ctx, "##stg_body", ZFill(), ZFill());
+
+            // Sidebar
+            ZUIBox* side   = ZUIBeginColumn(ctx, "##stg_side", ZPx(kSideW), ZFill());
+            side->Flags    = side->Flags | ZUI_DrawBackground;
+            ZUIBoxSetColor(side, 0.f, 0.f, 0.f, 0.15f);
+            side->EdgeSoftness = 0.f;
+            ZUISpacer(ctx, 6.f);
+            {
+                static const char* kPages[3]    = {"Grid", "Renderer", "Theme"};
+                static const char* kNavKeys[3]  = {"##nav_0", "##nav_1", "##nav_2"};
+                static const uint32_t kNKLen[3] = {7, 7, 7};
+                for (int pi = 0; pi < 3; ++pi)
+                {
+                    bool    act  = (m_settings_page == pi);
+                    uint32_t pln = (uint32_t)strlen(kPages[pi]);
+                    ZUIBox* nb   = ZUIPushBox(ctx, kNavKeys[pi], kNKLen[pi], ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
+                    nb->Size[0]  = ZFill();
+                    nb->Size[1]  = ZPx(fh + 8.f);
+                    nb->Label    = ZUIPushStr(&ctx->FrameArena, kPages[pi], pln);
+                    nb->TextAlign  = ZUITextAlign::Left;
+                    nb->Padding[0] = 14.f;
+                    if (act)
+                    {
+                        ZUIBoxSetColorArr(nb, ctx->Theme.TabActiveBg);
+                        nb->TextColor[0] = nb->TextColor[1] = nb->TextColor[2] = nb->TextColor[3] = 1.f;
+                    }
+                    else
+                    {
+                        bool hov = (ctx->HotKey == nb->Key);
+                        ZUIBoxSetColor(nb, 1.f, 1.f, 1.f, hov ? 0.06f : 0.f);
+                        nb->TextColor[0] = ctx->Theme.TextDim[0]; nb->TextColor[1] = ctx->Theme.TextDim[1];
+                        nb->TextColor[2] = ctx->Theme.TextDim[2]; nb->TextColor[3] = 1.f;
+                    }
+                    ZUIBoxSetCornerRadius(nb, 3.f);
+                    ZUISignal sig = ZUISignalFromBox(ctx, nb);
+                    ZUIPopBox(ctx);
+                    if (sig.Flags & ZUI_SignalClicked) m_settings_page = pi;
+                }
+            }
+            ZUIEndColumn(ctx); // sidebar
+
+            // Vertical separator
+            {
+                ZUIBox* vs  = ZUIPushBox(ctx, "##stg_vsep", 9, ZUI_DrawBackground);
+                vs->Size[0] = ZPx(1.f); vs->Size[1] = ZFill();
+                ZUIBoxSetColor(vs, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 1.f);
+                vs->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
+
+            // Content column
+            ZUIBox* cnt = ZUIBeginColumn(ctx, "##stg_cnt", ZFill(), ZFill());
+            cnt->Flags  = cnt->Flags | ZUI_ClipChildren;
+            cnt->EdgeSoftness = 0.f;
+            ZUISpacer(ctx, 8.f);
+
+            if (m_settings_page == 0 && stg_scene) // Grid
+            {
+                auto& cfg = stg_scene->Grid;
+
+                // Helpers: each row is [10px gap][140px label col][fill control]
+                auto lbl_ctrl_row = [&](const char* row_k, const char* lbl_k, const char* label) -> ZUIBox* {
+                    ZUIBeginRow(ctx, row_k, ZFill(), ZPx(fh + 4.f));
+                    ZUISpacer(ctx, 10.f);
+                    ZUIBox* lc = ZUIBeginColumn(ctx, lbl_k, ZPx(140.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    return lc; // caller calls ZUIEndRow after adding the control
+                };
+                (void) lbl_ctrl_row; // used via explicit calls below
+
+                // Show Grid
+                {
+                    ZUIBeginRow(ctx, "##sg_en_r", ZFill(), ZPx(fh + 4.f));
+                    ZUISpacer(ctx, 10.f);
+                    ZUIBox* lc = ZUIBeginColumn(ctx, "##sg_en_l", ZPx(140.f), ZFill());
+                    ZUILabel(ctx, "Show Grid", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    bool prev = cfg.Enabled;
+                    ZUICheckbox(ctx, "##sg_en_cb", &cfg.Enabled);
+                    ZUIEndRow(ctx); ZUISpacer(ctx, 2.f);
+                    if (cfg.Enabled != prev) mark_grid_dirty();
+                }
+                // Cell Size
+                { float prev=cfg.CellSize;     ZUIBeginRow(ctx,"##sg_cs_r",ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f); ZUIBox* lc=ZUIBeginColumn(ctx,"##sg_cs_l",ZPx(140.f),ZFill()); ZUILabel(ctx,"Cell Size",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_cs_s",&cfg.CellSize,0.001f,1.f); ZUIEndRow(ctx); ZUISpacer(ctx,2.f); if(cfg.CellSize!=prev) mark_grid_dirty(); }
+                // Fade Radius
+                { float prev=cfg.FadeRadius;   ZUIBeginRow(ctx,"##sg_fr_r",ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f); ZUIBox* lc=ZUIBeginColumn(ctx,"##sg_fr_l",ZPx(140.f),ZFill()); ZUILabel(ctx,"Fade Radius",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_fr_s",&cfg.FadeRadius,10.f,2000.f); ZUIEndRow(ctx); ZUISpacer(ctx,2.f); if(cfg.FadeRadius!=prev) mark_grid_dirty(); }
+                // Fade Strength
+                { float prev=cfg.FadeStrength; ZUIBeginRow(ctx,"##sg_fs_r",ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f); ZUIBox* lc=ZUIBeginColumn(ctx,"##sg_fs_l",ZPx(140.f),ZFill()); ZUILabel(ctx,"Fade Strength",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_fs_s",&cfg.FadeStrength,0.1f,2.f); ZUIEndRow(ctx); ZUISpacer(ctx,2.f); if(cfg.FadeStrength!=prev) mark_grid_dirty(); }
+                // Line Width
+                { float prev=cfg.LineWidth;    ZUIBeginRow(ctx,"##sg_lw_r",ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f); ZUIBox* lc=ZUIBeginColumn(ctx,"##sg_lw_l",ZPx(140.f),ZFill()); ZUILabel(ctx,"Line Width",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_lw_s",&cfg.LineWidth,0.5f,4.f); ZUIEndRow(ctx); ZUISpacer(ctx,2.f); if(cfg.LineWidth!=prev) mark_grid_dirty(); }
+                // Ground Y
+                { float prev=cfg.GroundY;      ZUIBeginRow(ctx,"##sg_gy_r",ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f); ZUIBox* lc=ZUIBeginColumn(ctx,"##sg_gy_l",ZPx(140.f),ZFill()); ZUILabel(ctx,"Ground Y",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_gy_s",&cfg.GroundY,-100.f,100.f); ZUIEndRow(ctx); ZUISpacer(ctx,2.f); if(cfg.GroundY!=prev) mark_grid_dirty(); }
+                // Max LOD
+                { int prev=cfg.MaxLOD;         ZUIBeginRow(ctx,"##sg_ml_r",ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f); ZUIBox* lc=ZUIBeginColumn(ctx,"##sg_ml_l",ZPx(140.f),ZFill()); ZUILabel(ctx,"Max LOD",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUIDragInt(ctx,"##sg_ml_d",&cfg.MaxLOD,1.f,60.f); ZUIEndRow(ctx); ZUISpacer(ctx,2.f); if(cfg.MaxLOD!=prev) mark_grid_dirty(); }
+
+                ZUISpacer(ctx, 6.f);
+
+                // Color rows
+                auto color_row = [&](const char* rk, const char* lk, const char* ck, const char* label, float col[4]) {
+                    float p[4] = {col[0],col[1],col[2],col[3]};
+                    ZUIBeginRow(ctx,rk,ZFill(),ZPx(fh+4.f)); ZUISpacer(ctx,10.f);
+                    ZUIBox* lc=ZUIBeginColumn(ctx,lk,ZPx(140.f),ZFill()); ZUILabel(ctx,label,ctx->Theme.TextDefault); ZUIEndColumn(ctx);
+                    ZUIColorEdit4(ctx,ck,col); ZUIEndRow(ctx); ZUISpacer(ctx,2.f);
+                    if(col[0]!=p[0]||col[1]!=p[1]||col[2]!=p[2]||col[3]!=p[3]) mark_grid_dirty();
+                };
+                color_row("##sg_ct_r","##sg_ct_l","##sg_ct_c","Thin Lines",  cfg.ColorThin);
+                color_row("##sg_ck_r","##sg_ck_l","##sg_ck_c","Thick Lines", cfg.ColorThick);
+                color_row("##sg_cx_r","##sg_cx_l","##sg_cx_c","X Axis",      cfg.ColorXAxis);
+                color_row("##sg_cz_r","##sg_cz_l","##sg_cz_c","Z Axis",      cfg.ColorZAxis);
+            }
+            else if (m_settings_page == 1) // Renderer
+            {
+                ZUISpacer(ctx, 12.f);
+                ZUISpacer(ctx, 10.f); // align with sidebar padding
+                ZUILabel(ctx, "No renderer settings yet.", ctx->Theme.TextDim);
+            }
+            else if (m_settings_page == 2) // Theme
+            {
+                ZUISpacer(ctx, 14.f);
+                ZUISpacer(ctx, 10.f);
+                ZUILabel(ctx, "Theme", ctx->Theme.TextDefault);
+                ZUISpacer(ctx, 12.f);
+                ZUIBeginRow(ctx, "##stg_thm_row", ZFill(), ZPx(80.f));
+                ZUISpacer(ctx, 14.f);
+                static int s_active_theme = 0;
+                static const char* kThemeNames[2] = {"Dark", "Light"};
+                static const char* kThemeKeys[2]  = {"##thm_0", "##thm_1"};
+                for (int ti = 0; ti < 2; ++ti)
+                {
+                    bool tact = (s_active_theme == ti);
+                    ZUIBox* tc = ZUIBeginColumn(ctx, kThemeKeys[ti], ZPx(110.f), ZFill());
+                    tc->Flags  = tc->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+                    float bg   = (ti == 0) ? 0.10f : 0.88f;
+                    ZUIBoxSetColor(tc, bg, bg, ti==0 ? 0.12f : 0.90f, 1.f);
+                    ZUIBoxSetCornerRadius(tc, 4.f);
+                    tc->BorderThickness = tact ? 2.f : 1.f;
+                    tc->BorderColor[0]  = tact ? ctx->Theme.TabActiveBorder[0] : 0.28f;
+                    tc->BorderColor[1]  = tact ? ctx->Theme.TabActiveBorder[1] : 0.28f;
+                    tc->BorderColor[2]  = tact ? ctx->Theme.TabActiveBorder[2] : 0.32f;
+                    tc->BorderColor[3]  = 1.f;
+                    ZUISpacer(ctx, 20.f);
+                    float lc[4] = {ti==0 ? 0.9f : 0.1f, ti==0 ? 0.9f : 0.1f, ti==0 ? 0.9f : 0.1f, 1.f};
+                    ZUILabel(ctx, kThemeNames[ti], lc);
+                    ZUISignal tsig = ZUISignalFromBox(ctx, tc);
+                    ZUIEndColumn(ctx);
+                    if (tsig.Flags & ZUI_SignalClicked) s_active_theme = ti;
+                    ZUISpacer(ctx, 8.f);
+                }
+                ZUIEndRow(ctx);
+            }
+
+            ZUIEndColumn(ctx); // content
+            ZUIEndRow(ctx);    // body
+            ZUIEndColumn(ctx); // window
         }
 
         ZUIEndColumn(ctx);
