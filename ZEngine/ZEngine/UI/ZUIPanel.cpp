@@ -1599,15 +1599,20 @@ namespace ZEngine::UI
                         PendingCloseKeys[PendingCloseCount++] = p->DockKey;
                     }
                 }
-                else if (visible && p->Hidden)
+                else if (visible)
                 {
-                    // Re-dock the panel when the first view becomes visible again.
-                    p->Hidden = false;
-                    if (DockTree)
+                    // Bring the newly shown tab into focus.
+                    p->ActiveTab = vi;
+                    if (p->Hidden)
                     {
-                        ZUIDockNode* tgt = FindLargestLeaf(DockTree->Root);
-                        if (tgt)
-                            ZUIDockSplitH(DockTree, tgt, 0.5f, tgt->ContentKey, p->DockKey);
+                        // Re-dock the panel when the first view becomes visible again.
+                        p->Hidden = false;
+                        if (DockTree)
+                        {
+                            ZUIDockNode* tgt = FindLargestLeaf(DockTree->Root);
+                            if (tgt)
+                                ZUIDockSplitH(DockTree, tgt, 0.5f, tgt->ContentKey, p->DockKey);
+                        }
                     }
                 }
                 LayoutDirty = true;
