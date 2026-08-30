@@ -59,45 +59,19 @@ namespace Tetragrama::Components
 
         ZUISpacer(ctx, 6.f);
 
-        // Console toggle — teal signature color
-        {
-            bool      on = app->Configuration->ShowConsole;
-            ZUISignal s  = ZUIButton(ctx, "Console##sb_con");
-            if (s.Flags & ZUI_SignalClicked)
-            {
-                on                               = !on;
-                app->Configuration->ShowConsole  = on;
-                app->Configuration->FocusConsole = on;
-            }
-        }
+        // Toggle helper — reads/writes panel visibility via ShellPanelManager
+        auto toggle = [&](const char* key, const char* panel_name) {
+            bool      on = ShellPanelManager && ShellPanelManager->IsPanelVisible(panel_name);
+            ZUISignal s  = ZUIButton(ctx, key);
+            if ((s.Flags & ZUI_SignalClicked) && ShellPanelManager)
+                ShellPanelManager->SetPanelVisible(panel_name, !on);
+        };
 
+        toggle("Console##sb_con",  "Console");
         ZUISpacer(ctx, 4.f);
-
-        // Content Browser toggle — amber signature color
-        {
-            bool      on = app->Configuration->ShowContentBrowser;
-            ZUISignal s  = ZUIButton(ctx, "Browser##sb_bro");
-            if (s.Flags & ZUI_SignalClicked)
-            {
-                on                                       = !on;
-                app->Configuration->ShowContentBrowser  = on;
-                app->Configuration->FocusContentBrowser = on;
-            }
-        }
-
+        toggle("Browser##sb_bro",  "Project");
         ZUISpacer(ctx, 4.f);
-
-        // Importer toggle — indigo signature color
-        {
-            bool      on = app->Configuration->ShowImporter;
-            ZUISignal s  = ZUIButton(ctx, "Importer##sb_imp");
-            if (s.Flags & ZUI_SignalClicked)
-            {
-                on                               = !on;
-                app->Configuration->ShowImporter  = on;
-                app->Configuration->FocusImporter = on;
-            }
-        }
+        toggle("Importer##sb_imp", "Importer");
 
         ZUISpacer(ctx, 8.f);
         ZUILabel(ctx, "|", ctx->Theme.TextDim);

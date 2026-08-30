@@ -1,5 +1,6 @@
 #pragma once
 #include <Tetragrama/Components/ZUI/ZUIComponent.h>
+#include <ZEngine/UI/ZUIPanel.h>
 
 namespace Tetragrama::Components
 {
@@ -12,6 +13,8 @@ namespace Tetragrama::Components
         void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "StatusBar", bool visibility = true) override;
 
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
+
+        ZEngine::UI::ZUIPanelManager* ShellPanelManager = nullptr;
 
     private:
         static constexpr int   kFtSamples                = 32;

@@ -79,7 +79,8 @@ namespace Tetragrama
         shell->ShellPanelManager = &pm->Manager;
         ZUIUILayer->AddComponent(shell);
 
-        auto* sbar = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIStatusBarComponent);
+        auto* sbar              = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIStatusBarComponent);
+        sbar->ShellPanelManager = &pm->Manager;
         sbar->Initialize(ZUIUILayer, "StatusBar");
         ZUIUILayer->AddComponent(sbar);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);

@@ -44,17 +44,19 @@ namespace Tetragrama::Panels
         auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
         Manager.AddView(p_hier, &hierarchy);
 
-        viewport.Closeable = false; // Main viewport is permanent — no close button
-        auto* p_vp         = Manager.AddPanel(ZUIDockHashName("Viewport"));
+        viewport.Closeable  = false; // Main viewport is permanent — no close button
+        profiler.Visible    = false; // Hidden by default; opened from status bar
+        importer.Visible    = false; // Hidden by default; opened from status bar
+        auto* p_vp          = Manager.AddPanel(ZUIDockHashName("Viewport"));
         Manager.AddView(p_vp, &viewport);
+        Manager.AddView(p_vp, &profiler); // Tabs on the Viewport dock slot
+        Manager.AddView(p_vp, &importer);
 
         auto* p_insp = Manager.AddPanel(ZUIDockHashName("Inspector"));
         Manager.AddView(p_insp, &inspector);
 
         auto* p_out = Manager.AddPanel(ZUIDockHashName("Console"));
         Manager.AddView(p_out, &output);
-        Manager.AddView(p_out, &profiler);  // Profiler shares the Console panel as a tab
-        Manager.AddView(p_out, &importer);  // Importer shares the Console panel as a tab
 
         auto* p_proj = Manager.AddPanel(ZUIDockHashName("Project"));
         Manager.AddView(p_proj, &project);

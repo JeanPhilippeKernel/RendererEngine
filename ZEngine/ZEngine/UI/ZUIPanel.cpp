@@ -585,7 +585,7 @@ namespace ZEngine::UI
                 BuildTabBar(ctx, p, tab_rect);
                 float         cr[4] = {rect[0], rect[1] + header_h, rect[2], rect[3]};
                 ZUIPanelView* view  = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
-                if (view)
+                if (view && view->Visible)
                 {
                     view->BuildContent(ctx, cr);
                 }
@@ -593,7 +593,7 @@ namespace ZEngine::UI
             else
             {
                 ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
-                if (view)
+                if (view && view->Visible)
                 {
                     view->BuildContent(ctx, rect);
                 }
@@ -735,7 +735,7 @@ namespace ZEngine::UI
         // Content — no WindowPadding for docked panels (editor panels fill edge-to-edge).
         // WindowPadding will be applied when floating windows are implemented.
         ZUIPanelView* view = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
-        if (view)
+        if (view && view->Visible)
         {
             ZUIBox* content       = ZUIBeginColumn(ctx, "##dc", ZFill(), ZFill());
             content->Flags        = content->Flags | ZUI_ClipChildren;
@@ -795,7 +795,7 @@ namespace ZEngine::UI
         for (uint32_t ti = 0; ti < p->ViewCount; ++ti)
         {
             ZUIPanelView* view = p->Views[ti];
-            if (!view)
+            if (!view || !view->Visible)
             {
                 continue;
             }
@@ -1563,6 +1563,36 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::SetPanelVisible(const char* name, bool visible)
     {
+        // First search per-view visibility (overlay tabs like Profiler/Importer).
+        for (uint32_t i = 0; i < PanelCount; ++i)
+        {
+            ZUIPanel* p = &Panels[i];
+            for (uint32_t vi = 0; vi < p->ViewCount; ++vi)
+            {
+                ZUIPanelView* v = p->Views[vi];
+                if (!v || strcmp(v->Title, name) != 0)
+                    continue;
+                if (v->Visible == visible)
+                    return;
+                v->Visible = visible;
+                // If hiding the active tab, advance to the first visible tab.
+                if (!visible && p->ActiveTab == vi)
+                {
+                    for (uint32_t ni = 0; ni < p->ViewCount; ++ni)
+                    {
+                        if (p->Views[ni] && p->Views[ni]->Visible)
+                        {
+                            p->ActiveTab = ni;
+                            break;
+                        }
+                    }
+                }
+                LayoutDirty = true;
+                return;
+            }
+        }
+
+        // Fall back: whole-panel visibility (Hierarchy, Console, Inspector, Project).
         for (uint32_t i = 0; i < PanelCount; ++i)
         {
             ZUIPanel*   p = &Panels[i];
@@ -1585,12 +1615,24 @@ namespace ZEngine::UI
                     PendingCloseKeys[PendingCloseCount++] = p->DockKey;
             }
             LayoutDirty = true;
-            break;
+            return;
         }
     }
 
     bool ZUIPanelManager::IsPanelVisible(const char* name) const
     {
+        // First: per-view visibility.
+        for (uint32_t i = 0; i < PanelCount; ++i)
+        {
+            const ZUIPanel* p = &Panels[i];
+            for (uint32_t vi = 0; vi < p->ViewCount; ++vi)
+            {
+                const ZUIPanelView* v = p->Views[vi];
+                if (v && strcmp(v->Title, name) == 0)
+                    return v->Visible;
+            }
+        }
+        // Fall back: whole-panel visibility.
         for (uint32_t i = 0; i < PanelCount; ++i)
         {
             const ZUIPanel* p = &Panels[i];

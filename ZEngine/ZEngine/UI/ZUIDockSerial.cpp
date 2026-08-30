@@ -30,7 +30,7 @@ namespace ZEngine::UI
             CollectNodes(c, my_id, records, count);
     }
 
-    // ZUIDockSave  (v3 format — adds AutoHideTabBar; incompatible with v2)
+    // ZUIDockSave  (v4 format — adds per-view Visible; incompatible with v3)
 
     void ZUIDockSave(ZUIPanelManager* manager, const char* path)
     {
@@ -44,7 +44,7 @@ namespace ZEngine::UI
             return;
         }
 
-        fprintf(f, "# ZUI Layout v3\n");
+        fprintf(f, "# ZUI Layout v4\n");
 
         // --- Dock tree ---
         // node <id> <parent_id> <is_leaf> <axis:0=X,1=Y> <pct> [<content_key_hex> <is_central> <auto_hide_tab_bar>]
@@ -81,19 +81,21 @@ namespace ZEngine::UI
         {
             ZUIPanel* p = &manager->Panels[i];
             // panel <dock_key_hex> <active_tab> <hidden> <view_count>
-            // followed by one  `view <title>`  line per view
+            // followed by one  `view <title> <visible>`  line per view (v4)
             fprintf(f, "panel %016llx %u %d %u\n", (unsigned long long) p->DockKey, p->ActiveTab, p->Hidden ? 1 : 0, p->ViewCount);
             for (uint32_t vi = 0; vi < p->ViewCount; ++vi)
             {
-                const char* title = (p->Views[vi] && p->Views[vi]->Title) ? p->Views[vi]->Title : "";
-                fprintf(f, "view %s\n", title);
+                const ZUIPanelView* v     = p->Views[vi];
+                const char*         title = (v && v->Title) ? v->Title : "";
+                int                 vis   = (v && v->Visible) ? 1 : 0;
+                fprintf(f, "view %s %d\n", title, vis);
             }
         }
 
         fclose(f);
     }
 
-    // ZUIDockLoad  (v3 format only — v2 files are intentionally incompatible)
+    // ZUIDockLoad  (v4 format only — v3 files are intentionally incompatible)
 
     bool ZUIDockLoad(ZUIPanelManager* manager, const char* path, ZUIPanelView** views, uint32_t view_count)
     {
@@ -109,7 +111,7 @@ namespace ZEngine::UI
 
         // --- Version check (v3 only; v2 files are discarded, not migrated) ---
         char line[512];
-        if (!fgets(line, sizeof(line), f) || strncmp(line, "# ZUI Layout v3", 15) != 0)
+        if (!fgets(line, sizeof(line), f) || strncmp(line, "# ZUI Layout v4", 15) != 0)
         {
             fclose(f);
             return false;
@@ -141,6 +143,7 @@ namespace ZEngine::UI
         static constexpr uint32_t kMaxPanels = 32;
         LoadPanel                 load_panels[kMaxPanels];
         char                      panel_views[kMaxPanels][kMaxTabsPerPanel][64]; // title buffers
+        int                       panel_view_vis[kMaxPanels][kMaxTabsPerPanel]; // per-view visible (v4)
         uint32_t                  panel_count    = 0;
         int                       pending_panel  = -1; // index of panel we're reading views for
         uint32_t                  panel_view_idx = 0;
@@ -190,8 +193,16 @@ namespace ZEngine::UI
             {
                 if (panel_view_idx < kMaxTabsPerPanel)
                 {
-                    snprintf(panel_views[pending_panel][panel_view_idx], sizeof(panel_views[0][0]), "%s", line + 5);
-                    ++panel_view_idx;
+                    char     title_buf[64] = {};
+                    int      vis           = 1; // default visible if not present
+                    // v4: "view <title> <visible>"  v3: "view <title>"
+                    int parsed = sscanf(line + 5, "%63s %d", title_buf, &vis);
+                    if (parsed >= 1)
+                    {
+                        snprintf(panel_views[pending_panel][panel_view_idx], sizeof(panel_views[0][0]), "%s", title_buf);
+                        panel_view_vis[pending_panel][panel_view_idx] = (parsed >= 2) ? vis : 1;
+                        ++panel_view_idx;
+                    }
                 }
             }
         }
@@ -283,7 +294,7 @@ namespace ZEngine::UI
             p->ActiveTab = lp.active_tab;
             p->Hidden    = (lp.hidden != 0);
 
-            // Assign views by matching titles
+            // Assign views by matching titles; restore per-view Visible (v4)
             for (uint32_t vi = 0; vi < lp.view_count && p->ViewCount < kMaxTabsPerPanel; ++vi)
             {
                 const char* title = panel_views[pi][vi];
@@ -291,6 +302,7 @@ namespace ZEngine::UI
                 {
                     if (views[gi] && views[gi]->Title && strcmp(views[gi]->Title, title) == 0)
                     {
+                        views[gi]->Visible       = (panel_view_vis[pi][vi] != 0);
                         p->Views[p->ViewCount++] = views[gi];
                         break;
                     }
