@@ -334,18 +334,10 @@ namespace Tetragrama::Components
                     nb->Label    = ZUIPushStr(&ctx->FrameArena, kPages[pi], pln);
                     nb->TextAlign  = ZUITextAlign::Left;
                     nb->Padding[0] = 18.f;
-                    nb->Padding[1] = (fh + 12.f - fh) * 0.5f; // vertical center the text
                     if (act)
                     {
-                        ZUIBoxSetColorArr(nb, ctx->Theme.TabActiveBg);
+                        ZUIBoxSetColor(nb, 0.18f, 0.30f, 0.48f, 1.f); // visible active tint
                         nb->TextColor[0] = nb->TextColor[1] = nb->TextColor[2] = nb->TextColor[3] = 1.f;
-                        // Left accent bar
-                        nb->BorderThickness = 0.f;
-                        nb->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
-                        nb->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
-                        nb->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                        nb->BorderColor[3]  = 1.f;
-                        nb->Flags = nb->Flags | ZUI_DrawBorder;
                     }
                     else
                     {
@@ -436,11 +428,12 @@ namespace Tetragrama::Components
                 color_row("##sg_ck_r","##sg_ck_l","##sg_ck_c","Thick Lines", cfg.ColorThick);
                 color_row("##sg_cx_r","##sg_cx_l","##sg_cx_c","X Axis",      cfg.ColorXAxis);
                 color_row("##sg_cz_r","##sg_cz_l","##sg_cz_c","Z Axis",      cfg.ColorZAxis);
+                ZUISpacer(ctx, 14.f); // bottom padding
             }
             else if (m_settings_page == 1) // Renderer
             {
                 ZUISpacer(ctx, 12.f);
-                ZUISpacer(ctx, 10.f); // align with sidebar padding
+                ZUISpacer(ctx, 14.f);
                 ZUILabel(ctx, "No renderer settings yet.", ctx->Theme.TextDim);
             }
             else if (m_settings_page == 2) // Theme
