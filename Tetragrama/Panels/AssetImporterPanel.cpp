@@ -255,30 +255,7 @@ namespace Tetragrama::Panels
         // ── Filtered settings (scroll region) ─────────────────────────────────
         ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
         {
-            // Section header with collapse/expand chevron (same ZUI_DrawTriArrow as Hierarchy)
             static constexpr float kLblW = 140.f;
-            auto sec_hdr = [&](const char* row_key, const char* arr_key, const char* label, bool* open) -> bool {
-                ZUISpacer(ctx, 8.f);
-                ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
-                ZUISpacer(ctx, 8.f);
-                // Chevron
-                ZUIBox* arr   = ZUIPushBox(ctx, arr_key, (uint32_t)strlen(arr_key),
-                                           ZUI_DrawTriArrow | ZUI_Clickable);
-                arr->Size[0]  = ZPx(fh); arr->Size[1] = ZPx(fh);
-                arr->TextColor[0] = ctx->Theme.TextDim[0]; arr->TextColor[1] = ctx->Theme.TextDim[1];
-                arr->TextColor[2] = ctx->Theme.TextDim[2]; arr->TextColor[3] = ctx->Theme.TextDim[3];
-                auto* aps = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
-                if (aps) aps->UserData = *open ? 2.f : 3.f; // 2=▼ expanded, 3=▶ collapsed
-                ZUISignal asig = ZUISignalFromBox(ctx, arr);
-                ZUIPopBox(ctx);
-                ZUISpacer(ctx, 4.f);
-                ZUILabel(ctx, label, ctx->Theme.TextDim);
-                ZUIEndRow(ctx);
-                ZUISeparator(ctx);
-                ZUISpacer(ctx, 4.f);
-                if (asig.Flags & ZUI_SignalClicked) *open = !*open;
-                return *open;
-            };
             // 2-column row helper (label left, widget fills right)
 #define IMP_ROW_BEGIN(key) ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); ZUISpacer(ctx, 8.f); ZUIBeginColumn(ctx, key"_l", ZPx(kLblW), ZFill());
 #define IMP_ROW_MID(label) ZUILabel(ctx, label, ctx->Theme.TextDefault); ZUIEndColumn(ctx);
@@ -298,8 +275,11 @@ namespace Tetragrama::Panels
             static bool s_anim_open = true, s_lod_open  = true;
 
             // ── General / Common ──────────────────────────────────────────────
-            if (show_gen && sec_hdr("##imp_s_gen_r","##imp_s_gen_a","Common", &s_gen_open))
+            if (show_gen)
             {
+                ZUICollapsingHeader(ctx, "Common", &s_gen_open);
+                if (s_gen_open)
+                {
                 IMP_CB_ROW_BEGIN("##imp_usn_r")
                 ZUICheckbox(ctx, "##imp_usn", &m_use_source_name);
                 IMP_CB_ROW_END("Use Source Name for Asset")
@@ -333,7 +313,7 @@ namespace Tetragrama::Panels
                 {
                     static const char* kAxes[] = {"Y-Up", "Z-Up"};
                     ctx->PopupDesiredW = 120.f;
-                    if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index]))
+                    if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index], ZPx(160.f)))
                     {
                         for (int i = 0; i < 2; ++i)
                             if (ZUIComboItem(ctx, kAxes[i], m_axis_index == i)) m_axis_index = i;
@@ -342,18 +322,22 @@ namespace Tetragrama::Panels
                 }
                 IMP_ROW_END
                 ZUISpacer(ctx, 4.f);
-            }
+                } // s_gen_open
+            } // show_gen
 
             // ── Mesh ──────────────────────────────────────────────────────────
-            if (show_mesh && sec_hdr("##imp_s_mesh_r","##imp_s_mesh_a","Common Meshes", &s_mesh_open))
+            if (show_mesh)
             {
+                ZUICollapsingHeader(ctx, "Common Meshes", &s_mesh_open);
+                if (s_mesh_open)
+                {
                 // Normals — fixed-width combo
                 IMP_ROW_BEGIN("##imp_nrm_r")
                 IMP_ROW_MID("Normals")
                 {
                     static const char* kNrm[] = {"Off","Flat","Smooth"};
                     ctx->PopupDesiredW = 120.f;
-                    if (ZUIBeginCombo(ctx, "##imp_normals", kNrm[m_normals_mode]))
+                    if (ZUIBeginCombo(ctx, "##imp_normals", kNrm[m_normals_mode], ZPx(160.f)))
                     {
                         for (int i = 0; i < 3; ++i)
                             if (ZUIComboItem(ctx, kNrm[i], m_normals_mode == i)) m_normals_mode = i;
@@ -379,11 +363,15 @@ namespace Tetragrama::Panels
                     ZUIEndDisabled(ctx);
                 }
                 ZUISpacer(ctx, 4.f);
-            }
+                } // s_mesh_open
+            } // show_mesh
 
             // ── Material ──────────────────────────────────────────────────────
-            if (show_mat && sec_hdr("##imp_s_mat_r","##imp_s_mat_a","Materials", &s_mat_open))
+            if (show_mat)
             {
+                ZUICollapsingHeader(ctx, "Materials", &s_mat_open);
+                if (s_mat_open)
+                {
                 IMP_CB_ROW_BEGIN("##imp_imat_r")
                 ZUICheckbox(ctx, "##imp_imat", &m_import_materials);
                 IMP_CB_ROW_END("Import Materials")
@@ -392,13 +380,14 @@ namespace Tetragrama::Panels
                 ZUICheckbox(ctx, "##imp_itex", &m_import_textures);
                 IMP_CB_ROW_END("Import Textures")
                 ZUISpacer(ctx, 4.f);
-            }
+                } // s_mat_open
+            } // show_mat
 
             // ── Animation (disabled) ──────────────────────────────────────────
             if (show_anim)
             {
                 ZUIBeginDisabled(ctx);
-                sec_hdr("##imp_s_anim_r","##imp_s_anim_a","Common Skeletal Meshes and Animations", &s_anim_open);
+                ZUICollapsingHeader(ctx, "Common Skeletal Meshes and Animations", &s_anim_open);
                 if (s_anim_open)
                 {
                     static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
@@ -417,7 +406,7 @@ namespace Tetragrama::Panels
             if (show_lod)
             {
                 ZUIBeginDisabled(ctx);
-                sec_hdr("##imp_s_lod_r","##imp_s_lod_a","LOD", &s_lod_open);
+                ZUICollapsingHeader(ctx, "LOD", &s_lod_open);
                 if (s_lod_open)
                 {
                     static bool s_import_lods = false;
