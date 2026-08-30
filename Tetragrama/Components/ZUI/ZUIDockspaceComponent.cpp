@@ -261,13 +261,16 @@ namespace Tetragrama::Components
                 ZUIBoxSetColorArr(tbar, ctx->Theme.TitleBarBg);
                 ZUIBoxSetTopRadius(tbar, 5.f);
                 tbar->EdgeSoftness = 0.f;
-                tbar->Padding[1]   = (kTbarH - fh) * 0.5f; // vertically center children
 
                 ZUISpacer(ctx, 14.f);
-                ZUILabel(ctx, "Engine Settings", ctx->Theme.TextDefault);
-
-                ZUIBox* fill  = ZUIPushBox(ctx, "##stg_tf", 7, ZUI_None);
-                fill->Size[0] = ZFill(); fill->Size[1] = ZPx(1.f);
+                // ZFill() height → ZUI centers text in the full title bar height
+                ZUIBox* ttl  = ZUIPushBox(ctx, "##stg_ttl", 9, ZUI_DrawText);
+                ttl->Size[0] = ZFill();
+                ttl->Size[1] = ZFill();
+                ttl->Label   = ZUIPushStr(&ctx->FrameArena, "Engine Settings", 15);
+                ttl->TextAlign  = ZUITextAlign::Left;
+                ttl->TextColor[0] = ctx->Theme.TextDefault[0]; ttl->TextColor[1] = ctx->Theme.TextDefault[1];
+                ttl->TextColor[2] = ctx->Theme.TextDefault[2]; ttl->TextColor[3] = ctx->Theme.TextDefault[3];
                 ZUIPopBox(ctx);
 
                 // Close button — red bg on hover
