@@ -160,6 +160,23 @@ namespace Tetragrama::Components
             }
             ZUISpacer(ctx, 4.f);
 
+            // "Views" menu
+            if (ZUIBeginMenu(ctx, "Views"))
+            {
+                ZUIMenuItem(ctx, "Main Panels", false);
+                ZUISeparator(ctx);
+
+                static const char* kPanels[] = {"Hierarchy", "Console", "Inspector", "Viewport", "Project"};
+                for (int pi = 0; pi < 5; ++pi)
+                {
+                    bool vis = ShellPanelManager && ShellPanelManager->IsPanelVisible(kPanels[pi]);
+                    if (ZUIMenuItemEx(ctx, kPanels[pi], nullptr, vis) && ShellPanelManager)
+                        ShellPanelManager->SetPanelVisible(kPanels[pi], !vis);
+                }
+                ZUIEndMenu(ctx);
+            }
+            ZUISpacer(ctx, 4.f);
+
             // "Settings" menu
             if (ZUIBeginMenu(ctx, "Settings"))
             {
