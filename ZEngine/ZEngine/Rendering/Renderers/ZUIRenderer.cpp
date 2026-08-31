@@ -592,25 +592,32 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddCircleFilled(&ctx->DrawList, cx - h, cy + h, dot, cc, 6);
                     ZUIDrawListAddCircleFilled(&ctx->DrawList, cx + h, cy + h, dot, cc, 6);
                 }
-                else if (itype > 29.5f && itype < 34.5f) // source-code icons 30-34
+                else if (itype > 29.5f && itype < 35.5f) // source-code icons 30-35
                 {
                     // Badge color per language
                     float br = 0.f, bg = 0.f, bb = 0.f;
-                    if      (itype < 30.5f) { br = 0.27f; bg = 0.50f; bb = 0.90f; } // CPP — blue
-                    else if (itype < 31.5f) { br = 0.60f; bg = 0.28f; bb = 0.88f; } // CS  — purple
-                    else if (itype < 32.5f) { br = 0.92f; bg = 0.80f; bb = 0.12f; } // JS  — yellow
-                    else if (itype < 33.5f) { br = 0.27f; bg = 0.72f; bb = 0.42f; } // PY  — green
-                    else                   { br = 0.22f; bg = 0.68f; bb = 0.62f; } // H   — teal
+                    if      (itype < 30.5f) { br = 0.27f; bg = 0.50f; bb = 0.90f; } // CPP  — blue
+                    else if (itype < 31.5f) { br = 0.60f; bg = 0.28f; bb = 0.88f; } // CS   — purple
+                    else if (itype < 32.5f) { br = 0.92f; bg = 0.80f; bb = 0.12f; } // JS   — yellow
+                    else if (itype < 33.5f) { br = 0.27f; bg = 0.72f; bb = 0.42f; } // PY   — green
+                    else if (itype < 34.5f) { br = 0.22f; bg = 0.68f; bb = 0.62f; } // H    — teal
+                    else                   { br = 0.92f; bg = 0.80f; bb = 0.12f; } // JSON — yellow
 
-                    // Badge — centered rounded rect, filling ~80% of icon box
+                    // Badge geometry (used by all except JSON)
                     float bw  = sz * 0.80f, bh = sz * 0.62f;
                     float bbx = cx - bw * 0.5f, bby = cy - bh * 0.5f;
-                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx, bby, bbx+bw, bby+bh, ZUIPackColor(br,bg,bb,1.f), 5.f);
 
-                    // Symbol in white on the badge
-                    uint32_t sym  = ZUIPackColor(1.f, 1.f, 1.f, 0.92f);
+                    // JSON (itype >= 34.5f): no badge, symbol drawn directly in yellow
+                    bool json_icon = (itype >= 34.5f);
+                    if (!json_icon)
+                        ZUIDrawListAddRectFilled(&ctx->DrawList, bbx, bby, bbx+bw, bby+bh, ZUIPackColor(br,bg,bb,1.f), 5.f);
+
+                    // Symbol: white on badge, or language color directly for JSON
+                    uint32_t sym  = json_icon
+                                  ? ZUIPackColor(br, bg, bb, 1.f)
+                                  : ZUIPackColor(1.f, 1.f, 1.f, 0.92f);
                     float    t    = fmaxf(sz * 0.04f, 1.2f); // line thickness
-                    float    ps   = bh * 0.22f; // symbol half-size
+                    float    ps   = bh * 0.22f;               // symbol half-size
 
                     if (itype < 30.5f) // "++" — two plus signs
                     {
@@ -642,15 +649,44 @@ namespace ZEngine::Rendering::Renderers
                         ZUIDrawListAddLine(&ctx->DrawList, cx,    cy+ps, cx-ps, cy,    sym, t);
                         ZUIDrawListAddLine(&ctx->DrawList, cx-ps, cy,    cx,    cy-ps, sym, t);
                     }
-                    else // "<>" header brackets
+                    else if (itype < 34.5f) // "<>" header brackets
                     {
                         float g = ps * 0.55f;
-                        // "<"
-                        ZUIDrawListAddLine(&ctx->DrawList, cx-g,    cy-ps, cx-ps*1.1f, cy,    sym, t);
-                        ZUIDrawListAddLine(&ctx->DrawList, cx-ps*1.1f, cy, cx-g,    cy+ps, sym, t);
-                        // ">"
-                        ZUIDrawListAddLine(&ctx->DrawList, cx+g,    cy-ps, cx+ps*1.1f, cy,    sym, t);
-                        ZUIDrawListAddLine(&ctx->DrawList, cx+ps*1.1f, cy, cx+g,    cy+ps, sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-g,      cy-ps, cx-ps*1.1f, cy,      sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-ps*1.1f, cy,   cx-g,      cy+ps,    sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx+g,      cy-ps, cx+ps*1.1f, cy,      sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx+ps*1.1f, cy,   cx+g,      cy+ps,    sym, t);
+                    }
+                    else // "{}" JSON — no badge, yellow curved braces
+                    {
+                        float bh  = sz * 0.42f; // half-height
+                        float cw  = sz * 0.17f; // cap horizontal extent
+                        float cr  = sz * 0.09f; // corner rounding
+                        float nw  = sz * 0.07f; // nub depth (small)
+                        float nt  = sz * 0.09f; // nub half-height
+                        float t2  = fmaxf(sz * 0.05f, 1.8f);
+
+                        // Left brace { — spine at lx, caps go right
+                        float lx = cx - sz * 0.20f;
+                        ZUIDrawListAddLine(&ctx->DrawList, lx+cw, cy-bh,    lx+cr, cy-bh,    sym, t2); // top cap
+                        ZUIDrawListAddLine(&ctx->DrawList, lx+cr, cy-bh,    lx,    cy-bh+cr, sym, t2); // top corner
+                        ZUIDrawListAddLine(&ctx->DrawList, lx,    cy-bh+cr, lx,    cy-nt,    sym, t2); // upper spine
+                        ZUIDrawListAddLine(&ctx->DrawList, lx,    cy-nt,    lx-nw, cy,       sym, t2); // nub top
+                        ZUIDrawListAddLine(&ctx->DrawList, lx-nw, cy,       lx,    cy+nt,    sym, t2); // nub bot
+                        ZUIDrawListAddLine(&ctx->DrawList, lx,    cy+nt,    lx,    cy+bh-cr, sym, t2); // lower spine
+                        ZUIDrawListAddLine(&ctx->DrawList, lx,    cy+bh-cr, lx+cr, cy+bh,   sym, t2); // bot corner
+                        ZUIDrawListAddLine(&ctx->DrawList, lx+cr, cy+bh,    lx+cw, cy+bh,   sym, t2); // bot cap
+
+                        // Right brace } — mirror
+                        float rx = cx + sz * 0.20f;
+                        ZUIDrawListAddLine(&ctx->DrawList, rx-cw, cy-bh,    rx-cr, cy-bh,    sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx-cr, cy-bh,    rx,    cy-bh+cr, sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx,    cy-bh+cr, rx,    cy-nt,    sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx,    cy-nt,    rx+nw, cy,       sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx+nw, cy,       rx,    cy+nt,    sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx,    cy+nt,    rx,    cy+bh-cr, sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx,    cy+bh-cr, rx-cr, cy+bh,   sym, t2);
+                        ZUIDrawListAddLine(&ctx->DrawList, rx-cr, cy+bh,    rx-cw, cy+bh,   sym, t2);
                     }
                 }
                 else // ZUI_ICON_ACTOR = 15 (diamond) — default fallback

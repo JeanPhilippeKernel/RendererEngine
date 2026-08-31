@@ -140,7 +140,8 @@ namespace Tetragrama::Panels
         if (e0 == 'h' && e1 == 'x')  return ZUI_ICON_SOURCE_H;   // .hxx
         if (e0 == 'h' && e1 == 0)    return ZUI_ICON_SOURCE_H;   // .h
         if (e0 == 'c' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_CS; // .cs
-        if (e0 == 'j' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS; // .js only
+        if (e0 == 'j' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS;   // .js only
+        if (e0 == 'j' && e1 == 's' && e2 != 0) return ZUI_ICON_SOURCE_JSON; // .json
         if (e0 == 't' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS; // .ts only
         if (e0 == 'p' && e1 == 'y')  return ZUI_ICON_SOURCE_PY;  // .py
         if (e0 == 'l' && e1 == 'u')  return ZUI_ICON_SOURCE_PY;  // .lua (reuse green)

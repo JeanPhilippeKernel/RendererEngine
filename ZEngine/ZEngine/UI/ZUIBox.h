@@ -70,6 +70,7 @@ namespace ZEngine::UI
     static constexpr float ZUI_ICON_SOURCE_JS      = 32.f; // JS/TS  — yellow badge, ">" symbol
     static constexpr float ZUI_ICON_SOURCE_PY      = 33.f; // Python — green badge, diamond
     static constexpr float ZUI_ICON_SOURCE_H       = 34.f; // Header — teal badge, "<>" brackets
+    static constexpr float ZUI_ICON_SOURCE_JSON    = 35.f; // JSON   — yellow badge, "{}" symbol
 
     inline ZUIBoxFlags     operator|(ZUIBoxFlags a, ZUIBoxFlags b)
     {
