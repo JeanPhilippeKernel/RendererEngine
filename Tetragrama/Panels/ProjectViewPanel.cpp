@@ -543,13 +543,88 @@ namespace Tetragrama::Panels
                         card->BorderThickness = 1.f;
                     }
 
-                    // ── Icon area (thumbnail zone) ────────────────────────────
-                    // Explicit horizontal centering: (cw - isz) / 2 each side (#6)
+                    // Helper: truncated name
+                    char display[256] = {};
                     {
-                        float        isz      = kThumbSz * kIconRatio; // 85% → 68px (#5)
+                        if ((int) strlen(e.name) > kMaxNameChars)
+                        {
+                            secure_strncpy(display, sizeof(display), e.name, (size_t)(kMaxNameChars - 3));
+                            display[kMaxNameChars - 3] = '.';
+                            display[kMaxNameChars - 2] = '.';
+                            display[kMaxNameChars - 1] = '.';
+                            display[kMaxNameChars]     = '\0';
+                        }
+                        else
+                            secure_strncpy(display, sizeof(display), e.name, sizeof(display) - 1);
+                    }
+
+                    if (e.is_dir)
+                    {
+                        // ── Folder card — UE5 style ───────────────────────────
+                        // Card splits into: icon zone (top 62%) + name zone (bottom 38%).
+                        // Uniform card background throughout — no dark band.
+                        // Icon is perfectly centered within its zone.
+                        float icon_zone = card_h * 0.62f;
+                        float name_zone = card_h - icon_zone;
+
+                        // Icon: sized to fit comfortably in its zone, centered H+V
+                        float icon_sz  = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
+                        float side_pad = (cw   - icon_sz) * 0.5f;
+                        float top_pad  = (icon_zone - icon_sz) * 0.5f;
+
+                        // Icon zone
+                        ZUISpacer(ctx, top_pad);
+                        {
+                            char rk2[32] = {};
+                            snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
+                            ZUIBeginRow(ctx, rk2, ZFill(), ZPx(icon_sz));
+                            ZUISpacer(ctx, side_pad);
+                            char ik[32] = {};
+                            snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
+                            ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
+                            ico->Size[0]      = ZPx(icon_sz);
+                            ico->Size[1]      = ZPx(icon_sz);
+                            ico->TextColor[0] = kFolderCol[0];
+                            ico->TextColor[1] = kFolderCol[1];
+                            ico->TextColor[2] = kFolderCol[2];
+                            ico->TextColor[3] = kFolderCol[3];
+                            auto* ips = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
+                            if (ips) ips->UserData = ZUI_ICON_FOLDER;
+                            ZUIPopBox(ctx);
+                            ZUISpacer(ctx, side_pad);
+                            ZUIEndRow(ctx);
+                        }
+                        ZUISpacer(ctx, top_pad * 0.3f); // slight gap between icon and name
+
+                        // Name zone — plain centered text, no background band
+                        {
+                            float   v_pad = (name_zone - fh) * 0.5f;
+                            ZUISpacer(ctx, v_pad);
+                            char fnk[32] = {};
+                            snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
+                            uint32_t nl = (uint32_t) strlen(display);
+                            ZUIBox*  lb = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
+                            lb->Size[0]   = ZFill();
+                            lb->Size[1]   = ZPx(fh);
+                            lb->Label     = ZUIPushStr(&ctx->FrameArena, display, nl);
+                            lb->TextAlign = ZUITextAlign::Center;
+                            lb->TextColor[0] = ctx->Theme.TextDefault[0];
+                            lb->TextColor[1] = ctx->Theme.TextDefault[1];
+                            lb->TextColor[2] = ctx->Theme.TextDefault[2];
+                            lb->TextColor[3] = ctx->Theme.TextDefault[3];
+                            ZUIPopBox(ctx);
+                        }
+                    }
+                    else
+                    {
+
+                    // ── File card ─────────────────────────────────────────────
+                    // Icon area (thumbnail zone)
+                    {
+                        float        isz      = kThumbSz * kIconRatio;
                         float        side_pad = (cw - isz) * 0.5f;
                         float        top_pad  = (kThumbSz - isz) * 0.5f;
-                        const float* icon_col = e.is_dir ? kFolderCol : ExtColor(e.name);
+                        const float* icon_col = ExtColor(e.name);
 
                         ZUISpacer(ctx, top_pad);
                         {
@@ -557,7 +632,7 @@ namespace Tetragrama::Panels
                             snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
                             ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
                         }
-                        ZUISpacer(ctx, side_pad); // center horizontally (#6)
+                        ZUISpacer(ctx, side_pad);
 
                         char ik[32] = {};
                         snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
@@ -569,40 +644,27 @@ namespace Tetragrama::Panels
                         ico->TextColor[2] = icon_col[2];
                         ico->TextColor[3] = icon_col[3];
                         auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
-                        if (ips)
-                            ips->UserData = e.is_dir ? ZUI_ICON_FOLDER : ZUI_ICON_ACTOR;
+                        if (ips) ips->UserData = ZUI_ICON_ACTOR;
                         ZUIPopBox(ctx);
 
                         ZUISpacer(ctx, side_pad);
                         ZUIEndRow(ctx);
                     }
 
-                    // ── Footer strip (dark overlay with bottom rounding) (#1) ──
+                    // ── Footer strip (dark overlay with bottom rounding) ───────
                     {
                         char ftk[32] = {};
                         snprintf(ftk, sizeof(ftk), "##pvft_%d_%d", r, c);
                         ZUIBox* footer = ZUIBeginColumn(ctx, ftk, ZFill(), ZPx(footer_h));
                         footer->Flags  = footer->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
-                        ZUIBoxSetColor(footer, 0.06f, 0.06f, 0.08f, 0.92f); // footer strip — opaque, slightly blue-dark
+                        ZUIBoxSetColor(footer, 0.06f, 0.06f, 0.08f, 0.92f);
                         ZUIBoxSetBottomRadius(footer, kRounding);
                         footer->EdgeSoftness = 0.f;
 
                         ZUISpacer(ctx, 6.f);
 
-                        // ── Filename — left-aligned, truncated with ellipsis (#2, #7) ──
+                        // Filename
                         {
-                            char display[256] = {};
-                            if ((int) strlen(e.name) > kMaxNameChars)
-                            {
-                                secure_strncpy(display, sizeof(display), e.name, (size_t) (kMaxNameChars - 3));
-                                display[kMaxNameChars - 3] = '.';
-                                display[kMaxNameChars - 2] = '.';
-                                display[kMaxNameChars - 1] = '.';
-                                display[kMaxNameChars]     = '\0';
-                            }
-                            else
-                                secure_strncpy(display, sizeof(display), e.name, sizeof(display) - 1);
-
                             char fnk[32] = {};
                             snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
                             uint32_t nl      = (uint32_t) strlen(display);
@@ -610,7 +672,7 @@ namespace Tetragrama::Panels
                             lb->Size[0]      = ZFill();
                             lb->Size[1]      = ZPx(fh);
                             lb->Label        = ZUIPushStr(&ctx->FrameArena, display, nl);
-                            lb->Padding[0]   = 4.f; // left indent — matches develop's pad (#2)
+                            lb->Padding[0]   = 4.f;
                             lb->TextColor[0] = ctx->Theme.TextDefault[0];
                             lb->TextColor[1] = ctx->Theme.TextDefault[1];
                             lb->TextColor[2] = ctx->Theme.TextDefault[2];
@@ -618,9 +680,9 @@ namespace Tetragrama::Panels
                             ZUIPopBox(ctx);
                         }
 
-                        // ── Type label — left-aligned, dim (#2) ──────────────
+                        // ── Type label ────────────────────────────────────────
                         {
-                            const char* type_lbl = e.is_dir ? "Folder" : TypeCategory(e.name);
+                            const char* type_lbl = TypeCategory(e.name);
                             char        tlk[32] = {};
                             snprintf(tlk, sizeof(tlk), "##pvtl_%d_%d", r, c);
                             uint32_t tl       = (uint32_t) strlen(type_lbl);
@@ -638,6 +700,8 @@ namespace Tetragrama::Panels
 
                         ZUIEndColumn(ctx); // footer
                     }
+
+                    } // end file card
 
                     ZUISignal card_sig = ZUISignalFromBox(ctx, card);
                     ZUIEndColumn(ctx); // card
