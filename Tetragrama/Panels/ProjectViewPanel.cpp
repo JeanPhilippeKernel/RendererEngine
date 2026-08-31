@@ -148,7 +148,63 @@ namespace Tetragrama::Panels
             }
         }
         ZReleaseScratch(scratch);
-        m_needs_refresh = false;
+        m_tree_cache_count = 0; // invalidate sources-tree cache alongside grid
+        m_needs_refresh    = false;
+    }
+
+    // ── Sources tree subdirectory cache ───────────────────────────────────────
+    const ProjectViewPanel::TreeDirEntry* ProjectViewPanel::GetCachedSubdirs(
+        IVFSContext* vfs, const VFSPath& dir, int* out_count)
+    {
+        *out_count = 0;
+        const char* dir_str = dir.CStr();
+        if (!dir_str || !vfs)
+            return nullptr;
+
+        // Cache hit
+        for (int i = 0; i < m_tree_cache_count; ++i)
+        {
+            if (m_tree_cache[i].valid && strcmp(m_tree_cache[i].key, dir_str) == 0)
+            {
+                *out_count = m_tree_cache[i].count;
+                return m_tree_cache[i].entries;
+            }
+        }
+
+        // Cache full — evict all (simple LRU-free policy)
+        if (m_tree_cache_count >= kMaxCachedDirs)
+            m_tree_cache_count = 0;
+
+        TreeDirCache& slot = m_tree_cache[m_tree_cache_count++];
+        slot               = {};
+        secure_strncpy(slot.key, sizeof(slot.key), dir_str, sizeof(slot.key) - 1);
+
+        auto* eng = ZEngine::Engine::GetContext();
+        if (eng)
+        {
+            auto scratch = ZGetScratch(&eng->VFSArena);
+            auto res     = vfs->List(dir, scratch.Arena);
+            if (res.Succeeded())
+            {
+                for (uint32_t i = 0; i < res.Value().size() && slot.count < kMaxTreeEntries; ++i)
+                {
+                    const VFSDirEntry& e = res.Value()[i];
+                    if (!e.IsDirectory)
+                        continue;
+                    char fn[256] = {};
+                    e.Path.CopyFilename(fn, sizeof(fn));
+                    if (!fn[0] || fn[0] == '.')
+                        continue;
+                    TreeDirEntry& te = slot.entries[slot.count++];
+                    secure_strncpy(te.name,      sizeof(te.name),      fn,                      sizeof(te.name)      - 1);
+                    secure_strncpy(te.full_path, sizeof(te.full_path), e.Path.CStr() ? e.Path.CStr() : "", sizeof(te.full_path) - 1);
+                }
+            }
+            ZReleaseScratch(scratch);
+        }
+        slot.valid = true;
+        *out_count = slot.count;
+        return slot.entries;
     }
 
     // ── Breadcrumb ────────────────────────────────────────────────────────────
@@ -184,9 +240,11 @@ namespace Tetragrama::Panels
             }
         }
 
-        // Path segments
-        uint32_t nc    = m_current_dir.ComponentCount();
-        VFSPath  accum = VFSPath::Root();
+        // Path segments — only render as button if all preceding Appends succeeded;
+        // a failed Append leaves `accum` stale, so the remaining segments are labels.
+        uint32_t nc         = m_current_dir.ComponentCount();
+        VFSPath  accum      = VFSPath::Root();
+        bool     path_valid = true; // becomes false on the first failed Append
         for (uint32_t i = 0; i < nc; ++i)
         {
             VFSPathComponent comp = m_current_dir.ComponentAt(i);
@@ -194,15 +252,20 @@ namespace Tetragrama::Panels
                 continue;
             char seg[256] = {};
             secure_strncpy(seg, sizeof(seg), comp.Data, comp.Length < sizeof(seg) - 1 ? comp.Length : sizeof(seg) - 1);
-            auto nr = accum.Append(seg);
-            if (nr.Succeeded())
-                accum = nr.Value();
+            if (path_valid)
+            {
+                auto nr = accum.Append(seg);
+                if (nr.Succeeded())
+                    accum = nr.Value();
+                else
+                    path_valid = false;
+            }
             ZUILabel(ctx, " › ", ctx->Theme.TextDim);
             if (i == nc - 1)
                 ZUILabel(ctx, seg, ctx->Theme.TextDefault);
-            else
+            else if (path_valid)
             {
-                char bk[300]; // seg up to 255 chars + suffix + NUL
+                char bk[300];
                 snprintf(bk, sizeof(bk), "%s##pv_bc%u", seg, i);
                 if (ZUISmallButton(ctx, bk).Flags & ZUI_SignalClicked)
                 {
@@ -210,46 +273,64 @@ namespace Tetragrama::Panels
                     m_needs_refresh = true;
                 }
             }
+            else
+            {
+                ZUILabel(ctx, seg, ctx->Theme.TextDim); // stale path — plain label
+            }
         }
         ZUISpacer(ctx, 6.f);
         ZUIEndRow(ctx);
     }
 
-    // ── Sources tree (left pane) ──────────────────────────────────────────────
-    // Hierarchy panel pattern: ZUIBeginColumn(Padding[0]=indent) + ZUITreeNode.
-    void ProjectViewPanel::DrawSourcesTree(ZUIContext* ctx, IVFSContext* vfs, const VFSPath& dir, int depth)
+    // ── Sources tree (left pane) — iterative DFS ─────────────────────────────
+    // Uses GetCachedSubdirs to avoid live vfs->List calls every frame.
+    // Stack entries hold a full_path string pointer (stable in cache) + depth.
+    void ProjectViewPanel::DrawSourcesTree(ZUIContext* ctx, IVFSContext* vfs)
     {
-        if (depth > 16)
-            return;
         if (!vfs)
-            return;
-        auto res = vfs->List(dir, &ctx->FrameArena);
-        if (!res.Succeeded())
             return;
 
         static const float kSelBg[4] = {0.26f, 0.44f, 0.70f, 0.30f};
         float              fh        = ZUIGetFrameHeight(ctx);
 
-        for (uint32_t i = 0; i < res.Value().size(); ++i)
+        // DFS stack: (full_path pointer into cache, depth)
+        struct StackEntry { const char* full_path; int depth; };
+        static constexpr int kMaxStack = 512;
+        StackEntry* stk = ZPushArray(&ctx->FrameArena, StackEntry, kMaxStack);
+        int         sp  = 0;
+
+        // Seed the stack with top-level directories (pushed in reverse for L-to-R order)
+        int                 root_count = 0;
+        const TreeDirEntry* root_dirs  = GetCachedSubdirs(vfs, VFSPath::Root(), &root_count);
+        for (int i = root_count - 1; i >= 0 && sp < kMaxStack; --i)
+            stk[sp++] = {root_dirs[i].full_path, 1};
+
+        while (sp > 0)
         {
-            const VFSDirEntry& e = res.Value()[i];
-            if (!e.IsDirectory)
+            StackEntry e = stk[--sp];
+            if (!e.full_path || !e.full_path[0])
                 continue;
+
+            // Re-derive name from path
             char name[256] = {};
-            e.Path.CopyFilename(name, sizeof(name));
+            {
+                const char* slash = strrchr(e.full_path, '/');
+                const char* src   = slash ? slash + 1 : e.full_path;
+                secure_strncpy(name, sizeof(name), src, sizeof(name) - 1);
+            }
             if (!name[0])
                 continue;
 
-            bool     is_sel  = (e.Path.CStr() && m_current_dir.CStr() && strcmp(e.Path.CStr(), m_current_dir.CStr()) == 0);
-            uint64_t key     = ZUIHashStr(e.Path.CStr() ? e.Path.CStr() : name, (uint32_t) strlen(e.Path.CStr() ? e.Path.CStr() : name));
+            uint64_t key     = ZUIHashStr(e.full_path, (uint32_t) strlen(e.full_path));
             auto*    ps      = ZUIStateGetOrInsert(&ctx->StateStore, key);
             bool     is_open = ps ? (ps->UserData > 0.5f) : false;
+            bool     is_sel  = (m_current_dir.CStr() && strcmp(e.full_path, m_current_dir.CStr()) == 0);
 
-            // Wrapper column: indentation via Padding[0], selection bg
-            char     ck[64];
+            // Wrapper column: indentation + optional selection bg
+            char    ck[64];
             snprintf(ck, sizeof(ck), "##stc_%llu", (unsigned long long) key);
             ZUIBox* col       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(fh));
-            col->Padding[0]   = (float) depth * ctx->Style.IndentSpacing;
+            col->Padding[0]   = (float) e.depth * ctx->Style.IndentSpacing;
             col->EdgeSoftness = 0.f;
             if (is_sel)
             {
@@ -257,51 +338,67 @@ namespace Tetragrama::Panels
                 ZUIBoxSetColorArr(col, kSelBg);
             }
 
-            // ZUITreeNode with VS Code chevron (∨/›)
-            char tn[300]; // name up to 255 chars + suffix + NUL
+            char tn[300];
             snprintf(tn, sizeof(tn), "%s##st_%llu", name, (unsigned long long) key);
             ZUISignal sig = ZUITreeNode(ctx, tn, &is_open);
-            if (ps)
-                ps->UserData = is_open ? 1.f : 0.f;
+            if (ps) ps->UserData = is_open ? 1.f : 0.f;
             ZUIEndColumn(ctx);
 
             if (sig.Flags & ZUI_SignalClicked)
             {
-                m_current_dir   = e.Path;
-                m_needs_refresh = true;
+                auto pr = VFSPath::Parse(e.full_path);
+                if (pr.Succeeded())
+                {
+                    m_current_dir   = pr.Value();
+                    m_needs_refresh = true;
+                }
             }
 
-            // Context menu
-            if (ZUIBeginPopupContextItem(ctx, "##pv_st_ctx", sig))
+            // Context menu — unique key per node to prevent wrong-node deletion
+            char ctx_key[48];
+            snprintf(ctx_key, sizeof(ctx_key), "##stctx_%llu", (unsigned long long) key);
+            if (ZUIBeginPopupContextItem(ctx, ctx_key, sig))
             {
-                if (ZUIMenuItem(ctx, "Create Folder"))
+                auto pr = VFSPath::Parse(e.full_path);
+                if (ZUIMenuItem(ctx, "Create Folder") && pr.Succeeded())
                 {
                     m_modal        = Modal::CreateFolder;
-                    m_modal_target = e.Path;
+                    m_modal_target = pr.Value();
                     m_modal_buf[0] = '\0';
                     m_modal_opened = false;
                 }
-                if (ZUIMenuItem(ctx, "Rename"))
+                if (ZUIMenuItem(ctx, "Rename") && pr.Succeeded())
                 {
                     m_modal        = Modal::RenameItem;
-                    m_modal_target = e.Path;
+                    m_modal_target = pr.Value();
                     m_modal_is_dir = true;
                     secure_strncpy(m_modal_buf, sizeof(m_modal_buf), name, sizeof(m_modal_buf) - 1);
                     m_modal_opened = false;
                 }
-                if (ZUIMenuItem(ctx, "Delete"))
+                if (ZUIMenuItem(ctx, "Delete") && pr.Succeeded())
                 {
                     m_modal        = Modal::DeleteItem;
-                    m_modal_target = e.Path;
+                    m_modal_target = pr.Value();
                     m_modal_is_dir = true;
                     m_modal_opened = false;
                 }
                 ZUIEndPopup(ctx);
             }
 
-            if (is_open)
-                DrawSourcesTree(ctx, vfs, e.Path, depth + 1);
-            ZUISpacer(ctx, 1.f); // small gap between tree nodes
+            ZUISpacer(ctx, 1.f);
+
+            // If open, push children in reverse order for correct DFS display
+            if (is_open && e.depth < 32)
+            {
+                auto pr = VFSPath::Parse(e.full_path);
+                if (pr.Succeeded())
+                {
+                    int                 child_count = 0;
+                    const TreeDirEntry* children    = GetCachedSubdirs(vfs, pr.Value(), &child_count);
+                    for (int ci = child_count - 1; ci >= 0 && sp < kMaxStack; --ci)
+                        stk[sp++] = {children[ci].full_path, e.depth + 1};
+                }
+            }
         }
     }
 
@@ -648,6 +745,7 @@ namespace Tetragrama::Panels
             return;
         if (!m_modal_opened)
         {
+            m_modal_error[0] = '\0'; // clear any previous error when opening fresh
             ZUIOpenPopup(ctx, "##pv_modal");
             m_modal_opened = true;
         }
@@ -657,7 +755,8 @@ namespace Tetragrama::Panels
             return;
         }
 
-        float fh = ZUIGetFrameHeight(ctx);
+        float              fh       = ZUIGetFrameHeight(ctx);
+        static const float kErrCol[4] = {1.f, 0.40f, 0.35f, 1.f}; // red error text
         ZUISpacer(ctx, 8.f);
 
         switch (m_modal)
@@ -668,29 +767,36 @@ namespace Tetragrama::Panels
                 ZUILabel(ctx, m_modal == Modal::CreateFile ? "New File" : "New Folder", ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 6.f);
                 ZUITextField(ctx, "##pv_mi", m_modal_buf, sizeof(m_modal_buf), 240.f);
+                if (m_modal_error[0]) { ZUISpacer(ctx, 4.f); ZUILabel(ctx, m_modal_error, kErrCol); }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Create##pvc").Flags & ZUI_SignalClicked)
                 {
+                    m_modal_error[0] = '\0';
+                    bool ok = false;
                     if (m_modal_buf[0] && vfs)
                     {
                         auto np = m_modal_target.Append(m_modal_buf);
                         if (np.Succeeded())
                         {
                             if (m_modal == Modal::CreateFolder)
-                                vfs->CreateDir(np.Value());
+                                ok = vfs->CreateDir(np.Value()).Succeeded();
                             else
                             {
                                 auto f = vfs->Open(np.Value(), VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Truncate);
-                                if (f.Succeeded())
-                                    f.Value()->Close();
+                                if (f.Succeeded()) { f.Value()->Close(); ok = true; }
                             }
                         }
+                        if (!ok)
+                            secure_strncpy(m_modal_error, sizeof(m_modal_error), "Operation failed — check name or permissions", sizeof(m_modal_error) - 1);
                     }
-                    m_needs_refresh = true;
-                    m_modal         = Modal::None;
-                    ZUIClosePopup(ctx);
+                    if (ok)
+                    {
+                        m_needs_refresh = true;
+                        m_modal         = Modal::None;
+                        ZUIClosePopup(ctx);
+                    }
                 }
                 ZUISpacer(ctx, 4.f);
                 if (ZUIButton(ctx, "Cancel##pvc").Flags & ZUI_SignalClicked)
@@ -706,20 +812,30 @@ namespace Tetragrama::Panels
                 ZUILabel(ctx, "Rename", ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 6.f);
                 ZUITextField(ctx, "##pv_mi", m_modal_buf, sizeof(m_modal_buf), 240.f);
+                if (m_modal_error[0]) { ZUISpacer(ctx, 4.f); ZUILabel(ctx, m_modal_error, kErrCol); }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Rename##pvr").Flags & ZUI_SignalClicked)
                 {
+                    m_modal_error[0] = '\0';
+                    bool ok = false;
                     if (m_modal_buf[0] && vfs && !strchr(m_modal_buf, '/') && !strchr(m_modal_buf, '\\'))
                     {
                         auto dp = m_modal_target.Parent().Append(m_modal_buf);
                         if (dp.Succeeded())
-                            vfs->Rename(m_modal_target, dp.Value());
+                            ok = vfs->Rename(m_modal_target, dp.Value()).Succeeded();
+                        if (!ok)
+                            secure_strncpy(m_modal_error, sizeof(m_modal_error), "Rename failed — check permissions or name conflict", sizeof(m_modal_error) - 1);
                     }
-                    m_needs_refresh = true;
-                    m_modal         = Modal::None;
-                    ZUIClosePopup(ctx);
+                    else if (strchr(m_modal_buf, '/') || strchr(m_modal_buf, '\\'))
+                        secure_strncpy(m_modal_error, sizeof(m_modal_error), "Name must not contain path separators", sizeof(m_modal_error) - 1);
+                    if (ok)
+                    {
+                        m_needs_refresh = true;
+                        m_modal         = Modal::None;
+                        ZUIClosePopup(ctx);
+                    }
                 }
                 ZUISpacer(ctx, 4.f);
                 if (ZUIButton(ctx, "Cancel##pvr").Flags & ZUI_SignalClicked)
@@ -740,24 +856,29 @@ namespace Tetragrama::Panels
                     static const float kW[4] = {1.f, 0.85f, 0.20f, 1.f};
                     ZUILabel(ctx, n, kW);
                 }
+                if (m_modal_error[0]) { ZUISpacer(ctx, 4.f); ZUILabel(ctx, m_modal_error, kErrCol); }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Delete##pvd").Flags & ZUI_SignalClicked)
                 {
+                    m_modal_error[0] = '\0';
+                    bool ok = false;
                     if (vfs)
                     {
-                        m_modal_is_dir ? vfs->RemoveAll(m_modal_target) : vfs->Remove(m_modal_target);
-                        // If we deleted the current directory, navigate to its parent
-                        if (m_modal_target.CStr() && m_current_dir.CStr() &&
+                        ok = (m_modal_is_dir ? vfs->RemoveAll(m_modal_target) : vfs->Remove(m_modal_target)).Succeeded();
+                        if (ok && m_modal_target.CStr() && m_current_dir.CStr() &&
                             strcmp(m_modal_target.CStr(), m_current_dir.CStr()) == 0)
-                        {
                             m_current_dir = m_current_dir.Parent();
-                        }
+                        if (!ok)
+                            secure_strncpy(m_modal_error, sizeof(m_modal_error), "Delete failed — check permissions", sizeof(m_modal_error) - 1);
                     }
-                    m_needs_refresh = true;
-                    m_modal         = Modal::None;
-                    ZUIClosePopup(ctx);
+                    if (ok)
+                    {
+                        m_needs_refresh = true;
+                        m_modal         = Modal::None;
+                        ZUIClosePopup(ctx);
+                    }
                 }
                 ZUISpacer(ctx, 4.f);
                 if (ZUIButton(ctx, "Cancel##pvd").Flags & ZUI_SignalClicked)
@@ -854,7 +975,7 @@ namespace Tetragrama::Panels
             }
 
             if (vfs)
-                DrawSourcesTree(ctx, vfs, VFSPath::Root(), 1);
+                DrawSourcesTree(ctx, vfs);
 
             ZUIEndScrollRegion(ctx);
             ZUIEndColumn(ctx);
