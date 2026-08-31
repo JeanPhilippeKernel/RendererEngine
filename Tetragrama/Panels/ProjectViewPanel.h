@@ -34,8 +34,7 @@ namespace Tetragrama::Panels
         };
         static constexpr int kMaxEntries = 512;
         Entry                m_entries[kMaxEntries];
-        int                  m_nentries    = 0;
-        char                 m_listed_str[512] = {};
+        int                  m_nentries        = 0;
         bool                 m_needs_refresh   = true;
 
         // ── Search + type filter ──────────────────────────────────────────────

@@ -7,6 +7,10 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#endif
+
 namespace Tetragrama::Panels
 {
     using namespace ZEngine::Core::VFS;
@@ -15,9 +19,15 @@ namespace Tetragrama::Panels
 
     // ── Static helpers ────────────────────────────────────────────────────────
 
-    const float* ProjectViewPanel::ExtColor(const char* name)
+    // ── Unified extension dispatch (fixes #5 .dae/.dds split, prevents future divergence) ──
+    struct ExtInfo
     {
-        static const float kFolder[4]  = {0.85f, 0.65f, 0.15f, 1.f}; // amber
+        const float* Color;
+        const char*  Category;
+    };
+
+    static ExtInfo GetExtInfo(const char* name)
+    {
         static const float kCpp[4]     = {0.40f, 0.65f, 0.90f, 1.f}; // blue
         static const float kH[4]       = {0.45f, 0.85f, 0.55f, 1.f}; // teal
         static const float kShader[4]  = {0.80f, 0.40f, 0.85f, 1.f}; // purple
@@ -26,59 +36,40 @@ namespace Tetragrama::Panels
         static const float kMesh[4]    = {0.55f, 0.75f, 0.90f, 1.f}; // sky blue
         static const float kDefault[4] = {0.55f, 0.55f, 0.60f, 1.f}; // gray
         if (!name)
-            return kDefault;
+            return {kDefault, "Other"};
         const char* dot = strrchr(name, '.');
         if (!dot)
-            return kDefault;
+            return {kDefault, "Other"};
         const char* ext = dot + 1;
         char        e0  = (char) tolower((unsigned char) ext[0]);
         char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
         if (e0 == 'c' && (e1 == 'p' || e1 == 0))
-            return kCpp;
+            return {kCpp, "Scripts"};
         if (e0 == 'h' && (e1 == 'p' || e1 == 0))
-            return kH;
+            return {kH, "Scripts"};
         if (e0 == 'g' && e1 == 'l' && tolower((unsigned char) ext[2]) == 's')
-            return kShader;
+            return {kShader, "Shaders"};
         if (e0 == 'v' && e1 == 'e')
-            return kShader; // .vert
+            return {kShader, "Shaders"}; // .vert
         if (e0 == 'f' && e1 == 'r')
-            return kShader; // .frag
-        if (e0 == 'p' || e0 == 'j' || e0 == 'd')
-            return kTexture;
+            return {kShader, "Shaders"}; // .frag
+        if (e0 == 'p' || e0 == 'j' || (e0 == 'd' && e1 == 'd'))
+            return {kTexture, "Textures"}; // .png / .jpg / .dds
         if (e0 == 'z')
-            return kScene;
-        if (e0 == 'g' || e0 == 'f' || e0 == 'o')
-            return kMesh;
-        return kDefault;
+            return {kScene, "Scenes"};
+        if (e0 == 'g' || e0 == 'f' || e0 == 'o' || e0 == 'd') // .glb / .fbx / .obj / .dae
+            return {kMesh, "Models"};
+        return {kDefault, "Other"};
+    }
+
+    const float* ProjectViewPanel::ExtColor(const char* name)
+    {
+        return GetExtInfo(name).Color;
     }
 
     const char* ProjectViewPanel::TypeCategory(const char* name)
     {
-        if (!name)
-            return "Other";
-        const char* dot = strrchr(name, '.');
-        if (!dot)
-            return "Other";
-        const char* ext = dot + 1;
-        char        e0  = (char) tolower((unsigned char) ext[0]);
-        char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
-        if (e0 == 'c' && (e1 == 'p' || e1 == 0))
-            return "Scripts";
-        if (e0 == 'h' && (e1 == 'p' || e1 == 0))
-            return "Scripts";
-        if (e0 == 'g' && e1 == 'l' && tolower((unsigned char) ext[2]) == 's')
-            return "Shaders";
-        if (e0 == 'v' && e1 == 'e')
-            return "Shaders";
-        if (e0 == 'f' && e1 == 'r')
-            return "Shaders";
-        if (e0 == 'p' || e0 == 'j' || e0 == 'd')
-            return "Textures";
-        if (e0 == 'z')
-            return "Scenes";
-        if (e0 == 'g' || e0 == 'f' || e0 == 'o')
-            return "Models";
-        return "Other";
+        return GetExtInfo(name).Category;
     }
 
     bool ProjectViewPanel::PassesFilters(const Entry& e, const char* search, const char* type_filter)
@@ -157,7 +148,6 @@ namespace Tetragrama::Panels
             }
         }
         ZReleaseScratch(scratch);
-        secure_strncpy(m_listed_str, sizeof(m_listed_str), m_current_dir.CStr() ? m_current_dir.CStr() : "", sizeof(m_listed_str) - 1);
         m_needs_refresh = false;
     }
 
@@ -212,7 +202,7 @@ namespace Tetragrama::Panels
                 ZUILabel(ctx, seg, ctx->Theme.TextDefault);
             else
             {
-                char bk[64];
+                char bk[300]; // seg up to 255 chars + suffix + NUL
                 snprintf(bk, sizeof(bk), "%s##pv_bc%u", seg, i);
                 if (ZUISmallButton(ctx, bk).Flags & ZUI_SignalClicked)
                 {
@@ -229,6 +219,8 @@ namespace Tetragrama::Panels
     // Hierarchy panel pattern: ZUIBeginColumn(Padding[0]=indent) + ZUITreeNode.
     void ProjectViewPanel::DrawSourcesTree(ZUIContext* ctx, IVFSContext* vfs, const VFSPath& dir, int depth)
     {
+        if (depth > 16)
+            return;
         if (!vfs)
             return;
         auto res = vfs->List(dir, &ctx->FrameArena);
@@ -266,7 +258,7 @@ namespace Tetragrama::Panels
             }
 
             // ZUITreeNode with VS Code chevron (∨/›)
-            char tn[256];
+            char tn[300]; // name up to 255 chars + suffix + NUL
             snprintf(tn, sizeof(tn), "%s##st_%llu", name, (unsigned long long) key);
             ZUISignal sig = ZUITreeNode(ctx, tn, &is_open);
             if (ps)
@@ -385,8 +377,8 @@ namespace Tetragrama::Panels
         static constexpr int kMaxNameChars = 26;
 
         // Collect filtered entries
-        static int           vis[kMaxEntries];
-        int                  nvis = 0;
+        int vis[kMaxEntries];
+        int nvis = 0;
         for (int i = 0; i < m_nentries; ++i)
             if (PassesFilters(m_entries[i], m_search, m_type_filter))
                 vis[nvis++] = i;
@@ -567,6 +559,7 @@ namespace Tetragrama::Panels
                                 m_needs_refresh = true;
                             }
                             m_last_click_path[0] = '\0';
+                            m_selected_path[0]   = '\0';
                         }
                         else
                         {
@@ -577,7 +570,7 @@ namespace Tetragrama::Panels
 
                     // Drag source for files
                     if (!e.is_dir)
-                        ZUIBeginDragSource(ctx, card, e.full_path, (uint32_t) strlen(e.full_path));
+                        ZUIBeginDragSource(ctx, card, e.full_path, (uint32_t) strlen(e.full_path) + 1);
 
                     // Right-click context menu
                     if (ZUIBeginPopupContextItem(ctx, "##pv_grid_ctx", card_sig))
@@ -718,7 +711,7 @@ namespace Tetragrama::Panels
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Rename##pvr").Flags & ZUI_SignalClicked)
                 {
-                    if (m_modal_buf[0] && vfs)
+                    if (m_modal_buf[0] && vfs && !strchr(m_modal_buf, '/') && !strchr(m_modal_buf, '\\'))
                     {
                         auto dp = m_modal_target.Parent().Append(m_modal_buf);
                         if (dp.Succeeded())
@@ -755,6 +748,12 @@ namespace Tetragrama::Panels
                     if (vfs)
                     {
                         m_modal_is_dir ? vfs->RemoveAll(m_modal_target) : vfs->Remove(m_modal_target);
+                        // If we deleted the current directory, navigate to its parent
+                        if (m_modal_target.CStr() && m_current_dir.CStr() &&
+                            strcmp(m_modal_target.CStr(), m_current_dir.CStr()) == 0)
+                        {
+                            m_current_dir = m_current_dir.Parent();
+                        }
                     }
                     m_needs_refresh = true;
                     m_modal         = Modal::None;
@@ -779,7 +778,7 @@ namespace Tetragrama::Panels
     // ── BuildContent ──────────────────────────────────────────────────────────
     void ProjectViewPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
-        auto* vfs = reinterpret_cast<IVFSContext*>(ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr);
+        auto* vfs = static_cast<IVFSContext*>(ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr);
 
         if (!m_root_init)
         {
@@ -863,7 +862,7 @@ namespace Tetragrama::Panels
 
         // ── Divider ───────────────────────────────────────────────────────────
         {
-            ZUIBox* d  = ZUIPushBox(ctx, "##pv_d1", 6, ZUI_DrawBackground);
+            ZUIBox* d  = ZUIPushBox(ctx, "##pv_d1", 7, ZUI_DrawBackground);
             d->Size[0] = ZPx(1.f);
             d->Size[1] = ZFill();
             ZUIBoxSetColor(d, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 0.4f);
@@ -891,7 +890,7 @@ namespace Tetragrama::Panels
 
         // ── Divider ───────────────────────────────────────────────────────────
         {
-            ZUIBox* d  = ZUIPushBox(ctx, "##pv_d2", 6, ZUI_DrawBackground);
+            ZUIBox* d  = ZUIPushBox(ctx, "##pv_d2", 7, ZUI_DrawBackground);
             d->Size[0] = ZPx(1.f);
             d->Size[1] = ZFill();
             ZUIBoxSetColor(d, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 0.4f);
@@ -913,7 +912,7 @@ namespace Tetragrama::Panels
             {
                 m_modal        = Modal::CreateFile;
                 m_modal_target = m_current_dir;
-                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFile.txt", 11);
+                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFile.txt", sizeof("NewFile.txt") - 1);
                 m_modal_opened = false;
             }
             ZUISpacer(ctx, 4.f);
@@ -921,7 +920,7 @@ namespace Tetragrama::Panels
             {
                 m_modal        = Modal::CreateFolder;
                 m_modal_target = m_current_dir;
-                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFolder", 9);
+                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFolder", sizeof("NewFolder") - 1);
                 m_modal_opened = false;
             }
             ZUISpacer(ctx, 8.f);
@@ -930,7 +929,7 @@ namespace Tetragrama::Panels
             ZUISeparator(ctx);
 
             // Content grid (fills remaining height - status bar)
-            DrawGrid(ctx, pw - kSourcesW - kFiltersW - 4.f);
+            DrawGrid(ctx, pw - kSourcesW - kFiltersW - 2.f); // 2 dividers × 1px each
 
             // Status bar
             ZUISeparator(ctx);
