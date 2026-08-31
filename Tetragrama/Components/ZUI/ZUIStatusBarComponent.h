@@ -27,13 +27,7 @@ namespace Tetragrama::Components
         ZEngine::UI::ZUIPanelManager* ShellPanelManager = nullptr;
 
     private:
-        static constexpr int   kFtSamples                = 32;
-        static constexpr float kBarH                     = 28.f;
-
-        float                  m_frame_times[kFtSamples] = {};
-        int                    m_ft_head                 = 0;
-        int                    m_ft_count                = 0; // samples actually written; < kFtSamples during warmup
-        float                  m_smoothed_dt             = 0.f;
+        static constexpr float kBarH = 28.f;
     };
     ZDEFINE_PTR(ZUIStatusBarComponent);
 } // namespace Tetragrama::Components

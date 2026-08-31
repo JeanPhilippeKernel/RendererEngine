@@ -33,6 +33,5 @@ namespace Tetragrama::Panels
         // Gizmo operation: -1=none, 0=translate, 1=rotate, 2=scale
         int                                         m_gizmo_op      = -1;
         bool                                        m_grid_enabled  = true;
-        float                                       m_fps_ema       = 0.f;
     };
 } // namespace Tetragrama::Panels

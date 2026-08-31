@@ -43,6 +43,12 @@ namespace ZEngine
         ECS::WorldTick*                   WorldTick             = nullptr;
         Importers::ImportCoordinator*     ImportCoordinator     = nullptr;
         Rendering::RenderResourceManager* RenderResourceManager = nullptr;
+
+        // Smoothed delta time — 8-sample rolling average measured in the render thread
+        // between consecutive EndFrame() calls (includes vsync wait).
+        // Written by the render thread; read by the main thread for display only.
+        // Plain float is sufficient: a one-frame stale read is acceptable for a counter.
+        float                             SmoothedDeltaTime     = 1.f / 60.f;
     };
     ZDEFINE_PTR(EngineContext);
 

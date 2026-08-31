@@ -4,6 +4,7 @@
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <Tetragrama/Panels/ViewportPanel.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/UI/ZUIWidgets.h>
@@ -209,12 +210,13 @@ namespace Tetragrama::Panels
             ZUIEndColumn(ctx);
         }
 
-        // FPS overlay: floated top-right
+        // FPS overlay: floated top-right — uses render-thread SmoothedDeltaTime
+        // (same source as the status bar counter, includes vsync wait).
         {
-            if (ctx->DeltaTime > 0.f)
-                m_fps_ema = m_fps_ema * 0.95f + (1.f / ctx->DeltaTime) * 0.05f;
-            char fps_buf[32];
-            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double) m_fps_ema);
+            const float smooth_dt = ZEngine::Engine::GetContext()->SmoothedDeltaTime;
+            const float fps       = smooth_dt > 0.f ? 1.f / smooth_dt : 0.f;
+            char        fps_buf[32];
+            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double) fps);
 
             static constexpr float kFpsW   = 64.f;
             ZUIBox*                fps_row = ZUIBeginRow(ctx, "##vp_fps", ZPx(kFpsW), ZPx(22.f));

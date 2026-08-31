@@ -301,9 +301,11 @@ namespace ZEngine
 
             pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
 
-            //  Frame rate cap (vsync-off only)
-            if (!window->IsVSyncEnable())
-                frame_cap.WaitForFrameBudget();
+            //  Frame rate cap — applied unconditionally.
+            //  Vsync throttles the GPU present in the render thread; the main loop
+            //  still needs a cap so physics/animation receive a sensible raw_dt
+            //  and the CPU is not burned spinning the mailbox at 100k+ Hz.
+            frame_cap.WaitForFrameBudget();
         }
 
         ZENGINE_CORE_INFO("Engine main loop exited after {} frames", frame_index)
@@ -311,6 +313,10 @@ namespace ZEngine
 
     void Engine::RenderThreadRun()
     {
+        // Measures wall-clock time between consecutive EndFrame() calls, which
+        // includes the vsync wait. This is the true GPU presentation rate.
+        Timing::FrameTimer render_timer;
+
 #ifdef __APPLE__
         pthread_setname_np("RenderThread");
         thread_port_t                        thread_port = pthread_mach_thread_np(pthread_self());
@@ -358,6 +364,12 @@ namespace ZEngine
                     pipeline->RenderOverlay(r_payload);
             }
             pipeline->EndFrame();
+
+            // Update SmoothedDeltaTime with the render thread's smoothed frame time.
+            // End() is called after EndFrame() so the vsync wait is included in the sample.
+            render_timer.End();
+            if (g_engine_ctx)
+                g_engine_ctx->SmoothedDeltaTime = render_timer.SmoothedDelta();
 
             uint32_t next = (tail + 1) % pipeline->MaxMailBoxBufferCount;
 

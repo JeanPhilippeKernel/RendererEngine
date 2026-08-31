@@ -27,24 +27,16 @@ namespace Tetragrama::Components
         if (!Visible || !ParentLayer || !ParentLayer->CurrentApp)
             return;
 
-        auto* app                = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto*       app       = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        const float smooth_dt = ZEngine::Engine::GetContext()->SmoothedDeltaTime;
 
-        m_frame_times[m_ft_head] = ctx->DeltaTime;
-        m_ft_head                = (m_ft_head + 1) % kFtSamples;
-        if (m_ft_count < kFtSamples)
-            ++m_ft_count;
-        float sum = 0.f;
-        for (int i = 0; i < m_ft_count; ++i)
-            sum += m_frame_times[i];
-        m_smoothed_dt = sum / (float) m_ft_count;
+        float       sw        = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
+        float       sy        = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
 
-        float   sw       = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
-        float   sy       = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
-
-        ZUIBox* bar      = ZUIBeginRow(ctx, "##status_bar", ZPx(sw), ZPx(kBarH));
-        bar->Flags       = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
-        bar->FloatPos[0] = RegionW > 0 ? RegionX : 0.f;
-        bar->FloatPos[1] = sy;
+        ZUIBox*     bar       = ZUIBeginRow(ctx, "##status_bar", ZPx(sw), ZPx(kBarH));
+        bar->Flags            = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
+        bar->FloatPos[0]      = RegionW > 0 ? RegionX : 0.f;
+        bar->FloatPos[1]      = sy;
         // Background and border follow active theme
         ZUIBoxSetColorArr(bar, ctx->Theme.TitleBarBg);
         bar->BorderColor[0]  = ctx->Theme.PanelBorder[0];
@@ -130,9 +122,9 @@ namespace Tetragrama::Components
 
         // FPS
         {
-            float fps = m_smoothed_dt > 0.f ? 1.f / m_smoothed_dt : 0.f;
+            float fps = smooth_dt > 0.f ? 1.f / smooth_dt : 0.f;
             char  fps_buf[32];
-            snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms", (double) fps, (double) (m_smoothed_dt * 1000.f));
+            snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms", (double) fps, (double) (smooth_dt * 1000.f));
             ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
         }
 
