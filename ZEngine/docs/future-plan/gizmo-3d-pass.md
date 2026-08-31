@@ -1,9 +1,10 @@
 # ZEngine — 3D Gizmo Pass
 
 **Priority:** P2 — Required to drop ImGuizmo and therefore ImGui entirely  
-**Status:** Design  
-**Depends on:** `ui-system.md` (UIContext, all 8 steps done), `editor-entity-selection.md`, `actor-ecs-architecture.md` (ECS + TransformComponent), `physics-system.md`, `gpu-allocator-rearchitecture.md`  
-**Blocks:** Complete removal of `imgui` and `ImGuizmo` from `__externals/`
+**Status:** Design — updated with ZUI alignment, rich API layer, and codebase corrections  
+**Depends on:** `ui-system.md` (ZUI system — done, merged in PR #679), `editor-entity-selection.md`, `actor-ecs-architecture.md` (ECS + TransformComponent), `gpu-allocator-rearchitecture.md`  
+**Blocks:** Complete removal of `imgui` and `ImGuizmo` from `dependencies.cmake`  
+**Start after:** PR #679 merged to main
 
 ---
 
@@ -23,12 +24,13 @@ The 3D Gizmo Pass replaces **both** dependencies with engine-native equivalents:
 | Transform manipulation math | `GizmoInteraction` — axis projection, angle delta, scale ratio |
 | Decompose matrix | `DecomposeTransform` — replaces `ImGuizmo::DecomposeMatrixToComponents` |
 
-Additionally, this pass fixes two existing gaps in `editor-entity-selection.md`:
-- The design doc assumes `transform->Position / Rotation / Scale` as public fields. The
-  actual `TransformComponent` uses private fields with `GetPosition()` / `SetPosition()` etc.
-  The gizmo interaction code in this doc uses the correct accessor API.
+Additionally, this pass fixes one existing gap in `editor-entity-selection.md`:
 - `EditorSelectionContext` stores `ImGuizmo::OPERATION` and `ImGuizmo::MODE`. Those types
   are removed and replaced by `GizmoOperation` and `GizmoSpace` enums defined here.
+
+Note: `TransformComponent` has **public fields** `Position`, `Rotation` (Euler radians),
+`Scale`, and a read-only `WorldTransform` computed by `HierarchySystem`. All gizmo code
+writes directly to those fields — no accessor functions needed.
 
 ---
 
@@ -137,6 +139,19 @@ namespace ZEngine::Editor
     inline bool       IsGizmoHandle(uint32_t id)  { return (id & k_GizmoIDFlag) != 0; }
     inline GizmoAxis  GizmoAxisOf(uint32_t id)    { return GizmoAxis(id & k_GizmoAxisMask); }
     inline GizmoOperation GizmoOpOf(uint32_t id)  { return GizmoOperation((id >> k_GizmoOpShift) & k_GizmoOpMask); }
+
+    /// @brief Per-frame output returned to the viewport panel (ZUI widget adapter).
+    /// Caller writes deltas directly into TransformComponent public fields.
+    struct GizmoResult
+    {
+        bool      Active           = false;
+        bool      Hovered          = false;
+        Vec3f     DeltaPosition    = {};
+        Vec3f     DeltaRotationRad = {};   ///< Euler radians per axis.
+        Vec3f     DeltaScaleFactor = {};   ///< Multiplicative per-axis (1.0 = no change).
+        GizmoAxis HoveredAxis      = GizmoAxis::None;
+        GizmoAxis ActiveAxis       = GizmoAxis::None;
+    };
 }
 ```
 
@@ -181,6 +196,53 @@ namespace ZEngine::Editor
         // Gizmo scale: computed from camera distance to entity each frame
         // so handles stay a fixed screen size regardless of zoom level.
         float ScreenScaleFactor = 1.f;
+
+        // Caller-provided settings (snap, space, pivot, display options).
+        // Set each frame by the viewport panel before calling GizmoWidgetTick.
+        const GizmoSettings* Settings = nullptr;
+    };
+}
+```
+
+---
+
+## 4.5 GizmoSettings
+
+```cpp
+// ZEngine/ZEngine/Editor/Gizmo/GizmoSettings.h
+#pragma once
+#include <cstdint>
+
+namespace ZEngine::Editor
+{
+    /// @brief Per-frame caller-provided gizmo configuration.
+    /// Set by the viewport panel; consumed by GizmoInteraction and overlay functions.
+    struct GizmoSettings
+    {
+        enum class Space : uint8_t { World = 0, Local = 1 };
+        enum class Pivot : uint8_t { ObjectCenter = 0, WorldOrigin = 1, CursorPosition = 2 };
+
+        Space  CoordSpace        = Space::World;
+        Pivot  PivotPoint        = Pivot::ObjectCenter;
+
+        // Translation snap
+        bool   SnapTranslate     = false;
+        float  SnapTranslateStep = 0.5f;   ///< World units per snap increment.
+
+        // Rotation snap
+        bool   SnapRotate        = false;
+        float  SnapRotateDeg     = 15.f;   ///< Degrees per snap increment.
+
+        // Scale snap
+        bool   SnapScale         = false;
+        float  SnapScaleStep     = 0.1f;   ///< Multiplicative step (e.g. 0.1 = 10%).
+
+        // Display / measurement overlays
+        bool   ShowMeasurements  = true;   ///< Live distance label during translate drag.
+        bool   ShowAngleDelta    = true;   ///< Swept-angle label during rotate drag.
+        bool   ShowBounds        = false;  ///< AABB wireframe on selected actor.
+
+        float  ScreenArmPx       = 100.f;  ///< Target gizmo arm length in logical pixels.
     };
 }
 ```
@@ -677,7 +739,7 @@ namespace ZEngine::Editor::GizmoInteraction
                    const Core::Maths::Vec2f&       viewport_size);
 
     // Called each frame while dragging. Computes the new transform values.
-    // Writes out_pos / out_rot_euler / out_scale — call SetPosition etc. on TransformComponent.
+    // Writes out_pos / out_rot_euler / out_scale — assign directly to TransformComponent public fields.
     void UpdateDrag(const GizmoState*               state,
                     const Core::Maths::Vec2f&        mouse_screen_pos,
                     const Rendering::Cameras::Camera& camera,
@@ -702,6 +764,18 @@ namespace ZEngine::Editor::GizmoInteraction
         const Core::Maths::Vec3f&       entity_pos,
         const Rendering::Cameras::Camera& camera,
         float                            target_screen_pixels = 100.f);
+
+    // Snap v to the nearest multiple of step. No-op when step <= 0.
+    inline float SnapToGrid(float v, float step)
+    {
+        return (step > 0.f) ? std::roundf(v / step) * step : v;
+    }
+
+    // Snap degrees to the nearest multiple of step_deg.
+    inline float SnapAngleDeg(float deg, float step_deg)
+    {
+        return SnapToGrid(deg, step_deg);
+    }
 }
 ```
 
@@ -823,7 +897,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
 
     // ── 4. LMB press ───────────────────────────────────────────────────────
     const bool lmb_just_pressed =
-        Windows::Inputs::InputFrame::Get().IsMouseJustPressed(ZENGINE_KEY_MOUSE_BUTTON_LEFT);
+        ctx->MousePressed[0];   // ZUIContext mouse press (replaces InputFrame)
 
     if (lmb_just_pressed && ctx->ViewportHasFocus) {
         if (IsGizmoHandle(picked_id) && ctx->Selection->HasSelection) {
@@ -834,10 +908,10 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
                 GizmoInteraction::BeginDrag(
                     ctx->Gizmo,
                     GizmoAxisOf(picked_id),
-                    xform->GetPosition(),
-                    xform->GetRotationEulerAngles() * k_DegToRad,
-                    xform->GetScaleSize(),
-                    Windows::Inputs::InputFrame::Get().MousePos(),
+                    xform->Position,                          // public field
+                    xform->Rotation,                          // Euler radians, public field
+                    xform->Scale,                             // public field
+                    { ctx->ZUI->MousePos[0], ctx->ZUI->MousePos[1] },
                     *ctx->Camera,
                     { ctx->ViewportBounds.Size.x, ctx->ViewportBounds.Size.y });
             }
@@ -852,7 +926,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
 
     // ── 5. Gizmo drag update ────────────────────────────────────────────────
     const bool lmb_held =
-        Windows::Inputs::InputFrame::Get().IsMouseDown(ZENGINE_KEY_MOUSE_BUTTON_LEFT);
+        ctx->MouseDown[0];      // ZUIContext mouse held
 
     if (ctx->Gizmo->IsDragging && lmb_held && ctx->Selection->HasSelection) {
         auto* xform = scene.GetComponent<
@@ -861,21 +935,21 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
             Core::Maths::Vec3f new_pos, new_rot, new_scale;
             GizmoInteraction::UpdateDrag(
                 ctx->Gizmo,
-                Windows::Inputs::InputFrame::Get().MousePos(),
+                { ctx->ZUI->MousePos[0], ctx->ZUI->MousePos[1] },
                 *ctx->Camera,
                 { ctx->ViewportBounds.Size.x, ctx->ViewportBounds.Size.y },
                 new_pos, new_rot, new_scale);
 
-            // Use TransformComponent's accessor API (not direct field access)
-            xform->SetPosition(new_pos);
-            xform->SetRotationEulerAngles(new_rot * k_RadToDeg);  // SetRotationEulerAngles takes degrees
-            xform->SetScaleSize(new_scale);
+            // TransformComponent has public fields — write directly
+            xform->Position = new_pos;
+            xform->Rotation = new_rot;   // Euler radians
+            xform->Scale    = new_scale;
         }
     }
 
     // ── 6. LMB release — end drag ──────────────────────────────────────────
     const bool lmb_just_released =
-        Windows::Inputs::InputFrame::Get().IsMouseJustReleased(ZENGINE_KEY_MOUSE_BUTTON_LEFT);
+        ctx->ZUI->MouseReleased[0];   // ZUIContext LMB release this frame
 
     if (lmb_just_released && ctx->Gizmo->IsDragging) {
         GizmoInteraction::EndDrag(ctx->Gizmo);
@@ -883,7 +957,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
     }
 
     // ── 7. Schedule picking readback for next frame ─────────────────────────
-    const Core::Maths::Vec2f mouse_pos = Windows::Inputs::InputFrame::Get().MousePos();
+    const Core::Maths::Vec2f mouse_pos = { ctx->ZUI->MousePos[0], ctx->ZUI->MousePos[1] };
     const Core::Maths::Vec2f local_pos = {
         mouse_pos.x - ctx->ViewportBounds.Pos.x,
         mouse_pos.y - ctx->ViewportBounds.Pos.y,
@@ -928,17 +1002,97 @@ void DecomposeTransform(
 
 ---
 
+## 9.5 GizmoWidget — ZUI Adapter (`Tetragrama/Gizmo/GizmoWidget.h/.cpp`)
+
+Thin bridge between the viewport panel's ZUI world and the GPU gizmo system.
+Called from `ViewportPanel::BuildContent` after `img_sig` is obtained.
+
+```cpp
+/// @brief Drive the gizmo for one frame from the viewport's ZUI img_sig.
+/// Reads ctx->MousePos, ctx->MousePressed/Held/Released. Calls BeginDrag /
+/// UpdateDrag / EndDrag internally and returns the per-frame deltas.
+/// Caller writes DeltaPosition / DeltaRotationRad / DeltaScaleFactor to tc->Position etc.
+GizmoResult GizmoWidgetTick(
+    ZEngine::UI::ZUIContext*              ctx,
+    ZEngine::Editor::GizmoState*          state,
+    const ZEngine::Editor::GizmoSettings& settings,
+    ZEngine::ECS::ActorHandle             selected,
+    ZEngine::ECS::ActorManager*           actors,
+    const ZEngine::UI::ZUISignal&         img_sig,   // from ZUISignalFromBox on the scene image box
+    const float                           vp_rect[4]);
+
+/// @brief Apply result deltas to TransformComponent public fields.
+void GizmoApplyDelta(
+    const GizmoResult&                    result,
+    const ZEngine::Editor::GizmoSettings& settings,
+    ZEngine::ECS::Actor*                  actor);
+```
+
+Usage in `ViewportPanel::BuildContent`:
+```cpp
+GizmoResult r = GizmoWidgetTick(ctx, &state, settings, scene->SelectedActorHandle,
+                                 eng->ActorManager, img_sig, rect);
+if (r.Active)
+    GizmoApplyDelta(r, settings, eng->ActorManager->Access(scene->SelectedActorHandle));
+```
+
+---
+
+## 9.6 Measurement Overlays (`Tetragrama/Gizmo/GizmoOverlay.h/.cpp`)
+
+2D screen-space annotations drawn into `ZUICtx->DrawList` via a new `ZUI_DrawLine = 1<<15`
+box flag. All coordinates are logical pixels (same space as `ZUICtx->ScreenW/H`).
+
+```cpp
+/// @brief AA ruler line + floating distance label between two world points.
+void GizmoOverlayRuler(ZUIContext* ctx, Vec3f a, Vec3f b,
+                        const Mat4f& vp, const float vp_rect[4],
+                        const float color[4] = nullptr);  // nullptr = yellow
+
+/// @brief Swept-angle arc + degree label (call during active rotate drag).
+void GizmoOverlayAngleArc(ZUIContext* ctx,
+                           Vec3f origin, Vec3f from_dir, Vec3f to_dir,
+                           const Mat4f& vp, const float vp_rect[4]);
+
+/// @brief AABB wireframe with W×H×D dimension labels on visible faces.
+void GizmoOverlayBounds(ZUIContext* ctx, Vec3f aabb_min, Vec3f aabb_max,
+                         const Mat4f& vp, const float vp_rect[4]);
+
+/// @brief World-origin cross at {0,0,0} — positioning reference.
+void GizmoOverlayOriginMarker(ZUIContext* ctx,
+                               const Mat4f& vp, const float vp_rect[4]);
+```
+
+**`ZUI_DrawLine` box convention:**
+- `FloatPos[0/1]` = line start (screen, logical px)
+- `CornerRadii[2]` = end X, `CornerRadii[3]` = end Y
+- `BorderColor` = line RGBA, `BorderThickness` = width
+- `ZPx(0) x ZPx(0)` size, `ZUI_FloatX | ZUI_FloatY`
+
+Renderer addition in `ZUIRenderer::PreparePayload` box walk:
+```cpp
+if (box->Flags & ZUI_DrawLine)
+{
+    ZUIDrawListAddLine(&ctx->DrawList,
+        box->ScreenMin[0], box->ScreenMin[1],
+        box->CornerRadii[2], box->CornerRadii[3],
+        ZUIPackColor(box->BorderColor), box->BorderThickness);
+}
+```
+
+---
+
 ## 10. Pass Position in RenderGraph Frame
 
 ```
 DepthPrePass           → hdr_depth
 GeometryPass           → hdr_color, hdr_depth
 ...
-PostProcessPass        → ldr_final
+PostProcessPass        → g_frame_color_render_target
 EntityPickingPass      → pick_buffer (R32_UINT), pick_depth (D32)   ← new, ZENGINE_EDITOR only
-GizmoPass              → ldr_final (in-place, alpha blend off)       ← new, ZENGINE_EDITOR only
-EditorOutlinePass      → ldr_final (in-place, stencil)               ← existing
-UIPass                 → ldr_final (in-place)
+GizmoPass              → g_frame_color_render_target (in-place, alpha blend off)       ← new, ZENGINE_EDITOR only
+EditorOutlinePass      → g_frame_color_render_target (in-place, stencil)               ← existing
+UIPass                 → g_frame_color_render_target (in-place)
 OverlayPass            → swapchain
 ```
 
@@ -961,27 +1115,30 @@ The existing design doc must be updated to match:
 
 | Incorrect (design doc) | Correct (actual API) |
 |---|---|
-| `transform->Position` | `transform->GetPosition()` |
-| `transform->Rotation` | `transform->GetRotation()` (radians) |
-| `transform->Scale` | `transform->GetScaleSize()` |
-| `transform->Position = v` | `transform->SetPosition(v)` |
-| `transform->Rotation = v` | `transform->SetRotation(v)` (radians) or `SetRotationEulerAngles(v)` (degrees) |
-| `transform->Scale = v` | `transform->SetScaleSize(v)` |
+`TransformComponent` has **public fields** — accessor functions do not exist:
+
+```cpp
+tc->Position += delta;          // Vec3f, world-space position
+tc->Rotation += delta_rad;      // Vec3f, Euler radians (pitch/yaw/roll)
+tc->Scale    *= factor;         // Vec3f, per-axis scale
+// tc->WorldTransform           // Mat4f, read-only — computed by HierarchySystem
+```
 
 ---
 
 ## 12. Removing ImGuizmo and ImGui
 
-Once this pass is implemented and all Tetragrama panels are migrated to UIContext:
+ImGui and ImGuizmo are `FetchContent` entries in `dependencies.cmake` but have zero
+`#include` references in the current source — the ZUI migration is complete. What remains:
 
-1. Remove `ImGuizmo` includes from `EditorSelectionSystem.h` and `EditorSelectionSystem.cpp`
-2. Remove `#include <ImGuizmo.h>` everywhere
-3. Delete `__externals/ImGuizmo` submodule
-4. Remove `ImGuizmo` from `dependencies.cmake` and `CMakeLists.txt`
-5. With no remaining ImGui users: remove `ImGUIRenderer` registration from RenderGraph
-6. Delete `__externals/imgui` submodule
-7. Remove imgui from CMake
-8. Confirm build succeeds with `ZENGINE_EDITOR` defined and without it
+1. Remove `imgui` and `ImGuizmo` `FetchContent_Declare` blocks from `dependencies.cmake`
+2. Confirm build succeeds after removal
+3. Add `ZENGINE_EDITOR` compile definition to `Tetragrama/CMakeLists.txt`:
+   ```cmake
+   target_compile_definitions(Tetragrama PRIVATE ZENGINE_EDITOR)
+   ```
+   Gate `EntityPickingPass` and `GizmoPass` registration under `#ifdef ZENGINE_EDITOR`
+   in `AppRenderPipeline::Initialize`.
 
 ---
 
@@ -990,24 +1147,33 @@ Once this pass is implemented and all Tetragrama panels are migrated to UIContex
 ```
 ZEngine/ZEngine/Editor/
 ├── Gizmo/
-│   ├── GizmoTypes.h              — GizmoOperation, GizmoSpace, GizmoAxis, encoding helpers
-│   ├── GizmoState.h              — GizmoState struct
+│   ├── GizmoTypes.h              — GizmoOperation, GizmoSpace, GizmoAxis, GizmoResult, encoding helpers
+│   ├── GizmoSettings.h           — GizmoSettings struct (snap, space, pivot, display options)
+│   ├── GizmoState.h              — GizmoState struct (holds Settings* pointer)
 │   ├── GizmoGeometry.h/.cpp      — pre-built handle mesh data + GPU upload
-│   ├── GizmoInteraction.h/.cpp   — BeginDrag, UpdateDrag, EndDrag, ProjectAxisToScreen
+│   ├── GizmoInteraction.h/.cpp   — BeginDrag, UpdateDrag, EndDrag, SnapToGrid helpers
 │   ├── EntityPickingPass.h/.cpp  — IRenderGraphCallbackPass: R32_UINT pick buffer
 │   └── GizmoPass.h/.cpp          — IRenderGraphCallbackPass: gizmo handle rendering
 │
 └── Selection/
-    ├── EditorSelectionState.h    — unchanged
-    ├── EditorSelectionSystem.h   — updated: ImGuizmo types replaced, new dependencies
-    └── EditorSelectionSystem.cpp — updated: ImGuizmo calls replaced with GizmoInteraction
+    ├── EditorSelectionState.h    — new
+    ├── EditorSelectionSystem.h   — new: uses GizmoOperation/GizmoSpace, ZUIContext mouse
+    └── EditorSelectionSystem.cpp — new: GizmoInteraction calls, direct TC field writes
+
+ZEngine/ZEngine/UI/
+    ├── ZUIBox.h                  — add ZUI_DrawLine = 1<<15 (AA overlay lines)
+    └── ZUIRenderer.cpp           — handle ZUI_DrawLine in PreparePayload box walk
+
+Tetragrama/
+├── CMakeLists.txt                — add: target_compile_definitions(Tetragrama PRIVATE ZENGINE_EDITOR)
+└── Gizmo/
+    ├── GizmoWidget.h/.cpp        — GizmoWidgetTick: ZUI img_sig → Begin/Update/EndDrag bridge
+    └── GizmoOverlay.h/.cpp       — GizmoOverlayRuler, AngleArc, Bounds, OriginMarker
 
 Resources/Shaders/Editor/
-    ├── editor_pick.vert           — entity/handle ID output
-    ├── editor_pick.frag
-    ├── editor_gizmo.vert          — gizmo handle rendering
-    └── editor_gizmo.frag
-    (+ .spv cache files)
+    ├── editor_pick.vert/.frag    — entity/handle ID output (R32_UINT)
+    ├── editor_gizmo.vert/.frag   — gizmo handle rendering (depth ALWAYS)
+    └── (+ .spv cache files)
 ```
 
 ---
@@ -1054,7 +1220,7 @@ Resources/Shaders/Editor/
 ### EditorSelectionSystem
 - [ ] `ImGuizmo::OPERATION` / `ImGuizmo::MODE` removed from `EditorSelectionContext`; replaced by `GizmoOperation` / `GizmoSpace`
 - [ ] All `ImGuizmo::` call sites removed
-- [ ] `TransformComponent` accessed via `GetPosition()` / `SetPosition()` etc. (not direct fields)
+- [ ] `TransformComponent` fields written directly (`tc->Position`, `tc->Rotation`, `tc->Scale`) — no accessor functions
 - [ ] Hover state driven by picking buffer, not physics raycast
 - [ ] Entity selection driven by picking buffer (bit 31 = 0 → entity ID)
 - [ ] Gizmo drag begins on picking result with bit 31 = 1
@@ -1067,15 +1233,35 @@ Resources/Shaders/Editor/
 - [ ] All `.spv` files compiled and cached in `Resources/Shaders/Cache/`
 - [ ] Shaders excluded from non-editor cook
 
-### ImGuizmo removal
-- [ ] All `#include <ImGuizmo.h>` removed
-- [ ] `__externals/ImGuizmo` submodule removed
-- [ ] Build succeeds with `ZENGINE_EDITOR` defined and without it after removal
+### GizmoSettings + snap (§4.5 / §8)
+- [ ] `GizmoSettings` struct: all fields default-initialized; `GizmoState::Settings` pointer wired
+- [ ] `GizmoResult` struct in `GizmoTypes.h`
+- [ ] `SnapToGrid` / `SnapAngleDeg` inline helpers in `GizmoInteraction.h`
+- [ ] Translate drag snaps when `GizmoSettings::SnapTranslate = true`
+- [ ] Rotate drag snaps to `SnapRotateDeg` increments when enabled
+- [ ] Scale snap applied when `SnapScale = true`
 
-### ImGui removal (after all UIContext panel migrations complete)
-- [ ] `ImGUIRenderer` removed from RenderGraph registration
-- [ ] All `#include <imgui.h>` removed from engine code
-- [ ] `__externals/imgui` submodule removed
+### GizmoWidget — ZUI adapter (§9.5, `Tetragrama/Gizmo/GizmoWidget.h/.cpp`)
+- [ ] `GizmoWidgetTick` routes `img_sig` (Pressed/Held/Released) → Begin/Update/EndDrag
+- [ ] Uses `ctx->MousePos[]`, `ctx->MousePressed[0]`, `ctx->MouseReleased[0]` (not InputFrame)
+- [ ] `GizmoApplyDelta` writes to `tc->Position / Rotation / Scale` directly
+- [ ] Respects `GizmoSettings::CoordSpace` (Local: axis from `WorldTransform` rows 0-2)
+- [ ] Respects `GizmoSettings::PivotPoint` (WorldOrigin adds offset)
+
+### ZUI_DrawLine + Measurement Overlays (`Tetragrama/Gizmo/GizmoOverlay.h/.cpp`)
+- [ ] `ZUI_DrawLine = 1 << 15` added to `ZUIBoxFlags` in `ZUIBox.h`
+- [ ] Renderer handles `ZUI_DrawLine` in `PreparePayload` box walk (`ZUIRenderer.cpp`)
+- [ ] Ruler overlay: yellow line + `"%.2f"` distance label at midpoint
+- [ ] Angle arc: swept polyline + `"%.1f°"` label during active rotate drag
+- [ ] AABB bounds: 12 edges + W×H×D dimension labels on visible faces
+- [ ] Origin marker: 3 colored arms at `{0,0,0}`
+- [ ] All overlays clipped to viewport rect via `ZUIDrawListPushClipRect / Pop`
+
+### Build / CMake
+- [ ] `ZENGINE_EDITOR` added to `Tetragrama/CMakeLists.txt`
+- [ ] `EntityPickingPass` and `GizmoPass` registration guarded with `#ifdef ZENGINE_EDITOR`
+- [ ] `imgui` and `ImGuizmo` `FetchContent` entries removed from `dependencies.cmake`
+- [ ] Build succeeds with `ZENGINE_EDITOR` defined and without it
 - [ ] Build succeeds
 
 ### Tests
