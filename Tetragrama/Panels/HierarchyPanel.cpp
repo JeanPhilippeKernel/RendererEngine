@@ -26,6 +26,8 @@ namespace Tetragrama::Panels
 
     static bool ContainsCI(const char* haystack, const char* needle)
     {
+        if (!haystack)
+            return false;
         if (!needle[0])
             return true;
         for (; *haystack; ++haystack)
@@ -143,13 +145,7 @@ namespace Tetragrama::Panels
 
         // ── O(n) DFS tree build — exact develop algorithm ─────────────────────
         uint32_t actor_total = eng->ActorManager->Count();
-        if (actor_total == 0)
-        {
-            ZUIEndColumn(ctx);
-            return;
-        }
-        static constexpr uint32_t kMaxN = 512;
-        uint32_t                  cap   = actor_total < kMaxN ? actor_total : kMaxN;
+        uint32_t cap         = actor_total > 0 ? actor_total : 1; // min 1 to avoid 0-size alloc
 
         struct OutlinerNode
         {
@@ -160,7 +156,7 @@ namespace Tetragrama::Panels
         OutlinerNode* nodes       = ZPushArray(&ctx->FrameArena, OutlinerNode, cap);
         uint32_t*     first_child = ZPushArray(&ctx->FrameArena, uint32_t, cap);
         uint32_t*     next_sib    = ZPushArray(&ctx->FrameArena, uint32_t, cap);
-        uint32_t      nc          = 0;
+        uint32_t      node_count  = 0;
 
         for (uint32_t i = 0; i < cap; ++i)
         {
@@ -168,20 +164,18 @@ namespace Tetragrama::Panels
             next_sib[i]    = UINT32_MAX;
         }
         eng->ActorManager->ForEach([&](ActorHandle h, Actor* actor) {
-            if (nc >= cap)
-                return;
-            auto* pc    = actor->GetComponent<ParentComponent>();
-            nodes[nc++] = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY};
+            auto* pc           = actor->GetComponent<ParentComponent>();
+            nodes[node_count++] = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY};
         });
 
         // O(1) parent lookup — exact develop UnorderedHashMap pattern
         ZEngine::Core::Containers::UnorderedHashMap<EntityID, uint32_t> eid_to_idx;
-        eid_to_idx.init(&ctx->FrameArena, nc * 2 + 1);
-        for (uint32_t i = 0; i < nc; ++i)
+        eid_to_idx.init(&ctx->FrameArena, node_count * 2 + 1);
+        for (uint32_t i = 0; i < node_count; ++i)
             eid_to_idx.insert(nodes[i].EID, i);
 
         // Prepend-to-front-of-child-list linkage (exact develop)
-        for (uint32_t i = 0; i < nc; ++i)
+        for (uint32_t i = 0; i < node_count; ++i)
         {
             if (nodes[i].Parent == INVALID_ENTITY)
                 continue;
@@ -198,9 +192,9 @@ namespace Tetragrama::Panels
             uint32_t idx;
             int      depth;
         };
-        DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, nc * 2 + 2);
+        DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, node_count * 2 + 2);
         int       sp  = 0;
-        for (int i = (int) nc - 1; i >= 0; --i)
+        for (int i = (int) node_count - 1; i >= 0; --i)
             if (nodes[i].Parent == INVALID_ENTITY)
                 stk[sp++] = {(uint32_t) i, 0};
 
@@ -217,6 +211,7 @@ namespace Tetragrama::Panels
         ActorHandle        pending_delete          = {};
         ActorHandle        pending_reparent_child  = {};
         EntityID           pending_reparent_parent = INVALID_ENTITY;
+        bool               drop_handled            = false; // prevents dual-path double-mutation
         // Detach-to-root (World drop + "Remove from Parent" menu) routes through
         // pending_reparent_parent = INVALID_ENTITY — single path, exact develop.
 
@@ -248,7 +243,8 @@ namespace Tetragrama::Panels
                 ZUIBox* cell_row = ZUIBeginRow(ctx, cellk, ZPx(cw), ZPx(fh));
                 (void) cell_row;
 
-                // Column 0 gets the eye icon before the label
+                // Column 0: decorative eye icon (no ZUI_Clickable — not yet interactive).
+                // ZUIStateGetOrInsert is required to set UserData for the icon renderer.
                 if (ci == 0)
                 {
                     ZUISpacer(ctx, 4.f);
@@ -339,7 +335,7 @@ namespace Tetragrama::Panels
             ZUIDataTableSetColumn(ctx, 2);
             // World root accepts drops to detach an actor from its parent
             char drop_root[sizeof(ActorHandle)] = {};
-            if (ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_root, sizeof(drop_root)))
+            if (!drop_handled && ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_root, sizeof(drop_root)))
             {
                 ActorHandle dragged = {};
                 secure_memcpy(&dragged, sizeof(dragged), drop_root, sizeof(drop_root));
@@ -347,6 +343,7 @@ namespace Tetragrama::Panels
                 {
                     pending_reparent_child  = dragged;
                     pending_reparent_parent = INVALID_ENTITY;
+                    drop_handled            = true;
                 }
             }
         }
@@ -362,12 +359,9 @@ namespace Tetragrama::Panels
                 if (!actor)
                     continue;
 
-                auto*       nc_comp = actor->GetComponent<NameComponent>();
-                const char* label   = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
-
-                // Search filter: skip node entirely (develop: plain continue, no subtree push)
-                if (m_search[0] && !ContainsCI(label, m_search))
-                    continue;
+                auto*       nc_comp     = actor->GetComponent<NameComponent>();
+                const char* label       = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+                bool        label_match = !m_search[0] || ContainsCI(label, m_search);
 
                 // Type — exact develop: is_collection = !Mesh && !Light && !Camera
                 bool         is_coll = !actor->HasComponent<MeshComponent>() && !actor->HasComponent<LightComponent>() && !actor->HasComponent<CameraComponent>();
@@ -410,6 +404,11 @@ namespace Tetragrama::Panels
                 bool      selected    = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
                 bool      renaming    = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
                 float     indent      = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
+
+                // Render the row only when it matches the search filter;
+                // always push children so descendant matches are reachable.
+                if (label_match)
+                {
 
                 // Row
                 bool      row_clicked = ZUIDataTableNextRow(ctx, selected);
@@ -504,9 +503,19 @@ namespace Tetragrama::Panels
                     if (m_rename_fkey != 0 && ctx->FocusKey != m_rename_fkey)
                     {
                         if (nc_comp && m_rename_buf[0])
-                            secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1);
-                        m_rename_id   = {};
-                        m_rename_fkey = 0;
+                        {
+                            if (secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1) >= 0)
+                            {
+                                m_rename_id   = {};
+                                m_rename_fkey = 0;
+                            }
+                            // On copy failure keep rename active so user can retry
+                        }
+                        else
+                        {
+                            m_rename_id   = {};
+                            m_rename_fkey = 0;
+                        }
                     }
                 }
                 else
@@ -529,8 +538,8 @@ namespace Tetragrama::Panels
                 if (row_clicked)
                 {
                     scene->SelectedActorHandle = nodes[ni].Handle;
-                    float now                  = ctx->Time;
-                    if (m_last_click_idx == nodes[ni].Handle.Index && m_last_click_gen == nodes[ni].Handle.Generation && now - m_last_click_time < 0.30f)
+                    double now                 = (double) ctx->Time;
+                    if (m_last_click_idx == nodes[ni].Handle.Index && m_last_click_gen == nodes[ni].Handle.Generation && now - m_last_click_time < 0.30)
                     {
                         // Double-click on name/icon area → start rename
                         if (!renaming)
@@ -581,7 +590,7 @@ namespace Tetragrama::Panels
 
                 // Drop target — bounds-based: DragTargetKey = deepest clickable child (chevron),
                 // not the outer row. Use prev-frame ScreenRect + panel-owned m_dragging_actor.
-                if (ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
+                if (!drop_handled && ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
                 {
                     auto* drps   = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
                     bool  in_row = drps && drps->ScreenMaxX > drps->ScreenMinX && ctx->MousePos[0] >= drps->ScreenMinX && ctx->MousePos[0] <= drps->ScreenMaxX && ctx->MousePos[1] >= drps->ScreenMinY && ctx->MousePos[1] <= drps->ScreenMaxY;
@@ -589,16 +598,19 @@ namespace Tetragrama::Panels
                     {
                         pending_reparent_child  = m_dragging_actor;
                         pending_reparent_parent = nodes[ni].EID;
+                        drop_handled            = true;
                     }
                 }
 
-                // Push children — collect forward then reverse-push (exact develop tmp[] pattern)
+                } // end if (label_match)
+
+                // Push children — always unconditional so filtered subtrees remain reachable.
                 if (has_ch && !collapsed)
                 {
-                    uint32_t tmp[256];
+                    uint32_t tmp[1024];
                     int      tc = 0;
                     uint32_t c  = first_child[ni];
-                    while (c != UINT32_MAX && tc < 256)
+                    while (c != UINT32_MAX && tc < 1024)
                     {
                         tmp[tc++] = c;
                         c         = next_sib[c];
@@ -633,7 +645,7 @@ namespace Tetragrama::Panels
             ZUIDataTableSetColumn(ctx, 1);
             ZUIDataTableSetColumn(ctx, 2);
             // Root drop zone — use m_dragging_actor (DragPayloadLen=0 on drop frame)
-            if (ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
+            if (!drop_handled && ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
             {
                 auto* rzps    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
                 bool  in_zone = rzps && rzps->ScreenMaxX > rzps->ScreenMinX && ctx->MousePos[0] >= rzps->ScreenMinX && ctx->MousePos[0] <= rzps->ScreenMaxX && ctx->MousePos[1] >= rzps->ScreenMinY && ctx->MousePos[1] <= rzps->ScreenMaxY;
@@ -641,6 +653,7 @@ namespace Tetragrama::Panels
                 {
                     pending_reparent_parent = INVALID_ENTITY;
                     pending_reparent_child  = m_dragging_actor;
+                    drop_handled            = true;
                 }
             }
         }
@@ -655,7 +668,7 @@ namespace Tetragrama::Panels
             snprintf(tip_buf, sizeof(tip_buf), "Move: %s", m_drag_label);
             uint32_t tlen    = (uint32_t) strlen(tip_buf);
             float    tip_x   = ctx->MousePos[0] - rect[0] + 12.f;
-            float    tip_y   = ctx->MousePos[1] - rect[1] - ZUIGetFrameHeight(ctx) - 4.f;
+            float    tip_y   = fmaxf(0.f, ctx->MousePos[1] - rect[1] - ZUIGetFrameHeight(ctx) - 4.f);
             ZUIBox*  tip     = ZUIPushBox(ctx, "##drag_tip", 10, ZUI_DrawBackground | ZUI_DrawText | ZUI_FloatX | ZUI_FloatY | ZUI_DropShadow);
             tip->FloatPos[0] = tip_x;
             tip->FloatPos[1] = tip_y;
@@ -688,34 +701,66 @@ namespace Tetragrama::Panels
             Actor* child = eng->ActorManager->Access(pending_reparent_child);
             if (child)
             {
-                if (pending_reparent_parent == INVALID_ENTITY)
+                // Cycle guard: abort if the target is a descendant of the child being moved.
+                bool cycle = false;
+                if (pending_reparent_parent != INVALID_ENTITY)
                 {
-                    child->RemoveComponent<ParentComponent>();
+                    EntityID child_eid = child->GetEntityID();
+                    EntityID walk      = pending_reparent_parent;
+                    uint32_t steps     = 0;
+                    while (walk != INVALID_ENTITY && steps < node_count)
+                    {
+                        if (walk == child_eid) { cycle = true; break; }
+                        auto* widx = eid_to_idx.find(walk);
+                        if (!widx) break;
+                        walk = nodes[*widx].Parent;
+                        ++steps;
+                    }
                 }
-                else
+
+                if (!cycle)
                 {
-                    ParentComponent pc_new = {};
-                    pc_new.Parent          = pending_reparent_parent;
-                    if (child->HasComponent<ParentComponent>())
-                        child->GetComponent<ParentComponent>()->Parent = pending_reparent_parent;
+                    if (pending_reparent_parent == INVALID_ENTITY)
+                    {
+                        if (child->HasComponent<ParentComponent>())
+                            child->RemoveComponent<ParentComponent>();
+                    }
                     else
-                        child->AddComponent<ParentComponent>(pc_new);
+                    {
+                        ParentComponent pc_new = {};
+                        pc_new.Parent          = pending_reparent_parent;
+                        if (child->HasComponent<ParentComponent>())
+                            child->GetComponent<ParentComponent>()->Parent = pending_reparent_parent;
+                        else
+                            child->AddComponent<ParentComponent>(pc_new);
+                    }
                 }
             }
         }
 
-        // Delete actor
+        // Delete actor — re-root children first to prevent orphaned subtrees.
         if (pending_delete.Valid())
         {
             Actor* a = eng->ActorManager->Access(pending_delete);
             if (a)
             {
+                EntityID delete_eid = a->GetEntityID();
+                // Detach all direct children before destroying the parent.
+                for (uint32_t ci = 0; ci < node_count; ++ci)
+                {
+                    if (nodes[ci].Parent == delete_eid)
+                    {
+                        Actor* child_a = eng->ActorManager->Access(nodes[ci].Handle);
+                        if (child_a && child_a->HasComponent<ParentComponent>())
+                            child_a->RemoveComponent<ParentComponent>();
+                    }
+                }
                 auto* mc = a->GetComponent<MeshComponent>();
                 if (mc && mc->RenderInstanceId != UINT32_MAX)
                     scene->RemoveMeshInstance(mc->RenderInstanceId, eng->RenderResourceManager);
                 if (scene->SelectedActorHandle.Index == pending_delete.Index && scene->SelectedActorHandle.Generation == pending_delete.Generation)
                     scene->SelectedActorHandle = {};
-                if (m_rename_id.IsValid())
+                if (m_rename_id.IsValid() && m_rename_id == delete_eid)
                 {
                     m_rename_id   = {};
                     m_rename_fkey = 0;

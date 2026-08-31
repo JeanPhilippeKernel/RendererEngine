@@ -43,7 +43,7 @@ namespace Tetragrama::Panels
         // so we track in the panel to avoid double-firing)
         uint32_t                      m_last_click_idx           = UINT32_MAX;
         uint32_t                      m_last_click_gen           = 0;
-        float                         m_last_click_time          = -1.f;
+        double                        m_last_click_time          = -1.0;
 
         bool IsCollapsed(ZEngine::ECS::EntityID id) const;
         void ToggleCollapsed(ZEngine::ECS::EntityID id);
