@@ -746,13 +746,18 @@ namespace Tetragrama::Panels
             {
                 EntityID delete_eid = a->GetEntityID();
                 // Detach all direct children before destroying the parent.
+                // Write Parent=INVALID_ENTITY in-place instead of RemoveComponent
+                // to avoid archetype moves that can invalidate in-flight actor handles.
                 for (uint32_t ci = 0; ci < node_count; ++ci)
                 {
                     if (nodes[ci].Parent == delete_eid)
                     {
                         Actor* child_a = eng->ActorManager->Access(nodes[ci].Handle);
-                        if (child_a && child_a->HasComponent<ParentComponent>())
-                            child_a->RemoveComponent<ParentComponent>();
+                        if (child_a)
+                        {
+                            auto* pc = child_a->GetComponent<ParentComponent>();
+                            if (pc) pc->Parent = INVALID_ENTITY;
+                        }
                     }
                 }
                 auto* mc = a->GetComponent<MeshComponent>();
