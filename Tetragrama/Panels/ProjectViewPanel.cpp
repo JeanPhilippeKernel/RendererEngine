@@ -112,7 +112,6 @@ namespace Tetragrama::Panels
     ProjectViewPanel::ProjectViewPanel()
     {
         Title = "Project";
-        memset(m_entries, 0, sizeof(m_entries));
     }
 
     // ── VFS listing ───────────────────────────────────────────────────────────
@@ -265,7 +264,7 @@ namespace Tetragrama::Panels
                 ZUILabel(ctx, seg, ctx->Theme.TextDefault);
             else if (path_valid)
             {
-                char bk[300];
+                char bk[300] = {};
                 snprintf(bk, sizeof(bk), "%s##pv_bc%u", seg, i);
                 if (ZUISmallButton(ctx, bk).Flags & ZUI_SignalClicked)
                 {
@@ -327,7 +326,7 @@ namespace Tetragrama::Panels
             bool     is_sel  = (m_current_dir.CStr() && strcmp(e.full_path, m_current_dir.CStr()) == 0);
 
             // Wrapper column: indentation + optional selection bg
-            char    ck[64];
+            char    ck[64] = {};
             snprintf(ck, sizeof(ck), "##stc_%llu", (unsigned long long) key);
             ZUIBox* col       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(fh));
             col->Padding[0]   = (float) e.depth * ctx->Style.IndentSpacing;
@@ -338,7 +337,7 @@ namespace Tetragrama::Panels
                 ZUIBoxSetColorArr(col, kSelBg);
             }
 
-            char tn[300];
+            char tn[300] = {};
             snprintf(tn, sizeof(tn), "%s##st_%llu", name, (unsigned long long) key);
             ZUISignal sig = ZUITreeNode(ctx, tn, &is_open);
             if (ps) ps->UserData = is_open ? 1.f : 0.f;
@@ -355,7 +354,7 @@ namespace Tetragrama::Panels
             }
 
             // Context menu — unique key per node to prevent wrong-node deletion
-            char ctx_key[48];
+            char ctx_key[48] = {};
             snprintf(ctx_key, sizeof(ctx_key), "##stctx_%llu", (unsigned long long) key);
             if (ZUIBeginPopupContextItem(ctx, ctx_key, sig))
             {
@@ -421,7 +420,7 @@ namespace Tetragrama::Panels
         for (int i = 0; i < kNCats; ++i)
         {
             bool active = (strcmp(m_type_filter, kCategories[i]) == 0);
-            char rk[32];
+            char rk[32] = {};
             snprintf(rk, sizeof(rk), "##pv_flt_%d", i);
             ZUIBox* row = ZUIBeginRow(ctx, rk, ZFill(), ZPx(row_h));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
@@ -474,7 +473,7 @@ namespace Tetragrama::Panels
         static constexpr int kMaxNameChars = 26;
 
         // Collect filtered entries
-        int vis[kMaxEntries];
+        int vis[kMaxEntries] = {};
         int nvis = 0;
         for (int i = 0; i < m_nentries; ++i)
             if (PassesFilters(m_entries[i], m_search, m_type_filter))
@@ -485,7 +484,7 @@ namespace Tetragrama::Panels
 
         for (int r = 0; r * col_count < nvis; ++r)
         {
-            char rk[32];
+            char rk[32] = {};
             snprintf(rk, sizeof(rk), "##pvrow_%d", r);
             ZUIBeginRow(ctx, rk, ZFill(), ZPx(card_h));
             ZUISpacer(ctx, 8.f);
@@ -495,7 +494,7 @@ namespace Tetragrama::Panels
                 int ei = r * col_count + c;
                 if (ei >= nvis)
                 {
-                    char fk[32];
+                    char fk[32] = {};
                     snprintf(fk, sizeof(fk), "##pvfl_%d_%d", r, c);
                     ZUIBox* fil  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
                     fil->Size[0] = ZPx(kCardW - 8.f);
@@ -508,7 +507,7 @@ namespace Tetragrama::Panels
                     bool         hov;
 
                     // ── Card column ───────────────────────────────────────────
-                    char         ck[32];
+                    char         ck[32] = {};
                     snprintf(ck, sizeof(ck), "##pvc_%d_%d", r, c);
                     float   cw   = kCardW - 8.f;
                     ZUIBox* card = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
@@ -553,13 +552,13 @@ namespace Tetragrama::Panels
 
                         ZUISpacer(ctx, top_pad);
                         {
-                            char rk2[32];
+                            char rk2[32] = {};
                             snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
                             ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
                         }
                         ZUISpacer(ctx, side_pad); // center horizontally (#6)
 
-                        char ik[32];
+                        char ik[32] = {};
                         snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
                         ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
                         ico->Size[0]      = ZPx(isz);
@@ -579,7 +578,7 @@ namespace Tetragrama::Panels
 
                     // ── Footer strip (dark overlay with bottom rounding) (#1) ──
                     {
-                        char ftk[32];
+                        char ftk[32] = {};
                         snprintf(ftk, sizeof(ftk), "##pvft_%d_%d", r, c);
                         ZUIBox* footer = ZUIBeginColumn(ctx, ftk, ZFill(), ZPx(footer_h));
                         footer->Flags  = footer->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
@@ -591,7 +590,7 @@ namespace Tetragrama::Panels
 
                         // ── Filename — left-aligned, truncated with ellipsis (#2, #7) ──
                         {
-                            char display[256];
+                            char display[256] = {};
                             if ((int) strlen(e.name) > kMaxNameChars)
                             {
                                 secure_strncpy(display, sizeof(display), e.name, (size_t) (kMaxNameChars - 3));
@@ -603,7 +602,7 @@ namespace Tetragrama::Panels
                             else
                                 secure_strncpy(display, sizeof(display), e.name, sizeof(display) - 1);
 
-                            char fnk[32];
+                            char fnk[32] = {};
                             snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
                             uint32_t nl      = (uint32_t) strlen(display);
                             ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
@@ -621,7 +620,7 @@ namespace Tetragrama::Panels
                         // ── Type label — left-aligned, dim (#2) ──────────────
                         {
                             const char* type_lbl = e.is_dir ? "Folder" : TypeCategory(e.name);
-                            char        tlk[32];
+                            char        tlk[32] = {};
                             snprintf(tlk, sizeof(tlk), "##pvtl_%d_%d", r, c);
                             uint32_t tl       = (uint32_t) strlen(type_lbl);
                             ZUIBox*  tlb      = ZUIPushBox(ctx, tlk, (uint32_t) strlen(tlk), ZUI_DrawText);
@@ -1060,7 +1059,7 @@ namespace Tetragrama::Panels
             sb->EdgeSoftness = 0.f;
             ZUISpacer(ctx, 8.f);
             {
-                char st[64];
+                char st[64] = {};
                 bool has_sel = (m_selected_path[0] != '\0');
                 snprintf(st, sizeof(st), "%d item%s%s", nvis, nvis == 1 ? "" : "s", has_sel ? " (1 selected)" : "");
                 ZUILabel(ctx, st, ctx->Theme.TextDim);
