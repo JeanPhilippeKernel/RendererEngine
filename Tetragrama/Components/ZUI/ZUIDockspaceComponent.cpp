@@ -166,8 +166,8 @@ namespace Tetragrama::Components
                 ZUIMenuItem(ctx, "Main Panels", false);
                 ZUISeparator(ctx);
 
-                static const char* kPanels[] = {"Hierarchy", "Console", "Inspector", "Viewport", "Project"};
-                for (int pi = 0; pi < 5; ++pi)
+                static const char* kPanels[] = {"Hierarchy", "Console", "Inspector", "Project"};
+                for (int pi = 0; pi < 4; ++pi)
                 {
                     bool vis = ShellPanelManager && ShellPanelManager->IsPanelVisible(kPanels[pi]);
                     if (ZUIMenuItemEx(ctx, kPanels[pi], nullptr, vis) && ShellPanelManager)
