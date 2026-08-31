@@ -139,7 +139,7 @@ namespace Tetragrama::Panels
         // ── 3-column table — Type and Level are fixed; Item Label stretches ─────
         static constexpr float kTypeW      = 72.f;
         static constexpr float kLevelW     = 64.f;
-        static constexpr float kLabelMinW  = 120.f; // Item Label never compresses below this
+        static constexpr float kLabelMinW  = 220.f; // Item Label never compresses below this
         ZUIDataTableColumn cols[3] = {
             {"Item Label", fmaxf(pw - kTypeW - kLevelW, kLabelMinW), kLabelMinW, true, false},
             {      "Type",                               kTypeW,           0.f,  true, false},
