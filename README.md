@@ -21,9 +21,11 @@ It can be used for activities such as:
 
 ### Supported Platforms
 
-- Windows
-- macOS (under active revision)
-- Linux (`Debian` or `Ubuntu` recommended, under active revision)
+| Platform | Status |
+|---|---|
+| Windows | Actively developed and tested |
+| macOS | Actively developed and tested |
+| Linux (`Debian` / `Ubuntu`) | Actively developed and tested |
 
 ## Projects
 
