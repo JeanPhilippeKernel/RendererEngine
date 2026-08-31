@@ -21,6 +21,7 @@ namespace Tetragrama::Components
         Visible     = visibility;
     }
 
+    // HOT PATH — runs every frame, no heap allocation allowed.
     void ZUIStatusBarComponent::BuildUI(ZUIContext* ctx)
     {
         if (!Visible || !ParentLayer || !ParentLayer->CurrentApp)

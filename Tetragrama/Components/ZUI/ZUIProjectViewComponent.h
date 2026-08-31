@@ -5,14 +5,24 @@
 
 namespace Tetragrama::Components
 {
+    /// @brief Legacy floating project-view panel (pre-ZUIPanelManager path).
+    ///        Lists VFS entries with lazy per-directory caching, drag-source for
+    ///        asset files, navigation, and a context-menu import trigger.
+    ///        Superseded by ProjectViewPanel but kept as the legacy code path.
     class ZUIProjectViewComponent : public ZUIComponent
     {
     public:
         ZUIProjectViewComponent()           = default;
         ~ZUIProjectViewComponent() override = default;
 
+        /// @brief Allocates the entry arena and stores parent/name/visibility.
+        /// @param parent     Owning ZUI layer.
+        /// @param name       Component name.
+        /// @param visibility Initial visibility.
         void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "Project", bool visibility = true) override;
 
+        /// @brief Builds the floating project-view panel for this frame.
+        /// @param ctx ZUI context for the current frame.
         void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 
     private:

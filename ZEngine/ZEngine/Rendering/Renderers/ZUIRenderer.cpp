@@ -14,9 +14,7 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
-    // ---------------------------------------------------------------
     // Initialize / Deinitialize
-    // ---------------------------------------------------------------
 
     void ZUIRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
@@ -89,9 +87,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    // ---------------------------------------------------------------
     // PreparePayload — walk box tree, emit draw list
-    // ---------------------------------------------------------------
 
     void ZUIRenderer::PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena)
     {
@@ -123,9 +119,7 @@ namespace ZEngine::Rendering::Renderers
         ZUIDrawListInit(&ctx->DrawList, payload_arena, kMaxVtx, kMaxIdx, wu, wv, atlas_idx);
         ZUIDrawListPushClipRect(&ctx->DrawList, 0.f, 0.f, fb_w, fb_h, false);
 
-        // ---------------------------------------------------------------
         // Helpers
-        // ---------------------------------------------------------------
 
         auto PackBoxColor = [](const float c[4][4], bool& all_same) -> uint32_t {
             all_same = true;
@@ -154,9 +148,7 @@ namespace ZEngine::Rendering::Renderers
             return false;
         };
 
-        // ---------------------------------------------------------------
         // Clip stack (same ancestor-based approach as the old renderer)
-        // ---------------------------------------------------------------
         static constexpr uint32_t kClipDepth             = 8;
         const ZUIBox*             clip_stack[kClipDepth] = {};
         uint32_t                  clip_top               = 0;
@@ -178,9 +170,8 @@ namespace ZEngine::Rendering::Renderers
             }
         };
 
-        // ---------------------------------------------------------------
         // DFS walk (identical traversal order to old PreparePayload)
-        // ---------------------------------------------------------------
+        // HOT PATH — runs every frame, no heap allocation allowed.
         ZUIBox** nodes      = ZPushArray(&ctx->FrameArena, ZUIBox*, max_boxes);
         ZUIBox** dfs_stack  = ZPushArray(&ctx->FrameArena, ZUIBox*, max_boxes);
         uint32_t node_count = 0, stack_top = 0;
@@ -714,9 +705,7 @@ namespace ZEngine::Rendering::Renderers
         out->CmdCount = ctx->DrawList.CmdCount;
     }
 
-    // ---------------------------------------------------------------
     // Submit
-    // ---------------------------------------------------------------
 
     void ZUIRenderer::Submit(Hardwares::CommandBuffer* primary_cmd, const ZUIRenderPayload& payload)
     {

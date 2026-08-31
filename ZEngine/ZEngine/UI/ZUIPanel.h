@@ -52,12 +52,12 @@ namespace ZEngine::UI
     /// @brief Target zone when a dragged panel is released over another panel.
     enum class ZUIDropZone
     {
-        None,
-        Center,
-        Left,
-        Right,
-        Top,
-        Bottom
+        None   = 0, ///< No drop target.
+        Center = 1, ///< Drop onto the target panel (merge into its tab bar).
+        Left   = 2, ///< Split: insert as new panel to the left.
+        Right  = 3, ///< Split: insert as new panel to the right.
+        Top    = 4, ///< Split: insert as new panel above.
+        Bottom = 5  ///< Split: insert as new panel below.
     };
 
     /// @brief Transient drag-to-dock state — valid only while a drag is active.
@@ -94,7 +94,7 @@ namespace ZEngine::UI
     struct ZUIPanelManager
     {
         ZUIDockTree*     DockTree = nullptr;
-        ZUIPanel         Panels[kMaxPanels];
+        ZUIPanel         Panels[kMaxPanels] = {};
         uint32_t         PanelCount                   = 0;
         uint32_t         FocusedPanelIdx              = 0;
 
@@ -106,7 +106,7 @@ namespace ZEngine::UI
         uint64_t         PendingCloseKeys[kMaxPanels] = {};
         uint32_t         PendingCloseCount            = 0;
 
-        ZUIDragDockState Drag;
+        ZUIDragDockState Drag = {};
         uint64_t         DragKeySeq = 0xD0C400000000ULL; ///< Monotone counter for drag-split panel keys
 
         /// @brief Allocate the dock tree and reset panel state.
@@ -116,10 +116,12 @@ namespace ZEngine::UI
 
         /// @brief Register a new panel slot keyed by @p dock_key.
         /// @param dock_key  ZUIDockHashName("PanelName") or a drag-generated key.
-        /// @return Pointer to the new ZUIPanel, or nullptr if kMaxPanels is reached.
+        /// @returns Pointer to the new panel, or nullptr if capacity is reached.
         ZUIPanel*        AddPanel(uint64_t dock_key);
 
         /// @brief Append @p view to @p panel's tab list.
+        /// @param panel Target panel to add the view to.
+        /// @param view  View to register.
         /// @note No-op when panel is null or already at kMaxTabsPerPanel.
         void             AddView(ZUIPanel* panel, ZUIPanelView* view);
 
@@ -130,16 +132,27 @@ namespace ZEngine::UI
         void             BuildUI(ZUIContext* ctx, float menu_h, float status_h);
 
         /// @brief Find the panel registered with @p dock_key.
+        /// @param dock_key Dock node key to search for.
         /// @return Pointer to the panel, or nullptr if not found.
         ZUIPanel*        FindPanel(uint64_t dock_key);
 
-        /// @brief Set the ini file path for layout persistence.
+        /// @brief Set the filesystem path used for ini layout persistence.
         /// @param path Relative or absolute path; empty string disables saving.
         void             SetLayoutPath(const char* path);
 
         // Shell API — used by ZUIDockspaceComponent's Layout settings page.
+
+        /// @brief Clear the current dock layout and reset to default.
         void             ResetLayout();
+
+        /// @brief Show or hide a panel by its dock key.
+        /// @param key     Dock node key.
+        /// @param visible True to show, false to hide.
         void             SetPanelVisible(const char* name, bool visible);
+
+        /// @brief Return whether the panel for @p key is currently visible.
+        /// @param key Dock node key.
+        /// @returns True if the panel is visible.
         bool             IsPanelVisible(const char* name) const;
 
     private:

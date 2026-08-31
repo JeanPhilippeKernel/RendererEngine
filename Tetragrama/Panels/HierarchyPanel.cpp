@@ -16,14 +16,14 @@
 #include <cstdio>
 #include <cstring>
 
+using namespace ZEngine;
+using namespace ZEngine::ECS;
+using namespace ZEngine::ECS::Components;
+using namespace ZEngine::Helpers;
+using namespace ZEngine::UI;
+
 namespace Tetragrama::Panels
 {
-    using namespace ZEngine;
-    using namespace ZEngine::ECS;
-    using namespace ZEngine::ECS::Components;
-    using namespace ZEngine::Helpers;
-    using namespace ZEngine::UI;
-
     static bool ContainsCI(const char* haystack, const char* needle)
     {
         if (!haystack)
@@ -97,7 +97,7 @@ namespace Tetragrama::Panels
         ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
         bg->EdgeSoftness = 0.f;
 
-        // ── Toolbar — row height = fh so search box and button align exactly ─────
+        // Toolbar — row height = fh so search box and button align exactly
         ZUISpacer(ctx, 4.f);
         ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(fh));
         ZUISpacer(ctx, 8.f);
@@ -136,7 +136,7 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
         ZUISpacer(ctx, 4.f);
 
-        // ── 3-column table — Type and Level are fixed; Item Label stretches ─────
+        // 3-column table — Type and Level are fixed; Item Label stretches
         static constexpr float kTypeW      = 72.f;
         static constexpr float kLevelW     = 64.f;
         static constexpr float kLabelMinW  = 220.f; // Item Label never compresses below this
@@ -146,7 +146,7 @@ namespace Tetragrama::Panels
             {     "Level",                               kLevelW,          0.f, false, false},
         };
 
-        // ── O(n) DFS tree build — exact develop algorithm ─────────────────────
+        // O(n) DFS tree build — exact develop algorithm
         uint32_t actor_total = eng->ActorManager->Count();
         uint32_t cap         = actor_total > 0 ? actor_total : 1; // min 1 to avoid 0-size alloc
 
@@ -218,7 +218,7 @@ namespace Tetragrama::Panels
         // Detach-to-root (World drop + "Remove from Parent" menu) routes through
         // pending_reparent_parent = INVALID_ENTITY — single path, exact develop.
 
-        // ── Scroll region + DataTable ─────────────────────────────────────────
+        // Scroll region + DataTable
         ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
         ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFill());
         // Item Label always fills remaining space — override stored width so
@@ -294,7 +294,7 @@ namespace Tetragrama::Panels
             ZUIEndRow(ctx); // hrow
         }
 
-        // ── World root row ────────────────────────────────────────────────────
+        // World root row
         {
             ZUIDataTableNextRow(ctx, false);
             ZUIDataTableSetColumn(ctx, 0);
@@ -355,9 +355,10 @@ namespace Tetragrama::Panels
             }
         }
 
-        // ── Actor DFS rows ────────────────────────────────────────────────────
+        // Actor DFS rows
         if (m_root_open)
         {
+            // HOT PATH — runs every frame, no heap allocation allowed.
             while (sp > 0)
             {
                 DFSEntry e     = stk[--sp];
@@ -632,7 +633,7 @@ namespace Tetragrama::Panels
             }
         }
 
-        // ── Root drop zone row — exact develop 8px InvisibleButton equivalent ──
+        // Root drop zone row — exact develop 8px InvisibleButton equivalent
         {
             ZUIDataTableNextRow(ctx, false);
             ZUIDataTableSetColumn(ctx, 0);
@@ -672,7 +673,7 @@ namespace Tetragrama::Panels
         ZUIEndDataTable(ctx);
         ZUIEndScrollRegion(ctx);
 
-        // ── Drag tooltip — "Move: [name]" near cursor (matches develop ImGui::Text) ─
+        // Drag tooltip — "Move: [name]" near cursor (matches develop ImGui::Text)
         if (ctx->DragSourceKey != 0 && m_drag_label[0])
         {
             char tip_buf[140];
@@ -704,7 +705,7 @@ namespace Tetragrama::Panels
         if (ctx->DragDropFired)
             m_dragging_actor = {};
 
-        // ── Deferred mutations — exact develop pattern ────────────────────────
+        // Deferred mutations — exact develop pattern
 
         // Reparent (also handles detach-to-root via INVALID_ENTITY)
         if (pending_reparent_child.Valid())
@@ -785,7 +786,7 @@ namespace Tetragrama::Panels
             }
         }
 
-        // ── Status bar ───────────────────────────────────────────────────────
+        // Status bar
         ZUISeparator(ctx);
         ZUIBox* sb = ZUIBeginRow(ctx, "##hier_sb", ZFill(), ZPx(fh));
         sb->Flags  = sb->Flags | ZUI_DrawBackground;

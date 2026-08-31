@@ -61,6 +61,7 @@ namespace Tetragrama::Panels
         if ((int)arena_count > m_history_count)
             m_history_count = (int)arena_count;
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         // Update history ring buffers
         for (uint32_t i = 0; i < arena_count && i < (uint32_t)kMaxArenas; ++i)
         {
@@ -73,7 +74,7 @@ namespace Tetragrama::Panels
             if (h.count < kHistorySize) h.count++;
         }
 
-        // --- Header ---
+        // Header
         ZUISpacer(ctx, 6.f);
         {
             ZUIBeginRow(ctx, "##mp_hdr", ZFill(), ZPx(fh));
@@ -121,7 +122,8 @@ namespace Tetragrama::Panels
             ZUILabel(ctx, "No arenas tracked.", ctx->Theme.TextDim);
         }
 
-        // --- Per-arena blocks ---
+        // Per-arena blocks
+        // HOT PATH — runs every frame, no heap allocation allowed.
         for (uint32_t i = 0; i < arena_count && i < (uint32_t)kMaxArenas; ++i)
         {
             const ArenaStats& s = stats[i];

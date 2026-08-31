@@ -4,6 +4,12 @@
 
 namespace Tetragrama::Panels
 {
+    /// @brief Fills the full panel area with a solid background, optionally
+    ///        centering a dim message label when the panel has no content to show.
+    /// @param ctx ZUI context for the current frame.
+    /// @param key Unique box key string for this background element.
+    /// @param col Background RGBA color.
+    /// @param msg Optional centered message; pass nullptr or empty to show nothing.
     inline void EmptyPanelBg(ZEngine::UI::ZUIContext* ctx, const char* key, const float col[4], const char* msg)
     {
         using namespace ZEngine::UI;

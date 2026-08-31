@@ -3,10 +3,10 @@
 #include <ZEngine/UI/ZUILayout.h>
 #include <cstring>
 
+using namespace ZEngine::Core::Memory;
+
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
-
     void ZUIContextInit(ZUIContext* ctx, ArenaAllocator* parent, size_t FrameArenaBytes, size_t PersistentArenaBytes, uint32_t StateCapacity, uint32_t MaxBoxesPerFrame)
     {
         ZENGINE_VALIDATE_ASSERT(StateCapacity > 0 && (StateCapacity & (StateCapacity - 1)) == 0, "ZUIContextInit: StateCapacity must be a power of two — hash probing is bitmasked");
@@ -47,6 +47,7 @@ namespace ZEngine::UI
 
     void ZUIEndFrame(ZUIContext* ctx)
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         // Clear drop result from the previous frame before the interaction pass may set a new one
         ctx->DragDropFired   = false;
         ctx->DragTargetKey   = 0;

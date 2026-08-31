@@ -12,15 +12,15 @@
 #define strcasecmp _stricmp
 #endif
 
+using namespace ZEngine::Core::VFS;
+using namespace ZEngine::Helpers;
+using namespace ZEngine::UI;
+
 namespace Tetragrama::Panels
 {
-    using namespace ZEngine::Core::VFS;
-    using namespace ZEngine::Helpers;
-    using namespace ZEngine::UI;
+    // Static helpers
 
-    // ── Static helpers ────────────────────────────────────────────────────────
-
-    // ── Unified extension dispatch (fixes #5 .dae/.dds split, prevents future divergence) ──
+    // Unified extension dispatch (fixes #5 .dae/.dds split, prevents future divergence)
     struct ExtInfo
     {
         const float* Color;
@@ -44,7 +44,7 @@ namespace Tetragrama::Panels
         char e1 = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
         char e2 = e1    ? (char) tolower((unsigned char) ext[2]) : 0;
 
-        // ── Scripts ────────────────────────────────────────────────────────────
+        // Scripts
         if (e0 == 'c' && (e1 == 'p' || e1 == 'c' || e1 == 'x' || e1 == 0))
             return {kScript, "Scripts"};  // .cpp .cc .cxx .c
         if (e0 == 'h' && (e1 == 'p' || e1 == 'x' || e1 == 0))
@@ -62,7 +62,7 @@ namespace Tetragrama::Panels
         if (e0 == 'r' && e1 == 's' && e2 == 0)
             return {kScript, "Scripts"};  // .rs (Rust)
 
-        // ── Shaders ────────────────────────────────────────────────────────────
+        // Shaders
         if (e0 == 'g' && e1 == 'l' && e2 == 's')
             return {kShader, "Shaders"};  // .glsl
         if (e0 == 'v' && e1 == 'e')
@@ -76,7 +76,7 @@ namespace Tetragrama::Panels
         if (e0 == 's' && e1 == 'p')
             return {kShader, "Shaders"};  // .spv
 
-        // ── Textures ───────────────────────────────────────────────────────────
+        // Textures
         if (e0 == 'p' && (e1 == 'n' || e1 == 's' || e1 == 'f'))
             return {kTexture, "Textures"}; // .png .psd .pfm
         if (e0 == 'j' && e1 == 'p')
@@ -96,11 +96,11 @@ namespace Tetragrama::Panels
         if (e0 == 'k' && e1 == 't')
             return {kTexture, "Textures"}; // .ktx .ktx2
 
-        // ── Scenes ─────────────────────────────────────────────────────────────
+        // Scenes
         if (e0 == 'z')
             return {kScene, "Scenes"};     // .zescene
 
-        // ── Models ─────────────────────────────────────────────────────────────
+        // Models
         if (e0 == 'g' && (e1 == 'l' || e1 == 't'))
             return {kMesh, "Models"};      // .glb .gltf
         if (e0 == 'f' && e1 == 'b')
@@ -189,13 +189,13 @@ namespace Tetragrama::Panels
         return true;
     }
 
-    // ── Constructor ───────────────────────────────────────────────────────────
+    // Constructor
     ProjectViewPanel::ProjectViewPanel()
     {
         Title = "Project";
     }
 
-    // ── VFS listing ───────────────────────────────────────────────────────────
+    // VFS listing
     void ProjectViewPanel::RefreshListing(IVFSContext* vfs)
     {
         m_nentries = 0;
@@ -232,7 +232,7 @@ namespace Tetragrama::Panels
         m_needs_refresh    = false;
     }
 
-    // ── Sources tree subdirectory cache ───────────────────────────────────────
+    // Sources tree subdirectory cache
     const ProjectViewPanel::TreeDirEntry* ProjectViewPanel::GetCachedSubdirs(
         IVFSContext* vfs, const VFSPath& dir, int* out_count)
     {
@@ -287,7 +287,7 @@ namespace Tetragrama::Panels
         return slot.entries;
     }
 
-    // ── Breadcrumb ────────────────────────────────────────────────────────────
+    // Breadcrumb
     void ProjectViewPanel::DrawBreadcrumb(ZUIContext* ctx, float fh)
     {
         ZUIBox* bar = ZUIBeginRow(ctx, "##pv_bc_row", ZFill(), ZPx(fh));
@@ -362,7 +362,7 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
     }
 
-    // ── Sources tree (left pane) — iterative DFS ─────────────────────────────
+    // Sources tree (left pane) — iterative DFS
     // Uses GetCachedSubdirs to avoid live vfs->List calls every frame.
     // Stack entries hold a full_path string pointer (stable in cache) + depth.
     void ProjectViewPanel::DrawSourcesTree(ZUIContext* ctx, IVFSContext* vfs)
@@ -385,6 +385,7 @@ namespace Tetragrama::Panels
         for (int i = root_count - 1; i >= 0 && sp < kMaxStack; --i)
             stk[sp++] = {root_dirs[i].full_path, 1};
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         while (sp > 0)
         {
             StackEntry e = stk[--sp];
@@ -482,7 +483,7 @@ namespace Tetragrama::Panels
         }
     }
 
-    // ── Filters panel (middle column) ─────────────────────────────────────────
+    // Filters panel (middle column)
     void ProjectViewPanel::DrawFilters(ZUIContext* ctx)
     {
         float                fh            = ZUIGetFrameHeight(ctx);
@@ -532,10 +533,10 @@ namespace Tetragrama::Panels
         ZUIEndScrollRegion(ctx);
     }
 
-    // ── Content grid (right area) ─────────────────────────────────────────────
+    // Content grid (right area)
     void ProjectViewPanel::DrawGrid(ZUIContext* ctx, float pw)
     {
-        // ── Card constants ────────────────────────────────────────────────────
+        // Card constants
         static const float kThumbSz      = 96.f; // wider: more icon room (was 80)
         static const float kPadding      = 20.f;
         static const float kCardW        = kThumbSz + kPadding; // 116px
@@ -563,6 +564,7 @@ namespace Tetragrama::Panels
         ZUIBeginScrollRegion(ctx, "##pv_grid_scroll", ZFill(), ZFill());
         ZUISpacer(ctx, 16.f);
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         for (int r = 0; r * col_count < nvis; ++r)
         {
             char rk[32] = {};
@@ -587,7 +589,7 @@ namespace Tetragrama::Panels
                     bool         sel = (strcmp(m_selected_path, e.full_path) == 0);
                     bool         hov;
 
-                    // ── Card column ───────────────────────────────────────────
+                    // Card column
                     char         ck[32] = {};
                     snprintf(ck, sizeof(ck), "##pvc_%d_%d", r, c);
                     float   cw   = kCardW - 8.f;
@@ -640,7 +642,7 @@ namespace Tetragrama::Panels
 
                     if (e.is_dir)
                     {
-                        // ── Folder card — UE5 style ───────────────────────────
+                        // Folder card — UE5 style
                         // Card splits into: icon zone (top 62%) + name zone (bottom 38%).
                         // Uniform card background throughout — no dark band.
                         // Icon is perfectly centered within its zone.
@@ -698,7 +700,7 @@ namespace Tetragrama::Panels
                     else
                     {
 
-                    // ── File card — same structure as folder: icon zone + plain name ──
+                    // File card — same structure as folder: icon zone + plain name
                     {
                         float icon_zone = card_h * 0.62f;
                         float name_zone = card_h - icon_zone;
@@ -851,7 +853,7 @@ namespace Tetragrama::Panels
         ZUIEndScrollRegion(ctx);
     }
 
-    // ── Modals ────────────────────────────────────────────────────────────────
+    // Modals
     void ProjectViewPanel::DrawModals(ZUIContext* ctx, IVFSContext* vfs)
     {
         if (m_modal == Modal::None)
@@ -1009,7 +1011,7 @@ namespace Tetragrama::Panels
         ZUIEndPopup(ctx);
     }
 
-    // ── BuildContent ──────────────────────────────────────────────────────────
+    // BuildContent
     void ProjectViewPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
         auto* vfs = static_cast<IVFSContext*>(ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr);
@@ -1033,23 +1035,23 @@ namespace Tetragrama::Panels
             if (PassesFilters(m_entries[i], m_search, m_type_filter))
                 ++nvis;
 
-        // ── Outer column (panel background) ──────────────────────────────────
+        // Outer column (panel background)
         ZUIBox* bg = ZUIBeginColumn(ctx, "##pv_bg", ZFill(), ZFill());
         bg->Flags  = bg->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
         bg->EdgeSoftness = 0.f;
 
-        // ── Top bar: breadcrumb navigation ────────────────────────────────────
+        // Top bar: breadcrumb navigation
         DrawBreadcrumb(ctx, fh);
         ZUISeparator(ctx);
 
-        // ── Three-column body ─────────────────────────────────────────────────
+        // Three-column body
         static constexpr float kSourcesW = 180.f;
         static constexpr float kFiltersW = 110.f;
 
         ZUIBeginRow(ctx, "##pv_body", ZFill(), ZFill());
 
-        // ── Left: Sources tree ────────────────────────────────────────────────
+        // Left: Sources tree
         {
             ZUIBox* sc = ZUIBeginColumn(ctx, "##pv_src", ZPx(kSourcesW), ZFill());
             sc->Flags  = sc->Flags | ZUI_DrawBackground;
@@ -1101,7 +1103,7 @@ namespace Tetragrama::Panels
             ZUIEndColumn(ctx);
         }
 
-        // ── Divider ───────────────────────────────────────────────────────────
+        // Divider
         {
             ZUIBox* d  = ZUIPushBox(ctx, "##pv_d1", 7, ZUI_DrawBackground);
             d->Size[0] = ZPx(1.f);
@@ -1111,7 +1113,7 @@ namespace Tetragrama::Panels
             ZUIPopBox(ctx);
         }
 
-        // ── Middle: Filters ───────────────────────────────────────────────────
+        // Middle: Filters
         {
             ZUIBox* fc = ZUIBeginColumn(ctx, "##pv_flt", ZPx(kFiltersW), ZFill());
             fc->Flags  = fc->Flags | ZUI_DrawBackground;
@@ -1129,7 +1131,7 @@ namespace Tetragrama::Panels
             ZUIEndColumn(ctx);
         }
 
-        // ── Divider ───────────────────────────────────────────────────────────
+        // Divider
         {
             ZUIBox* d  = ZUIPushBox(ctx, "##pv_d2", 7, ZUI_DrawBackground);
             d->Size[0] = ZPx(1.f);
@@ -1139,7 +1141,7 @@ namespace Tetragrama::Panels
             ZUIPopBox(ctx);
         }
 
-        // ── Right: Search + Grid + Status ─────────────────────────────────────
+        // Right: Search + Grid + Status
         {
             ZUIBeginColumn(ctx, "##pv_right", ZFill(), ZFill());
 

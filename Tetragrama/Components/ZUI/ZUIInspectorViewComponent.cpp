@@ -70,6 +70,7 @@ namespace Tetragrama::Components
         Visible     = visibility;
     }
 
+    // HOT PATH — runs every frame, no heap allocation allowed.
     void ZUIInspectorViewComponent::BuildUI(ZUIContext* ctx)
     {
         if (!Visible || !ParentLayer || !ParentLayer->CurrentApp)
@@ -145,7 +146,7 @@ namespace Tetragrama::Components
             return;
         }
 
-        // --- Actor header ---
+        // Actor header
         auto* nc = actor->GetComponent<NameComponent>();
         {
             ZUIBox* hdr = ZUIBeginColumn(ctx, "##actor_hdr_card", ZFill(), ZSPx(ctx, 42.f));
@@ -167,7 +168,7 @@ namespace Tetragrama::Components
 
         ZUISpacer(ctx, 4.f);
 
-        // --- Transform section ---
+        // Transform section
         auto* tc = actor->GetComponent<TransformComponent>();
         if (tc)
         {
@@ -203,7 +204,7 @@ namespace Tetragrama::Components
             }
         }
 
-        // --- Mesh section ---
+        // Mesh section
         auto* mc = actor->GetComponent<MeshComponent>();
         if (mc)
         {
@@ -216,7 +217,7 @@ namespace Tetragrama::Components
             }
         }
 
-        // --- Light section ---
+        // Light section
         auto* lc = actor->GetComponent<LightComponent>();
         if (lc)
         {

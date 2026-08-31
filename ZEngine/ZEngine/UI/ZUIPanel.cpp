@@ -8,10 +8,10 @@
 #include <cstdio>
 #include <cstring>
 
+using namespace ZEngine::Core::Memory;
+
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
-
     // Init / Registration
 
     void ZUIPanelManager::Init(ArenaAllocator* arena)
@@ -266,6 +266,7 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::BuildUI(ZUIContext* ctx, float menu_h, float status_h)
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         float sw = (float) ctx->ScreenW;
         float sh = (float) ctx->ScreenH;
 
@@ -575,6 +576,7 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::BuildDockedPanel(ZUIContext* ctx, ZUIPanel* p, float rect[4])
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         if (!p || p->ViewCount == 0)
         {
             return;
@@ -737,8 +739,6 @@ namespace ZEngine::UI
                 }
             }
 
-            // Close already handled by PreDetectCloseEvents pre-pass.
-            (void) should_close;
         }
 
         // Content — no WindowPadding for docked panels (editor panels fill edge-to-edge).
@@ -781,6 +781,7 @@ namespace ZEngine::UI
 
     void ZUIPanelManager::BuildTabBar(ZUIContext* ctx, ZUIPanel* p, float rect[4])
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         float tab_h = ZUIGetFrameHeight(ctx);
         char  bar_key[40];
         snprintf(bar_key, sizeof(bar_key), "##tabbar_%llx", (unsigned long long) p->DockKey);
@@ -1102,14 +1103,6 @@ namespace ZEngine::UI
             float dx = fabsf(ctx->MousePos[0] - Drag.StartX), dy = fabsf(ctx->MousePos[1] - Drag.StartY);
             if (dx + dy > ctx->Style.DockingDragThreshold)
             {
-                float panel_r[4] = {};
-                if (!ZUIDockRectForKey(DockTree, p->DockKey, panel_r))
-                {
-                    panel_r[0] = rect[0];
-                    panel_r[1] = rect[1];
-                    panel_r[2] = rect[2];
-                    panel_r[3] = rect[3] + 200.f;
-                }
                 Drag.Active    = true;
                 Drag.SrcPanel  = p;
                 Drag.SrcTabIdx = kWholePanel;
@@ -1266,6 +1259,7 @@ namespace ZEngine::UI
     // interaction traversal → always win ctx->HotKey over any panel content underneath.
     void ZUIPanelManager::BuildDividerHitZones(ZUIContext* ctx)
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         if (!DockTree)
             return;
         float grab_half = ctx->Style.DockingGrabWidth * 0.5f;
@@ -1354,6 +1348,7 @@ namespace ZEngine::UI
     // Render pass — added LAST to ##pm_bg so the visual line is always drawn on top of panels.
     void ZUIPanelManager::BuildDividerVisuals(ZUIContext* ctx)
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         if (!DockTree)
             return;
         float grab_half = ctx->Style.DockingGrabWidth * 0.5f;
@@ -1383,7 +1378,6 @@ namespace ZEngine::UI
                 dx1      = snode->RectMax[0];
                 dy1      = ey + grab_half;
             }
-            (void) child1;
 
             bool  dragging  = m_split_dividers[di].Dragging;
             bool  in_rect   = (mx >= dx0 && mx <= dx1 && my >= dy0 && my <= dy1);

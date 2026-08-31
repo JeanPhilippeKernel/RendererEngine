@@ -898,7 +898,7 @@ namespace ZEngine::UI
         ctx->TabBarSelectedIdx = ps ? (int) ps->ScrollY : 0;
         ctx->TabBarCurrentIdx  = 0;
 
-        ZUIBox* outer          = ZUIBeginColumn(ctx, key, ZFill(), ZFit());
+        ZUIBeginColumn(ctx, key, ZFill(), ZFit());
 
         // Button row
         char    row_key[64];
@@ -1405,13 +1405,6 @@ namespace ZEngine::UI
         char row_key[64];
         snprintf(row_key, sizeof(row_key), "##cb_%s", label);
 
-        ZUIBoxFlags row_flags = ZUI_Clickable;
-        if (!ctx->Disabled)
-        { /* keep Clickable */
-        }
-        else
-            row_flags = ZUI_None;
-
         ZUIBox* row     = ZUIBeginRow(ctx, row_key, ZFit(), ZPx(ZUIGetFrameHeight(ctx)));
         row->Flags      = row->Flags | (ctx->Disabled ? ZUI_None : ZUI_Clickable);
         row->LayoutAxis = ZUIAxis::X;
@@ -1508,7 +1501,6 @@ namespace ZEngine::UI
     void ZUIProgressBar(ZUIContext* ctx, const char* key, float fraction, ZUISize w, ZUISize h, const char* overlay_text)
     {
         fraction       = fraction < 0.f ? 0.f : (fraction > 1.f ? 1.f : fraction);
-        uint32_t len   = (uint32_t) strlen(key);
 
         // Track
         ZUIBox*  track = ZUIBeginRow(ctx, key, w, h);
@@ -1894,7 +1886,6 @@ namespace ZEngine::UI
 
     bool ZUIBeginCombo(ZUIContext* ctx, const char* key, const char* preview_label, ZUISize w)
     {
-        uint32_t len = (uint32_t) strlen(key);
         char     btn_key[80];
         snprintf(btn_key, sizeof(btn_key), "##combo_btn_%s", key);
 
@@ -2113,7 +2104,7 @@ namespace ZEngine::UI
             ZUIBox* arrow  = ZUIPushBox(ctx, ak, (uint32_t) strlen(ak), ZUI_DrawTriArrow);
             arrow->Size[0] = ZPx(ctx->Style.FontSize);
             arrow->Size[1] = ZFill();
-            SetTextColor(arrow, enabled ? ctx->Theme.TextDim : ctx->Theme.TextDim);
+            SetTextColor(arrow, enabled ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
             {
                 auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, arrow->Key);
                 if (ps)
@@ -3673,6 +3664,7 @@ namespace ZEngine::UI
                             && fabsf(total_init - prev_total) > 1.f)
                            ? total_init / prev_total : 1.f;
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         for (int i = 0; i < col_count; ++i)
         {
             auto* s    = ZUIStateGetOrInsert(&ctx->StateStore, DT_ColKey(ctx->DT_Key, i));
@@ -3998,6 +3990,7 @@ namespace ZEngine::UI
         // Create vertical separators now that column widths are final.
         // Created as floating children of the outer container so they span
         // its full height (clipped by ZUI_ClipChildren on the outer box).
+        // HOT PATH — runs every frame, no heap allocation allowed.
         if (ctx->DT_ColCount > 1 && ctx->DT_ColWidths)
         {
             float x = 0.f;

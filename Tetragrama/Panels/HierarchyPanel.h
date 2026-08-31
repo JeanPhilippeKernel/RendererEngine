@@ -6,12 +6,16 @@
 
 namespace Tetragrama::Panels
 {
-    // ── Hierarchy panel ───────────────────────────────────────────────────────
+    // Hierarchy panel
     //
     // Real ECS actor tree with DFS traversal, inline rename, context menu,
     // drag-and-drop reparenting, search filter, and two-column layout.
     // VS Code chevrons (∨/›) via ZUI_DrawTriArrow + UserData 2.f/3.f.
-    //
+
+    /// @brief ECS actor outliner panel.  Renders the scene hierarchy as a
+    ///        three-column DataTable (Item Label, Type, Level) with per-frame DFS
+    ///        traversal, search filtering, inline rename, drag-reparent, and a
+    ///        deferred-mutation delete path.
     struct HierarchyPanel : ZEngine::UI::ZUIPanelView
     {
         HierarchyPanel();
@@ -45,9 +49,18 @@ namespace Tetragrama::Panels
         uint32_t                      m_last_click_gen           = 0;
         double                        m_last_click_time          = -1.0;
 
+        /// @brief Returns true if @p id is in the collapsed set.
+        /// @param id Entity to query.
+        /// @returns True when collapsed.
         bool IsCollapsed(ZEngine::ECS::EntityID id) const;
+
+        /// @brief Toggles the collapsed state of @p id.
+        /// @param id Entity whose state to toggle.
         void ToggleCollapsed(ZEngine::ECS::EntityID id);
 
+        /// @brief Builds the full hierarchy UI tree for this frame.
+        /// @param ctx ZUI context for the current frame.
+        /// @param rect Panel bounding rect [x0, y0, x1, y1].
         void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
     };
 } // namespace Tetragrama::Panels

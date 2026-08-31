@@ -39,6 +39,7 @@ namespace ZEngine::UI
                 }
         }
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         // Pass 1 — post-order: intrinsic sizes (Pixels, Text, ChildrenSum)
         // Padding is included in ChildrenSum totals.
         for (uint32_t i = node_count; i > 0; --i)
@@ -100,6 +101,7 @@ namespace ZEngine::UI
             }
         }
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         // Pass 2 — pre-order: extrinsic sizes + screen positions
         // Fill subtracts parent padding from available space.
         // Child placement starts at parent->ScreenMin + parent padding.

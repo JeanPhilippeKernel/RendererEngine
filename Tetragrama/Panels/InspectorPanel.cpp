@@ -12,17 +12,17 @@
 #include <cstdio>
 #include <cstring>
 
+using namespace ZEngine;
+using namespace ZEngine::ECS;
+using namespace ZEngine::ECS::Components;
+using namespace ZEngine::Helpers;
+using namespace ZEngine::UI;
+
 namespace Tetragrama::Panels
 {
-    using namespace ZEngine;
-    using namespace ZEngine::ECS;
-    using namespace ZEngine::ECS::Components;
-    using namespace ZEngine::Helpers;
-    using namespace ZEngine::UI;
-
     static constexpr float kLabelW = 96.f;
 
-    // ── Vec3Row ───────────────────────────────────────────────────────────────
+    // Vec3Row
     // Three DragFloats with colored 3px left-edge bars (R=red, G=green, B=blue).
     // Matches develop Vec3Row() + ImDrawList colored bar approach.
     static bool            Vec3Row(ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw)
@@ -104,7 +104,7 @@ namespace Tetragrama::Panels
         return any;
     }
 
-    // ── DrawZUIField ──────────────────────────────────────────────────────────
+    // DrawZUIField
     // Widget dispatch by FieldType. Two-column row: dim label (kLabelW) + widget.
     // Matches develop DrawField() translated to ZUI widget calls.
     static void DrawZUIField(ZUIContext* ctx, const FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
@@ -172,9 +172,6 @@ namespace Tetragrama::Panels
 
         char wkey[48];
         snprintf(wkey, sizeof(wkey), "##fv_%u_%u", comp_idx, field_idx);
-
-        bool disabled = fd.ReadOnly;
-        (void) disabled; // TODO: ZUIBeginDisabled when implemented
 
         switch (fd.Type)
         {
@@ -371,7 +368,7 @@ namespace Tetragrama::Panels
         ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
         bg->EdgeSoftness = 0.f;
 
-        // ── No-selection guard ────────────────────────────────────────────────────
+        // No-selection guard
         Actor* actor     = scene->SelectedActorHandle.Valid() ? eng->ActorManager->Access(scene->SelectedActorHandle) : nullptr;
         if (!actor)
         {
@@ -395,7 +392,7 @@ namespace Tetragrama::Panels
             return;
         }
 
-        // ── Actor header — name editing ───────────────────────────────────────
+        // Actor header — name editing
         {
             ZUIBox* hdr = ZUIBeginColumn(ctx, "##insp_hdr", ZFill(), ZPx(fh + 16.f));
             hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
@@ -417,7 +414,7 @@ namespace Tetragrama::Panels
             ZUIEndColumn(ctx);
         }
 
-        // ── Search bar ────────────────────────────────────────────────────────────
+        // Search bar
         ZUISpacer(ctx, 4.f);
         ZUIBeginRow(ctx, "##insp_search_row", ZFill(), ZPx(fh));
         ZUISpacer(ctx, 8.f);
@@ -426,7 +423,7 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
         ZUISpacer(ctx, 4.f);
 
-        // ── Category pill buttons (UE5-style filter row) ──────────────────────
+        // Category pill buttons (UE5-style filter row)
         // Collect unique categories for components on this actor
         {
             static constexpr int kMaxCats       = 16;
@@ -513,15 +510,16 @@ namespace Tetragrama::Panels
 
         ZUISeparator(ctx);
 
-        // ── Scroll region ─────────────────────────────────────────────────────────
+        // Scroll region
         ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##insp_scroll", ZFill(), ZFill());
         ZUIPaddingXY(scroll, 0.f, 4.f); // 4px top/bottom breathing room
 
-        // ── Reflection-driven component sections ──────────────────────────────────
+        // Reflection-driven component sections
         ArchetypeMask mask     = actor->GetComponentMask();
         uint32_t      comp_idx = 0;
         const auto&   registry = ComponentReflectionRegistry::Get();
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         registry.ForEach([&](const ComponentMeta& meta) {
             if (!MaskHas(mask, meta.TypeID))
                 return;

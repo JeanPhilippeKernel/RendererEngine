@@ -20,6 +20,7 @@ namespace Tetragrama::Panels
     static constexpr int kGizmoRotate    = 1;
     static constexpr int kGizmoScale     = 2;
 
+    // HOT PATH — runs every frame, no heap allocation allowed.
     void ViewportPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
         static const float kDarkBg[4] = {0.09f, 0.09f, 0.095f, 1.f};
@@ -106,7 +107,7 @@ namespace Tetragrama::Panels
             }
         }
 
-        // --- Overlay toolbar: vertical, floated top-left at (8, 8) ---
+        // Overlay toolbar: vertical, floated top-left at (8, 8)
         {
             static constexpr float kBtnSz  = 28.f;  // button height (also min draw size)
             static constexpr float kTbW    = 36.f;  // toolbar width — 4px padding each side
@@ -217,7 +218,7 @@ namespace Tetragrama::Panels
             ZUIEndColumn(ctx);
         }
 
-        // --- FPS overlay: floated top-right ---
+        // FPS overlay: floated top-right
         {
             if (ctx->DeltaTime > 0.f)
                 m_fps_ema = m_fps_ema * 0.95f + (1.f / ctx->DeltaTime) * 0.05f;

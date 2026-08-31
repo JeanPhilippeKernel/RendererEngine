@@ -12,17 +12,26 @@ namespace ZEngine::Hardwares
 namespace ZEngine::UI
 {
 
+    /// @brief Per-glyph metrics and atlas UV coordinates.
+    ///
+    /// All dimensional fields are in logical pixels before FontScale is applied.
     struct ZUIGlyph
     {
-        float U0, V0;   // atlas UV top-left
-        float U1, V1;   // atlas UV bottom-right
-        float OffsetX;  // pen X offset (logical px)
-        float OffsetY;  // pen Y offset from baseline (logical px)
-        float Width;    // screen width  (logical px)
-        float Height;   // screen height (logical px)
-        float AdvanceX; // cursor advance (logical px)
+        float U0      = 0.f; ///< Atlas UV left edge
+        float V0      = 0.f; ///< Atlas UV top edge
+        float U1      = 0.f; ///< Atlas UV right edge
+        float V1      = 0.f; ///< Atlas UV bottom edge
+        float OffsetX = 0.f; ///< Pen X offset (logical px)
+        float OffsetY = 0.f; ///< Pen Y offset from baseline (logical px; positive = below)
+        float Width   = 0.f; ///< Glyph screen width (logical px)
+        float Height  = 0.f; ///< Glyph screen height (logical px)
+        float AdvanceX = 0.f; ///< Cursor advance after this glyph (logical px)
     };
 
+    /// @brief Rasterized font data for one size variant (Small / Body / Header).
+    ///
+    /// Glyphs are stored in a flat array indexed by (codepoint - FirstCodepoint).
+    /// All sizes are in logical pixels; multiply by FontScale to get screen coordinates.
     struct ZUIFont
     {
         ZUIGlyph* Glyphs         = nullptr;
@@ -39,9 +48,11 @@ namespace ZEngine::UI
         float     FontScale      = 1.f;
     };
 
-    // Single shared texture atlas — all fonts packed together (ImGui approach).
-    // WhiteU/WhiteV is the UV of the 1×1 white texel at pixel (0,0).
-    // Use it for solid-color quads: sampling white × vertex color = vertex color.
+    /// @brief Single shared GPU texture atlas containing all three font size variants.
+    ///
+    /// Mirrors ImGui's single-atlas approach. WhiteU/WhiteV address the 1×1 white
+    /// texel at pixel (0,0): sampling it with a vertex color yields that color directly,
+    /// so solid-color draws reuse the same texture and pipeline state as glyph draws.
     struct ZUIFontAtlas
     {
         ZUIFont*                           Small  = nullptr;
@@ -60,8 +71,14 @@ namespace ZEngine::UI
     /// Atlas layout handled by stb_rect_pack (1-px glyph padding to prevent UV bleed).
     /// Permanent allocations (ZUIFontAtlas, ZUIFont[3], ZUIGlyph arrays) go to @p persistent_arena.
     /// Temporary baking buffers (TTF bytes, FreeType bitmaps, pixel maps) go to @p temp_arena.
+    /// @returns Pointer to the baked ZUIFontAtlas, or nullptr on failure.
     ZUIFontAtlas* ZUIFontAtlasBake(ZEngine::Core::Memory::ArenaAllocator* persistent_arena, ZEngine::Core::Memory::ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path = nullptr);
 
+    /// @brief Measure the rendered extent of a string in logical pixels.
+    /// @param font     Font to measure with; must not be nullptr.
+    /// @param str      String to measure (need not be null-terminated beyond @p len).
+    /// @param len      Number of bytes in @p str.
+    /// @param out_size Receives [width, height] in logical pixels.
     void          ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
 
 } // namespace ZEngine::UI

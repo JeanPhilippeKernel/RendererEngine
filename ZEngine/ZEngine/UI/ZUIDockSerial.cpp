@@ -4,10 +4,10 @@
 #include <cstdio>
 #include <cstring>
 
+using namespace ZEngine::Core::Memory;
+
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
-
     // Node collection helpers (DFS, parent-before-children)
 
     static constexpr uint32_t kMaxSerialNodes = 128;

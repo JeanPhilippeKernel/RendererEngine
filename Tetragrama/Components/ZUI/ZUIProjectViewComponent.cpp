@@ -96,7 +96,7 @@ namespace Tetragrama::Components
         panel->BorderThickness = 1.f;
         panel->EdgeSoftness    = 0.f;
 
-        // --- Header: draggable title + path + up button ---
+        // Header: draggable title + path + up button
         ZUIBox* hdr            = ZUIBeginRow(ctx, "##proj_hdr", ZFill(), ZSPx(ctx, 24.f));
         hdr->Flags             = hdr->Flags | ZUI_DrawBackground | ZUI_Clickable;
         ZUIBoxSetColorArr(hdr, ctx->Theme.TitleBarBg);
@@ -122,7 +122,7 @@ namespace Tetragrama::Components
             Detached = false;
         }
 
-        // --- Search row ---
+        // Search row
         ZUIBeginRow(ctx, "##proj_search_row", ZFill(), ZSPx(ctx, 24.f));
         ZUILabel(ctx, "Search:", ctx->Theme.TextDim);
         ZUISpacer(ctx, 4.f);
@@ -131,7 +131,7 @@ namespace Tetragrama::Components
 
         ZUISeparator(ctx);
 
-        // --- Cached directory entries (scrollable) ---
+        // Cached directory entries (scrollable)
         // Extension color palette
         static const float kColDir[4]   = {1.f, 0.9f, 0.2f, 1.f}; // yellow  — directories
         static const float kColMesh[4]  = {0.4f, 0.8f, 1.f, 1.f}; // blue    — .glb/gltf/fbx/obj
@@ -165,6 +165,7 @@ namespace Tetragrama::Components
         };
 
         ZUIBeginScrollRegion(ctx, "##proj_scroll", ZFill(), ZFill());
+        // HOT PATH — runs every frame, no heap allocation allowed.
         for (uint32_t i = 0; i < m_entry_count; ++i)
         {
             const CachedEntry& e = m_entries[i];
@@ -182,7 +183,7 @@ namespace Tetragrama::Components
             char row_key[32];
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
 
-            // --- Row: icon square + name + ext tag ---
+            // Row: icon square + name + ext tag
             ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
             row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
             bool row_hov = (ctx->HotKey == row->Key);

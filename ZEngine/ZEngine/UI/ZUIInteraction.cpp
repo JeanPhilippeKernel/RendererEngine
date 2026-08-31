@@ -25,6 +25,7 @@ namespace ZEngine::UI
         uint64_t new_scroll_key  = 0;
         ZUIAxis  new_scroll_axis = ZUIAxis::Y; // axis of the nearest scrollable box
 
+        // HOT PATH — runs every frame, no heap allocation allowed.
         stack[stack_top++]       = ctx->Root;
         while (stack_top > 0)
         {
@@ -208,6 +209,7 @@ namespace ZEngine::UI
 
     ZUISignal ZUISignalFromBox(ZUIContext* ctx, ZUIBox* box)
     {
+        // HOT PATH — runs every frame, no heap allocation allowed.
         ZUISignal signal  = {};
 
         bool      hovered = (ctx->HotKey == box->Key);

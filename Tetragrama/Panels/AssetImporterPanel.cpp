@@ -30,7 +30,7 @@ namespace Tetragrama::Panels
     static constexpr float kGreen[4]  = {0.30f, 1.00f, 0.40f, 1.0f};
     static constexpr float kRed[4]    = {1.00f, 0.30f, 0.30f, 1.0f};
 
-    // ── Initialize ────────────────────────────────────────────────────────────
+    // Initialize
 
     void AssetImporterPanel::Initialize(Tetragrama::Layers::ZUILayer* layer)
     {
@@ -57,7 +57,7 @@ namespace Tetragrama::Panels
         m_assimp_importer->Initialize(&m_assimp_importer_arena);
     }
 
-    // ── BuildContent entry ────────────────────────────────────────────────────
+    // BuildContent entry
 
     void AssetImporterPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
@@ -105,7 +105,7 @@ namespace Tetragrama::Panels
         ZUIEndColumn(ctx);
     }
 
-    // ── BuildIdle ─────────────────────────────────────────────────────────────
+    // BuildIdle
 
     void AssetImporterPanel::BuildIdle(ZUIContext* ctx)
     {
@@ -167,7 +167,7 @@ namespace Tetragrama::Panels
         }
     }
 
-    // ── BuildOptions ──────────────────────────────────────────────────────────
+    // BuildOptions
 
     void AssetImporterPanel::BuildOptions(ZUIContext* ctx)
     {
@@ -213,7 +213,7 @@ namespace Tetragrama::Panels
         ZUISeparator(ctx);
         ZUISpacer(ctx, 6.f);
 
-        // ── Filter pill row — same visual style as InspectorPanel category pills
+        // Filter pill row — same visual style as InspectorPanel category pills
         {
             static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal active
             static const float kPillHov[4]  = {0.28f, 0.28f, 0.33f, 1.f}; // hover
@@ -254,7 +254,7 @@ namespace Tetragrama::Panels
         }
         ZUISeparator(ctx);
 
-        // ── Filtered settings (scroll region) ─────────────────────────────────
+        // Filtered settings (scroll region)
         ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
         {
             static constexpr float kLblW = 140.f;
@@ -276,7 +276,7 @@ namespace Tetragrama::Panels
             static bool s_gen_open  = true, s_mesh_open = true, s_mat_open  = true;
             static bool s_anim_open = true, s_lod_open  = true;
 
-            // ── General / Common ──────────────────────────────────────────────
+            // General / Common
             if (show_gen)
             {
                 ZUICollapsingHeader(ctx, "Common", &s_gen_open);
@@ -327,7 +327,7 @@ namespace Tetragrama::Panels
                 } // s_gen_open
             } // show_gen
 
-            // ── Mesh ──────────────────────────────────────────────────────────
+            // Mesh
             if (show_mesh)
             {
                 ZUICollapsingHeader(ctx, "Common Meshes", &s_mesh_open);
@@ -368,7 +368,7 @@ namespace Tetragrama::Panels
                 } // s_mesh_open
             } // show_mesh
 
-            // ── Material ──────────────────────────────────────────────────────
+            // Material
             if (show_mat)
             {
                 ZUICollapsingHeader(ctx, "Materials", &s_mat_open);
@@ -385,7 +385,7 @@ namespace Tetragrama::Panels
                 } // s_mat_open
             } // show_mat
 
-            // ── Animation (disabled) ──────────────────────────────────────────
+            // Animation (disabled)
             if (show_anim)
             {
                 ZUIBeginDisabled(ctx);
@@ -404,7 +404,7 @@ namespace Tetragrama::Panels
                 ZUIEndDisabled(ctx);
             }
 
-            // ── LOD (disabled) ────────────────────────────────────────────────
+            // LOD (disabled)
             if (show_lod)
             {
                 ZUIBeginDisabled(ctx);
@@ -462,7 +462,7 @@ namespace Tetragrama::Panels
         ZUISpacer(ctx, 8.f);
     }
 
-    // ── BuildImporting ────────────────────────────────────────────────────────
+    // BuildImporting
 
     void AssetImporterPanel::BuildImporting(ZUIContext* ctx)
     {
@@ -502,6 +502,7 @@ namespace Tetragrama::Panels
             int start = (m_log_count < kLogMax)
                         ? 0
                         : m_log_head; // oldest first
+            // HOT PATH — runs every frame during import, no heap allocation allowed.
             for (int i = 0; i < m_log_count; ++i)
             {
                 int idx = (start + i) % kLogMax;
@@ -513,7 +514,7 @@ namespace Tetragrama::Panels
         ZUIEndScrollRegion(ctx);
     }
 
-    // ── File browse ───────────────────────────────────────────────────────────
+    // File browse
 
     std::future<void> AssetImporterPanel::BrowseFileAsync()
     {
@@ -541,7 +542,7 @@ namespace Tetragrama::Panels
         });
     }
 
-    // ── StartImport ───────────────────────────────────────────────────────────
+    // StartImport
 
     void AssetImporterPanel::StartImport()
     {
@@ -624,7 +625,7 @@ namespace Tetragrama::Panels
         }
     }
 
-    // ── TriggerScan (main-thread only) ────────────────────────────────────────
+    // TriggerScan (main-thread only)
 
     void AssetImporterPanel::TriggerScan()
     {
@@ -656,7 +657,7 @@ namespace Tetragrama::Panels
         m_pending_actor = {};
     }
 
-    // ── PushLog / PushHistory ─────────────────────────────────────────────────
+    // PushLog / PushHistory
 
     void AssetImporterPanel::PushLog(const char* text, float r, float g, float b)
     {
@@ -690,7 +691,7 @@ namespace Tetragrama::Panels
         }
     }
 
-    // ── Static callbacks ──────────────────────────────────────────────────────
+    // Static callbacks
 
     void AssetImporterPanel::OnImportFileComplete(
         void* ctx,

@@ -1,6 +1,5 @@
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIInput.h>
-#include <cstring>
 
 namespace ZEngine::UI
 {

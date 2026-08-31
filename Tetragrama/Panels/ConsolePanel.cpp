@@ -3,10 +3,10 @@
 #include <cctype>
 #include <cstring>
 
+using namespace ZEngine::UI;
+
 namespace Tetragrama::Panels
 {
-    using namespace ZEngine::UI;
-
     static bool ContainsCI(const char* haystack, const char* needle)
     {
         if (!needle[0])
@@ -93,7 +93,7 @@ namespace Tetragrama::Panels
 
         ZUISpacer(ctx, 6.f);
 
-        // ── Toolbar: search | Filters popup | Clear | auto-scroll ─────────────
+        // Toolbar: search | Filters popup | Clear | auto-scroll
         ZUIBeginRow(ctx, "##con_tb", ZFill(), ZPx(fh));
         ZUISpacer(ctx, 8.f);
         ZUISearchBox(ctx, "##con_search", m_search, sizeof(m_search), "Search Log...", ZPx(fmaxf(pw * 0.50f, 120.f)));
@@ -124,7 +124,7 @@ namespace Tetragrama::Panels
         ZUISpacer(ctx, 4.f);
         ZUISeparator(ctx);
 
-        // ── Log entries ──────────────────────────────────────────────────────
+        // Log entries
         bool    pending;
         ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##con_scroll", ZFill(), ZFill());
         ZUIPaddingXY(scroll, 4.f, 2.f);
@@ -143,6 +143,7 @@ namespace Tetragrama::Panels
             int total = (m_count >= kMaxEntries) ? kMaxEntries : m_count;
             int start = (m_count >= kMaxEntries) ? m_head : 0;
 
+            // HOT PATH — runs every frame, no heap allocation allowed.
             for (int i = 0; i < total; ++i)
             {
                 const LogEntry& e = m_ring[(start + i) % kMaxEntries];

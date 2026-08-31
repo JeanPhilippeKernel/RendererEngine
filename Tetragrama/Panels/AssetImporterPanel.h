@@ -12,6 +12,10 @@
 
 namespace Tetragrama::Panels
 {
+    /// @brief Three-state asset importer panel (Idle → Options → Importing).
+    ///        Supports glTF/GLB, FBX, and Assimp-backed formats.  Import runs
+    ///        on a background thread; ECS actor creation is posted back to the
+    ///        main thread via TriggerScan().
     struct AssetImporterPanel : ZEngine::UI::ZUIPanelView
     {
         AssetImporterPanel()
@@ -19,7 +23,13 @@ namespace Tetragrama::Panels
             Title = "Importer";
         }
 
+        /// @brief Allocates importers and arenas; must be called once before first use.
+        /// @param layer Owning ZUI layer (provides arena and app pointers).
         void Initialize(Tetragrama::Layers::ZUILayer* layer);
+
+        /// @brief Dispatches to BuildIdle/BuildOptions/BuildImporting based on current state.
+        /// @param ctx ZUI context for the current frame.
+        /// @param rect Panel bounding rect [x0, y0, x1, y1].
         void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
 
     private:
@@ -37,7 +47,12 @@ namespace Tetragrama::Panels
         ZEngine::Importers::AssimpImporter* m_assimp_importer = nullptr;
 
         // State machine (shared across main and background threads)
-        enum class ImporterState : uint8_t { Idle = 0, Options = 1, Importing = 2 };
+        enum class ImporterState : uint8_t
+        {
+            Idle     = 0, ///< No import in progress.
+            Options  = 1, ///< Displaying import options to the user.
+            Importing = 2  ///< Import is running.
+        };
         PaddedAtomic<ImporterState> m_state    = {};
         PaddedAtomic<float>         m_progress = {};
 
@@ -90,21 +105,34 @@ namespace Tetragrama::Panels
         std::mutex m_log_mutex;
 
         // Build helpers
+        /// @brief Build the idle state UI (file selection).
         void BuildIdle(ZEngine::UI::ZUIContext* ctx);
+        /// @brief Build the options state UI (import settings).
         void BuildOptions(ZEngine::UI::ZUIContext* ctx);
+        /// @brief Build the in-progress state UI (progress bar, log).
         void BuildImporting(ZEngine::UI::ZUIContext* ctx);
 
+        /// @brief Open the file browser dialog synchronously.
         void              BrowseFile();
+        /// @brief Open the file browser dialog asynchronously.
         std::future<void> BrowseFileAsync();
+        /// @brief Begin the import process with the current settings.
         void              StartImport();
+        /// @brief Trigger a directory scan for importable assets.
         void              TriggerScan(); // main-thread only
+        /// @brief Append a log message to the import log.
         void              PushLog(const char* text, float r, float g, float b);
+        /// @brief Record the completed import in the history list.
         void              PushHistory(const char* name, bool ok, const char* msg);
 
         // Static callbacks for ImportFile (called from background thread)
+        /// @brief Callback invoked when the import file step finishes.
         static void OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        /// @brief Callback invoked with progress updates during import.
         static void OnImportProgress(void* ctx, float pct);
+        /// @brief Callback invoked when an import error occurs.
         static void OnImportError(void* ctx, std::string_view err);
+        /// @brief Callback invoked for each import log message.
         static void OnImportLog(void* ctx, std::string_view msg);
     };
 

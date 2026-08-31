@@ -8,8 +8,10 @@
 namespace ZEngine::UI
 {
 
-    // ZUITheme — single source of truth for all colors.
-    // Swap the whole struct at runtime to change the entire editor theme.
+    /// @brief Single source of truth for all UI colors.
+    ///
+    /// Swap the whole struct at runtime to change the entire editor theme.
+    /// Values are sRGB linear [0,1] RGBA floats; pack with ZUIPackColor for rendering.
     struct ZUITheme
     {
         // ZodiacEngine Dark — cool blue-dark palette with teal #4EC9B0 accent.
@@ -104,10 +106,10 @@ namespace ZEngine::UI
         float TableBorderStrong[4]    = {0.350f, 0.350f, 0.420f, 1.00f}; // outer border / resize grip
     };
 
-    // ZUIStyle — all dimensional/behavioral properties.
-    // Analogous to ImGui's ImGuiStyle (non-color fields).
-    // Swap or push/pop individual properties at runtime.
-    // DO NOT mutate ctx->Style.* directly — use ZUIStylePushFloat/ZUIStylePop.
+    /// @brief Per-frame style metrics and behavioral properties.
+    ///
+    /// Analogous to ImGui's ImGuiStyle (non-color fields).
+    /// Do NOT mutate ctx->Style.* directly — use ZUIStylePushFloat / ZUIStylePop.
     struct ZUIStyle
     {
         // Global
@@ -211,45 +213,53 @@ namespace ZEngine::UI
         float FrameHeight                = 19.f; // = FontSize + FramePadding[1] * 2
     };
 
-    // Call after changing FontSize or FramePadding to recompute derived fields.
-    // ZUIBeginFrame calls this automatically each frame.
+    /// @brief Recompute derived style fields (FrameHeight) after changing FontSize or FramePadding.
+    ///
+    /// ZUIBeginFrame calls this automatically each frame; call manually after
+    /// ZUIStylePushFloat when changed values affect FrameHeight.
+    /// @param s Style to update.
     inline void ZUIStyleUpdate(ZUIStyle* s)
     {
         s->FrameHeight = s->FontSize + s->FramePadding[1] * 2.f;
     }
 
-    // Style push/pop (ImGui PushStyleVar / PopStyleVar equivalent)
-    // These are the ONLY legal way to temporarily override a float style property.
-    // Mutating ctx->Style.* directly without push/pop is a contract violation.
+    /// @brief Token for ZUIStylePushFloat / ZUIStylePop.
+    ///
+    /// These are the ONLY legal way to temporarily override a float style property.
+    /// Mutating ctx->Style.* directly without push/pop is a contract violation.
     enum ZUIStyleVar : uint32_t
     {
-        ZUIStyleVar_Alpha = 0,
-        ZUIStyleVar_DisabledAlpha,
-        ZUIStyleVar_FramePaddingX,
-        ZUIStyleVar_FramePaddingY,
-        ZUIStyleVar_ItemSpacingX,
-        ZUIStyleVar_ItemSpacingY,
-        ZUIStyleVar_ItemInnerSpacingX,
-        ZUIStyleVar_ItemInnerSpacingY,
-        ZUIStyleVar_FrameRounding,
-        ZUIStyleVar_PopupRounding,
-        ZUIStyleVar_ScrollbarRounding,
-        ZUIStyleVar_GrabRounding,
-        ZUIStyleVar_TabRounding,
-        ZUIStyleVar_WindowBorderSize,
-        ZUIStyleVar_FrameBorderSize,
-        ZUIStyleVar_PopupBorderSize,
-        ZUIStyleVar_TabBarBorderSize,
-        ZUIStyleVar_TabBarOverlineSize,
-        ZUIStyleVar_IndentSpacing,
-        ZUIStyleVar_ScrollbarSize,
-        ZUIStyleVar_GrabMinSize,
-        ZUIStyleVar_DockingFocusBorderWidth,
-        ZUIStyleVar_HoverAnimSpeed,
-        ZUIStyleVar_ActiveAnimSpeed,
-        ZUIStyleVar_COUNT
+        ZUIStyleVar_Alpha                   =  0, ///< Maps to ZUIStyle::Alpha.
+        ZUIStyleVar_DisabledAlpha           =  1, ///< Maps to ZUIStyle::DisabledAlpha.
+        ZUIStyleVar_FramePaddingX           =  2, ///< Maps to ZUIStyle::FramePadding[0].
+        ZUIStyleVar_FramePaddingY           =  3, ///< Maps to ZUIStyle::FramePadding[1].
+        ZUIStyleVar_ItemSpacingX            =  4, ///< Maps to ZUIStyle::ItemSpacing[0].
+        ZUIStyleVar_ItemSpacingY            =  5, ///< Maps to ZUIStyle::ItemSpacing[1].
+        ZUIStyleVar_ItemInnerSpacingX       =  6, ///< Maps to ZUIStyle::ItemInnerSpacing[0].
+        ZUIStyleVar_ItemInnerSpacingY       =  7, ///< Maps to ZUIStyle::ItemInnerSpacing[1].
+        ZUIStyleVar_FrameRounding           =  8, ///< Maps to ZUIStyle::FrameRounding.
+        ZUIStyleVar_PopupRounding           =  9, ///< Maps to ZUIStyle::PopupRounding.
+        ZUIStyleVar_ScrollbarRounding       = 10, ///< Maps to ZUIStyle::ScrollbarRounding.
+        ZUIStyleVar_GrabRounding            = 11, ///< Maps to ZUIStyle::GrabRounding.
+        ZUIStyleVar_TabRounding             = 12, ///< Maps to ZUIStyle::TabRounding.
+        ZUIStyleVar_WindowBorderSize        = 13, ///< Maps to ZUIStyle::WindowBorderSize.
+        ZUIStyleVar_FrameBorderSize         = 14, ///< Maps to ZUIStyle::FrameBorderSize.
+        ZUIStyleVar_PopupBorderSize         = 15, ///< Maps to ZUIStyle::PopupBorderSize.
+        ZUIStyleVar_TabBarBorderSize        = 16, ///< Maps to ZUIStyle::TabBarBorderSize.
+        ZUIStyleVar_TabBarOverlineSize      = 17, ///< Maps to ZUIStyle::TabBarOverlineSize.
+        ZUIStyleVar_IndentSpacing           = 18, ///< Maps to ZUIStyle::IndentSpacing.
+        ZUIStyleVar_ScrollbarSize           = 19, ///< Maps to ZUIStyle::ScrollbarSize.
+        ZUIStyleVar_GrabMinSize             = 20, ///< Maps to ZUIStyle::GrabMinSize.
+        ZUIStyleVar_DockingFocusBorderWidth = 21, ///< Maps to ZUIStyle::DockingFocusBorderWidth.
+        ZUIStyleVar_HoverAnimSpeed          = 22, ///< Maps to ZUIStyle::HoverAnimSpeed.
+        ZUIStyleVar_ActiveAnimSpeed         = 23, ///< Maps to ZUIStyle::ActiveAnimSpeed.
+        ZUIStyleVar_COUNT                   = 24  ///< Sentinel — not a valid var.
     };
 
+    /// @brief Per-box state that survives across frames (hover/active animation, scroll, undo).
+    ///
+    /// Stored in the open-addressing hash table ZUIPersistentStore and keyed by ZUIBox::Key.
+    /// The layout solver writes ScreenMin/ScreenMax each frame for boxes that have ZUI_Clickable.
     struct ZUIPersistentState
     {
         float   HotT               = 0.f;
@@ -269,31 +279,41 @@ namespace ZEngine::UI
         int32_t SelectStart        = -1;  // text selection anchor (-1 = no selection)
     };
 
+    /// @brief One bucket in the open-addressing persistent state hash table.
     struct ZUIPersistentSlot
     {
-        uint64_t           Key   = 0; // 0 = empty
+        uint64_t           Key   = 0; ///< FNV-1a hash of the box key; 0 = empty bucket.
         ZUIPersistentState State = {};
     };
 
+    /// @brief Open-addressing hash table mapping box keys to ZUIPersistentState.
+    ///
+    /// Capacity must be a power of two; probing uses a bitmask.
     struct ZUIPersistentStore
     {
         ZUIPersistentSlot* Slots    = nullptr;
-        uint32_t           Capacity = 0; // must be a power of two
-        uint32_t           Count    = 0;
+        uint32_t           Capacity = 0; ///< Must be a power of two.
+        uint32_t           Count    = 0; ///< Number of occupied slots.
     };
 
+    /// @brief Central ZUI state object.
+    ///
+    /// Holds all per-frame and persistent data: the box tree (FrameArena),
+    /// persistent box state (PersistentArena), input state, style, theme,
+    /// the draw list, and all transient widget state (popups, DataTable, etc.).
+    /// One context per window; created by ZUIContextInit, destroyed by ZUIContextDestroy.
     struct ZUIContext
     {
         // sub-arenas carved from the engine's main arena via ZUIContextInit
-        ZEngine::Core::Memory::ArenaAllocator FrameArena;      // Clear()-ed each BeginFrame; all ZUIBox* are stale after
-        ZEngine::Core::Memory::ArenaAllocator PersistentArena; // never cleared; holds the persistent state table
+        ZEngine::Core::Memory::ArenaAllocator FrameArena      = {}; // Clear()-ed each BeginFrame; all ZUIBox* are stale after
+        ZEngine::Core::Memory::ArenaAllocator PersistentArena = {}; // never cleared; holds the persistent state table
 
         // box tree — all pointers into FrameArena
         ZUIBox*                               Root    = nullptr;
         ZUIBox*                               Current = nullptr;
 
         // persistent state — open-addressing hash table in PersistentArena
-        ZUIPersistentStore                    StateStore;
+        ZUIPersistentStore                    StateStore = {};
 
         // Single shared font atlas (ImGui approach: one texture, all fonts).
         // Set by Editor::OnInitialized after ZUIFontAtlasBake.
@@ -340,22 +360,22 @@ namespace ZEngine::UI
         uint32_t MaxBoxesPerFrame    = 0;
 
         // Style system — metrics, spacing, rounding (ImGui: ImGuiStyle non-color fields)
-        ZUIStyle Style;
+        ZUIStyle Style = {};
 
         // Push/pop stack for temporary style overrides (64 slots, no dynamic allocation)
         struct ZUIStyleEntry
         {
-            ZUIStyleVar Id;
-            float       Old;
+            ZUIStyleVar Id  = ZUIStyleVar_Alpha; ///< Which property was overridden.
+            float       Old = 0.f;               ///< Previous value to restore on pop.
         };
         ZUIStyleEntry             StyleStack[64]  = {};
         uint32_t                  StyleStackDepth = 0;
 
         // active color theme — swap to retheme the whole UI at runtime
-        ZUITheme                  Theme;
+        ZUITheme                  Theme = {};
 
         // Vector draw list — populated by PreparePayload each frame (FrameArena-backed)
-        ZUIDrawList               DrawList;
+        ZUIDrawList               DrawList = {};
 
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
         uint32_t                  ScreenW              = 1280;
@@ -502,8 +522,8 @@ namespace ZEngine::UI
         // state when undoing → Ctrl+Y pops and restores.
         struct ZUIUndoEntry
         {
-            char    Buf[512];
-            int32_t Cursor;
+            char    Buf[512] = {}; ///< Null-terminated text content snapshot.
+            int32_t Cursor   = 0;  ///< Cursor position at the time of the snapshot.
         };
         static constexpr uint32_t kUndoDepth            = 8;
         uint64_t                  UndoFieldKey          = 0;
@@ -521,47 +541,118 @@ namespace ZEngine::UI
     ZDEFINE_PTR(ZUIContext);
 
     // Lifecycle
+
+    /// @brief Initialize a ZUIContext by carving sub-arenas from @p parent.
+    /// @param ctx              ZUI context to initialize.
+    /// @param parent           Parent arena to carve sub-arenas from.
+    /// @param FrameArenaBytes      Bytes for per-frame allocations (boxes, labels, layout scratch).
+    /// @param PersistentArenaBytes Bytes for the persistent state hash table.
+    /// @param StateCapacity        Initial slot count for the state table; must be a power of two.
+    /// @param MaxBoxesPerFrame     Upper bound on boxes per frame (sizes layout/interaction scratch).
     void                ZUIContextInit(ZUIContext* ctx, ZEngine::Core::Memory::ArenaAllocator* parent, size_t FrameArenaBytes, size_t PersistentArenaBytes, uint32_t StateCapacity, uint32_t MaxBoxesPerFrame);
+
+    /// @brief Release sub-arenas. ctx itself is arena-allocated and is not freed.
+    /// @param ctx Active ZUI context.
     void                ZUIContextDestroy(ZUIContext* ctx);
 
     // Per-frame
+
+    /// @brief Begin a new UI frame — clears FrameArena, resets box tree, advances time.
+    /// @param ctx Active ZUI context.
+    /// @param dt Delta-time in seconds since the last frame.
     void                ZUIBeginFrame(ZUIContext* ctx, float dt);
+
+    /// @brief End the UI frame — runs layout solve + interaction pass, flushes key states.
+    /// @param ctx Active ZUI context.
     void                ZUIEndFrame(ZUIContext* ctx);
 
     // Box tree helpers
+
+    /// @brief Allocate and link a new ZUIBox as a child of ctx->Current.
+    /// @param ctx      Active ZUI context.
+    /// @param key      Key/label string; the part after '##' is used only for hashing.
+    /// @param key_len  Byte length of @p key.
+    /// @param flags    Initial ZUIBoxFlags.
+    /// @returns Pointer to the new box (arena-allocated; stale after next ZUIBeginFrame).
     ZUIBox*             ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags);
+
+    /// @brief Pop the current box — moves ctx->Current back to its parent.
+    /// @param ctx Active ZUI context.
     void                ZUIPopBox(ZUIContext* ctx);
 
     // Utilities
+
+    /// @brief Look up or insert a ZUIPersistentState slot for @p key (FNV-1a hash).
+    /// @param store Persistent state hash table.
+    /// @param key   FNV-1a hash key to look up.
+    /// @returns Pointer to the state; nullptr only on table-full (asserts in debug).
     ZUIPersistentState* ZUIStateGetOrInsert(ZUIPersistentStore* store, uint64_t key);
+
+    /// @brief Push a copy of @p str into @p arena.
+    /// @param arena Arena to allocate the string copy from.
+    /// @param str   Source string pointer.
+    /// @param len   Byte length of @p str (excluding null terminator).
+    /// @returns Non-owning ZUIStr view into the arena copy.
     ZUIStr              ZUIPushStr(ZEngine::Core::Memory::ArenaAllocator* arena, const char* str, uint32_t len);
+
+    /// @brief Compute the FNV-1a 64-bit hash of a string.
+    /// @param str String to hash.
+    /// @param len Byte length of @p str.
+    /// @returns Non-zero hash (0 is reserved for empty table slots).
     uint64_t            ZUIHashStr(const char* str, uint32_t len);
 
     // Style push/pop — ONLY legal mechanism for per-scope style overrides
+
+    /// @brief Temporarily override one float style property on the push/pop stack.
+    /// @param ctx Active ZUI context.
+    /// @param var Property to override.
+    /// @param val New value.
     void                ZUIStylePushFloat(ZUIContext* ctx, ZUIStyleVar var, float val);
+
+    /// @brief Restore the most recently pushed style property.
+    /// @param ctx Active ZUI context.
     void                ZUIStylePop(ZUIContext* ctx);
 
-    // Helper inlines (prefer these over ctx->Style.* direct reads)
+    // Style accessors — prefer these over ctx->Style.* direct reads.
+
+    /// @brief Return the pre-computed frame height (FontSize + FramePadding.y × 2).
+    /// @param ctx Active ZUI context.
+    /// @returns Frame height in logical pixels.
     inline float        ZUIGetFrameHeight(const ZUIContext* ctx)
     {
         return ctx->Style.FrameHeight;
     }
+    /// @brief Return horizontal frame padding.
+    /// @param ctx Active ZUI context.
+    /// @returns Horizontal frame padding in logical pixels.
     inline float ZUIGetFramePadX(const ZUIContext* ctx)
     {
         return ctx->Style.FramePadding[0];
     }
+    /// @brief Return vertical frame padding.
+    /// @param ctx Active ZUI context.
+    /// @returns Vertical frame padding in logical pixels.
     inline float ZUIGetFramePadY(const ZUIContext* ctx)
     {
         return ctx->Style.FramePadding[1];
     }
+    /// @brief Return horizontal item spacing.
+    /// @param ctx Active ZUI context.
+    /// @returns Horizontal item spacing in logical pixels.
     inline float ZUIGetItemSpacX(const ZUIContext* ctx)
     {
         return ctx->Style.ItemSpacing[0];
     }
+    /// @brief Return vertical item spacing.
+    /// @param ctx Active ZUI context.
+    /// @returns Vertical item spacing in logical pixels.
     inline float ZUIGetItemSpacY(const ZUIContext* ctx)
     {
         return ctx->Style.ItemSpacing[1];
     }
+    /// @brief Return inner item spacing (X axis).
+    /// @param ctx Active ZUI context.
+    /// @returns Inner item spacing in logical pixels.
     inline float ZUIGetInnerSpac(const ZUIContext* ctx)
     {
         return ctx->Style.ItemInnerSpacing[0];

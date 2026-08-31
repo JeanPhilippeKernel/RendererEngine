@@ -3,10 +3,10 @@
 #include <cmath>
 #include <cstring>
 
+using namespace ZEngine::Core::Memory;
+
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
-
     // Constants matching ImGui's geometry quality
     static constexpr float kPI             = 3.14159265358979f;
     static constexpr float kCircleMaxError = 0.30f; // px
@@ -43,7 +43,7 @@ namespace ZEngine::UI
         return n & ~1; // round to even
     }
 
-    // Internal allocation helpers
+    // Allocation helpers
 
     static void GrowVtx(ZUIDrawList* dl, ArenaAllocator* arena, uint32_t needed)
     {
@@ -220,26 +220,6 @@ namespace ZEngine::UI
         if (dl->ClipDepth > 0)
             --dl->ClipDepth;
         FlushCmd(dl);
-    }
-
-    // Primitive reservation
-
-    // Reserve `vtx` vertices and `idx` indices; return write pointer.
-    // Caller must write exactly that many.
-    static ZUIDrawVtx* PrimReserve(ZUIDrawList* dl, uint32_t vtx, uint32_t idx)
-    {
-        FlushCmd(dl);
-        GrowVtx(dl, s_Arena, vtx);
-        GrowIdx(dl, s_Arena, idx);
-        ZUIDrawVtx* vw                        = dl->Vtx + dl->VtxCount;
-        uint16_t*   iw                        = dl->Idx + dl->IdxCount;
-        uint16_t    base                      = (uint16_t) dl->VtxCount;
-        dl->VtxCount                         += vtx;
-        dl->IdxCount                         += idx;
-        // Update current cmd elem count
-        dl->Cmds[dl->CmdCount - 1].ElemCount += idx;
-        return vw;
-        (void) iw; // caller writes indices via separate helpers
     }
 
     // Fast flat colored rect (no AA, no rounding) — 4 vtx, 6 idx

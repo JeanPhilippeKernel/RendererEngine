@@ -1,10 +1,10 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 
+using namespace ZEngine::Core::Memory;
+
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
-
     // Helpers
 
     static ZUIDockNode* AllocNode(ZUIDockTree* tree)

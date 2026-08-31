@@ -14,11 +14,10 @@
 using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Rendering;
+using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::UI
 {
-    using namespace ZEngine::Core::Memory;
-
     // Load a TTF file from the VFS into temp_arena. Returns nullptr on failure.
     static uint8_t* LoadTTFFromVFS(const char* vfs_path, ArenaAllocator* temp_arena, uint64_t* out_size)
     {

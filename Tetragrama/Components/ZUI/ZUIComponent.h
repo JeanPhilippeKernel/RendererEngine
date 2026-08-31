@@ -11,17 +11,26 @@ namespace Tetragrama::Layers
 
 namespace Tetragrama::Components
 {
+    /// @brief Base class for all ZUI editor UI components.  Subclasses implement
+    ///        Initialize() to allocate resources and BuildUI() to emit a box tree
+    ///        each frame.  ZUIDockspaceComponent sets RegionX/Y/W/H before each
+    ///        BuildUI call so panels can position themselves correctly.
     struct ZUIComponent : public ZEngine::Core::IRenderable, public ZEngine::Core::IUpdatable
     {
         virtual ~ZUIComponent() = default;
 
+        /// @brief One-time initialization called after construction.
+        /// @param parent     Owning ZUI layer.
+        /// @param name       Display/lookup name for this component.
+        /// @param visibility Initial visibility flag.
         virtual void                  Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "", bool visibility = true) {}
 
         void                          Update(ZEngine::Core::TimeStep) override {}
 
         void                          Render(ZEngine::Rendering::Renderers::GraphicRenderer* const, ZEngine::Hardwares::CommandBuffer* const) override {}
 
-        // Called each frame inside ZUILayer::BuildUI — build the box tree for this component
+        /// @brief Called each frame inside ZUILayer::BuildUI to emit the box tree.
+        /// @param ctx ZUI context for the current frame.
         virtual void                  BuildUI(ZEngine::UI::ZUIContext* ctx) {}
 
         cstring                       Name        = nullptr;
