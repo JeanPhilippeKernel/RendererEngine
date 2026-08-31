@@ -68,6 +68,29 @@ namespace Tetragrama::Panels
         return GetExtInfo(name).Color;
     }
 
+    static float ExtIconType(const char* name)
+    {
+        if (!name) return ZUI_ICON_ACTOR;
+        const char* dot = strrchr(name, '.');
+        if (!dot)   return ZUI_ICON_ACTOR;
+        const char* ext = dot + 1;
+        char e0 = (char) tolower((unsigned char) ext[0]);
+        char e1 = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
+        char e2 = e1    ? (char) tolower((unsigned char) ext[2]) : 0;
+        if (e0 == 'c' && e1 == 'p')  return ZUI_ICON_SOURCE_CPP; // .cpp .cc
+        if (e0 == 'c' && e1 == 'x')  return ZUI_ICON_SOURCE_CPP; // .cxx
+        if (e0 == 'c' && e1 == 0)    return ZUI_ICON_SOURCE_CPP; // .c
+        if (e0 == 'h' && e1 == 'p')  return ZUI_ICON_SOURCE_H;   // .hpp
+        if (e0 == 'h' && e1 == 'x')  return ZUI_ICON_SOURCE_H;   // .hxx
+        if (e0 == 'h' && e1 == 0)    return ZUI_ICON_SOURCE_H;   // .h
+        if (e0 == 'c' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_CS; // .cs
+        if (e0 == 'j' && e1 == 's')  return ZUI_ICON_SOURCE_JS;  // .js .json
+        if (e0 == 't' && e1 == 's')  return ZUI_ICON_SOURCE_JS;  // .ts
+        if (e0 == 'p' && e1 == 'y')  return ZUI_ICON_SOURCE_PY;  // .py
+        if (e0 == 'l' && e1 == 'u')  return ZUI_ICON_SOURCE_PY;  // .lua (reuse green)
+        return ZUI_ICON_ACTOR;
+    }
+
     const char* ProjectViewPanel::TypeCategory(const char* name)
     {
         return GetExtInfo(name).Category;
@@ -618,12 +641,13 @@ namespace Tetragrama::Panels
                     else
                     {
 
-                    // ── File card ─────────────────────────────────────────────
-                    // Icon area (thumbnail zone)
+                    // ── File card — same structure as folder: icon zone + plain name ──
                     {
-                        float        isz      = kThumbSz * kIconRatio;
-                        float        side_pad = (cw - isz) * 0.5f;
-                        float        top_pad  = (kThumbSz - isz) * 0.5f;
+                        float icon_zone = card_h * 0.62f;
+                        float name_zone = card_h - icon_zone;
+                        float isz       = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
+                        float side_pad  = (cw        - isz) * 0.5f;
+                        float top_pad   = (icon_zone - isz) * 0.5f;
                         const float* icon_col = ExtColor(e.name);
 
                         ZUISpacer(ctx, top_pad);
@@ -631,74 +655,42 @@ namespace Tetragrama::Panels
                             char rk2[32] = {};
                             snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
                             ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
+                            ZUISpacer(ctx, side_pad);
+                            char ik[32] = {};
+                            snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
+                            ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
+                            ico->Size[0]      = ZPx(isz);
+                            ico->Size[1]      = ZPx(isz);
+                            ico->TextColor[0] = icon_col[0];
+                            ico->TextColor[1] = icon_col[1];
+                            ico->TextColor[2] = icon_col[2];
+                            ico->TextColor[3] = icon_col[3];
+                            auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
+                            if (ips) ips->UserData = ExtIconType(e.name);
+                            ZUIPopBox(ctx);
+                            ZUISpacer(ctx, side_pad);
+                            ZUIEndRow(ctx);
                         }
-                        ZUISpacer(ctx, side_pad);
+                        ZUISpacer(ctx, top_pad * 0.3f);
 
-                        char ik[32] = {};
-                        snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
-                        ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
-                        ico->Size[0]      = ZPx(isz);
-                        ico->Size[1]      = ZPx(isz);
-                        ico->TextColor[0] = icon_col[0];
-                        ico->TextColor[1] = icon_col[1];
-                        ico->TextColor[2] = icon_col[2];
-                        ico->TextColor[3] = icon_col[3];
-                        auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
-                        if (ips) ips->UserData = ZUI_ICON_ACTOR;
-                        ZUIPopBox(ctx);
-
-                        ZUISpacer(ctx, side_pad);
-                        ZUIEndRow(ctx);
-                    }
-
-                    // ── Footer strip (dark overlay with bottom rounding) ───────
-                    {
-                        char ftk[32] = {};
-                        snprintf(ftk, sizeof(ftk), "##pvft_%d_%d", r, c);
-                        ZUIBox* footer = ZUIBeginColumn(ctx, ftk, ZFill(), ZPx(footer_h));
-                        footer->Flags  = footer->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
-                        ZUIBoxSetColor(footer, 0.06f, 0.06f, 0.08f, 0.92f);
-                        ZUIBoxSetBottomRadius(footer, kRounding);
-                        footer->EdgeSoftness = 0.f;
-
-                        ZUISpacer(ctx, 6.f);
-
-                        // Filename
+                        // Name — plain centered text, no dark band
                         {
+                            float    v_pad = (name_zone - fh) * 0.5f;
+                            ZUISpacer(ctx, v_pad);
                             char fnk[32] = {};
                             snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
-                            uint32_t nl      = (uint32_t) strlen(display);
-                            ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
-                            lb->Size[0]      = ZFill();
-                            lb->Size[1]      = ZPx(fh);
-                            lb->Label        = ZUIPushStr(&ctx->FrameArena, display, nl);
-                            lb->Padding[0]   = 4.f;
+                            uint32_t nl = (uint32_t) strlen(display);
+                            ZUIBox*  lb = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
+                            lb->Size[0]   = ZFill();
+                            lb->Size[1]   = ZPx(fh);
+                            lb->Label     = ZUIPushStr(&ctx->FrameArena, display, nl);
+                            lb->TextAlign = ZUITextAlign::Center;
                             lb->TextColor[0] = ctx->Theme.TextDefault[0];
                             lb->TextColor[1] = ctx->Theme.TextDefault[1];
                             lb->TextColor[2] = ctx->Theme.TextDefault[2];
                             lb->TextColor[3] = ctx->Theme.TextDefault[3];
                             ZUIPopBox(ctx);
                         }
-
-                        // ── Type label ────────────────────────────────────────
-                        {
-                            const char* type_lbl = TypeCategory(e.name);
-                            char        tlk[32] = {};
-                            snprintf(tlk, sizeof(tlk), "##pvtl_%d_%d", r, c);
-                            uint32_t tl       = (uint32_t) strlen(type_lbl);
-                            ZUIBox*  tlb      = ZUIPushBox(ctx, tlk, (uint32_t) strlen(tlk), ZUI_DrawText);
-                            tlb->Size[0]      = ZFill();
-                            tlb->Size[1]      = ZPx(fh);
-                            tlb->Label        = ZUIPushStr(&ctx->FrameArena, type_lbl, tl);
-                            tlb->Padding[0]   = 4.f; // left indent (#2)
-                            tlb->TextColor[0] = 0.70f;
-                            tlb->TextColor[1] = 0.70f;
-                            tlb->TextColor[2] = 0.75f; // slight blue tint
-                            tlb->TextColor[3] = 1.f;
-                            ZUIPopBox(ctx);
-                        }
-
-                        ZUIEndColumn(ctx); // footer
                     }
 
                     } // end file card

@@ -64,6 +64,13 @@ namespace ZEngine::UI
     static constexpr float ZUI_ICON_ROTATE         = 24.f; // circle + arrowhead (gizmo rotate)
     static constexpr float ZUI_ICON_SCALE          = 25.f; // square + corner dots (gizmo scale)
 
+    // Source-code file icons — colored badge + symbol + glow halo
+    static constexpr float ZUI_ICON_SOURCE_CPP     = 30.f; // C / C++ — blue badge, "++" symbol
+    static constexpr float ZUI_ICON_SOURCE_CS      = 31.f; // C#     — purple badge, "#" symbol
+    static constexpr float ZUI_ICON_SOURCE_JS      = 32.f; // JS/TS  — yellow badge, ">" symbol
+    static constexpr float ZUI_ICON_SOURCE_PY      = 33.f; // Python — green badge, diamond
+    static constexpr float ZUI_ICON_SOURCE_H       = 34.f; // Header — teal badge, "<>" brackets
+
     inline ZUIBoxFlags     operator|(ZUIBoxFlags a, ZUIBoxFlags b)
     {
         return static_cast<ZUIBoxFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));

@@ -586,6 +586,74 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddCircleFilled(&ctx->DrawList, cx - h, cy + h, dot, cc, 6);
                     ZUIDrawListAddCircleFilled(&ctx->DrawList, cx + h, cy + h, dot, cc, 6);
                 }
+                else if (itype > 29.5f && itype < 34.5f) // source-code icons 30-34
+                {
+                    // Badge color per language
+                    float br = 0.f, bg = 0.f, bb = 0.f;
+                    if      (itype < 30.5f) { br = 0.27f; bg = 0.50f; bb = 0.90f; } // CPP — blue
+                    else if (itype < 31.5f) { br = 0.60f; bg = 0.28f; bb = 0.88f; } // CS  — purple
+                    else if (itype < 32.5f) { br = 0.92f; bg = 0.80f; bb = 0.12f; } // JS  — yellow
+                    else if (itype < 33.5f) { br = 0.27f; bg = 0.72f; bb = 0.42f; } // PY  — green
+                    else                   { br = 0.22f; bg = 0.68f; bb = 0.62f; } // H   — teal
+
+                    // Badge geometry — centered rounded rect
+                    float bw = sz * 0.78f, bh = sz * 0.58f;
+                    float bbx = cx - bw * 0.5f, bby = cy - bh * 0.5f;
+
+                    // Glow halos (3 passes, outer→inner)
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx - sz*0.22f, bby - sz*0.17f, bbx+bw+sz*0.22f, bby+bh+sz*0.17f, ZUIPackColor(br,bg,bb,0.06f), 10.f);
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx - sz*0.11f, bby - sz*0.09f, bbx+bw+sz*0.11f, bby+bh+sz*0.09f, ZUIPackColor(br,bg,bb,0.14f),  8.f);
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx - sz*0.05f, bby - sz*0.04f, bbx+bw+sz*0.05f, bby+bh+sz*0.04f, ZUIPackColor(br,bg,bb,0.22f),  6.f);
+
+                    // Badge fill
+                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx, bby, bbx+bw, bby+bh, ZUIPackColor(br,bg,bb,1.f), 5.f);
+
+                    // Symbol in white on the badge
+                    uint32_t sym  = ZUIPackColor(1.f, 1.f, 1.f, 0.92f);
+                    float    t    = fmaxf(sz * 0.04f, 1.2f); // line thickness
+                    float    ps   = bh * 0.22f; // symbol half-size
+
+                    if (itype < 30.5f) // "++" — two plus signs
+                    {
+                        for (int pi = 0; pi < 2; ++pi)
+                        {
+                            float px = cx + (pi == 0 ? -bw*0.20f : bw*0.20f);
+                            ZUIDrawListAddLine(&ctx->DrawList, px-ps, cy,    px+ps, cy,    sym, t);
+                            ZUIDrawListAddLine(&ctx->DrawList, px,    cy-ps, px,    cy+ps, sym, t);
+                        }
+                    }
+                    else if (itype < 31.5f) // "#" — two horiz + two vert, slightly offset
+                    {
+                        float g = ps * 0.45f;
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-ps, cy-g, cx+ps, cy-g, sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-ps, cy+g, cx+ps, cy+g, sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-g,  cy-ps*1.1f, cx-g,  cy+ps*1.1f, sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx+g,  cy-ps*1.1f, cx+g,  cy+ps*1.1f, sym, t);
+                    }
+                    else if (itype < 32.5f) // ">" — right-pointing chevron
+                    {
+                        float ax = cx - ps*0.4f;
+                        ZUIDrawListAddLine(&ctx->DrawList, ax, cy-ps, cx+ps*0.5f, cy,    sym, t*1.3f);
+                        ZUIDrawListAddLine(&ctx->DrawList, ax, cy+ps, cx+ps*0.5f, cy,    sym, t*1.3f);
+                    }
+                    else if (itype < 33.5f) // Python — diamond outline
+                    {
+                        ZUIDrawListAddLine(&ctx->DrawList, cx,    cy-ps, cx+ps, cy,    sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx+ps, cy,    cx,    cy+ps, sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx,    cy+ps, cx-ps, cy,    sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-ps, cy,    cx,    cy-ps, sym, t);
+                    }
+                    else // "<>" header brackets
+                    {
+                        float g = ps * 0.55f;
+                        // "<"
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-g,    cy-ps, cx-ps*1.1f, cy,    sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx-ps*1.1f, cy, cx-g,    cy+ps, sym, t);
+                        // ">"
+                        ZUIDrawListAddLine(&ctx->DrawList, cx+g,    cy-ps, cx+ps*1.1f, cy,    sym, t);
+                        ZUIDrawListAddLine(&ctx->DrawList, cx+ps*1.1f, cy, cx+g,    cy+ps, sym, t);
+                    }
+                }
                 else // ZUI_ICON_ACTOR = 15 (diamond) — default fallback
                 {
                     float r = sz * 0.35f;
