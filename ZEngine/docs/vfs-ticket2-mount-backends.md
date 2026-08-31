@@ -74,11 +74,9 @@ file(GLOB TEST_SOURCES
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // MountPoint
     // A single entry in the mount table.
     // Id is an arena-allocated C-string copy of the logical_root buffer.
-    // -------------------------------------------------------------------------
     struct MountPoint
     {
         char         Id[MAX_FILE_PATH_COUNT]; // logical root string, NUL-terminated
@@ -87,23 +85,19 @@ namespace ZEngine::Core::VFS
         int          Priority   = 0;
     };
 
-    // -------------------------------------------------------------------------
     // ResolveResult
     // Output of Resolve(): the winning backend + the relative path to pass it.
-    // -------------------------------------------------------------------------
     struct ResolveResult
     {
         IVFSBackend* Backend      = nullptr;
         VFSPath      RelativePath; // path with the logical_root prefix stripped
     };
 
-    // -------------------------------------------------------------------------
     // VFSMountTable
     //
     // Owns an Array<MountPoint> sorted descending by Priority (highest first).
     // Readers take a shared_lock; Mount/Unmount take a unique_lock.
     // All memory for MountPoint data (Id copies, etc.) comes from m_arena.
-    // -------------------------------------------------------------------------
     struct VFSMountTable
     {
         static constexpr uint32_t kMaxMountPoints = 256;
@@ -269,7 +263,6 @@ return VFSPath::Parse(relative_str)   // re-normalizes the relative path
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // VFSContext
     //
     // The real IVFSContext implementation. Owns a VFSMountTable.
@@ -277,13 +270,12 @@ namespace ZEngine::Core::VFS
     //
     // Thread safety: all routing goes through VFSMountTable which is already
     // reader/writer locked. VFSContext itself adds no additional locking.
-    // -------------------------------------------------------------------------
     struct VFSContext : IVFSContext
     {
         // Initialize. arena must outlive this context.
         void Initialize(Memory::ArenaAllocator* arena, size_t mount_table_capacity = 16);
 
-        // ---- IVFSContext overrides ------------------------------------------
+        // IVFSContext overrides
 
         // Resolves path to a backend, strips prefix, calls backend->Open.
         [[nodiscard]] VFSResult<IVFSFile*>  Open(const VFSPath& absolute_path, VFSOpenFlags flags) override;
@@ -433,13 +425,11 @@ return backend->Rename(rel_src, rel_dst)
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // VFSDiskFile
     //
     // Wraps a platform file handle. No seek cursor: all reads/writes take an
     // explicit byte offset (stateless I/O). Multiple VFSDiskFile instances for
     // the same underlying path are safe to use concurrently.
-    // -------------------------------------------------------------------------
     struct VFSDiskFile : IVFSFile
     {
 #if defined(_WIN32)
@@ -471,7 +461,6 @@ namespace ZEngine::Core::VFS
         uint64_t m_mapped_size = 0;
     };
 
-    // -------------------------------------------------------------------------
     // VFSDiskBackend
     //
     // IVFSBackend backed by a directory on the real filesystem.
@@ -479,7 +468,6 @@ namespace ZEngine::Core::VFS
     //
     // Every method validates that the resolved native path stays under
     // m_native_root (sandbox check).
-    // -------------------------------------------------------------------------
     struct VFSDiskBackend : IVFSBackend
     {
         // native_root: absolute native OS path to the root directory.
@@ -735,11 +723,9 @@ return Ok(m_mapped_ptr)
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // ZipEntry
     // Metadata for one file/directory in the ZIP central directory.
     // Stored as the value in the central-directory hash map.
-    // -------------------------------------------------------------------------
     struct ZipEntry
     {
         uint32_t FileIndex     = 0;       // miniz file index
@@ -751,14 +737,12 @@ namespace ZEngine::Core::VFS
         bool     IsCompressed  = false;   // false = stored (method 0)
     };
 
-    // -------------------------------------------------------------------------
     // VFSZipFile
     //
     // Represents an opened (possibly not-yet-decompressed) entry.
     // On first Read(), decompresses the entire entry into m_data using the
     // parent backend's arena. Subsequent reads are memory copies.
     // Concurrent reads on the same VFSZipFile are serialized by m_decomp_mutex.
-    // -------------------------------------------------------------------------
     struct VFSZipFile : IVFSFile
     {
         // Set by VFSZipBackend::Open
@@ -783,7 +767,6 @@ namespace ZEngine::Core::VFS
         VFSResult<const uint8_t*> EnsureDecompressed();
     };
 
-    // -------------------------------------------------------------------------
     // VFSZipBackend
     //
     // IVFSBackend backed by a single ZIP/PAK file (read-only).
@@ -793,7 +776,6 @@ namespace ZEngine::Core::VFS
     // For concurrent decompression, this backend keeps the archive file open
     // and uses pread() (POSIX) / ReadFile+OVERLAPPED (Windows) so multiple
     // VFSZipFile instances can decompress in parallel without a seek mutex.
-    // -------------------------------------------------------------------------
     struct VFSZipBackend : IVFSBackend
     {
         // archive_path: native absolute path to the .zip / .pak file.

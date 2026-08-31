@@ -203,7 +203,7 @@ namespace ZEngine::Rendering::Renderers
 
             float cr = CornersRadius(box->CornerRadii);
 
-            // --- Drop shadow (emitted first, renders behind everything) ---
+            // Drop shadow (emitted first, renders behind everything)
             if (box->Flags & ZUI_DropShadow)
             {
                 float    offset = ctx->Style.DropShadowOffset;
@@ -225,7 +225,7 @@ namespace ZEngine::Rendering::Renderers
             if (rf == 0 && cr > 0.f)
                 rf = 0xF; // fallback if all are equal nonzero
 
-            // --- Hover overlay for clickable boxes without background ---
+            // Hover overlay for clickable boxes without background
             if ((box->Flags & ZUI_Clickable) && !(box->Flags & ZUI_DrawBackground))
             {
                 auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
@@ -236,7 +236,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            // --- Background ---
+            // Background
             if (box->Flags & ZUI_DrawBackground)
             {
                 bool     all_same = true;
@@ -266,7 +266,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            // --- Border ---
+            // Border
             if ((box->Flags & ZUI_DrawBorder) && box->BorderThickness > 0.f)
             {
                 uint32_t bcol = ZUIPackColor(box->BorderColor);
@@ -274,7 +274,7 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddRect(&ctx->DrawList, bx0, by0, bx1, by1, bcol, cr, rf ? rf : 0xF, box->BorderThickness);
             }
 
-            // --- Text ---
+            // Text
             if ((box->Flags & ZUI_DrawText) && box->Label.Ptr && ctx->GetFont(box->FontSize))
             {
                 const ZUIFont* font     = ctx->GetFont(box->FontSize);
@@ -321,7 +321,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            // --- Checkmark (✓ polyline stroke) ---
+            // Checkmark (✓ polyline stroke)
             if (box->Flags & ZUI_DrawCheckmark)
             {
                 float    w = bx1 - bx0, h = by1 - by0;
@@ -334,7 +334,7 @@ namespace ZEngine::Rendering::Renderers
                 ZUIDrawListAddLine(&ctx->DrawList, pts_x[1], pts_y[1], pts_x[2], pts_y[2], cc, thick);
             }
 
-            // --- Circle fill (inscribed in box center) ---
+            // Circle fill (inscribed in box center)
             if (box->Flags & ZUI_DrawCircleFill)
             {
                 float    cx = (bx0 + bx1) * 0.5f;
@@ -344,7 +344,7 @@ namespace ZEngine::Rendering::Renderers
                 ZUIDrawListAddCircleFilled(&ctx->DrawList, cx, cy, r, cc);
             }
 
-            // --- Plot lines (ZUIPlotLines) ---
+            // Plot lines (ZUIPlotLines)
             if ((box->Flags & ZUI_DrawPlotLines) && box->Label.Ptr && box->Label.Len >= 2)
             {
                 const float* data  = (const float*) box->Label.Ptr;
@@ -381,7 +381,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            // --- Plot histogram (ZUIPlotHistogram) ---
+            // Plot histogram (ZUIPlotHistogram)
             if ((box->Flags & ZUI_DrawPlotBars) && box->Label.Ptr && box->Label.Len >= 1)
             {
                 const float* data  = (const float*) box->Label.Ptr;
@@ -408,7 +408,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            // --- Triangle arrow (collapse indicator) ---
+            // Triangle arrow (collapse indicator)
             // Geometry matches ImGui RenderArrow() exactly:
             //   r = FontSize * 0.40  (5.2px at FontSize=13)
             //   Down ▼:  a=(0,0.75)*r  b=(-0.866,-0.75)*r  c=(0.866,-0.75)*r
@@ -454,7 +454,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
-            // --- Actor-type icon (ZUI_DrawActorIcon) ---
+            // Actor-type icon (ZUI_DrawActorIcon)
             // Icon shape is selected by ZUIPersistentState::UserData (ZUI_ICON_* constants).
             // Color comes from TextColor.  Geometry mirrors ImGui DrawTypeIcon() exactly.
             if (box->Flags & ZUI_DrawActorIcon)

@@ -229,9 +229,7 @@ because it is an editor-only, infrequent operation and the record count is bound
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // UUIDHasher — adapts uuids::uuid for UnorderedHashMap
-    // -------------------------------------------------------------------------
     struct UUIDHasher
     {
         uint64_t operator()(const uuids::uuid& id) const noexcept
@@ -250,18 +248,14 @@ namespace ZEngine::Core::VFS
         }
     };
 
-    // -------------------------------------------------------------------------
     // VFSPathHasher — adapts VFSPath for UnorderedHashMap using VFSPath::Hash()
-    // -------------------------------------------------------------------------
     struct VFSPathHasher
     {
         uint64_t operator()(const VFSPath& p) const noexcept { return p.Hash(); }
         bool     operator()(const VFSPath& a, const VFSPath& b) const noexcept { return a == b; }
     };
 
-    // -------------------------------------------------------------------------
     // RegisterResult — returned by AssetIndex::Register
-    // -------------------------------------------------------------------------
     enum class RegisterError : uint8_t
     {
         None             = 0,
@@ -278,9 +272,7 @@ namespace ZEngine::Core::VFS
         bool IsOk() const { return Error == RegisterError::None && Handle.Valid(); }
     };
 
-    // -------------------------------------------------------------------------
     // AssetIndex
-    // -------------------------------------------------------------------------
     class AssetIndex
     {
     public:
@@ -484,11 +476,9 @@ Both directions are needed:
 
 namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // AdjacencyList — arena-backed list of UUIDs.
     // Inline storage for small lists (up to INLINE_CAPACITY) avoids arena
     // allocations for the common case of a mesh with 1–3 materials.
-    // -------------------------------------------------------------------------
     constexpr uint32_t DEP_INLINE_CAPACITY = 8;
 
     struct AdjacencyList
@@ -524,9 +514,7 @@ namespace ZEngine::Core::VFS
         bool Erase(const uuids::uuid& uuid);
     };
 
-    // -------------------------------------------------------------------------
     // DependencyGraph
-    // -------------------------------------------------------------------------
     class DependencyGraph
     {
     public:
@@ -692,9 +680,7 @@ namespace ZEngine::Core::VFS
 ### 7.2 `AssetRegistry.h`
 
 ```cpp
-    // -------------------------------------------------------------------------
     // AssetRegistry
-    // -------------------------------------------------------------------------
     class AssetRegistry
     {
     public:

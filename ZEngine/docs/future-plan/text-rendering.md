@@ -627,7 +627,7 @@ namespace ZEngine::Text {
         void SubmitGlyphs(const Core::Containers::Array<TextGlyph>& glyphs,
                           uint32_t atlas_texture_handle);
 
-        // --- IRenderGraphCallbackPass interface ---
+        // IRenderGraphCallbackPass interface
 
         /// Called by RenderGraph during pass setup. Declares color attachment (no depth).
         void Setup(Rendering::RenderGraphBuilder& builder) override;

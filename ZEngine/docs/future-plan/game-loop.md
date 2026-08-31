@@ -525,7 +525,7 @@ are omitted; the focus is the timing skeleton.
 // ZEngine/Engine/Engine.cpp  (MainThreadRun section)
 
 void Engine::MainThreadRun() {
-    // --- one-time setup ---
+    // one-time setup
     Engine::FrameTimer                    frame_timer;
     Engine::FixedTimestepAccumulator      accumulator;   // default config: 60 Hz, max 5 steps
     Engine::FrameRateCap                  frame_cap(300);

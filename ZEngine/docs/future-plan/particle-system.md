@@ -95,42 +95,42 @@ namespace ZEngine::Particles
 
     struct EmitterConfig
     {
-        // --- Spawn ---
+        // Spawn
         float    SpawnRate;     // particles per second (fractional accumulator, §6.1)
         uint32_t MaxParticles;  // hard upper bound on live particles; default 1024; max 65536
 
-        // --- Shape ---
+        // Shape
         EmitterShape       Shape;
         float              ShapeRadius;     // used by Sphere and Cone
         float              ConeAngleDeg;    // half-angle of cone in degrees (Cone shape)
         Core::Maths::Vec3f BoxHalfExtents;  // used by Box shape
 
-        // --- Lifetime ---
+        // Lifetime
         float LifetimeMin;  // seconds; must be > 0
         float LifetimeMax;  // seconds; must be >= LifetimeMin
 
-        // --- Velocity ---
+        // Velocity
         Core::Maths::Vec3f InitialVelocityMin;  // component-wise min random initial velocity
         Core::Maths::Vec3f InitialVelocityMax;  // component-wise max random initial velocity
         Core::Maths::Vec3f Gravity;             // world-space acceleration (e.g. {0,-9.8f,0})
         float              Drag;                // linear drag coefficient: v *= (1 - Drag * dt)
                                                 // clamp Drag to [0, 1] at config validation time
 
-        // --- Size ---
+        // Size
         float SizeStart;  // world-space billboard radius at birth
         float SizeEnd;    // world-space billboard radius at death; lerped by normalized lifetime
 
-        // --- Color ---
+        // Color
         Core::Maths::Vec4f ColorStart;  // RGBA at birth  (0–1 range)
         Core::Maths::Vec4f ColorEnd;    // RGBA at death; lerped by normalized lifetime
 
-        // --- Texture ---
+        // Texture
         uint32_t TextureHandle;  // RenderResourceManager handle to sprite atlas
         uint32_t AtlasCols;      // number of columns in the atlas grid (>= 1)
         uint32_t AtlasRows;      // number of rows    in the atlas grid (>= 1)
         // AtlasFrame selection is per-particle, set at spawn, advanced over lifetime (§6.1).
 
-        // --- Rendering ---
+        // Rendering
         bool SortByDepth;  // if true, sort particles back-to-front each frame (§9)
     };
 }

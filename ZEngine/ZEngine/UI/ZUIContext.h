@@ -19,7 +19,7 @@ namespace ZEngine::UI
         // Subtle +5% blue tint on backgrounds avoids flat gray monotony.
         // All values sRGB [0,1]; hex refs are approximate.
 
-        // --- Backgrounds (darkest → lightest) ---
+        // Backgrounds (darkest → lightest)
         float WindowBg[4]             = {0.067f, 0.067f, 0.082f, 1.00f}; // #111115  editor area
         float PanelBg[4]              = {0.102f, 0.102f, 0.125f, 1.00f}; // #1a1a20  panel content
         float PanelBgAlt[4]           = {0.133f, 0.133f, 0.161f, 1.00f}; // #222229  alt rows / headers
@@ -40,7 +40,7 @@ namespace ZEngine::UI
         float HeaderHoveredBg[4]      = {0.306f, 0.788f, 0.690f, 0.50f}; // teal 50% — ImGui ~0.80
         float HeaderActiveBg[4]       = {0.306f, 0.788f, 0.690f, 0.70f}; // teal 70%
 
-        // --- Tabs (4-state machine matching ImGui ImGuiCol_Tab* exactly) ---
+        // Tabs (4-state machine matching ImGui ImGuiCol_Tab* exactly)
         // Visual hierarchy lightest→darkest:
         // TabHoveredBg > TabInactiveBg > TitleBarBg(bar) > TabDimmedBg > TabDimmedSelectedBg > TabActiveBg
         float TabActiveBg[4]          = {0.102f, 0.102f, 0.125f, 1.00f}; // selected, focused — = PanelBg (sinks into content)
@@ -52,23 +52,23 @@ namespace ZEngine::UI
         float TabInactiveBorder[4]    = {0.235f, 0.235f, 0.280f, 0.40f}; // subtle border
         float TabAccent[4]            = {0.306f, 0.788f, 0.690f, 1.00f}; // teal
 
-        // --- Rows ---
+        // Rows
         float RowHoverBg[4]           = {0.306f, 0.788f, 0.690f, 0.09f}; // teal 9%
         float RowSelectedBg[4]        = {0.306f, 0.788f, 0.690f, 0.22f}; // teal 22%
         float RowRootBg[4]            = {0.306f, 0.788f, 0.690f, 0.11f}; // teal 11%
         float SelectionBg[4]          = {0.207f, 0.514f, 0.894f, 0.45f}; // text selection (VS Code blue)
 
-        // --- Status bar ---
+        // Status bar
         float StatusBarBg[4]          = {0.200f, 0.627f, 0.537f, 1.00f}; // slightly dark teal
 
-        // --- Text ---
+        // Text
         float TextDefault[4]          = {0.843f, 0.843f, 0.886f, 1.00f}; // #d7d7e2  cool near-white
         float TextDim[4]              = {0.431f, 0.431f, 0.510f, 1.00f}; // #6e6e82  blue-gray
         float TextAccent[4]           = {0.306f, 0.788f, 0.690f, 1.00f}; // #4EC9B0  teal
         float TextWarn[4]             = {0.949f, 0.741f, 0.141f, 1.00f}; // #f2bd24
         float TextError[4]            = {0.937f, 0.325f, 0.314f, 1.00f}; // #ef5350
 
-        // --- Widget accent marks ---
+        // Widget accent marks
         float CheckMark[4]            = {0.306f, 0.788f, 0.690f, 1.00f}; // teal
         float SliderGrab[4]           = {0.200f, 0.627f, 0.537f, 1.00f}; // teal dark
         float SliderGrabActive[4]     = {0.306f, 0.788f, 0.690f, 1.00f}; // teal full
@@ -88,7 +88,7 @@ namespace ZEngine::UI
         // Table
         float TableRowBgAlt[4]        = {1.000f, 1.000f, 1.000f, 0.03f};
 
-        // --- Borders ---
+        // Borders
         float PanelBorder[4]          = {0.235f, 0.235f, 0.290f, 1.00f}; // cool gray border
         float PanelFocusBorder[4]     = {0.306f, 0.788f, 0.690f, 1.00f}; // teal focus strip
         float PanelInactiveOverlay[4] = {0.000f, 0.000f, 0.000f, 0.05f}; // 5% dim
@@ -97,10 +97,10 @@ namespace ZEngine::UI
         float InputFocusBorder[4]     = {0.306f, 0.788f, 0.690f, 1.00f}; // teal
         float Separator[4]            = {0.235f, 0.235f, 0.290f, 0.50f}; // cool gray 50%
 
-        // --- Popup ---
+        // Popup
         float PopupBg[4]              = {0.184f, 0.184f, 0.224f, 1.00f}; // ImGui: ImGuiCol_PopupBg
 
-        // --- DataTable ---
+        // DataTable
         float TableHeaderBg[4]        = {0.165f, 0.165f, 0.204f, 1.00f}; // header row background
         float TableBorderLight[4]     = {0.220f, 0.220f, 0.270f, 1.00f}; // inner cell borders
         float TableBorderStrong[4]    = {0.350f, 0.350f, 0.420f, 1.00f}; // outer border / resize grip

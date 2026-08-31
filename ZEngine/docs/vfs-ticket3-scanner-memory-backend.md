@@ -180,14 +180,12 @@ namespace ZEngine::Core::VFS
 
 namespace ZEngine::Core::VFS
 {
-    // -----------------------------------------------------------------------
     // MemNode — internal storage unit for one file or directory.
     //
     // Uses std::vector<uint8_t> intentionally: VFSMemoryBackend is a
     // scratch / test store, never on a hot rendering path. Arena allocation
     // is not used here because MemNode owns heap data (std::vector) whose
     // copy-on-rehash semantics are incompatible with the engine's arena Array.
-    // -----------------------------------------------------------------------
     struct MemNode
     {
         enum class Kind : uint8_t { File = 0, Directory = 1 };
@@ -196,14 +194,12 @@ namespace ZEngine::Core::VFS
         std::vector<uint8_t> Data     = {};   // empty for directories
     };
 
-    // -----------------------------------------------------------------------
     // VFSMemoryFile — returned by VFSMemoryBackend::Open().
     //
     // Read mode  — holds shared_lock for its lifetime; MemoryMap() returns
     //              a zero-copy span directly into MemNode::Data.
     // Write mode — accumulates writes in m_write_buf; commits to MemNode
     //              on Flush() or Close() under a unique_lock.
-    // -----------------------------------------------------------------------
     struct VFSMemoryFile final : public IVFSFile
     {
         VFSMemoryFile()  = default;
@@ -235,9 +231,7 @@ namespace ZEngine::Core::VFS
         std::shared_mutex*                   m_backend_mutex  = nullptr;
     };
 
-    // -----------------------------------------------------------------------
     // VFSMemoryBackend
-    // -----------------------------------------------------------------------
     struct VFSMemoryBackend final : public IVFSBackend
     {
         VFSMemoryBackend();
@@ -426,7 +420,6 @@ delete file
 
 namespace ZEngine::Core::VFS
 {
-    // -----------------------------------------------------------------------
     // VFSDirectoryCache
     //
     // Thread model:
@@ -436,7 +429,6 @@ namespace ZEngine::Core::VFS
     //
     // Ownership: VFSDirEntry data is arena-allocated by VFSScanner.
     // The arena must outlive the cache entries it backs.
-    // -----------------------------------------------------------------------
     struct VFSDirectoryCache
     {
         VFSDirectoryCache()  = default;
@@ -525,7 +517,6 @@ namespace ZEngine::Core::VFS
         uint64_t DurationMs = 0;
     };
 
-    // -----------------------------------------------------------------------
     // VFSScanner
     //
     // Usage:
@@ -536,7 +527,6 @@ namespace ZEngine::Core::VFS
     //   Scan()          → called from UI/engine thread; returns immediately.
     //   ScanDirectory() → runs on ThreadPool workers (up to MaxConcurrentDirLists).
     //   OnScanComplete  → fires on the last worker thread that finishes.
-    // -----------------------------------------------------------------------
     struct VFSScanner
     {
         static constexpr int MaxConcurrentDirLists = 4;

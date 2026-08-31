@@ -46,7 +46,7 @@ namespace ZEngine::UI
 
         fprintf(f, "# ZUI Layout v4\n");
 
-        // --- Dock tree ---
+        // Dock tree
         // node <id> <parent_id> <is_leaf> <axis:0=X,1=Y> <pct> [<content_key_hex> <is_central> <auto_hide_tab_bar>]
         if (manager->DockTree && manager->DockTree->Root)
         {
@@ -76,7 +76,7 @@ namespace ZEngine::UI
             }
         }
 
-        // --- Panels ---
+        // Panels
         for (uint32_t i = 0; i < manager->PanelCount; ++i)
         {
             ZUIPanel* p = &manager->Panels[i];
@@ -109,7 +109,7 @@ namespace ZEngine::UI
             return false;
         }
 
-        // --- Version check (v3 only; v2 files are discarded, not migrated) ---
+        // Version check (v3 only; v2 files are discarded, not migrated)
         char line[512];
         if (!fgets(line, sizeof(line), f) || strncmp(line, "# ZUI Layout v4", 15) != 0)
         {
@@ -117,7 +117,7 @@ namespace ZEngine::UI
             return false;
         }
 
-        // --- Pass 1: parse all node records ---
+        // Pass 1: parse all node records
         struct LoadNode
         {
             int      parent_id;
@@ -213,7 +213,7 @@ namespace ZEngine::UI
             return false;
         }
 
-        // --- Rebuild dock tree ---
+        // Rebuild dock tree
         if (!manager->DockTree || !manager->DockTree->Arena)
         {
             return false;
@@ -264,7 +264,7 @@ namespace ZEngine::UI
         manager->DockTree->Root    = new_nodes[0];
         manager->DockTree->Focused = nullptr;
 
-        // --- Restore panel state + view assignments ---
+        // Restore panel state + view assignments
         // Snapshot current view assignments before clearing so we can restore
         // panels that are NOT in the ini (stale DockKey after a rename, etc.).
         // Without this, unmatched panels end up with ViewCount=0 → invisible.

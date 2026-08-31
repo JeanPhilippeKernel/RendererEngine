@@ -3268,9 +3268,7 @@ namespace ZEngine::UI
         return dragging;
     }
 
-    // ================================================================
     // Plot widgets
-    // ================================================================
 
     static void PlotSetup(ZUIContext* ctx, const char* key, const float* values, int count, float v_min, float v_max, ZUIBoxFlags draw_flag, ZUISize w, ZUISize h)
     {
@@ -3326,9 +3324,7 @@ namespace ZEngine::UI
         PlotSetup(ctx, key, values, count, v_scale_min, v_scale_max, ZUI_DrawPlotBars, w, h);
     }
 
-    // ================================================================
     // ZUIGridView
-    // ================================================================
 
     ZUIBox* ZUIBeginGridView(ZUIContext* ctx, const char* key, float item_w, float item_h, ZUISize w, ZUISize h)
     {
@@ -3410,9 +3406,7 @@ namespace ZEngine::UI
         ctx->GV_ItemH = 0.f;
     }
 
-    // ================================================================
     // ZUITreeView
-    // ================================================================
 
     // Each node's open state is stored as ZUIPersistentState.UserData
     // (1.0=open, 0.0=closed), keyed by the node label hash.
@@ -3616,9 +3610,7 @@ namespace ZEngine::UI
         return (sig.Flags & ZUI_SignalClicked) != 0;
     }
 
-    // ================================================================
     // ZUIDataTable
-    // ================================================================
 
     // Persistent state layout for a data table:
     //   slot key = DT_Key ^ (col * 2654435761ULL)  → UserData = column width

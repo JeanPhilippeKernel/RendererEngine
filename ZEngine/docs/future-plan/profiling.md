@@ -68,11 +68,9 @@ in-game debug overlay and requires no external dependency.
 // ZEngine/Profiling/Profiling.h
 #pragma once
 
-// ---------------------------------------------------------------------------
 // Configuration: set by CMake based on build type.
 //   ZENGINE_PROFILING  — 1 in Debug/RelWithDebInfo, 0 in Release
 //   ZENGINE_TRACY      — 1 when Tracy client is linked (requires ZENGINE_PROFILING=1)
-// ---------------------------------------------------------------------------
 
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #include <tracy/Tracy.hpp>
@@ -83,11 +81,9 @@ namespace ZEngine::Profiling {
     class GPUProfiler;   // forward-declared; used by ZENGINE_PROFILE_GPU_SCOPE
 }
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_SCOPE(name)
 //   CPU zone from the current line to the end of the enclosing scope.
 //   `name` must be a string literal.
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #define ZENGINE_PROFILE_SCOPE(name)  ZoneScopedN(name)
 #elif ZENGINE_PROFILING
@@ -97,10 +93,8 @@ namespace ZEngine::Profiling {
     #define ZENGINE_PROFILE_SCOPE(name)
 #endif
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_FUNCTION()
 //   Zone named after the current function (__FUNCTION__).
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #define ZENGINE_PROFILE_FUNCTION()   ZoneScoped
 #elif ZENGINE_PROFILING
@@ -110,11 +104,9 @@ namespace ZEngine::Profiling {
     #define ZENGINE_PROFILE_FUNCTION()
 #endif
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_FRAME(name)
 //   Mark a frame boundary. Call exactly once per main loop iteration.
 //   `name` is the frame label shown in the Tracy timeline.
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #define ZENGINE_PROFILE_FRAME(name)  FrameMarkNamed(name)
 #elif ZENGINE_PROFILING
@@ -123,10 +115,8 @@ namespace ZEngine::Profiling {
     #define ZENGINE_PROFILE_FRAME(name)
 #endif
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_THREAD(name)
 //   Name the current thread. Call once at thread start.
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #define ZENGINE_PROFILE_THREAD(name) tracy::SetThreadName(name)
 #elif ZENGINE_PROFILING
@@ -136,10 +126,8 @@ namespace ZEngine::Profiling {
     #define ZENGINE_PROFILE_THREAD(name)
 #endif
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_VALUE(name, value)
 //   Plot a float value. Useful for entity counts, memory, draw calls, etc.
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #define ZENGINE_PROFILE_VALUE(name, value)  TracyPlot(name, static_cast<double>(value))
 #elif ZENGINE_PROFILING
@@ -149,11 +137,9 @@ namespace ZEngine::Profiling {
     #define ZENGINE_PROFILE_VALUE(name, value)
 #endif
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_ALLOC(ptr, size)
 // ZENGINE_PROFILE_FREE(ptr)
 //   Notify the profiler of heap allocations and frees (for memory tracking).
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     #define ZENGINE_PROFILE_ALLOC(ptr, size)  TracyAlloc(ptr, size)
     #define ZENGINE_PROFILE_FREE(ptr)         TracyFree(ptr)
@@ -168,12 +154,10 @@ namespace ZEngine::Profiling {
     #define ZENGINE_PROFILE_FREE(ptr)
 #endif
 
-// ---------------------------------------------------------------------------
 // ZENGINE_PROFILE_GPU_SCOPE(cmd, name)
 //   GPU timestamp zone on a Vulkan command buffer.
 //   `cmd`  — VkCommandBuffer currently being recorded.
 //   `name` — string literal label for the zone.
-// ---------------------------------------------------------------------------
 #if ZENGINE_PROFILING && ZENGINE_TRACY
     // TracyVkZone requires a TracyVkCtx created at device init.
     // ZEngine stores the context in GPUProfiler::GetTracyContext().

@@ -108,14 +108,12 @@ namespace ZEngine::Rendering::PostProcessing {
     using Core::Containers::UnorderedHashMap;
     using Rendering::Textures::TextureHandle;
 
-    // ---------------------------------------------------------------------------
     // PostProcessStack
     //
     // Owns and orders all post-process passes. Call Initialize once at engine
     // startup, then AddPass for each effect in any order. Call Compile before
     // the first frame to sort passes and wire RenderGraph resources. Call Execute
     // once per frame from the render thread.
-    // ---------------------------------------------------------------------------
     struct PostProcessStack {
         void Initialize(ArenaAllocator* arena,
                         Hardwares::VulkanDevice* device,
@@ -175,10 +173,8 @@ namespace ZEngine::Rendering::PostProcessing {
 
 namespace ZEngine::Rendering::PostProcessing {
 
-    // -------------------------------------------------------------------------
     // PostProcessPassData — plain data describing one post-process pass.
     // No vtable. No virtual dispatch. Passed by pointer to Setup/Execute.
-    // -------------------------------------------------------------------------
     struct PostProcessPassData {
         StringHash    Name;                     // stable hash for enable/disable/lookup
         TextureHandle Input  = {};              // wired by PostProcessStack::Execute
@@ -188,7 +184,6 @@ namespace ZEngine::Rendering::PostProcessing {
         void*         Params  = nullptr;        // arena-allocated per-pass param struct
     };
 
-    // -------------------------------------------------------------------------
     // PostProcessPassVtable — function table replacing virtual dispatch.
     // Each pass provides two free functions; no inheritance required.
     //
@@ -198,7 +193,6 @@ namespace ZEngine::Rendering::PostProcessing {
     // DOD rationale: the render hot path calls Setup+Execute on N passes per
     // frame. A function-table dispatch is a single indirect call with no
     // heap allocation, no RTTI, and no virtual table walk.
-    // -------------------------------------------------------------------------
     using PassSetupFn   = void (*)(PostProcessPassData&,
                                    Graph::RenderGraphResourceBuilder&);
     using PassExecuteFn = void (*)(PostProcessPassData&,
@@ -210,10 +204,8 @@ namespace ZEngine::Rendering::PostProcessing {
         PassExecuteFn Execute = nullptr;
     };
 
-    // -------------------------------------------------------------------------
     // PostProcessPassEntry — one slot in the PostProcessStack.
     // Plain data + vtable. No heap allocation. Stored in a flat Array.
-    // -------------------------------------------------------------------------
     struct PostProcessPassEntry {
         PostProcessPassData   Data;
         PostProcessPassVtable Vtable;
@@ -552,10 +544,8 @@ layout(push_constant) uniform ToneMapPush {
 layout(location = 0) in  vec2 v_uv;
 layout(location = 0) out vec4 o_color;
 
-// ---------------------------------------------------------------------------
 // ACES filmic — Narkowicz 2015 approximation
 // Reference: https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
-// ---------------------------------------------------------------------------
 vec3 ACES_Film(vec3 x) {
     // Input transform: sRGB → ACES AP1
     const mat3 m_in = mat3(
@@ -577,17 +567,13 @@ vec3 ACES_Film(vec3 x) {
     return clamp(m_out * (a / b), 0.0, 1.0);
 }
 
-// ---------------------------------------------------------------------------
 // Reinhard (simple luminance)
-// ---------------------------------------------------------------------------
 vec3 Reinhard(vec3 x) {
     return x / (1.0 + x);
 }
 
-// ---------------------------------------------------------------------------
 // Uncharted 2 / Hable filmic
 // Reference: https://gdcvault.com/play/1012351/Uncharted-2-HDR-Lighting
-// ---------------------------------------------------------------------------
 vec3 Uncharted2Partial(vec3 x) {
     const float A = 0.15, B = 0.50, C = 0.10, D = 0.20, E = 0.02, F = 0.30;
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;

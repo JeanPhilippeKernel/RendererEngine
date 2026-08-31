@@ -661,17 +661,17 @@ The full uniform buffer pushed to the lighting pass descriptor set:
 namespace ZEngine::Rendering::Shadows {
 
     struct ShadowUniformBuffer {
-        // --- Directional light (CSM) ---
+        // Directional light (CSM)
         CascadeData  DirectionalCascades[4];      // 80 * 4 = 320 bytes
         uint32_t     CascadeCount;                // 4 bytes
         float        DirectionalPadding[3];       // 12 bytes — pad to 16
 
-        // --- Spot lights ---
+        // Spot lights
         SpotShadowData SpotShadows[4];            // 80 * 4 = 320 bytes
         uint32_t       ActiveSpotShadowCount;     // 4 bytes
         float          SpotPadding[3];            // 12 bytes
 
-        // --- Point lights ---
+        // Point lights
         PointShadowData PointShadows[2];          // 400 * 2 = 800 bytes
         uint32_t        ActivePointShadowCount;   // 4 bytes
         float           PointPadding[3];          // 12 bytes

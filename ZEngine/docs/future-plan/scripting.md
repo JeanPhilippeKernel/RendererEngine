@@ -115,7 +115,7 @@ namespace ZEngine::Scripting {
 
 }  // namespace ZEngine::Scripting
 
-// --- C ABI entry points ---
+// C ABI entry points
 // The game DLL must export all four. The engine resolves them by name via dlsym/GetProcAddress.
 // No C++ name mangling: extern "C" is mandatory.
 

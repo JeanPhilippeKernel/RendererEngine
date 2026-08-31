@@ -293,7 +293,6 @@ namespace ZEngine::Core::VFS
         bool Equals(cstring other) const;
     };
 
-    // -------------------------------------------------------------------------
     // VFSPath
     //
     // Immutable, normalized, absolute VFS path value type.
@@ -309,10 +308,9 @@ namespace ZEngine::Core::VFS
     //   VFSPath::Parse(raw)        — from any string; normalizes and validates
     //   VFSPath::FromNative(path)  — from an OS-native path string
     //   VFSPath::Root()            — the root path "/"
-    // -------------------------------------------------------------------------
     struct VFSPath
     {
-        // ---- Construction --------------------------------------------------
+        // Construction
 
         // Normalize and validate `raw`. Accepts absolute or relative input;
         // always produces an absolute VFS path.
@@ -332,7 +330,7 @@ namespace ZEngine::Core::VFS
         // Always use Parse(), FromNative(), or Root() to construct.
         VFSPath() = default;
 
-        // ---- Accessors -----------------------------------------------------
+        // Accessors
 
         cstring CStr() const
         {
@@ -371,7 +369,7 @@ namespace ZEngine::Core::VFS
         }
         VFSPathComponent   ComponentAt(uint32_t index) const;
 
-        // ---- Composition ---------------------------------------------------
+        // Composition
 
         // Append a relative segment. Returns InvalidPath if result exceeds VFS_MAX_PATH.
         [[nodiscard]] VFSResult<VFSPath> Append(cstring segment) const;
@@ -381,7 +379,7 @@ namespace ZEngine::Core::VFS
         // (e.g. compiled-in asset paths). Prefer Append() in runtime code.
         VFSPath            operator/(cstring segment) const;
 
-        // ---- Comparison ----------------------------------------------------
+        // Comparison
 
         // Byte-exact comparison on the normalized string.
         // Case sensitivity is a backend concern — VFSPath is always case-sensitive.
@@ -394,7 +392,7 @@ namespace ZEngine::Core::VFS
         //   "/tex".IsPrefixOf("/textures/rock.png")      == false
         bool               IsPrefixOf(const VFSPath& other) const;
 
-        // ---- Conversion ----------------------------------------------------
+        // Conversion
 
         // Write the OS-native form into `out_buffer` (platform path separator).
         // Only call from OS-facing code; never in hot render/update loops.
@@ -513,7 +511,6 @@ namespace ZEngine::Core::VFS
         bool     IsReadOnly  = false;
     };
 
-    // -------------------------------------------------------------------------
     // IVFSFile
     //
     // Handle to an open file. Returned by IVFSContext::Open().
@@ -521,7 +518,6 @@ namespace ZEngine::Core::VFS
     //
     // Offset-based I/O: every read/write takes an explicit byte offset.
     // No seek cursor — safe for concurrent reads from multiple threads.
-    // -------------------------------------------------------------------------
     struct IVFSFile
     {
         virtual ~IVFSFile()                                                                                 = default;
@@ -599,7 +595,6 @@ namespace ZEngine::Core::VFS
         return (static_cast<uint32_t>(caps) & static_cast<uint32_t>(test)) != 0;
     }
 
-    // -------------------------------------------------------------------------
     // IVFSBackend
     //
     // Abstract storage provider. Concrete implementations:
@@ -609,7 +604,6 @@ namespace ZEngine::Core::VFS
     //
     // `path` in all methods is RELATIVE to this backend's mount root.
     // The IVFSContext is responsible for stripping the mount prefix.
-    // -------------------------------------------------------------------------
     struct IVFSBackend
     {
         virtual ~IVFSBackend()                                                                                                      = default;
@@ -665,12 +659,10 @@ namespace ZEngine::Core::VFS
 
     namespace ZEngine::Core::VFS
 {
-    // -------------------------------------------------------------------------
     // IVFSContext
     //
     // Top-level VFS object. Routes Open/Stat/List/Exists to the appropriate
     // backend via the mount table (next ticket).
-    // -------------------------------------------------------------------------
     struct IVFSContext
     {
         virtual ~IVFSContext()                                                                                                             = default;
@@ -688,7 +680,6 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] virtual VFSResult<void>                                 Unmount(const VFSPath& logical_root)                                       = 0;
     };
 
-    // -------------------------------------------------------------------------
     // VFSDiskContext
     //
     // Passthrough to std::filesystem anchored at `native_root`.
@@ -696,7 +687,6 @@ namespace ZEngine::Core::VFS
     //
     // Sandbox check: ToNativePath() verifies that the resolved OS path is
     // still under m_native_root — prevents "../" escape from untrusted input.
-    // -------------------------------------------------------------------------
     struct VFSDiskContext final : public IVFSContext
     {
         explicit VFSDiskContext(cstring native_root);
