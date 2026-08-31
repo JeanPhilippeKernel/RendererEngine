@@ -37,19 +37,18 @@ target_link_libraries(ZEngineTests PRIVATE
     GTest::gtest_main
 )
 
-if(APPLE)
-    # freetype builds as a .framework in _deps; both the install lib/ dir and the
-    # freetype build output dir must be in the rpath so the test binary resolves
-    # @rpath/freetype.framework/... at runtime on CI and locally.
-    set_target_properties(ZEngineTests PROPERTIES
-        INSTALL_RPATH
-        "${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_BINARY_DIR}/_deps/freetype-build/$<CONFIG>")
-else()
-    set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
-endif()
+set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
 
-install(TARGETS ZEngineTests 
+install(TARGETS ZEngineTests
     RUNTIME DESTINATION tests)
+
+if(APPLE)
+    # freetype builds as a .framework bundle in _deps; install it into lib/ alongside
+    # the vulkan dylibs so the binary's INSTALL_RPATH (lib/) resolves it on CI.
+    install(DIRECTORY "${CMAKE_BINARY_DIR}/_deps/freetype-build/$<CONFIG>/freetype.framework"
+        DESTINATION lib
+        USE_SOURCE_PERMISSIONS)
+endif()
 
 if(APPLE)
     add_custom_command(TARGET ZEngineTests POST_BUILD

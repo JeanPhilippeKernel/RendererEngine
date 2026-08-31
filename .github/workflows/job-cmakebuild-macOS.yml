@@ -41,5 +41,5 @@ jobs:
           path: |
             Result.Darwin.${{inputs.architecture}}.${{inputs.configuration}}/bin/
             Result.Darwin.${{inputs.architecture}}.${{inputs.configuration}}/lib/*vulkan*
-            Result.Darwin.${{inputs.architecture}}.${{inputs.configuration}}/_deps/freetype-build/${{inputs.configuration}}/freetype.framework/**
+            Result.Darwin.${{inputs.architecture}}.${{inputs.configuration}}/lib/freetype.framework/**
             Result.Darwin.${{inputs.architecture}}.${{inputs.configuration}}/tests
