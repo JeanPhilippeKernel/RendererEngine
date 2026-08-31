@@ -29,37 +29,93 @@ namespace Tetragrama::Panels
 
     static ExtInfo GetExtInfo(const char* name)
     {
-        static const float kCpp[4]     = {0.40f, 0.65f, 0.90f, 1.f}; // blue
-        static const float kH[4]       = {0.45f, 0.85f, 0.55f, 1.f}; // teal
+        static const float kScript[4]  = {0.40f, 0.65f, 0.90f, 1.f}; // blue
+        static const float kHeader[4]  = {0.25f, 0.68f, 0.58f, 1.f}; // teal
         static const float kShader[4]  = {0.80f, 0.40f, 0.85f, 1.f}; // purple
         static const float kTexture[4] = {0.90f, 0.75f, 0.30f, 1.f}; // gold
         static const float kScene[4]   = {0.55f, 0.80f, 0.45f, 1.f}; // green
         static const float kMesh[4]    = {0.55f, 0.75f, 0.90f, 1.f}; // sky blue
         static const float kDefault[4] = {0.55f, 0.55f, 0.60f, 1.f}; // gray
-        if (!name)
-            return {kDefault, "Other"};
+        if (!name) return {kDefault, "Other"};
         const char* dot = strrchr(name, '.');
-        if (!dot)
-            return {kDefault, "Other"};
+        if (!dot)   return {kDefault, "Other"};
         const char* ext = dot + 1;
-        char        e0  = (char) tolower((unsigned char) ext[0]);
-        char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
-        if (e0 == 'c' && (e1 == 'p' || e1 == 0))
-            return {kCpp, "Scripts"};
-        if (e0 == 'h' && (e1 == 'p' || e1 == 0))
-            return {kH, "Scripts"};
-        if (e0 == 'g' && e1 == 'l' && tolower((unsigned char) ext[2]) == 's')
-            return {kShader, "Shaders"};
+        char e0 = (char) tolower((unsigned char) ext[0]);
+        char e1 = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
+        char e2 = e1    ? (char) tolower((unsigned char) ext[2]) : 0;
+
+        // ── Scripts ────────────────────────────────────────────────────────────
+        if (e0 == 'c' && (e1 == 'p' || e1 == 'c' || e1 == 'x' || e1 == 0))
+            return {kScript, "Scripts"};  // .cpp .cc .cxx .c
+        if (e0 == 'h' && (e1 == 'p' || e1 == 'x' || e1 == 0))
+            return {kHeader, "Scripts"};  // .hpp .hxx .h
+        if (e0 == 'c' && e1 == 's' && e2 == 0)
+            return {kScript, "Scripts"};  // .cs (not .css or .csv)
+        if (e0 == 'j' && e1 == 's' && e2 == 0)
+            return {kScript, "Scripts"};  // .js  (not .json)
+        if (e0 == 't' && e1 == 's' && e2 == 0)
+            return {kScript, "Scripts"};  // .ts  (not .tsc or .tsx)
+        if (e0 == 'p' && e1 == 'y')
+            return {kScript, "Scripts"};  // .py
+        if (e0 == 'l' && e1 == 'u')
+            return {kScript, "Scripts"};  // .lua
+        if (e0 == 'r' && e1 == 's' && e2 == 0)
+            return {kScript, "Scripts"};  // .rs (Rust)
+
+        // ── Shaders ────────────────────────────────────────────────────────────
+        if (e0 == 'g' && e1 == 'l' && e2 == 's')
+            return {kShader, "Shaders"};  // .glsl
         if (e0 == 'v' && e1 == 'e')
-            return {kShader, "Shaders"}; // .vert
+            return {kShader, "Shaders"};  // .vert
         if (e0 == 'f' && e1 == 'r')
-            return {kShader, "Shaders"}; // .frag
-        if (e0 == 'p' || e0 == 'j' || (e0 == 'd' && e1 == 'd'))
-            return {kTexture, "Textures"}; // .png / .jpg / .dds
+            return {kShader, "Shaders"};  // .frag
+        if (e0 == 'c' && e1 == 'o')
+            return {kShader, "Shaders"};  // .comp
+        if (e0 == 'h' && e1 == 'l')
+            return {kShader, "Shaders"};  // .hlsl
+        if (e0 == 's' && e1 == 'p')
+            return {kShader, "Shaders"};  // .spv
+
+        // ── Textures ───────────────────────────────────────────────────────────
+        if (e0 == 'p' && (e1 == 'n' || e1 == 's' || e1 == 'f'))
+            return {kTexture, "Textures"}; // .png .psd .pfm
+        if (e0 == 'j' && e1 == 'p')
+            return {kTexture, "Textures"}; // .jpg .jpeg
+        if (e0 == 'b' && e1 == 'm')
+            return {kTexture, "Textures"}; // .bmp
+        if (e0 == 't' && (e1 == 'g' || e1 == 'i'))
+            return {kTexture, "Textures"}; // .tga .tiff .tif
+        if (e0 == 'd' && e1 == 'd')
+            return {kTexture, "Textures"}; // .dds
+        if (e0 == 'h' && e1 == 'd')
+            return {kTexture, "Textures"}; // .hdr
+        if (e0 == 'e' && e1 == 'x')
+            return {kTexture, "Textures"}; // .exr
+        if (e0 == 'w' && e1 == 'e')
+            return {kTexture, "Textures"}; // .webp
+        if (e0 == 'k' && e1 == 't')
+            return {kTexture, "Textures"}; // .ktx .ktx2
+
+        // ── Scenes ─────────────────────────────────────────────────────────────
         if (e0 == 'z')
-            return {kScene, "Scenes"};
-        if (e0 == 'g' || e0 == 'f' || e0 == 'o' || e0 == 'd') // .glb / .fbx / .obj / .dae
-            return {kMesh, "Models"};
+            return {kScene, "Scenes"};     // .zescene
+
+        // ── Models ─────────────────────────────────────────────────────────────
+        if (e0 == 'g' && (e1 == 'l' || e1 == 't'))
+            return {kMesh, "Models"};      // .glb .gltf
+        if (e0 == 'f' && e1 == 'b')
+            return {kMesh, "Models"};      // .fbx
+        if (e0 == 'o' && e1 == 'b')
+            return {kMesh, "Models"};      // .obj
+        if (e0 == 'd' && e1 == 'a')
+            return {kMesh, "Models"};      // .dae
+        if (e0 == 'u' && e1 == 's')
+            return {kMesh, "Models"};      // .usd .usda .usdc
+        if (e0 == 's' && e1 == 't')
+            return {kMesh, "Models"};      // .stl
+        if (e0 == 'p' && e1 == 'l')
+            return {kMesh, "Models"};      // .ply
+
         return {kDefault, "Other"};
     }
 
@@ -84,8 +140,8 @@ namespace Tetragrama::Panels
         if (e0 == 'h' && e1 == 'x')  return ZUI_ICON_SOURCE_H;   // .hxx
         if (e0 == 'h' && e1 == 0)    return ZUI_ICON_SOURCE_H;   // .h
         if (e0 == 'c' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_CS; // .cs
-        if (e0 == 'j' && e1 == 's')  return ZUI_ICON_SOURCE_JS;  // .js .json
-        if (e0 == 't' && e1 == 's')  return ZUI_ICON_SOURCE_JS;  // .ts
+        if (e0 == 'j' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS; // .js only
+        if (e0 == 't' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS; // .ts only
         if (e0 == 'p' && e1 == 'y')  return ZUI_ICON_SOURCE_PY;  // .py
         if (e0 == 'l' && e1 == 'u')  return ZUI_ICON_SOURCE_PY;  // .lua (reuse green)
         return ZUI_ICON_ACTOR;

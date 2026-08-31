@@ -525,6 +525,12 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy + fh * 0.28f, fix + fw, fiy + fh, cc, 1.5f);
                     ZUIDrawListAddRectFilled(&ctx->DrawList, fix, fiy, fix + fw * 0.44f, fiy + fh * 0.32f, cc, 1.5f);
                 }
+                else if (itype < 15.5f) // ZUI_ICON_ACTOR = 15: diamond (explicit — avoids fall-through to COLLECTION_ADD)
+                {
+                    float r = sz * 0.35f;
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy - r, cx + r, cy, cx, cy + r, cc);
+                    ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx, cy - r, cx, cy + r, cx - r, cy, cc);
+                }
                 else if (itype < 20.5f) // ZUI_ICON_COLLECTION_ADD = 20: folder shape + "+" cross
                 {
                     // Folder shape (mirrors develop DrawTypeIcon / ICON_FOLDER)
@@ -596,16 +602,9 @@ namespace ZEngine::Rendering::Renderers
                     else if (itype < 33.5f) { br = 0.27f; bg = 0.72f; bb = 0.42f; } // PY  — green
                     else                   { br = 0.22f; bg = 0.68f; bb = 0.62f; } // H   — teal
 
-                    // Badge geometry — centered rounded rect
-                    float bw = sz * 0.78f, bh = sz * 0.58f;
+                    // Badge — centered rounded rect, filling ~80% of icon box
+                    float bw  = sz * 0.80f, bh = sz * 0.62f;
                     float bbx = cx - bw * 0.5f, bby = cy - bh * 0.5f;
-
-                    // Glow halos (3 passes, outer→inner)
-                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx - sz*0.22f, bby - sz*0.17f, bbx+bw+sz*0.22f, bby+bh+sz*0.17f, ZUIPackColor(br,bg,bb,0.06f), 10.f);
-                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx - sz*0.11f, bby - sz*0.09f, bbx+bw+sz*0.11f, bby+bh+sz*0.09f, ZUIPackColor(br,bg,bb,0.14f),  8.f);
-                    ZUIDrawListAddRectFilled(&ctx->DrawList, bbx - sz*0.05f, bby - sz*0.04f, bbx+bw+sz*0.05f, bby+bh+sz*0.04f, ZUIPackColor(br,bg,bb,0.22f),  6.f);
-
-                    // Badge fill
                     ZUIDrawListAddRectFilled(&ctx->DrawList, bbx, bby, bbx+bw, bby+bh, ZUIPackColor(br,bg,bb,1.f), 5.f);
 
                     // Symbol in white on the badge
