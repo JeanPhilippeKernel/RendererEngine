@@ -99,25 +99,42 @@ Contributions are welcome. Please read [Contributing.md](Contributing.md) before
 
 ## Dependencies
 
-All dependencies are fetched automatically via CMake `FetchContent`:
+All dependencies are fetched automatically via CMake `FetchContent` — no manual submodule initialization required.
 
+**Rendering & windowing**
 - [Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) + [Vulkan-Loader](https://github.com/KhronosGroup/Vulkan-Loader) — Vulkan API
-- [GLFW](https://github.com/glfw/glfw) — window creation and input management
-- [STB](https://github.com/nothings/stb) — image loading for textures
-- [ImGUI](https://github.com/ocornut/imgui) — GUI components
-- [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) — editor transform gizmos
-- [SPDLOG](https://github.com/gabime/spdlog) — logging
-- [fmt](https://github.com/fmtlib/fmt) — string formatting
-- [EnTT](https://github.com/skypjack/entt) — entity component system
-- [Assimp](https://github.com/assimp/assimp) — 2D/3D asset loading
-- [yaml-cpp](https://github.com/jbeder/yaml-cpp) — YAML parsing
-- [nlohmann/json](https://github.com/nlohmann/json) — JSON parsing
-- [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) + [glslang](https://github.com/KhronosGroup/glslang) + [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools) — shader compilation
 - [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) — GPU memory management
+- [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) + [glslang](https://github.com/KhronosGroup/glslang) + [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools) — shader compilation pipeline
+- [GLFW](https://github.com/glfw/glfw) — window creation and input
+
+**UI system**
+- [FreeType](https://gitlab.freedesktop.org/freetype/freetype) — font rasterisation for ZUI
+- [rapidhash](https://github.com/Nicoshev/rapidhash) — O(1) widget key hashing in ZUI
+
+**Asset loading**
+- [Assimp](https://github.com/assimp/assimp) — legacy 3D asset import
+- [fastgltf](https://github.com/spnda/fastgltf) — fast glTF 2.0 loader
+- [ufbx](https://github.com/ufbx/ufbx) — FBX loader
+- [meshoptimizer](https://github.com/zeux/meshoptimizer) — mesh vertex cache, overdraw, and LOD optimisation
+- [STB](https://github.com/nothings/stb) — image loading (PNG, JPEG, HDR)
+- [miniz](https://github.com/richgel999/miniz) — zip / deflate compression
+
+**Memory**
+- [tlsf](https://github.com/mattconte/tlsf) — O(1) dynamic allocator for variable-size engine slabs
+
+**Data formats**
+- [nlohmann/json](https://github.com/nlohmann/json) — JSON parsing
+- [simdjson](https://github.com/simdjson/simdjson) — high-performance JSON for asset pipeline
+- [yaml-cpp](https://github.com/jbeder/yaml-cpp) — YAML configuration
+
+**Logging & utilities**
+- [spdlog](https://github.com/gabime/spdlog) — structured logging
+- [fmt](https://github.com/fmtlib/fmt) — string formatting
 - [stduuid](https://github.com/mariusbancila/stduuid) — UUID generation
 - [CLI11](https://github.com/CLIUtils/CLI11) — command-line argument parsing
-- [rapidhash](https://github.com/Nicoshev/rapidhash) — fast hashing
-- [miniz](https://github.com/richgel999/miniz) — compression
+- [Tracy](https://github.com/wolfpld/tracy) — frame profiler (opt-in via `ZENGINE_TRACY`)
+
+**Testing**
 - [GoogleTest](https://github.com/google/googletest) — unit testing
 
 ## License
