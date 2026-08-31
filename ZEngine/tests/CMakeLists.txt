@@ -37,7 +37,16 @@ target_link_libraries(ZEngineTests PRIVATE
     GTest::gtest_main
 )
 
-set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+if(APPLE)
+    # freetype builds as a .framework in _deps; both the install lib/ dir and the
+    # freetype build output dir must be in the rpath so the test binary resolves
+    # @rpath/freetype.framework/... at runtime on CI and locally.
+    set_target_properties(ZEngineTests PROPERTIES
+        INSTALL_RPATH
+        "${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_BINARY_DIR}/_deps/freetype-build/$<CONFIG>")
+else()
+    set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+endif()
 
 install(TARGETS ZEngineTests 
     RUNTIME DESTINATION tests)
