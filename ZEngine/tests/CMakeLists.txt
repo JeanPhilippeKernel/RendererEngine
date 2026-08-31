@@ -37,10 +37,25 @@ target_link_libraries(ZEngineTests PRIVATE
     GTest::gtest_main
 )
 
-set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+if(APPLE)
+    # @loader_path/../lib resolves to lib/ relative to wherever the binary lands,
+    # surviving the artifact prefix-stripping that makes absolute CMAKE_INSTALL_PREFIX
+    # paths wrong on the CI runner after download.
+    set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH "@loader_path/../lib")
+else()
+    set_target_properties(ZEngineTests PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+endif()
 
-install(TARGETS ZEngineTests 
+install(TARGETS ZEngineTests
     RUNTIME DESTINATION tests)
+
+if(APPLE)
+    # Install freetype.framework alongside vulkan in lib/ so the @loader_path/../lib
+    # rpath entry resolves @rpath/freetype.framework/... correctly on CI.
+    install(DIRECTORY "${CMAKE_BINARY_DIR}/_deps/freetype-build/$<CONFIG>/freetype.framework"
+        DESTINATION lib
+        USE_SOURCE_PERMISSIONS)
+endif()
 
 if(APPLE)
     add_custom_command(TARGET ZEngineTests POST_BUILD

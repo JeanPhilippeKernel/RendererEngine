@@ -98,6 +98,7 @@ namespace ZEngine
         // parent (glTF 64 MB + Assimp 128 MB + envmap 32 MB + editor ~414 MB).
         // Each Import() call ends with Arena.Clear() so the sub-arena is reused, not consumed.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
+        memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
@@ -275,19 +276,25 @@ namespace ZEngine
             uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
 
             if (next == tail)
-                continue; // buffer full — drop frame
+            {
+                // Mailbox full — render thread hasn't consumed the previous payload yet.
+                // Cap here too so the main loop doesn't spin at 100k+ Hz: without it
+                // raw_dt stays near-zero, ZUI is starved (BeginOverlayFrame is skipped),
+                // and a full CPU core is burned for no throughput gain.
+                frame_cap.WaitForFrameBudget();
+                continue;
+            }
 
-            auto& r_payload                   = pipeline->RenderPayloads[head];
-            r_payload.UIOverlay.DrawDataIndex = 0;
+            auto& r_payload = pipeline->RenderPayloads[head];
             r_payload.RenderUIOverlay.value.store(false, std::memory_order_release);
 
             if (g_app->EnableRenderOverlay)
             {
-                pipeline->BeginOverlayFrame();
+                pipeline->BeginOverlayFrame(raw_dt);
                 g_app->OnRenderUI();
                 pipeline->EndOverlayFrame();
                 r_payload.RenderUIOverlay.value.store(true, std::memory_order_release);
-                pipeline->FillOverlayPayload(r_payload.UIOverlay);
+                pipeline->FillOverlayPayload(r_payload);
             }
 
             if (g_engine_ctx->Scene && g_app->CurrentScene)
@@ -301,9 +308,11 @@ namespace ZEngine
 
             pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
 
-            //  Frame rate cap (vsync-off only)
-            if (!window->IsVSyncEnable())
-                frame_cap.WaitForFrameBudget();
+            //  Frame rate cap — applied unconditionally.
+            //  Vsync throttles the GPU present in the render thread; the main loop
+            //  still needs a cap so physics/animation receive a sensible raw_dt
+            //  and the CPU is not burned spinning the mailbox at 100k+ Hz.
+            frame_cap.WaitForFrameBudget();
         }
 
         ZENGINE_CORE_INFO("Engine main loop exited after {} frames", frame_index)
@@ -311,6 +320,10 @@ namespace ZEngine
 
     void Engine::RenderThreadRun()
     {
+        // Measures wall-clock time between consecutive EndFrame() calls, which
+        // includes the vsync wait. This is the true GPU presentation rate.
+        Timing::FrameTimer render_timer;
+
 #ifdef __APPLE__
         pthread_setname_np("RenderThread");
         thread_port_t                        thread_port = pthread_mach_thread_np(pthread_self());
@@ -355,9 +368,15 @@ namespace ZEngine
             {
                 pipeline->RenderScene(r_payload.Camera, r_payload.Scene);
                 if (r_payload.RenderUIOverlay.value.load(std::memory_order_acquire))
-                    pipeline->RenderOverlay(r_payload.UIOverlay);
+                    pipeline->RenderOverlay(r_payload);
             }
             pipeline->EndFrame();
+
+            // Update SmoothedDeltaTime with the render thread's smoothed frame time.
+            // End() is called after EndFrame() so the vsync wait is included in the sample.
+            render_timer.End();
+            if (g_engine_ctx)
+                g_engine_ctx->SmoothedDeltaTime = render_timer.SmoothedDelta();
 
             uint32_t next = (tail + 1) % pipeline->MaxMailBoxBufferCount;
 

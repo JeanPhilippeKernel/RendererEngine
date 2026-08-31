@@ -377,9 +377,9 @@ namespace ZEngine::Physics {
         PhysicsWorld(const PhysicsWorld&)            = delete;
         PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Lifecycle
-        // ------------------------------------------------------------------ //
+        // //
 
         // Initialize Jolt and allocate body storage.
         //   arena               — ZEngine arena for per-frame bookkeeping
@@ -397,17 +397,17 @@ namespace ZEngine::Physics {
 
         void Shutdown();
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Simulation step
-        // ------------------------------------------------------------------ //
+        // //
 
         // Advance the simulation by dt seconds using collision_steps sub-steps.
         // collision_steps = 1 is sufficient for 60Hz; use 2 for fast objects at 30Hz.
         void Update(float dt, int collision_steps = 1);
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Body management
-        // ------------------------------------------------------------------ //
+        // //
 
         // Create a Jolt body from ECS component data and register it.
         // Returns the opaque BodyID stored in RigidBodyComponent::JoltBodyID.
@@ -446,9 +446,9 @@ namespace ZEngine::Physics {
         // Set the linear velocity of a Kinematic body directly.
         void SetKinematicVelocity(BodyID id, const Core::Maths::Vec3f& velocity);
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Queries
-        // ------------------------------------------------------------------ //
+        // //
 
         // Cast a ray from origin along direction up to max_dist metres.
         // Returns the closest hit.
@@ -482,24 +482,24 @@ namespace ZEngine::Physics {
             uint16_t                  layer_mask = 0xFFFFu
         ) const;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Contact / Sensor events
-        // ------------------------------------------------------------------ //
+        // //
 
         // Register a callback to receive contact enter/exit events.
         // Callbacks fire on the main thread after each Update().
         void SetContactEventCallback(ContactEventCallback callback);
 
-        // ------------------------------------------------------------------ //
+        // //
         //  EntityID ↔ BodyID mapping
-        // ------------------------------------------------------------------ //
+        // //
 
         ECS::EntityID GetEntityForBody(BodyID id) const;
         BodyID        GetBodyForEntity(ECS::EntityID entity) const;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Gravity
-        // ------------------------------------------------------------------ //
+        // //
 
         void SetGravity(const Core::Maths::Vec3f& gravity);
         Core::Maths::Vec3f GetGravity() const;

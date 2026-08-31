@@ -214,14 +214,14 @@ namespace ZEngine::SaveSystem
         // Must be called before any Set/Get. arena must outlive this object.
         void Initialize(Core::Memory::ArenaAllocator* arena);
 
-        // --- Setters ---
+        // Setters
         void SetInt   (const char* key, int32_t value);
         void SetFloat (const char* key, float value);
         void SetBool  (const char* key, bool value);
         void SetString(const char* key, const char* value);           // copies string bytes
         void SetBlob  (const char* key, const void* data, uint32_t size); // copies blob bytes
 
-        // --- Getters (return default_value if key not found or type mismatches) ---
+        // Getters (return default_value if key not found or type mismatches)
         int32_t     GetInt   (const char* key, int32_t default_value  = 0)       const;
         float       GetFloat (const char* key, float default_value    = 0.f)     const;
         bool        GetBool  (const char* key, bool default_value     = false)   const;
@@ -229,7 +229,7 @@ namespace ZEngine::SaveSystem
         // Returns actual size written into out_buf; 0 if not found or size mismatch.
         uint32_t    GetBlob  (const char* key, void* out_buf, uint32_t buf_size) const;
 
-        // --- Serialization ---
+        // Serialization
         // Appends the binary payload for all records to out. Does not write the header.
         void Serialize  (Core::Memory::ArenaAllocator* scratch,
                          Core::Containers::Array<uint8_t>& out) const;

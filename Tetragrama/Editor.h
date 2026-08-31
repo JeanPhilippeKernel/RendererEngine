@@ -1,6 +1,6 @@
 #pragma once
 #include <Tetragrama/EditorScene.h>
-#include <Tetragrama/Layers/ImguiLayer.h>
+#include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
@@ -49,7 +49,7 @@ namespace Tetragrama
 
         virtual ~Editor() {}
 
-        ZRawPtr(Layers::ImguiLayer) UILayer                    = nullptr;
+        ZRawPtr(Layers::ZUILayer) ZUIUILayer                   = nullptr;
 
         ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend = {};
 
@@ -59,6 +59,9 @@ namespace Tetragrama
 
         virtual void                       OnUpdate(float dt) override;
         virtual void                       OnEvent(ZEngine::Core::CoreEvent&) override;
+
+        // Gates camera-controller routing on viewport hover (Gap 3)
+        void                               ProcessEvent(ZEngine::Core::CoreEvent&) override;
 
         virtual void                       OnPreRender() override;
         virtual void                       OnPostRender() override;

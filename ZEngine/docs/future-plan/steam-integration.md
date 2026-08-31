@@ -79,9 +79,7 @@ namespace ZEngine::Platform {
         SteamManager(const SteamManager&)          = delete;
         SteamManager& operator=(const SteamManager&) = delete;
 
-        // ----------------------------------------------------------------
         // Lifecycle
-        // ----------------------------------------------------------------
 
         /// Calls SteamAPI_RestartAppIfNecessary, then SteamAPI_Init.
         /// Returns true if Steam is running and the SDK initialised successfully.
@@ -99,9 +97,7 @@ namespace ZEngine::Platform {
         /// Returns true if Initialize() succeeded and the Steam client is running.
         static bool IsAvailable();
 
-        // ----------------------------------------------------------------
         // User info
-        // ----------------------------------------------------------------
 
         /// Returns the 64-bit Steam ID of the local user. Returns 0 if !IsAvailable().
         static uint64_t GetSteamID();
@@ -109,9 +105,7 @@ namespace ZEngine::Platform {
         /// Returns the Steam display name of the local user. Returns "" if !IsAvailable().
         static cstring GetPlayerName();
 
-        // ----------------------------------------------------------------
         // Achievements
-        // ----------------------------------------------------------------
 
         /// Unlocks a Steam achievement by its API name (e.g. "ACH_WIN_ONE_GAME").
         /// Idempotent — safe to call on an already-unlocked achievement.
@@ -127,9 +121,7 @@ namespace ZEngine::Platform {
         /// DEV ONLY — must be compiled out in shipping builds (#ifndef ZENGINE_SHIPPING).
         static void ResetAllAchievements();
 
-        // ----------------------------------------------------------------
         // Cloud saves  (ISteamRemoteStorage)
-        // ----------------------------------------------------------------
 
         /// Writes `size` bytes from `data` to a Steam Cloud file named `filename`.
         /// Returns true on success. Returns false if !IsCloudEnabled() or on SDK error.
@@ -151,9 +143,7 @@ namespace ZEngine::Platform {
         /// Returns true if the user has Steam Cloud enabled for this app.
         static bool IsCloudEnabled();
 
-        // ----------------------------------------------------------------
         // Overlay  (ISteamFriends)
-        // ----------------------------------------------------------------
 
         /// Opens a specific overlay panel. Valid dialog names:
         ///   "friends", "community", "players", "settings",
@@ -400,7 +390,7 @@ Wire into the main engine loop:
 // ZEngine/Engine/Engine.cpp
 void Engine::MainThreadRun() {
     while (!m_Window.ShouldClose()) {
-        // --- Frame start ---
+        // Frame start
         Platform::SteamManager::Tick();   // must be first; may update s_OverlayActive
 
         // Pause simulation while Steam overlay is active
@@ -415,7 +405,7 @@ void Engine::MainThreadRun() {
 
         m_Renderer.RenderFrame();
         m_FrameTimer.Tick();
-        // --- Frame end ---
+        // Frame end
     }
 }
 ```

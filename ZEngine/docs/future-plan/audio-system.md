@@ -246,9 +246,9 @@ namespace ZEngine::Audio {
         AudioManager(const AudioManager&)            = delete;
         AudioManager& operator=(const AudioManager&) = delete;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Lifecycle
-        // ------------------------------------------------------------------ //
+        // //
 
         // Must be called after ma_engine is initialized.
         //   arena    — for internal bookkeeping arrays (not per-sound memory)
@@ -262,9 +262,9 @@ namespace ZEngine::Audio {
 
         void Shutdown();
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Clip management
-        // ------------------------------------------------------------------ //
+        // //
 
         // Load a clip from VFS into the template pool.
         // Returns INVALID_CLIP_HANDLE on failure.
@@ -276,9 +276,9 @@ namespace ZEngine::Audio {
         // Check whether a handle is valid and loaded.
         bool IsClipLoaded(uint32_t handle) const;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Voice management
-        // ------------------------------------------------------------------ //
+        // //
 
         // Clone the template sound and start playing it.
         //   entity_hint — EntityID of the entity driving this sound (for 3D position)
@@ -308,9 +308,9 @@ namespace ZEngine::Audio {
 
         bool IsVoicePlaying(uint32_t voice_handle) const;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Listener
-        // ------------------------------------------------------------------ //
+        // //
 
         // Called by AudioListenerSystem each frame.
         void SetListenerTransform(
@@ -425,9 +425,9 @@ namespace ZEngine::Audio {
         AudioEngine(const AudioEngine&)            = delete;
         AudioEngine& operator=(const AudioEngine&) = delete;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Lifecycle
-        // ------------------------------------------------------------------ //
+        // //
 
         // Initialize ma_engine and AudioManager.
         //   arena    — for bookkeeping (not per-sample memory)
@@ -439,9 +439,9 @@ namespace ZEngine::Audio {
 
         void Shutdown();
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Frame update
-        // ------------------------------------------------------------------ //
+        // //
 
         // Called by the engine frame loop AFTER all ECS systems complete.
         // Drains the command buffer and processes music fades.
@@ -449,9 +449,9 @@ namespace ZEngine::Audio {
         // Must be called on the main thread after WorldTick::Tick completes.
         void Flush(float dt, ECS::Scene& scene);
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Command buffer (gameplay code posts here; never calls AudioManager directly)
-        // ------------------------------------------------------------------ //
+        // //
 
         // Post a command. Thread-safe — may be called from any thread.
         void PostCommand(const AudioCommand& cmd);
@@ -462,9 +462,9 @@ namespace ZEngine::Audio {
         void     RequestSetVolume(uint32_t voice_handle, float volume);
         void     RequestSetPitch(uint32_t voice_handle, float pitch);
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Music streaming
-        // ------------------------------------------------------------------ //
+        // //
 
         // Begin streaming a music track from VFS. Returns INVALID_MUSIC_HANDLE on failure.
         // Streaming happens on a miniaudio-managed background thread.
@@ -481,16 +481,16 @@ namespace ZEngine::Audio {
         // is the correct way to cross-fade.
         void FadeMusic(MusicHandle handle, float target_volume, float duration_seconds);
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Master controls
-        // ------------------------------------------------------------------ //
+        // //
 
         void  SetMasterVolume(float volume);
         float GetMasterVolume() const;
 
-        // ------------------------------------------------------------------ //
+        // //
         //  Internal accessors for ECS systems
-        // ------------------------------------------------------------------ //
+        // //
 
         AudioManager& GetManager();
 

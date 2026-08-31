@@ -1,10 +1,16 @@
+#include <GLFW/glfw3.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
+#include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
+#include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/Windows/CoreWindow.h>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -65,30 +71,41 @@ namespace ZEngine::Applications
     {
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
-        UICommandBufferIndex    = RenderMainThreadIndex + 1u;
-        Device->Arena->CreateSubArena(ZMega(30), &LocalArena);
-
-        SceneRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ImguiRenderer = ZPushStructCtor(Device->Arena, Rendering::Renderers::ImGUIRenderer);
+        SceneRenderer           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
+        ZUIRenderer             = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
 
         SceneRenderer->Initialize(Device);
-        ImguiRenderer->Initialize(Device);
+        ZUIRenderer->Initialize(Device);
+
+        // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
+        // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
+        auto* ui_arena = &Engine::GetContext()->UIContextArena;
+        ZUICtx         = ZPushStructCtor(ui_arena, ZEngine::UI::ZUIContext);
+        ZEngine::UI::ZUIContextInit(ZUICtx, ui_arena, ZMega(32), ZMega(1), 8192, 8192);
+        for (int i = 0; i < 3; ++i)
+        {
+            ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
+        }
 
         Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
         Device->SwapchainPtr->OnSwapchainResizedCtx = this;
-
-        for (size_t i = 0; i < MaxMailBoxBufferCount; ++i)
-        {
-            RenderPayloads[i].UIOverlay.IndexedCmds.resize(100);
-            RenderPayloads[i].UIOverlay.ScissorCmds.resize(100);
-            RenderPayloads[i].UIOverlay.TextureIds.resize(100);
-        }
     }
 
     void AppRenderPipeline::Shutdown()
     {
         SceneRenderer->Deinitialize();
-        ImguiRenderer->Deinitialize();
+        if (ZUIRenderer)
+        {
+            ZUIRenderer->Deinitialize();
+        }
+        if (ZUICtx)
+        {
+            ZEngine::UI::ZUIContextDestroy(ZUICtx);
+        }
+        for (int i = 0; i < 3; ++i)
+        {
+            ZUIPayloadArenas[i].Shutdown();
+        }
     }
 
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
@@ -162,7 +179,7 @@ namespace ZEngine::Applications
         {
             auto*                                                    rrm     = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
             auto*                                                    mgr     = Managers::AssetManager::Instance();
-            auto                                                     scratch = ZGetScratch(&LocalArena);
+            auto                                                     scratch = ZGetScratch(&Engine::GetContext()->UIContextArena);
 
             Core::Containers::Array<Rendering::Scenes::MeshInstance> instances;
             scene->GetInstancesSnapshot(scratch.Arena, instances);
@@ -269,83 +286,124 @@ namespace ZEngine::Applications
         SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 
-    void AppRenderPipeline::BeginOverlayFrame()
+    void AppRenderPipeline::BeginOverlayFrame(float dt)
     {
-        ImguiRenderer->NewFrame();
+        if (ZUICtx)
+        {
+            // Use the logical window size (glfwGetWindowSize) not the physical swapchain
+            // size. Mouse positions from GLFW cursor callbacks are also in logical pixels,
+            // so panel positions and hit-testing must use the same coordinate space.
+            if (Device->CurrentWindow)
+            {
+                auto* native        = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
+                float content_scale = 1.f;
+                if (native)
+                {
+                    float xs = 1.f, ys = 1.f;
+                    glfwGetWindowContentScale(native, &xs, &ys);
+                    content_scale = (xs > ys ? xs : ys);
+                    if (content_scale < 0.5f)
+                        content_scale = 1.f;
+                }
+
+                // Exact ImGui approach (imgui_impl_glfw.cpp GetWindowSizeAndFramebufferScale):
+                //   ScreenW/H = glfwGetWindowSize  → logical screen coords (1512 on Retina)
+                //   UIScale   = glfwGetFramebufferSize / glfwGetWindowSize → physical/logical ratio (2.0 on Retina)
+                //   Cursor from GLFW callback is already in logical space — no division needed.
+                // This is identical on all platforms; macOS just happens to have UIScale=2 on Retina.
+                if (native)
+                {
+                    int win_w = 0, win_h = 0, fb_w = 0, fb_h = 0;
+                    glfwGetWindowSize(native, &win_w, &win_h);
+                    glfwGetFramebufferSize(native, &fb_w, &fb_h);
+                    if (win_w > 0 && win_h > 0)
+                    {
+                        ZUICtx->ScreenW = (uint32_t) win_w;
+                        ZUICtx->ScreenH = (uint32_t) win_h;
+                        float s         = (fb_w > 0) ? (float) fb_w / (float) win_w : 1.f;
+                        ZUICtx->UIScale = (s > 0.5f) ? s : 1.f;
+                    }
+                    else
+                    {
+                        ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
+                        ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
+                        ZUICtx->UIScale = content_scale;
+                    }
+                }
+                else
+                {
+                    ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
+                    ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
+                    ZUICtx->UIScale = content_scale;
+                }
+                if (!ZUICtx->UIScaleLogged)
+                {
+                    ZENGINE_CORE_INFO("[ZUI] UIScale={:.2f} Screen={}x{} (logical) ContentScale={:.2f}", ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, content_scale);
+                    ZUICtx->UIScaleLogged = true;
+                }
+            }
+            else
+            {
+                ZUICtx->ScreenW = Device->SwapchainPtr->SwapchainImageWidth;
+                ZUICtx->ScreenH = Device->SwapchainPtr->SwapchainImageHeight;
+            }
+            ZEngine::UI::ZUIBeginFrame(ZUICtx, dt);
+        }
     }
 
-    void AppRenderPipeline::FillOverlayPayload(Rendering::Renderers::RenderOverlayPayload& payload)
+    void AppRenderPipeline::FillOverlayPayload(RenderPayload& payload)
     {
-        ImguiRenderer->PreparePayload(payload);
+        if (ZUIRenderer && ZUICtx && ZUICtx->Root)
+        {
+            uint32_t slot = MailBoxBufferHead.value.load(std::memory_order_relaxed);
+            ZUIPayloadArenas[slot].Clear();
+            ZUIRenderer->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
+        }
     }
 
-    void AppRenderPipeline::RenderOverlay(const Rendering::Renderers::RenderOverlayPayload& payload)
+    void AppRenderPipeline::RenderOverlay(const RenderPayload& payload)
     {
-        if (payload.VertexCount == 0 && payload.IndexCount == 0)
+        if (ZUIRenderer)
         {
-            return;
+            ZUIRenderer->Submit(CurrentCmdBuf, payload.ZUIOverlay);
         }
-
-        auto     swpachain           = Device->SwapchainPtr;
-        auto     frame_index         = swpachain->CurrentFrame->Index;
-        auto     thread_index        = RenderMainThreadIndex;
-
-        auto     current_framebuffer = Device->SwapchainPtr->SwapchainFramebuffers[Device->SwapchainPtr->CurrentFrame->ImageIndex];
-
-        // Resolve per-frame ImGui buffers now that BeginFrame has set CurrentFrame.
-        uint32_t fi                  = frame_index % Rendering::Renderers::ImGUIRenderer::FRAMES_IN_FLIGHT;
-        auto     vb                  = ImguiRenderer->VBHandles[fi];
-        auto     ib                  = ImguiRenderer->IdxBHandles[fi];
-
-        CurrentCmdBuf->BeginRenderPass(ImguiRenderer->UIPass, current_framebuffer, true);
-        {
-            // Direct HOST_VISIBLE writes — one buffer per frame-in-flight, no WAR hazard.
-            auto* rrm = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
-            if (rrm)
-            {
-                rrm->UpdateBuffer(vb, payload.VertexData.data(), payload.VertexData.size() * sizeof(payload.VertexData[0]));
-                rrm->UpdateBuffer(ib, payload.IndexData.data(), payload.IndexData.size() * sizeof(payload.IndexData[0]));
-            }
-
-            auto ui_second_cb = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, Device->SwapchainPtr->CurrentFrame->Index, RenderMainThreadIndex, UICommandBufferIndex, false);
-            ui_second_cb->ResetState();
-            ui_second_cb->BeginSecondary(ImguiRenderer->UIPass, current_framebuffer);
-            ui_second_cb->SetViewport(ImguiRenderer->UIPass->GetRenderAreaWidth(), ImguiRenderer->UIPass->GetRenderAreaHeight());
-
-            ui_second_cb->BindPipeline(Rendering::Specifications::PipelineBindPoint::GRAPHIC, ImguiRenderer->UIPass->Pipeline);
-
-            ui_second_cb->BindVertexBuffer(vb);
-            ui_second_cb->BindIndexBuffer(ib, payload.IsIndexBufferUint16 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
-
-            Rendering::Renderers::PushConstantData pc_data = {};
-            pc_data.Scale[0]                               = payload.Pc[0];
-            pc_data.Scale[1]                               = payload.Pc[1];
-
-            pc_data.Translate[0]                           = payload.Pc[2];
-            pc_data.Translate[1]                           = payload.Pc[3];
-
-            for (uint32_t i = 0; i < payload.DrawDataIndex; ++i)
-            {
-                const auto& scissor_cmd = payload.ScissorCmds[i];
-                const auto& indexed_cmd = payload.IndexedCmds[i];
-
-                ui_second_cb->SetScissor(scissor_cmd.w, scissor_cmd.h, scissor_cmd.x, scissor_cmd.y);
-                pc_data.TextureId = payload.TextureIds[i];
-                ui_second_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Rendering::Renderers::PushConstantData), &pc_data);
-                ui_second_cb->BindDescriptorSets(Device->SwapchainPtr->CurrentFrame->Index);
-                ui_second_cb->DrawIndexed(indexed_cmd.IdxCount, indexed_cmd.InstanceCount, indexed_cmd.FirstIndex, indexed_cmd.VertexOffset, indexed_cmd.FirstInstance);
-            }
-
-            ui_second_cb->End();
-
-            CurrentCmdBuf->ExecuteSecondaryCommandBuffers(ArrayView<Hardwares::CommandBuffer>{ui_second_cb, 1});
-        }
-
-        CurrentCmdBuf->EndRenderPass();
     }
 
     void AppRenderPipeline::EndOverlayFrame()
     {
-        ImguiRenderer->EndFrame();
+        if (ZUICtx)
+        {
+            ZEngine::UI::ZUIEndFrame(ZUICtx);
+        }
+
+        // Apply resize cursor from the ZUI divider hover state + flush clipboard writes
+        if (Device && Device->CurrentWindow)
+        {
+            auto* gw = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
+            if (gw)
+            {
+                // Flush Ctrl+C clipboard write (set by ZUITextField when focused)
+                if (ZUICtx && ZUICtx->ClipboardWrite[0] != '\0')
+                {
+                    glfwSetClipboardString(gw, ZUICtx->ClipboardWrite);
+                    ZUICtx->ClipboardWrite[0] = '\0';
+                }
+                int                req       = ZUICtx ? ZUICtx->ResizeCursor : 0;
+                // Lazily create standard cursors (created once, never destroyed — app lifetime)
+                static GLFWcursor* s_hresize = nullptr;
+                static GLFWcursor* s_vresize = nullptr;
+                if (!s_hresize)
+                    s_hresize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+                if (!s_vresize)
+                    s_vresize = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
+
+                if (req == 1 && s_hresize)
+                    glfwSetCursor(gw, s_hresize);
+                else if (req == 2 && s_vresize)
+                    glfwSetCursor(gw, s_vresize);
+                else
+                    glfwSetCursor(gw, nullptr); // restore default
+            }
+        }
     }
 } // namespace ZEngine::Applications

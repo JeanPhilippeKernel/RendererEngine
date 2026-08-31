@@ -1,10 +1,18 @@
+// New panel-manager-based UI (replaces old per-component system)
+#include <GLFW/glfw3.h>
+#include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
+#include <Tetragrama/Components/ZUI/ZUIStatusBarComponent.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/MessageToken.h>
 #include <Tetragrama/Messengers/Messenger.h>
+#include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
+#include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/UI/ZUIFont.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -54,31 +62,124 @@ namespace Tetragrama
     {
         auto editor_scene          = ZPushStructCtor(&Memory->MainArena, EditorScene);
         auto editor_cam_controller = ZPushStructCtor(&Memory->MainArena, Controllers::EditorCameraController);
-        UILayer                    = ZPushStructCtor(&Memory->MainArena, ImguiLayer);
+        ZUIUILayer                 = ZPushStructCtor(&Memory->MainArena, ZUILayer);
 
-        UILayer->Initialize(&Memory->MainArena, this);
+        ZUIUILayer->Initialize(&Memory->MainArena, this);
+
+        // Single panel-manager component replaces all old per-panel components.
+        // It owns the dock tree, tab bars, and all panel views.
+        auto* pm = ZPushStructCtor(&Memory->MainArena, Tetragrama::Panels::ZUIPanelManagerComponent);
+        pm->Initialize(ZUIUILayer, "PanelManager");
+        ZUIUILayer->AddComponent(pm);
+
+        // Editor shell: menu bar + floating overlays (settings, etc.)
+        // Registered after PanelManager so it renders on top.
+        auto* shell = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIDockspaceComponent);
+        shell->Initialize(ZUIUILayer, "EditorShell");
+        shell->ShellPanelManager = &pm->Manager;
+        ZUIUILayer->AddComponent(shell);
+
+        auto* sbar              = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIStatusBarComponent);
+        sbar->ShellPanelManager = &pm->Manager;
+        sbar->Initialize(ZUIUILayer, "StatusBar");
+        ZUIUILayer->AddComponent(sbar);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
 
+        // Bake ZUI font atlases. Font sizes are chosen to be readable on high-resolution
+        // displays where glfwGetWindowSize returns physical pixel counts (~3024px wide).
+        // ImGui approach: fonts are baked at physical pixel density and all draw
+        // coordinates are also in physical pixels — the NDC transform handles the rest.
+        if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
+        {
+            constexpr const char* kFontPath       = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
+            constexpr const char* kHeaderFontPath = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";
+            auto*                 ctx             = RenderPipeline->ZUICtx;
+
+            // Font atlas is always baked at 2× the logical base size so that
+            // every display gets a 2× oversampled atlas — the same sharpness
+            // advantage Retina screens had before, now available everywhere.
+            //
+            // kBase  = logical display size (matches ZUIStyle.FontSize)
+            // kBake  = atlas physical size  (kBase * kOversample)
+            // FontScale = 1/kOversample     (maps atlas px → logical px)
+            //
+            // UIScale (fb/win ratio) is set each frame by BeginOverlayFrame and
+            // handles the physical pixel density independently of the font atlas.
+            constexpr float       kBase           = 13.f;                // logical body size in px
+            constexpr float       kOversample     = 2.f;                 // always 2× — sharp on every display
+            const float           kBake           = kBase * kOversample; // 26 px atlas
+            const float           kSmall          = kBase * 0.80f * kOversample;
+            const float           kHeader         = kBase * 1.30f * kOversample;
+            const float           kFontScale      = 1.f / kOversample; // 0.5
+
+            ZENGINE_CORE_INFO("[ZUI] FontBake body={:.0f} small={:.0f} header={:.0f}  FontScale={:.2f}", kBake, kSmall, kHeader, kFontScale);
+
+            auto scratch = ZGetScratch(&Memory->MainArena);
+            ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBake, kHeader, 32, 96, kHeaderFontPath);
+            ZReleaseScratch(scratch);
+
+            if (ctx->Atlas)
+            {
+                if (ctx->Atlas->Small)
+                    ctx->Atlas->Small->FontScale = kFontScale;
+                if (ctx->Atlas->Body)
+                    ctx->Atlas->Body->FontScale = kFontScale;
+                if (ctx->Atlas->Header)
+                    ctx->Atlas->Header->FontScale = kFontScale;
+
+                // Style.FontSize = logical body size → FrameHeight = 13 + 3*2 = 19 px
+                ctx->Style.FontSize = kBase;
+                ZUIStyleUpdate(&ctx->Style);
+                ZENGINE_CORE_INFO("[ZUI] Style.FontSize={:.0f}  FrameHeight={:.0f}", ctx->Style.FontSize, ctx->Style.FrameHeight);
+            }
+        }
+
         // Scene instance creation is handled directly in SceneViewportUIComponent::OnDrop
         // via ImportCoordinator::Enqueue's returned UUID — no callback needed here.
     }
 
-    void Editor::OnUpdate(float dt)
+    void Editor::ProcessEvent(ZEngine::Core::CoreEvent& e)
     {
-        CHECK_AND_ESCAPE_NULL(UILayer)
+        // Always route events to the window and ZUI layer
+        if (CurrentWindow)
+        {
+            CurrentWindow->OnEvent(e);
+        }
+        if (ZUIUILayer)
+        {
+            ZUIUILayer->OnEvent(e);
+        }
 
-        UILayer->Update(dt);
+        // Gate camera-controller mouse routing on viewport focus (Gap 3)
+        bool is_mouse_event  = (e.GetType() == ZEngine::Core::EventType::MouseButtonPressed || e.GetType() == ZEngine::Core::EventType::MouseButtonReleased || e.GetType() == ZEngine::Core::EventType::MouseMoved || e.GetType() == ZEngine::Core::EventType::MouseWheel);
+
+        bool viewport_active = RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUICtx->ViewportHovered;
+
+        if (CameraController && (!is_mouse_event || viewport_active))
+        {
+            CameraController->OnEvent(e);
+        }
+
+        OnEvent(e);
     }
 
-    void Editor::OnEvent(Core::CoreEvent& e)
+    void Editor::OnUpdate(float dt)
     {
-        CHECK_AND_ESCAPE_NULL(UILayer)
+        CHECK_AND_ESCAPE_NULL(ZUIUILayer)
 
-        UILayer->OnEvent(e);
+        // Camera controller is self-gating — it reads cursor position vs viewport rect
+        // set each frame by ViewportPanel::BuildContent. No external activation needed.
+        ZUIUILayer->Update(dt);
+    }
+
+    void Editor::OnEvent(Core::CoreEvent& /*e*/)
+    {
+        // Event routing is handled in ProcessEvent (which also gates camera input
+        // on viewport focus). Nothing extra needed here.
     }
 
     void Editor::OnPreRender() {}
@@ -87,7 +188,10 @@ namespace Tetragrama
 
     void Editor::OnRenderUI()
     {
-        UILayer->Render(nullptr, nullptr);
+        if (ZUIUILayer)
+        {
+            ZUIUILayer->Render(nullptr, nullptr);
+        }
     }
 
     void Editor::OnClosing() {}

@@ -364,9 +364,7 @@ The full public API surface. All methods are `static`; there is no instance. The
 namespace ZEngine {
 
 struct CrashHandler {
-    // -----------------------------------------------------------------------
     // Lifecycle
-    // -----------------------------------------------------------------------
 
     // Install the platform crash handler.
     //   app_name      — e.g. "GameName"
@@ -382,9 +380,7 @@ struct CrashHandler {
     // Call at engine shutdown. Safe to call if Install() was never called.
     static void Uninstall();
 
-    // -----------------------------------------------------------------------
     // Crash event
-    // -----------------------------------------------------------------------
 
     // Called by the platform handler (SEH filter on Windows, signal handler
     // on POSIX) to perform the cross-platform crash response:
@@ -414,9 +410,7 @@ struct CrashHandler {
     //         _Exit(EXIT_FAILURE);
     //     }
 
-    // -----------------------------------------------------------------------
     // Pre-crash callback
-    // -----------------------------------------------------------------------
 
     // Register a function to be called before the crash dump is written.
     // Intended for game-side emergency saves, network disconnects, etc.
@@ -436,9 +430,7 @@ struct CrashHandler {
     using PreCrashFn = void (*)(void* ctx);
     static void SetPreCrashCallback(PreCrashFn fn, void* ctx = nullptr);
 
-    // -----------------------------------------------------------------------
     // Internal use
-    // -----------------------------------------------------------------------
 
     // Called by ZENGINE_VALIDATE_ASSERT to produce a crash report for
     // assertion failures in Release/RelWithDebInfo builds.

@@ -84,15 +84,11 @@ namespace ZEngine::Input { class InputManager; }
 
 struct EngineContext
 {
-    // ----------------------------------------------------------------
     // Existing — Phase 1
-    // ----------------------------------------------------------------
     Hardwares::VulkanDevicePtr           Device          = nullptr;
     Windows::CoreWindowPtr               Window          = nullptr;
 
-    // ----------------------------------------------------------------
     // New — Phase 2 + new systems (migration-plan.md)
-    // ----------------------------------------------------------------
     ECS::Scene*                          Scene           = nullptr;
     ECS::WorldTick*                      WorldTick       = nullptr;
     ECS::ActorManager*                   ActorManager    = nullptr;

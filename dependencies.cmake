@@ -7,22 +7,6 @@ FetchContent_Declare(
   GIT_TAG main
     )
 
-FetchContent_Declare(
-  imgui
-  GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_SHALLOW TRUE
-  GIT_TAG v1.92.9b-docking
-  SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/imgui"
-  )
-
-FetchContent_Declare(
-  imguizmo
-  GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
-  GIT_SHALLOW TRUE
-  GIT_TAG 1.83
-  SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/ImGuizmo"
-  PATCH_COMMAND python3 "${CMAKE_SOURCE_DIR}/patches/imguizmo_imgui192_compat.py" "${FETCHCONTENT_BASE_DIR}/ImGuizmo/ImGuizmo.cpp"
-  )
 
 FetchContent_Declare(
   stb
@@ -198,6 +182,18 @@ FetchContent_Declare(simdjson
 )
 set(SIMDJSON_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
 
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        VER-2-13-3
+)
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+
 FetchContent_Declare(fastgltf
     GIT_REPOSITORY https://github.com/spnda/fastgltf.git
     GIT_SHALLOW    TRUE
@@ -216,11 +212,10 @@ if(ZENGINE_TRACY)
 endif()
 
 FetchContent_MakeAvailable(
+  freetype
   fmt
   Vulkan-Headers
   Vulkan-Loader
-  imgui
-  ImGuizmo
   stb
   glfw3
   spdlog
@@ -258,39 +253,6 @@ foreach(_spirv_target IN ITEMS
     endif()
 endforeach()
 
-set(IMGUIDIR ${FETCHCONTENT_BASE_DIR}/imgui)
-
-add_library(imgui STATIC)
-
-target_sources(
-  imgui
-  PRIVATE ${IMGUIDIR}/imgui.cpp
-          ${IMGUIDIR}/imgui_demo.cpp
-          ${IMGUIDIR}/imgui_draw.cpp
-          ${IMGUIDIR}/imgui_tables.cpp
-          ${IMGUIDIR}/imgui_widgets.cpp
-          ${IMGUIDIR}/misc/cpp/imgui_stdlib.cpp
-          ${IMGUIDIR}/backends/imgui_impl_glfw.cpp
-          ${IMGUIDIR}/backends/imgui_impl_vulkan.cpp)
-
-      target_include_directories(imgui 
-          PUBLIC ${FETCHCONTENT_BASE_DIR}
-          PUBLIC ${FETCHCONTENT_BASE_DIR}/imgui
-      )
-
-target_compile_definitions(imgui PUBLIC GLFW_INCLUDE_VULKAN IMGUI_DEFINE_MATH_OPERATORS)
-
-target_link_libraries(imgui PRIVATE glfw Vulkan::Headers Vulkan::Loader)
-
-add_library(imguizmo STATIC)
-
-target_sources(imguizmo
-    PRIVATE ${FETCHCONTENT_BASE_DIR}/ImGuizmo/ImGuizmo.cpp)
-
-target_include_directories(imguizmo
-                           PUBLIC ${FETCHCONTENT_BASE_DIR}/imguizmo-src)
-
-target_link_libraries(imguizmo PUBLIC imgui)
 
 add_library(External_libs INTERFACE)
 
@@ -320,7 +282,6 @@ target_link_libraries(External_libs
          Vulkan::Loader
          glfw
          fmt::fmt
-         imguizmo
          spdlog::spdlog
          assimp::assimp
          stduuid
@@ -336,6 +297,7 @@ target_link_libraries(External_libs
          fastgltf::fastgltf
          ufbx
          meshoptimizer
+         freetype
 )
 
 if(ZENGINE_TRACY)

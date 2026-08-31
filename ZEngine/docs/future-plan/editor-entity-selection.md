@@ -69,9 +69,7 @@ namespace ZEngine::Editor {
         ECS::EntityID Hovered    = ECS::INVALID_ENTITY;
         bool          HasSelection = false;
 
-        // -----------------------------------------------------------------------
         // Mutation — called by EditorSelectionSystem and HierarchyViewUIComponent
-        // -----------------------------------------------------------------------
 
         void Select(ECS::EntityID id) {
             ZENGINE_VALIDATE_ASSERT(id.IsValid(),
@@ -93,9 +91,7 @@ namespace ZEngine::Editor {
             Hovered = ECS::INVALID_ENTITY;
         }
 
-        // -----------------------------------------------------------------------
         // Query — called by any component that reads selection state
-        // -----------------------------------------------------------------------
 
         [[nodiscard]] bool IsSelected(ECS::EntityID id) const {
             return HasSelection && Selected == id;
@@ -374,9 +370,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
     Rendering::Camera*        camera    = ctx->Camera;
     SceneViewportBounds       viewport  = ctx->ViewportBounds;
 
-    // -----------------------------------------------------------------------
     // 1. Keyboard shortcuts — process before mouse to avoid simultaneous fires
-    // -----------------------------------------------------------------------
 
     // Escape: deselect
     if (Inputs::InputManager::Get().GetButton(Inputs::KeyboardSlot::Escape) ==
@@ -442,9 +436,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
             : ImGuizmo::WORLD;
     }
 
-    // -----------------------------------------------------------------------
     // 2. Mouse position and viewport bounds check
-    // -----------------------------------------------------------------------
 
     const Core::Maths::Vec2f mouse_pos = Inputs::InputManager::Get().GetMousePosition();
 
@@ -457,9 +449,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
     // Do not fire selection/hover when ImGuizmo is consuming mouse input
     const bool gizmo_active = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
 
-    // -----------------------------------------------------------------------
     // 3. Hover raycast (every frame, cheap enough for edit mode)
-    // -----------------------------------------------------------------------
 
     if (mouse_in_viewport && !gizmo_active) {
         const Core::Maths::Vec3f ray_dir = ScreenToWorldRay(
@@ -475,9 +465,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
         selection->ClearHover();
     }
 
-    // -----------------------------------------------------------------------
     // 4. LMB click — fire selection raycast
-    // -----------------------------------------------------------------------
 
     const bool lmb_just_pressed =
         Inputs::InputManager::Get().GetButton(Inputs::MouseSlot::Left) ==
@@ -488,9 +476,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
             mouse_pos, viewport.Pos, viewport.Size, *camera, physics, selection);
     }
 
-    // -----------------------------------------------------------------------
     // 5. ImGuizmo gizmo manipulation for selected entity
-    // -----------------------------------------------------------------------
 
     if (selection->HasSelection) {
         auto* transform = scene.GetComponent<ECS::Components::TransformComponent>(
@@ -712,9 +698,7 @@ void EditorOutlinePass::Execute(
 
     vkCmdBeginRenderPass(cmd, &m_render_pass->GetBeginInfo(), VK_SUBPASS_CONTENTS_INLINE);
 
-    // -----------------------------------------------------------------
     // Hover highlight (rendered first, dimmer, no stencil trick)
-    // -----------------------------------------------------------------
     if (selection->Hovered.IsValid() &&
         selection->Hovered != selection->Selected)
     {
@@ -744,9 +728,7 @@ void EditorOutlinePass::Execute(
         }
     }
 
-    // -----------------------------------------------------------------
     // Selection outline (two-subpass stencil approach)
-    // -----------------------------------------------------------------
     if (selection->HasSelection) {
         auto* sel_transform = scene->GetComponent<
             ECS::Components::TransformComponent>(selection->Selected);
