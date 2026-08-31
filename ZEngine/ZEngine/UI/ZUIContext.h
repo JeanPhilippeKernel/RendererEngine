@@ -229,16 +229,16 @@ namespace ZEngine::UI
     /// Mutating ctx->Style.* directly without push/pop is a contract violation.
     enum ZUIStyleVar : uint32_t
     {
-        ZUIStyleVar_Alpha                   =  0, ///< Maps to ZUIStyle::Alpha.
-        ZUIStyleVar_DisabledAlpha           =  1, ///< Maps to ZUIStyle::DisabledAlpha.
-        ZUIStyleVar_FramePaddingX           =  2, ///< Maps to ZUIStyle::FramePadding[0].
-        ZUIStyleVar_FramePaddingY           =  3, ///< Maps to ZUIStyle::FramePadding[1].
-        ZUIStyleVar_ItemSpacingX            =  4, ///< Maps to ZUIStyle::ItemSpacing[0].
-        ZUIStyleVar_ItemSpacingY            =  5, ///< Maps to ZUIStyle::ItemSpacing[1].
-        ZUIStyleVar_ItemInnerSpacingX       =  6, ///< Maps to ZUIStyle::ItemInnerSpacing[0].
-        ZUIStyleVar_ItemInnerSpacingY       =  7, ///< Maps to ZUIStyle::ItemInnerSpacing[1].
-        ZUIStyleVar_FrameRounding           =  8, ///< Maps to ZUIStyle::FrameRounding.
-        ZUIStyleVar_PopupRounding           =  9, ///< Maps to ZUIStyle::PopupRounding.
+        ZUIStyleVar_Alpha                   = 0,  ///< Maps to ZUIStyle::Alpha.
+        ZUIStyleVar_DisabledAlpha           = 1,  ///< Maps to ZUIStyle::DisabledAlpha.
+        ZUIStyleVar_FramePaddingX           = 2,  ///< Maps to ZUIStyle::FramePadding[0].
+        ZUIStyleVar_FramePaddingY           = 3,  ///< Maps to ZUIStyle::FramePadding[1].
+        ZUIStyleVar_ItemSpacingX            = 4,  ///< Maps to ZUIStyle::ItemSpacing[0].
+        ZUIStyleVar_ItemSpacingY            = 5,  ///< Maps to ZUIStyle::ItemSpacing[1].
+        ZUIStyleVar_ItemInnerSpacingX       = 6,  ///< Maps to ZUIStyle::ItemInnerSpacing[0].
+        ZUIStyleVar_ItemInnerSpacingY       = 7,  ///< Maps to ZUIStyle::ItemInnerSpacing[1].
+        ZUIStyleVar_FrameRounding           = 8,  ///< Maps to ZUIStyle::FrameRounding.
+        ZUIStyleVar_PopupRounding           = 9,  ///< Maps to ZUIStyle::PopupRounding.
         ZUIStyleVar_ScrollbarRounding       = 10, ///< Maps to ZUIStyle::ScrollbarRounding.
         ZUIStyleVar_GrabRounding            = 11, ///< Maps to ZUIStyle::GrabRounding.
         ZUIStyleVar_TabRounding             = 12, ///< Maps to ZUIStyle::TabRounding.
@@ -309,15 +309,15 @@ namespace ZEngine::UI
         ZEngine::Core::Memory::ArenaAllocator PersistentArena = {}; // never cleared; holds the persistent state table
 
         // box tree — all pointers into FrameArena
-        ZUIBox*                               Root    = nullptr;
-        ZUIBox*                               Current = nullptr;
+        ZUIBox*                               Root            = nullptr;
+        ZUIBox*                               Current         = nullptr;
 
         // persistent state — open-addressing hash table in PersistentArena
-        ZUIPersistentStore                    StateStore = {};
+        ZUIPersistentStore                    StateStore      = {};
 
         // Single shared font atlas (ImGui approach: one texture, all fonts).
         // Set by Editor::OnInitialized after ZUIFontAtlasBake.
-        ZUIFontAtlas*                         Atlas = nullptr;
+        ZUIFontAtlas*                         Atlas           = nullptr;
 
         // Convenience accessors — delegate to Atlas
         ZUIFont*                              GetFont(ZUIFontSize size) const
@@ -360,7 +360,7 @@ namespace ZEngine::UI
         uint32_t MaxBoxesPerFrame    = 0;
 
         // Style system — metrics, spacing, rounding (ImGui: ImGuiStyle non-color fields)
-        ZUIStyle Style = {};
+        ZUIStyle Style               = {};
 
         // Push/pop stack for temporary style overrides (64 slots, no dynamic allocation)
         struct ZUIStyleEntry
@@ -368,14 +368,14 @@ namespace ZEngine::UI
             ZUIStyleVar Id  = ZUIStyleVar_Alpha; ///< Which property was overridden.
             float       Old = 0.f;               ///< Previous value to restore on pop.
         };
-        ZUIStyleEntry             StyleStack[64]  = {};
-        uint32_t                  StyleStackDepth = 0;
+        ZUIStyleEntry             StyleStack[64]       = {};
+        uint32_t                  StyleStackDepth      = 0;
 
         // active color theme — swap to retheme the whole UI at runtime
-        ZUITheme                  Theme = {};
+        ZUITheme                  Theme                = {};
 
         // Vector draw list — populated by PreparePayload each frame (FrameArena-backed)
-        ZUIDrawList               DrawList = {};
+        ZUIDrawList               DrawList             = {};
 
         // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
         uint32_t                  ScreenW              = 1280;
@@ -499,7 +499,7 @@ namespace ZEngine::UI
         bool          DT_InRow                   = false;
         ZUIBox*       DT_RowBox                  = nullptr;
         float*        DT_ColWidths               = nullptr; // FrameArena, size = DT_ColCount
-        ZUIBox**      DT_SepBoxes               = nullptr; // FrameArena, size = DT_ColCount-1; height patched in EndDataTable
+        ZUIBox**      DT_SepBoxes                = nullptr; // FrameArena, size = DT_ColCount-1; height patched in EndDataTable
         const void*   DT_Cols                    = nullptr; // ZUIDataTableColumn* stored by BeginDataTable
         int           DT_SortCol                 = -1;      // -1 = unsorted
         bool          DT_SortAsc                 = true;

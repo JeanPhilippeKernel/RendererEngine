@@ -517,7 +517,7 @@ namespace ZEngine::UI
     /// @brief Flags controlling ZUIBeginDataTable behavior.
     enum ZUIDataTableFlags : uint32_t
     {
-        ZUIDataTableFlags_None               = 0,       ///< No flags set.
+        ZUIDataTableFlags_None               = 0,      ///< No flags set.
         ZUIDataTableFlags_ProportionalResize = 1 << 0, ///< Rescale column widths proportionally when the panel is resized.
     };
 
@@ -534,8 +534,8 @@ namespace ZEngine::UI
     /// @brief Sort state returned by ZUIDataTableGetSortSpecs.
     struct ZUITableSortSpec
     {
-        int  ColumnIndex = -1;   ///< Sorted column index; -1 = unsorted.
-        bool Ascending   = true; ///< true = ascending, false = descending.
+        int  ColumnIndex = -1;    ///< Sorted column index; -1 = unsorted.
+        bool Ascending   = true;  ///< true = ascending, false = descending.
         bool Changed     = false; ///< true the frame the sort spec changed.
     };
 

@@ -39,12 +39,12 @@ namespace Tetragrama::Panels
         /// @param buf Output buffer.
         /// @param n   Buffer length in bytes.
         /// @param bytes Raw byte count to format.
-        static void FormatBytes(char* buf, int n, uint64_t bytes);
+        static void  FormatBytes(char* buf, int n, uint64_t bytes);
 
         /// @brief Fills @p out with an RGBA color reflecting arena usage.
         /// @param fraction Usage in [0, 1].
         /// @param out       Destination 4-float RGBA array.
-        static void UsageColor(float fraction, float out[4]);
+        static void  UsageColor(float fraction, float out[4]);
     };
 
 } // namespace Tetragrama::Panels

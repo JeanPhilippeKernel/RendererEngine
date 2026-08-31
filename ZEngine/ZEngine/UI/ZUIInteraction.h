@@ -6,15 +6,15 @@ namespace ZEngine::UI
     /// @brief Bit flags returned by ZUISignalFromBox describing what happened to a box this frame.
     enum ZUISignalFlags : uint32_t
     {
-        ZUI_SignalNone          = 0,       ///< No interaction.
-        ZUI_SignalHovered       = 1 << 0,  ///< Cursor is over the box.
-        ZUI_SignalPressed       = 1 << 1,  ///< Left mouse button pressed this frame over the box.
-        ZUI_SignalReleased      = 1 << 2,  ///< Left mouse button released this frame while box was active.
-        ZUI_SignalHeld          = 1 << 3,  ///< Left mouse button held with box active; DragDelta is valid.
-        ZUI_SignalClicked       = 1 << 4,  ///< Full press+release cycle completed over the box (no drag).
-        ZUI_SignalDoubleClicked = 1 << 5,  ///< Two clicks within the double-click time window.
-        ZUI_SignalScrolled      = 1 << 6,  ///< Mouse wheel turned while hovered; ScrollDelta is valid.
-        ZUI_SignalKeyboardFocus = 1 << 7,  ///< Box holds keyboard focus (FocusKey == box->Key).
+        ZUI_SignalNone          = 0,      ///< No interaction.
+        ZUI_SignalHovered       = 1 << 0, ///< Cursor is over the box.
+        ZUI_SignalPressed       = 1 << 1, ///< Left mouse button pressed this frame over the box.
+        ZUI_SignalReleased      = 1 << 2, ///< Left mouse button released this frame while box was active.
+        ZUI_SignalHeld          = 1 << 3, ///< Left mouse button held with box active; DragDelta is valid.
+        ZUI_SignalClicked       = 1 << 4, ///< Full press+release cycle completed over the box (no drag).
+        ZUI_SignalDoubleClicked = 1 << 5, ///< Two clicks within the double-click time window.
+        ZUI_SignalScrolled      = 1 << 6, ///< Mouse wheel turned while hovered; ScrollDelta is valid.
+        ZUI_SignalKeyboardFocus = 1 << 7, ///< Box holds keyboard focus (FocusKey == box->Key).
     };
 
     /// @brief Per-frame interaction result for one box.

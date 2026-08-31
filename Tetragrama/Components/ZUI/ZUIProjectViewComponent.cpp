@@ -184,8 +184,8 @@ namespace Tetragrama::Components
             snprintf(row_key, sizeof(row_key), "##prow_%u", i);
 
             // Row: icon square + name + ext tag
-            ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
-            row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+            ZUIBox* row  = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
+            row->Flags   = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
             bool row_hov = (ctx->HotKey == row->Key);
             bool row_act = (ctx->ActiveKey == row->Key);
             ZUIBoxSetColor(row, 0.45f, 0.45f, 0.50f, row_act ? 0.20f : row_hov ? 0.12f : 0.f);

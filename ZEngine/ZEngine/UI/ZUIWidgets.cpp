@@ -34,12 +34,14 @@ namespace ZEngine::UI
     static void ApplyHotActive(ZUIBox* box, ZUIContext* ctx, const float rest[4], const float hov[4], const float act[4])
     {
         ZUIPersistentState* st = ZUIStateGetOrInsert(&ctx->StateStore, box->Key);
-        float ht = st ? st->HotT    : 0.f;
-        float at = st ? st->ActiveT : 0.f;
+        float               ht = st ? st->HotT : 0.f;
+        float               at = st ? st->ActiveT : 0.f;
         // Floor to 50% on first hover frame so the transition is visible immediately.
         // The lerp in ZUISignalFromBox catches up to 1.0 within a few frames.
-        if (ctx->HotKey    == box->Key) ht = ht > 0.5f ? ht : 0.5f;
-        if (ctx->ActiveKey == box->Key) at = 1.f;
+        if (ctx->HotKey == box->Key)
+            ht = ht > 0.5f ? ht : 0.5f;
+        if (ctx->ActiveKey == box->Key)
+            at = 1.f;
         for (int ch = 0; ch < 4; ++ch)
         {
             float col = rest[ch] + (hov[ch] - rest[ch]) * ht + (act[ch] - hov[ch]) * at;
@@ -901,7 +903,7 @@ namespace ZEngine::UI
         ZUIBeginColumn(ctx, key, ZFill(), ZFit());
 
         // Button row
-        char    row_key[64];
+        char row_key[64];
         snprintf(row_key, sizeof(row_key), "##tbr_%s", key);
         ZUIBox* row = ZUIBeginRow(ctx, row_key, ZFill(), ZSPx(ctx, 28.f));
         row->Flags  = row->Flags | ZUI_DrawBackground;
@@ -1500,11 +1502,11 @@ namespace ZEngine::UI
 
     void ZUIProgressBar(ZUIContext* ctx, const char* key, float fraction, ZUISize w, ZUISize h, const char* overlay_text)
     {
-        fraction       = fraction < 0.f ? 0.f : (fraction > 1.f ? 1.f : fraction);
+        fraction      = fraction < 0.f ? 0.f : (fraction > 1.f ? 1.f : fraction);
 
         // Track
-        ZUIBox*  track = ZUIBeginRow(ctx, key, w, h);
-        track->Flags   = track->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
+        ZUIBox* track = ZUIBeginRow(ctx, key, w, h);
+        track->Flags  = track->Flags | ZUI_DrawBackground | ZUI_DrawBorder;
         SetBgArr(track, ctx->Theme.InputBg);
         SetBdrArr(track, ctx->Theme.InputBorder);
         track->BorderThickness = 1.f;
@@ -1886,7 +1888,7 @@ namespace ZEngine::UI
 
     bool ZUIBeginCombo(ZUIContext* ctx, const char* key, const char* preview_label, ZUISize w)
     {
-        char     btn_key[80];
+        char btn_key[80];
         snprintf(btn_key, sizeof(btn_key), "##combo_btn_%s", key);
 
         // Preview row: label fills available space, arrow is a fixed-width flow child at the end.
@@ -3635,34 +3637,32 @@ namespace ZEngine::UI
 
     bool ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h, uint32_t flags)
     {
-        ctx->DT_Key         = ZUIHashStr(key, (uint32_t) strlen(key));
-        ctx->DT_ColCount    = col_count;
-        ctx->DT_CurCol      = -1;
-        ctx->DT_RowIndex    = 0;
-        ctx->DT_InRow       = false;
-        ctx->DT_RowBox      = nullptr;
-        ctx->DT_SortChanged = false;
+        ctx->DT_Key                             = ZUIHashStr(key, (uint32_t) strlen(key));
+        ctx->DT_ColCount                        = col_count;
+        ctx->DT_CurCol                          = -1;
+        ctx->DT_RowIndex                        = 0;
+        ctx->DT_InRow                           = false;
+        ctx->DT_RowBox                          = nullptr;
+        ctx->DT_SortChanged                     = false;
 
         // Load column widths — proportionally rescale when the panel is resized.
         // InitWidth values re-derive from panel width (pw) each frame, so their
         // sum changes when the panel resizes. Compare with the last stored total
         // and scale all stored widths by the same ratio to keep user resize ratios.
         static constexpr uint64_t kTotalWSuffix = 0x544F54574944ULL;
-        ctx->DT_ColWidths = ZPushArray(&ctx->FrameArena, float, col_count);
+        ctx->DT_ColWidths                       = ZPushArray(&ctx->FrameArena, float, col_count);
 
-        float total_init = 0.f;
+        float total_init                        = 0.f;
         for (int i = 0; i < col_count; ++i)
             total_init += (cols && cols[i].InitWidth > 0.f) ? cols[i].InitWidth : kDT_ColDefault;
 
         // Proportional resize only when ZUIDataTableFlags_ProportionalResize is set.
         // Default: columns keep their stored pixel widths regardless of panel resize.
-        bool prop_resize = (flags & ZUIDataTableFlags_ProportionalResize) != 0;
+        bool  prop_resize = (flags & ZUIDataTableFlags_ProportionalResize) != 0;
 
-        auto* total_s    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kTotalWSuffix);
-        float prev_total = (total_s && total_s->UserData > 1.f) ? total_s->UserData : -1.f;
-        float scale      = (prop_resize && prev_total > 1.f && total_init > 1.f
-                            && fabsf(total_init - prev_total) > 1.f)
-                           ? total_init / prev_total : 1.f;
+        auto* total_s     = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_Key ^ kTotalWSuffix);
+        float prev_total  = (total_s && total_s->UserData > 1.f) ? total_s->UserData : -1.f;
+        float scale       = (prop_resize && prev_total > 1.f && total_init > 1.f && fabsf(total_init - prev_total) > 1.f) ? total_init / prev_total : 1.f;
 
         // HOT PATH — runs every frame, no heap allocation allowed.
         for (int i = 0; i < col_count; ++i)
@@ -3672,17 +3672,20 @@ namespace ZEngine::UI
             if (s && s->UserData > 1.f)
             {
                 float w = s->UserData * scale;
-                w = fmaxf(w, 30.f);
-                if (prop_resize) s->UserData = w; // only persist the scaled value if proportional
+                w       = fmaxf(w, 30.f);
+                if (prop_resize)
+                    s->UserData = w; // only persist the scaled value if proportional
                 ctx->DT_ColWidths[i] = w;
             }
             else
             {
                 ctx->DT_ColWidths[i] = init;
-                if (s) s->UserData   = init;
+                if (s)
+                    s->UserData = init;
             }
         }
-        if (prop_resize && total_s) total_s->UserData = total_init;
+        if (prop_resize && total_s)
+            total_s->UserData = total_init;
 
         // Load sort state
         {
@@ -3701,13 +3704,13 @@ namespace ZEngine::UI
         }
 
         // Outer container — ClipChildren so the 9999px separators don't bleed out
-        ZUIBox* outer_col = ZUIBeginColumn(ctx, key, ZFill(), h);
-        outer_col->Flags  = outer_col->Flags | ZUI_ClipChildren;
+        ZUIBox* outer_col       = ZUIBeginColumn(ctx, key, ZFill(), h);
+        outer_col->Flags        = outer_col->Flags | ZUI_ClipChildren;
         outer_col->EdgeSoftness = 0.f;
 
         // Vertical separators are created in ZUIEndDataTable once column widths
         // are finalized — this ensures sash drag and caller overrides are reflected.
-        ctx->DT_SepBoxes = nullptr;
+        ctx->DT_SepBoxes        = nullptr;
 
         // Store cols in FrameArena for HeadersRow
         if (cols)
@@ -3757,8 +3760,7 @@ namespace ZEngine::UI
 
             // Hover tint on sortable headers; no per-cell border (separators drawn at table level)
             bool cell_hot    = (ctx->HotKey == cell->Key);
-            ZUIBoxSetColorArr(cell, (cell_hot && sortable) ? ctx->Theme.TableBorderLight
-                                                           : ctx->Theme.TableHeaderBg);
+            ZUIBoxSetColorArr(cell, (cell_hot && sortable) ? ctx->Theme.TableBorderLight : ctx->Theme.TableHeaderBg);
             cell->EdgeSoftness = 0.f;
 
             // Left padding
@@ -3844,19 +3846,22 @@ namespace ZEngine::UI
                 if ((gsig.Flags & ZUI_SignalHeld) && gsig.DragDelta[0] != 0.f)
                 {
                     const ZUIDataTableColumn* dt_cols = static_cast<const ZUIDataTableColumn*>(ctx->DT_Cols);
-                    float col_min = dt_cols ? fmaxf(dt_cols[i].MinWidth, 30.f) : 30.f;
-                    float new_w   = ctx->DT_ColWidths[i] + gsig.DragDelta[0];
-                    new_w         = fmaxf(new_w, col_min);
+                    float                     col_min = dt_cols ? fmaxf(dt_cols[i].MinWidth, 30.f) : 30.f;
+                    float                     new_w   = ctx->DT_ColWidths[i] + gsig.DragDelta[0];
+                    new_w                             = fmaxf(new_w, col_min);
                     // Upper bound: total width - sum of other columns' minimums
                     if (dt_cols && ctx->DT_ColCount > 1)
                     {
                         float others_min = 0.f;
                         for (int j = 0; j < ctx->DT_ColCount; ++j)
-                            if (j != i) others_min += fmaxf(dt_cols[j].MinWidth, 30.f);
+                            if (j != i)
+                                others_min += fmaxf(dt_cols[j].MinWidth, 30.f);
                         float total = 0.f;
-                        for (int j = 0; j < ctx->DT_ColCount; ++j) total += ctx->DT_ColWidths[j];
+                        for (int j = 0; j < ctx->DT_ColCount; ++j)
+                            total += ctx->DT_ColWidths[j];
                         float max_w = total - others_min;
-                        if (max_w > col_min) new_w = fminf(new_w, max_w);
+                        if (max_w > col_min)
+                            new_w = fminf(new_w, max_w);
                     }
                     ctx->DT_ColWidths[i] = new_w;
                     auto* cs             = ZUIStateGetOrInsert(&ctx->StateStore, DT_ColKey(ctx->DT_Key, i));
@@ -3964,7 +3969,7 @@ namespace ZEngine::UI
 
         char  ck[48];
         snprintf(ck, sizeof(ck), "##dtcell_%llu_%d_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex, col);
-        ZUIBox* cc    = ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
+        ZUIBox* cc     = ZUIBeginColumn(ctx, ck, ZPx(cw), ZFill());
         cc->Padding[0] = ctx->Style.CellPadding[0]; // horizontal left indent (matches header)
         // Vertical centering: top spacer = half the dead space above the text
         {
@@ -3999,8 +4004,7 @@ namespace ZEngine::UI
                 x += ctx->DT_ColWidths[i];
                 char sk[48];
                 snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
-                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
-                                             ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 sep->Size[0]     = ZPx(1.f);
                 sep->Size[1]     = ZPx(9999.f); // clipped by outer ZUI_ClipChildren
                 sep->FloatPos[0] = x;

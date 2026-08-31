@@ -137,13 +137,13 @@ namespace Tetragrama::Panels
         ZUISpacer(ctx, 4.f);
 
         // 3-column table — Type and Level are fixed; Item Label stretches
-        static constexpr float kTypeW      = 72.f;
-        static constexpr float kLevelW     = 64.f;
-        static constexpr float kLabelMinW  = 220.f; // Item Label never compresses below this
-        ZUIDataTableColumn cols[3] = {
+        static constexpr float kTypeW     = 72.f;
+        static constexpr float kLevelW    = 64.f;
+        static constexpr float kLabelMinW = 220.f; // Item Label never compresses below this
+        ZUIDataTableColumn     cols[3]    = {
             {"Item Label", fmaxf(pw - kTypeW - kLevelW, kLabelMinW), kLabelMinW, true, false},
-            {      "Type",                               kTypeW,           0.f,  true, false},
-            {     "Level",                               kLevelW,          0.f, false, false},
+            {"Type", kTypeW, 0.f, true, false},
+            {"Level", kLevelW, 0.f, false, false},
         };
 
         // O(n) DFS tree build — exact develop algorithm
@@ -167,7 +167,7 @@ namespace Tetragrama::Panels
             next_sib[i]    = UINT32_MAX;
         }
         eng->ActorManager->ForEach([&](ActorHandle h, Actor* actor) {
-            auto* pc           = actor->GetComponent<ParentComponent>();
+            auto* pc            = actor->GetComponent<ParentComponent>();
             nodes[node_count++] = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY};
         });
 
@@ -246,7 +246,8 @@ namespace Tetragrama::Panels
                 bool        is_sc = (ctx->DT_SortCol == ci);
 
                 // Cell container (X-axis row inside the header row)
-                char  cellk[32]; snprintf(cellk, sizeof(cellk), "##hcell_%d", ci);
+                char        cellk[32];
+                snprintf(cellk, sizeof(cellk), "##hcell_%d", ci);
                 ZUIBox* cell_row = ZUIBeginRow(ctx, cellk, ZPx(cw), ZPx(fh));
                 (void) cell_row;
 
@@ -255,13 +256,16 @@ namespace Tetragrama::Panels
                 if (ci == 0)
                 {
                     ZUISpacer(ctx, 4.f);
-                    ZUIBox* eye  = ZUIPushBox(ctx, "##hdr_eye", 9, ZUI_DrawActorIcon);
-                    eye->Size[0] = ZPx(fh * 0.7f);
-                    eye->Size[1] = ZPx(fh);
-                    eye->TextColor[0] = ctx->Theme.TextDim[0]; eye->TextColor[1] = ctx->Theme.TextDim[1];
-                    eye->TextColor[2] = ctx->Theme.TextDim[2]; eye->TextColor[3] = ctx->Theme.TextDim[3];
-                    auto* eps = ZUIStateGetOrInsert(&ctx->StateStore, eye->Key);
-                    if (eps) eps->UserData = ZUI_ICON_WORLD;
+                    ZUIBox* eye       = ZUIPushBox(ctx, "##hdr_eye", 9, ZUI_DrawActorIcon);
+                    eye->Size[0]      = ZPx(fh * 0.7f);
+                    eye->Size[1]      = ZPx(fh);
+                    eye->TextColor[0] = ctx->Theme.TextDim[0];
+                    eye->TextColor[1] = ctx->Theme.TextDim[1];
+                    eye->TextColor[2] = ctx->Theme.TextDim[2];
+                    eye->TextColor[3] = ctx->Theme.TextDim[3];
+                    auto* eps         = ZUIStateGetOrInsert(&ctx->StateStore, eye->Key);
+                    if (eps)
+                        eps->UserData = ZUI_ICON_WORLD;
                     ZUIPopBox(ctx);
                     ZUISpacer(ctx, 4.f);
                 }
@@ -271,24 +275,29 @@ namespace Tetragrama::Panels
                 }
 
                 // Label — teal if sort column, bright otherwise
-                ZUIBox* lbox     = ZUIPushBox(ctx, lbl, llen, ZUI_DrawText | ZUI_Clickable);
-                lbox->Size[0]    = ZText();
-                lbox->Size[1]    = ZPx(fh);
-                lbox->Label      = ZUIPushStr(&ctx->FrameArena, lbl, llen);
-                bool lhov = !is_sc && (ctx->HotKey == lbox->Key);
+                ZUIBox* lbox       = ZUIPushBox(ctx, lbl, llen, ZUI_DrawText | ZUI_Clickable);
+                lbox->Size[0]      = ZText();
+                lbox->Size[1]      = ZPx(fh);
+                lbox->Label        = ZUIPushStr(&ctx->FrameArena, lbl, llen);
+                bool lhov          = !is_sc && (ctx->HotKey == lbox->Key);
                 lbox->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : lhov ? 1.f : ctx->Theme.TextDefault[0];
                 lbox->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : lhov ? 1.f : ctx->Theme.TextDefault[1];
                 lbox->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : lhov ? 1.f : ctx->Theme.TextDefault[2];
                 lbox->TextColor[3] = 1.f;
-                ZUISignal csig   = ZUISignalFromBox(ctx, lbox);
+                ZUISignal csig     = ZUISignalFromBox(ctx, lbox);
                 ZUIPopBox(ctx);
 
                 ZUIEndRow(ctx); // cell_row
 
                 if (cols[ci].Sortable && (csig.Flags & ZUI_SignalClicked))
                 {
-                    if (ctx->DT_SortCol == ci) ctx->DT_SortAsc = !ctx->DT_SortAsc;
-                    else { ctx->DT_SortCol = ci; ctx->DT_SortAsc = true; }
+                    if (ctx->DT_SortCol == ci)
+                        ctx->DT_SortAsc = !ctx->DT_SortAsc;
+                    else
+                    {
+                        ctx->DT_SortCol = ci;
+                        ctx->DT_SortAsc = true;
+                    }
                 }
             }
             ZUIEndRow(ctx); // hrow
@@ -367,12 +376,12 @@ namespace Tetragrama::Panels
                 if (!actor)
                     continue;
 
-                auto*       nc_comp     = actor->GetComponent<NameComponent>();
-                const char* label       = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
-                bool        label_match = !m_search[0] || ContainsCI(label, m_search);
+                auto*        nc_comp     = actor->GetComponent<NameComponent>();
+                const char*  label       = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+                bool         label_match = !m_search[0] || ContainsCI(label, m_search);
 
                 // Type — exact develop: is_collection = !Mesh && !Light && !Camera
-                bool         is_coll = !actor->HasComponent<MeshComponent>() && !actor->HasComponent<LightComponent>() && !actor->HasComponent<CameraComponent>();
+                bool         is_coll     = !actor->HasComponent<MeshComponent>() && !actor->HasComponent<LightComponent>() && !actor->HasComponent<CameraComponent>();
                 const float* type_col;
                 const char*  type_str;
                 float        icon_type;
@@ -407,212 +416,212 @@ namespace Tetragrama::Panels
                     icon_type = ZUI_ICON_ACTOR;
                 }
 
-                bool      has_ch      = (first_child[ni] != UINT32_MAX);
-                bool      collapsed   = has_ch && IsCollapsed(nodes[ni].EID); // exact develop naming
-                bool      selected    = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
-                bool      renaming    = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
-                float     indent      = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
+                bool  has_ch    = (first_child[ni] != UINT32_MAX);
+                bool  collapsed = has_ch && IsCollapsed(nodes[ni].EID); // exact develop naming
+                bool  selected  = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
+                bool  renaming  = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
+                float indent    = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
 
                 // Render the row only when it matches the search filter;
                 // always push children so descendant matches are reachable.
                 if (label_match)
                 {
 
-                // Row
-                bool      row_clicked = ZUIDataTableNextRow(ctx, selected);
-                ZUISignal row_sig     = ZUIDataTableRowSignal(ctx);
+                    // Row
+                    bool      row_clicked = ZUIDataTableNextRow(ctx, selected);
+                    ZUISignal row_sig     = ZUIDataTableRowSignal(ctx);
 
-                // Drop-target teal border — use prev-frame ScreenRect since HotKey frozen during drag
-                if (ctx->DragSourceKey != 0 && ctx->DT_RowBox)
-                {
-                    auto* rps = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
-                    if (rps && rps->ScreenMaxX > rps->ScreenMinX && ctx->MousePos[0] >= rps->ScreenMinX && ctx->MousePos[0] <= rps->ScreenMaxX && ctx->MousePos[1] >= rps->ScreenMinY && ctx->MousePos[1] <= rps->ScreenMaxY)
+                    // Drop-target teal border — use prev-frame ScreenRect since HotKey frozen during drag
+                    if (ctx->DragSourceKey != 0 && ctx->DT_RowBox)
                     {
-                        ctx->DT_RowBox->Flags           = ctx->DT_RowBox->Flags | ZUI_DrawBorder;
-                        ctx->DT_RowBox->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
-                        ctx->DT_RowBox->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
-                        ctx->DT_RowBox->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                        ctx->DT_RowBox->BorderColor[3]  = 0.85f;
-                        ctx->DT_RowBox->BorderThickness = 1.f;
-                    }
-                }
-
-                // Col 0: [indent][chevron or spacer][icon][name or rename field]
-                ZUIDataTableSetColumn(ctx, 0);
-                {
-                    char rk0[64];
-                    snprintf(rk0, sizeof(rk0), "##tr0_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                    ZUIBeginRow(ctx, rk0, ZFill(), ZFill());
-                }
-                ZUISpacer(ctx, indent);
-
-                if (has_ch)
-                {
-                    char arr_key[64];
-                    snprintf(arr_key, sizeof(arr_key), "##arr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                    ZUIBox* arr       = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
-                    arr->Size[0]      = ZPx(fh);
-                    arr->Size[1]      = ZPx(fh);
-                    bool arr_hov      = (ctx->HotKey == arr->Key);
-                    arr->TextColor[0] = arr_hov ? ctx->Theme.TextDefault[0] : kDim[0];
-                    arr->TextColor[1] = arr_hov ? ctx->Theme.TextDefault[1] : kDim[1];
-                    arr->TextColor[2] = arr_hov ? ctx->Theme.TextDefault[2] : kDim[2];
-                    arr->TextColor[3] = arr_hov ? ctx->Theme.TextDefault[3] : kDim[3];
-                    auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
-                    if (ps)
-                        ps->UserData = !collapsed ? 2.f : 3.f; // ∨ expanded / › collapsed
-                    ZUISignal asig = ZUISignalFromBox(ctx, arr);
-                    ZUIPopBox(ctx);
-                    if (asig.Flags & ZUI_SignalClicked)
-                        ToggleCollapsed(nodes[ni].EID);
-                }
-                else
-                {
-                    ZUISpacer(ctx, fh);
-                }
-
-                // Type icon
-                {
-                    char ik[32];
-                    snprintf(ik, sizeof(ik), "##ti_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                    ZUIBox* icon       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
-                    icon->Size[0]      = ZPx(14.f);
-                    icon->Size[1]      = ZPx(14.f);
-                    icon->TextColor[0] = type_col[0];
-                    icon->TextColor[1] = type_col[1];
-                    icon->TextColor[2] = type_col[2];
-                    icon->TextColor[3] = type_col[3];
-                    auto* ps           = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
-                    if (ps)
-                        ps->UserData = icon_type;
-                    ZUIPopBox(ctx);
-                }
-                ZUISpacer(ctx, 4.f);
-
-                // Name or inline rename
-                if (renaming)
-                {
-                    char tf_key[64];
-                    snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-
-                    // On the first frame: auto-focus the field immediately.
-                    // Previous approach waited for the user to click — if they clicked
-                    // elsewhere instead, m_rename_fkey stayed 0 and rename never committed.
-                    if (m_rename_started)
-                    {
-                        m_rename_fkey    = ZUIHashStr(tf_key, (uint32_t) strlen(tf_key));
-                        ctx->FocusKey    = m_rename_fkey;
-                        m_rename_started = false;
-                    }
-
-                    ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
-
-                    // Commit when focus leaves the field (Enter clears FocusKey via ZUIEndFrame)
-                    if (m_rename_fkey != 0 && ctx->FocusKey != m_rename_fkey)
-                    {
-                        if (nc_comp && m_rename_buf[0])
+                        auto* rps = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
+                        if (rps && rps->ScreenMaxX > rps->ScreenMinX && ctx->MousePos[0] >= rps->ScreenMinX && ctx->MousePos[0] <= rps->ScreenMaxX && ctx->MousePos[1] >= rps->ScreenMinY && ctx->MousePos[1] <= rps->ScreenMaxY)
                         {
-                            if (secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1) >= 0)
+                            ctx->DT_RowBox->Flags           = ctx->DT_RowBox->Flags | ZUI_DrawBorder;
+                            ctx->DT_RowBox->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
+                            ctx->DT_RowBox->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
+                            ctx->DT_RowBox->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
+                            ctx->DT_RowBox->BorderColor[3]  = 0.85f;
+                            ctx->DT_RowBox->BorderThickness = 1.f;
+                        }
+                    }
+
+                    // Col 0: [indent][chevron or spacer][icon][name or rename field]
+                    ZUIDataTableSetColumn(ctx, 0);
+                    {
+                        char rk0[64];
+                        snprintf(rk0, sizeof(rk0), "##tr0_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBeginRow(ctx, rk0, ZFill(), ZFill());
+                    }
+                    ZUISpacer(ctx, indent);
+
+                    if (has_ch)
+                    {
+                        char arr_key[64];
+                        snprintf(arr_key, sizeof(arr_key), "##arr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBox* arr       = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
+                        arr->Size[0]      = ZPx(fh);
+                        arr->Size[1]      = ZPx(fh);
+                        bool arr_hov      = (ctx->HotKey == arr->Key);
+                        arr->TextColor[0] = arr_hov ? ctx->Theme.TextDefault[0] : kDim[0];
+                        arr->TextColor[1] = arr_hov ? ctx->Theme.TextDefault[1] : kDim[1];
+                        arr->TextColor[2] = arr_hov ? ctx->Theme.TextDefault[2] : kDim[2];
+                        arr->TextColor[3] = arr_hov ? ctx->Theme.TextDefault[3] : kDim[3];
+                        auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
+                        if (ps)
+                            ps->UserData = !collapsed ? 2.f : 3.f; // ∨ expanded / › collapsed
+                        ZUISignal asig = ZUISignalFromBox(ctx, arr);
+                        ZUIPopBox(ctx);
+                        if (asig.Flags & ZUI_SignalClicked)
+                            ToggleCollapsed(nodes[ni].EID);
+                    }
+                    else
+                    {
+                        ZUISpacer(ctx, fh);
+                    }
+
+                    // Type icon
+                    {
+                        char ik[32];
+                        snprintf(ik, sizeof(ik), "##ti_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        ZUIBox* icon       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
+                        icon->Size[0]      = ZPx(14.f);
+                        icon->Size[1]      = ZPx(14.f);
+                        icon->TextColor[0] = type_col[0];
+                        icon->TextColor[1] = type_col[1];
+                        icon->TextColor[2] = type_col[2];
+                        icon->TextColor[3] = type_col[3];
+                        auto* ps           = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
+                        if (ps)
+                            ps->UserData = icon_type;
+                        ZUIPopBox(ctx);
+                    }
+                    ZUISpacer(ctx, 4.f);
+
+                    // Name or inline rename
+                    if (renaming)
+                    {
+                        char tf_key[64];
+                        snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+
+                        // On the first frame: auto-focus the field immediately.
+                        // Previous approach waited for the user to click — if they clicked
+                        // elsewhere instead, m_rename_fkey stayed 0 and rename never committed.
+                        if (m_rename_started)
+                        {
+                            m_rename_fkey    = ZUIHashStr(tf_key, (uint32_t) strlen(tf_key));
+                            ctx->FocusKey    = m_rename_fkey;
+                            m_rename_started = false;
+                        }
+
+                        ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
+
+                        // Commit when focus leaves the field (Enter clears FocusKey via ZUIEndFrame)
+                        if (m_rename_fkey != 0 && ctx->FocusKey != m_rename_fkey)
+                        {
+                            if (nc_comp && m_rename_buf[0])
+                            {
+                                if (secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1) >= 0)
+                                {
+                                    m_rename_id   = {};
+                                    m_rename_fkey = 0;
+                                }
+                                // On copy failure keep rename active so user can retry
+                            }
+                            else
                             {
                                 m_rename_id   = {};
                                 m_rename_fkey = 0;
                             }
-                            // On copy failure keep rename active so user can retry
+                        }
+                    }
+                    else
+                    {
+                        ZUILabel(ctx, label);
+                    }
+                    ZUIEndRow(ctx); // close horizontal layout
+
+                    // Col 1: type
+                    ZUIDataTableSetColumn(ctx, 1);
+                    ZUILabel(ctx, type_str, kDim);
+
+                    // Col 2: level
+                    ZUIDataTableSetColumn(ctx, 2);
+                    ZUILabel(ctx, "Default", kDim);
+
+                    // Selection + panel-level double-click tracking.
+                    // ZUISignalFromBox is called twice per row (DataTableNextRow + DataTableRowSignal)
+                    // so double-click must be tracked here, not in ZUISignalFromBox.
+                    if (row_clicked)
+                    {
+                        scene->SelectedActorHandle = nodes[ni].Handle;
+                        double now                 = (double) ctx->Time;
+                        if (m_last_click_idx == nodes[ni].Handle.Index && m_last_click_gen == nodes[ni].Handle.Generation && now - m_last_click_time < 0.30)
+                        {
+                            // Double-click on name/icon area → start rename
+                            if (!renaming)
+                            {
+                                m_rename_id      = nodes[ni].EID;
+                                m_rename_started = true;
+                                m_rename_fkey    = 0;
+                                secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                            }
+                            m_last_click_idx = UINT32_MAX; // consume
                         }
                         else
                         {
-                            m_rename_id   = {};
-                            m_rename_fkey = 0;
+                            m_last_click_idx  = nodes[ni].Handle.Index;
+                            m_last_click_gen  = nodes[ni].Handle.Generation;
+                            m_last_click_time = now;
                         }
                     }
-                }
-                else
-                {
-                    ZUILabel(ctx, label);
-                }
-                ZUIEndRow(ctx); // close horizontal layout
 
-                // Col 1: type
-                ZUIDataTableSetColumn(ctx, 1);
-                ZUILabel(ctx, type_str, kDim);
-
-                // Col 2: level
-                ZUIDataTableSetColumn(ctx, 2);
-                ZUILabel(ctx, "Default", kDim);
-
-                // Selection + panel-level double-click tracking.
-                // ZUISignalFromBox is called twice per row (DataTableNextRow + DataTableRowSignal)
-                // so double-click must be tracked here, not in ZUISignalFromBox.
-                if (row_clicked)
-                {
-                    scene->SelectedActorHandle = nodes[ni].Handle;
-                    double now                 = (double) ctx->Time;
-                    if (m_last_click_idx == nodes[ni].Handle.Index && m_last_click_gen == nodes[ni].Handle.Generation && now - m_last_click_time < 0.30)
+                    // Context menu — unique key per actor so the popup only opens
+                    // for the right-clicked row (shared key causes all rows to match
+                    // the open popup in the same frame, overwriting pending_delete).
+                    char ctx_key[48];
+                    snprintf(ctx_key, sizeof(ctx_key), "##ctx_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                    if (ZUIBeginPopupContextItem(ctx, ctx_key, row_sig))
                     {
-                        // Double-click on name/icon area → start rename
-                        if (!renaming)
+                        if (ZUIMenuItem(ctx, "Rename"))
                         {
                             m_rename_id      = nodes[ni].EID;
                             m_rename_started = true;
                             m_rename_fkey    = 0;
                             secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
                         }
-                        m_last_click_idx = UINT32_MAX; // consume
+                        if (nodes[ni].Parent != INVALID_ENTITY && ZUIMenuItem(ctx, "Remove from Parent"))
+                        {
+                            pending_reparent_child  = nodes[ni].Handle;
+                            pending_reparent_parent = INVALID_ENTITY;
+                        }
+                        if (ZUIMenuItem(ctx, "Delete"))
+                            pending_delete = nodes[ni].Handle;
+                        ZUIEndPopup(ctx);
                     }
-                    else
-                    {
-                        m_last_click_idx  = nodes[ni].Handle.Index;
-                        m_last_click_gen  = nodes[ni].Handle.Generation;
-                        m_last_click_time = now;
-                    }
-                }
 
-                // Context menu — unique key per actor so the popup only opens
-                // for the right-clicked row (shared key causes all rows to match
-                // the open popup in the same frame, overwriting pending_delete).
-                char ctx_key[48];
-                snprintf(ctx_key, sizeof(ctx_key), "##ctx_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                if (ZUIBeginPopupContextItem(ctx, ctx_key, row_sig))
-                {
-                    if (ZUIMenuItem(ctx, "Rename"))
+                    // Drag source — store handle in panel state (DragPayloadLen is cleared by
+                    // ZUIInteractionPass on release, before the next BuildContent sees DragDropFired)
+                    ZUIBeginDragSource(ctx, ctx->DT_RowBox, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
+                    if (ctx->DragSourceKey != 0 && ctx->DT_RowBox && ctx->DragSourceKey == ctx->DT_RowBox->Key)
                     {
-                        m_rename_id      = nodes[ni].EID;
-                        m_rename_started = true;
-                        m_rename_fkey    = 0;
-                        secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                        m_dragging_actor = nodes[ni].Handle;
+                        secure_strncpy(m_drag_label, sizeof(m_drag_label), label, sizeof(m_drag_label) - 1);
                     }
-                    if (nodes[ni].Parent != INVALID_ENTITY && ZUIMenuItem(ctx, "Remove from Parent"))
-                    {
-                        pending_reparent_child  = nodes[ni].Handle;
-                        pending_reparent_parent = INVALID_ENTITY;
-                    }
-                    if (ZUIMenuItem(ctx, "Delete"))
-                        pending_delete = nodes[ni].Handle;
-                    ZUIEndPopup(ctx);
-                }
 
-                // Drag source — store handle in panel state (DragPayloadLen is cleared by
-                // ZUIInteractionPass on release, before the next BuildContent sees DragDropFired)
-                ZUIBeginDragSource(ctx, ctx->DT_RowBox, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
-                if (ctx->DragSourceKey != 0 && ctx->DT_RowBox && ctx->DragSourceKey == ctx->DT_RowBox->Key)
-                {
-                    m_dragging_actor = nodes[ni].Handle;
-                    secure_strncpy(m_drag_label, sizeof(m_drag_label), label, sizeof(m_drag_label) - 1);
-                }
-
-                // Drop target — bounds-based: DragTargetKey = deepest clickable child (chevron),
-                // not the outer row. Use prev-frame ScreenRect + panel-owned m_dragging_actor.
-                if (!drop_handled && ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
-                {
-                    auto* drps   = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
-                    bool  in_row = drps && drps->ScreenMaxX > drps->ScreenMinX && ctx->MousePos[0] >= drps->ScreenMinX && ctx->MousePos[0] <= drps->ScreenMaxX && ctx->MousePos[1] >= drps->ScreenMinY && ctx->MousePos[1] <= drps->ScreenMaxY;
-                    if (in_row && (m_dragging_actor.Index != nodes[ni].Handle.Index || m_dragging_actor.Generation != nodes[ni].Handle.Generation))
+                    // Drop target — bounds-based: DragTargetKey = deepest clickable child (chevron),
+                    // not the outer row. Use prev-frame ScreenRect + panel-owned m_dragging_actor.
+                    if (!drop_handled && ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
                     {
-                        pending_reparent_child  = m_dragging_actor;
-                        pending_reparent_parent = nodes[ni].EID;
-                        drop_handled            = true;
+                        auto* drps   = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
+                        bool  in_row = drps && drps->ScreenMaxX > drps->ScreenMinX && ctx->MousePos[0] >= drps->ScreenMinX && ctx->MousePos[0] <= drps->ScreenMaxX && ctx->MousePos[1] >= drps->ScreenMinY && ctx->MousePos[1] <= drps->ScreenMaxY;
+                        if (in_row && (m_dragging_actor.Index != nodes[ni].Handle.Index || m_dragging_actor.Generation != nodes[ni].Handle.Generation))
+                        {
+                            pending_reparent_child  = m_dragging_actor;
+                            pending_reparent_parent = nodes[ni].EID;
+                            drop_handled            = true;
+                        }
                     }
-                }
 
                 } // end if (label_match)
 
@@ -722,9 +731,14 @@ namespace Tetragrama::Panels
                     uint32_t steps     = 0;
                     while (walk != INVALID_ENTITY && steps < node_count)
                     {
-                        if (walk == child_eid) { cycle = true; break; }
+                        if (walk == child_eid)
+                        {
+                            cycle = true;
+                            break;
+                        }
                         auto* widx = eid_to_idx.find(walk);
-                        if (!widx) break;
+                        if (!widx)
+                            break;
                         walk = nodes[*widx].Parent;
                         ++steps;
                     }
@@ -768,7 +782,8 @@ namespace Tetragrama::Panels
                         if (child_a)
                         {
                             auto* pc = child_a->GetComponent<ParentComponent>();
-                            if (pc) pc->Parent = INVALID_ENTITY;
+                            if (pc)
+                                pc->Parent = INVALID_ENTITY;
                         }
                     }
                 }

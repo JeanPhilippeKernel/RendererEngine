@@ -48,7 +48,8 @@ namespace ZEngine::UI
                 {
                     can_hover = false;
                     for (ZUIBox* p = box; p && !can_hover; p = p->Parent)
-                        if (p == ctx->ModalBox) can_hover = true;
+                        if (p == ctx->ModalBox)
+                            can_hover = true;
                 }
 
                 if (can_hover && ctx->PopupStackSize > 0)

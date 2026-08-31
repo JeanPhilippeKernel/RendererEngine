@@ -17,11 +17,11 @@ namespace Tetragrama::Components
         /// @param parent     Owning ZUI layer.
         /// @param name       Component name.
         /// @param visibility Initial visibility.
-        void Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "StatusBar", bool visibility = true) override;
+        void                          Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "StatusBar", bool visibility = true) override;
 
         /// @brief Builds the status bar row for this frame.
         /// @param ctx ZUI context for the current frame.
-        void BuildUI(ZEngine::UI::ZUIContext* ctx) override;
+        void                          BuildUI(ZEngine::UI::ZUIContext* ctx) override;
 
         /// @brief Panel manager used to toggle panel visibility from the status bar buttons.
         ZEngine::UI::ZUIPanelManager* ShellPanelManager = nullptr;

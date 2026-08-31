@@ -31,50 +31,52 @@ namespace Tetragrama::Panels
     {
         static const float kScript[4]  = {0.396f, 0.604f, 0.824f, 1.f}; // #659ad2 Material CPP blue
         static const float kHeader[4]  = {0.627f, 0.455f, 0.769f, 1.f}; // #a074c4 Material header purple
-        static const float kShader[4]  = {0.80f, 0.40f, 0.85f, 1.f}; // purple
-        static const float kTexture[4] = {0.90f, 0.75f, 0.30f, 1.f}; // gold
-        static const float kScene[4]   = {0.55f, 0.80f, 0.45f, 1.f}; // green
-        static const float kMesh[4]    = {0.55f, 0.75f, 0.90f, 1.f}; // sky blue
-        static const float kDefault[4] = {0.55f, 0.55f, 0.60f, 1.f}; // gray
-        if (!name) return {kDefault, "Other"};
+        static const float kShader[4]  = {0.80f, 0.40f, 0.85f, 1.f};    // purple
+        static const float kTexture[4] = {0.90f, 0.75f, 0.30f, 1.f};    // gold
+        static const float kScene[4]   = {0.55f, 0.80f, 0.45f, 1.f};    // green
+        static const float kMesh[4]    = {0.55f, 0.75f, 0.90f, 1.f};    // sky blue
+        static const float kDefault[4] = {0.55f, 0.55f, 0.60f, 1.f};    // gray
+        if (!name)
+            return {kDefault, "Other"};
         const char* dot = strrchr(name, '.');
-        if (!dot)   return {kDefault, "Other"};
+        if (!dot)
+            return {kDefault, "Other"};
         const char* ext = dot + 1;
-        char e0 = (char) tolower((unsigned char) ext[0]);
-        char e1 = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
-        char e2 = e1    ? (char) tolower((unsigned char) ext[2]) : 0;
+        char        e0  = (char) tolower((unsigned char) ext[0]);
+        char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
+        char        e2  = e1 ? (char) tolower((unsigned char) ext[2]) : 0;
 
         // Scripts
         if (e0 == 'c' && (e1 == 'p' || e1 == 'c' || e1 == 'x' || e1 == 0))
-            return {kScript, "Scripts"};  // .cpp .cc .cxx .c
+            return {kScript, "Scripts"}; // .cpp .cc .cxx .c
         if (e0 == 'h' && (e1 == 'p' || e1 == 'x' || e1 == 0))
-            return {kHeader, "Scripts"};  // .hpp .hxx .h
+            return {kHeader, "Scripts"}; // .hpp .hxx .h
         if (e0 == 'c' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"};  // .cs (not .css or .csv)
+            return {kScript, "Scripts"}; // .cs (not .css or .csv)
         if (e0 == 'j' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"};  // .js  (not .json)
+            return {kScript, "Scripts"}; // .js  (not .json)
         if (e0 == 't' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"};  // .ts  (not .tsc or .tsx)
+            return {kScript, "Scripts"}; // .ts  (not .tsc or .tsx)
         if (e0 == 'p' && e1 == 'y')
-            return {kScript, "Scripts"};  // .py
+            return {kScript, "Scripts"}; // .py
         if (e0 == 'l' && e1 == 'u')
-            return {kScript, "Scripts"};  // .lua
+            return {kScript, "Scripts"}; // .lua
         if (e0 == 'r' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"};  // .rs (Rust)
+            return {kScript, "Scripts"}; // .rs (Rust)
 
         // Shaders
         if (e0 == 'g' && e1 == 'l' && e2 == 's')
-            return {kShader, "Shaders"};  // .glsl
+            return {kShader, "Shaders"}; // .glsl
         if (e0 == 'v' && e1 == 'e')
-            return {kShader, "Shaders"};  // .vert
+            return {kShader, "Shaders"}; // .vert
         if (e0 == 'f' && e1 == 'r')
-            return {kShader, "Shaders"};  // .frag
+            return {kShader, "Shaders"}; // .frag
         if (e0 == 'c' && e1 == 'o')
-            return {kShader, "Shaders"};  // .comp
+            return {kShader, "Shaders"}; // .comp
         if (e0 == 'h' && e1 == 'l')
-            return {kShader, "Shaders"};  // .hlsl
+            return {kShader, "Shaders"}; // .hlsl
         if (e0 == 's' && e1 == 'p')
-            return {kShader, "Shaders"};  // .spv
+            return {kShader, "Shaders"}; // .spv
 
         // Textures
         if (e0 == 'p' && (e1 == 'n' || e1 == 's' || e1 == 'f'))
@@ -98,23 +100,23 @@ namespace Tetragrama::Panels
 
         // Scenes
         if (e0 == 'z')
-            return {kScene, "Scenes"};     // .zescene
+            return {kScene, "Scenes"}; // .zescene
 
         // Models
         if (e0 == 'g' && (e1 == 'l' || e1 == 't'))
-            return {kMesh, "Models"};      // .glb .gltf
+            return {kMesh, "Models"}; // .glb .gltf
         if (e0 == 'f' && e1 == 'b')
-            return {kMesh, "Models"};      // .fbx
+            return {kMesh, "Models"}; // .fbx
         if (e0 == 'o' && e1 == 'b')
-            return {kMesh, "Models"};      // .obj
+            return {kMesh, "Models"}; // .obj
         if (e0 == 'd' && e1 == 'a')
-            return {kMesh, "Models"};      // .dae
+            return {kMesh, "Models"}; // .dae
         if (e0 == 'u' && e1 == 's')
-            return {kMesh, "Models"};      // .usd .usda .usdc
+            return {kMesh, "Models"}; // .usd .usda .usdc
         if (e0 == 's' && e1 == 't')
-            return {kMesh, "Models"};      // .stl
+            return {kMesh, "Models"}; // .stl
         if (e0 == 'p' && e1 == 'l')
-            return {kMesh, "Models"};      // .ply
+            return {kMesh, "Models"}; // .ply
 
         return {kDefault, "Other"};
     }
@@ -126,25 +128,39 @@ namespace Tetragrama::Panels
 
     static float ExtIconType(const char* name)
     {
-        if (!name) return ZUI_ICON_ACTOR;
+        if (!name)
+            return ZUI_ICON_ACTOR;
         const char* dot = strrchr(name, '.');
-        if (!dot)   return ZUI_ICON_ACTOR;
+        if (!dot)
+            return ZUI_ICON_ACTOR;
         const char* ext = dot + 1;
-        char e0 = (char) tolower((unsigned char) ext[0]);
-        char e1 = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
-        char e2 = e1    ? (char) tolower((unsigned char) ext[2]) : 0;
-        if (e0 == 'c' && e1 == 'p')  return ZUI_ICON_SOURCE_CPP; // .cpp .cc
-        if (e0 == 'c' && e1 == 'x')  return ZUI_ICON_SOURCE_CPP; // .cxx
-        if (e0 == 'c' && e1 == 0)    return ZUI_ICON_SOURCE_CPP; // .c
-        if (e0 == 'h' && e1 == 'p')  return ZUI_ICON_SOURCE_H;   // .hpp
-        if (e0 == 'h' && e1 == 'x')  return ZUI_ICON_SOURCE_H;   // .hxx
-        if (e0 == 'h' && e1 == 0)    return ZUI_ICON_SOURCE_H;   // .h
-        if (e0 == 'c' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_CS; // .cs
-        if (e0 == 'j' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS;   // .js only
-        if (e0 == 'j' && e1 == 's' && e2 != 0) return ZUI_ICON_SOURCE_JSON; // .json
-        if (e0 == 't' && e1 == 's' && e2 == 0) return ZUI_ICON_SOURCE_JS; // .ts only
-        if (e0 == 'p' && e1 == 'y')  return ZUI_ICON_SOURCE_PY;  // .py
-        if (e0 == 'l' && e1 == 'u')  return ZUI_ICON_SOURCE_PY;  // .lua (reuse green)
+        char        e0  = (char) tolower((unsigned char) ext[0]);
+        char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
+        char        e2  = e1 ? (char) tolower((unsigned char) ext[2]) : 0;
+        if (e0 == 'c' && e1 == 'p')
+            return ZUI_ICON_SOURCE_CPP; // .cpp .cc
+        if (e0 == 'c' && e1 == 'x')
+            return ZUI_ICON_SOURCE_CPP; // .cxx
+        if (e0 == 'c' && e1 == 0)
+            return ZUI_ICON_SOURCE_CPP; // .c
+        if (e0 == 'h' && e1 == 'p')
+            return ZUI_ICON_SOURCE_H; // .hpp
+        if (e0 == 'h' && e1 == 'x')
+            return ZUI_ICON_SOURCE_H; // .hxx
+        if (e0 == 'h' && e1 == 0)
+            return ZUI_ICON_SOURCE_H; // .h
+        if (e0 == 'c' && e1 == 's' && e2 == 0)
+            return ZUI_ICON_SOURCE_CS; // .cs
+        if (e0 == 'j' && e1 == 's' && e2 == 0)
+            return ZUI_ICON_SOURCE_JS; // .js only
+        if (e0 == 'j' && e1 == 's' && e2 != 0)
+            return ZUI_ICON_SOURCE_JSON; // .json
+        if (e0 == 't' && e1 == 's' && e2 == 0)
+            return ZUI_ICON_SOURCE_JS; // .ts only
+        if (e0 == 'p' && e1 == 'y')
+            return ZUI_ICON_SOURCE_PY; // .py
+        if (e0 == 'l' && e1 == 'u')
+            return ZUI_ICON_SOURCE_PY; // .lua (reuse green)
         return ZUI_ICON_ACTOR;
     }
 
@@ -233,10 +249,9 @@ namespace Tetragrama::Panels
     }
 
     // Sources tree subdirectory cache
-    const ProjectViewPanel::TreeDirEntry* ProjectViewPanel::GetCachedSubdirs(
-        IVFSContext* vfs, const VFSPath& dir, int* out_count)
+    const ProjectViewPanel::TreeDirEntry* ProjectViewPanel::GetCachedSubdirs(IVFSContext* vfs, const VFSPath& dir, int* out_count)
     {
-        *out_count = 0;
+        *out_count          = 0;
         const char* dir_str = dir.CStr();
         if (!dir_str || !vfs)
             return nullptr;
@@ -276,7 +291,7 @@ namespace Tetragrama::Panels
                     if (!fn[0] || fn[0] == '.')
                         continue;
                     TreeDirEntry& te = slot.entries[slot.count++];
-                    secure_strncpy(te.name,      sizeof(te.name),      fn,                      sizeof(te.name)      - 1);
+                    secure_strncpy(te.name, sizeof(te.name), fn, sizeof(te.name) - 1);
                     secure_strncpy(te.full_path, sizeof(te.full_path), e.Path.CStr() ? e.Path.CStr() : "", sizeof(te.full_path) - 1);
                 }
             }
@@ -374,14 +389,18 @@ namespace Tetragrama::Panels
         float              fh        = ZUIGetFrameHeight(ctx);
 
         // DFS stack: (full_path pointer into cache, depth)
-        struct StackEntry { const char* full_path; int depth; };
-        static constexpr int kMaxStack = 512;
-        StackEntry* stk = ZPushArray(&ctx->FrameArena, StackEntry, kMaxStack);
-        int         sp  = 0;
+        struct StackEntry
+        {
+            const char* full_path;
+            int         depth;
+        };
+        static constexpr int kMaxStack  = 512;
+        StackEntry*          stk        = ZPushArray(&ctx->FrameArena, StackEntry, kMaxStack);
+        int                  sp         = 0;
 
         // Seed the stack with top-level directories (pushed in reverse for L-to-R order)
-        int                 root_count = 0;
-        const TreeDirEntry* root_dirs  = GetCachedSubdirs(vfs, VFSPath::Root(), &root_count);
+        int                  root_count = 0;
+        const TreeDirEntry*  root_dirs  = GetCachedSubdirs(vfs, VFSPath::Root(), &root_count);
         for (int i = root_count - 1; i >= 0 && sp < kMaxStack; --i)
             stk[sp++] = {root_dirs[i].full_path, 1};
 
@@ -408,7 +427,7 @@ namespace Tetragrama::Panels
             bool     is_sel  = (m_current_dir.CStr() && strcmp(e.full_path, m_current_dir.CStr()) == 0);
 
             // Wrapper column: indentation + optional selection bg
-            char    ck[64] = {};
+            char     ck[64]  = {};
             snprintf(ck, sizeof(ck), "##stc_%llu", (unsigned long long) key);
             ZUIBox* col       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(fh));
             col->Padding[0]   = (float) e.depth * ctx->Style.IndentSpacing;
@@ -422,7 +441,8 @@ namespace Tetragrama::Panels
             char tn[300] = {};
             snprintf(tn, sizeof(tn), "%s##st_%llu", name, (unsigned long long) key);
             ZUISignal sig = ZUITreeNode(ctx, tn, &is_open);
-            if (ps) ps->UserData = is_open ? 1.f : 0.f;
+            if (ps)
+                ps->UserData = is_open ? 1.f : 0.f;
             ZUIEndColumn(ctx);
 
             if (sig.Flags & ZUI_SignalClicked)
@@ -504,8 +524,8 @@ namespace Tetragrama::Panels
             bool active = (strcmp(m_type_filter, kCategories[i]) == 0);
             char rk[32] = {};
             snprintf(rk, sizeof(rk), "##pv_flt_%d", i);
-            ZUIBox* row = ZUIBeginRow(ctx, rk, ZFill(), ZPx(row_h));
-            row->Flags  = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
+            ZUIBox* row   = ZUIBeginRow(ctx, rk, ZFill(), ZPx(row_h));
+            row->Flags    = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
             bool hov      = (ctx->HotKey == row->Key);
             bool pressing = !active && (ctx->ActiveKey == row->Key);
             if (active)
@@ -552,11 +572,11 @@ namespace Tetragrama::Panels
             col_count = 1;
 
         // ~13 chars/line × 2 lines = 26 (wider card allows more before ellipsis)
-        static constexpr int kMaxNameChars = 26;
+        static constexpr int kMaxNameChars    = 26;
 
         // Collect filtered entries
-        int vis[kMaxEntries] = {};
-        int nvis = 0;
+        int                  vis[kMaxEntries] = {};
+        int                  nvis             = 0;
         for (int i = 0; i < m_nentries; ++i)
             if (PassesFilters(m_entries[i], m_search, m_type_filter))
                 vis[nvis++] = i;
@@ -592,16 +612,16 @@ namespace Tetragrama::Panels
                     // Card column
                     char         ck[32] = {};
                     snprintf(ck, sizeof(ck), "##pvc_%d_%d", r, c);
-                    float   cw   = kCardW - 8.f;
-                    ZUIBox* card = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
-                    card->Flags  = card->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-                    hov              = (ctx->HotKey == card->Key);
-                    bool pressing    = !sel && (ctx->ActiveKey == card->Key);
+                    float   cw     = kCardW - 8.f;
+                    ZUIBox* card   = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
+                    card->Flags    = card->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+                    hov            = (ctx->HotKey == card->Key);
+                    bool  pressing = !sel && (ctx->ActiveKey == card->Key);
 
                     // Card bg: solid dark — pressing < hover < rest
-                    float rb = pressing ? 0.22f : hov ? 0.25f : 0.16f;
-                    float gb = pressing ? 0.22f : hov ? 0.25f : 0.16f;
-                    float bb = pressing ? 0.26f : hov ? 0.30f : 0.19f;
+                    float rb       = pressing ? 0.22f : hov ? 0.25f : 0.16f;
+                    float gb       = pressing ? 0.22f : hov ? 0.25f : 0.16f;
+                    float bb       = pressing ? 0.26f : hov ? 0.30f : 0.19f;
                     ZUIBoxSetColor(card, rb, gb, bb, 1.f);
                     ZUIBoxSetCornerRadius(card, kRounding);
                     card->EdgeSoftness = 0.5f;
@@ -630,7 +650,7 @@ namespace Tetragrama::Panels
                     {
                         if ((int) strlen(e.name) > kMaxNameChars)
                         {
-                            secure_strncpy(display, sizeof(display), e.name, (size_t)(kMaxNameChars - 3));
+                            secure_strncpy(display, sizeof(display), e.name, (size_t) (kMaxNameChars - 3));
                             display[kMaxNameChars - 3] = '.';
                             display[kMaxNameChars - 2] = '.';
                             display[kMaxNameChars - 1] = '.';
@@ -650,9 +670,9 @@ namespace Tetragrama::Panels
                         float name_zone = card_h - icon_zone;
 
                         // Icon: sized to fit comfortably in its zone, centered H+V
-                        float icon_sz  = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
-                        float side_pad = (cw   - icon_sz) * 0.5f;
-                        float top_pad  = (icon_zone - icon_sz) * 0.5f;
+                        float icon_sz   = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
+                        float side_pad  = (cw - icon_sz) * 0.5f;
+                        float top_pad   = (icon_zone - icon_sz) * 0.5f;
 
                         // Icon zone
                         ZUISpacer(ctx, top_pad);
@@ -670,8 +690,9 @@ namespace Tetragrama::Panels
                             ico->TextColor[1] = kFolderCol[1];
                             ico->TextColor[2] = kFolderCol[2];
                             ico->TextColor[3] = kFolderCol[3];
-                            auto* ips = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
-                            if (ips) ips->UserData = ZUI_ICON_FOLDER;
+                            auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
+                            if (ips)
+                                ips->UserData = ZUI_ICON_FOLDER;
                             ZUIPopBox(ctx);
                             ZUISpacer(ctx, side_pad);
                             ZUIEndRow(ctx);
@@ -680,16 +701,16 @@ namespace Tetragrama::Panels
 
                         // Name zone — plain centered text, no background band
                         {
-                            float   v_pad = (name_zone - fh) * 0.5f;
+                            float v_pad = (name_zone - fh) * 0.5f;
                             ZUISpacer(ctx, v_pad);
                             char fnk[32] = {};
                             snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
-                            uint32_t nl = (uint32_t) strlen(display);
-                            ZUIBox*  lb = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
-                            lb->Size[0]   = ZFill();
-                            lb->Size[1]   = ZPx(fh);
-                            lb->Label     = ZUIPushStr(&ctx->FrameArena, display, nl);
-                            lb->TextAlign = ZUITextAlign::Center;
+                            uint32_t nl      = (uint32_t) strlen(display);
+                            ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
+                            lb->Size[0]      = ZFill();
+                            lb->Size[1]      = ZPx(fh);
+                            lb->Label        = ZUIPushStr(&ctx->FrameArena, display, nl);
+                            lb->TextAlign    = ZUITextAlign::Center;
                             lb->TextColor[0] = ctx->Theme.TextDefault[0];
                             lb->TextColor[1] = ctx->Theme.TextDefault[1];
                             lb->TextColor[2] = ctx->Theme.TextDefault[2];
@@ -700,57 +721,58 @@ namespace Tetragrama::Panels
                     else
                     {
 
-                    // File card — same structure as folder: icon zone + plain name
-                    {
-                        float icon_zone = card_h * 0.62f;
-                        float name_zone = card_h - icon_zone;
-                        float isz       = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
-                        float side_pad  = (cw        - isz) * 0.5f;
-                        float top_pad   = (icon_zone - isz) * 0.5f;
-                        const float* icon_col = ExtColor(e.name);
-
-                        ZUISpacer(ctx, top_pad);
+                        // File card — same structure as folder: icon zone + plain name
                         {
-                            char rk2[32] = {};
-                            snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
-                            ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
-                            ZUISpacer(ctx, side_pad);
-                            char ik[32] = {};
-                            snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
-                            ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
-                            ico->Size[0]      = ZPx(isz);
-                            ico->Size[1]      = ZPx(isz);
-                            ico->TextColor[0] = icon_col[0];
-                            ico->TextColor[1] = icon_col[1];
-                            ico->TextColor[2] = icon_col[2];
-                            ico->TextColor[3] = icon_col[3];
-                            auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
-                            if (ips) ips->UserData = ExtIconType(e.name);
-                            ZUIPopBox(ctx);
-                            ZUISpacer(ctx, side_pad);
-                            ZUIEndRow(ctx);
-                        }
-                        ZUISpacer(ctx, top_pad * 0.3f);
+                            float        icon_zone = card_h * 0.62f;
+                            float        name_zone = card_h - icon_zone;
+                            float        isz       = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
+                            float        side_pad  = (cw - isz) * 0.5f;
+                            float        top_pad   = (icon_zone - isz) * 0.5f;
+                            const float* icon_col  = ExtColor(e.name);
 
-                        // Name — plain centered text, no dark band
-                        {
-                            float    v_pad = (name_zone - fh) * 0.5f;
-                            ZUISpacer(ctx, v_pad);
-                            char fnk[32] = {};
-                            snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
-                            uint32_t nl = (uint32_t) strlen(display);
-                            ZUIBox*  lb = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
-                            lb->Size[0]   = ZFill();
-                            lb->Size[1]   = ZPx(fh);
-                            lb->Label     = ZUIPushStr(&ctx->FrameArena, display, nl);
-                            lb->TextAlign = ZUITextAlign::Center;
-                            lb->TextColor[0] = ctx->Theme.TextDefault[0];
-                            lb->TextColor[1] = ctx->Theme.TextDefault[1];
-                            lb->TextColor[2] = ctx->Theme.TextDefault[2];
-                            lb->TextColor[3] = ctx->Theme.TextDefault[3];
-                            ZUIPopBox(ctx);
+                            ZUISpacer(ctx, top_pad);
+                            {
+                                char rk2[32] = {};
+                                snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
+                                ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
+                                ZUISpacer(ctx, side_pad);
+                                char ik[32] = {};
+                                snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
+                                ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
+                                ico->Size[0]      = ZPx(isz);
+                                ico->Size[1]      = ZPx(isz);
+                                ico->TextColor[0] = icon_col[0];
+                                ico->TextColor[1] = icon_col[1];
+                                ico->TextColor[2] = icon_col[2];
+                                ico->TextColor[3] = icon_col[3];
+                                auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
+                                if (ips)
+                                    ips->UserData = ExtIconType(e.name);
+                                ZUIPopBox(ctx);
+                                ZUISpacer(ctx, side_pad);
+                                ZUIEndRow(ctx);
+                            }
+                            ZUISpacer(ctx, top_pad * 0.3f);
+
+                            // Name — plain centered text, no dark band
+                            {
+                                float v_pad = (name_zone - fh) * 0.5f;
+                                ZUISpacer(ctx, v_pad);
+                                char fnk[32] = {};
+                                snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
+                                uint32_t nl      = (uint32_t) strlen(display);
+                                ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
+                                lb->Size[0]      = ZFill();
+                                lb->Size[1]      = ZPx(fh);
+                                lb->Label        = ZUIPushStr(&ctx->FrameArena, display, nl);
+                                lb->TextAlign    = ZUITextAlign::Center;
+                                lb->TextColor[0] = ctx->Theme.TextDefault[0];
+                                lb->TextColor[1] = ctx->Theme.TextDefault[1];
+                                lb->TextColor[2] = ctx->Theme.TextDefault[2];
+                                lb->TextColor[3] = ctx->Theme.TextDefault[3];
+                                ZUIPopBox(ctx);
+                            }
                         }
-                    }
 
                     } // end file card
 
@@ -870,7 +892,7 @@ namespace Tetragrama::Panels
             return;
         }
 
-        float              fh       = ZUIGetFrameHeight(ctx);
+        float              fh         = ZUIGetFrameHeight(ctx);
         static const float kErrCol[4] = {1.f, 0.40f, 0.35f, 1.f}; // red error text
         ZUISpacer(ctx, 8.f);
 
@@ -882,14 +904,18 @@ namespace Tetragrama::Panels
                 ZUILabel(ctx, m_modal == Modal::CreateFile ? "New File" : "New Folder", ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 6.f);
                 ZUITextField(ctx, "##pv_mi", m_modal_buf, sizeof(m_modal_buf), 240.f);
-                if (m_modal_error[0]) { ZUISpacer(ctx, 4.f); ZUILabel(ctx, m_modal_error, kErrCol); }
+                if (m_modal_error[0])
+                {
+                    ZUISpacer(ctx, 4.f);
+                    ZUILabel(ctx, m_modal_error, kErrCol);
+                }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Create##pvc").Flags & ZUI_SignalClicked)
                 {
                     m_modal_error[0] = '\0';
-                    bool ok = false;
+                    bool ok          = false;
                     if (m_modal_buf[0] && vfs)
                     {
                         auto np = m_modal_target.Append(m_modal_buf);
@@ -900,7 +926,11 @@ namespace Tetragrama::Panels
                             else
                             {
                                 auto f = vfs->Open(np.Value(), VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Truncate);
-                                if (f.Succeeded()) { f.Value()->Close(); ok = true; }
+                                if (f.Succeeded())
+                                {
+                                    f.Value()->Close();
+                                    ok = true;
+                                }
                             }
                         }
                         if (!ok)
@@ -927,14 +957,18 @@ namespace Tetragrama::Panels
                 ZUILabel(ctx, "Rename", ctx->Theme.TextDefault);
                 ZUISpacer(ctx, 6.f);
                 ZUITextField(ctx, "##pv_mi", m_modal_buf, sizeof(m_modal_buf), 240.f);
-                if (m_modal_error[0]) { ZUISpacer(ctx, 4.f); ZUILabel(ctx, m_modal_error, kErrCol); }
+                if (m_modal_error[0])
+                {
+                    ZUISpacer(ctx, 4.f);
+                    ZUILabel(ctx, m_modal_error, kErrCol);
+                }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Rename##pvr").Flags & ZUI_SignalClicked)
                 {
                     m_modal_error[0] = '\0';
-                    bool ok = false;
+                    bool ok          = false;
                     if (m_modal_buf[0] && vfs && !strchr(m_modal_buf, '/') && !strchr(m_modal_buf, '\\'))
                     {
                         auto dp = m_modal_target.Parent().Append(m_modal_buf);
@@ -971,19 +1005,22 @@ namespace Tetragrama::Panels
                     static const float kW[4] = {1.f, 0.85f, 0.20f, 1.f};
                     ZUILabel(ctx, n, kW);
                 }
-                if (m_modal_error[0]) { ZUISpacer(ctx, 4.f); ZUILabel(ctx, m_modal_error, kErrCol); }
+                if (m_modal_error[0])
+                {
+                    ZUISpacer(ctx, 4.f);
+                    ZUILabel(ctx, m_modal_error, kErrCol);
+                }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 8.f);
                 if (ZUIButton(ctx, "Delete##pvd").Flags & ZUI_SignalClicked)
                 {
                     m_modal_error[0] = '\0';
-                    bool ok = false;
+                    bool ok          = false;
                     if (vfs)
                     {
                         ok = (m_modal_is_dir ? vfs->RemoveAll(m_modal_target) : vfs->Remove(m_modal_target)).Succeeded();
-                        if (ok && m_modal_target.CStr() && m_current_dir.CStr() &&
-                            strcmp(m_modal_target.CStr(), m_current_dir.CStr()) == 0)
+                        if (ok && m_modal_target.CStr() && m_current_dir.CStr() && strcmp(m_modal_target.CStr(), m_current_dir.CStr()) == 0)
                             m_current_dir = m_current_dir.Parent();
                         if (!ok)
                             secure_strncpy(m_modal_error, sizeof(m_modal_error), "Delete failed — check permissions", sizeof(m_modal_error) - 1);
@@ -1182,7 +1219,7 @@ namespace Tetragrama::Panels
             sb->EdgeSoftness = 0.f;
             ZUISpacer(ctx, 8.f);
             {
-                char st[64] = {};
+                char st[64]  = {};
                 bool has_sel = (m_selected_path[0] != '\0');
                 snprintf(st, sizeof(st), "%d item%s%s", nvis, nvis == 1 ? "" : "s", has_sel ? " (1 selected)" : "");
                 ZUILabel(ctx, st, ctx->Theme.TextDim);

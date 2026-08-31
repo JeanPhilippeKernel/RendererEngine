@@ -17,14 +17,14 @@ namespace ZEngine::UI
     /// All dimensional fields are in logical pixels before FontScale is applied.
     struct ZUIGlyph
     {
-        float U0      = 0.f; ///< Atlas UV left edge
-        float V0      = 0.f; ///< Atlas UV top edge
-        float U1      = 0.f; ///< Atlas UV right edge
-        float V1      = 0.f; ///< Atlas UV bottom edge
-        float OffsetX = 0.f; ///< Pen X offset (logical px)
-        float OffsetY = 0.f; ///< Pen Y offset from baseline (logical px; positive = below)
-        float Width   = 0.f; ///< Glyph screen width (logical px)
-        float Height  = 0.f; ///< Glyph screen height (logical px)
+        float U0       = 0.f; ///< Atlas UV left edge
+        float V0       = 0.f; ///< Atlas UV top edge
+        float U1       = 0.f; ///< Atlas UV right edge
+        float V1       = 0.f; ///< Atlas UV bottom edge
+        float OffsetX  = 0.f; ///< Pen X offset (logical px)
+        float OffsetY  = 0.f; ///< Pen Y offset from baseline (logical px; positive = below)
+        float Width    = 0.f; ///< Glyph screen width (logical px)
+        float Height   = 0.f; ///< Glyph screen height (logical px)
         float AdvanceX = 0.f; ///< Cursor advance after this glyph (logical px)
     };
 

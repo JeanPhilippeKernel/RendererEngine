@@ -463,7 +463,7 @@ namespace Tetragrama::Panels
                     btn->Size[1]   = ZPx(fh);
                     btn->Label     = ZUIPushStr(&ctx->FrameArena, "All", 3);
                     btn->TextAlign = ZUITextAlign::Center;
-                    bool pill_hov = !is_all && (ctx->HotKey == btn->Key);
+                    bool pill_hov  = !is_all && (ctx->HotKey == btn->Key);
                     ZUIBoxSetColorArr(btn, is_all ? kPillAct : pill_hov ? kPillHov : kPillRest);
                     ZUIBoxSetCornerRadius(btn, 3.f);
                     btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
@@ -492,7 +492,7 @@ namespace Tetragrama::Panels
                     btn->Size[1]    = ZPx(fh);
                     btn->Label      = ZUIPushStr(&ctx->FrameArena, cats[ci], clen);
                     btn->TextAlign  = ZUITextAlign::Center;
-                    bool pill_hov = !is_active && (ctx->HotKey == btn->Key);
+                    bool pill_hov   = !is_active && (ctx->HotKey == btn->Key);
                     ZUIBoxSetColorArr(btn, is_active ? kPillAct : pill_hov ? kPillHov : kPillRest);
                     ZUIBoxSetCornerRadius(btn, 3.f);
                     btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;

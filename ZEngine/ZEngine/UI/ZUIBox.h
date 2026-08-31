@@ -130,7 +130,7 @@ namespace ZEngine::UI
     /// are written by ZUILayoutSolve at the start of ZUIEndFrame.
     struct ZUIBox
     {
-        uint64_t     Key             = 0; ///< FNV-1a hash of the key string; 0 = unnamed.
+        uint64_t     Key             = 0;  ///< FNV-1a hash of the key string; 0 = unnamed.
         ZUIStr       Label           = {}; ///< Visible text (FrameArena slice; may be null).
 
         // tree — arena pointers valid for one frame only

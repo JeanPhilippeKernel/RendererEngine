@@ -143,7 +143,7 @@ namespace ZEngine::UI
         static constexpr uint32_t kMaxPanels = 32;
         LoadPanel                 load_panels[kMaxPanels];
         char                      panel_views[kMaxPanels][kMaxTabsPerPanel][64]; // title buffers
-        int                       panel_view_vis[kMaxPanels][kMaxTabsPerPanel]; // per-view visible (v4)
+        int                       panel_view_vis[kMaxPanels][kMaxTabsPerPanel];  // per-view visible (v4)
         uint32_t                  panel_count    = 0;
         int                       pending_panel  = -1; // index of panel we're reading views for
         uint32_t                  panel_view_idx = 0;
@@ -193,10 +193,10 @@ namespace ZEngine::UI
             {
                 if (panel_view_idx < kMaxTabsPerPanel)
                 {
-                    char     title_buf[64] = {};
-                    int      vis           = 1; // default visible if not present
+                    char title_buf[64] = {};
+                    int  vis           = 1; // default visible if not present
                     // v4: "view <title> <visible>"  v3: "view <title>"
-                    int parsed = sscanf(line + 5, "%63s %d", title_buf, &vis);
+                    int  parsed        = sscanf(line + 5, "%63s %d", title_buf, &vis);
                     if (parsed >= 1)
                     {
                         snprintf(panel_views[pending_panel][panel_view_idx], sizeof(panel_views[0][0]), "%s", title_buf);
@@ -481,7 +481,11 @@ namespace ZEngine::UI
                 continue;
             bool any_visible = false;
             for (uint32_t vi = 0; vi < p->ViewCount; ++vi)
-                if (p->Views[vi] && p->Views[vi]->Visible) { any_visible = true; break; }
+                if (p->Views[vi] && p->Views[vi]->Visible)
+                {
+                    any_visible = true;
+                    break;
+                }
             if (!any_visible)
                 p->Hidden = true;
         }

@@ -30,6 +30,6 @@ namespace Tetragrama::Panels
         /// @brief Builds the inspector UI for the currently selected actor.
         /// @param ctx ZUI context for the current frame.
         /// @param rect Panel bounding rect [x0, y0, x1, y1].
-        void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
+        void                          BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
     };
 } // namespace Tetragrama::Panels

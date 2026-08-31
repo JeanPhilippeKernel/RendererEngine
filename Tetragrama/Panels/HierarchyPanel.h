@@ -52,15 +52,15 @@ namespace Tetragrama::Panels
         /// @brief Returns true if @p id is in the collapsed set.
         /// @param id Entity to query.
         /// @returns True when collapsed.
-        bool IsCollapsed(ZEngine::ECS::EntityID id) const;
+        bool                          IsCollapsed(ZEngine::ECS::EntityID id) const;
 
         /// @brief Toggles the collapsed state of @p id.
         /// @param id Entity whose state to toggle.
-        void ToggleCollapsed(ZEngine::ECS::EntityID id);
+        void                          ToggleCollapsed(ZEngine::ECS::EntityID id);
 
         /// @brief Builds the full hierarchy UI tree for this frame.
         /// @param ctx ZUI context for the current frame.
         /// @param rect Panel bounding rect [x0, y0, x1, y1].
-        void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
+        void                          BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
     };
 } // namespace Tetragrama::Panels

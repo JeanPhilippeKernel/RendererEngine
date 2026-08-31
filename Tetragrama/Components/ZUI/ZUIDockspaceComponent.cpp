@@ -16,7 +16,7 @@ namespace Tetragrama::Components
 {
     static constexpr float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
 
-    void ZUIDockspaceComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
+    void                   ZUIDockspaceComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
     {
         ParentLayer = parent;
         Name        = name;
@@ -30,8 +30,8 @@ namespace Tetragrama::Components
             return;
         }
 
-        float sw = (float) ctx->ScreenW;
-        float sh = (float) ctx->ScreenH;
+        float   sw      = (float) ctx->ScreenW;
+        float   sh      = (float) ctx->ScreenH;
 
         // Full-screen overlay — alpha=0 background so ZFill() children resolve
         // correctly, but visually transparent. Renders on top of PanelManagerComponent.
@@ -205,18 +205,19 @@ namespace Tetragrama::Components
         // Engine Settings window
         if (m_settings_open)
         {
-            static constexpr float kSideW = 140.f;
-            static constexpr float kMinW  = 400.f;
-            static constexpr float kMinH  = 300.f;
-            float& kW = m_modal_w; // alias for readability
-            float& kH = m_modal_h;
-            float fh = ZUIGetFrameHeight(ctx);
+            static constexpr float kSideW          = 140.f;
+            static constexpr float kMinW           = 400.f;
+            static constexpr float kMinH           = 300.f;
+            float&                 kW              = m_modal_w; // alias for readability
+            float&                 kH              = m_modal_h;
+            float                  fh              = ZUIGetFrameHeight(ctx);
 
-            auto* stg_app   = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
-            auto* stg_scene = stg_app ? reinterpret_cast<EditorScenePtr>(stg_app->CurrentScene) : nullptr;
+            auto*                  stg_app         = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto*                  stg_scene       = stg_app ? reinterpret_cast<EditorScenePtr>(stg_app->CurrentScene) : nullptr;
 
-            auto mark_grid_dirty = [stg_scene]() {
-                if (!stg_scene) return;
+            auto                   mark_grid_dirty = [stg_scene]() {
+                if (!stg_scene)
+                    return;
                 stg_scene->GridDirty[0].value.store(true, std::memory_order_release);
                 stg_scene->GridDirty[1].value.store(true, std::memory_order_release);
                 stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
@@ -246,7 +247,7 @@ namespace Tetragrama::Components
             if (m_settings_just_opened)
             {
                 m_settings_just_opened = false;
-                ctx->FocusKey = 0; // transfer focus to modal exclusively
+                ctx->FocusKey          = 0; // transfer focus to modal exclusively
             }
 
             // Modal window — centered.
@@ -268,26 +269,29 @@ namespace Tetragrama::Components
             // Title bar
             {
                 static constexpr float kTbarH = 28.f; // fixed title bar height
-                ZUIBox* tbar  = ZUIBeginRow(ctx, "##stg_tbar", ZFill(), ZPx(kTbarH));
-                tbar->Flags   = tbar->Flags | ZUI_DrawBackground | ZUI_Clickable;
+                ZUIBox*                tbar   = ZUIBeginRow(ctx, "##stg_tbar", ZFill(), ZPx(kTbarH));
+                tbar->Flags                   = tbar->Flags | ZUI_DrawBackground | ZUI_Clickable;
                 ZUIBoxSetColorArr(tbar, ctx->Theme.TitleBarBg);
                 ZUIBoxSetTopRadius(tbar, 5.f);
                 tbar->EdgeSoftness = 0.f;
 
                 ZUISpacer(ctx, 14.f);
                 // ZFill() height → ZUI centers text in the full title bar height
-                ZUIBox* ttl  = ZUIPushBox(ctx, "##stg_ttl", 9, ZUI_DrawText);
-                ttl->Size[0] = ZFill();
-                ttl->Size[1] = ZFill();
-                ttl->Label   = ZUIPushStr(&ctx->FrameArena, "Engine Settings", 15);
-                ttl->TextAlign  = ZUITextAlign::Left;
-                ttl->TextColor[0] = ctx->Theme.TextDefault[0]; ttl->TextColor[1] = ctx->Theme.TextDefault[1];
-                ttl->TextColor[2] = ctx->Theme.TextDefault[2]; ttl->TextColor[3] = ctx->Theme.TextDefault[3];
+                ZUIBox* ttl       = ZUIPushBox(ctx, "##stg_ttl", 9, ZUI_DrawText);
+                ttl->Size[0]      = ZFill();
+                ttl->Size[1]      = ZFill();
+                ttl->Label        = ZUIPushStr(&ctx->FrameArena, "Engine Settings", 15);
+                ttl->TextAlign    = ZUITextAlign::Left;
+                ttl->TextColor[0] = ctx->Theme.TextDefault[0];
+                ttl->TextColor[1] = ctx->Theme.TextDefault[1];
+                ttl->TextColor[2] = ctx->Theme.TextDefault[2];
+                ttl->TextColor[3] = ctx->Theme.TextDefault[3];
                 ZUIPopBox(ctx);
 
                 // Close button — red bg on hover, darker red on press
                 ZUIBox* xb    = ZUIPushBox(ctx, "##stg_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-                xb->Size[0]   = ZPx(kTbarH); xb->Size[1] = ZPx(kTbarH);
+                xb->Size[0]   = ZPx(kTbarH);
+                xb->Size[1]   = ZPx(kTbarH);
                 xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
                 xb->TextAlign = ZUITextAlign::Center;
                 bool xhov     = (ctx->HotKey == xb->Key);
@@ -299,17 +303,18 @@ namespace Tetragrama::Components
                 else
                     ZUIBoxSetColor(xb, 0.f, 0.f, 0.f, 0.f);
                 xb->TextColor[0] = xb->TextColor[1] = xb->TextColor[2] = 1.f;
-                xb->TextColor[3] = (xhov || xact) ? 1.f : 0.6f;
-                ZUISignal xsig = ZUISignalFromBox(ctx, xb);
+                xb->TextColor[3]                                       = (xhov || xact) ? 1.f : 0.6f;
+                ZUISignal xsig                                         = ZUISignalFromBox(ctx, xb);
                 ZUIPopBox(ctx);
-                if (xsig.Flags & ZUI_SignalClicked) m_settings_open = false;
+                if (xsig.Flags & ZUI_SignalClicked)
+                    m_settings_open = false;
 
                 ZUISignalFromBox(ctx, tbar); // consume hot/active state for drag
                 // Drag title bar to move modal
                 if (ctx->ActiveKey == tbar->Key && ctx->MouseDown[0])
                 {
-                    float dx = ctx->MousePos[0] - ctx->PrevMousePos[0];
-                    float dy = ctx->MousePos[1] - ctx->PrevMousePos[1];
+                    float dx  = ctx->MousePos[0] - ctx->PrevMousePos[0];
+                    float dy  = ctx->MousePos[1] - ctx->PrevMousePos[1];
                     m_modal_x = fmaxf(0.f, fminf(m_modal_x + dx, sw - kW));
                     m_modal_y = fmaxf(0.f, fminf(m_modal_y + dy, sh - kH));
                 }
@@ -319,7 +324,8 @@ namespace Tetragrama::Components
             // Separator under title
             {
                 ZUIBox* sep  = ZUIPushBox(ctx, "##stg_hsep", 10, ZUI_DrawBackground);
-                sep->Size[0] = ZFill(); sep->Size[1] = ZPx(1.f);
+                sep->Size[0] = ZFill();
+                sep->Size[1] = ZPx(1.f);
                 ZUIBoxSetColor(sep, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 1.f);
                 sep->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
@@ -329,23 +335,23 @@ namespace Tetragrama::Components
             ZUIBeginRow(ctx, "##stg_body", ZFill(), ZFill());
 
             // Sidebar
-            ZUIBox* side   = ZUIBeginColumn(ctx, "##stg_side", ZPx(kSideW), ZFill());
-            side->Flags    = side->Flags | ZUI_DrawBackground;
+            ZUIBox* side = ZUIBeginColumn(ctx, "##stg_side", ZPx(kSideW), ZFill());
+            side->Flags  = side->Flags | ZUI_DrawBackground;
             ZUIBoxSetColor(side, 0.f, 0.f, 0.f, 0.22f);
             side->EdgeSoftness = 0.f;
             ZUISpacer(ctx, 10.f);
             {
-                static const char* kPages[4]    = {"Grid", "Renderer", "Theme", "Layout"};
-                static const char* kNavKeys[4]  = {"##nav_0", "##nav_1", "##nav_2", "##nav_3"};
-                static const uint32_t kNKLen[4] = {7, 7, 7, 7};
+                static const char*    kPages[4]   = {"Grid", "Renderer", "Theme", "Layout"};
+                static const char*    kNavKeys[4] = {"##nav_0", "##nav_1", "##nav_2", "##nav_3"};
+                static const uint32_t kNKLen[4]   = {7, 7, 7, 7};
                 for (int pi = 0; pi < 4; ++pi)
                 {
-                    bool    act  = (m_settings_page == pi);
-                    uint32_t pln = (uint32_t)strlen(kPages[pi]);
-                    ZUIBox* nb   = ZUIPushBox(ctx, kNavKeys[pi], kNKLen[pi], ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-                    nb->Size[0]  = ZFill();
-                    nb->Size[1]  = ZPx(fh + 12.f);
-                    nb->Label    = ZUIPushStr(&ctx->FrameArena, kPages[pi], pln);
+                    bool     act   = (m_settings_page == pi);
+                    uint32_t pln   = (uint32_t) strlen(kPages[pi]);
+                    ZUIBox*  nb    = ZUIPushBox(ctx, kNavKeys[pi], kNKLen[pi], ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
+                    nb->Size[0]    = ZFill();
+                    nb->Size[1]    = ZPx(fh + 12.f);
+                    nb->Label      = ZUIPushStr(&ctx->FrameArena, kPages[pi], pln);
                     nb->TextAlign  = ZUITextAlign::Left;
                     nb->Padding[0] = 18.f;
                     if (act)
@@ -366,7 +372,8 @@ namespace Tetragrama::Components
                     ZUISignal sig = ZUISignalFromBox(ctx, nb);
                     ZUIPopBox(ctx);
                     ZUISpacer(ctx, 2.f);
-                    if (sig.Flags & ZUI_SignalClicked) m_settings_page = pi;
+                    if (sig.Flags & ZUI_SignalClicked)
+                        m_settings_page = pi;
                 }
             }
             ZUISpacer(ctx, 8.f);
@@ -375,17 +382,18 @@ namespace Tetragrama::Components
             // Vertical separator
             {
                 ZUIBox* vs  = ZUIPushBox(ctx, "##stg_vsep", 9, ZUI_DrawBackground);
-                vs->Size[0] = ZPx(1.f); vs->Size[1] = ZFill();
+                vs->Size[0] = ZPx(1.f);
+                vs->Size[1] = ZFill();
                 ZUIBoxSetColor(vs, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 1.f);
                 vs->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
             }
 
             // Content column
-            ZUIBox* cnt = ZUIBeginColumn(ctx, "##stg_cnt", ZFill(), ZFill());
-            cnt->Flags      = cnt->Flags | ZUI_ClipChildren;
+            ZUIBox* cnt       = ZUIBeginColumn(ctx, "##stg_cnt", ZFill(), ZFill());
+            cnt->Flags        = cnt->Flags | ZUI_ClipChildren;
             cnt->EdgeSoftness = 0.f;
-            cnt->Padding[2] = 14.f; // right margin
+            cnt->Padding[2]   = 14.f; // right margin
             ZUISpacer(ctx, 14.f);
 
             if (m_settings_page == 0 && stg_scene) // Grid
@@ -401,36 +409,116 @@ namespace Tetragrama::Components
                     ZUIEndColumn(ctx);
                     bool prev = cfg.Enabled;
                     ZUICheckbox(ctx, "##sg_en_cb", &cfg.Enabled);
-                    ZUIEndRow(ctx); ZUISpacer(ctx, 5.f);
-                    if (cfg.Enabled != prev) mark_grid_dirty();
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.Enabled != prev)
+                        mark_grid_dirty();
                 }
                 // Cell Size
-                { float prev=cfg.CellSize;     ZUIBeginRow(ctx,"##sg_cs_r",ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f); ZUIBeginColumn(ctx,"##sg_cs_l",ZPx(150.f),ZFill()); ZUILabel(ctx,"Cell Size",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_cs_s",&cfg.CellSize,0.001f,1.f); ZUIEndRow(ctx); ZUISpacer(ctx,5.f); if(cfg.CellSize!=prev) mark_grid_dirty(); }
+                {
+                    float prev = cfg.CellSize;
+                    ZUIBeginRow(ctx, "##sg_cs_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sg_cs_l", ZPx(150.f), ZFill());
+                    ZUILabel(ctx, "Cell Size", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUISliderFloat(ctx, "##sg_cs_s", &cfg.CellSize, 0.001f, 1.f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.CellSize != prev)
+                        mark_grid_dirty();
+                }
                 // Fade Radius
-                { float prev=cfg.FadeRadius;   ZUIBeginRow(ctx,"##sg_fr_r",ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f); ZUIBeginColumn(ctx,"##sg_fr_l",ZPx(150.f),ZFill()); ZUILabel(ctx,"Fade Radius",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_fr_s",&cfg.FadeRadius,10.f,2000.f); ZUIEndRow(ctx); ZUISpacer(ctx,5.f); if(cfg.FadeRadius!=prev) mark_grid_dirty(); }
+                {
+                    float prev = cfg.FadeRadius;
+                    ZUIBeginRow(ctx, "##sg_fr_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sg_fr_l", ZPx(150.f), ZFill());
+                    ZUILabel(ctx, "Fade Radius", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUISliderFloat(ctx, "##sg_fr_s", &cfg.FadeRadius, 10.f, 2000.f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.FadeRadius != prev)
+                        mark_grid_dirty();
+                }
                 // Fade Strength
-                { float prev=cfg.FadeStrength; ZUIBeginRow(ctx,"##sg_fs_r",ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f); ZUIBeginColumn(ctx,"##sg_fs_l",ZPx(150.f),ZFill()); ZUILabel(ctx,"Fade Strength",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_fs_s",&cfg.FadeStrength,0.1f,2.f); ZUIEndRow(ctx); ZUISpacer(ctx,5.f); if(cfg.FadeStrength!=prev) mark_grid_dirty(); }
+                {
+                    float prev = cfg.FadeStrength;
+                    ZUIBeginRow(ctx, "##sg_fs_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sg_fs_l", ZPx(150.f), ZFill());
+                    ZUILabel(ctx, "Fade Strength", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUISliderFloat(ctx, "##sg_fs_s", &cfg.FadeStrength, 0.1f, 2.f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.FadeStrength != prev)
+                        mark_grid_dirty();
+                }
                 // Line Width
-                { float prev=cfg.LineWidth;    ZUIBeginRow(ctx,"##sg_lw_r",ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f); ZUIBeginColumn(ctx,"##sg_lw_l",ZPx(150.f),ZFill()); ZUILabel(ctx,"Line Width",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_lw_s",&cfg.LineWidth,0.5f,4.f); ZUIEndRow(ctx); ZUISpacer(ctx,5.f); if(cfg.LineWidth!=prev) mark_grid_dirty(); }
+                {
+                    float prev = cfg.LineWidth;
+                    ZUIBeginRow(ctx, "##sg_lw_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sg_lw_l", ZPx(150.f), ZFill());
+                    ZUILabel(ctx, "Line Width", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUISliderFloat(ctx, "##sg_lw_s", &cfg.LineWidth, 0.5f, 4.f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.LineWidth != prev)
+                        mark_grid_dirty();
+                }
                 // Ground Y
-                { float prev=cfg.GroundY;      ZUIBeginRow(ctx,"##sg_gy_r",ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f); ZUIBeginColumn(ctx,"##sg_gy_l",ZPx(150.f),ZFill()); ZUILabel(ctx,"Ground Y",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUISliderFloat(ctx,"##sg_gy_s",&cfg.GroundY,-100.f,100.f); ZUIEndRow(ctx); ZUISpacer(ctx,5.f); if(cfg.GroundY!=prev) mark_grid_dirty(); }
+                {
+                    float prev = cfg.GroundY;
+                    ZUIBeginRow(ctx, "##sg_gy_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sg_gy_l", ZPx(150.f), ZFill());
+                    ZUILabel(ctx, "Ground Y", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUISliderFloat(ctx, "##sg_gy_s", &cfg.GroundY, -100.f, 100.f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.GroundY != prev)
+                        mark_grid_dirty();
+                }
                 // Max LOD
-                { int prev=cfg.MaxLOD;         ZUIBeginRow(ctx,"##sg_ml_r",ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f); ZUIBeginColumn(ctx,"##sg_ml_l",ZPx(150.f),ZFill()); ZUILabel(ctx,"Max LOD",ctx->Theme.TextDefault); ZUIEndColumn(ctx); ZUIDragInt(ctx,"##sg_ml_d",&cfg.MaxLOD,1.f,60.f); ZUIEndRow(ctx); ZUISpacer(ctx,5.f); if(cfg.MaxLOD!=prev) mark_grid_dirty(); }
+                {
+                    int prev = cfg.MaxLOD;
+                    ZUIBeginRow(ctx, "##sg_ml_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sg_ml_l", ZPx(150.f), ZFill());
+                    ZUILabel(ctx, "Max LOD", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUIDragInt(ctx, "##sg_ml_d", &cfg.MaxLOD, 1.f, 60.f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (cfg.MaxLOD != prev)
+                        mark_grid_dirty();
+                }
 
                 ZUISpacer(ctx, 14.f);
 
                 // Color rows
                 auto color_row = [&](const char* rk, const char* lk, const char* ck, const char* label, float col[4]) {
-                    float p[4] = {col[0],col[1],col[2],col[3]};
-                    ZUIBeginRow(ctx,rk,ZFill(),ZPx(fh+6.f)); ZUISpacer(ctx,14.f);
-                    ZUIBeginColumn(ctx,lk,ZPx(150.f),ZFill()); ZUILabel(ctx,label,ctx->Theme.TextDefault); ZUIEndColumn(ctx);
-                    ZUIColorEdit4(ctx,ck,col); ZUIEndRow(ctx); ZUISpacer(ctx,5.f);
-                    if(col[0]!=p[0]||col[1]!=p[1]||col[2]!=p[2]||col[3]!=p[3]) mark_grid_dirty();
+                    float p[4] = {col[0], col[1], col[2], col[3]};
+                    ZUIBeginRow(ctx, rk, ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, lk, ZPx(150.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUIColorEdit4(ctx, ck, col);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (col[0] != p[0] || col[1] != p[1] || col[2] != p[2] || col[3] != p[3])
+                        mark_grid_dirty();
                 };
-                color_row("##sg_ct_r","##sg_ct_l","##sg_ct_c","Thin Lines",  cfg.ColorThin);
-                color_row("##sg_ck_r","##sg_ck_l","##sg_ck_c","Thick Lines", cfg.ColorThick);
-                color_row("##sg_cx_r","##sg_cx_l","##sg_cx_c","X Axis",      cfg.ColorXAxis);
-                color_row("##sg_cz_r","##sg_cz_l","##sg_cz_c","Z Axis",      cfg.ColorZAxis);
+                color_row("##sg_ct_r", "##sg_ct_l", "##sg_ct_c", "Thin Lines", cfg.ColorThin);
+                color_row("##sg_ck_r", "##sg_ck_l", "##sg_ck_c", "Thick Lines", cfg.ColorThick);
+                color_row("##sg_cx_r", "##sg_cx_l", "##sg_cx_c", "X Axis", cfg.ColorXAxis);
+                color_row("##sg_cz_r", "##sg_cz_l", "##sg_cz_c", "Z Axis", cfg.ColorZAxis);
                 ZUISpacer(ctx, 14.f); // bottom padding
             }
             else if (m_settings_page == 1) // Renderer
@@ -447,18 +535,18 @@ namespace Tetragrama::Components
                 ZUISpacer(ctx, 12.f);
                 ZUIBeginRow(ctx, "##stg_thm_row", ZFill(), ZPx(80.f));
                 ZUISpacer(ctx, 14.f);
-                static int s_active_theme = 0;
+                static int         s_active_theme = 0;
                 static const char* kThemeNames[2] = {"Dark", "Light"};
                 static const char* kThemeKeys[2]  = {"##thm_0", "##thm_1"};
                 for (int ti = 0; ti < 2; ++ti)
                 {
-                    bool tact = (s_active_theme == ti);
-                    bool thov = !tact && (ctx->HotKey == ZUIHashStr(kThemeKeys[ti], (uint32_t)strlen(kThemeKeys[ti])));
-                    ZUIBox* tc = ZUIBeginColumn(ctx, kThemeKeys[ti], ZPx(110.f), ZFill());
-                    tc->Flags  = tc->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-                    float bg   = (ti == 0) ? 0.10f : 0.88f;
-                    float bga  = thov ? bg + 0.06f : bg;
-                    ZUIBoxSetColor(tc, bga, bga, ti==0 ? bga + 0.02f : bga + 0.02f, 1.f);
+                    bool    tact = (s_active_theme == ti);
+                    bool    thov = !tact && (ctx->HotKey == ZUIHashStr(kThemeKeys[ti], (uint32_t) strlen(kThemeKeys[ti])));
+                    ZUIBox* tc   = ZUIBeginColumn(ctx, kThemeKeys[ti], ZPx(110.f), ZFill());
+                    tc->Flags    = tc->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
+                    float bg     = (ti == 0) ? 0.10f : 0.88f;
+                    float bga    = thov ? bg + 0.06f : bg;
+                    ZUIBoxSetColor(tc, bga, bga, ti == 0 ? bga + 0.02f : bga + 0.02f, 1.f);
                     ZUIBoxSetCornerRadius(tc, 4.f);
                     tc->BorderThickness = tact ? 2.f : (thov ? 1.5f : 1.f);
                     tc->BorderColor[0]  = tact ? ctx->Theme.TabActiveBorder[0] : (thov ? 0.50f : 0.28f);
@@ -466,11 +554,12 @@ namespace Tetragrama::Components
                     tc->BorderColor[2]  = tact ? ctx->Theme.TabActiveBorder[2] : (thov ? 0.55f : 0.32f);
                     tc->BorderColor[3]  = 1.f;
                     ZUISpacer(ctx, 20.f);
-                    float lc[4] = {ti==0 ? 0.9f : 0.1f, ti==0 ? 0.9f : 0.1f, ti==0 ? 0.9f : 0.1f, 1.f};
+                    float lc[4] = {ti == 0 ? 0.9f : 0.1f, ti == 0 ? 0.9f : 0.1f, ti == 0 ? 0.9f : 0.1f, 1.f};
                     ZUILabel(ctx, kThemeNames[ti], lc);
                     ZUISignal tsig = ZUISignalFromBox(ctx, tc);
                     ZUIEndColumn(ctx);
-                    if (tsig.Flags & ZUI_SignalClicked) s_active_theme = ti;
+                    if (tsig.Flags & ZUI_SignalClicked)
+                        s_active_theme = ti;
                     ZUISpacer(ctx, 8.f);
                 }
                 ZUIEndRow(ctx);
@@ -514,12 +603,13 @@ namespace Tetragrama::Components
             // Bottom-right resize handle — floated inside modal, 12×12
             {
                 static constexpr float kGrip = 14.f;
-                ZUIBox* rh     = ZUIPushBox(ctx, "##stg_grip", 10, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
-                rh->Size[0]    = ZPx(kGrip); rh->Size[1] = ZPx(kGrip);
-                rh->FloatPos[0] = kW - kGrip;
-                rh->FloatPos[1] = kH - kGrip;
-                bool ghov = (ctx->HotKey == rh->Key);
-                bool gact = (ctx->ActiveKey == rh->Key);
+                ZUIBox*                rh    = ZUIPushBox(ctx, "##stg_grip", 10, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                rh->Size[0]                  = ZPx(kGrip);
+                rh->Size[1]                  = ZPx(kGrip);
+                rh->FloatPos[0]              = kW - kGrip;
+                rh->FloatPos[1]              = kH - kGrip;
+                bool ghov                    = (ctx->HotKey == rh->Key);
+                bool gact                    = (ctx->ActiveKey == rh->Key);
                 ZUIBoxSetColor(rh, 1.f, 1.f, 1.f, gact ? 0.30f : ghov ? 0.18f : 0.07f);
                 ZUIBoxSetCornerRadius(rh, 3.f);
                 ZUISignalFromBox(ctx, rh); // consume hot/active state for drag
@@ -529,8 +619,8 @@ namespace Tetragrama::Components
                 {
                     float dx = ctx->MousePos[0] - ctx->PrevMousePos[0];
                     float dy = ctx->MousePos[1] - ctx->PrevMousePos[1];
-                    kW = fmaxf(kMinW, fminf(kW + dx, sw - m_modal_x));
-                    kH = fmaxf(kMinH, fminf(kH + dy, sh - m_modal_y));
+                    kW       = fmaxf(kMinW, fminf(kW + dx, sw - m_modal_x));
+                    kH       = fmaxf(kMinH, fminf(kH + dy, sh - m_modal_y));
                 }
             }
 

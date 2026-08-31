@@ -16,7 +16,7 @@ namespace ZEngine::UI
         const char* Title                                         = "Panel"; ///< Displayed in the tab bar
         uint64_t    Key                                           = 0;       ///< Optional stable key; 0 = derive from Title
         bool        Visible                                       = true;
-        bool        Closeable                                     = true;  ///< false = no close button on this tab (e.g. main viewport)
+        bool        Closeable                                     = true;                 ///< false = no close button on this tab (e.g. main viewport)
         float       TabColor[4]                                   = {0.f, 0.f, 0.f, 0.f}; ///< Per-tab accent (alpha=0 → theme default)
 
         virtual ~ZUIPanelView()                                   = default;
@@ -93,21 +93,21 @@ namespace ZEngine::UI
     /// @endcode
     struct ZUIPanelManager
     {
-        ZUIDockTree*     DockTree = nullptr;
-        ZUIPanel         Panels[kMaxPanels] = {};
+        ZUIDockTree*     DockTree                     = nullptr;
+        ZUIPanel         Panels[kMaxPanels]           = {};
         uint32_t         PanelCount                   = 0;
         uint32_t         FocusedPanelIdx              = 0;
 
         char             LayoutPath[256]              = {}; ///< Set before first BuildUI; empty = no persistence
         bool             LayoutDirty                  = false;
-        bool             DrawMenuBar                  = true;  ///< false = external shell owns the menu bar
-        bool             DrawBuiltinStatusBar         = true;  ///< false = external component owns the status bar
+        bool             DrawMenuBar                  = true; ///< false = external shell owns the menu bar
+        bool             DrawBuiltinStatusBar         = true; ///< false = external component owns the status bar
 
         uint64_t         PendingCloseKeys[kMaxPanels] = {};
         uint32_t         PendingCloseCount            = 0;
 
-        ZUIDragDockState Drag = {};
-        uint64_t         DragKeySeq = 0xD0C400000000ULL; ///< Monotone counter for drag-split panel keys
+        ZUIDragDockState Drag                         = {};
+        uint64_t         DragKeySeq                   = 0xD0C400000000ULL; ///< Monotone counter for drag-split panel keys
 
         /// @brief Allocate the dock tree and reset panel state.
         /// @param arena Persistent arena; must outlive the manager.

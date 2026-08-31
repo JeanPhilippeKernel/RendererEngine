@@ -231,10 +231,14 @@ namespace ZEngine::UI
                     // If no views remain visible, collapse the dock node this frame.
                     bool any_visible = false;
                     for (uint32_t vi2 = 0; vi2 < p->ViewCount; ++vi2)
-                        if (p->Views[vi2] && p->Views[vi2]->Visible) { any_visible = true; break; }
+                        if (p->Views[vi2] && p->Views[vi2]->Visible)
+                        {
+                            any_visible = true;
+                            break;
+                        }
                     if (!any_visible && PendingCloseCount < kMaxPanels)
                     {
-                        p->Hidden = true;
+                        p->Hidden                             = true;
                         PendingCloseKeys[PendingCloseCount++] = p->DockKey;
                     }
                     LayoutDirty = true;
@@ -244,9 +248,9 @@ namespace ZEngine::UI
 
             // Single-view title strip close button
             {
-                ZUIPanelView* av     = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
-                bool strip_closeable = av && av->Closeable && av->Visible;
-                char txk[56];
+                ZUIPanelView* av              = (p->ActiveTab < p->ViewCount) ? p->Views[p->ActiveTab] : nullptr;
+                bool          strip_closeable = av && av->Closeable && av->Visible;
+                char          txk[56];
                 snprintf(txk, sizeof(txk), "x##tx_%llx", (unsigned long long) p->DockKey);
                 uint64_t txhash = ZUIHashStr(txk, (uint32_t) strlen(txk));
 
@@ -690,9 +694,9 @@ namespace ZEngine::UI
             }
 
             // x close (hover-only) — suppressed for non-closeable panels (e.g. main viewport)
-            bool should_close = false;
+            bool should_close          = false;
             bool active_view_closeable = (p->ActiveTab < p->ViewCount && p->Views[p->ActiveTab]) ? p->Views[p->ActiveTab]->Closeable : true;
-            bool ph           = active_view_closeable && (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
+            bool ph                    = active_view_closeable && (ctx->MousePos[0] >= rect[0] && ctx->MousePos[0] <= rect[2] && ctx->MousePos[1] >= rect[1] && ctx->MousePos[1] <= rect[1] + header_h);
             if (ph)
             {
                 char xk[56];
@@ -738,7 +742,6 @@ namespace ZEngine::UI
                     Drag.GhostY    = ctx->MousePos[1];
                 }
             }
-
         }
 
         // Content — no WindowPadding for docked panels (editor panels fill edge-to-edge).
@@ -854,7 +857,7 @@ namespace ZEngine::UI
             // Pre-compute hash for hover detection before box creation.
             bool tab_closed = false;
             {
-                float btn_sz     = ctx->Style.FontSize;
+                float btn_sz         = ctx->Style.FontSize;
                 bool  view_closeable = p->Views[ti] ? p->Views[ti]->Closeable : true;
                 bool  show_close     = view_closeable && (is_active || tab_hovered);
                 ZUISpacer(ctx, ZUIGetInnerSpac(ctx));
@@ -1595,10 +1598,14 @@ namespace ZEngine::UI
                     // If no views remain visible, collapse the panel dock node.
                     bool any_visible = false;
                     for (uint32_t vi2 = 0; vi2 < p->ViewCount; ++vi2)
-                        if (p->Views[vi2] && p->Views[vi2]->Visible) { any_visible = true; break; }
+                        if (p->Views[vi2] && p->Views[vi2]->Visible)
+                        {
+                            any_visible = true;
+                            break;
+                        }
                     if (!any_visible && PendingCloseCount < kMaxPanels)
                     {
-                        p->Hidden = true;
+                        p->Hidden                             = true;
                         PendingCloseKeys[PendingCloseCount++] = p->DockKey;
                     }
                 }

@@ -27,17 +27,17 @@ namespace Tetragrama::Components
         if (!Visible || !ParentLayer || !ParentLayer->CurrentApp)
             return;
 
-        auto* app = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
+        auto* app                = reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp);
 
         m_frame_times[m_ft_head] = ctx->DeltaTime;
         m_ft_head                = (m_ft_head + 1) % kFtSamples;
         float sum                = 0.f;
         for (int i = 0; i < kFtSamples; ++i)
             sum += m_frame_times[i];
-        m_smoothed_dt = sum / (float) kFtSamples;
+        m_smoothed_dt    = sum / (float) kFtSamples;
 
-        float sw = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
-        float sy = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
+        float   sw       = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
+        float   sy       = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
 
         ZUIBox* bar      = ZUIBeginRow(ctx, "##status_bar", ZPx(sw), ZPx(kBarH));
         bar->Flags       = bar->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY;
@@ -53,10 +53,10 @@ namespace Tetragrama::Components
         bar->EdgeSoftness    = 0.f;
 
         // Vertically center children
-        float fh        = ZUIGetFrameHeight(ctx);
-        float vpad      = fmaxf(0.f, (kBarH - fh) * 0.5f);
-        bar->Padding[1] = vpad;
-        bar->Padding[3] = vpad;
+        float fh             = ZUIGetFrameHeight(ctx);
+        float vpad           = fmaxf(0.f, (kBarH - fh) * 0.5f);
+        bar->Padding[1]      = vpad;
+        bar->Padding[3]      = vpad;
 
         ZUISpacer(ctx, 6.f);
 
@@ -68,9 +68,9 @@ namespace Tetragrama::Components
                 ShellPanelManager->SetPanelVisible(panel_name, !on);
         };
 
-        toggle("Console##sb_con",  "Console");
+        toggle("Console##sb_con", "Console");
         ZUISpacer(ctx, 4.f);
-        toggle("Browser##sb_bro",  "Project");
+        toggle("Browser##sb_bro", "Project");
         ZUISpacer(ctx, 4.f);
         toggle("Importer##sb_imp", "Importer");
 
@@ -81,10 +81,7 @@ namespace Tetragrama::Components
         // Scene name
         ZUILabel(ctx, "Scene:", ctx->Theme.TextDim);
         ZUISpacer(ctx, 4.f);
-        const char* scene_name =
-            (app->Configuration && !app->Configuration->ActiveSceneName.empty())
-                ? app->Configuration->ActiveSceneName.c_str()
-                : "-";
+        const char* scene_name = (app->Configuration && !app->Configuration->ActiveSceneName.empty()) ? app->Configuration->ActiveSceneName.c_str() : "-";
         ZUILabel(ctx, scene_name, ctx->Theme.TextDefault);
 
         ZUISpacer(ctx, 10.f);
@@ -93,9 +90,9 @@ namespace Tetragrama::Components
 
         // Selected actor name + actor count
         {
-            auto* eng        = ZEngine::Engine::GetContext();
-            auto* edit_scene = app->CurrentScene ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
-            const char* sel  = nullptr;
+            auto*       eng        = ZEngine::Engine::GetContext();
+            auto*       edit_scene = app->CurrentScene ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+            const char* sel        = nullptr;
 
             if (edit_scene && edit_scene->SelectedActorHandle.Valid() && eng && eng->ActorManager)
             {
@@ -122,8 +119,7 @@ namespace Tetragrama::Components
         {
             auto pos = app->CameraController->GetPosition();
             char cam_buf[64];
-            snprintf(cam_buf, sizeof(cam_buf), "X:%.1f  Y:%.1f  Z:%.1f",
-                     (double) pos.x, (double) pos.y, (double) pos.z);
+            snprintf(cam_buf, sizeof(cam_buf), "X:%.1f  Y:%.1f  Z:%.1f", (double) pos.x, (double) pos.y, (double) pos.z);
             ZUILabel(ctx, cam_buf, ctx->Theme.TextDim);
             ZUISpacer(ctx, 10.f);
             ZUILabel(ctx, "|", ctx->Theme.TextDim);
@@ -134,8 +130,7 @@ namespace Tetragrama::Components
         {
             float fps = m_smoothed_dt > 0.f ? 1.f / m_smoothed_dt : 0.f;
             char  fps_buf[32];
-            snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms",
-                     (double) fps, (double) (m_smoothed_dt * 1000.f));
+            snprintf(fps_buf, sizeof(fps_buf), "FPS: %.0f  %.2f ms", (double) fps, (double) (m_smoothed_dt * 1000.f));
             ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
         }
 
