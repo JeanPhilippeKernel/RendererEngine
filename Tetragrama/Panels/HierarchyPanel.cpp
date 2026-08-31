@@ -559,8 +559,12 @@ namespace Tetragrama::Panels
                     }
                 }
 
-                // Context menu
-                if (ZUIBeginPopupContextItem(ctx, "##actor_ctx", row_sig))
+                // Context menu — unique key per actor so the popup only opens
+                // for the right-clicked row (shared key causes all rows to match
+                // the open popup in the same frame, overwriting pending_delete).
+                char ctx_key[48];
+                snprintf(ctx_key, sizeof(ctx_key), "##ctx_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                if (ZUIBeginPopupContextItem(ctx, ctx_key, row_sig))
                 {
                     if (ZUIMenuItem(ctx, "Rename"))
                     {
