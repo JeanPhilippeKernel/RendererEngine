@@ -137,13 +137,13 @@ namespace Tetragrama::Panels
         ZUISpacer(ctx, 4.f);
 
         // ── 3-column table — Type and Level are fixed; Item Label stretches ─────
-        // Fixed column widths (user-drag not wired for these, so pixel constants are fine)
-        static constexpr float kTypeW  = 72.f;
-        static constexpr float kLevelW = 64.f;
+        static constexpr float kTypeW      = 72.f;
+        static constexpr float kLevelW     = 64.f;
+        static constexpr float kLabelMinW  = 120.f; // Item Label never compresses below this
         ZUIDataTableColumn cols[3] = {
-            {"Item Label", fmaxf(pw - kTypeW - kLevelW, 100.f),  true, false},
-            {      "Type",                          kTypeW,       true, false},
-            {     "Level",                          kLevelW,     false, false},
+            {"Item Label", fmaxf(pw - kTypeW - kLevelW, kLabelMinW), kLabelMinW, true, false},
+            {      "Type",                               kTypeW,           0.f,  true, false},
+            {     "Level",                               kLevelW,          0.f, false, false},
         };
 
         // ── O(n) DFS tree build — exact develop algorithm ─────────────────────
@@ -224,7 +224,7 @@ namespace Tetragrama::Panels
         // Item Label always fills remaining space — override stored width so
         // panel resize never squeezes all columns simultaneously.
         if (ctx->DT_ColWidths && ctx->DT_ColCount >= 3)
-            ctx->DT_ColWidths[0] = fmaxf(pw - ctx->DT_ColWidths[1] - ctx->DT_ColWidths[2], 100.f);
+            ctx->DT_ColWidths[0] = fmaxf(pw - ctx->DT_ColWidths[1] - ctx->DT_ColWidths[2], cols[0].MinWidth);
 
         // Custom header — UE5 style: bright TextDefault labels, eye icon, sort arrows
         // ctx->DT_ColWidths is populated by ZUIBeginDataTable above.

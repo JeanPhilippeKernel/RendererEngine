@@ -423,6 +423,7 @@ namespace ZEngine::UI
     {
         const char* Label;
         float       InitWidth; ///< 0 = 100 px default
+        float       MinWidth;  ///< 0 = 30 px floor; stretch columns use this to resist panel compression
         bool        Sortable;
         bool        Resizable;
     };

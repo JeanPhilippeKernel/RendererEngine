@@ -3847,12 +3847,25 @@ namespace ZEngine::UI
                 ZUISignal gsig     = ZUISignalFromBox(ctx, grip);
                 ZUIPopBox(ctx);
 
-                // Drag to resize
+                // Drag to resize — respect MinWidth of this column and prevent
+                // other columns from being compressed below their own minimums.
                 if ((gsig.Flags & ZUI_SignalHeld) && gsig.DragDelta[0] != 0.f)
                 {
-                    float new_w = ctx->DT_ColWidths[i] + gsig.DragDelta[0];
-                    if (new_w < 30.f)
-                        new_w = 30.f;
+                    const ZUIDataTableColumn* dt_cols = static_cast<const ZUIDataTableColumn*>(ctx->DT_Cols);
+                    float col_min = dt_cols ? fmaxf(dt_cols[i].MinWidth, 30.f) : 30.f;
+                    float new_w   = ctx->DT_ColWidths[i] + gsig.DragDelta[0];
+                    new_w         = fmaxf(new_w, col_min);
+                    // Upper bound: total width - sum of other columns' minimums
+                    if (dt_cols && ctx->DT_ColCount > 1)
+                    {
+                        float others_min = 0.f;
+                        for (int j = 0; j < ctx->DT_ColCount; ++j)
+                            if (j != i) others_min += fmaxf(dt_cols[j].MinWidth, 30.f);
+                        float total = 0.f;
+                        for (int j = 0; j < ctx->DT_ColCount; ++j) total += ctx->DT_ColWidths[j];
+                        float max_w = total - others_min;
+                        if (max_w > col_min) new_w = fminf(new_w, max_w);
+                    }
                     ctx->DT_ColWidths[i] = new_w;
                     auto* cs             = ZUIStateGetOrInsert(&ctx->StateStore, DT_ColKey(ctx->DT_Key, i));
                     if (cs)
