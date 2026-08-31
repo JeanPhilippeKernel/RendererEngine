@@ -1,3 +1,4 @@
+#include <Tetragrama/Editor.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <Tetragrama/Panels/ProjectViewPanel.h>
 #include <ZEngine/Engine.h>
@@ -964,7 +965,14 @@ namespace Tetragrama::Panels
                     row->Flags = row->Flags | ZUI_DrawBackground;
                     ZUIBoxSetColorArr(row, kSelBg);
                 }
-                bool clicked = ZUISelectable(ctx, "Assets", nullptr, ZPx(fh));
+                const char* proj_name = "Assets";
+                if (m_layer && m_layer->CurrentApp)
+                {
+                    auto* ed = reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp);
+                    if (ed->Configuration && !ed->Configuration->ProjectName.empty())
+                        proj_name = ed->Configuration->ProjectName.c_str();
+                }
+                bool clicked = ZUISelectable(ctx, proj_name, nullptr, ZPx(fh));
                 ZUIEndColumn(ctx);
                 if (clicked)
                 {
