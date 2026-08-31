@@ -21,14 +21,14 @@ namespace Tetragrama::Panels
         Manager.Init(arena);
         Manager.DrawMenuBar          = false; // ZUIDockspaceComponent (shell) owns the menu bar
         Manager.DrawBuiltinStatusBar = false; // ZUIStatusBarComponent owns the status bar
-        hierarchy.m_layer = parent;
-        inspector.m_layer = parent;
-        project.m_layer   = parent;
-        viewport.m_layer  = parent;
+        hierarchy.m_layer            = parent;
+        inspector.m_layer            = parent;
+        project.m_layer              = parent;
+        viewport.m_layer             = parent;
 
-        constexpr float kLeft   = 0.14f; // Viewport-focused default
-        constexpr float kRight  = 0.18f;
-        constexpr float kBottom = 0.22f;
+        constexpr float kLeft        = 0.14f; // Viewport-focused default
+        constexpr float kRight       = 0.18f;
+        constexpr float kBottom      = 0.22f;
 
         ZUIDockSplitH(Manager.DockTree, Manager.DockTree->Root, kLeft, ZUIDockHashName("Hierarchy"), 0);
 
@@ -44,10 +44,10 @@ namespace Tetragrama::Panels
         auto* p_hier = Manager.AddPanel(ZUIDockHashName("Hierarchy"));
         Manager.AddView(p_hier, &hierarchy);
 
-        viewport.Closeable  = false; // Main viewport is permanent — no close button
-        profiler.Visible    = false; // Hidden by default; opened from status bar
-        importer.Visible    = false; // Hidden by default; opened from status bar
-        auto* p_vp          = Manager.AddPanel(ZUIDockHashName("Viewport"));
+        viewport.Closeable = false; // Main viewport is permanent — no close button
+        profiler.Visible   = false; // Hidden by default; opened from status bar
+        importer.Visible   = false; // Hidden by default; opened from status bar
+        auto* p_vp         = Manager.AddPanel(ZUIDockHashName("Viewport"));
         Manager.AddView(p_vp, &viewport);
         Manager.AddView(p_vp, &profiler); // Tabs on the Viewport dock slot
         Manager.AddView(p_vp, &importer);
