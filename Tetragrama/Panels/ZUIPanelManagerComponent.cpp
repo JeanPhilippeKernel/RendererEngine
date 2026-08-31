@@ -1,6 +1,9 @@
 #include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <cstdio>
 
 using namespace ZEngine::UI;
 
@@ -63,9 +66,29 @@ namespace Tetragrama::Panels
 
         importer.Initialize(parent); // allocate importers from ImportPipeline budget
 
+        // EngineAssetsBackend is rooted at <cwd>/ZodiacEngine (mounted at /ZodiacEngine).
+        // Settings/ is created by the engine build. Verify it exists via the backend,
+        // then use VFSPath::ResolveNative to produce the correct native path — no
+        // manual string concatenation. Falls back to the working directory if absent.
+        char  layout_path[512] = {};
+        bool  settings_ok      = false;
+        auto* eng              = ZEngine::Engine::GetContext();
+        if (eng)
+        {
+            auto settings_check = ZEngine::Core::VFS::VFSPath::Parse("/Settings");
+            auto layout_vpath   = ZEngine::Core::VFS::VFSPath::Parse("/Settings/zui_layout.ini");
+            if (settings_check.Succeeded() && layout_vpath.Succeeded() && eng->EngineAssetsBackend.Exists(settings_check.Value()))
+            {
+                layout_vpath.Value().ResolveNative(eng->EngineAssetsBackend.NativeRoot(), layout_path, sizeof(layout_path));
+                settings_ok = true;
+            }
+        }
+        if (!settings_ok)
+            snprintf(layout_path, sizeof(layout_path), "zui_layout.ini");
+
         ZUIPanelView* all_views[] = {&hierarchy, &viewport, &inspector, &output, &project, &profiler, &importer};
-        Manager.SetLayoutPath("zui_layout.ini");
-        ZUIDockLoad(&Manager, "zui_layout.ini", all_views, 7);
+        Manager.SetLayoutPath(layout_path);
+        ZUIDockLoad(&Manager, layout_path, all_views, 7);
     }
 
     void ZUIPanelManagerComponent::BuildUI(ZUIContext* ctx)
