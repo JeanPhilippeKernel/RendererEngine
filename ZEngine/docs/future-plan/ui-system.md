@@ -1,9 +1,9 @@
 # ZEngine — UI System (ZUI)
 
 **Priority:** P1 — Editor shell, in-game HUD, menus, debug overlay
-**Status:** Implementation in progress on `feature/zui`
+**Status:** Done — merged to `develop` via PR #679 (2026-08-31)
 **Depends on:** `ArenaAllocator` (done), `Array<T>` (done), `UnorderedHashMap` (done), `VulkanDevice` (done), `RenderGraph` (done), `InputManager` (done), stb_truetype (vendored via stb FetchContent), rapidhash (vendored via FetchContent)
-**Blocks:** DebugOverlay, DebugConsole, in-game HUD, main menu, settings screen
+**Unblocks:** Gizmo 3D pass (`gizmo-3d-pass.md`), floating window docking (`ui-docking-floating-windows.md`), DebugOverlay, in-game HUD, main menu
 
 ---
 
