@@ -670,7 +670,7 @@ void GizmoPass::DrawTranslateGizmo(
     vkCmdBindIndexBuffer(cmd, m_geo->Buffer, m_geo->Arrow.IndexOffset * sizeof(uint32_t),
                          VK_INDEX_TYPE_UINT32);
 
-    // ── X arrow ──────────────────────────────────────────────────────────────
+    // X arrow
     GizmoPushConstants pc;
     // Arrow points along +X: no rotation needed; scale by s; place at entity pos
     pc.Model = TRS(pos, Quaternion<float>::Identity(), Vec3f{s, s, s});
@@ -681,7 +681,7 @@ void GizmoPass::DrawTranslateGizmo(
     vkCmdDrawIndexed(cmd, m_geo->Arrow.IndexCount, 1,
                      m_geo->Arrow.IndexOffset, m_geo->Arrow.VertexOffset, 0);
 
-    // ── Y arrow ──────────────────────────────────────────────────────────────
+    // Y arrow
     // Arrow mesh points along +X; rotate −90° around Z to point along +Y
     pc.Model = TRS(pos,
         Quaternion<float>::FromEuler(0.f, 0.f, -PI_F * 0.5f),
@@ -693,7 +693,7 @@ void GizmoPass::DrawTranslateGizmo(
     vkCmdDrawIndexed(cmd, m_geo->Arrow.IndexCount, 1,
                      m_geo->Arrow.IndexOffset, m_geo->Arrow.VertexOffset, 0);
 
-    // ── Z arrow ──────────────────────────────────────────────────────────────
+    // Z arrow
     // Rotate +90° around Y to point along +Z
     pc.Model = TRS(pos,
         Quaternion<float>::FromEuler(0.f, PI_F * 0.5f, 0.f),
@@ -705,7 +705,7 @@ void GizmoPass::DrawTranslateGizmo(
     vkCmdDrawIndexed(cmd, m_geo->Arrow.IndexCount, 1,
                      m_geo->Arrow.IndexOffset, m_geo->Arrow.VertexOffset, 0);
 
-    // ── Plane squares (XY, YZ, XZ) ────────────────────────────────────────
+    // Plane squares (XY, YZ, XZ)
     // ... similar pattern, use PlaneSquare mesh with appropriate rotation
 }
 ```
@@ -877,14 +877,14 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
     EditorSelectionContext* ctx = EditorSelectionContext::Get();
     // ... null checks ...
 
-    // ── 1. Consume last frame's picked ID ──────────────────────────────────
+    // 1. Consume last frame's picked ID
     const uint32_t picked_id = ctx->PickingPass->ConsumePickedID();
 
-    // ── 2. Keyboard shortcuts ──────────────────────────────────────────────
+    // 2. Keyboard shortcuts
     // (T/R/S change ctx->Operation; G toggles ctx->Space — same keys as before)
     // Escape, Delete, F, Ctrl+D, H — unchanged logic
 
-    // ── 3. Hover state from picking ────────────────────────────────────────
+    // 3. Hover state from picking
     // No physics raycast for hover — use picking buffer instead.
     if (picked_id == k_EmptyPickID) {
         ctx->Selection->ClearHover();
@@ -895,7 +895,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
         ctx->Gizmo->HoveredAxis = GizmoAxisOf(picked_id);
     }
 
-    // ── 4. LMB press ───────────────────────────────────────────────────────
+    // 4. LMB press
     const bool lmb_just_pressed =
         ctx->MousePressed[0];   // ZUIContext mouse press (replaces InputFrame)
 
@@ -924,7 +924,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
         }
     }
 
-    // ── 5. Gizmo drag update ────────────────────────────────────────────────
+    // 5. Gizmo drag update
     const bool lmb_held =
         ctx->MouseDown[0];      // ZUIContext mouse held
 
@@ -947,7 +947,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
         }
     }
 
-    // ── 6. LMB release — end drag ──────────────────────────────────────────
+    // 6. LMB release — end drag
     const bool lmb_just_released =
         ctx->ZUI->MouseReleased[0];   // ZUIContext LMB release this frame
 
@@ -956,7 +956,7 @@ void EditorSelectionSystemTick(ECS::Scene& scene, float /*dt*/)
         // v2: push transform change onto undo stack via WorldCommands
     }
 
-    // ── 7. Schedule picking readback for next frame ─────────────────────────
+    // 7. Schedule picking readback for next frame
     const Core::Maths::Vec2f mouse_pos = { ctx->ZUI->MousePos[0], ctx->ZUI->MousePos[1] };
     const Core::Maths::Vec2f local_pos = {
         mouse_pos.x - ctx->ViewportBounds.Pos.x,
