@@ -32,6 +32,7 @@ namespace Tetragrama::Components
 
         float                  m_frame_times[kFtSamples] = {};
         int                    m_ft_head                 = 0;
+        int                    m_ft_count                = 0; // samples actually written; < kFtSamples during warmup
         float                  m_smoothed_dt             = 0.f;
     };
     ZDEFINE_PTR(ZUIStatusBarComponent);

@@ -31,10 +31,12 @@ namespace Tetragrama::Components
 
         m_frame_times[m_ft_head] = ctx->DeltaTime;
         m_ft_head                = (m_ft_head + 1) % kFtSamples;
-        float sum                = 0.f;
-        for (int i = 0; i < kFtSamples; ++i)
+        if (m_ft_count < kFtSamples)
+            ++m_ft_count;
+        float sum = 0.f;
+        for (int i = 0; i < m_ft_count; ++i)
             sum += m_frame_times[i];
-        m_smoothed_dt    = sum / (float) kFtSamples;
+        m_smoothed_dt = sum / (float) m_ft_count;
 
         float   sw       = RegionW > 0 ? RegionW : (float) ctx->ScreenW;
         float   sy       = RegionW > 0 ? RegionY : (float) ctx->ScreenH - kBarH;
