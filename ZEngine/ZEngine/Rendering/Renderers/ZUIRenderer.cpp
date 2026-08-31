@@ -594,14 +594,14 @@ namespace ZEngine::Rendering::Renderers
                 }
                 else if (itype > 29.5f && itype < 35.5f) // source-code icons 30-35
                 {
-                    // Badge color per language
+                    // Badge color — Material Icon Theme palette
                     float br = 0.f, bg = 0.f, bb = 0.f;
-                    if      (itype < 30.5f) { br = 0.27f; bg = 0.50f; bb = 0.90f; } // CPP  — blue
-                    else if (itype < 31.5f) { br = 0.60f; bg = 0.28f; bb = 0.88f; } // CS   — purple
-                    else if (itype < 32.5f) { br = 0.92f; bg = 0.80f; bb = 0.12f; } // JS   — yellow
-                    else if (itype < 33.5f) { br = 0.27f; bg = 0.72f; bb = 0.42f; } // PY   — green
-                    else if (itype < 34.5f) { br = 0.22f; bg = 0.68f; bb = 0.62f; } // H    — teal
-                    else                   { br = 0.92f; bg = 0.80f; bb = 0.12f; } // JSON — yellow
+                    if      (itype < 30.5f) { br = 0.396f; bg = 0.604f; bb = 0.824f; } // CPP  #659ad2
+                    else if (itype < 31.5f) { br = 0.608f; bg = 0.286f; bb = 0.576f; } // CS   #9b4993
+                    else if (itype < 32.5f) { br = 0.945f; bg = 0.878f; bb = 0.353f; } // JS   #f1e05a
+                    else if (itype < 33.5f) { br = 0.208f; bg = 0.447f; bb = 0.647f; } // PY   #3572a5
+                    else if (itype < 34.5f) { br = 0.627f; bg = 0.455f; bb = 0.769f; } // H    #a074c4
+                    else                   { br = 0.796f; bg = 0.796f; bb = 0.255f; } // JSON #cbcb41
 
                     // Badge geometry (used by all except JSON)
                     float bw  = sz * 0.80f, bh = sz * 0.62f;

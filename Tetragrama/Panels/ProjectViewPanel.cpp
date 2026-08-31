@@ -29,8 +29,8 @@ namespace Tetragrama::Panels
 
     static ExtInfo GetExtInfo(const char* name)
     {
-        static const float kScript[4]  = {0.40f, 0.65f, 0.90f, 1.f}; // blue
-        static const float kHeader[4]  = {0.25f, 0.68f, 0.58f, 1.f}; // teal
+        static const float kScript[4]  = {0.396f, 0.604f, 0.824f, 1.f}; // #659ad2 Material CPP blue
+        static const float kHeader[4]  = {0.627f, 0.455f, 0.769f, 1.f}; // #a074c4 Material header purple
         static const float kShader[4]  = {0.80f, 0.40f, 0.85f, 1.f}; // purple
         static const float kTexture[4] = {0.90f, 0.75f, 0.30f, 1.f}; // gold
         static const float kScene[4]   = {0.55f, 0.80f, 0.45f, 1.f}; // green
