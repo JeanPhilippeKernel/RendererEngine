@@ -25,6 +25,8 @@ namespace ZEngine::Controllers
         void                          SetViewport(float width, float height);
         void                          SetTarget(const Core::Maths::Vec3f& target);
 
+        void                          SetViewportRect(float, float, float, float) override {}
+
         virtual void                  ResumeEventProcessing();
         virtual void                  PauseEventProcessing();
 

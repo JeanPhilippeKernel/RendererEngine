@@ -276,7 +276,14 @@ namespace ZEngine
             uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
 
             if (next == tail)
-                continue; // buffer full — drop frame
+            {
+                // Mailbox full — render thread hasn't consumed the previous payload yet.
+                // Cap here too so the main loop doesn't spin at 100k+ Hz: without it
+                // raw_dt stays near-zero, ZUI is starved (BeginOverlayFrame is skipped),
+                // and a full CPU core is burned for no throughput gain.
+                frame_cap.WaitForFrameBudget();
+                continue;
+            }
 
             auto& r_payload = pipeline->RenderPayloads[head];
             r_payload.RenderUIOverlay.value.store(false, std::memory_order_release);

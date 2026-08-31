@@ -20,14 +20,27 @@ namespace ZEngine::Controllers
         void                          SetPosition(const Core::Maths::Vec3f&) override;
         void                          SetViewport(float logicalW, float logicalH) override;
         void                          SetViewportOrigin(float x, float y) override;
+        /// @brief Update the viewport screen rect used for self-contained hover detection.
+        void                          SetViewportRect(float x0, float y0, float x1, float y1) override;
+        /// @brief Reset to Idle and unlock cursor — call when the app loses focus.
         void                          ResumeEventProcessing() override;
         void                          PauseEventProcessing() override;
 
     protected:
+        /// @brief Camera interaction state.
+        enum class CamState : uint8_t
+        {
+            Idle  = 0, ///< Cursor outside viewport — no input fed.
+            Hover = 1, ///< Cursor inside viewport — scroll, pan, orbit active.
+            Fly   = 2, ///< RMB held — cursor locked, full WASD + mouselook.
+        };
+
+        void                             EnterFly();
+        void                             ExitFly();
+
         Input::InputManager*             m_input            = nullptr;
-        PaddedAtomic<bool>               m_active           = {.value = false};
-        float                            m_viewportOriginX  = 0.0f;
-        float                            m_viewportOriginY  = 0.0f;
+        CamState                         m_state            = CamState::Idle;
+        float                            m_vp[4]            = {}; // viewport rect: x0, y0, x1, y1
         Rendering::Cameras::FlyCameraPtr m_camera           = nullptr;
 
         uint32_t                         m_slot_forward     = 0;

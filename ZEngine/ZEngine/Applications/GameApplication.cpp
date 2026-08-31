@@ -46,12 +46,14 @@ namespace ZEngine::Applications
             ctx->InputManager->Poll(static_cast<GLFWwindow*>(ctx->Window->GetNativeWindow()));
         }
 
+        // OnUpdate runs first so subclasses (e.g. Editor) can gate the camera
+        // controller (Resume/PauseEventProcessing) before Update consumes input.
+        OnUpdate(dt);
+
         if (CameraController)
         {
             CameraController->Update(dt);
         }
-
-        OnUpdate(dt);
     }
 
     void GameApplication::ProcessEvent(Core::CoreEvent& e)

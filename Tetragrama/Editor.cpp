@@ -170,6 +170,9 @@ namespace Tetragrama
     void Editor::OnUpdate(float dt)
     {
         CHECK_AND_ESCAPE_NULL(ZUIUILayer)
+
+        // Camera controller is self-gating — it reads cursor position vs viewport rect
+        // set each frame by ViewportPanel::BuildContent. No external activation needed.
         ZUIUILayer->Update(dt);
     }
 

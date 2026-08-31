@@ -60,7 +60,12 @@ namespace Tetragrama::Panels
         ZUISignal img_sig = ZUISignalFromBox(ctx, img);
         ZUIPopBox(ctx);
 
-        // Gate camera controller via viewport-hover
+        // Feed the viewport rect to the camera controller every frame so it can
+        // self-gate on cursor position without depending on the ZUI hit-test chain.
+        if (app->CameraController)
+            app->CameraController->SetViewportRect(rect[0], rect[1], rect[2], rect[3]);
+
+        // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).
         ctx->ViewportHovered = (img_sig.Flags & ZUI_SignalHovered) != 0;
 
         // Drag-drop: accept scene files and raw mesh formats
