@@ -3713,33 +3713,9 @@ namespace ZEngine::UI
         outer_col->Flags  = outer_col->Flags | ZUI_ClipChildren;
         outer_col->EdgeSoftness = 0.f;
 
-        // Vertical separators — FirstChild so LIFO renders them last (on top).
-        // Height is ZPx(0) now; patched to the real table height in ZUIEndDataTable
-        // once all rows have been added and DT_RowIndex is final.
-        // ZFill() cannot be used here because the outer container is ZFit() —
-        // ZFit() height = sum of non-floated children → remaining for ZFill() = 0.
+        // Vertical separators are created in ZUIEndDataTable once column widths
+        // are finalized — this ensures sash drag and caller overrides are reflected.
         ctx->DT_SepBoxes = nullptr;
-        if (col_count > 1 && ctx->DT_ColWidths)
-        {
-            ctx->DT_SepBoxes = ZPushArray(&ctx->FrameArena, ZUIBox*, col_count - 1);
-            float x          = 0.f;
-            for (int i = 0; i < col_count - 1; ++i)
-            {
-                x += ctx->DT_ColWidths[i];
-                char sk[48];
-                snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
-                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
-                                             ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
-                sep->Size[0]     = ZPx(1.f);
-                sep->Size[1]     = ZPx(9999.f); // clipped by outer ZUI_ClipChildren
-                sep->FloatPos[0] = x;
-                sep->FloatPos[1] = 0.f;
-                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderStrong);
-                sep->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
-                ctx->DT_SepBoxes[i] = sep;
-            }
-        }
 
         // Store cols in FrameArena for HeadersRow
         if (cols)
@@ -4005,6 +3981,28 @@ namespace ZEngine::UI
             }
             ZUIEndRow(ctx);
             ctx->DT_InRow = false;
+        }
+        // Create vertical separators now that column widths are final.
+        // Created as floating children of the outer container so they span
+        // its full height (clipped by ZUI_ClipChildren on the outer box).
+        if (ctx->DT_ColCount > 1 && ctx->DT_ColWidths)
+        {
+            float x = 0.f;
+            for (int i = 0; i < ctx->DT_ColCount - 1; ++i)
+            {
+                x += ctx->DT_ColWidths[i];
+                char sk[48];
+                snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
+                ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) strlen(sk),
+                                             ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
+                sep->Size[0]     = ZPx(1.f);
+                sep->Size[1]     = ZPx(9999.f); // clipped by outer ZUI_ClipChildren
+                sep->FloatPos[0] = x;
+                sep->FloatPos[1] = 0.f;
+                ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderStrong);
+                sep->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+            }
         }
         ctx->DT_SepBoxes = nullptr;
         ZUIEndColumn(ctx); // outer container

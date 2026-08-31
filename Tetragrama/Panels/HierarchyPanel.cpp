@@ -136,11 +136,14 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
         ZUISpacer(ctx, 4.f);
 
-        // ── 3-column table: Item Label (sortable+resizable) | Type | Level ──────
+        // ── 3-column table — Type and Level are fixed; Item Label stretches ─────
+        // Fixed column widths (user-drag not wired for these, so pixel constants are fine)
+        static constexpr float kTypeW  = 72.f;
+        static constexpr float kLevelW = 64.f;
         ZUIDataTableColumn cols[3] = {
-            {"Item Label", fmaxf(pw * 0.55f, 100.f),  true,  true},
-            {      "Type", fmaxf(pw * 0.22f,  48.f),  true, false},
-            {     "Level", fmaxf(pw * 0.23f,  58.f), false, false},
+            {"Item Label", fmaxf(pw - kTypeW - kLevelW, 100.f),  true, false},
+            {      "Type",                          kTypeW,       true, false},
+            {     "Level",                          kLevelW,     false, false},
         };
 
         // ── O(n) DFS tree build — exact develop algorithm ─────────────────────
@@ -218,6 +221,10 @@ namespace Tetragrama::Panels
         // ── Scroll region + DataTable ─────────────────────────────────────────
         ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
         ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFill());
+        // Item Label always fills remaining space — override stored width so
+        // panel resize never squeezes all columns simultaneously.
+        if (ctx->DT_ColWidths && ctx->DT_ColCount >= 3)
+            ctx->DT_ColWidths[0] = fmaxf(pw - ctx->DT_ColWidths[1] - ctx->DT_ColWidths[2], 100.f);
 
         // Custom header — UE5 style: bright TextDefault labels, eye icon, sort arrows
         // ctx->DT_ColWidths is populated by ZUIBeginDataTable above.
