@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   deploy:
@@ -26,5 +26,13 @@ jobs:
       - name: Install MkDocs Material
         run: pip install mkdocs-material
 
-      - name: Deploy
-        run: mkdocs gh-deploy --force
+      - name: Build site
+        run: mkdocs build
+
+      - name: Deploy to zodiac-engine-docs
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          external_repository: JeanPhilippeKernel/zodiac-engine-docs
+          publish_branch: gh-pages
+          publish_dir: ./site

@@ -1,6 +1,6 @@
 site_name: Zodiac Engine
 site_description: Open-source cross-platform 3D rendering engine written in C++20 with Vulkan
-site_url: https://jeanphilippekernel.github.io/RendererEngine/
+site_url: https://jeanphilippekernel.github.io/zodiac-engine-docs/
 repo_name: JeanPhilippeKernel/RendererEngine
 repo_url: https://github.com/JeanPhilippeKernel/RendererEngine
 
