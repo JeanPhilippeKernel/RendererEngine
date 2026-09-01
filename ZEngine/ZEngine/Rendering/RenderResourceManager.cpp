@@ -1,3 +1,19 @@
+// Route STBI allocation through the per-worker TLSFSlab when available so
+// stbi_load pixel buffers stay on the slab rather than the system heap.
+// Falls back to malloc/free/realloc on the main thread (slab = nullptr).
+#include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <cstdlib>
+#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
+#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Realloc(p, newsz) : std::realloc(p, newsz))
+#define STBI_FREE(p)                                    \
+    do                                                  \
+    {                                                   \
+        if (ZEngine::Helpers::GetWorkerSlab())          \
+            ZEngine::Helpers::GetWorkerSlab()->Free(p); \
+        else                                            \
+            std::free(p);                               \
+    } while (0)
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
 #define STBI_NO_SIMD
@@ -8,7 +24,6 @@
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
-#include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
@@ -1165,16 +1180,10 @@ namespace ZEngine::Rendering
         {
             TextureDeferral d = {};
             m_tex_deferral_queue.Pop(d);
-            if (d.IsLarge)
-            {
-                auto& buf = std::get<std::vector<uint8_t>>(d.Buffer);
-                UploadTextureBuffer(d.FrameIdx, d.ThreadIdx, d.TexHandle, buf.data());
-            }
-            else
-            {
-                auto& buf = std::get<unsigned char*>(d.Buffer);
-                UploadTextureBuffer(d.FrameIdx, d.ThreadIdx, d.TexHandle, buf);
-            }
+            UploadTextureBuffer(d.FrameIdx, d.ThreadIdx, d.TexHandle, d.Pixels);
+            // Free slab-owned pixels after upload. Nullptr = borrowed pointer, skip.
+            if (d.Slab && d.Pixels)
+                d.Slab->Free(d.Pixels);
         }
     }
 
@@ -1403,12 +1412,24 @@ namespace ZEngine::Rendering
                 stbi_image_free(image_data);
             }
 
+            // Copy final pixels into a TLSFSlab allocation so the local buffer
+            // vector can be destroyed without freeing the pixel data.
+            Core::Memory::TLSFSlab* slab   = Helpers::GetWorkerSlab();
+            size_t                  bytes  = buffer.size();
+            uint8_t*                pixels = nullptr;
+            if (slab && bytes > 0)
+            {
+                pixels = static_cast<uint8_t*>(slab->Alloc(bytes));
+                Helpers::secure_memmove(pixels, bytes, buffer.data(), bytes);
+            }
+
             TextureDeferral deferral;
+            deferral.Pixels    = pixels;
+            deferral.ByteSize  = bytes;
+            deferral.Slab      = slab;
             deferral.FrameIdx  = fi;
             deferral.ThreadIdx = ti;
             deferral.TexHandle = captured_handle;
-            deferral.Buffer    = std::move(buffer);
-            deferral.IsLarge   = true;
             EnqueueTextureDeferral(std::move(deferral));
             m_device->TextureHandleToUpdates.Enqueue(captured_handle);
         });

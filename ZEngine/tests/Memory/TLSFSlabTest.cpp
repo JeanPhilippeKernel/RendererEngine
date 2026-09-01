@@ -2,6 +2,9 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <gtest/gtest.h>
+#include <atomic>
+#include <mutex>
+#include <thread>
 
 using namespace ZEngine::Core::Memory;
 
@@ -155,6 +158,68 @@ TEST(TLSFSlabTest, ExhaustionAsserts)
     slab.Init(env.Arena(), ZMega(1));
 
     EXPECT_DEATH(slab.Alloc(ZMega(2)), "");
+
+    slab.Shutdown();
+}
+
+TEST(TLSFSlabTest, ConcurrentAllocFreeNoDataRace)
+{
+    // Simulates issue #690: worker thread allocates, render thread frees.
+    // Uses a bounded SPSC ring buffer for safe pointer handoff.
+    // If the spinlock is absent, TLSF internal state would be corrupted.
+    Env      env;
+    TLSFSlab slab{};
+    slab.Init(env.Arena(), ZMega(4));
+
+    constexpr int     ROUNDS   = 500;
+    constexpr int     RING_CAP = 32;
+    void*             ring[RING_CAP]{};
+    std::atomic<int>  head{0}; // written by worker (producer)
+    std::atomic<int>  tail{0}; // written by render (consumer)
+
+    std::atomic<bool> go{false};
+
+    std::thread       worker([&] {
+        while (!go.load(std::memory_order_acquire))
+        {
+        }
+        for (int i = 0; i < ROUNDS; ++i)
+        {
+            // Wait until there is space in the ring
+            while ((head.load(std::memory_order_relaxed) - tail.load(std::memory_order_acquire)) >= RING_CAP)
+            {
+            }
+
+            void* p                                               = slab.Alloc(128);
+            ring[head.load(std::memory_order_relaxed) % RING_CAP] = p;
+            head.fetch_add(1, std::memory_order_release);
+        }
+    });
+
+    std::thread       render([&] {
+        while (!go.load(std::memory_order_acquire))
+        {
+        }
+        for (int i = 0; i < ROUNDS; ++i)
+        {
+            // Wait until there is an item to consume
+            while (tail.load(std::memory_order_relaxed) >= head.load(std::memory_order_acquire))
+            {
+            }
+
+            void* p = ring[tail.load(std::memory_order_relaxed) % RING_CAP];
+            slab.Free(p);
+            tail.fetch_add(1, std::memory_order_release);
+        }
+    });
+
+    go.store(true, std::memory_order_release);
+    worker.join();
+    render.join();
+
+    // All allocations have been freed — slab should be in a clean state
+    void* big = slab.Alloc(ZKilo(512));
+    EXPECT_NE(big, nullptr) << "slab should be reusable after all concurrent frees";
 
     slab.Shutdown();
 }

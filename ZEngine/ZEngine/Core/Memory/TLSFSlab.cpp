@@ -20,7 +20,10 @@ namespace ZEngine::Core::Memory
     {
         ZENGINE_VALIDATE_ASSERT(n > 0, "TLSFSlab::Alloc: size must be > 0")
 
+        AcquireLock();
         void* p = tlsf_malloc(Pool, n);
+        ReleaseLock();
+
         ZENGINE_VALIDATE_ASSERT(p != nullptr, "TLSFSlab::Alloc: slab exhausted — increase slab capacity at Init")
         return p;
     }
@@ -32,15 +35,21 @@ namespace ZEngine::Core::Memory
         if (ptr == nullptr)
             return Alloc(n);
 
+        AcquireLock();
         void* p = tlsf_realloc(Pool, ptr, n);
+        ReleaseLock();
+
         ZENGINE_VALIDATE_ASSERT(p != nullptr, "TLSFSlab::Realloc: slab exhausted — increase slab capacity at Init")
         return p;
     }
 
     void TLSFSlab::Free(void* ptr)
     {
-        if (ptr)
-            tlsf_free(Pool, ptr);
+        if (!ptr)
+            return;
+        AcquireLock();
+        tlsf_free(Pool, ptr);
+        ReleaseLock();
     }
 
     void TLSFSlab::Shutdown()

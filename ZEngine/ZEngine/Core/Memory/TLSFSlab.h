@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <atomic>
 #include <cstddef>
 
 // Forward-declare the TLSF opaque handle so callers do not need to include tlsf.h.
@@ -15,11 +16,13 @@ namespace ZEngine::Core::Memory
     /// allocation whose size varies at runtime and whose lifetime is individual.
     ///
     /// The backing memory is carved from a parent ArenaAllocator exactly once at Init.
-    /// All subsequent Alloc/Free calls never touch the arena. The arena cursor advances
-    /// by `bytes` at Init and is not reclaimed until the arena itself is Shutdown.
+    /// All subsequent Alloc/Free calls never touch the arena.
     ///
-    /// Thread safety: a TLSFSlab is NOT thread-safe. Each worker thread must have its
-    /// own slab. Cross-thread Free is a data race — see issue #690.
+    /// Thread safety: Alloc, Realloc, and Free are all protected by an internal
+    /// atomic spinlock. The typical case is contention-free (one worker calls Alloc,
+    /// the render thread calls Free only on upload completion), so the lock overhead
+    /// is ~5 ns uncontended — acceptable for Phase 1. A deferred-free queue (#690)
+    /// can replace the spinlock in a future pass to keep Alloc fully lock-free.
     struct TLSFSlab
     {
         /// @brief Carve `bytes` from `arena` and initialise the TLSF pool over it.
@@ -51,6 +54,22 @@ namespace ZEngine::Core::Memory
 
         void*  Backing = nullptr; ///< Raw backing buffer carved from the parent arena.
         tlsf_t Pool    = nullptr; ///< TLSF pool handle (opaque pointer).
+
+    private:
+        // Atomic spinlock — protects concurrent Alloc/Free across threads.
+        // std::atomic_flag is guaranteed lock-free on all platforms.
+        mutable std::atomic_flag m_lock = ATOMIC_FLAG_INIT;
+
+        void                     AcquireLock() const
+        {
+            while (m_lock.test_and_set(std::memory_order_acquire))
+            {
+            }
+        }
+        void ReleaseLock() const
+        {
+            m_lock.clear(std::memory_order_release);
+        }
     };
 
 } // namespace ZEngine::Core::Memory
