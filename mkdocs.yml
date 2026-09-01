@@ -1,0 +1,46 @@
+site_name: Zodiac Engine
+site_description: Open-source cross-platform 3D rendering engine written in C++20 with Vulkan
+site_url: https://jeanphilippekernel.github.io/RendererEngine/
+repo_name: JeanPhilippeKernel/RendererEngine
+repo_url: https://github.com/JeanPhilippeKernel/RendererEngine
+
+theme:
+  name: material
+  logo: https://raw.githubusercontent.com/JeanPhilippeKernel/RendererEngine/main/ZEngine/docs/logo/WhiteAssetZE.png
+  favicon: https://raw.githubusercontent.com/JeanPhilippeKernel/RendererEngine/main/ZEngine/docs/logo/WhiteAssetZE.png
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: light-blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: light-blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Engine Architecture: engine-architecture.md
+  - Memory Management: memory-management.md
+  - Rendering Domain: rendering-domain.md
+  - Asset Manager: asset-manager.md
+  - ZUI System: zui-system.md
+  - Containers: containers.md
+  - Roadmap: roadmap.md

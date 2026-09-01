@@ -19,6 +19,10 @@ It can be used for activities such as:
 - Gaming
 - Scientific computation and visualization
 
+## Documentation
+
+Full documentation is available in the [ZEngine Wiki](https://github.com/JeanPhilippeKernel/RendererEngine/wiki).
+
 ### Supported Platforms
 
 | Platform | Status |

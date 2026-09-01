@@ -429,3 +429,6 @@ SampleProject/
 *.pdf
 *.pptx
 .claude/worktrees/
+
+# MkDocs build output
+site/
