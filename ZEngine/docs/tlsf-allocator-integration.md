@@ -1,7 +1,7 @@
 # TLSF Allocator Integration
 
-**Status:** Design — not yet implemented
-**Scope:** Texture upload pipeline, per-worker decode slabs, future ECS component storage
+**Status:** Phase 1 and Phase 2 complete (merged to develop). Phase 3 pending — blocked on ECS heterogeneous components.
+**Scope:** Texture upload pipeline, per-worker decode slabs, long-lived asset container allocations
 **Relates to:** `memory-allocator-audit.md`, `memory-budget.md`, `asset-manager.md`
 
 ---
@@ -54,7 +54,10 @@ Suited for: many objects of the same type — entity slots, command buffer handl
                  └─────────────────┴──────────────────────────┘
 ```
 
-The gap is exactly the texture upload path: buffers that range from 256 KB (small 2D texture) to 48 MB (4K equirectangular HDR cubemap), each with an independent lifetime tied to a GPU upload, running concurrently across multiple thread pool workers.
+The gap covers two concrete use cases:
+
+- **Texture upload path:** decode buffers that range from 256 KB (small 2D texture) to 48 MB (4K HDR cubemap), each with an independent lifetime tied to a GPU upload, running concurrently across multiple thread pool workers.
+- **Long-lived asset containers:** `Array<T>` and `UnorderedHashMap<K,V>` in AssetManager that grow over the session — each `grow()` abandons the old arena block permanently.
 
 ---
 
@@ -64,7 +67,7 @@ TLSF (Two-Level Segregated Fit, mattconte/tlsf) is a general-purpose dynamic all
 
 **O(1) alloc, realloc, and free.** The two-level bitmap locates the best-fit free list in a constant number of bit operations — no linear scan, no tree traversal.
 
-**Bounded fragmentation.** Internal fragmentation is bounded to `< 2×` the requested size. External fragmentation cannot accumulate unboundedly because adjacent free blocks are always merged (`tlsf_free` coalesces neighbors in O(1)).
+**Bounded fragmentation.** Internal fragmentation is bounded to `< 2x` the requested size. External fragmentation cannot accumulate unboundedly because adjacent free blocks are always merged (`tlsf_free` coalesces neighbors in O(1)).
 
 Internally, TLSF maintains a two-level segregated free list:
 
@@ -99,7 +102,7 @@ A `TLSFSlab` carves its backing memory from an existing `ArenaAllocator` at init
              │
              ▼
        ┌──────────────────────────────────────────────────┐
-       │         TLSFSlab backing buffer (e.g. 32 MB)     │
+       │         TLSFSlab backing buffer (e.g. 128 MB)    │
        │                                                  │
        │  [tlsf header] [free block] [alloc A] [free] ... │
        │                                 ▲          ▲     │
@@ -107,24 +110,41 @@ A `TLSFSlab` carves its backing memory from an existing `ArenaAllocator` at init
        └──────────────────────────────────────────────────┘
 ```
 
-The arena is NOT touched for any individual texture allocation after init. The slab is a fixed reservation; TLSF operates entirely within it.
+The arena is NOT touched for any individual allocation after init. The slab is a fixed reservation; TLSF operates entirely within it.
 
 ### 3.1 API
 
 ```cpp
 // ZEngine/ZEngine/Core/Memory/TLSFSlab.h
 
-struct TLSFSlab {
-    void*  Backing = nullptr;
-    tlsf_t Pool    = nullptr;
+struct TLSFSlab
+{
+    void*  Backing = nullptr; // raw backing buffer carved from the parent arena
+    tlsf_t Pool    = nullptr; // TLSF pool handle (opaque)
 
-    void  Init(Core::Memory::ArenaAllocator* arena, size_t size);
-    void* Alloc(size_t n);
-    void* Realloc(void* ptr, size_t n);
-    void  Free(void* ptr);
-    void  Shutdown();
+    // Carve `bytes` from `arena` and initialise the TLSF pool over it.
+    void   Init(ArenaAllocator* arena, size_t bytes);
 
-    size_t Overhead() const;  // tlsf internal metadata bytes
+    // Allocate `n` bytes. Asserts on exhaustion. Never returns null.
+    void*  Alloc(size_t n);
+
+    // Reallocate `ptr` to `n` bytes. O(1) in-place if adjacent block is free.
+    void*  Realloc(void* ptr, size_t n);
+
+    // Return `ptr` to the slab. No-op on nullptr. O(1), coalesces neighbours.
+    void   Free(void* ptr);
+
+    // Destroy the TLSF pool. Does NOT free the backing memory — the parent arena owns it.
+    void   Shutdown();
+
+    // Bytes consumed by TLSF metadata (~3 KB per slab). Diagnostic use only.
+    size_t Overhead() const;
+
+private:
+    // Atomic spinlock — protects concurrent Alloc/Free across threads.
+    // Typical contention pattern: one worker calls Alloc, render thread calls
+    // Free after GPU upload completes. Uncontended lock overhead is ~5 ns.
+    mutable std::atomic_flag m_lock = ATOMIC_FLAG_INIT;
 };
 ```
 
@@ -134,37 +154,46 @@ struct TLSFSlab {
 
 ## 4. Thread Safety Design
 
-The thread pool uses a fixed-size worker array (`ThreadPool::MAX_WORKERS = 16`). Each worker runs `WorkerRun(size_t idx)` for its lifetime. Tasks are dispatched round-robin starting at a shared cursor, so **the submitting thread does not know which worker will execute a given task**.
+The thread pool uses a fixed-size worker array (`ThreadPool::MAX_WORKERS = 16`). Each worker runs `WorkerRun(size_t idx)` for its lifetime. Tasks are dispatched round-robin; the submitting thread does not know which worker will execute a given task.
 
-The clean solution is thread-local storage. Each worker sets a thread-local slab pointer at the start of `WorkerRun`:
+Each worker sets a thread-local slab pointer before starting its task loop via a `RegisterWorkerInit` callback. This callback is registered by `RenderResourceManager::InitUploadSlabs` at startup:
 
 ```
+ RRM::InitUploadSlabs(worker_count)
+   │
+   ├── for i in [0, worker_count):
+   │       m_upload_slabs[i].Init(Device->Arena, UPLOAD_SLAB_BYTES)
+   │
+   └── ThreadPool::RegisterWorkerInit(
+           [](void* ctx, size_t idx) { SetWorkerSlab(&slabs[idx]); },
+           m_upload_slabs)
+
  ThreadPool::WorkerRun(idx)
-       │
-       ├── t_worker_slab = &m_slabs[idx]   ← set thread_local at worker start
-       │
-       └── task loop:
-             ├── task A → lambda calls GetWorkerSlab() → &m_slabs[idx]
-             ├── task B → lambda calls GetWorkerSlab() → &m_slabs[idx]
-             └── ...
+   │
+   ├── init_fn(ctx, idx)          ← calls SetWorkerSlab(&slabs[idx])
+   │                                 t_worker_slab = &slabs[idx]
+   │
+   └── task loop:
+         ├── task A → GetWorkerSlab() → &slabs[idx]
+         ├── task B → GetWorkerSlab() → &slabs[idx]
+         └── ...
 ```
 
-No lock is ever needed — each slab is owned exclusively by one OS thread.
+No lock is needed for per-worker allocation — each slab is owned exclusively by one OS thread. The spinlock in `TLSFSlab` exists only for cross-thread `Free`: the render thread calls `Slab->Free(Pixels)` after GPU upload completes, racing with a worker's next `Alloc`.
 
 ```
  Workers and their slabs:
 
- worker[0] ──owns──► slab[0]  32 MB  ─┐
- worker[1] ──owns──► slab[1]  32 MB   │  all backed from Device->Arena
- worker[2] ──owns──► slab[2]  32 MB   │  (4 × 32 MB = 128 MB reservation)
- worker[3] ──owns──► slab[3]  32 MB  ─┘
+ worker[0] ──owns──► slab[0]  128 MB  ─┐
+ worker[1] ──owns──► slab[1]  128 MB   │  all backed from Device->Arena
+ worker[2] ──owns──► slab[2]  128 MB   │  (N × 128 MB reservation)
+ worker[3] ──owns──► slab[3]  128 MB  ─┘
+ ...up to MAX_WORKERS (16)
 ```
-
-Worker slabs are sized to hold the maximum single-texture decode (a 4K equirectangular HDR = ~48 MB after cubemap conversion). 32 MB covers typical 2K textures; 64 MB covers the HDR worst case.
 
 ### 4.1 Fallback: inline execution
 
-`ThreadPool::Submit` has a fallback path where a task runs inline on the submitting thread (all worker queues full). That thread has no `t_worker_slab` set. The fallback must call `malloc`/`free` directly or assert — inline GPU upload is already a degraded path.
+`ThreadPool::Submit` has a fallback path where a task runs inline on the submitting thread (all worker queues full). That thread has no `t_worker_slab` set (`GetWorkerSlab()` returns nullptr). The `STBI_MALLOC` override falls back to `std::malloc`/`std::free` on that path — inline GPU upload is already a degraded path.
 
 ---
 
@@ -203,20 +232,16 @@ Each upload touches the system heap 4–5 times. Multiple concurrent uploads con
 ```
  Thread pool worker N  (t_worker_slab = &slab[N])
      │
-     ├── float* raw = slab[N].Alloc(w*h*4*4)     ← TLSF, no lock
-     ├── Bitmap out{w, h, 4, FLOAT, raw_allocator}
+     ├── STBI_MALLOC → GetWorkerSlab()->Alloc(...)  ← TLSF, no lock (same thread)
      │
-     ├── Bitmap vertical_cross → slab[N] intermediate buffers
-     ├── Bitmap cubemap        → slab[N] intermediate buffers
-     │
-     ├── uint8_t* pixels = slab[N].Alloc(bytes)  ← TLSF
-     ├── memmove(pixels, cubemap.Buffer, bytes)
+     ├── uint8_t* pixels = slab[N].Alloc(bytes)     ← TLSF
+     ├── memmove(pixels, decoded_data, bytes)
      │
      └── TextureDeferral {
-             Pixels  = pixels               ← raw pointer
+             Pixels   = pixels
              ByteSize = bytes
-             Slab    = &slab[N]             ← back-reference for free
-             IsLarge = true
+             Slab     = &slab[N]    ← non-null = slab owns Pixels
+             TexHandle = handle
          }
              │
              ▼
@@ -226,30 +251,27 @@ Each upload touches the system heap 4–5 times. Multiple concurrent uploads con
      Render thread: CompleteDeferrals()
              │
              ├── UploadTextureBuffer(...)
-             └── d.Slab->Free(d.Pixels)     ← O(1) TLSF free, block merges back
+             └── if (d.Slab) d.Slab->Free(d.Pixels)  ← O(1) TLSF free, block merges back
+                                                         spinlock protects cross-thread free
 ```
 
-The intermediate bitmaps (`vertical_cross`, `cubemap`) are freed before the lambda exits — their TLSF blocks are reclaimed immediately, so by the time `pixels` is the only surviving allocation, the slab has plenty of headroom.
-
-### 5.3 TextureDeferral struct change
+### 5.3 TextureDeferral struct
 
 ```cpp
-// Before
-struct TextureDeferral {
-    std::variant<unsigned char*, std::vector<uint8_t>> Buffer;
-    bool IsLarge = false;
-    ...
-};
+// ZEngine/ZEngine/Rendering/RenderResourceManager.h
 
-// After
-struct TextureDeferral {
-    unsigned char*              Pixels   = nullptr;
-    size_t                      ByteSize = 0;
-    bool                        IsLarge  = false;  // true = Slab owns Pixels, false = borrowed
-    Core::Memory::TLSFSlab*     Slab     = nullptr; // null when IsLarge = false
-    ...
+struct TextureDeferral
+{
+    uint8_t*                           Pixels    = nullptr; // pixel data (slab-owned when Slab != nullptr)
+    size_t                             ByteSize  = 0;       // size of Pixels in bytes
+    Core::Memory::TLSFSlab*            Slab      = nullptr; // owning slab; nullptr = borrowed pointer
+    Rendering::Textures::TextureHandle TexHandle = {};
+    uint8_t                            FrameIdx  = 0;
+    uint8_t                            ThreadIdx = 0;
 };
 ```
+
+Ownership rule: if `Slab != nullptr`, `CompleteDeferrals` calls `Slab->Free(Pixels)` after the GPU upload. If `Slab == nullptr`, the pointer is borrowed and must not be freed here.
 
 ---
 
@@ -258,20 +280,20 @@ struct TextureDeferral {
 ```
  Device->Arena
  ┌──────────────────────────────────────────────────────────────┐
- │  engine objects  │  slab[0] 32MB  │  slab[1] 32MB  │  ...   │
- └──────────────────┴────────────────┴────────────────┴────────┘
+ │  engine objects  │  slab[0] 128MB  │  slab[1] 128MB  │  ... │
+ └──────────────────┴─────────────────┴─────────────────┴──────┘
                            │
                     slab[0] internals:
                     ┌─────────────────────────────────────────┐
-                    │ [tlsf hdr 3KB] │ [free 32MB - overhead] │
+                    │ [tlsf hdr ~3KB] │ [free 128MB - overhead]│
                     └─────────────────────────────────────────┘
                     after alloc(16MB) for texture A:
                     ┌─────────────────────────────────────────┐
-                    │ [tlsf hdr] │ [tex A  16MB] │ [free 16MB]│
+                    │ [tlsf hdr] │ [tex A  16MB] │ [free ~112MB]│
                     └─────────────────────────────────────────┘
                     after free(tex A) and alloc(256KB) for texture B:
                     ┌──────────────────────────────────────────────────┐
-                    │ [tlsf hdr] │ [tex B 256KB] │ [free ~16MB merged] │
+                    │ [tlsf hdr] │ [tex B 256KB] │ [free ~112MB merged] │
                     └──────────────────────────────────────────────────┘
 ```
 
@@ -281,14 +303,14 @@ The freed 16 MB block merges back with the trailing free region — the slab is 
 
 ## 7. Sizing
 
-| Variable | Formula | Typical value |
+| Variable | Formula | Implemented value |
 |---|---|---|
-| Max texture bytes | 4K × 4K × 4ch × 4B (float cubemap) | ~256 MB (equirect before conversion) → ~48 MB (cubemap faces) |
-| Per-worker slab | `max_cubemap_bytes × 2` (one live + one intermediate) | 64 MB |
-| Total reservation | `per_worker_slab × MAX_WORKERS` | 64 MB × 16 = 1 GB (maximum hardware concurrency) |
-| Practical target | `per_worker_slab × typical_worker_count` | 64 MB × 4–8 = 256–512 MB |
+| Max texture bytes | 4K x 4K x 4ch x 4B (float cubemap) | ~48 MB (cubemap faces after equirect conversion) |
+| Per-worker slab | `max_cubemap_bytes x 2.5` (headroom for intermediate bitmaps) | 128 MB (`UPLOAD_SLAB_BYTES`) |
+| Total reservation | `per_worker_slab x worker_count` | 128 MB x N (N = `hardware_concurrency - 1`, capped at 16) |
+| AssetManager container slab | sum of NodeHierarchies + Meshes + Materials + maps | 256 MB (`CONTAINER_SLAB_BYTES`) |
 
-In practice `hardware_concurrency() - 1` is the worker count (capped at 16). On a developer machine with 12 cores that is 11 workers. Slabs should only be created for actively-running workers, not pre-allocated for `MAX_WORKERS`.
+Slabs are only created for actively-running workers at `InitUploadSlabs` time — not pre-allocated for the full `MAX_WORKERS` static array.
 
 ---
 
@@ -316,52 +338,88 @@ In practice `hardware_concurrency() - 1` is the worker count (capped at 16). On 
    - correct class must be chosen at alloc time
    - blocks cannot merge across classes             ← fragmentation cliff
 
- TLSF (single 64 MB slab per worker):
+ TLSF (single 128 MB slab per worker):
    - alloc/free O(1) regardless of size
    - freed block merges with neighbors in O(1)
-   - fragmentation bounded < 2×
-   - 64 MB per worker covers the full size range
+   - fragmentation bounded < 2x
+   - 128 MB per worker covers the full size range with headroom
    - zero system heap involvement after slab init   ← win
 ```
 
 ---
 
-## 9. Future Scope
+## 9. Phase 2 — Typed Allocator for Containers (done)
 
-### 9.1 AssetManager long-lived containers
+`Array<T>` and `UnorderedHashMap<K,V>` both accept an optional `TLSFSlab*` at init time:
 
-`AssetManager::NodeHierarchies`, `Meshes`, `Materials`, `Textures`, `UUIDToTextureHandle` are all `Array<T>` or `UnorderedHashMap<K,V>` backed by `AssetManager::Arena`. Every `grow()` abandons the old block in the arena — the dead blocks accumulate for the entire session.
+```cpp
+// Array<T> — ZEngine/ZEngine/Core/Containers/Array.h
+void init(Memory::TLSFSlab* slab, size_type initial_capacity);
+void init(Memory::TLSFSlab* slab, size_type initial_capacity, size_type initial_size);
+// reserve(): if (m_slab) m_data = (pointer) m_slab->Realloc(m_data, new_alloc_size);
+// ~Array():  if (m_slab && m_data) m_slab->Free(m_data);
 
-A `TLSFSlab` behind a thin `ZResize`-compatible shim would give those containers real `realloc()` behavior: when the slab's `Realloc` grows a block, TLSF checks whether the physically adjacent block is free and extends in-place before copying. No arena waste on grow.
+// UnorderedHashMap<K,V> — ZEngine/ZEngine/Core/Containers/UnorderedHashMap.h
+void init(Memory::TLSFSlab* slab, size_type slot_capacity = 16);
+// rehash(): if (m_slab) m_entries.init(m_slab, new_cap, new_cap);
+```
 
-This requires the container types (`Array<T>`, `UnorderedHashMap<K,V>`) to accept a typed allocator parameter rather than a raw `ArenaAllocator*`. That is a separate refactor — tracked as a future task, not in scope here.
+When a slab is provided, `reserve()` calls `Realloc` which extends in-place when the physically adjacent TLSF block is free — zero arena waste on grow.
 
-### 9.2 ECS component storage
+`AssetManager` creates a 256 MB `ContainerSlab` at `Initialize` and uses it for five long-lived containers:
 
-When heterogeneous component types land (issue #642 and follow-on work), each component archetype has a different size. One `PoolAllocator` per component type would work but requires pre-sizing each pool at registration time. A `TLSFSlab` per archetype table avoids the fixed-size constraint and handles tables with mixed-size extension components cleanly.
+```cpp
+// ZEngine/ZEngine/Managers/AssetManager.h
+static constexpr size_t CONTAINER_SLAB_BYTES = 256 * 1024 * 1024;
+Core::Memory::TLSFSlab  ContainerSlab        = {};
 
-### 9.3 Lambda captures in ThreadPoolHelper
-
-`ThreadPoolHelper::Submit(T&& f)` currently does `new Fn(...)` and `delete fn` (one system heap alloc per submitted lambda). Routing those captures through the worker's slab would eliminate the last system-heap touch on the upload hot path.
+// Containers migrated (ZEngine/ZEngine/Managers/AssetManager.cpp):
+NodeHierarchies.init(&ContainerSlab, 5000);
+Meshes.init(&ContainerSlab, 5000);
+Materials.init(&ContainerSlab, 5000);
+UUIDToTextureHandle.init(&ContainerSlab, 5000);
+UUIDToMaterialSlot.init(&ContainerSlab, 5000);
+```
 
 ---
 
-## 10. What Does Not Change
+## 10. Future Scope
 
-- `ArenaAllocator` and `PoolAllocator` — no modifications. TLSF fills the gap, it does not replace the existing allocators for the cases they already handle well.
-- `RenderPass::SetDynamicUniform` `std::vector<VkWriteDescriptorSet>` — `frame_count` is 2–3 elements. Stack arrays are the right fix there; TLSF adds unnecessary overhead.
-- `Bitmap::Buffer` intermediate chain (`vertical_cross`, `cubemap`) — these are scoped to the lambda and freed before the lambda exits. They are candidates for follow-up but are not blocking.
+### 10.1 ECS component storage (Phase 3 — blocked)
+
+When heterogeneous component types land (physics, animation, scripting), each component archetype has a different size. One `PoolAllocator` per component type would work but requires pre-sizing each pool at registration time. A `TLSFSlab` per archetype table avoids the fixed-size constraint and handles tables with mixed-size extension components cleanly.
+
+Blocked on: physics/animation/scripting systems not yet built.
+
+### 10.2 Lambda captures in ThreadPoolHelper
+
+`ThreadPoolHelper::Submit(T&& f)` currently does `new Fn(...)` and `delete fn` (one system heap alloc per submitted lambda). Routing those captures through the worker's slab would eliminate the last system-heap touch on the upload hot path.
+
+### 10.3 Bitmap intermediate buffers (optional)
+
+`Bitmap::Buffer` intermediate chain (`vertical_cross`, `cubemap`) is scoped to the upload lambda and freed before exit. Adding an allocator parameter to `Bitmap` would route those allocations through the worker slab as well. Low priority — STBI_MALLOC already routes the dominant allocations.
+
+---
+
+## 11. What Does Not Change
+
+- `ArenaAllocator` and `PoolAllocator` — no modifications. TLSF fills the gap; it does not replace the existing allocators for the cases they already handle well.
+- `RenderPass::SetDynamicUniform` `VkWriteDescriptorSet` arrays — 2–3 elements. Stack arrays are the right fix; TLSF adds unnecessary overhead.
 - GPU allocator (`GpuAllocator.h` / VMA) — manages `VkDeviceMemory`; entirely separate from CPU-side TLSF.
 
 ---
 
-## 11. Files Affected
+## 12. Files Affected
 
-| File | Change |
-|---|---|
-| `ZEngine/ZEngine/Core/Memory/TLSFSlab.h` | New — `TLSFSlab` wrapper |
-| `ZEngine/ZEngine/Core/Memory/TLSFSlab.cpp` | New — Init, Alloc, Realloc, Free, Shutdown |
-| `ZEngine/ZEngine/Helpers/ThreadPool.h` | Add `thread_local TLSFSlab*` and `GetWorkerSlab()`; set it in `WorkerRun` |
-| `ZEngine/ZEngine/Rendering/RenderResourceManager.h` | Replace `TextureDeferral::Buffer` variant with `Pixels + Slab`; add `m_upload_slabs[]` |
-| `ZEngine/ZEngine/Rendering/RenderResourceManager.cpp` | Init slabs; replace `std::vector<uint8_t>` decode buffers with slab allocs; `CompleteDeferrals` calls `Slab->Free` |
-| `ZEngine/ZEngine/Rendering/Buffers/Bitmap.h` | Optional follow-up: expose allocator param so intermediate bitmaps use the worker slab |
+| File | Change | Status |
+|---|---|---|
+| `ZEngine/ZEngine/Core/Memory/TLSFSlab.h` | New — `TLSFSlab` wrapper with spinlock | Done |
+| `ZEngine/ZEngine/Core/Memory/TLSFSlab.cpp` | New — Init, Alloc, Realloc, Free, Shutdown | Done |
+| `ZEngine/ZEngine/Helpers/ThreadPool.h` | `thread_local TLSFSlab*`, `SetWorkerSlab`, `GetWorkerSlab`, `RegisterWorkerInit` | Done |
+| `ZEngine/ZEngine/Rendering/RenderResourceManager.h` | `TextureDeferral` flat struct; `m_upload_slabs[MAX_WORKERS]`; `InitUploadSlabs` | Done |
+| `ZEngine/ZEngine/Rendering/RenderResourceManager.cpp` | `STBI_MALLOC/REALLOC/FREE` override; slab init; `CompleteDeferrals` calls `Slab->Free` | Done |
+| `ZEngine/ZEngine/Core/Containers/Array.h` | `init(TLSFSlab*, capacity)` overloads; slab-aware `reserve` and destructor | Done |
+| `ZEngine/ZEngine/Core/Containers/UnorderedHashMap.h` | `init(TLSFSlab*, capacity)` overload; slab-aware `rehash` | Done |
+| `ZEngine/ZEngine/Managers/AssetManager.h` | `ContainerSlab` field + `CONTAINER_SLAB_BYTES` | Done |
+| `ZEngine/ZEngine/Managers/AssetManager.cpp` | `ContainerSlab.Init`; 5 container migrations; `ContainerSlab.Shutdown` | Done |
+| `ZEngine/ZEngine/Rendering/Buffers/Bitmap.h` | Optional: allocator param for intermediate bitmaps | Future |
