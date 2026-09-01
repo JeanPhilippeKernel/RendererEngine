@@ -1362,12 +1362,12 @@ namespace ZEngine::Rendering
                         ZENGINE_CORE_ERROR("Failed to load texture: {}", captured_filename) return;
                     }
 
-                    Core::Memory::TLSFSlab* slab           = Helpers::GetWorkerSlab();
+                    Core::Memory::TLSFSlab* slab            = Helpers::GetWorkerSlab();
                     size_t                  float_buf_bytes = 0;
                     float*                  output_buf      = nullptr;
                     if (ch == STBI_rgb)
                     {
-                        size_t total    = (size_t)(w * h);
+                        size_t total    = (size_t) (w * h);
                         float_buf_bytes = total * 4 * sizeof(float);
                         output_buf      = slab ? static_cast<float*>(slab->Alloc(float_buf_bytes)) : new float[total * 4];
                         stbir_resize_float(image_data, w, h, 0, output_buf, w, h, 0, 4);
@@ -1376,7 +1376,7 @@ namespace ZEngine::Rendering
                     }
                     else
                     {
-                        float_buf_bytes = (size_t)(w * h * ch) * sizeof(float);
+                        float_buf_bytes = (size_t) (w * h * ch) * sizeof(float);
                         output_buf      = slab ? static_cast<float*>(slab->Alloc(float_buf_bytes)) : new float[w * h * ch];
                         Helpers::secure_memcpy(output_buf, float_buf_bytes, image_data, float_buf_bytes);
                     }
@@ -1391,7 +1391,7 @@ namespace ZEngine::Rendering
                     Rendering::Buffers::Bitmap vertical_cross = Rendering::Buffers::Bitmap::EquirectangularMapToVerticalCross(in, slab);
                     Rendering::Buffers::Bitmap cubemap        = Rendering::Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross, slab);
 
-                    size_t bytes = cubemap.BufferSize;
+                    size_t                     bytes          = cubemap.BufferSize;
                     buffer.resize(bytes);
                     Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer, bytes);
                 }

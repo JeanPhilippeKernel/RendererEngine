@@ -58,30 +58,25 @@ namespace ZEngine::Rendering::Buffers
 
         /// @brief Allocate a zeroed buffer. When slab is non-null the buffer is slab-backed
         ///        and freed via slab on destruction; otherwise heap-allocated (new[]).
-        Bitmap(int width, int height, int channel, BitmapFormat format, Core::Memory::TLSFSlab* slab = nullptr)
-            : Width(width), Height(height), Channel(channel), Format(format), Slab(slab)
+        Bitmap(int width, int height, int channel, BitmapFormat format, Core::Memory::TLSFSlab* slab = nullptr) : Width(width), Height(height), Channel(channel), Format(format), Slab(slab)
         {
-            Alloc((size_t)(width * height * channel * BytePerChannel(format)));
+            Alloc((size_t) (width * height * channel * BytePerChannel(format)));
         }
 
         /// @brief Cubemap / depth variant.
-        Bitmap(int width, int height, int depth, int channel, BitmapFormat format, Core::Memory::TLSFSlab* slab = nullptr)
-            : Width(width), Height(height), Depth(depth), Channel(channel), Format(format), Slab(slab)
+        Bitmap(int width, int height, int depth, int channel, BitmapFormat format, Core::Memory::TLSFSlab* slab = nullptr) : Width(width), Height(height), Depth(depth), Channel(channel), Format(format), Slab(slab)
         {
-            Alloc((size_t)(width * height * depth * channel * BytePerChannel(format)));
+            Alloc((size_t) (width * height * depth * channel * BytePerChannel(format)));
         }
 
         /// @brief Allocate and copy from data. slab parameter routes the buffer allocation.
-        Bitmap(int width, int height, int channel, BitmapFormat format, const void* data, Core::Memory::TLSFSlab* slab = nullptr)
-            : Width(width), Height(height), Channel(channel), Format(format), Slab(slab)
+        Bitmap(int width, int height, int channel, BitmapFormat format, const void* data, Core::Memory::TLSFSlab* slab = nullptr) : Width(width), Height(height), Channel(channel), Format(format), Slab(slab)
         {
-            size_t sz = (size_t)(width * height * channel * BytePerChannel(format));
+            size_t sz = (size_t) (width * height * channel * BytePerChannel(format));
             AllocNoZero(sz);
             if (data && Buffer)
             {
-                ZENGINE_VALIDATE_ASSERT(
-                    Helpers::secure_memcpy(Buffer, BufferSize, data, BufferSize) == Helpers::MEMORY_OP_SUCCESS,
-                    "Bitmap: memcpy from source data failed")
+                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(Buffer, BufferSize, data, BufferSize) == Helpers::MEMORY_OP_SUCCESS, "Bitmap: memcpy from source data failed")
             }
         }
 
@@ -93,8 +88,7 @@ namespace ZEngine::Rendering::Buffers
         Bitmap(const Bitmap&)            = delete;
         Bitmap& operator=(const Bitmap&) = delete;
 
-        Bitmap(Bitmap&& o) noexcept
-            : Width(o.Width), Height(o.Height), Depth(o.Depth), Channel(o.Channel), Type(o.Type), Format(o.Format), Buffer(o.Buffer), BufferSize(o.BufferSize), Slab(o.Slab)
+        Bitmap(Bitmap&& o) noexcept : Width(o.Width), Height(o.Height), Depth(o.Depth), Channel(o.Channel), Type(o.Type), Format(o.Format), Buffer(o.Buffer), BufferSize(o.BufferSize), Slab(o.Slab)
         {
             o.Buffer     = nullptr;
             o.BufferSize = 0;
@@ -106,15 +100,15 @@ namespace ZEngine::Rendering::Buffers
             if (this != &o)
             {
                 Free();
-                Width      = o.Width;
-                Height     = o.Height;
-                Depth      = o.Depth;
-                Channel    = o.Channel;
-                Type       = o.Type;
-                Format     = o.Format;
-                Buffer     = o.Buffer;
-                BufferSize = o.BufferSize;
-                Slab       = o.Slab;
+                Width        = o.Width;
+                Height       = o.Height;
+                Depth        = o.Depth;
+                Channel      = o.Channel;
+                Type         = o.Type;
+                Format       = o.Format;
+                Buffer       = o.Buffer;
+                BufferSize   = o.BufferSize;
+                Slab         = o.Slab;
 
                 o.Buffer     = nullptr;
                 o.BufferSize = 0;
@@ -157,21 +151,13 @@ namespace ZEngine::Rendering::Buffers
             if (Format == BitmapFormat::UNSIGNED_BYTE)
             {
                 const int ofs = Channel * (y * Width + x);
-                return ZEngine::Core::Maths::Vec4f(
-                    Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f,
-                    Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f,
-                    Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f,
-                    Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
+                return ZEngine::Core::Maths::Vec4f(Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f, Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f, Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f, Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
             }
             else if (Format == BitmapFormat::FLOAT)
             {
                 const int    ofs  = Channel * (y * Width + x);
                 const float* data = reinterpret_cast<const float*>(Buffer);
-                return ZEngine::Core::Maths::Vec4f(
-                    Channel > 0 ? data[ofs + 0] : 0.0f,
-                    Channel > 1 ? data[ofs + 1] : 0.0f,
-                    Channel > 2 ? data[ofs + 2] : 0.0f,
-                    Channel > 3 ? data[ofs + 3] : 0.0f);
+                return ZEngine::Core::Maths::Vec4f(Channel > 0 ? data[ofs + 0] : 0.0f, Channel > 1 ? data[ofs + 1] : 0.0f, Channel > 2 ? data[ofs + 2] : 0.0f, Channel > 3 ? data[ofs + 3] : 0.0f);
             }
             return ZEngine::Core::Maths::Vec4f();
         }
@@ -191,9 +177,9 @@ namespace ZEngine::Rendering::Buffers
             if (input_map.Type != BitmapType::TEXTURE_2D)
                 return Bitmap();
 
-            const int face_size = input_map.Width / 4;
-            const int width     = face_size * 3;
-            const int height    = face_size * 4;
+            const int                         face_size = input_map.Width / 4;
+            const int                         width     = face_size * 3;
+            const int                         height    = face_size * 4;
 
             Bitmap                            vertical_cross(width, height, input_map.Channel, input_map.Format, slab);
 
@@ -220,13 +206,13 @@ namespace ZEngine::Rendering::Buffers
                         const float                       theta = atan2(P.y, P.x);
                         const float                       phi   = atan2(P.z, R);
 
-                        const float Uf = float(2.0f * face_size * (theta + ZEngine::Core::Maths::PI<float>) / ZEngine::Core::Maths::PI<float>);
-                        const float Vf = float(2.0f * face_size * (ZEngine::Core::Maths::PI<float> / 2.0f - phi) / ZEngine::Core::Maths::PI<float>);
+                        const float                       Uf    = float(2.0f * face_size * (theta + ZEngine::Core::Maths::PI<float>) / ZEngine::Core::Maths::PI<float>);
+                        const float                       Vf    = float(2.0f * face_size * (ZEngine::Core::Maths::PI<float> / 2.0f - phi) / ZEngine::Core::Maths::PI<float>);
 
-                        const int U1 = ZEngine::Core::Maths::clamp(int(floor(Uf)), 0, clamped_width);
-                        const int V1 = ZEngine::Core::Maths::clamp(int(floor(Vf)), 0, clamped_height);
-                        const int U2 = ZEngine::Core::Maths::clamp(U1 + 1, 0, clamped_width);
-                        const int V2 = ZEngine::Core::Maths::clamp(V1 + 1, 0, clamped_height);
+                        const int                         U1    = ZEngine::Core::Maths::clamp(int(floor(Uf)), 0, clamped_width);
+                        const int                         V1    = ZEngine::Core::Maths::clamp(int(floor(Vf)), 0, clamped_height);
+                        const int                         U2    = ZEngine::Core::Maths::clamp(U1 + 1, 0, clamped_width);
+                        const int                         V2    = ZEngine::Core::Maths::clamp(V1 + 1, 0, clamped_height);
 
                         const float                       s     = Uf - U1;
                         const float                       t     = Vf - V1;
@@ -251,18 +237,18 @@ namespace ZEngine::Rendering::Buffers
             const int face_height = input_map.Height / 4;
 
             Bitmap    cubemap(face_width, face_height, 6, input_map.Channel, input_map.Format, slab);
-            cubemap.Type = CUBE;
+            cubemap.Type               = CUBE;
 
             const uint8_t* source      = input_map.Buffer;
             uint8_t*       destination = cubemap.Buffer;
             int            pixel_size  = cubemap.Channel * BytePerChannel(cubemap.Format);
 
-            const int RIGHT_FACE = 0;
-            const int LEFT_FACE  = 1;
-            const int UP_FACE    = 2;
-            const int DOWN_FACE  = 3;
-            const int FRONT_FACE = 4;
-            const int BACK_FACE  = 5;
+            const int      RIGHT_FACE  = 0;
+            const int      LEFT_FACE   = 1;
+            const int      UP_FACE     = 2;
+            const int      DOWN_FACE   = 3;
+            const int      FRONT_FACE  = 4;
+            const int      BACK_FACE   = 5;
 
             for (int face = 0; face < 6; ++face)
             {
@@ -300,9 +286,7 @@ namespace ZEngine::Rendering::Buffers
                                 pixel_pos_y = face_height + j;
                                 break;
                         }
-                        ZENGINE_VALIDATE_ASSERT(
-                            Helpers::secure_memcpy(destination, pixel_size, source + (pixel_pos_y * input_map.Width + pixel_pos_x) * pixel_size, pixel_size) == Helpers::MEMORY_OP_SUCCESS,
-                            "Bitmap: pixel copy failed in VerticalCrossToCubemap")
+                        ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(destination, pixel_size, source + (pixel_pos_y * input_map.Width + pixel_pos_x) * pixel_size, pixel_size) == Helpers::MEMORY_OP_SUCCESS, "Bitmap: pixel copy failed in VerticalCrossToCubemap")
                         destination += pixel_size;
                     }
                 }

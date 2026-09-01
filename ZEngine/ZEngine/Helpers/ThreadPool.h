@@ -210,13 +210,13 @@ namespace ZEngine::Helpers
         template <typename T>
         static void Submit(T&& f)
         {
-            using Fn = std::decay_t<T>;
+            using Fn                                           = std::decay_t<T>;
 
-            static constexpr size_t fn_offset  = (sizeof(Core::Memory::TLSFSlab*) + alignof(Fn) - 1) & ~(alignof(Fn) - 1);
-            static constexpr size_t block_size = fn_offset + sizeof(Fn);
+            static constexpr size_t fn_offset                  = (sizeof(Core::Memory::TLSFSlab*) + alignof(Fn) - 1) & ~(alignof(Fn) - 1);
+            static constexpr size_t block_size                 = fn_offset + sizeof(Fn);
 
-            Core::Memory::TLSFSlab* slab  = Pool ? Pool->GetClosureSlab() : nullptr;
-            uint8_t*                block = slab ? static_cast<uint8_t*>(slab->Alloc(block_size)) : static_cast<uint8_t*>(::operator new(block_size));
+            Core::Memory::TLSFSlab* slab                       = Pool ? Pool->GetClosureSlab() : nullptr;
+            uint8_t*                block                      = slab ? static_cast<uint8_t*>(slab->Alloc(block_size)) : static_cast<uint8_t*>(::operator new(block_size));
 
             *reinterpret_cast<Core::Memory::TLSFSlab**>(block) = slab;
             new (block + fn_offset) Fn(std::forward<T>(f));
