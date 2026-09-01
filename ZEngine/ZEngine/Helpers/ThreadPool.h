@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/ZEngineDef.h>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -48,6 +49,10 @@ namespace ZEngine::Helpers
     {
         return t_worker_slab;
     }
+
+    // Called once per worker thread at the start of its task loop.
+    // Signature: fn(ctx, worker_idx)
+    using WorkerInitFn = void (*)(void* ctx, size_t worker_idx);
 
     struct ThreadPool
     {
@@ -97,8 +102,25 @@ namespace ZEngine::Helpers
             task();
         }
 
+        /// @brief Register a per-worker init callback.
+        ///        Called exactly once per worker at the start of its task loop.
+        ///        If called after workers have started (the typical case — RRM
+        ///        initialises after the pool is constructed), all idle workers
+        ///        are woken via notify_one so they pick up the callback immediately.
+        ///        The callback runs before any queued tasks on each worker thread.
+        /// @param fn  Callback — fn(ctx, worker_idx). Must be thread-safe.
+        /// @param ctx Caller context forwarded to fn.
+        void RegisterWorkerInit(WorkerInitFn fn, void* ctx)
+        {
+            m_init_ctx.value.store(ctx, std::memory_order_relaxed);
+            m_init_fn.value.store(fn, std::memory_order_release); // release: ctx visible after fn
+            for (size_t i = 0; i < WorkerCount; ++i)
+                m_workers[i].cv.notify_one();
+        }
+
         void Shutdown()
         {
+            m_init_fn.value.store(nullptr, std::memory_order_relaxed);
             m_cancellation.value.store(true, std::memory_order_release);
             for (size_t i = 0; i < WorkerCount; ++i)
                 m_workers[i].cv.notify_one();
@@ -119,13 +141,21 @@ namespace ZEngine::Helpers
             std::condition_variable                                 cv;
         };
 
-        Worker                 m_workers[MAX_WORKERS];
-        PaddedAtomic<uint32_t> m_cursor{};
-        PaddedAtomic<bool>     m_cancellation{};
-        PaddedAtomic<uint32_t> m_active_workers{}; // decremented by each worker on exit
+        Worker                     m_workers[MAX_WORKERS];
+        PaddedAtomic<uint32_t>     m_cursor{};
+        PaddedAtomic<bool>         m_cancellation{};
+        PaddedAtomic<uint32_t>     m_active_workers{}; // decremented by each worker on exit
+        PaddedAtomic<WorkerInitFn> m_init_fn{};        // per-worker init callback; set by RegisterWorkerInit
+        PaddedAtomic<void*>        m_init_ctx{};       // context passed to m_init_fn
 
-        void                   WorkerRun(size_t idx)
+        void                       WorkerRun(size_t idx)
         {
+            // Call per-worker init callback if registered (e.g. set t_worker_slab).
+            // Runs before the first task — guaranteed by RegisterWorkerInit waking the worker.
+            WorkerInitFn init = m_init_fn.value.load(std::memory_order_acquire);
+            if (init)
+                init(m_init_ctx.value.load(std::memory_order_relaxed), idx);
+
             Worker& w = m_workers[idx];
             while (!m_cancellation.value.load(std::memory_order_acquire))
             {

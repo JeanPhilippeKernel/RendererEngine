@@ -42,6 +42,7 @@ namespace ZEngine::Rendering
         InitUploadPool();
         InitGlobalBuffers();
         InitTextureTimelines();
+        InitUploadSlabs(static_cast<uint32_t>(Helpers::ThreadPoolHelper::Pool->WorkerCount));
 
         registry->SetOnReadyCallback(this, [](void* ctx, const uuids::uuid& uuid, AssetHandle handle) {
             auto*              rrm = static_cast<RenderResourceManager*>(ctx);
@@ -151,6 +152,14 @@ namespace ZEngine::Rendering
 
         m_device->QueueWaitAll();
         ShutdownTextureTimelines();
+
+        // Shut down per-worker upload slabs. Clear the worker init callback first so
+        // any worker that wakes after this does not call SetWorkerSlab on a dead slab.
+        if (Helpers::ThreadPoolHelper::Pool)
+            Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(nullptr, nullptr);
+        for (uint32_t i = 0; i < m_upload_slab_count; ++i)
+            m_upload_slabs[i].Shutdown();
+        m_upload_slab_count = 0;
 
         // Free command buffers before destroying their parent pools, then destroy pools.
         // Arena-allocated objects have no automatic destructor — explicit calls are required.
@@ -866,6 +875,32 @@ namespace ZEngine::Rendering
                 m_tex_transfer_next_values[i].store(1, std::memory_order_release);
             }
         }
+    }
+
+    void RenderResourceManager::InitUploadSlabs(uint32_t worker_count)
+    {
+        ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::Pool != nullptr, "RenderResourceManager::InitUploadSlabs: ThreadPool not initialized")
+
+        worker_count        = worker_count < Helpers::ThreadPool::MAX_WORKERS ? worker_count : Helpers::ThreadPool::MAX_WORKERS;
+        m_upload_slab_count = worker_count;
+
+        for (uint32_t i = 0; i < worker_count; ++i)
+            m_upload_slabs[i].Init(m_device->Arena, UPLOAD_SLAB_BYTES);
+
+        // Register per-worker init callback so each worker sets its thread-local slab pointer.
+        // The callback runs before any tasks on each worker — no submit-vs-init race.
+        struct Ctx
+        {
+            Core::Memory::TLSFSlab* slabs;
+        };
+        auto* ctx  = ZPushStructCtor(m_device->Arena, Ctx);
+        ctx->slabs = m_upload_slabs;
+        Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(
+            [](void* raw, size_t idx) {
+                auto* c = static_cast<Ctx*>(raw);
+                Helpers::SetWorkerSlab(&c->slabs[idx]);
+            },
+            ctx);
     }
 
     void RenderResourceManager::ShutdownTextureTimelines()
