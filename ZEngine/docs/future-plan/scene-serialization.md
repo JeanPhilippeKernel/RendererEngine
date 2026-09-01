@@ -269,7 +269,7 @@ namespace ZEngine::ECS
 - Unknown component keys: emit a warning log, skip — do not fail
 
 **`ValidateAssetRefs`**: walks the json tree; for any key ending in `_uuid`, checks the value
-matches UUID regex `[0-9a-f]{8}-[0-9a-f]{4}-...`; returns `VFSError::InvalidData` if a
+matches UUID regex `[0-9a-f]{8}-[0-9a-f]{4}-...`; returns `VFSError::Corrupted` if a
 path-like string (`/`, `\`, `.glb`, `.png`) is found instead.
 
 ---
@@ -355,15 +355,15 @@ namespace ZEngine::ECS
 ## 8. Versioning and Migration
 
 ```cpp
-// ZEngine/Scene/SceneMigration.h
+// ZEngine/ZEngine/ECS/SceneMigration.h  (new file)
 #pragma once
-#include <VFS/VFSResult.h>
+#include <ZEngine/Core/VFS/VFSError.h>   // Core::VFS::VFSResult<T>
 
-namespace ZEngine::Scene
+namespace ZEngine::ECS
 {
     // Called by BinarySceneSerializer::Deserialize when version < SCENE_BINARY_VERSION
-    VFS::VFSResult<void> MigrateScene(uint8_t* data, uint32_t size,
-                                      uint16_t from_version, uint16_t to_version);
+    Core::VFS::VFSResult<void> MigrateScene(uint8_t* data, uint32_t size,
+                                             uint16_t from_version, uint16_t to_version);
 }
 ```
 
@@ -379,7 +379,7 @@ keys ignored); no migration needed for the YAML format.
 // In YAMLSceneSerializer::Deserialize, after parsing each asset_uuid field:
 auto parsed = uuids::uuid::from_string(uuid_str);
 if (!parsed.has_value())
-    return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidData);
+    return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::Corrupted);
 
 // Optional: warn if UUID not found in AssetRegistry (don't crash — asset may still be loading)
 // Access: AssetManager::Instance()->Registry->FindByUUID(uuid) returns AssetRecord* or nullptr
@@ -397,7 +397,7 @@ serializer boundary — not a convention, not a lint rule.
 // After parsing each asset_uuid string from the scene file:
 auto parsed = uuids::uuid::from_string(uuid_str);
 if (!parsed.has_value()) {
-    return VFSResult<void>::Fail(VFSError::InvalidData);  // not a valid UUID string
+    return VFSResult<void>::Fail(VFSError::Corrupted);  // not a valid UUID string
 }
 
 const uuids::uuid& uuid = parsed.value();
@@ -489,10 +489,10 @@ TEST(YAMLSceneSerializer, RoundTripEntityIDs)
     scene.Entities = {EntityID{1,0}, EntityID{2,0}, EntityID{3,0}};
 
     VFSPath path = VFSPath::Parse("/scene.yaml").Value();
-    ASSERT_TRUE(s.Serialize(ctx, path, scene).IsOk());
+    ASSERT_TRUE(s.Serialize(ctx, path, scene).Succeeded());
 
     Scene loaded;
-    ASSERT_TRUE(s.Deserialize(ctx, path, loaded).IsOk());
+    ASSERT_TRUE(s.Deserialize(ctx, path, loaded).Succeeded());
     EXPECT_EQ(loaded.Entities.Size(), 3u);
     EXPECT_EQ(loaded.SceneUUID, scene.SceneUUID);
 }
@@ -510,10 +510,10 @@ TEST(BinarySceneSerializer, RoundTripEntityIDs)
     scene.Entities = {EntityID{10,0}, EntityID{20,0}};
 
     VFSPath path = VFSPath::Parse("/scene.bin").Value();
-    ASSERT_TRUE(s.Serialize(ctx, path, scene).IsOk());
+    ASSERT_TRUE(s.Serialize(ctx, path, scene).Succeeded());
 
     Scene loaded;
-    ASSERT_TRUE(s.Deserialize(ctx, path, loaded).IsOk());
+    ASSERT_TRUE(s.Deserialize(ctx, path, loaded).Succeeded());
     EXPECT_EQ(loaded.Entities.Size(), 2u);
     EXPECT_EQ(loaded.SceneUUID, scene.SceneUUID);
 }
@@ -537,7 +537,7 @@ scene:
     YAMLSceneSerializer s;
     Scene out;
     auto result = s.Deserialize(ctx, VFSPath::Parse("/bad.scene.yaml").Value(), out);
-    EXPECT_FALSE(result.IsOk());
+    EXPECT_FALSE(result.Succeeded());
 }
 ```
 
@@ -558,7 +558,7 @@ scene:
 )");
     YAMLSceneSerializer s;
     Scene out;
-    EXPECT_TRUE(s.Deserialize(ctx, VFSPath::Parse("/unknown.scene.yaml").Value(), out).IsOk());
+    EXPECT_TRUE(s.Deserialize(ctx, VFSPath::Parse("/unknown.scene.yaml").Value(), out).Succeeded());
 }
 ```
 
@@ -581,7 +581,7 @@ scene:
     YAMLSceneSerializer s;
     Scene out;
     // Should succeed with a warning log, not an error
-    EXPECT_TRUE(s.Deserialize(ctx, VFSPath::Parse("/warn.scene.yaml").Value(), out).IsOk());
+    EXPECT_TRUE(s.Deserialize(ctx, VFSPath::Parse("/warn.scene.yaml").Value(), out).Succeeded());
 }
 ```
 
@@ -592,7 +592,7 @@ TEST(SceneSerializer, ComponentRegistryRoundTrip)
     // Register a mock component with YAML fns
     struct ColorComponent { float R, G, B; };
     ComponentSerializerRegistry::Get().Register(
-        ComponentTypeID::Of<ColorComponent>(),
+        ComponentTypeOf<ColorComponent>(),
         {
             .SerializeYAML = [](EntityID id, nlohmann::json& j) {
                 auto& c = TestECS::Get<ColorComponent>(id);
@@ -624,7 +624,7 @@ TEST(BinarySceneSerializer, VersionMismatchFails)
     BinarySceneSerializer s;
     Scene out;
     auto result = s.Deserialize(ctx, VFSPath::Parse("/future.scene.bin").Value(), out);
-    EXPECT_FALSE(result.IsOk());
+    EXPECT_FALSE(result.Succeeded());
 }
 ```
 
@@ -639,10 +639,10 @@ TEST(BinarySceneSerializer, EmptyScene)
     empty.Name = "Empty";
 
     VFSPath path = VFSPath::Parse("/empty.scene.bin").Value();
-    ASSERT_TRUE(s.Serialize(ctx, path, empty).IsOk());
+    ASSERT_TRUE(s.Serialize(ctx, path, empty).Succeeded());
 
     Scene loaded;
-    ASSERT_TRUE(s.Deserialize(ctx, path, loaded).IsOk());
+    ASSERT_TRUE(s.Deserialize(ctx, path, loaded).Succeeded());
     EXPECT_EQ(loaded.Entities.Size(), 0u);
     EXPECT_EQ(loaded.SceneUUID, empty.SceneUUID);
 }
