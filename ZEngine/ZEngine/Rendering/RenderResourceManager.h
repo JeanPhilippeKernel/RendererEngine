@@ -1,9 +1,11 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSError.h>
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
+#include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Helpers/ThreadSafeQueue.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
@@ -387,8 +389,17 @@ namespace ZEngine::Rendering
         uint32_t                        AllocImageSlot();
         uint32_t                        AllocGBufSlot();
 
-        Hardwares::VulkanDevice*        m_device                       = nullptr;
-        Core::VFS::AssetRegistry*       m_registry                     = nullptr;
+        Hardwares::VulkanDevice*        m_device                                         = nullptr;
+        Core::VFS::AssetRegistry*       m_registry                                       = nullptr;
+
+        // Per-worker TLSF upload slabs — carved from Device->Arena at Initialize.
+        // Each worker owns one slab exclusively via t_worker_slab (ThreadPool.h).
+        // Sized to cover the worst-case decode buffer: equirect→cubemap ≈ 96 MB.
+        static constexpr size_t         UPLOAD_SLAB_BYTES                                = 128 * 1024 * 1024; // 128 MB per worker
+        Core::Memory::TLSFSlab          m_upload_slabs[Helpers::ThreadPool::MAX_WORKERS] = {};
+        uint32_t                        m_upload_slab_count                              = 0;
+
+        void                            InitUploadSlabs(uint32_t worker_count);
 
         // Global geometry buffers — all mesh vertices/indices packed together.
         static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~16M DrawVertex
