@@ -15,8 +15,6 @@
 #include <vulkan/vulkan.h>
 #include <atomic>
 #include <mutex>
-#include <variant>
-#include <vector>
 
 namespace ZEngine::Hardwares
 {
@@ -111,19 +109,22 @@ namespace ZEngine::Rendering
         Rendering::Textures::TextureHandle GetOrCreateFallbackTexture();
 
         /// @brief Payload for a deferred texture upload.
-        /// @details IsLarge = true stores an owned copy of the pixel data (std::vector<uint8_t>).
-        ///          IsLarge = false stores a raw pointer valid until CompleteDeferrals runs.
+        ///
+        /// Flat struct — no heap ownership. Pixels points into a TLSFSlab allocation;
+        /// CompleteDeferrals calls Slab->Free(Pixels) after the GPU upload completes.
+        /// When Slab is nullptr the pixels are borrowed (valid until CompleteDeferrals).
         struct TextureDeferral
         {
-            uint8_t                                            FrameIdx  = 0;
-            uint8_t                                            ThreadIdx = 0;
-            std::variant<unsigned char*, std::vector<uint8_t>> Buffer;
-            Rendering::Textures::TextureHandle                 TexHandle = {};
-            bool                                               IsLarge   = false;
+            uint8_t*                           Pixels    = nullptr; ///< Pixel data (slab-owned or borrowed).
+            size_t                             ByteSize  = 0;       ///< Size of Pixels in bytes.
+            Core::Memory::TLSFSlab*            Slab      = nullptr; ///< Owning slab; nullptr = borrowed pointer.
+            Rendering::Textures::TextureHandle TexHandle = {};
+            uint8_t                            FrameIdx  = 0;
+            uint8_t                            ThreadIdx = 0;
         };
 
         /// @brief Enqueue a texture upload deferral for processing in the next BeginFrame.
-        /// @param deferral Deferral to enqueue; ownership of the Buffer variant is transferred.
+        /// @param deferral Deferral to enqueue; if Slab is non-null, ownership of Pixels is transferred.
         void                             EnqueueTextureDeferral(TextureDeferral&& deferral);
 
         /// @brief Drain all pending texture deferrals by dispatching UploadTextureBuffer.
