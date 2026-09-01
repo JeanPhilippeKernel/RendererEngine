@@ -141,7 +141,7 @@ namespace ZEngine::Core::Memory
 #ifdef _WIN32
                         if (new_end > m_committed_size)
                         {
-                            size_t commit_size  = (new_end + m_mem_page_size - 1) & ~(m_mem_page_size - 1);
+                            size_t commit_size   = (new_end + m_mem_page_size - 1) & ~(m_mem_page_size - 1);
                             void*  commit_result = VirtualAlloc(m_memory + m_committed_size, commit_size - m_committed_size, MEM_COMMIT, PAGE_READWRITE);
                             ZENGINE_VALIDATE_ASSERT(commit_result != nullptr, "ArenaAllocator::Resize: failed to commit new pages")
                             if (!commit_result)
@@ -201,9 +201,9 @@ namespace ZEngine::Core::Memory
         const size_t sub_alignment = DEFAULT_ALIGNMENT;
 #endif
 
-        uintptr_t current_ptr = (uintptr_t) m_memory + (uintptr_t) m_current_offset;
-        uintptr_t offset      = Helpers::memory_align(current_ptr, sub_alignment);
-        offset               -= (uintptr_t) m_memory;
+        uintptr_t current_ptr  = (uintptr_t) m_memory + (uintptr_t) m_current_offset;
+        uintptr_t offset       = Helpers::memory_align(current_ptr, sub_alignment);
+        offset                -= (uintptr_t) m_memory;
 
         ZENGINE_VALIDATE_ASSERT((offset + size) <= m_total_size, "ArenaAllocator::CreateSubArena: not enough space in parent arena")
 

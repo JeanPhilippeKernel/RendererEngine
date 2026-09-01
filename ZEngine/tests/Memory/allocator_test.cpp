@@ -1,6 +1,6 @@
 #ifdef _WIN32
-#include <windows.h>
 #include <sysinfoapi.h>
+#include <windows.h>
 #endif
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
@@ -310,7 +310,7 @@ TEST(AllocatorTest, ArenaSubArenaMultipleLargeSubArenas)
     // + PayloadArena pattern in AppRenderPipeline at a smaller scale).
     MemoryManager manager{};
     manager.Initialize(ZMega(4), {});
-    auto* parent = &(manager.MainArena);
+    auto*          parent = &(manager.MainArena);
 
     ArenaAllocator a{}, b{}, c{};
     parent->CreateSubArena(ZMega(1), &a);
@@ -325,9 +325,12 @@ TEST(AllocatorTest, ArenaSubArenaMultipleLargeSubArenas)
     int* pa = reinterpret_cast<int*>(a.Allocate(sizeof(int)));
     int* pb = reinterpret_cast<int*>(b.Allocate(sizeof(int)));
     int* pc = reinterpret_cast<int*>(c.Allocate(sizeof(int)));
-    ASSERT_NE(pa, nullptr); *pa = 1;
-    ASSERT_NE(pb, nullptr); *pb = 2;
-    ASSERT_NE(pc, nullptr); *pc = 3;
+    ASSERT_NE(pa, nullptr);
+    *pa = 1;
+    ASSERT_NE(pb, nullptr);
+    *pb = 2;
+    ASSERT_NE(pc, nullptr);
+    *pc = 3;
     EXPECT_EQ(*pa, 1);
     EXPECT_EQ(*pb, 2);
     EXPECT_EQ(*pc, 3);
@@ -336,7 +339,9 @@ TEST(AllocatorTest, ArenaSubArenaMultipleLargeSubArenas)
     EXPECT_GE((uintptr_t) b.m_memory, (uintptr_t) a.m_memory + ZMega(1));
     EXPECT_GE((uintptr_t) c.m_memory, (uintptr_t) b.m_memory + ZMega(1));
 
-    c.Shutdown(); b.Shutdown(); a.Shutdown();
+    c.Shutdown();
+    b.Shutdown();
+    a.Shutdown();
     manager.Shutdown();
 }
 
@@ -347,7 +352,7 @@ TEST(AllocatorTest, ArenaSubArenaPageAlignedOnWindows)
 {
     SYSTEM_INFO si{};
     GetSystemInfo(&si);
-    const size_t page_size = si.dwPageSize;
+    const size_t  page_size = si.dwPageSize;
 
     MemoryManager manager{};
     manager.Initialize(ZMega(4), {});
