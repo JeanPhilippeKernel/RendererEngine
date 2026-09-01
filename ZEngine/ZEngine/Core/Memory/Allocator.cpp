@@ -57,54 +57,61 @@ namespace ZEngine::Core::Memory
         }
     }
 
+    // Internal bump-pointer allocator — shared by Allocate and AllocateNoZero.
+    // Preconditions (callers assert before invoking): alignment is power-of-two, size > 0.
+    static void* ArenaAllocateRaw(ArenaAllocator* a, size_t size, size_t alignment)
+    {
+        if (!a->m_memory)
+            return nullptr;
+
+        uintptr_t current_ptr  = (uintptr_t) a->m_memory + (uintptr_t) a->m_current_offset;
+        uintptr_t offset       = Helpers::memory_align(current_ptr, alignment);
+        offset                -= (uintptr_t) a->m_memory;
+
+        if ((offset + size) > a->m_total_size)
+            return nullptr;
+
+        if ((offset + size) > a->m_committed_size)
+        {
+            size_t commit_size = (offset + size + a->m_mem_page_size - 1) & ~(a->m_mem_page_size - 1);
+#ifdef _WIN32
+            void* r = VirtualAlloc(a->m_memory + a->m_committed_size, commit_size - a->m_committed_size, MEM_COMMIT, PAGE_READWRITE);
+            if (!r)
+#else
+            int r = mprotect(a->m_memory + a->m_committed_size, commit_size - a->m_committed_size, PROT_READ | PROT_WRITE);
+            if (r != 0)
+#endif
+                return nullptr;
+            a->m_committed_size = commit_size;
+        }
+
+        void* ptr            = &a->m_memory[offset];
+        a->m_previous_offset = offset;
+        a->m_current_offset  = offset + size;
+        return ptr;
+    }
+
     void* ArenaAllocator::Allocate(size_t size, size_t alignment)
     {
-        if (!m_memory)
-        {
-            // Memory not initialized or failed to allocate memory or already shutdown
-            return nullptr;
-        }
+        ZENGINE_VALIDATE_ASSERT(Helpers::is_power_of_two(alignment), "ArenaAllocator::Allocate: alignment must be a power of two")
+        ZENGINE_VALIDATE_ASSERT(size > 0, "ArenaAllocator::Allocate: size must be > 0")
 
-        uintptr_t current_ptr  = (uintptr_t) m_memory + (uintptr_t) m_current_offset;
-        uintptr_t offset       = Helpers::memory_align(current_ptr, alignment);
-        offset                -= (uintptr_t) m_memory;
-
-        if ((offset + size) > m_total_size)
-        {
-            // Out of memory
-            return nullptr;
-        }
-
-        if ((offset + size) > m_committed_size)
-        {
-            // this use the general formula to round up to the nearest multiple of m_mem_page_size
-            // formula: (x + y - 1) & ~(y - 1)
-            size_t commit_size = (offset + size + m_mem_page_size - 1) & ~(m_mem_page_size - 1);
-#ifdef _WIN32
-            void* commit_result = VirtualAlloc(m_memory + m_committed_size, commit_size - m_committed_size, MEM_COMMIT, PAGE_READWRITE);
-            if (!commit_result)
-#else
-            int commit_result = mprotect(m_memory + m_committed_size, commit_size - m_committed_size, PROT_READ | PROT_WRITE);
-            if (commit_result != 0)
-#endif
-            {
-                // Failed to commit memory
-                return nullptr;
-            }
-            m_committed_size = commit_size;
-        }
-
-        void* ptr         = &m_memory[offset];
-        m_previous_offset = offset;
-        m_current_offset  = (offset + size);
-
-        Helpers::secure_memset(ptr, 0, size, size);
+        void* ptr = ArenaAllocateRaw(this, size, alignment);
+        if (ptr)
+            Helpers::secure_memset(ptr, 0, size, size);
         return ptr;
     }
 
     void* ArenaAllocator::Allocate(size_t size, size_t alignment, const char* file, int line)
     {
         return Allocate(size, alignment);
+    }
+
+    void* ArenaAllocator::AllocateNoZero(size_t size, size_t alignment)
+    {
+        ZENGINE_VALIDATE_ASSERT(Helpers::is_power_of_two(alignment), "ArenaAllocator::AllocateNoZero: alignment must be a power of two")
+        ZENGINE_VALIDATE_ASSERT(size > 0, "ArenaAllocator::AllocateNoZero: size must be > 0")
+        return ArenaAllocateRaw(this, size, alignment);
     }
 
     void* ArenaAllocator::Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
@@ -236,16 +243,11 @@ namespace ZEngine::Core::Memory
 
     void* PoolAllocator::Allocate()
     {
+        ZENGINE_VALIDATE_ASSERT(head != nullptr, "PoolAllocator::Allocate: pool exhausted — increase pool capacity at initialization")
+
         PoolFreeNode* node = head;
-
-        if (node == nullptr)
-        {
-            return nullptr;
-        }
-
-        head = head->Next;
+        head               = head->Next;
         Helpers::secure_memset(node, 0, chunk_size, chunk_size);
-
         return node;
     }
 
@@ -265,7 +267,18 @@ namespace ZEngine::Core::Memory
         ZENGINE_VALIDATE_ASSERT(p >= start && p < end, "PoolAllocator::Free: pointer not owned by this pool")
         ZENGINE_VALIDATE_ASSERT((p - start) % chunk_size == 0, "PoolAllocator::Free: pointer is not chunk-aligned — possible corruption or wrong pointer")
 
-        PoolFreeNode* node = (PoolFreeNode*) ptr;
+#ifndef NDEBUG
+        // O(free-list length) double-free check — debug builds only.
+        for (const PoolFreeNode* n = head; n != nullptr; n = n->Next)
+            ZENGINE_VALIDATE_ASSERT(n != ptr, "PoolAllocator::Free: double-free detected")
+#endif
+
+        // Placement new: begins the PoolFreeNode object lifetime at the chunk's address
+        // without allocating memory. Required by the C++ object model — a C-style cast
+        // (PoolFreeNode*)ptr reinterprets bits without starting a new object lifetime,
+        // which is UB for non-trivially-reachable access patterns. Since PoolFreeNode is
+        // trivially constructible, this generates identical machine code to the cast.
+        PoolFreeNode* node = ::new (ptr) PoolFreeNode{};
         node->Next         = head;
         head               = node;
     }
@@ -273,13 +286,15 @@ namespace ZEngine::Core::Memory
     void PoolAllocator::Clear()
     {
         auto chunk_count = total_size / chunk_size;
+        head             = nullptr;
 
         for (size_t i = 0; i < chunk_count; i++)
         {
             void* ptr = &memory[i * chunk_size];
             Helpers::secure_memset(ptr, 0, chunk_size, chunk_size);
 
-            PoolFreeNode* node = (PoolFreeNode*) ptr;
+            // Placement new — see PoolAllocator::Free for rationale.
+            PoolFreeNode* node = ::new (ptr) PoolFreeNode{};
             node->Next         = head;
             head               = node;
         }
