@@ -321,10 +321,9 @@ TEST(AllocatorTest, PoolExhaustion)
     pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
 
     for (size_t i = 0; i < chunk_count; ++i)
-    {
         EXPECT_NE(pool.Allocate(), nullptr) << "expected valid slot at i=" << i;
-    }
-    EXPECT_EQ(pool.Allocate(), nullptr) << "expected nullptr on exhausted pool";
+
+    EXPECT_DEATH(pool.Allocate(), "");
     manager.Shutdown();
 }
 
@@ -359,10 +358,7 @@ TEST(AllocatorTest, PoolClearResetsAllSlots)
     pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
 
     for (size_t i = 0; i < chunk_count; ++i)
-    {
         ASSERT_NE(pool.Allocate(), nullptr);
-    }
-    EXPECT_EQ(pool.Allocate(), nullptr);
 
     pool.Clear();
 
@@ -387,3 +383,209 @@ TEST(AllocatorTest, PoolChunkSizeAlignedUp)
     EXPECT_EQ(pool.chunk_size, alignment);
     manager.Shutdown();
 }
+
+// AllocateNoZero — skip zeroing for large decode buffers
+TEST(AllocatorTest, ArenaAllocateNoZeroDoesNotZero)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*            arena = &(manager.MainArena);
+
+    constexpr size_t sz    = 64;
+    auto*            p1    = reinterpret_cast<uint8_t*>(arena->Allocate(sz));
+    for (size_t i = 0; i < sz; ++i)
+        p1[i] = 0xAB;
+
+    arena->Clear();
+
+    auto* p2 = reinterpret_cast<uint8_t*>(arena->AllocateNoZero(sz));
+    ASSERT_NE(p2, nullptr);
+    ASSERT_EQ(p1, p2);
+
+    bool any_nonzero = false;
+    for (size_t i = 0; i < sz; ++i)
+        if (p2[i] != 0)
+        {
+            any_nonzero = true;
+            break;
+        }
+    EXPECT_TRUE(any_nonzero) << "AllocateNoZero must not zero memory";
+
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroAlignment)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    for (size_t align : {1u, 8u, 16u, 64u})
+    {
+        arena->Clear();
+        void* p = arena->AllocateNoZero(32, align);
+        ASSERT_NE(p, nullptr) << "alignment=" << align;
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(p) % align, 0u) << "misaligned for alignment=" << align;
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroOOM)
+{
+    MemoryManager manager{};
+    manager.Initialize(128, {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_EQ(arena->AllocateNoZero(256), nullptr);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroAndAllocateSameCursor)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*            arena = &(manager.MainArena);
+
+    constexpr size_t sz    = 32;
+    void*            a     = arena->AllocateNoZero(sz);
+    void*            b     = arena->Allocate(sz);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(reinterpret_cast<uint8_t*>(a) + sz, reinterpret_cast<uint8_t*>(b)) << "AllocateNoZero must advance the cursor identically to Allocate";
+
+    manager.Shutdown();
+}
+
+// Alignment precondition — non-power-of-two must assert
+TEST(AllocatorTest, ArenaAllocateNonPowerOfTwoDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_DEATH(arena->Allocate(4, 3), "");
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroNonPowerOfTwoDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_DEATH(arena->AllocateNoZero(4, 3), "");
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateZeroSizeDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_DEATH(arena->Allocate(0), "");
+    manager.Shutdown();
+}
+
+// PoolAllocator — freed chunk must be re-allocated zeroed (placement new regression)
+TEST(AllocatorTest, PoolFreedChunkReturnedZeroed)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*         arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Foo) * 1, sizeof(Foo));
+
+    auto* slot = reinterpret_cast<Foo*>(pool.Allocate());
+    ASSERT_NE(slot, nullptr);
+    slot->x = 0xDEAD;
+    slot->y = 3.14f;
+    pool.Free(slot);
+
+    auto* reused = reinterpret_cast<uint8_t*>(pool.Allocate());
+    ASSERT_NE(reused, nullptr);
+    for (size_t i = 0; i < sizeof(Foo); ++i)
+        EXPECT_EQ(reused[i], 0u) << "byte " << i << " not zeroed after re-alloc";
+
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolFreeListIntegrityAfterMultipleFreeCycles)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    // Use a chunk large enough to hold PoolFreeNode (pointer = 8 bytes on 64-bit).
+    struct Slot
+    {
+        uint64_t a = 0;
+        uint64_t b = 0;
+    }; // 16 bytes — well above minimum
+    constexpr int N = 16;
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Slot) * N, sizeof(Slot));
+
+    Slot* ptrs[N];
+    for (int i = 0; i < N; ++i)
+    {
+        ptrs[i] = reinterpret_cast<Slot*>(pool.Allocate());
+        ASSERT_NE(ptrs[i], nullptr);
+        ptrs[i]->a = static_cast<uint64_t>(i + 1);
+    }
+    for (int i = N - 1; i >= 0; --i)
+        pool.Free(ptrs[i]);
+
+    for (int i = 0; i < N; ++i)
+    {
+        auto* p = reinterpret_cast<Slot*>(pool.Allocate());
+        EXPECT_NE(p, nullptr) << "slot " << i << " unavailable after free cycle";
+        if (p)
+        {
+            EXPECT_EQ(p->a, 0u) << "slot " << i << " not zeroed on re-alloc";
+            EXPECT_EQ(p->b, 0u) << "slot " << i << " not zeroed on re-alloc";
+        }
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolAllocateFreeAllocateManyTimes)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*         arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(int) * 4, sizeof(int));
+
+    for (int round = 0; round < 1000; ++round)
+    {
+        auto* p = reinterpret_cast<int*>(pool.Allocate());
+        ASSERT_NE(p, nullptr) << "round=" << round;
+        EXPECT_EQ(*p, 0) << "not zeroed at round=" << round;
+        *p = round;
+        pool.Free(p);
+    }
+    manager.Shutdown();
+}
+
+// Double-free detection — debug builds only
+#ifndef NDEBUG
+TEST(AllocatorTest, PoolDoubleFreeDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*         arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Foo) * 4, sizeof(Foo));
+
+    auto* slot = reinterpret_cast<Foo*>(pool.Allocate());
+    ASSERT_NE(slot, nullptr);
+    pool.Free(slot);
+
+    EXPECT_DEATH(pool.Free(slot), "");
+    manager.Shutdown();
+}
+#endif
