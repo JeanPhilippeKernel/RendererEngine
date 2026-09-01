@@ -1,6 +1,8 @@
 #ifdef _WIN32
-#include <sysinfoapi.h>
+// clang-format off
 #include <windows.h>
+// clang-format on
+#include <sysinfoapi.h>
 #endif
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
