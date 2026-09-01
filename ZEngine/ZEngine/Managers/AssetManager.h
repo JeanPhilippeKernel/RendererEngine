@@ -2,6 +2,7 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
@@ -19,6 +20,12 @@ namespace ZEngine::Managers
     {
         Core::Memory::ArenaAllocator*                                                       Arena                   = nullptr;
         cstring                                                                             CurrentWorkingSpacePath = "";
+
+        // TLSF slab for the 5 long-lived growing containers below.
+        // Realloc extends in-place when the following block is free — eliminates
+        // the dead-block accumulation from arena-backed grows (~20 MB per 100 sessions).
+        static constexpr size_t                                                             CONTAINER_SLAB_BYTES    = 256 * 1024 * 1024; // 256 MB
+        Core::Memory::TLSFSlab                                                              ContainerSlab           = {};
 
         // CPU-side import buffers — owned by the import pipeline.
         Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies         = {};

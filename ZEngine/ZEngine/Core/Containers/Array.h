@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/Core/Containers/InitializerList.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
 
 using namespace ZEngine::Core::Memory;
 
@@ -19,13 +20,14 @@ namespace ZEngine::Core::Containers
         using iterator        = T*;
         using const_iterator  = const T*;
 
-        Array() : m_allocator(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
+        Array() : m_allocator(nullptr), m_slab(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
 
         Array(const Array&)            = delete;
         Array& operator=(const Array&) = delete;
 
-        Array(Array&& other) noexcept : m_allocator(other.m_allocator), m_size(other.m_size), m_capacity(other.m_capacity), m_data(other.m_data)
+        Array(Array&& other) noexcept : m_allocator(other.m_allocator), m_slab(other.m_slab), m_size(other.m_size), m_capacity(other.m_capacity), m_data(other.m_data)
         {
+            other.m_slab     = nullptr;
             other.m_size     = 0;
             other.m_capacity = 0;
             other.m_data     = nullptr;
@@ -36,9 +38,11 @@ namespace ZEngine::Core::Containers
             if (this != &other)
             {
                 m_allocator      = other.m_allocator;
+                m_slab           = other.m_slab;
                 m_size           = other.m_size;
                 m_capacity       = other.m_capacity;
                 m_data           = other.m_data;
+                other.m_slab     = nullptr;
                 other.m_size     = 0;
                 other.m_capacity = 0;
                 other.m_data     = nullptr;
@@ -49,6 +53,7 @@ namespace ZEngine::Core::Containers
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity, size_type initial_size)
         {
             m_allocator = allocator;
+            m_slab      = nullptr;
             m_size      = initial_size;
             m_capacity  = 0;
             m_data      = nullptr;
@@ -58,6 +63,7 @@ namespace ZEngine::Core::Containers
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity)
         {
             m_allocator = allocator;
+            m_slab      = nullptr;
             m_size      = 0;
             m_capacity  = 0;
             m_data      = nullptr;
@@ -68,9 +74,29 @@ namespace ZEngine::Core::Containers
         {
             init(allocator, std::max(initial_capacity, list.size()));
             for (const auto& item : list)
-            {
                 push(item);
-            }
+        }
+
+        /// @brief Init backed by a TLSFSlab — Realloc extends in-place when possible,
+        ///        eliminating dead-block accumulation from arena-backed grows.
+        void init(Memory::TLSFSlab* slab, size_type initial_capacity)
+        {
+            m_allocator = nullptr;
+            m_slab      = slab;
+            m_size      = 0;
+            m_capacity  = 0;
+            m_data      = nullptr;
+            reserve(initial_capacity);
+        }
+
+        void init(Memory::TLSFSlab* slab, size_type initial_capacity, size_type initial_size)
+        {
+            m_allocator = nullptr;
+            m_slab      = slab;
+            m_size      = initial_size;
+            m_capacity  = 0;
+            m_data      = nullptr;
+            reserve(std::max(initial_capacity, initial_size));
         }
 
         const_reference operator[](size_type index) const
@@ -241,6 +267,8 @@ namespace ZEngine::Core::Containers
         ~Array()
         {
             clear();
+            if (m_slab && m_data)
+                m_slab->Free(m_data);
             m_data     = nullptr;
             m_capacity = 0;
         }
@@ -248,20 +276,24 @@ namespace ZEngine::Core::Containers
         void reserve(size_type new_capacity)
         {
             if (new_capacity <= m_capacity)
-            {
                 return;
-            }
 
             size_t old_alloc_size = m_capacity * sizeof(T);
             size_t new_alloc_size = new_capacity * sizeof(T);
-            m_data                = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof(value_type)));
-            m_capacity            = new_capacity;
+
+            if (m_slab)
+                m_data = static_cast<pointer>(m_slab->Realloc(m_data, new_alloc_size));
+            else
+                m_data = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof(value_type)));
+
+            m_capacity = new_capacity;
         }
 
-        Memory::ArenaAllocator* m_allocator;
-        size_type               m_size;
-        size_type               m_capacity;
-        pointer                 m_data;
+        Memory::ArenaAllocator* m_allocator = nullptr;
+        Memory::TLSFSlab*       m_slab      = nullptr;
+        size_type               m_size      = 0;
+        size_type               m_capacity  = 0;
+        pointer                 m_data      = nullptr;
     };
 
     template <typename T>
