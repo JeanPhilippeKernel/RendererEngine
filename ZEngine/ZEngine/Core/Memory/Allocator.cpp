@@ -40,10 +40,11 @@ namespace ZEngine::Core::Memory
     void ArenaAllocator::Shutdown()
     {
         // Not thread-safe: external synchronization is required if the arena is shared across threads.
-        m_total_size      = 0;
-        m_committed_size  = 0;
-        m_current_offset  = m_initial_current_offset;
-        m_previous_offset = m_initial_previous_offset;
+        const size_t total = m_total_size; // save before zero — munmap requires the original size
+        m_total_size       = 0;
+        m_committed_size   = 0;
+        m_current_offset   = m_initial_current_offset;
+        m_previous_offset  = m_initial_previous_offset;
 
         if (m_is_sub_arena)
         {
@@ -57,7 +58,7 @@ namespace ZEngine::Core::Memory
 #ifdef _WIN32
             VirtualFree(m_memory, 0, MEM_RELEASE);
 #else
-            munmap(m_memory, m_total_size);
+            munmap(m_memory, total);
 #endif
             m_memory = nullptr;
         }
