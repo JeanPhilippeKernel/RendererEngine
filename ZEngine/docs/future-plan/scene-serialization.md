@@ -36,56 +36,65 @@ Asset references are always `uuids::uuid` — never file paths.
 
 ## 1. Scene Struct
 
-```cpp
-// ZEngine/Scene/Scene.h
-#pragma once
-#include <Core/Containers/Array.h>
-#include <Core/Containers/Strings.h>
-#include <ECS/EntityID.h>
-#include <uuid.h>
+This is a **new type to create** — it does not exist today.
 
-namespace ZEngine::Scene
+The live runtime scene manager is `ZEngine::ECS::Scene` (owns entity lifetime,
+component storages, ECS registry). The serializer works with a lightweight
+snapshot struct that carries only identity and entity IDs; it leaves component
+data to `ComponentSerializerRegistry`.
+
+```cpp
+// ZEngine/ZEngine/ECS/SceneSnapshot.h  (new file)
+#pragma once
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
+#include <ZEngine/ECS/EntityID.h>
+#include <stduuid/uuid.h>
+
+namespace ZEngine::ECS
 {
-    struct Scene
+    struct SceneSnapshot
     {
-        uuids::uuid                        SceneUUID = {};
-        Core::Containers::String           Name      = {};
-        Core::Containers::Array<ECS::EntityID> Entities = {};
+        uuids::uuid                             SceneUUID = {};
+        Core::Containers::String                Name      = {};
+        Core::Containers::Array<EntityID>       Entities  = {};
     };
 }
 ```
 
-`Scene` owns no component data — the ECS `EntityRegistry` owns that. The scene is
+`SceneSnapshot` owns no component data — `ZEngine::ECS::Scene` owns that. It is
 a named collection of entity IDs with a stable UUID for serialized identity.
+The serializer snapshots `Scene` → `SceneSnapshot` on save, and reconstructs
+`Scene` entities on load.
 
 ---
 
 ## 2. `ISceneSerializer`
 
 ```cpp
-// ZEngine/Scene/ISceneSerializer.h
+// ZEngine/ZEngine/ECS/ISceneSerializer.h  (new file)
 #pragma once
-#include <Scene/Scene.h>
-#include <VFS/IVFSContext.h>
-#include <VFS/VFSPath.h>
-#include <VFS/VFSResult.h>
+#include <ZEngine/Core/VFS/IVFSContext.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Core/VFS/VFSError.h>   // VFSResult<T> lives here
+#include <ZEngine/ECS/SceneSnapshot.h>
 
-namespace ZEngine::Scene
+namespace ZEngine::ECS
 {
     class ISceneSerializer
     {
     public:
         virtual ~ISceneSerializer() = default;
 
-        virtual VFS::VFSResult<void> Serialize(
-            VFS::IVFSContext& ctx,
-            const VFS::VFSPath& path,
-            const Scene& scene) = 0;
+        virtual Core::VFS::VFSResult<void> Serialize(
+            Core::VFS::IVFSContext& ctx,
+            const Core::VFS::VFSPath& path,
+            const SceneSnapshot& scene) = 0;
 
-        virtual VFS::VFSResult<void> Deserialize(
-            VFS::IVFSContext& ctx,
-            const VFS::VFSPath& path,
-            Scene& out_scene) = 0;
+        virtual Core::VFS::VFSResult<void> Deserialize(
+            Core::VFS::IVFSContext& ctx,
+            const Core::VFS::VFSPath& path,
+            SceneSnapshot& out_scene) = 0;
     };
 }
 ```
@@ -98,68 +107,80 @@ Components register their own serialize/deserialize functions so the serializer
 never has a hardcoded list of component types.
 
 ```cpp
-// ZEngine/Scene/ComponentSerializerRegistry.h
+// ZEngine/ZEngine/ECS/ComponentSerializerRegistry.h  (new file)
 #pragma once
-#include <ECS/ComponentTypeID.h>
-#include <ECS/EntityID.h>
-#include <functional>
+#include <ZEngine/ECS/ComponentTypeID.h>
+#include <ZEngine/ECS/EntityID.h>
+#include <ZEngine/ECS/Scene.h>
 #include <nlohmann/json.hpp>
 
-namespace ZEngine::Scene
+namespace ZEngine::ECS
 {
+    // C-style callback types — no std::function, no heap on call.
+    // Context pointer carries the caller's state (e.g. Scene*, arena).
+    using SerializeYAMLFn    = void (*)(void* ctx, EntityID id, const Scene& scene, nlohmann::json& out);
+    using DeserializeYAMLFn  = void (*)(void* ctx, EntityID id, Scene& scene, const nlohmann::json& in);
+    using SerializeBinaryFn  = void (*)(void* ctx, EntityID id, const Scene& scene, Core::Containers::Array<uint8_t>& out);
+    using DeserializeBinaryFn= void (*)(void* ctx, EntityID id, Scene& scene, const uint8_t* data, uint32_t size);
+
     struct ComponentSerializeFns
     {
-        // YAML path: write component data into a json object
-        std::function<void(ECS::EntityID, nlohmann::json&)>       SerializeYAML;
-        // YAML path: read component data from a json object, apply to entity
-        std::function<void(ECS::EntityID, const nlohmann::json&)> DeserializeYAML;
-
-        // Binary path: write component data into a byte buffer
-        std::function<void(ECS::EntityID, Core::Containers::Array<uint8_t>&)> SerializeBinary;
-        // Binary path: read component data from a byte span, apply to entity
-        std::function<void(ECS::EntityID, const uint8_t* data, uint32_t size)> DeserializeBinary;
+        SerializeYAMLFn     SerializeYAML    = nullptr;
+        DeserializeYAMLFn   DeserializeYAML  = nullptr;
+        SerializeBinaryFn   SerializeBinary  = nullptr;
+        DeserializeBinaryFn DeserializeBinary= nullptr;
+        void*               Context          = nullptr; // passed as first arg to all callbacks
     };
+
+    using ForEachSerializerFn = void (*)(void* ctx, ComponentTypeID type_id, const ComponentSerializeFns& fns);
 
     class ComponentSerializerRegistry
     {
     public:
         static ComponentSerializerRegistry& Get();
 
-        void Register(ECS::ComponentTypeID type_id, ComponentSerializeFns fns);
+        void Register(ComponentTypeID type_id, ComponentSerializeFns fns);
 
-        const ComponentSerializeFns* Lookup(ECS::ComponentTypeID type_id) const;
+        const ComponentSerializeFns* Lookup(ComponentTypeID type_id) const;
 
-        // Iterates all registered type IDs in stable order
-        void ForEach(std::function<void(ECS::ComponentTypeID, const ComponentSerializeFns&)> fn) const;
+        // Iterates all registered type IDs in stable order.
+        void ForEach(ForEachSerializerFn fn, void* ctx) const;
 
     private:
-        Core::Containers::Array<ECS::ComponentTypeID>       m_ids;
-        Core::Containers::Array<ComponentSerializeFns>      m_fns;
+        Core::Containers::Array<ComponentTypeID>        m_ids;
+        Core::Containers::Array<ComponentSerializeFns>  m_fns;
     };
 }
 ```
 
-**Implementation note**: The `std::function` fields shown above are pseudocode for clarity. The actual implementation must use the engine's C-style callback convention — `{ void* Context; void (*Fn)(...); }` — consistent with `ImportCompleteCallback`, `MainThreadScheduler::Post`, and other engine APIs. `std::function` allocates on capture and is not allowed in engine-layer types.
-
 **Registration example** (in a component's `.cpp`):
 ```cpp
 // TransformComponent.cpp
+//
+// Static callback functions — C-style, no captures, ctx carries Scene*.
+static void SerializeTransformYAML(void* ctx, EntityID id, const Scene& scene, nlohmann::json& j)
+{
+    const auto* t = scene.GetComponent<TransformComponent>(id);
+    if (!t) return;
+    j["position"] = {t->Position.x, t->Position.y, t->Position.z};
+    j["rotation"] = {t->Rotation.x, t->Rotation.y, t->Rotation.z};
+    j["scale"]    = {t->Scale.x,    t->Scale.y,    t->Scale.z};
+}
+
+static void DeserializeTransformYAML(void* ctx, EntityID id, Scene& scene, const nlohmann::json& j)
+{
+    auto& t = *scene.GetComponent<TransformComponent>(id);  // added by caller before dispatch
+    auto p = j["position"]; t.Position = {p[0], p[1], p[2]};
+    auto r = j["rotation"]; t.Rotation = {r[0], r[1], r[2]};
+    auto s = j["scale"];    t.Scale    = {s[0], s[1], s[2]};
+}
+
 static bool s_registered = [] {
     ComponentSerializerRegistry::Get().Register(
-        ComponentTypeID::Of<TransformComponent>(),
+        ComponentTypeOf<TransformComponent>(),   // free function in ZEngine::ECS
         {
-            .SerializeYAML = [](EntityID id, nlohmann::json& j) {
-                auto& t = ECS::Get<TransformComponent>(id);
-                j["position"] = {t.Position.x, t.Position.y, t.Position.z};
-                j["rotation"] = {t.Rotation.x, t.Rotation.y, t.Rotation.z, t.Rotation.w};
-                j["scale"]    = {t.Scale.x,    t.Scale.y,    t.Scale.z};
-            },
-            .DeserializeYAML = [](EntityID id, const nlohmann::json& j) {
-                auto& t = ECS::GetOrAdd<TransformComponent>(id);
-                auto p = j["position"]; t.Position = {p[0], p[1], p[2]};
-                auto r = j["rotation"]; t.Rotation = {r[0], r[1], r[2], r[3]};
-                auto s = j["scale"];    t.Scale    = {s[0], s[1], s[2]};
-            },
+            .SerializeYAML    = SerializeTransformYAML,
+            .DeserializeYAML  = DeserializeTransformYAML,
             // ... binary fns ...
         });
     return true;
@@ -213,29 +234,29 @@ scene:
 Available only in editor builds (`#ifdef ZENGINE_EDITOR`).
 
 ```cpp
-// ZEngine/Scene/YAMLSceneSerializer.h
+// ZEngine/ZEngine/ECS/YAMLSceneSerializer.h  (new file)
 #pragma once
 #ifdef ZENGINE_EDITOR
-#include <Scene/ISceneSerializer.h>
+#include <ZEngine/ECS/ISceneSerializer.h>
 
-namespace ZEngine::Scene
+namespace ZEngine::ECS
 {
     class YAMLSceneSerializer final : public ISceneSerializer
     {
     public:
-        VFS::VFSResult<void> Serialize(
-            VFS::IVFSContext& ctx,
-            const VFS::VFSPath& path,
-            const Scene& scene) override;
+        Core::VFS::VFSResult<void> Serialize(
+            Core::VFS::IVFSContext& ctx,
+            const Core::VFS::VFSPath& path,
+            const SceneSnapshot& scene) override;
 
-        VFS::VFSResult<void> Deserialize(
-            VFS::IVFSContext& ctx,
-            const VFS::VFSPath& path,
-            Scene& out_scene) override;
+        Core::VFS::VFSResult<void> Deserialize(
+            Core::VFS::IVFSContext& ctx,
+            const Core::VFS::VFSPath& path,
+            SceneSnapshot& out_scene) override;
 
     private:
         // Returns Fail if any asset reference is a file path instead of a UUID
-        static VFS::VFSResult<void> ValidateAssetRefs(const nlohmann::json& entity_json);
+        static Core::VFS::VFSResult<void> ValidateAssetRefs(const nlohmann::json& entity_json);
     };
 }
 #endif // ZENGINE_EDITOR
@@ -291,27 +312,27 @@ of the scene file handle.
 ## 7. `BinarySceneSerializer`
 
 ```cpp
-// ZEngine/Scene/BinarySceneSerializer.h
+// ZEngine/ZEngine/ECS/BinarySceneSerializer.h  (new file)
 #pragma once
-#include <Scene/ISceneSerializer.h>
+#include <ZEngine/ECS/ISceneSerializer.h>
 
-namespace ZEngine::Scene
+namespace ZEngine::ECS
 {
-    constexpr uint32_t SCENE_BINARY_MAGIC   = 0x5A534345u;
+    constexpr uint32_t SCENE_BINARY_MAGIC   = 0x5A534345u;  // 'ZSCE'
     constexpr uint16_t SCENE_BINARY_VERSION = 1;
 
     class BinarySceneSerializer final : public ISceneSerializer
     {
     public:
-        VFS::VFSResult<void> Serialize(
-            VFS::IVFSContext& ctx,
-            const VFS::VFSPath& path,
-            const Scene& scene) override;
+        Core::VFS::VFSResult<void> Serialize(
+            Core::VFS::IVFSContext& ctx,
+            const Core::VFS::VFSPath& path,
+            const SceneSnapshot& scene) override;
 
-        VFS::VFSResult<void> Deserialize(
-            VFS::IVFSContext& ctx,
-            const VFS::VFSPath& path,
-            Scene& out_scene) override;
+        Core::VFS::VFSResult<void> Deserialize(
+            Core::VFS::IVFSContext& ctx,
+            const Core::VFS::VFSPath& path,
+            SceneSnapshot& out_scene) override;
     };
 }
 ```
@@ -319,8 +340,8 @@ namespace ZEngine::Scene
 **`Serialize` implementation notes**:
 - Build `StringPool` first (collect all entity names, dedup, record offsets)
 - Write `SceneHeader`, `EntityBlock[]`, `ComponentSection[]` in order, then `StringPool`
-- Use `ComponentSerializerRegistry::ForEach` to iterate in stable registered order
-- All writes go through `IVFSContext::OpenFile(path, Write | Create | Truncate)`
+- Use `ComponentSerializerRegistry::ForEach(fn, ctx)` with a C-style callback to iterate in stable registered order
+- All writes go through `ctx.Open(path, VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Truncate)` (method is `Open`, not `OpenFile`)
 
 **`Deserialize` implementation notes**:
 - Read full file into arena buffer via `ReadAt`
@@ -358,11 +379,13 @@ keys ignored); no migration needed for the YAML format.
 // In YAMLSceneSerializer::Deserialize, after parsing each asset_uuid field:
 auto parsed = uuids::uuid::from_string(uuid_str);
 if (!parsed.has_value())
-    return VFSResult<void>::Fail(VFSError::InvalidData);  // was a path, not a UUID
+    return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidData);
 
 // Optional: warn if UUID not found in AssetRegistry (don't crash — asset may still be loading)
-if (!AssetRegistry::Get().LookupByUUID(parsed.value()))
-    ZENGINE_LOG_WARN("Scene references unknown asset UUID: {}", uuid_str);
+// Access: AssetManager::Instance()->Registry->FindByUUID(uuid) returns AssetRecord* or nullptr
+auto* mgr = Managers::AssetManager::Instance();
+if (mgr && mgr->Registry && !mgr->Registry->FindByUUID(parsed.value()))
+    ZENGINE_CORE_WARN("Scene references unknown asset UUID: {}", uuid_str);
 ```
 
 The engine must never store a file path in a scene node. This is enforced at the
@@ -382,13 +405,15 @@ const uuids::uuid& uuid = parsed.value();
 // In EDITOR builds: warn and substitute placeholder asset if UUID not found.
 // In SHIPPING builds: fail hard — a scene with missing assets cannot be used.
 #ifdef ZENGINE_EDITOR
-    if (!AssetRegistry::Get().Exists(uuid)) {
+    auto* mgr = Managers::AssetManager::Instance();
+    if (!mgr || !mgr->Registry || !mgr->Registry->FindByUUID(uuid)) {
         ZENGINE_CORE_WARN("Scene references missing asset UUID: {}. "
                           "Using placeholder asset.", uuid_str);
         // use placeholder mesh / texture handle
     }
 #else
-    ZENGINE_VALIDATE_ASSERT(AssetRegistry::Get().Exists(uuid),
+    auto* mgr = Managers::AssetManager::Instance();
+    ZENGINE_VALIDATE_ASSERT(mgr && mgr->Registry && mgr->Registry->FindByUUID(uuid),
         "Scene serialization: asset UUID not found in registry: %s. "
         "Rebuild the scene or reimport missing assets.", uuid_str);
 #endif
@@ -450,6 +475,7 @@ shipping builds via `#ifdef ZENGINE_EDITOR`.
 ## 12. Unit Tests
 
 File: `ZEngine/tests/Scene/SceneSerializationTest.cpp`
+**Note:** `ZEngine/tests/Scene/` directory does not yet exist — it must be created alongside the serializer implementation.
 
 ### Test 1 — YAML round-trip preserves all entity IDs
 ```cpp
@@ -626,15 +652,16 @@ TEST(BinarySceneSerializer, EmptyScene)
 
 ## 13. Deliverables Checklist
 
-- [ ] `ZEngine/Scene/Scene.h`
-- [ ] `ZEngine/Scene/ISceneSerializer.h`
-- [ ] `ZEngine/Scene/ComponentSerializerRegistry.h` + `.cpp`
-- [ ] `ZEngine/Scene/YAMLSceneSerializer.h` + `.cpp` (`#ifdef ZENGINE_EDITOR`)
-- [ ] `ZEngine/Scene/BinarySceneSerializer.h` + `.cpp`
-- [ ] `ZEngine/Scene/SceneMigration.h` + `.cpp`
-- [ ] `TransformComponent`, `MeshComponent`, `MaterialComponent` register YAML + binary fns
+- [ ] `ZEngine/ZEngine/ECS/SceneSnapshot.h` — lightweight snapshot struct (SceneUUID, Name, Entities)
+- [ ] `ZEngine/ZEngine/ECS/ISceneSerializer.h` — abstract interface
+- [ ] `ZEngine/ZEngine/ECS/ComponentSerializerRegistry.h` + `.cpp` — C-style callbacks, no std::function
+- [ ] `ZEngine/ZEngine/ECS/YAMLSceneSerializer.h` + `.cpp` (`#ifdef ZENGINE_EDITOR`)
+- [ ] `ZEngine/ZEngine/ECS/BinarySceneSerializer.h` + `.cpp`
+- [ ] `ZEngine/ZEngine/ECS/SceneMigration.h` + `.cpp`
+- [ ] All 8 built-in components register YAML + binary serialize fns via `ComponentTypeOf<T>()`
 - [ ] `ValidateAssetRefs` rejects any path-like string in `*_uuid` fields
+- [ ] Asset lookup uses `AssetManager::Instance()->Registry->FindByUUID(uuid)` — not `AssetRegistry::Get()`
 - [ ] Cook step wired: `.scene.yaml` → `YAMLSceneSerializer` → `BinarySceneSerializer` → pak
 - [ ] `#ifdef ZENGINE_EDITOR` excludes `YAMLSceneSerializer` from ship builds
-- [ ] `tests/Scene/SceneSerializationTest.cpp` (8 tests)
+- [ ] Create `ZEngine/tests/Scene/` directory + `SceneSerializationTest.cpp` (8 tests)
 - [ ] Manual smoke test: save scene in editor → open in hex editor → confirm `ZSCE` magic; reload in editor → entity names intact
