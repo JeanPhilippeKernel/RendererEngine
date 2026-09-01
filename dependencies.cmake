@@ -109,8 +109,13 @@ Fetchcontent_Declare(
     GIT_REPOSITORY https://github.com/mattconte/tlsf
     GIT_SHALLOW TRUE
     SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/tlsf
-    
 )
+FetchContent_GetProperties(tlsf)
+if(NOT tlsf_POPULATED)
+    FetchContent_Populate(tlsf)
+endif()
+add_library(tlsf STATIC ${FETCHCONTENT_BASE_DIR}/tlsf/tlsf.c)
+target_include_directories(tlsf PUBLIC ${FETCHCONTENT_BASE_DIR}/tlsf)
 
 Fetchcontent_Declare(
     CLI11
@@ -226,7 +231,6 @@ FetchContent_MakeAvailable(
   SPIRV-Headers
   spirv_cross_core
   nlohmann_json
-  tlsf
   CLI11
   rapidhash
   SPIRV-Tools
@@ -298,6 +302,7 @@ target_link_libraries(External_libs
          ufbx
          meshoptimizer
          freetype
+         tlsf
 )
 
 if(ZENGINE_TRACY)
