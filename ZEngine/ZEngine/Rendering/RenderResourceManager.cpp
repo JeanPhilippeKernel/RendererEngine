@@ -1,3 +1,19 @@
+// Route STBI allocation through the per-worker TLSFSlab when available so
+// stbi_load pixel buffers stay on the slab rather than the system heap.
+// Falls back to malloc/free/realloc on the main thread (slab = nullptr).
+#include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <cstdlib>
+#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
+#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Realloc(p, newsz) : std::realloc(p, newsz))
+#define STBI_FREE(p)                                    \
+    do                                                  \
+    {                                                   \
+        if (ZEngine::Helpers::GetWorkerSlab())          \
+            ZEngine::Helpers::GetWorkerSlab()->Free(p); \
+        else                                            \
+            std::free(p);                               \
+    } while (0)
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __GNUC__
 #define STBI_NO_SIMD
@@ -8,7 +24,6 @@
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
-#include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
