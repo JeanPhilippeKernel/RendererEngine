@@ -11,7 +11,7 @@ using namespace ZEngine::Rendering::Buffers;
 
 constexpr float epsilon = 1e-2;
 
-static bool approximatelyEqual(float a, float b, float eps)
+static bool     approximatelyEqual(float a, float b, float eps)
 {
     return fabs(a - b) <= eps * fmax(1.0f, fmax(fabs(a), fabs(b)));
 }
@@ -20,7 +20,7 @@ TEST(BitmapTest, GetOrSetPixel)
 {
     ZEngine::Core::Maths::Vec4f p(0.5, 0.5, 0.8, 0.0);
 
-    Bitmap bitmap = Bitmap::Create(100, 100, 1, 3, BitmapFormat::UnsignedByte, BitmapType::Texture2D);
+    Bitmap                      bitmap = Bitmap::Create(100, 100, 1, 3, BitmapFormat::UnsignedByte, BitmapType::Texture2D);
     bitmap.SetPixel(0, 0, p);
 
     auto pp = bitmap.GetPixel(0, 0);
@@ -33,11 +33,11 @@ TEST(BitmapTest, GetOrSetPixel)
 TEST(BitmapTest, TestVerticalCross)
 {
     int          width = 0, height = 0, channel = 0;
-    const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
+    const float* image_data     = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
 
-    Bitmap in             = Bitmap::FromData(width, height, 1, channel, BitmapFormat::Float, BitmapType::Texture2D, image_data);
-    Bitmap vertical_cross = BitmapConvert::EquirectToCross(in);
-    Bitmap cubemap        = BitmapConvert::CrossToCubemap(vertical_cross);
+    Bitmap       in             = Bitmap::FromData(width, height, 1, channel, BitmapFormat::Float, BitmapType::Texture2D, image_data);
+    Bitmap       vertical_cross = BitmapConvert::EquirectToCross(in);
+    Bitmap       cubemap        = BitmapConvert::CrossToCubemap(vertical_cross);
     stbi_image_free((void*) image_data);
 
     stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
@@ -51,8 +51,8 @@ TEST(BitmapTest, TestVerticalCross)
 
 TEST(BitmapTest, TestVerticalCross2)
 {
-    int          width = 0, height = 0, channel = 0;
-    const float* image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
+    int                width = 0, height = 0, channel = 0;
+    const float*       image_data = stbi_loadf("piazza_bologni_1k.hdr", &width, &height, &channel, 3);
 
     std::vector<float> image_buffer_32bit;
 

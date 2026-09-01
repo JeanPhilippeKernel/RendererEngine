@@ -11,8 +11,7 @@ namespace ZEngine::Rendering::Buffers
         FreeBuffer();
     }
 
-    Bitmap::Bitmap(Bitmap&& o) noexcept
-        : Width(o.Width), Height(o.Height), Layers(o.Layers), Channel(o.Channel), Type(o.Type), Format(o.Format), Buffer(o.Buffer), BufferSize(o.BufferSize), Slab(o.Slab)
+    Bitmap::Bitmap(Bitmap&& o) noexcept : Width(o.Width), Height(o.Height), Layers(o.Layers), Channel(o.Channel), Type(o.Type), Format(o.Format), Buffer(o.Buffer), BufferSize(o.BufferSize), Slab(o.Slab)
     {
         o.Buffer     = nullptr;
         o.BufferSize = 0;
@@ -24,15 +23,15 @@ namespace ZEngine::Rendering::Buffers
         if (this != &o)
         {
             FreeBuffer();
-            Width      = o.Width;
-            Height     = o.Height;
-            Layers     = o.Layers;
-            Channel    = o.Channel;
-            Type       = o.Type;
-            Format     = o.Format;
-            Buffer     = o.Buffer;
-            BufferSize = o.BufferSize;
-            Slab       = o.Slab;
+            Width        = o.Width;
+            Height       = o.Height;
+            Layers       = o.Layers;
+            Channel      = o.Channel;
+            Type         = o.Type;
+            Format       = o.Format;
+            Buffer       = o.Buffer;
+            BufferSize   = o.BufferSize;
+            Slab         = o.Slab;
 
             o.Buffer     = nullptr;
             o.BufferSize = 0;
@@ -84,8 +83,10 @@ namespace ZEngine::Rendering::Buffers
     {
         switch (fmt)
         {
-            case BitmapFormat::UnsignedByte: return 1;
-            case BitmapFormat::Float:        return 4;
+            case BitmapFormat::UnsignedByte:
+                return 1;
+            case BitmapFormat::Float:
+                return 4;
         }
         return 0;
     }
@@ -95,19 +96,27 @@ namespace ZEngine::Rendering::Buffers
         if (Format == BitmapFormat::UnsignedByte)
         {
             const int ofs = Channel * (y * Width + x);
-            if (Channel > 0) Buffer[ofs + 0] = uint8_t(pixel.x * 255.0f);
-            if (Channel > 1) Buffer[ofs + 1] = uint8_t(pixel.y * 255.0f);
-            if (Channel > 2) Buffer[ofs + 2] = uint8_t(pixel.z * 255.0f);
-            if (Channel > 3) Buffer[ofs + 3] = uint8_t(pixel.w * 255.0f);
+            if (Channel > 0)
+                Buffer[ofs + 0] = uint8_t(pixel.x * 255.0f);
+            if (Channel > 1)
+                Buffer[ofs + 1] = uint8_t(pixel.y * 255.0f);
+            if (Channel > 2)
+                Buffer[ofs + 2] = uint8_t(pixel.z * 255.0f);
+            if (Channel > 3)
+                Buffer[ofs + 3] = uint8_t(pixel.w * 255.0f);
         }
         else if (Format == BitmapFormat::Float)
         {
             const int ofs  = Channel * (y * Width + x);
             float*    data = reinterpret_cast<float*>(Buffer);
-            if (Channel > 0) data[ofs + 0] = pixel.x;
-            if (Channel > 1) data[ofs + 1] = pixel.y;
-            if (Channel > 2) data[ofs + 2] = pixel.z;
-            if (Channel > 3) data[ofs + 3] = pixel.w;
+            if (Channel > 0)
+                data[ofs + 0] = pixel.x;
+            if (Channel > 1)
+                data[ofs + 1] = pixel.y;
+            if (Channel > 2)
+                data[ofs + 2] = pixel.z;
+            if (Channel > 3)
+                data[ofs + 3] = pixel.w;
         }
     }
 
@@ -116,21 +125,13 @@ namespace ZEngine::Rendering::Buffers
         if (Format == BitmapFormat::UnsignedByte)
         {
             const int ofs = Channel * (y * Width + x);
-            return Core::Maths::Vec4f(
-                Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f,
-                Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f,
-                Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f,
-                Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
+            return Core::Maths::Vec4f(Channel > 0 ? float(Buffer[ofs + 0]) / 255.0f : 0.0f, Channel > 1 ? float(Buffer[ofs + 1]) / 255.0f : 0.0f, Channel > 2 ? float(Buffer[ofs + 2]) / 255.0f : 0.0f, Channel > 3 ? float(Buffer[ofs + 3]) / 255.0f : 0.0f);
         }
         else if (Format == BitmapFormat::Float)
         {
             const int    ofs  = Channel * (y * Width + x);
             const float* data = reinterpret_cast<const float*>(Buffer);
-            return Core::Maths::Vec4f(
-                Channel > 0 ? data[ofs + 0] : 0.0f,
-                Channel > 1 ? data[ofs + 1] : 0.0f,
-                Channel > 2 ? data[ofs + 2] : 0.0f,
-                Channel > 3 ? data[ofs + 3] : 0.0f);
+            return Core::Maths::Vec4f(Channel > 0 ? data[ofs + 0] : 0.0f, Channel > 1 ? data[ofs + 1] : 0.0f, Channel > 2 ? data[ofs + 2] : 0.0f, Channel > 3 ? data[ofs + 3] : 0.0f);
         }
         return Core::Maths::Vec4f();
     }
@@ -182,13 +183,20 @@ namespace ZEngine::Rendering::Buffers
 
             switch (face_id)
             {
-                case 0: return Core::Maths::Vec3f(-1.0f,  A - 1.0f, B - 1.0f);
-                case 1: return Core::Maths::Vec3f(A - 1.0f, -1.0f, 1.0f - B);
-                case 2: return Core::Maths::Vec3f(1.0f,  A - 1.0f, 1.0f - B);
-                case 3: return Core::Maths::Vec3f(1.0f - A,  1.0f, 1.0f - B);
-                case 4: return Core::Maths::Vec3f(B - 1.0f, A - 1.0f,  1.0f);
-                case 5: return Core::Maths::Vec3f(1.0f - B, A - 1.0f, -1.0f);
-                default: return Core::Maths::Vec3f{};
+                case 0:
+                    return Core::Maths::Vec3f(-1.0f, A - 1.0f, B - 1.0f);
+                case 1:
+                    return Core::Maths::Vec3f(A - 1.0f, -1.0f, 1.0f - B);
+                case 2:
+                    return Core::Maths::Vec3f(1.0f, A - 1.0f, 1.0f - B);
+                case 3:
+                    return Core::Maths::Vec3f(1.0f - A, 1.0f, 1.0f - B);
+                case 4:
+                    return Core::Maths::Vec3f(B - 1.0f, A - 1.0f, 1.0f);
+                case 5:
+                    return Core::Maths::Vec3f(1.0f - B, A - 1.0f, -1.0f);
+                default:
+                    return Core::Maths::Vec3f{};
             }
         }
 
@@ -197,8 +205,8 @@ namespace ZEngine::Rendering::Buffers
             if (input.Type != BitmapType::Texture2D)
                 return Bitmap();
 
-            const int face_size = input.Width / 4;
-            Bitmap    out       = Bitmap::Create(face_size * 3, face_size * 4, 1, input.Channel, input.Format, BitmapType::Texture2D, slab);
+            const int                face_size      = input.Width / 4;
+            Bitmap                   out            = Bitmap::Create(face_size * 3, face_size * 4, 1, input.Channel, input.Format, BitmapType::Texture2D, slab);
 
             const Core::Maths::IVec2 face_offsets[] = {
                 Core::Maths::IVec2{    face_size, face_size * 3},
@@ -225,10 +233,10 @@ namespace ZEngine::Rendering::Buffers
                         const float              Uf    = float(2.0f * face_size * (theta + Core::Maths::PI<float>) / Core::Maths::PI<float>);
                         const float              Vf    = float(2.0f * face_size * (Core::Maths::PI<float> / 2.0f - phi) / Core::Maths::PI<float>);
 
-                        const int U1 = Core::Maths::clamp(int(floor(Uf)),     0, cw);
-                        const int V1 = Core::Maths::clamp(int(floor(Vf)),     0, ch);
-                        const int U2 = Core::Maths::clamp(U1 + 1,             0, cw);
-                        const int V2 = Core::Maths::clamp(V1 + 1,             0, ch);
+                        const int                U1    = Core::Maths::clamp(int(floor(Uf)), 0, cw);
+                        const int                V1    = Core::Maths::clamp(int(floor(Vf)), 0, ch);
+                        const int                U2    = Core::Maths::clamp(U1 + 1, 0, cw);
+                        const int                V2    = Core::Maths::clamp(V1 + 1, 0, ch);
 
                         const float              s     = Uf - U1;
                         const float              t     = Vf - V1;
@@ -247,13 +255,13 @@ namespace ZEngine::Rendering::Buffers
 
         Bitmap CrossToCubemap(const Bitmap& input, Core::Memory::TLSFSlab* slab)
         {
-            const int face_w  = input.Width / 3;
-            const int face_h  = input.Height / 4;
-            const int px_size = input.Channel * Bitmap::BytePerChannel(input.Format);
+            const int      face_w  = input.Width / 3;
+            const int      face_h  = input.Height / 4;
+            const int      px_size = input.Channel * Bitmap::BytePerChannel(input.Format);
 
-            Bitmap         out         = Bitmap::Create(face_w, face_h, 6, input.Channel, input.Format, BitmapType::CubeMap, slab);
-            const uint8_t* src         = input.Buffer;
-            uint8_t*       dst         = out.Buffer;
+            Bitmap         out     = Bitmap::Create(face_w, face_h, 6, input.Channel, input.Format, BitmapType::CubeMap, slab);
+            const uint8_t* src     = input.Buffer;
+            uint8_t*       dst     = out.Buffer;
 
             for (int face = 0; face < 6; ++face)
             {
@@ -264,16 +272,32 @@ namespace ZEngine::Rendering::Buffers
                         int px = 0, py = 0;
                         switch (face)
                         {
-                            case 0: px = i;                        py = face_h + j;                break; // right
-                            case 1: px = 2 * face_w + i;          py = face_h + j;                break; // left
-                            case 2: px = 2 * face_w - (i + 1);    py = face_h - (j + 1);          break; // up
-                            case 3: px = 2 * face_w - (i + 1);    py = 3 * face_h - (j + 1);      break; // down
-                            case 4: px = 2 * face_w - (i + 1);    py = input.Height - (j + 1);    break; // front
-                            case 5: px = face_w + i;               py = face_h + j;                break; // back
+                            case 0:
+                                px = i;
+                                py = face_h + j;
+                                break; // right
+                            case 1:
+                                px = 2 * face_w + i;
+                                py = face_h + j;
+                                break; // left
+                            case 2:
+                                px = 2 * face_w - (i + 1);
+                                py = face_h - (j + 1);
+                                break; // up
+                            case 3:
+                                px = 2 * face_w - (i + 1);
+                                py = 3 * face_h - (j + 1);
+                                break; // down
+                            case 4:
+                                px = 2 * face_w - (i + 1);
+                                py = input.Height - (j + 1);
+                                break; // front
+                            case 5:
+                                px = face_w + i;
+                                py = face_h + j;
+                                break; // back
                         }
-                        ZENGINE_VALIDATE_ASSERT(
-                            Helpers::secure_memcpy(dst, px_size, src + (py * input.Width + px) * px_size, px_size) == Helpers::MEMORY_OP_SUCCESS,
-                            "BitmapConvert::CrossToCubemap: pixel copy failed")
+                        ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(dst, px_size, src + (py * input.Width + px) * px_size, px_size) == Helpers::MEMORY_OP_SUCCESS, "BitmapConvert::CrossToCubemap: pixel copy failed")
                         dst += px_size;
                     }
                 }

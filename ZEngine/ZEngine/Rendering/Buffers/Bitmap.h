@@ -1,6 +1,6 @@
 #pragma once
-#include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Core/Maths/Vec.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <cstddef>
 #include <cstdint>
 
@@ -27,18 +27,18 @@ namespace ZEngine::Rendering::Buffers
         Bitmap& operator=(const Bitmap&) = delete;
 
         Bitmap(Bitmap&& o) noexcept;
-        Bitmap& operator=(Bitmap&& o) noexcept;
+        Bitmap&                 operator=(Bitmap&& o) noexcept;
 
         /// @brief Allocate a zeroed buffer. layers=1 for Texture2D, layers=6 for CubeMap.
-        static Bitmap Create(int w, int h, int layers, int ch, BitmapFormat fmt, BitmapType type, Core::Memory::TLSFSlab* slab = nullptr);
+        static Bitmap           Create(int w, int h, int layers, int ch, BitmapFormat fmt, BitmapType type, Core::Memory::TLSFSlab* slab = nullptr);
 
         /// @brief Allocate and copy from data.
-        static Bitmap FromData(int w, int h, int layers, int ch, BitmapFormat fmt, BitmapType type, const void* data, Core::Memory::TLSFSlab* slab = nullptr);
+        static Bitmap           FromData(int w, int h, int layers, int ch, BitmapFormat fmt, BitmapType type, const void* data, Core::Memory::TLSFSlab* slab = nullptr);
 
-        void SetPixel(int x, int y, const Core::Maths::Vec4f& pixel);
-        Core::Maths::Vec4f GetPixel(int x, int y) const;
+        void                    SetPixel(int x, int y, const Core::Maths::Vec4f& pixel);
+        Core::Maths::Vec4f      GetPixel(int x, int y) const;
 
-        static int BytePerChannel(BitmapFormat fmt);
+        static int              BytePerChannel(BitmapFormat fmt);
 
         int                     Width      = 0;
         int                     Height     = 0;
@@ -59,7 +59,7 @@ namespace ZEngine::Rendering::Buffers
     namespace BitmapConvert
     {
         Bitmap EquirectToCross(const Bitmap& equirect, Core::Memory::TLSFSlab* slab = nullptr);
-        Bitmap CrossToCubemap (const Bitmap& cross,    Core::Memory::TLSFSlab* slab = nullptr);
-    }
+        Bitmap CrossToCubemap(const Bitmap& cross, Core::Memory::TLSFSlab* slab = nullptr);
+    } // namespace BitmapConvert
 
 } // namespace ZEngine::Rendering::Buffers
