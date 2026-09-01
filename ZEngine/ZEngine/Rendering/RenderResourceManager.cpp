@@ -58,6 +58,7 @@ namespace ZEngine::Rendering
         InitGlobalBuffers();
         InitTextureTimelines();
         InitUploadSlabs(static_cast<uint32_t>(Helpers::ThreadPoolHelper::Pool->WorkerCount));
+        Helpers::ThreadPoolHelper::Pool->InitClosureSlab(m_device->Arena, ZKilo(512));
 
         registry->SetOnReadyCallback(this, [](void* ctx, const uuids::uuid& uuid, AssetHandle handle) {
             auto*              rrm = static_cast<RenderResourceManager*>(ctx);
@@ -1348,9 +1349,9 @@ namespace ZEngine::Rendering
                         ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", captured_filename)
                         return;
                     }
-                    size_t bytes = cubemap.Buffer.size();
+                    size_t bytes = cubemap.BufferSize;
                     buffer.resize(bytes);
-                    Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer.data(), bytes);
+                    Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer, bytes);
                 }
                 else
                 {
@@ -1361,28 +1362,38 @@ namespace ZEngine::Rendering
                         ZENGINE_CORE_ERROR("Failed to load texture: {}", captured_filename) return;
                     }
 
-                    std::vector<float> output_buf;
+                    Core::Memory::TLSFSlab* slab            = Helpers::GetWorkerSlab();
+                    size_t                  float_buf_bytes = 0;
+                    float*                  output_buf      = nullptr;
                     if (ch == STBI_rgb)
                     {
-                        size_t total = w * h;
-                        output_buf.resize(total * 4);
-                        stbir_resize_float(image_data, w, h, 0, output_buf.data(), w, h, 0, 4);
+                        size_t total    = (size_t) (w * h);
+                        float_buf_bytes = total * 4 * sizeof(float);
+                        output_buf      = slab ? static_cast<float*>(slab->Alloc(float_buf_bytes)) : new float[total * 4];
+                        stbir_resize_float(image_data, w, h, 0, output_buf, w, h, 0, 4);
                         for (size_t i = 0; i < total; ++i)
                             output_buf[i * 4 + 3] = 255.f;
                     }
                     else
                     {
-                        output_buf.resize((size_t) (w * h * ch));
+                        float_buf_bytes = (size_t) (w * h * ch) * sizeof(float);
+                        output_buf      = slab ? static_cast<float*>(slab->Alloc(float_buf_bytes)) : new float[w * h * ch];
+                        Helpers::secure_memcpy(output_buf, float_buf_bytes, image_data, float_buf_bytes);
                     }
                     stbi_image_free((void*) image_data);
 
-                    Rendering::Buffers::Bitmap in             = {w, h, 4, Rendering::Buffers::BitmapFormat::FLOAT, output_buf.data()};
-                    Rendering::Buffers::Bitmap vertical_cross = Rendering::Buffers::Bitmap::EquirectangularMapToVerticalCross(in);
-                    Rendering::Buffers::Bitmap cubemap        = Rendering::Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross);
+                    Rendering::Buffers::Bitmap in(w, h, 4, Rendering::Buffers::BitmapFormat::FLOAT, output_buf, slab);
+                    if (slab)
+                        slab->Free(output_buf);
+                    else
+                        delete[] output_buf;
 
-                    size_t                     bytes          = cubemap.Buffer.size();
+                    Rendering::Buffers::Bitmap vertical_cross = Rendering::Buffers::Bitmap::EquirectangularMapToVerticalCross(in, slab);
+                    Rendering::Buffers::Bitmap cubemap        = Rendering::Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross, slab);
+
+                    size_t                     bytes          = cubemap.BufferSize;
                     buffer.resize(bytes);
-                    Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer.data(), bytes);
+                    Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer, bytes);
                 }
             }
             else
