@@ -1,9 +1,31 @@
 # Scene Serialization — YAML (Dev) + Binary (Ship)
 
-**Priority:** P3 — Implement after ECS core, VFS Ticket 5 (stable UUIDs), and import pipeline  
-**Status:** Design  
-**Depends on:** `actor-ecs-architecture.md`, `vfs-ticket5-meta-uuid.md` (VFS Tickets 5–6 (stable UUIDs, AssetRegistry) — now unblocked on VFS side), `import-pipeline.md`  
-**Blocks:** Editor scene save/load
+**Priority:** P3 — Implement after ECS core, VFS Tickets 5–6, and import pipeline  
+**Status:** Design — none of this architecture is built yet  
+**Depends on:** `actor-ecs-architecture.md`, VFS Tickets 5–6 (stable UUIDs + AssetRegistry — unblocked on VFS side), `import-pipeline.md`  
+**Unblocked by:** `ZENGINE_EDITOR` compile definition now available; `uuids::uuid` (stduuid) vendored  
+**Blocks:** Structured editor scene save/load, scene cook pipeline
+
+---
+
+## Current State (interim implementation)
+
+`Tetragrama/Serializers/EditorSceneSerializer` is the **working** scene serializer today.
+It is NOT this design — it is a temporary implementation that will be replaced.
+
+| Property | Current (`EditorSceneSerializer`) | Target (this doc) |
+|---|---|---|
+| Format | Custom binary `.zescene` (ZESCENE_MAGIC + SCENE_FILE_VERSION) | YAML dev / Binary ship |
+| Scope | Serializes `EditorScene` (Tetragrama type) directly | Serializes ECS `Scene` via component registry |
+| Component serialization | Hardcoded per-component blocks | `ComponentSerializerRegistry` — dynamic, plugin-safe |
+| VFS integration | Native `std::fstream` with resolved native paths | `IVFSContext` — VFS-native, testable in memory |
+| Tests | None | 8 tests planned in `tests/Scene/SceneSerializationTest.cpp` |
+| Location | `Tetragrama/Serializers/EditorSceneSerializer.h/.cpp` | `ZEngine/Scene/` (engine-layer) |
+
+The `EditorSceneSerializer` is not to be confused with the designed system. Do not extend it —
+feature work goes into the new `ISceneSerializer` architecture described below.
+
+---
 
 **Goal**: Serialize and deserialize `Scene` objects through a single `ISceneSerializer`
 interface backed by two implementations: `YAMLSceneSerializer` for development (human-readable,
@@ -117,7 +139,7 @@ namespace ZEngine::Scene
 }
 ```
 
-**Callback convention note**: The `std::function` fields in `ComponentSerializeFns` and the `ForEach` parameter allocate on capture. The engine's callback convention is a C-style fn-ptr + context — `{ void* Context; void (*Fn)(...); }` — consistent with `ImportCompleteCallback`, `MainThreadScheduler::Post`, and other engine APIs. In the final implementation, `ComponentSerializeFns` fields and `ForEach` should follow this pattern rather than `std::function`.
+**Implementation note**: The `std::function` fields shown above are pseudocode for clarity. The actual implementation must use the engine's C-style callback convention — `{ void* Context; void (*Fn)(...); }` — consistent with `ImportCompleteCallback`, `MainThreadScheduler::Post`, and other engine APIs. `std::function` allocates on capture and is not allowed in engine-layer types.
 
 **Registration example** (in a component's `.cpp`):
 ```cpp
