@@ -1382,14 +1382,14 @@ namespace ZEngine::Rendering
                     }
                     stbi_image_free((void*) image_data);
 
-                    Rendering::Buffers::Bitmap in(w, h, 4, Rendering::Buffers::BitmapFormat::FLOAT, output_buf, slab);
+                    Rendering::Buffers::Bitmap in = Rendering::Buffers::Bitmap::FromData(w, h, 1, 4, Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::Texture2D, output_buf, slab);
                     if (slab)
                         slab->Free(output_buf);
                     else
                         delete[] output_buf;
 
-                    Rendering::Buffers::Bitmap vertical_cross = Rendering::Buffers::Bitmap::EquirectangularMapToVerticalCross(in, slab);
-                    Rendering::Buffers::Bitmap cubemap        = Rendering::Buffers::Bitmap::VerticalCrossToCubemap(vertical_cross, slab);
+                    Rendering::Buffers::Bitmap vertical_cross = Rendering::Buffers::BitmapConvert::EquirectToCross(in, slab);
+                    Rendering::Buffers::Bitmap cubemap        = Rendering::Buffers::BitmapConvert::CrossToCubemap(vertical_cross, slab);
 
                     size_t                     bytes          = cubemap.BufferSize;
                     buffer.resize(bytes);

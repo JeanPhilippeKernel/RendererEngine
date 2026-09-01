@@ -335,8 +335,7 @@ namespace ZEngine::Importers::AssetCodec
         if (!in.good() || header.MagicNumber != ZENVMAP_MAGIC)
             return false;
 
-        out_cubemap      = Rendering::Buffers::Bitmap(header.FaceWidth, header.FaceHeight, header.LayerCount, header.Channel, Rendering::Buffers::BitmapFormat::FLOAT);
-        out_cubemap.Type = Rendering::Buffers::BitmapType::CUBE;
+        out_cubemap = Rendering::Buffers::Bitmap::Create(header.FaceWidth, header.FaceHeight, header.LayerCount, header.Channel, Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::CubeMap);
         in.read(reinterpret_cast<char*>(out_cubemap.Buffer), static_cast<std::streamsize>(header.BufferByteSize));
         return in.good();
     }
@@ -374,7 +373,7 @@ namespace ZEngine::Importers::AssetCodec
             .FaceWidth      = cubemap.Width,
             .FaceHeight     = cubemap.Height,
             .Channel        = cubemap.Channel,
-            .LayerCount     = cubemap.Depth,
+            .LayerCount     = cubemap.Layers,
             .BufferByteSize = static_cast<uint64_t>(cubemap.BufferSize),
         };
 
