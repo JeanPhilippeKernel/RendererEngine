@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Containers/SPSCQueue.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/ZEngineDef.h>
 #include <condition_variable>
@@ -26,6 +27,27 @@ namespace ZEngine::Helpers
                 Fn(Context);
         }
     };
+
+    // Per-worker TLSFSlab pointer — set by RRM at startup via SetWorkerSlab().
+    // Worker tasks call GetWorkerSlab() to obtain their exclusive allocation slab.
+    // nullptr on the main thread and on any thread where SetWorkerSlab was not called.
+    // Thread safety: each worker owns its slab exclusively — no locking required.
+    // Cross-thread Free is a data race — see issue #690.
+    inline thread_local Core::Memory::TLSFSlab* t_worker_slab = nullptr;
+
+    /// @brief Set the calling thread's worker slab. Call once per worker at task-loop start.
+    /// @param slab Pointer to the worker's TLSFSlab, or nullptr to clear.
+    inline void                                 SetWorkerSlab(Core::Memory::TLSFSlab* slab)
+    {
+        t_worker_slab = slab;
+    }
+
+    /// @brief Get the calling thread's worker slab.
+    /// @returns The slab set by SetWorkerSlab(), or nullptr if not set.
+    inline Core::Memory::TLSFSlab* GetWorkerSlab()
+    {
+        return t_worker_slab;
+    }
 
     struct ThreadPool
     {
