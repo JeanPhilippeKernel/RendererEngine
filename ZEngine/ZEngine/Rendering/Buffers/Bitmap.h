@@ -60,23 +60,28 @@ namespace ZEngine::Rendering::Buffers
         ///        and freed via slab on destruction; otherwise heap-allocated (new[]).
         Bitmap(int width, int height, int channel, BitmapFormat format, Core::Memory::TLSFSlab* slab = nullptr) : Width(width), Height(height), Channel(channel), Format(format), Slab(slab)
         {
-            Alloc((size_t) (width * height * channel * BytePerChannel(format)));
+            Alloc(static_cast<size_t>(width) * height * channel * BytePerChannel(format));
         }
 
         /// @brief Cubemap / depth variant.
         Bitmap(int width, int height, int depth, int channel, BitmapFormat format, Core::Memory::TLSFSlab* slab = nullptr) : Width(width), Height(height), Depth(depth), Channel(channel), Format(format), Slab(slab)
         {
-            Alloc((size_t) (width * height * depth * channel * BytePerChannel(format)));
+            Alloc(static_cast<size_t>(width) * height * depth * channel * BytePerChannel(format));
         }
 
         /// @brief Allocate and copy from data. slab parameter routes the buffer allocation.
         Bitmap(int width, int height, int channel, BitmapFormat format, const void* data, Core::Memory::TLSFSlab* slab = nullptr) : Width(width), Height(height), Channel(channel), Format(format), Slab(slab)
         {
-            size_t sz = (size_t) (width * height * channel * BytePerChannel(format));
-            AllocNoZero(sz);
-            if (data && Buffer)
+            size_t sz = static_cast<size_t>(width) * height * channel * BytePerChannel(format);
+            if (data)
             {
-                ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(Buffer, BufferSize, data, BufferSize) == Helpers::MEMORY_OP_SUCCESS, "Bitmap: memcpy from source data failed")
+                AllocNoZero(sz);
+                if (Buffer)
+                    ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(Buffer, BufferSize, data, BufferSize) == Helpers::MEMORY_OP_SUCCESS, "Bitmap: memcpy from source data failed")
+            }
+            else
+            {
+                Alloc(sz);
             }
         }
 
@@ -307,6 +312,8 @@ namespace ZEngine::Rendering::Buffers
     private:
         void Alloc(size_t n)
         {
+            if (n == 0)
+                return;
             BufferSize = n;
             if (Slab)
             {
@@ -321,6 +328,8 @@ namespace ZEngine::Rendering::Buffers
 
         void AllocNoZero(size_t n)
         {
+            if (n == 0)
+                return;
             BufferSize = n;
             Buffer     = Slab ? static_cast<uint8_t*>(Slab->Alloc(n)) : new uint8_t[n];
         }
