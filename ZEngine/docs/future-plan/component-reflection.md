@@ -1,10 +1,10 @@
 # ZEngine — Component Reflection
 
-**Priority:** P1 — Required before Tetragrama's inspector can display ECS components  
-**Status:** Design  
+**Priority:** P2 — Core reflection and inspector are done; remaining items are plugin SDK and editor polish  
+**Status:** Core complete; remaining work tracked in issues #704–#708  
 **Depends on:** `actor-ecs-architecture.md` (`ComponentTypeID`, `ComponentTypeOf<T>`)  
 **Relates to:** `scene-serialization.md` (`ComponentSerializerRegistry` — parallel registry, separate concern)  
-**Blocks:** Tetragrama inspector, plugin component inspector, editor entity selection
+**Blocks:** plugin component inspector (remaining), editor entity selection
 
 ---
 
@@ -31,7 +31,7 @@ reflection are two additional registries, both unimplemented today (design only)
 ```
 ComponentTypeOf<T>()            → stable numeric ComponentTypeID per type  (source of truth)  IMPLEMENTED
 ComponentSerializerRegistry     → serialize/deserialize functions per type (for save/load)     NOT YET BUILT
-ComponentReflectionRegistry     → field metadata per type (for editor display/edit)            NOT YET BUILT
+ComponentReflectionRegistry     → field metadata per type (for editor display/edit)            IMPLEMENTED
 ```
 
 All three are indexed by `ComponentTypeID`. Registration is independent — a component
@@ -239,9 +239,12 @@ namespace ZEngine::ECS {
 
 ## 7. Registration — How Engine Components Register Themselves
 
-Registration is done once at startup, in `ZGame_Initialize` for game components, or in
-the engine's `OnInitialized` for built-in components. Fields are declared as static
-arrays so their lifetimes outlive the registry.
+Each built-in component `.cpp` file defines a `RegisterXxxComponentReflection()` function
+with static-storage field arrays. `BuiltInComponentReflection.cpp` provides a single
+`RegisterBuiltInComponentReflection()` dispatcher that calls all eight functions; the
+engine calls this once at startup after `ComponentReflectionRegistry::Initialize`.
+
+Fields are declared as static arrays so their lifetimes outlive the registry.
 
 ```cpp
 // ZEngine/ECS/Components/TransformComponent.cpp
@@ -296,118 +299,30 @@ pattern as `ComponentSerializerRegistry`. Registration is idempotent if called t
 
 ## 8. How the Tetragrama Inspector Uses It
 
-The inspector iterates all components on the selected entity and draws each one using
-its registered metadata — no per-component code needed in the inspector itself.
+`InspectorPanel` (ZUI) is fully dynamic — no component type is named anywhere in the
+panel code. All rendering and editing is driven by `ComponentReflectionRegistry::ForEach`
+and `FieldDescriptor`. Plugin components are visible automatically.
 
-```cpp
-// Tetragrama/Components/InspectorViewUIComponent.cpp
-// (after migration — generic, no per-component includes)
+**Component rendering loop** (`InspectorPanel::BuildContent`):
 
-void InspectorViewUIComponent::DrawEntityInspector(ECS::EntityID id,
-                                                    ECS::Scene& scene)
-{
-    if (!scene.IsAlive(id)) return;
+1. Get the entity's `ArchetypeMask` from `Scene::GetMask(id)`.
+2. Call `ComponentReflectionRegistry::Get().ForEach(...)` — for each `ComponentMeta`
+   whose `TypeID` is present in the mask, call `Scene::GetComponentRaw(id, meta.TypeID)`
+   and render a collapsible section labelled `meta.TypeName`.
+3. Inside each section, iterate `meta.Fields`. Skip `Hidden` fields. For `ReadOnly`
+   fields render a non-editable display widget. Dispatch on `FieldDescriptor::Type`
+   to the appropriate ZUI widget (drag-float, checkbox, text input, enum dropdown, etc.).
+   Show `field.Tooltip` on hover when non-null.
 
-    ECS::ArchetypeMask mask = scene.GetMask(id);
+**"Add Component" popup** (not yet implemented — see #704):
 
-    // Iterate all registered component types
-    ECS::ComponentReflectionRegistry::Get().ForEach([&](const ECS::ComponentMeta& meta) {
-        if (!ECS::MaskHas(mask, meta.TypeID)) return;
+Below the component list, a button opens a popup that calls `ForEach` a second time
+and lists only types not already on the entity. Selecting one calls
+`Scene::AddComponentRaw(id, meta.TypeID, meta.Size, meta.Align)`.
 
-        void* raw = scene.GetComponentRaw(id, meta.TypeID);
-        if (!raw) return;
-
-        if (ImGui::CollapsingHeader(meta.TypeName)) {
-            DrawComponentFields(meta, raw);
-        }
-    });
-
-    // "Add Component" button — shows all registered types not yet on this entity
-    if (ImGui::Button("+ Add Component")) {
-        ImGui::OpenPopup("add_component_popup");
-    }
-    if (ImGui::BeginPopup("add_component_popup")) {
-        ECS::ComponentReflectionRegistry::Get().ForEach([&](const ECS::ComponentMeta& meta) {
-            if (ECS::MaskHas(mask, meta.TypeID)) return;  // already has it
-            if (ImGui::Selectable(meta.TypeName)) {
-                scene.AddComponentRaw(id, meta.TypeID, meta.Size, meta.Align);
-            }
-        });
-        ImGui::EndPopup();
-    }
-}
-
-void InspectorViewUIComponent::DrawComponentFields(const ECS::ComponentMeta& meta,
-                                                   void* data)
-{
-    ImGui::PushID(meta.TypeID);
-    for (uint32_t i = 0; i < meta.FieldCount; ++i) {
-        const ECS::FieldDescriptor& field = meta.Fields[i];
-        if (field.Hidden) continue;
-
-        void* field_ptr = static_cast<uint8_t*>(data) + field.Offset;
-
-        ImGui::BeginDisabled(field.ReadOnly);
-        DrawField(field, field_ptr);
-        if (field.Tooltip && ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", field.Tooltip);
-        ImGui::EndDisabled();
-    }
-    ImGui::PopID();
-}
-
-void InspectorViewUIComponent::DrawField(const ECS::FieldDescriptor& field,
-                                         void* ptr)
-{
-    using FT = ECS::FieldType;
-    switch (field.Type) {
-        case FT::Float:
-            ImGui::DragFloat(field.Name,
-                static_cast<float*>(ptr), 0.1f, field.Min, field.Max);
-            break;
-        case FT::Vec3f:
-            ImGui::DragFloat3(field.Name,
-                static_cast<float*>(ptr), 0.1f);
-            break;
-        case FT::Bool:
-            ImGui::Checkbox(field.Name, static_cast<bool*>(ptr));
-            break;
-        case FT::Int32:
-            ImGui::DragInt(field.Name, static_cast<int*>(ptr));
-            break;
-        case FT::EntityID: {
-            auto* eid = static_cast<ECS::EntityID*>(ptr);
-            ImGui::Text("%s: Entity #%u (gen %u)", field.Name,
-                        eid->Index, eid->Generation);
-            // TODO: entity picker button
-            break;
-        }
-        case FT::Enum: {
-            auto* val = static_cast<int32_t*>(ptr);
-            const char* current = "unknown";
-            for (uint32_t i = 0; i < field.EnumCount; ++i)
-                if (field.EnumValues[i].Value == *val)
-                    current = field.EnumValues[i].Name;
-            if (ImGui::BeginCombo(field.Name, current)) {
-                for (uint32_t i = 0; i < field.EnumCount; ++i) {
-                    bool selected = (field.EnumValues[i].Value == *val);
-                    if (ImGui::Selectable(field.EnumValues[i].Name, selected))
-                        *val = static_cast<int32_t>(field.EnumValues[i].Value);
-                }
-                ImGui::EndCombo();
-            }
-            break;
-        }
-        case FT::String:
-            ImGui::InputText(field.Name,
-                static_cast<char*>(ptr), field.StringCap);
-            break;
-        default:
-            ImGui::Text("%s: (unsupported type)", field.Name);
-            break;
-    }
-}
-```
+**Field type dispatch** covers all `FieldType` values. Any variant not yet supported
+by ZUI renders a read-only text label with the field name and a `(unsupported type)`
+suffix rather than silently skipping it.
 
 ---
 
@@ -420,18 +335,17 @@ components exactly like engine components — no special handling needed.
 // In NavMeshPlugin.cpp — RegisterEditorPanels callback
 #ifdef ZENGINE_EDITOR
 
-static const ZEngine::ECS::FieldDescriptor kNavAgentFields[] = {
-    { .Name="Speed",        .Type=FT::Float, .Offset=offsetof(NavAgentComponent,Speed),        .Min=0.f,.Max=50.f },
-    { .Name="StoppingDist", .Type=FT::Float, .Offset=offsetof(NavAgentComponent,StoppingDist), .Min=0.f,.Max=10.f },
-    { .Name="HasTarget",    .Type=FT::Bool,  .Offset=offsetof(NavAgentComponent,HasTarget) },
-    { .Name="ReachedTarget",.Type=FT::Bool,  .Offset=offsetof(NavAgentComponent,ReachedTarget),.ReadOnly=true },
-    { .Name="PathPoints",   .Type=FT::UInt32,.Offset=offsetof(NavAgentComponent,PathPointCount),.ReadOnly=true,
+static const ZFieldDescriptor kNavAgentFields[] = {
+    { .Name="Speed",        .Type=ZFIELD_FLOAT, .Offset=offsetof(NavAgentComponent,Speed),        .Min=0.f,.Max=50.f },
+    { .Name="StoppingDist", .Type=ZFIELD_FLOAT, .Offset=offsetof(NavAgentComponent,StoppingDist), .Min=0.f,.Max=10.f },
+    { .Name="HasTarget",    .Type=ZFIELD_BOOL,  .Offset=offsetof(NavAgentComponent,HasTarget) },
+    { .Name="ReachedTarget",.Type=ZFIELD_BOOL,  .Offset=offsetof(NavAgentComponent,ReachedTarget),.ReadOnly=true },
+    { .Name="PathPoints",   .Type=ZFIELD_UINT32,.Offset=offsetof(NavAgentComponent,PathPointCount),.ReadOnly=true,
       .Tooltip="Current number of waypoints remaining" },
 };
 
 void NavPlugin_RegisterEditorPanels(const ZPluginContext* ctx) {
-    // Register reflection metadata (editor only)
-    ZPlugin_RegisterComponentMeta(ctx->Editor, {
+    ZPlugin_RegisterComponentMeta(ctx->Editor, &(ZComponentMetaDesc){
         .TypeID     = g_state->NavAgentTypeID,
         .TypeName   = "NavAgentComponent",
         .Fields     = kNavAgentFields,
@@ -517,69 +431,62 @@ to preserve C ABI stability — the enum values are published as stable constant
 ZEngine/
   ECS/
     Reflection/
-      FieldType.h                    — FieldType enum + stable integer constants
-      ComponentMeta.h                — FieldDescriptor, EnumValue, ComponentMeta structs
-      ComponentReflectionRegistry.h  — registry declaration
-      ComponentReflectionRegistry.cpp
+      FieldType.h                      — FieldType enum + stable integer constants
+      ComponentMeta.h                  — FieldDescriptor, EnumValue, ComponentMeta structs
+      ComponentReflectionRegistry.h/.cpp — register / lookup / ForEach
+      BuiltInComponentReflection.h/.cpp  — RegisterBuiltInComponentReflection() dispatcher
 
   ECS/Components/
-    TransformComponent.cpp           — registers TransformComponent reflection
-    MeshComponent.cpp                — registers MeshComponent reflection
-    RigidBodyComponent.cpp           — registers RigidBodyComponent reflection
-    LightComponent.cpp               — registers LightComponent reflection
-    (all component .cpp files register their own metadata)
+    TransformComponent.cpp             — RegisterTransformComponentReflection()
+    MeshComponent.cpp                  — RegisterMeshComponentReflection()
+    CameraComponent.cpp                — RegisterCameraComponentReflection()
+    LightComponent.cpp                 — RegisterLightComponentReflection()
+    MaterialComponent.cpp              — RegisterMaterialComponentReflection()
+    NameComponent.cpp                  — RegisterNameComponentReflection()
+    RigidBodyComponent.cpp             — RegisterRigidBodyComponentReflection()
+    UUIDComponent.cpp                  — RegisterUUIDComponentReflection()
 
   PluginSDK/
-    PluginEditor.h                   — ZPlugin_RegisterComponentMeta + ZFieldDescriptor
+    PluginEditor.h                     — ZPlugin_RegisterComponentMeta + ZFieldDescriptor (not yet built — #705)
 ```
 
 ---
 
-## 13. What this replaces in Tetragrama
+## 13. What this replaced in Tetragrama
 
-The current `InspectorViewUIComponent` uses per-component code via the `Actor*`
-tier-1 API (not raw `EntityID`). The actual pattern today is:
+The old `InspectorViewUIComponent` (ImGui) used per-component hardcoded blocks via the
+`Actor*` tier-1 API. That class has been removed. `InspectorPanel` (ZUI) replaced it and
+is fully dynamic — all rendering is driven by `ComponentReflectionRegistry::ForEach` with
+no per-component code. The migration is complete.
 
-```cpp
-// TODAY (InspectorViewUIComponent.cpp) — per-component blocks via Actor*
-auto* tc = actor->GetComponent<TransformComponent>();
-if (tc) {
-    ImGui::DragFloat3("Position", &tc->Position.x);
-    // ...
-}
-auto* mc = actor->GetComponent<MeshComponent>();
-if (mc) { ... }
-// ... one block per known component type, none work for plugin components
-```
-
-Note: the inspector receives an `Actor*` from `ActorManager`, not a raw `EntityID`.
-The generic `DrawEntityInspector` in §8 calls `Scene::GetComponentRaw(EntityID, TypeID)`
-which works for both tier-1 (`Actor`) and tier-2 (raw `EntityID`) entities. When the
-inspector is migrated it should accept either an `EntityID` directly or extract
-`actor->GetEntityID()` to feed into `DrawEntityInspector`.
-
-After migration, all per-component blocks are replaced by the generic loop from §8.
-Any component — engine, game, or plugin — is displayed automatically as long as it
-has registered metadata.
+The panel receives an `Actor*` from `ActorManager` and extracts `actor->GetEntityID()` to
+call `Scene::GetComponentRaw(EntityID, TypeID)`. Any component — engine, game, or plugin
+— is displayed automatically as long as it has registered metadata.
 
 ---
 
 ## 14. Deliverables Checklist
 
-- [ ] `ZEngine/ECS/Reflection/FieldType.h` — enum + stable integer constants
-- [ ] `ZEngine/ECS/Reflection/ComponentMeta.h` — `FieldDescriptor`, `EnumValue`, `ComponentMeta`
-- [ ] `ZEngine/ECS/Reflection/ComponentReflectionRegistry.h/.cpp` — `Register`, `Lookup`, `LookupByName`, `ForEach`
-- [ ] `ECS::Scene::GetComponentRaw(EntityID, ComponentTypeID) → void*`
-- [ ] `ECS::Scene::AddComponentRaw(EntityID, ComponentTypeID, size, align)`
-- [ ] All built-in component `.cpp` files register reflection metadata for the 8 actual components:
+- [x] `ZEngine/ECS/Reflection/FieldType.h` — enum + stable integer constants
+- [x] `ZEngine/ECS/Reflection/ComponentMeta.h` — `FieldDescriptor`, `EnumValue`, `ComponentMeta`
+- [x] `ZEngine/ECS/Reflection/ComponentReflectionRegistry.h/.cpp` — `Register`, `Lookup`, `LookupByName`, `ForEach`
+- [x] `ECS::Scene::GetComponentRaw(EntityID, ComponentTypeID) → void*`
+- [ ] `ECS::Scene::AddComponentRaw(EntityID, ComponentTypeID, size, align)` — #706
+- [x] All built-in component `.cpp` files register reflection metadata for the 8 actual components:
   `TransformComponent`, `MeshComponent`, `CameraComponent`, `LightComponent`,
   `MaterialComponent`, `NameComponent`, `RigidBodyComponent`, `UUIDComponent`
-- [ ] `PluginEditor.h`: `ZFieldDescriptor`, `ZComponentMetaDesc`, `ZPlugin_RegisterComponentMeta`
-- [ ] `InspectorViewUIComponent` migrated to generic `DrawEntityInspector` loop
-- [ ] "Add Component" button in inspector using `ComponentReflectionRegistry::ForEach`
-- [ ] `tests/ECS/Reflection/ReflectionTest.cpp`:
-  - [ ] Register component, lookup by TypeID, verify field count
-  - [ ] Lookup by name — stable across restarts
-  - [ ] Unregistered component returns nullptr
-  - [ ] Field offset correctness via offsetof verification
-  - [ ] Plugin registers metadata, inspector displays it generically
+- [ ] `PluginEditor.h`: `ZFieldDescriptor`, `ZComponentMetaDesc`, `ZPlugin_RegisterComponentMeta` — #705
+- [x] `InspectorPanel` (ZUI) fully dynamic — no per-component hardcoded blocks; migration from ImGui complete
+- [ ] "Add Component" button in inspector using `ComponentReflectionRegistry::ForEach` — #704
+- `tests/ECS/ComponentReflectionTest.cpp`:
+  - [x] All 8 built-ins registered (`AllEightBuiltInsAreRegistered`)
+  - [x] Lookup by TypeID and by name return same pointer (`LookupByTypeIDMatchesLookupByName`)
+  - [x] Unregistered returns nullptr, nullptr name returns nullptr (`LookupMissesReturnNull`)
+  - [x] `ForEach` visits all 8 in registration order (`ForEachVisitsAllEightInRegistrationOrder`)
+  - [x] String field has correct cap and flags (`NameComponentValueIsEditableStringWithCap128`)
+  - [x] ReadOnly and Hidden flags match spec for TransformComponent, MeshComponent, RigidBodyComponent (`HiddenAndReadOnlyFlagsMatchSpec`)
+  - [x] UUID field is ReadOnly (`UUIDComponentValueIsReadOnly`)
+  - [x] Enum fields carry value tables for LightComponent and RigidBodyComponent (`EnumFieldsCarryTheirValueTables`)
+  - [x] Every field's `offset + size <= component size` (`EveryFieldFitsWithinItsComponent`)
+  - [ ] Exact `offsetof` assertions — verify `field.Offset == offsetof(ComponentT, fieldName)` — #707
+  - [ ] Plugin registers metadata, inspector displays it generically — #708
