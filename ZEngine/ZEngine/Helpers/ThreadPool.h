@@ -110,6 +110,16 @@ namespace ZEngine::Helpers
         ///        The callback runs before any queued tasks on each worker thread.
         /// @param fn  Callback — fn(ctx, worker_idx). Must be thread-safe.
         /// @param ctx Caller context forwarded to fn.
+        void InitClosureSlab(Core::Memory::ArenaAllocator* arena, size_t bytes)
+        {
+            m_closure_slab.Init(arena, bytes);
+        }
+
+        Core::Memory::TLSFSlab* GetClosureSlab()
+        {
+            return m_closure_slab.Pool ? &m_closure_slab : nullptr;
+        }
+
         void RegisterWorkerInit(WorkerInitFn fn, void* ctx)
         {
             m_init_ctx.value.store(ctx, std::memory_order_relaxed);
@@ -124,13 +134,9 @@ namespace ZEngine::Helpers
             m_cancellation.value.store(true, std::memory_order_release);
             for (size_t i = 0; i < WorkerCount; ++i)
                 m_workers[i].cv.notify_one();
-            // Yield until all workers have exited — ensures Worker::mutex and
-            // Worker::cv are not destroyed while a thread is still using them.
-            // yield() lets the OS schedule worker threads so they can see the
-            // cancellation token and decrement the counter; a pure spin-wait
-            // would starve workers on a loaded CI runner.
             while (m_active_workers.value.load(std::memory_order_acquire) > 0)
                 std::this_thread::yield();
+            m_closure_slab.Shutdown();
         }
 
     private:
@@ -141,6 +147,7 @@ namespace ZEngine::Helpers
             std::condition_variable                                 cv;
         };
 
+        Core::Memory::TLSFSlab     m_closure_slab{};
         Worker                     m_workers[MAX_WORKERS];
         PaddedAtomic<uint32_t>     m_cursor{};
         PaddedAtomic<bool>         m_cancellation{};
@@ -200,17 +207,30 @@ namespace ZEngine::Helpers
             Pool->Submit(ctx, fn);
         }
 
-        // Lambda shim — one heap allocation per lambda call (for captures).
-        // Use the C-style overload directly to stay on the zero-alloc path.
         template <typename T>
         static void Submit(T&& f)
         {
             using Fn = std::decay_t<T>;
-            auto* p  = new Fn(std::forward<T>(f));
-            Pool->Submit(p, [](void* ctx) {
-                auto* fn = static_cast<Fn*>(ctx);
+
+            static constexpr size_t fn_offset  = (sizeof(Core::Memory::TLSFSlab*) + alignof(Fn) - 1) & ~(alignof(Fn) - 1);
+            static constexpr size_t block_size = fn_offset + sizeof(Fn);
+
+            Core::Memory::TLSFSlab* slab  = Pool ? Pool->GetClosureSlab() : nullptr;
+            uint8_t*                block = slab ? static_cast<uint8_t*>(slab->Alloc(block_size)) : static_cast<uint8_t*>(::operator new(block_size));
+
+            *reinterpret_cast<Core::Memory::TLSFSlab**>(block) = slab;
+            new (block + fn_offset) Fn(std::forward<T>(f));
+
+            Pool->Submit(block, [](void* ctx) {
+                uint8_t*                raw  = static_cast<uint8_t*>(ctx);
+                Core::Memory::TLSFSlab* slab = *reinterpret_cast<Core::Memory::TLSFSlab**>(raw);
+                auto*                   fn   = reinterpret_cast<Fn*>(raw + fn_offset);
                 (*fn)();
-                delete fn;
+                fn->~Fn();
+                if (slab)
+                    slab->Free(raw);
+                else
+                    ::operator delete(raw);
             });
         }
 
