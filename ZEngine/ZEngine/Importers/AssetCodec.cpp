@@ -337,7 +337,7 @@ namespace ZEngine::Importers::AssetCodec
 
         out_cubemap      = Rendering::Buffers::Bitmap(header.FaceWidth, header.FaceHeight, header.LayerCount, header.Channel, Rendering::Buffers::BitmapFormat::FLOAT);
         out_cubemap.Type = Rendering::Buffers::BitmapType::CUBE;
-        in.read(reinterpret_cast<char*>(out_cubemap.Buffer.data()), static_cast<std::streamsize>(header.BufferByteSize));
+        in.read(reinterpret_cast<char*>(out_cubemap.Buffer), static_cast<std::streamsize>(header.BufferByteSize));
         return in.good();
     }
 
@@ -375,13 +375,13 @@ namespace ZEngine::Importers::AssetCodec
             .FaceHeight     = cubemap.Height,
             .Channel        = cubemap.Channel,
             .LayerCount     = cubemap.Depth,
-            .BufferByteSize = static_cast<uint64_t>(cubemap.Buffer.size()),
+            .BufferByteSize = static_cast<uint64_t>(cubemap.BufferSize),
         };
 
         const auto* hdr_bytes  = reinterpret_cast<const uint8_t*>(&header);
         auto        w1         = file->Write({hdr_bytes, sizeof(header)}, 0);
-        const auto* data_bytes = reinterpret_cast<const uint8_t*>(cubemap.Buffer.data());
-        auto        w2         = file->Write({data_bytes, cubemap.Buffer.size()}, sizeof(header));
+        const auto* data_bytes = reinterpret_cast<const uint8_t*>(cubemap.Buffer);
+        auto        w2         = file->Write({data_bytes, cubemap.BufferSize}, sizeof(header));
         auto        flush      = file->Flush();
         file->Close();
         ctx.Close(file);

@@ -40,8 +40,8 @@ TEST(BitmapTest, TestVerticalCross)
     Bitmap       cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
     stbi_image_free((void*) image_data);
 
-    stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
-    stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer.data());
+    stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
+    stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer);
 
     auto current_path = std::filesystem::current_path().string();
 
@@ -80,9 +80,9 @@ TEST(BitmapTest, TestVerticalCross2)
     Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(in);
     Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
 
-    stbi_write_hdr("screenshot3.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer.data());
-    stbi_write_hdr("screenshot4.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer.data());
-    stbi_write_png("screenshot5.png", cubemap.Width, cubemap.Height, cubemap.Channel, cubemap.Buffer.data(), 0);
+    stbi_write_hdr("screenshot3.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
+    stbi_write_hdr("screenshot4.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer);
+    stbi_write_png("screenshot5.png", cubemap.Width, cubemap.Height, cubemap.Channel, cubemap.Buffer, 0);
 
     auto current_path = std::filesystem::current_path().string();
 
