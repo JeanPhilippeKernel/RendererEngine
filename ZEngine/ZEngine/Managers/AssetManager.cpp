@@ -43,14 +43,20 @@ namespace ZEngine::Managers
         s_Instance->Device                  = device;
         s_Instance->CurrentWorkingSpacePath = working_space_path;
 
-        s_Instance->NodeHierarchies.init(s_Instance->Arena, 5000);
-        s_Instance->Meshes.init(s_Instance->Arena, 5000);
-        s_Instance->Materials.init(s_Instance->Arena, 5000);
+        // Initialise the container slab. Growing containers (Meshes, NodeHierarchies,
+        // Materials, UUIDToTextureHandle, UUIDToMaterialSlot) back into the slab so
+        // realloc can extend in-place — zero dead-block accumulation on grow.
+        s_Instance->ContainerSlab.Init(s_Instance->Arena, AssetManager::CONTAINER_SLAB_BYTES);
+        auto* slab = &s_Instance->ContainerSlab;
+
+        s_Instance->NodeHierarchies.init(slab, 5000);
+        s_Instance->Meshes.init(slab, 5000);
+        s_Instance->Materials.init(slab, 5000);
         s_Instance->GPUMeshMaterials.init(s_Instance->Arena, 5000);
         s_Instance->Textures.init(s_Instance->Arena, 5000);
-        s_Instance->UUIDToTextureHandle.init(s_Instance->Arena, 5000);
+        s_Instance->UUIDToTextureHandle.init(slab, 5000);
         s_Instance->MeshToHierarchySlot.init(s_Instance->Arena, 5000);
-        s_Instance->UUIDToMaterialSlot.init(s_Instance->Arena, 5000);
+        s_Instance->UUIDToMaterialSlot.init(slab, 5000);
 
         static Core::VFS::AssetRegistry s_registry;
         s_registry.Initialize(s_Instance->Arena);
@@ -66,7 +72,11 @@ namespace ZEngine::Managers
         ZENGINE_LOG_ASSET_INFO("Fallback texture ready")
     }
 
-    void        AssetManager::Shutdown() {}
+    void AssetManager::Shutdown()
+    {
+        if (s_Instance)
+            s_Instance->ContainerSlab.Shutdown();
+    }
 
     AssetHandle AssetManager::RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {

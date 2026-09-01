@@ -109,9 +109,22 @@ namespace ZEngine::Core::Containers
         void init(Memory::ArenaAllocator* arena, size_type slot_capacity = 16)
         {
             m_allocator     = arena;
+            m_slab          = nullptr;
             size_type cap   = next_pow2(slot_capacity < 16 ? 16 : slot_capacity);
             m_capacity_mask = cap - 1;
             m_entries.init(arena, cap, cap);
+            Helpers::secure_memset(m_entries.data(), 0, cap * sizeof(Entry), cap * sizeof(Entry));
+            m_size = 0;
+        }
+
+        /// @brief Init backed by a TLSFSlab — rehash reallocates in-place when possible.
+        void init(Memory::TLSFSlab* slab, size_type slot_capacity = 16)
+        {
+            m_allocator     = nullptr;
+            m_slab          = slab;
+            size_type cap   = next_pow2(slot_capacity < 16 ? 16 : slot_capacity);
+            m_capacity_mask = cap - 1;
+            m_entries.init(slab, cap, cap);
             Helpers::secure_memset(m_entries.data(), 0, cap * sizeof(Entry), cap * sizeof(Entry));
             m_size = 0;
         }
@@ -335,7 +348,10 @@ namespace ZEngine::Core::Containers
             size_type    old_cap = old.size();
 
             m_capacity_mask      = new_cap - 1;
-            m_entries.init(m_allocator, new_cap, new_cap);
+            if (m_slab)
+                m_entries.init(m_slab, new_cap, new_cap);
+            else
+                m_entries.init(m_allocator, new_cap, new_cap);
             Helpers::secure_memset(m_entries.data(), 0, new_cap * sizeof(Entry), new_cap * sizeof(Entry));
             m_size = 0;
 
@@ -351,6 +367,7 @@ namespace ZEngine::Core::Containers
         }
 
         Memory::ArenaAllocator* m_allocator     = nullptr;
+        Memory::TLSFSlab*       m_slab          = nullptr;
         Array<Entry>            m_entries       = {};
         size_type               m_capacity_mask = 0;
         size_type               m_size          = 0;
