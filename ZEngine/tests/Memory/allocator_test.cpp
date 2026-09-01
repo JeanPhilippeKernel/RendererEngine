@@ -1,3 +1,9 @@
+#ifdef _WIN32
+// clang-format off
+#include <windows.h>
+// clang-format on
+#include <sysinfoapi.h>
+#endif
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
@@ -274,6 +280,14 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
     EXPECT_TRUE(sub.m_is_sub_arena);
     EXPECT_EQ(sub.m_total_size, ZKilo(4));
 
+    // Platform contract: Windows defers commit (m_committed_size = 0, lazy VirtualAlloc);
+    // macOS/Linux pre-marks the whole range as accessible via mmap overcommit.
+#ifdef _WIN32
+    EXPECT_EQ(sub.m_committed_size, 0u);
+#else
+    EXPECT_EQ(sub.m_committed_size, ZKilo(4));
+#endif
+
     int* val = reinterpret_cast<int*>(sub.Allocate(sizeof(int)));
     ASSERT_NE(val, nullptr);
     *val = 77;
@@ -287,6 +301,78 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
 
     manager.Shutdown();
 }
+
+// Regression: multiple large sub-arenas carved from one parent must all succeed and be
+// independently usable. This reproduces the Windows UIContext failure where eager commit
+// of earlier sub-arenas (ImportPipeline 3.5 GB, etc.) exhausted pagefile quota so that
+// the UIContext VirtualAlloc(MEM_COMMIT) returned NULL.
+TEST(AllocatorTest, ArenaSubArenaMultipleLargeSubArenas)
+{
+    // Use 4 MB total; carve three 1 MB sub-arenas (mirrors FrameArena + PersistentArena
+    // + PayloadArena pattern in AppRenderPipeline at a smaller scale).
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto*          parent = &(manager.MainArena);
+
+    ArenaAllocator a{}, b{}, c{};
+    parent->CreateSubArena(ZMega(1), &a);
+    parent->CreateSubArena(ZMega(1), &b);
+    parent->CreateSubArena(ZMega(1), &c);
+
+    ASSERT_NE(a.m_memory, nullptr);
+    ASSERT_NE(b.m_memory, nullptr);
+    ASSERT_NE(c.m_memory, nullptr);
+
+    // Each sub-arena must allocate independently.
+    int* pa = reinterpret_cast<int*>(a.Allocate(sizeof(int)));
+    int* pb = reinterpret_cast<int*>(b.Allocate(sizeof(int)));
+    int* pc = reinterpret_cast<int*>(c.Allocate(sizeof(int)));
+    ASSERT_NE(pa, nullptr);
+    *pa = 1;
+    ASSERT_NE(pb, nullptr);
+    *pb = 2;
+    ASSERT_NE(pc, nullptr);
+    *pc = 3;
+    EXPECT_EQ(*pa, 1);
+    EXPECT_EQ(*pb, 2);
+    EXPECT_EQ(*pc, 3);
+
+    // Sub-arena address ranges must not overlap.
+    EXPECT_GE((uintptr_t) b.m_memory, (uintptr_t) a.m_memory + ZMega(1));
+    EXPECT_GE((uintptr_t) c.m_memory, (uintptr_t) b.m_memory + ZMega(1));
+
+    c.Shutdown();
+    b.Shutdown();
+    a.Shutdown();
+    manager.Shutdown();
+}
+
+#ifdef _WIN32
+// Windows-only: sub-arena m_memory must be page-aligned so VirtualAlloc(MEM_COMMIT)
+// commit addresses do not cross into adjacent sub-arenas' pages.
+TEST(AllocatorTest, ArenaSubArenaPageAlignedOnWindows)
+{
+    SYSTEM_INFO si{};
+    GetSystemInfo(&si);
+    const size_t  page_size = si.dwPageSize;
+
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto* parent = &(manager.MainArena);
+
+    // Allocate one byte first to make the next sub-arena start non-trivially aligned.
+    (void) parent->Allocate(1);
+
+    ArenaAllocator sub{};
+    parent->CreateSubArena(ZMega(1), &sub);
+
+    ASSERT_NE(sub.m_memory, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(sub.m_memory) % page_size, 0u);
+
+    sub.Shutdown();
+    manager.Shutdown();
+}
+#endif
 
 TEST(AllocatorTest, TempArenaRestoresOffsets)
 {

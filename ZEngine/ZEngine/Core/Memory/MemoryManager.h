@@ -1,13 +1,4 @@
 #pragma once
-#ifdef _WIN32
-// clang-format off
-#include <windows.h>
-// clang-format on
-#include <sysinfoapi.h>
-#elif defined(__linux__) || defined(__APPLE__)
-#include <unistd.h>
-#endif
-
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Profiling/MemoryProfiler.h>
 
