@@ -16,7 +16,7 @@ namespace ZEngine::Core::Memory
         Budget = config;
         config.Validate(buffer_size);
 
-        unsigned long page_size = 0ul;
+        size_t page_size = 0;
 #ifdef _WIN32
         SYSTEM_INFO sys_info;
         GetSystemInfo(&sys_info);
