@@ -1,9 +1,3 @@
-#ifdef _WIN32
-// clang-format off
-#include <windows.h>
-// clang-format on
-#include <sysinfoapi.h>
-#endif
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
@@ -23,7 +17,7 @@ TEST(AllocatorTest, ArenaAllocate)
 {
     MemoryManager manager{};
     manager.Initialize(200, {});
-    auto arena = manager.MainArena;
+    auto& arena = manager.MainArena;
 
     for (int i = 0; i < 10; ++i)
     {
@@ -347,15 +341,10 @@ TEST(AllocatorTest, ArenaSubArenaMultipleLargeSubArenas)
     manager.Shutdown();
 }
 
-#ifdef _WIN32
-// Windows-only: sub-arena m_memory must be page-aligned so VirtualAlloc(MEM_COMMIT)
-// commit addresses do not cross into adjacent sub-arenas' pages.
-TEST(AllocatorTest, ArenaSubArenaPageAlignedOnWindows)
+// Sub-arena m_memory must be page-aligned on every platform — on Windows this keeps
+// VirtualAlloc(MEM_COMMIT) boundaries clean; elsewhere it's just a uniform guarantee.
+TEST(AllocatorTest, ArenaSubArenaPageAligned)
 {
-    SYSTEM_INFO si{};
-    GetSystemInfo(&si);
-    const size_t  page_size = si.dwPageSize;
-
     MemoryManager manager{};
     manager.Initialize(ZMega(4), {});
     auto* parent = &(manager.MainArena);
@@ -367,12 +356,11 @@ TEST(AllocatorTest, ArenaSubArenaPageAlignedOnWindows)
     parent->CreateSubArena(ZMega(1), &sub);
 
     ASSERT_NE(sub.m_memory, nullptr);
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(sub.m_memory) % page_size, 0u);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(sub.m_memory) % parent->m_mem_page_size, 0u);
 
     sub.Shutdown();
     manager.Shutdown();
 }
-#endif
 
 TEST(AllocatorTest, TempArenaRestoresOffsets)
 {

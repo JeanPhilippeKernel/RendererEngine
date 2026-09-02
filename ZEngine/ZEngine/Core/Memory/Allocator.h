@@ -40,38 +40,79 @@ namespace ZEngine::Core::Memory
     //      allocations, corrupting them.
     struct ArenaAllocator
     {
+        ArenaAllocator() = default;
         ~ArenaAllocator()
         {
             Shutdown();
-        };
+        }
 
-        void          Initialize(uint64_t size, unsigned long page_size);
-        void          Shutdown();
+        // Copying would shallow-copy m_memory — both instances would then call
+        // VirtualFree/munmap on the same pointer at destruction (double-free).
+        ArenaAllocator(const ArenaAllocator&)            = delete;
+        ArenaAllocator& operator=(const ArenaAllocator&) = delete;
 
-        void*         Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
-        void*         Allocate(size_t size, size_t alignment, const char* file, int line);
+        ArenaAllocator(ArenaAllocator&& other) noexcept
+        {
+            MoveFrom(other);
+        }
+
+        ArenaAllocator& operator=(ArenaAllocator&& other) noexcept
+        {
+            if (this != &other)
+            {
+                Shutdown();
+                MoveFrom(other);
+            }
+            return *this;
+        }
+
+        void     Initialize(uint64_t size, size_t page_size);
+        void     Shutdown();
+
+        void*    Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
+        void*    Allocate(size_t size, size_t alignment, const char* file, int line);
 
         // AllocateNoZero — same as Allocate but skips the secure_memset zeroing step.
         // Use only when the caller will fully initialize the returned memory before reading it
         // (e.g. large decode buffers, staging allocations). Saves up to 0.4 ms for 16 MB
         // allocations. Do NOT use for structs whose fields rely on zero-initialization.
-        void*         AllocateNoZero(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
+        void*    AllocateNoZero(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
 
-        void*         Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
-        void          Clear();
+        void*    Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
+        void     Clear();
 
-        void          CreateSubArena(size_t size, ArenaAllocator* out_arena);
+        void     CreateSubArena(size_t size, ArenaAllocator* out_arena);
 
-        uint8_t*      m_memory                  = nullptr;
-        bool          m_is_sub_arena            = false;
-        size_t        m_total_size              = 0;
-        size_t        m_initial_current_offset  = 0;
-        size_t        m_initial_previous_offset = 0;
-        size_t        m_current_offset          = 0;
-        size_t        m_previous_offset         = 0;
-        size_t        m_committed_size          = 0;
-        unsigned long m_mem_page_size           = 0;
+        uint8_t* m_memory                  = nullptr;
+        bool     m_is_sub_arena            = false;
+        size_t   m_total_size              = 0;
+        size_t   m_initial_current_offset  = 0;
+        size_t   m_initial_previous_offset = 0;
+        size_t   m_current_offset          = 0;
+        size_t   m_previous_offset         = 0;
+        size_t   m_committed_size          = 0;
+        // size_t, not unsigned long: unsigned long is 32-bit on Windows LLP64, which
+        // truncates the page-align mask past 4 GB (see ArenaAllocateRaw / Resize).
+        size_t   m_mem_page_size           = 0;
 
+    private:
+        void MoveFrom(ArenaAllocator& other) noexcept
+        {
+            m_memory                  = other.m_memory;
+            m_is_sub_arena            = other.m_is_sub_arena;
+            m_total_size              = other.m_total_size;
+            m_initial_current_offset  = other.m_initial_current_offset;
+            m_initial_previous_offset = other.m_initial_previous_offset;
+            m_current_offset          = other.m_current_offset;
+            m_previous_offset         = other.m_previous_offset;
+            m_committed_size          = other.m_committed_size;
+            m_mem_page_size           = other.m_mem_page_size;
+
+            other.m_memory            = nullptr;
+            other.m_total_size        = 0;
+            other.m_committed_size    = 0;
+            other.m_is_sub_arena      = false;
+        }
     }; // struct ArenaAllocator
 
     struct PoolFreeNode
@@ -104,22 +145,30 @@ namespace ZEngine::Core::Memory
     //      program in both debug and release builds.
     struct PoolAllocator
     {
-        using Arena = ArenaAllocator;
+        using Arena     = ArenaAllocator;
 
+        PoolAllocator() = default;
         ~PoolAllocator() {};
 
-        void          Initialize(Arena* arena, size_t size, size_t chunk_size, size_t alignment = DEFAULT_ALIGNMENT);
+        // PoolAllocator does not own its backing memory (the parent arena does), so a
+        // shallow copy is not immediately unsafe — but it silently duplicates the free
+        // list, letting two independent PoolAllocator instances hand out the same chunk.
+        // Deleted until there's a real use case for copying a pool.
+        PoolAllocator(const PoolAllocator&)            = delete;
+        PoolAllocator& operator=(const PoolAllocator&) = delete;
 
-        void*         Allocate();
-        void*         Allocate(const char* file, int line);
+        void           Initialize(Arena* arena, size_t size, size_t chunk_size, size_t alignment = DEFAULT_ALIGNMENT);
 
-        void          Free(void* ptr);
-        void          Clear();
+        void*          Allocate();
+        void*          Allocate(const char* file, int line);
 
-        uint8_t*      memory     = nullptr;
-        PoolFreeNode* head       = nullptr;
-        size_t        total_size = 0;
-        size_t        chunk_size = 0;
+        void           Free(void* ptr);
+        void           Clear();
+
+        uint8_t*       memory     = nullptr;
+        PoolFreeNode*  head       = nullptr;
+        size_t         total_size = 0;
+        size_t         chunk_size = 0;
     };
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena);

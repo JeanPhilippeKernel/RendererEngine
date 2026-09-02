@@ -9,7 +9,7 @@
 
 namespace ZEngine::Core::Memory
 {
-    void ArenaAllocator::Initialize(uint64_t size, unsigned long page_size)
+    void ArenaAllocator::Initialize(uint64_t size, size_t page_size)
     {
 #ifdef _WIN32
         // Reserve the full range. Pages are committed lazily in ArenaAllocateRaw via
@@ -84,7 +84,11 @@ namespace ZEngine::Core::Memory
         if ((offset + size) > a->m_committed_size)
         {
             size_t commit_size = (offset + size + a->m_mem_page_size - 1) & ~(a->m_mem_page_size - 1);
-            void*  r           = VirtualAlloc(a->m_memory + a->m_committed_size, commit_size - a->m_committed_size, MEM_COMMIT, PAGE_READWRITE);
+            // Commit the whole [base, commit_size) range rather than just the delta —
+            // VirtualAlloc(MEM_COMMIT) on an already-committed page is a documented no-op,
+            // so this is safe. Avoids relying on commit_size - a->m_committed_size staying
+            // correct across the page-align mask above.
+            void*  r           = VirtualAlloc(a->m_memory, commit_size, MEM_COMMIT, PAGE_READWRITE);
             if (!r)
                 return nullptr;
             a->m_committed_size = commit_size;
@@ -143,7 +147,7 @@ namespace ZEngine::Core::Memory
                         if (new_end > m_committed_size)
                         {
                             size_t commit_size   = (new_end + m_mem_page_size - 1) & ~(m_mem_page_size - 1);
-                            void*  commit_result = VirtualAlloc(m_memory + m_committed_size, commit_size - m_committed_size, MEM_COMMIT, PAGE_READWRITE);
+                            void*  commit_result = VirtualAlloc(m_memory, commit_size, MEM_COMMIT, PAGE_READWRITE);
                             ZENGINE_VALIDATE_ASSERT(commit_result != nullptr, "ArenaAllocator::Resize: failed to commit new pages")
                             if (!commit_result)
                                 return nullptr;
@@ -191,19 +195,14 @@ namespace ZEngine::Core::Memory
         ZENGINE_VALIDATE_ASSERT(size > 0, "ArenaAllocator::CreateSubArena: size must be > 0")
         ZENGINE_VALIDATE_ASSERT(m_memory != nullptr, "ArenaAllocator::CreateSubArena: parent arena not initialized")
 
-        // Windows: align to page size so that VirtualAlloc(MEM_COMMIT) commit boundaries
-        // are clean — a non-page-aligned m_memory would cause Windows to round the commit
-        // address down, silently committing bytes that belong to the preceding sub-arena.
-        // macOS/Linux: DEFAULT_ALIGNMENT is sufficient — mmap overcommit means we never
-        // call mprotect, so page alignment has no effect on correctness or performance.
-#ifdef _WIN32
-        const size_t sub_alignment = m_mem_page_size;
-#else
-        const size_t sub_alignment = DEFAULT_ALIGNMENT;
-#endif
-
+        // Page-align the sub-arena start on every platform. On Windows this keeps
+        // VirtualAlloc(MEM_COMMIT) boundaries clean — a non-page-aligned m_memory would
+        // round the commit address down, silently committing bytes from the preceding
+        // sub-arena. macOS/Linux don't need this for correctness (no mprotect on the
+        // commit path), but the wasted padding (<= one page per sub-arena) is negligible
+        // against multi-GB budgets, so we keep boundaries uniform across platforms.
         uintptr_t current_ptr  = (uintptr_t) m_memory + (uintptr_t) m_current_offset;
-        uintptr_t offset       = Helpers::memory_align(current_ptr, sub_alignment);
+        uintptr_t offset       = Helpers::memory_align(current_ptr, m_mem_page_size);
         offset                -= (uintptr_t) m_memory;
 
         ZENGINE_VALIDATE_ASSERT((offset + size) <= m_total_size, "ArenaAllocator::CreateSubArena: not enough space in parent arena")
@@ -233,6 +232,15 @@ namespace ZEngine::Core::Memory
         // No commit is done here — each platform handles commit in its own way above.
         m_previous_offset = offset;
         m_current_offset  = offset + size;
+
+#ifdef _WIN32
+        // Advance the parent's m_committed_size to match so that a subsequent direct
+        // Allocate on the parent (e.g. Device->Arena == MainArena in Engine.cpp) does
+        // not attempt to commit the entire sub-arena region in one VirtualAlloc call.
+        // The sub-arena pages remain PAGE_NOACCESS; each sub-arena commits lazily.
+        if (m_committed_size < m_current_offset)
+            m_committed_size = m_current_offset;
+#endif
     }
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena)
