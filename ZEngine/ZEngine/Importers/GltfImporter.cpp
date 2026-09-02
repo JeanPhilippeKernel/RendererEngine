@@ -554,8 +554,21 @@ namespace ZEngine::Importers
         // Optimize each submesh: vertex cache, overdraw, vertex fetch.
         for (uint32_t si = 0; si < mesh.SubMeshes.size(); ++si)
         {
-            auto&     sub     = mesh.SubMeshes[si];
-            uint32_t* sub_idx = mesh.Indices.data() + sub.IndexOffset;
+            auto&     sub      = mesh.SubMeshes[si];
+            uint32_t* sub_idx  = mesh.Indices.data() + sub.IndexOffset;
+
+            // Cross-primitive index contamination or a malformed GLTF can leave an index
+            // outside this submesh's own vertex range. Rebasing such an index underflows
+            // (uint32_t subtraction), which meshopt::buildTriangleAdjacency asserts on.
+            // Skip optimization for this submesh rather than crash — indices are left
+            // untouched (still correct against the unmodified vertex buffer).
+            bool      in_range = true;
+            for (uint32_t j = 0; j < sub.IndexCount && in_range; ++j)
+                if (sub_idx[j] < sub.VertexOffset || sub_idx[j] >= sub.VertexOffset + sub.VertexCount)
+                    in_range = false;
+            if (!in_range)
+                continue;
+
             for (uint32_t j = 0; j < sub.IndexCount; ++j)
                 sub_idx[j] -= sub.VertexOffset;
             Importers::OptimizeMeshSubmesh(mesh.Vertices.data() + sub.VertexOffset * 8, sub.VertexCount, sub_idx, sub.IndexCount);

@@ -328,14 +328,26 @@ namespace ZEngine::Importers
 
             {
                 // Optimize: convert absolute indices → relative, run 3-pass optimization, restore.
-                const uint32_t sub_vc  = static_cast<uint32_t>(vtx_map.size());
-                const uint32_t sub_ic  = static_cast<uint32_t>(mesh.Indices.size()) - sub_idx_start;
-                uint32_t*      sub_idx = mesh.Indices.data() + sub_idx_start;
-                for (uint32_t j = 0; j < sub_ic; ++j)
-                    sub_idx[j] -= sub_vtx_start;
-                OptimizeMeshSubmesh(mesh.Vertices.data() + sub_vtx_start * 8, sub_vc, sub_idx, sub_ic);
-                for (uint32_t j = 0; j < sub_ic; ++j)
-                    sub_idx[j] += sub_vtx_start;
+                const uint32_t sub_vc   = static_cast<uint32_t>(vtx_map.size());
+                const uint32_t sub_ic   = static_cast<uint32_t>(mesh.Indices.size()) - sub_idx_start;
+                uint32_t*      sub_idx  = mesh.Indices.data() + sub_idx_start;
+
+                // See GltfImporter.cpp for the same guard: an index outside this submesh's
+                // own vertex range would underflow on rebase and crash meshopt. Skip
+                // optimization for this submesh rather than crash.
+                bool           in_range = true;
+                for (uint32_t j = 0; j < sub_ic && in_range; ++j)
+                    if (sub_idx[j] < sub_vtx_start || sub_idx[j] >= sub_vtx_start + sub_vc)
+                        in_range = false;
+
+                if (in_range)
+                {
+                    for (uint32_t j = 0; j < sub_ic; ++j)
+                        sub_idx[j] -= sub_vtx_start;
+                    OptimizeMeshSubmesh(mesh.Vertices.data() + sub_vtx_start * 8, sub_vc, sub_idx, sub_ic);
+                    for (uint32_t j = 0; j < sub_ic; ++j)
+                        sub_idx[j] += sub_vtx_start;
+                }
             }
 
             AssetSubMesh sub         = {};
