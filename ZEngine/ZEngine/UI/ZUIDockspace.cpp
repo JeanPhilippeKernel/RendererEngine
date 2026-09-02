@@ -66,6 +66,13 @@ namespace ZEngine::UI
         {
             // Last child takes exact remainder — eliminates sub-pixel gaps.
             float span = c->Next ? (total * c->SizePx / size_sum) : ((node->SplitAxis == ZUIAxis::X) ? (x1 - cursor) : (y1 - cursor));
+            // Floor to the same minimum enforced during interactive drag (ZUIDockResize).
+            // Stale absolute SizePx sums — left behind by a window resize or a new dock
+            // insertion that hasn't been re-proportioned yet — can otherwise push the
+            // last child's remainder negative, producing a degenerate rect that wraps to
+            // a huge uint32_t once cast into a VkRect2D scissor extent (issue #732).
+            if (span < kMinPanelPx)
+                span = kMinPanelPx;
             if (node->SplitAxis == ZUIAxis::X)
             {
                 c->RectMin[0] = cursor;
