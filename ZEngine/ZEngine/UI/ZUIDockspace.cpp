@@ -162,8 +162,16 @@ namespace ZEngine::UI
         }
         tree->Root->RectMin[0] = root_rect[0];
         tree->Root->RectMin[1] = root_rect[1];
-        tree->Root->RectMax[0] = root_rect[2];
-        tree->Root->RectMax[1] = root_rect[3];
+        // Floor the root rect to kMinPanelPx. A transient window/menu/status-bar height
+        // mismatch (e.g. during a Windows resize or DPI-change race, where the client
+        // area briefly reports a height smaller than menu_h + status_h) can otherwise
+        // hand down a negative-height or negative-width root rect. When the tree has no
+        // splits yet — root is itself a leaf — LayoutNode's per-child clamp never runs
+        // on this rect at all, so it must be floored here at the single entry point.
+        float min_x1           = root_rect[0] + kMinPanelPx;
+        float min_y1           = root_rect[1] + kMinPanelPx;
+        tree->Root->RectMax[0] = (root_rect[2] < min_x1) ? min_x1 : root_rect[2];
+        tree->Root->RectMax[1] = (root_rect[3] < min_y1) ? min_y1 : root_rect[3];
         LayoutNode(tree->Root);
     }
 
