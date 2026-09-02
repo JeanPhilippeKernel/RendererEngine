@@ -41,12 +41,12 @@ namespace ZEngine::Importers
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
         }
 
-        Core::Memory::TLSFSlab* slab = Helpers::GetWorkerSlab();
-        Bitmap                  equirect(width, height, 4, BitmapFormat::FLOAT, image_data, slab);
+        Core::Memory::TLSFSlab* slab     = Helpers::GetWorkerSlab();
+        Bitmap                  equirect = Bitmap::FromData(width, height, 1, 4, BitmapFormat::Float, BitmapType::Texture2D, image_data, slab);
         stbi_image_free(const_cast<float*>(image_data));
 
-        Bitmap vertical_cross                    = Bitmap::EquirectangularMapToVerticalCross(equirect, slab);
-        Bitmap cubemap                           = Bitmap::VerticalCrossToCubemap(vertical_cross, slab);
+        Bitmap vertical_cross                    = BitmapConvert::EquirectToCross(equirect, slab);
+        Bitmap cubemap                           = BitmapConvert::CrossToCubemap(vertical_cross, slab);
 
         // Write to project://_cache/envmaps/<uuid>.zenvmap via VFS.
         // Keyed by UUID — regenerable, gitignored, transparent to game code.
