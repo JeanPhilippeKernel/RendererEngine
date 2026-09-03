@@ -237,6 +237,21 @@ namespace ZEngine::Hardwares
                 }
             }
 
+            // Defense-in-depth: ImageInFlights/PresentCompletes are sized SwapchainImageCount,
+            // but the engine allows up to FrameContextPoolSize (BufferredFrameCount * 4) frames'
+            // command buffers to be concurrently in-flight — more than those two arrays track.
+            // Wait on every frame context's own fence too, so recreation never proceeds while a
+            // command buffer beyond the swapchain-image-indexed slots is still executing
+            // (issue #736).
+            for (uint32_t i = 0; i < FrameContexts.size(); ++i)
+            {
+                if (FrameContexts[i].Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+                {
+                    FrameContexts[i].Fence->Wait(UINT64_MAX);
+                    FrameContexts[i].Fence->Reset();
+                }
+            }
+
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
                 FrameContexts[i + FrameContextOffset].Acquired->SetState(Primitives::SemaphoreState::Idle);
@@ -249,14 +264,20 @@ namespace ZEngine::Hardwares
                 rrm->ResetTextureTimelines();
             }
 
-            uint64_t timeline_value = 0;
-            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &timeline_value);
-            ZENGINE_VALIDATE_ASSERT(timeline_value < UINT64_MAX, "Render Timeline value is corrupted, this should never happen.")
-            if (timeline_value < RenderTimelineNextValue)
-                ZENGINE_CORE_WARN("DeviceSwapchain: timeline clamped {} -> {}", RenderTimelineNextValue, timeline_value)
-            RenderTimelineNextValue = timeline_value;
-
-            FrameContextOffset      = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
+            // RenderTimelineNextValue is a CPU-side counter incremented exactly once per real
+            // submission (see the ++RenderTimelineNextValue call sites) — it is already correct
+            // and monotonic on its own. Do NOT resync it to vkGetSemaphoreCounterValue here: that
+            // "completed" value only reflects the fence slots waited on above (ImageInFlights /
+            // PresentCompletes, sized SwapchainImageCount), which can be smaller than the actual
+            // in-flight depth the engine allows (FrameContextPoolSize = BufferedFrameCount * 4).
+            // Rewinding this counter backward stamps every DeferFree call made afterward (by this
+            // Clear() and by unrelated callers like RenderGraph::Resize for viewport render
+            // targets) with an already-satisfied timeline value, so Drain() destroys them
+            // immediately — even while a still-executing command buffer from a frame beyond the
+            // waited-on slots is referencing them. This was the root cause of the
+            // vkDestroyFramebuffer/vkDestroyImage "in use by VkCommandBuffer" crash on fast
+            // resize (issue #736).
+            FrameContextOffset = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
 
             Clear();
             Create(); // may leave SwapchainHandle == VK_NULL_HANDLE on zero-size surface
