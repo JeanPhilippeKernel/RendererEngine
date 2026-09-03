@@ -391,13 +391,15 @@ When heterogeneous component types land (physics, animation, scripting), each co
 
 Blocked on: physics/animation/scripting systems not yet built.
 
-### 10.2 Lambda captures in ThreadPoolHelper
+### 10.2 Lambda captures in ThreadPoolHelper (done)
 
-`ThreadPoolHelper::Submit(T&& f)` currently does `new Fn(...)` and `delete fn` (one system heap alloc per submitted lambda). Routing those captures through the worker's slab would eliminate the last system-heap touch on the upload hot path.
+`ThreadPoolHelper::Submit(T&& f)` now carves `[TLSFSlab* header | Fn closure]` from a dedicated 512 KB closure slab (`ThreadPool::InitClosureSlab`, called from `RenderResourceManager::Initialize`) instead of `new`/`delete`. Falls back to `::operator new`/`delete` when the closure slab hasn't been initialized yet (early startup, tests). Eliminates the last system-heap touch on the upload hot path.
 
-### 10.3 Bitmap intermediate buffers (optional)
+### 10.3 Bitmap intermediate buffers (done)
 
-`Bitmap::Buffer` intermediate chain (`vertical_cross`, `cubemap`) is scoped to the upload lambda and freed before exit. Adding an allocator parameter to `Bitmap` would route those allocations through the worker slab as well. Low priority — STBI_MALLOC already routes the dominant allocations.
+`Bitmap` now carries an optional `TLSFSlab*` on every constructor and on both static conversion methods (`EquirectangularMapToVerticalCross`, `VerticalCrossToCubemap`) — later reshaped into free functions under `BitmapConvert::EquirectToCross`/`CrossToCubemap` (see below). All intermediate bitmaps in the HDR cubemap pipeline are now slab-backed end to end, not just the initial STBI decode.
+
+**Follow-up (PR #730):** `Bitmap`'s API was reshaped for clarity independent of the TLSF work — `BitmapType`/`BitmapFormat` became `enum class`, the ambiguous constructor overloads were replaced with named factory functions (`Bitmap::Create`, `Bitmap::FromData`), and the implementation moved out of the header into `Bitmap.cpp`. The TLSFSlab plumbing described above carried over unchanged through that reshape.
 
 ---
 
@@ -422,4 +424,5 @@ Blocked on: physics/animation/scripting systems not yet built.
 | `ZEngine/ZEngine/Core/Containers/UnorderedHashMap.h` | `init(TLSFSlab*, capacity)` overload; slab-aware `rehash` | Done |
 | `ZEngine/ZEngine/Managers/AssetManager.h` | `ContainerSlab` field + `CONTAINER_SLAB_BYTES` | Done |
 | `ZEngine/ZEngine/Managers/AssetManager.cpp` | `ContainerSlab.Init`; 5 container migrations; `ContainerSlab.Shutdown` | Done |
-| `ZEngine/ZEngine/Rendering/Buffers/Bitmap.h` | Optional: allocator param for intermediate bitmaps | Future |
+| `ZEngine/ZEngine/Rendering/Buffers/Bitmap.h` / `.cpp` | Slab-aware `Create`/`FromData`; `BitmapConvert::EquirectToCross`/`CrossToCubemap` forward the slab | Done |
+| `ZEngine/ZEngine/Helpers/ThreadPool.h` | `m_closure_slab`; `InitClosureSlab`/`GetClosureSlab`; `Submit<T>` carves `[TLSFSlab*\|Fn]` from it | Done |
