@@ -1414,22 +1414,22 @@ No other `.cpp` file should include miniz without guarding against double-defini
 
 ## 11. Deliverables Checklist
 
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSMountTable.h` — struct declarations with Doxygen comments
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSMountTable.cpp` — Mount, Unmount, Resolve, ResolveAll, IsPrefixOf, StripPrefix
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSContext.h` — struct declaration
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSContext.cpp` — Open, List, Stat, Exists, Mount, Unmount, CreateDir, Remove, Rename, ResolveWritable
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSDiskBackend.h` — VFSDiskFile + VFSDiskBackend declarations with platform ifdefs
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSDiskBackend.cpp` — Initialize, Open, Read/Write (pread/OVERLAPPED), Stat, List (std::filesystem::directory_iterator), CreateDir, Remove, Rename, MemoryMap/Unmap, ResolveNativePath (sandbox check), ProbeCaseSensitivity
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSZipBackend.h` — ZipEntry + VFSZipFile + VFSZipBackend declarations
-- [ ] `ZEngine/ZEngine/Core/VFS/VFSZipBackend.cpp` — Initialize (central dir scan), Open, Stat, List (from m_dir_cache), VFSZipFile::EnsureDecompressed (double-checked locking + tinfl), ReadArchiveBytes (pread/OVERLAPPED), Shutdown, NormalizeZipEntryName, MaybeLower
-- [ ] `ZEngine/__externals/miniz/miniz.h` — copied from assimp contrib; do not modify
-- [ ] `ZEngine/ZEngine/CMakeLists.txt` — updated `target_include_directories` with `./Core/VFS` and the miniz path
-- [ ] `ZEngine/tests/VFS/vfs_mount_test.cpp` — 6 test cases covering mount, unmount, priority, resolve-all, strip-prefix, and no-partial-component-match
-- [ ] `ZEngine/tests/VFS/vfs_disk_test.cpp` — 6 test cases covering open, not-found, sandbox traversal block, read-only caps, list, stat, mmap
-- [ ] `ZEngine/tests/VFS/vfs_zip_test.cpp` — 7 test cases covering open, case-insensitive, not-found, write-blocked, list-root, list-subdir, concurrent-reads, and one integration overlay test
-- [ ] `ZEngine/tests/CMakeLists.txt` — add `VFS/*.cpp` to the GLOB pattern
-- [ ] All new `.h` files included in the pch if needed (confirm against `pch.h`; currently `<shared_mutex>` is already included)
-- [ ] Verify: no `std::string` in any path-facing type; no `new`/`delete` outside placement-new via `ZPushStructCtor`; all arena allocation via `ZPush*` macros; all asserts via `ZENGINE_VALIDATE_ASSERT`; all logging via `ZENGINE_CORE_WARN` / `ZENGINE_CORE_ERROR`
+- [x] `ZEngine/ZEngine/Core/VFS/VFSMountTable.h` — struct declarations with Doxygen comments
+- [x] `ZEngine/ZEngine/Core/VFS/VFSMountTable.cpp` — Mount, Unmount, Resolve, ResolveAll, IsPrefixOf, StripPrefix
+- [x] `ZEngine/ZEngine/Core/VFS/VFSContext.h` — struct declaration
+- [x] `ZEngine/ZEngine/Core/VFS/VFSContext.cpp` — Open, List, Stat, Exists, Mount, Unmount, CreateDir, Remove, Rename, ResolveWritable
+- [x] `ZEngine/ZEngine/Core/VFS/VFSDiskBackend.h` — VFSDiskFile + VFSDiskBackend declarations with platform ifdefs
+- [x] `ZEngine/ZEngine/Core/VFS/VFSDiskBackend.cpp` — Initialize, Open, Read/Write (pread/OVERLAPPED), Stat, List (std::filesystem::directory_iterator), CreateDir, Remove, Rename, MemoryMap/Unmap, ResolveNativePath (sandbox check), ProbeCaseSensitivity
+- [x] `ZEngine/ZEngine/Core/VFS/VFSZipBackend.h` — ZipEntry + VFSZipFile + VFSZipBackend declarations
+- [x] `ZEngine/ZEngine/Core/VFS/VFSZipBackend.cpp` — Initialize (central dir scan), Open, Stat, List (from m_dir_cache), VFSZipFile::EnsureDecompressed (double-checked locking + tinfl), ReadArchiveBytes (pread/OVERLAPPED), Shutdown, NormalizeZipEntryName, MaybeLower
+- [x] `ZEngine/__externals/miniz/miniz.h` — copied from assimp contrib; do not modify
+- [x] `ZEngine/ZEngine/CMakeLists.txt` — updated `target_include_directories` with `./Core/VFS` and the miniz path
+- [x] `ZEngine/tests/VFS/vfs_mount_test.cpp` — 6 test cases covering mount, unmount, priority, resolve-all, strip-prefix, and no-partial-component-match
+- [x] `ZEngine/tests/VFS/vfs_disk_test.cpp` — 6 test cases covering open, not-found, sandbox traversal block, read-only caps, list, stat, mmap
+- [x] `ZEngine/tests/VFS/vfs_zip_test.cpp` — 7 test cases covering open, case-insensitive, not-found, write-blocked, list-root, list-subdir, concurrent-reads, and one integration overlay test
+- [x] `ZEngine/tests/CMakeLists.txt` — add `VFS/*.cpp` to the GLOB pattern
+- [x] All new `.h` files included in the pch if needed (confirm against `pch.h`; currently `<shared_mutex>` is already included)
+- [x] Verify: no `std::string` in any path-facing type; no `new`/`delete` outside placement-new via `ZPushStructCtor`; all arena allocation via `ZPush*` macros; all asserts via `ZENGINE_VALIDATE_ASSERT`; all logging via `ZENGINE_CORE_WARN` / `ZENGINE_CORE_ERROR`
 
 ---
 

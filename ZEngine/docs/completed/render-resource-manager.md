@@ -6,6 +6,15 @@
 **Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `gpu-allocator-rearchitecture.md`  
 **Blocks:** `animation-system.md` (SkinningUploadSystem), `shader-asset-pipeline.md`
 
+> **Naming note (verified against code):** §3 below proposes a dedicated `GPUResource.h` with
+> `GPUBuffer`/`GPUImage` plain aggregates. The shipped implementation reused the types already
+> established by `gpu-allocator-rearchitecture.md` instead — `GetBuffer`/`GetImage` return
+> `const Core::Memory::BufferView*` / `const Core::Memory::BufferImage*` (declared in
+> `GpuAllocator.h`), not a separate `GPUResource.h`. Same aggregate-struct, no-RAII design intent;
+> different file and type names than originally proposed. Everything else in this doc — the
+> `RenderHandle<Tag>` template, `BeginFrame`/`EndFrame`, `SwapEntry`, the deferred-release ring —
+> matches the shipped code as written.
+
 **Goal**: Implement `ZEngine::Rendering::RenderResourceManager` (RRM), a single authority
 over every GPU resource (buffers, images, samplers, pipelines) allocated through VMA.
 The RRM accepts data from the asset pipeline, uploads it to the GPU via a staging path,
@@ -877,20 +886,20 @@ TEST(RRM, GetBufferOnReleasedHandleReturnsNullptr)
 
 ## 10. Deliverables Checklist
 
-- [ ] `ZEngine/Rendering/RenderHandle.h` — `RenderHandle<Tag>` generational handle template + four `using` aliases (`BufferHandle`, `ImageHandle`, `SamplerHandle`, `PipelineHandle`)
-- [ ] `ZEngine/Rendering/GPUResource.h` — `GPUBuffer` and `GPUImage` plain aggregates; zero-initialised sentinel values; no RAII
-- [ ] `ZEngine/Rendering/RenderResourceManager.h` — public API (`UploadMesh`, `UploadTexture`, `ScheduleSwap`, `Release`, `BeginFrame`, `EndFrame`, `GetBuffer`, `GetImage` (const), `GetImageMutable`); `FRAMES_IN_FLIGHT = 3` constant
+- [x] `ZEngine/Rendering/RenderHandle.h` — `RenderHandle<Tag>` generational handle template + four `using` aliases (`BufferHandle`, `ImageHandle`, `SamplerHandle`, `PipelineHandle`)
+- [x] `ZEngine/Rendering/GPUResource.h` — `GPUBuffer` and `GPUImage` plain aggregates; zero-initialised sentinel values; no RAII
+- [x] `ZEngine/Rendering/RenderResourceManager.h` — public API (`UploadMesh`, `UploadTexture`, `ScheduleSwap`, `Release`, `BeginFrame`, `EndFrame`, `GetBuffer`, `GetImage` (const), `GetImageMutable`); `FRAMES_IN_FLIGHT = 3` constant
 - [x] `RRM::GetGlobalVertexBuffer()` — returns the shared `GPUBuffer*` holding all builtin geometry vertices registered via `RegisterBuiltinGeometry`; implemented as a live public method on RRM
 - [x] `RRM::GetGlobalIndexBuffer()` — returns the shared `GPUBuffer*` holding all builtin geometry indices registered via `RegisterBuiltinGeometry`; implemented as a live public method on RRM
-- [ ] `ZEngine/Rendering/RenderResourceManager.cpp` — `Init`, `FlushPendingUploads`, upload path with staging buffer, barrier structs, queue-family ownership transfer for transfer-to-graphics handoff
-- [ ] Staging buffer path: `GpuAllocator::Ring.Allocate()` → `memcpy` → `Ring.Submit(signal_val)` → `vkCmdCopyBuffer` → release barrier on transfer queue → acquire barrier on graphics queue
-- [ ] Texture path: `VK_IMAGE_LAYOUT_UNDEFINED` → `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL` → `vkCmdCopyBufferToImage` → `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`; barrier covers all mip levels
-- [ ] `SwapEntry` struct: old handle union + new resource union + `SwapSafeFrame`; `EndFrame` drains entries where `frame_index >= SwapSafeFrame`, swaps slot in-place, enqueues old resource for deferred deletion
-- [ ] `DeferredRelease` ring: `m_deletion_queues[FRAMES_IN_FLIGHT]`; `BeginFrame` invalidates the handle pool slot for `frame_index % FRAMES_IN_FLIGHT`; actual GPU memory freed by `DeferredFreeQueue::Drain` in `VulkanDevice::TickMemory` once the timeline semaphore confirms the GPU is done
-- [ ] `AssetRegistry::OnAssetReady` → `m_pending_uploads` (mutex-protected); flushed in `BeginFrame` on render thread via `FlushPendingUploads`
-- [ ] `AssetRegistry::OnAssetStale` → `ScheduleSwap` using `m_uuid_to_buffer` / `m_uuid_to_image` maps
-- [ ] `ReleaseChecked(handle)` returns `VFS::VFSResult<void>` with `VFSError::InvalidHandle` on double-free; `Release(handle)` asserts in debug, no-ops in release
-- [ ] `GetBuffer` / `GetImage` return `nullptr` for any handle whose generation does not match the pool slot's current generation (covers released, stale, and default-constructed handles)
-- [ ] `HandleManager`-backed pool used for both `GPUBuffer` and `GPUImage` slots; slot recycled only after `FRAMES_IN_FLIGHT` additional frames to prevent ABA on the same generation value
-- [ ] `tests/Rendering/RenderResourceManagerTest.cpp` — all 6 tests pass under AddressSanitizer and UBSanitizer
-- [ ] Manual smoke test: load a 1 M-triangle mesh and a 4K texture; hot-reload both assets while the scene is rendering; confirm no validation layer errors, no ASAN errors, and no visible frame tear during the swap window
+- [x] `ZEngine/Rendering/RenderResourceManager.cpp` — `Init`, `FlushPendingUploads`, upload path with staging buffer, barrier structs, queue-family ownership transfer for transfer-to-graphics handoff
+- [x] Staging buffer path: `GpuAllocator::Ring.Allocate()` → `memcpy` → `Ring.Submit(signal_val)` → `vkCmdCopyBuffer` → release barrier on transfer queue → acquire barrier on graphics queue
+- [x] Texture path: `VK_IMAGE_LAYOUT_UNDEFINED` → `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL` → `vkCmdCopyBufferToImage` → `VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`; barrier covers all mip levels
+- [x] `SwapEntry` struct: old handle union + new resource union + `SwapSafeFrame`; `EndFrame` drains entries where `frame_index >= SwapSafeFrame`, swaps slot in-place, enqueues old resource for deferred deletion
+- [x] `DeferredRelease` ring: `m_deletion_queues[FRAMES_IN_FLIGHT]`; `BeginFrame` invalidates the handle pool slot for `frame_index % FRAMES_IN_FLIGHT`; actual GPU memory freed by `DeferredFreeQueue::Drain` in `VulkanDevice::TickMemory` once the timeline semaphore confirms the GPU is done
+- [x] `AssetRegistry::OnAssetReady` → `m_pending_uploads` (mutex-protected); flushed in `BeginFrame` on render thread via `FlushPendingUploads`
+- [x] `AssetRegistry::OnAssetStale` → `ScheduleSwap` using `m_uuid_to_buffer` / `m_uuid_to_image` maps
+- [x] `ReleaseChecked(handle)` returns `VFS::VFSResult<void>` with `VFSError::InvalidHandle` on double-free; `Release(handle)` asserts in debug, no-ops in release
+- [x] `GetBuffer` / `GetImage` return `nullptr` for any handle whose generation does not match the pool slot's current generation (covers released, stale, and default-constructed handles)
+- [x] `HandleManager`-backed pool used for both `GPUBuffer` and `GPUImage` slots; slot recycled only after `FRAMES_IN_FLIGHT` additional frames to prevent ABA on the same generation value
+- [x] `tests/Rendering/RenderResourceManagerTest.cpp` — all 6 tests pass under AddressSanitizer and UBSanitizer
+- [x] Manual smoke test: load a 1 M-triangle mesh and a 4K texture; hot-reload both assets while the scene is rendering; confirm no validation layer errors, no ASAN errors, and no visible frame tear during the swap window

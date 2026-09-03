@@ -600,13 +600,13 @@ TEST(VFSFileWatcher, IsDirectoryFlagPropagated)
 
 ## 7. Deliverables Checklist
 
-- [ ] `ZEngine/VFS/VFSWatchEvent.h`
-- [ ] `ZEngine/VFS/IVFSPlatformWatcher.h`
-- [ ] `ZEngine/VFS/VFSFileWatcher.h` + `VFSFileWatcher.cpp`
-- [ ] `ZEngine/VFS/Platform/VFSFSEventsWatcher.h` + `VFSFSEventsWatcher.mm`
-- [ ] `ZEngine/VFS/Platform/VFSInotifyWatcher.h` + `VFSInotifyWatcher.cpp`
-- [ ] `ZEngine/VFS/Platform/VFSRDCWatcher.h` + `VFSRDCWatcher.cpp`
-- [ ] CMake: `-framework CoreServices`, `.mm` explicit source entry
-- [ ] `tests/VFS/VFSFileWatcherTest.cpp` (8 tests, MockPlatformWatcher)
-- [ ] `VFSContext::InitWatcher()` and `VFSContext::Tick()` wired up
-- [ ] Manual smoke test: rename a `.glb` in Finder → single notification within ~100 ms
+- [x] `ZEngine/VFS/VFSWatchEvent.h`
+- [x] `ZEngine/VFS/IVFSPlatformWatcher.h`
+- [x] `ZEngine/VFS/VFSFileWatcher.h` + `VFSFileWatcher.cpp`
+- [x] `ZEngine/VFS/Platform/VFSFSEventsWatcher.h` + `VFSFSEventsWatcher.mm`
+- [x] `ZEngine/VFS/Platform/VFSInotifyWatcher.h` + `VFSInotifyWatcher.cpp`
+- [x] `ZEngine/VFS/Platform/VFSRDCWatcher.h` + `VFSRDCWatcher.cpp`
+- [x] CMake: `-framework CoreServices`, `.mm` explicit source entry
+- [x] `tests/VFS/VFSFileWatcherTest.cpp` (8 tests, MockPlatformWatcher)
+- [x] `VFSContext::InitWatcher()` and `VFSContext::Tick()` wired up
+- [x] Manual smoke test: rename a `.glb` in Finder → single notification within ~100 ms

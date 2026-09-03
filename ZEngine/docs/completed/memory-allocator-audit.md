@@ -9,6 +9,15 @@
 - `ZEngine/Core/Memory/MemoryManager.h`
 - `ZEngine/Helpers/MemoryOperations.h`
 
+> **Scope note:** this audit covers the 13 bugs found in the review that produced PRs #497/#531
+> — it is a closed, point-in-time report, not a standing guarantee that no further allocator bugs
+> exist. Later, unrelated bugs in the same files were found and fixed independently: alignment
+> precondition + `AllocateNoZero` (#680, #683), `PoolAllocator` exhaustion/double-free asserts
+> (#681, #697), Windows eager sub-arena commit (#728), and the `m_mem_page_size` 32-bit-on-Windows
+> truncation that was the real root cause of a Windows startup crash (#731) — see
+> [Memory Management](https://github.com/JeanPhilippeKernel/RendererEngine/wiki/Memory-Management)
+> on the wiki for the current, maintained picture of the allocator.
+
 ---
 
 ## Summary Table

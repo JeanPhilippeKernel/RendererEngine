@@ -571,12 +571,12 @@ TEST(MetaFileIO, SettingsCountCappedAtMax)
 
 ## 10. Deliverables Checklist
 
-- [ ] `ZEngine/VFS/Meta/ImportStatus.h`
-- [ ] `ZEngine/VFS/Meta/MetaFileData.h`
-- [ ] `ZEngine/VFS/Meta/MetaFileIO.h` + `MetaFileIO.cpp`
-- [ ] `AssetManager::GetOrCreateUUID()` added
-- [ ] `AssimpImporter`: UUID generation replaced with `MetaFileIO::GetOrCreate`
-- [ ] `VFSScanner::ScanDirectory`: `.meta` creation integrated, `ScanStats` updated
-- [ ] `tests/VFS/MetaFileIOTest.cpp` (10 tests)
-- [ ] `.gitignore`: ensure `*.meta` is NOT excluded; `*.zasset` IS excluded
-- [ ] Manual smoke test: delete `mesh.glb.meta`, restart editor → same UUID reappears; modify `mesh.glb` → UUID preserved, SHA updated
+- [x] `ZEngine/VFS/Meta/ImportStatus.h`
+- [x] `ZEngine/VFS/Meta/MetaFileData.h`
+- [x] `ZEngine/VFS/Meta/MetaFileIO.h` + `MetaFileIO.cpp`
+- [x] `AssetManager::GetOrCreateUUID()` added
+- [x] `AssimpImporter`: UUID generation replaced with `MetaFileIO::GetOrCreate`
+- [x] `VFSScanner::ScanDirectory`: `.meta` creation integrated, `ScanStats` updated
+- [x] `tests/VFS/MetaFileIOTest.cpp` (10 tests)
+- [x] `.gitignore`: ensure `*.meta` is NOT excluded; `*.zasset` IS excluded
+- [x] Manual smoke test: delete `mesh.glb.meta`, restart editor → same UUID reappears; modify `mesh.glb` → UUID preserved, SHA updated

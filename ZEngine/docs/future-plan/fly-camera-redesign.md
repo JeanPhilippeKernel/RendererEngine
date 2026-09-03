@@ -2,8 +2,20 @@
 
 **Replaces:** `FlyCamera.h/.cpp`, `FlyCameraController.h/.cpp`, `EditorCameraController.h/.cpp`
 **Relates to:** `rendering-flow.md`, `input-system.md`
-**Status:** Implemented
+**Status:** Superseded by a different implementation — see note below
 **Scope:** Ground-up redesign of the editor fly camera — input model, state machine, coordinate system, HiDPI correctness, InputManager integration.
+
+> **Correctness note (verified against code):** the camera *was* redesigned, but not to this
+> doc's specific architecture — every checklist item below is unchecked because none of the
+> proposed types (`FlyCameraInput`, `FlyCameraState` enum, `EditorCameraController.h/.cpp`,
+> `ICameraController` gaining 4 pure virtuals) exist in the codebase. What actually shipped is
+> simpler: `FlyCameraController` owns a `CamState : uint8_t { Idle, Hover, Fly }` enum directly
+> (`FlyCameraController.h`), self-gates on viewport hover via `SetViewportRect(x0,y0,x1,y1)`
+> called every frame by `ViewportPanel`, and locks/unlocks the cursor on `Fly` state entry/exit —
+> no separate `FlyCameraInput` struct, no `Hooks`/`Input`/`State` split. This doc's problem
+> analysis (§1) is still accurate background reading; its proposed solution (§2 onward) is not
+> what was built. Do not treat the checklist at the bottom as a to-do list — the actual gap is a
+> full doc rewrite to describe the `CamState` design, not implementation work.
 
 ---
 
