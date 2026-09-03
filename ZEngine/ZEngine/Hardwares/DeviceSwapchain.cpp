@@ -237,6 +237,21 @@ namespace ZEngine::Hardwares
                 }
             }
 
+            // Defense-in-depth: ImageInFlights/PresentCompletes are sized SwapchainImageCount,
+            // but the engine allows up to FrameContextPoolSize (BufferredFrameCount * 4) frames'
+            // command buffers to be concurrently in-flight — more than those two arrays track.
+            // Wait on every frame context's own fence too, so recreation never proceeds while a
+            // command buffer beyond the swapchain-image-indexed slots is still executing
+            // (issue #736).
+            for (uint32_t i = 0; i < FrameContexts.size(); ++i)
+            {
+                if (FrameContexts[i].Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+                {
+                    FrameContexts[i].Fence->Wait(UINT64_MAX);
+                    FrameContexts[i].Fence->Reset();
+                }
+            }
+
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
                 FrameContexts[i + FrameContextOffset].Acquired->SetState(Primitives::SemaphoreState::Idle);
