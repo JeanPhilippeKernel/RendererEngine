@@ -1,9 +1,36 @@
 # GPU Allocator Rearchitecture — VMA Pools, Staging Ring, Timeline Drain
 
 **Priority:** P0 — Required before 4K resolution target; fixes confirmed correctness bugs  
-**Status:** Implemented — GpuAllocator with VMA segregated pools, staging ring, timeline-gated deferred free, and all C1-C4/H2/H3/H5 bugs fixed (PR #581)  
+**Status:** Partially implemented — moved back from `completed/` to `future-plan/` after a
+full-file re-verification found the doc's headline feature was never built (see correction below).
+The staging ring, `DeferredFreeQueue`, and `TickMemory` drain are real and match the doc; the "VMA
+segregated pools" title feature is not.
 **Depends on:** Nothing — self-contained hardware layer change  
 **Blocks:** `per-frame-upload-heap.md` (needs clean allocator API first)
+
+---
+
+## Correction (re-verification finding)
+
+A deep-verification pass against the current codebase found this doc was moved to `completed/`
+prematurely. Specific gaps:
+
+- **"VMA segregated pools" is fabricated.** `GpuAllocator::Pools[5]` (line ~163 below) is declared
+  but never populated anywhere in the codebase — there are **zero** `vmaCreatePool` calls in the
+  entire tree. Every allocation still goes through the default VMA pool, contradicting the doc's
+  title and its H1 "fix" claim.
+- **H3's actual fix mechanism is different from what's documented.** The doc specifies
+  `AUTO_PREFER_DEVICE` + `ALLOW_TRANSFER_INSTEAD` for `HostUniform`. The shipped code uses plain
+  `VMA_MEMORY_USAGE_AUTO` without `ALLOW_TRANSFER_INSTEAD_BIT` — a deliberate, differently-reasoned
+  choice, not the mechanism this doc describes.
+- **`AsyncResourceLoader.cpp`, the doc's stated fix location for H2/H5, no longer exists.** It was
+  deleted and its responsibilities absorbed into `RenderResourceManager.cpp`. Any section below
+  that references `AsyncResourceLoader.cpp` line numbers is stale.
+- **Confirmed real and matching**: the core `GpuAllocator`/`StagingRing`/`DeferredFreeQueue`/
+  `TickMemory` mechanisms described elsewhere in this doc do exist and behave as documented — only
+  the segregated-pools feature and the H2/H3/H5 fix locations are wrong.
+
+---
 
 **Goal:** Replace the current flat VMA usage in `VulkanDevice` with a `GpuAllocator` struct
 that owns segregated memory pools, a persistent staging ring, and a timeline-gated deferred

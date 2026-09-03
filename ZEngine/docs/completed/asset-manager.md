@@ -45,31 +45,40 @@ flowchart LR
 
 ## Memory Layout
 
-Everything is allocated from a single 512 MB sub-arena carved from the `AssetManager`
-budget slot during `Initialize()`. All flat arrays grow inside this arena — no heap.
+**Correction**: this section described an earlier single-arena design that was superseded by the
+Phase 2 TLSF work. There is no intermediate 512 MB sub-arena — `AssetManager::Arena` is set
+directly to the full `ArenaAllocator*` passed into `Initialize()` (the engine's budgeted asset
+arena). Sitting alongside it is a separate 256 MB `TLSFSlab` (`ContainerSlab`,
+`CONTAINER_SLAB_BYTES = 256 * 1024 * 1024`) that specifically backs the containers expected to
+grow/realloc repeatedly (`Meshes`, `NodeHierarchies`, `Materials`, `UUIDToTextureHandle`,
+`UUIDToMaterialSlot`) so their reallocation can extend in-place inside the slab instead of
+accumulating dead blocks in the parent arena. `GPUMeshMaterials`, `Textures`,
+`MeshToHierarchySlot`, and `AssetRegistry` are allocated directly from `Arena`, not the slab.
 
 ```mermaid
 graph TD
-    MainArena["MainArena (8 GB root)"]
-    AssetArena["AssetManager::Arena (512 MB)"]
-    Meshes["Meshes: Array&lt;AssetMesh&gt;\nmax ~5000 entries"]
-    Hierarchies["NodeHierarchies: Array&lt;AssetNodeHierarchy&gt;\nmax ~5000 entries"]
-    Materials["Materials: Array&lt;AssetMaterial&gt;\nmax ~5000 entries"]
-    Textures["Textures: Array&lt;AssetTexture&gt;\nmax ~5000 entries"]
-    GPU["GPUMeshMaterials: Array&lt;MeshMaterial&gt;\nmirrors Materials 1:1 as GPU structs"]
-    UUIDMap["UUIDToTextureHandle\nHashMap&lt;uuid → TextureHandle&gt;"]
-    HierMap["MeshToHierarchySlot\nHashMap&lt;MeshUUID → slot&gt;"]
-    Registry["AssetRegistry\n(uuid → SlotHandle + state)"]
+    ParentArena["AssetManager::Arena (engine-budgeted, no intermediate carve)"]
+    ContainerSlab["AssetManager::ContainerSlab (TLSFSlab, 256 MB)"]
+    Meshes["Meshes: Array&lt;AssetMesh&gt;\nmax ~5000 entries — in slab"]
+    Hierarchies["NodeHierarchies: Array&lt;AssetNodeHierarchy&gt;\nmax ~5000 entries — in slab"]
+    Materials["Materials: Array&lt;AssetMaterial&gt;\nmax ~5000 entries — in slab"]
+    UUIDTexMap["UUIDToTextureHandle\nHashMap&lt;uuid → TextureHandle&gt; — in slab"]
+    UUIDMatMap["UUIDToMaterialSlot\nHashMap&lt;uuid → slot&gt; — in slab"]
+    Textures["Textures: Array&lt;AssetTexture&gt;\nmax ~5000 entries — direct from Arena"]
+    GPU["GPUMeshMaterials: Array&lt;MeshMaterial&gt;\nmirrors Materials 1:1 — direct from Arena"]
+    HierMap["MeshToHierarchySlot\nHashMap&lt;MeshUUID → slot&gt; — direct from Arena"]
+    Registry["AssetRegistry\n(uuid → SlotHandle + state) — direct from Arena"]
 
-    MainArena --> AssetArena
-    AssetArena --> Meshes
-    AssetArena --> Hierarchies
-    AssetArena --> Materials
-    AssetArena --> Textures
-    AssetArena --> GPU
-    AssetArena --> UUIDMap
-    AssetArena --> HierMap
-    AssetArena --> Registry
+    ParentArena --> ContainerSlab
+    ContainerSlab --> Meshes
+    ContainerSlab --> Hierarchies
+    ContainerSlab --> Materials
+    ContainerSlab --> UUIDTexMap
+    ContainerSlab --> UUIDMatMap
+    ParentArena --> Textures
+    ParentArena --> GPU
+    ParentArena --> HierMap
+    ParentArena --> Registry
 ```
 
 ---
@@ -86,9 +95,13 @@ index is extracted from the handle.
 |---|---|---|
 | `Meshes` | `AssetMesh` | `ReadAssetHandleIndex(rec->SlotHandle)` |
 | `NodeHierarchies` | `AssetNodeHierarchy` | `MeshToHierarchySlot[MeshUUID]` |
-| `Materials` | `AssetMaterial` | `ReadAssetHandleIndex(rec->SlotHandle)` |
+| `Materials` | `AssetMaterial` | `ReadAssetHandleIndex(rec->SlotHandle)` or `UUIDToMaterialSlot[MaterialUUID]` |
 | `Textures` | `AssetTexture` | `ReadAssetHandleIndex(rec->SlotHandle)` |
 | `GPUMeshMaterials` | `MeshMaterial` | same slot as `Materials` |
+
+**Correction — missing field**: `UUIDToMaterialSlot` (`HashMap<uuid, uint32_t>`) is a dedicated
+per-type dedup map for materials, analogous to `UUIDToTextureHandle` for textures and
+`MeshToHierarchySlot` for hierarchies. It was omitted from the original table above.
 
 ### `MeshMaterial` (GPU struct)
 
@@ -132,8 +145,20 @@ have small indices; unset slots hold `0xFFFFFFFF` and are skipped.
 
 ### Deduplication
 
-Every `Ingest*` method calls `IsRegistered(uuid)` first. If the UUID is already in
-`AssetRegistry`, the call is a no-op — the asset is already in the flat arrays.
+**Correction**: `Ingest*` methods deliberately do **not** call `IsRegistered(uuid)` for dedup.
+`VFSScanner` pre-registers asset UUIDs in `AssetRegistry` before the asset is actually ingested
+(uploaded into the flat arrays), so `IsRegistered`/`GetAsset` would give a false positive — the
+UUID looks registered even though no `Mesh`/`Texture`/`Material` slot exists for it yet. Instead,
+each `Ingest*` method checks its own dedicated map before inserting: `IngestMesh` checks
+`MeshToHierarchySlot[MeshUUID]`, `IngestTexture` checks `UUIDToTextureHandle[uuid]`, and
+`IngestMaterial` checks `UUIDToMaterialSlot[MaterialUUID]`. If the UUID is already present in the
+relevant map, the ingest is a no-op and the existing slot/handle is returned; otherwise the asset
+is uploaded and the map is updated.
+
+Also undocumented previously: `ReloadFromDisk(Core::Memory::ArenaAllocator* scratch)` (re-imports
+from disk using a scratch arena), `GetOrCreateUUID(ctx, asset_path, importer_name)` (resolves or
+mints a UUID for a path via the importer), and bounding-sphere computation performed inside
+`IngestMesh`.
 
 ### `IngestMesh`
 
@@ -348,9 +373,11 @@ full memory budget redesign tracking. Key items relevant to AssetManager:
 
 - **No eviction** — all ingested assets live until shutdown. A `StreamingManager` (2 GB budget,
   tracked in #635) will sit above AssetManager and manage which assets are resident.
-- **AssetManager carved size** — currently carves 512 MB from its budget slot into
-  `s_Instance->Arena`. The remaining budget headroom is used for `ImportCoordinator` and
-  `RenderResourceManager` objects placed via `ZPushStructCtor`.
+- **AssetManager arena sizing** — `s_Instance->Arena` is the full engine-budgeted arena passed
+  into `Initialize()` (no intermediate carve; see the corrected "Memory Layout" section above),
+  plus a 256 MB `ContainerSlab` (TLSFSlab) for the containers that grow/realloc repeatedly. The
+  remaining budget headroom is used for `ImportCoordinator` and `RenderResourceManager` objects
+  placed via `ZPushStructCtor`.
 - **Duplicate importer instances** — `AssetImporterUIComponent` allocates its own `GltfImporter`
   (64 MB) and `AssimpImporter` (350 MB) in addition to the engine's importers. Consolidation
   tracked in #635.

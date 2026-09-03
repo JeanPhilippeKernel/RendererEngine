@@ -1,7 +1,9 @@
 # Render Resource Manager — GPU Lifetime & Hot-Reload
 
 **Priority:** P3 — Implement alongside import-pipeline.md  
-**Status:** Implemented  
+**Status:** Partially implemented — moved back from `completed/` to `future-plan/` after a
+full-file re-verification found several severe gaps beyond simple naming drift (see correction
+below), including at least one behavior that looks like a real runtime bug, not just doc staleness.
 **Implemented in:** `ZEngine/ZEngine/Rendering/RenderResourceManager.h/.cpp`  
 **Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `gpu-allocator-rearchitecture.md`  
 **Blocks:** `animation-system.md` (SkinningUploadSystem), `shader-asset-pipeline.md`
@@ -11,9 +13,27 @@
 > established by `gpu-allocator-rearchitecture.md` instead — `GetBuffer`/`GetImage` return
 > `const Core::Memory::BufferView*` / `const Core::Memory::BufferImage*` (declared in
 > `GpuAllocator.h`), not a separate `GPUResource.h`. Same aggregate-struct, no-RAII design intent;
-> different file and type names than originally proposed. Everything else in this doc — the
-> `RenderHandle<Tag>` template, `BeginFrame`/`EndFrame`, `SwapEntry`, the deferred-release ring —
-> matches the shipped code as written.
+> different file and type names than originally proposed.
+>
+> **Correction — the claim below that "everything else matches the shipped code as written" was
+> wrong.** A deeper re-verification pass found real gaps in exactly the parts that claim were
+> covering:
+> - **`EndFrame`/`SwapEntry` only handles `SwapKind::Image`.** `SwapKind::Buffer` entries are
+>   silently dropped — hot-reloading a buffer asset (e.g. re-imported mesh data) does not actually
+>   swap the live buffer. This is a real correctness gap, not just a doc/code naming mismatch.
+> - **The "deferred-release ring" (`m_deletion_queues[FRAMES_IN_FLIGHT]`) does not exist.** No such
+>   member or ring buffer is present anywhere in `RenderResourceManager`.
+> - **`ScheduleSwap(BufferHandle, ...)` and `ScheduleSwap(ImageHandle, ...)` are empty stubs.**
+>   Hot-reload swap scheduling does not functionally do anything for either resource kind.
+> - **`ReleaseChecked` does not exist.**
+> - **No ABA protection on the handle pool, contrary to this doc's explicit safety claim.** RRM
+>   uses hand-rolled `Slot<T>` arrays that immediately reuse a freed slot with the *same*
+>   generation value — a stale handle from a recycled slot can alias a different live resource.
+>   There is no `HandleManager`-backed pool anywhere in the codebase.
+> - **Confirmed accurate**: `GetBuffer`/`GetImage`'s generation check does match the doc,
+>   `FRAMES_IN_FLIGHT = 3` matches, and the `RenderHandle<Tag>`/`BeginFrame` mechanics match. The
+>   test file exists but contains a different set of tests than the 6 named in this doc's test
+>   section — treat that section as aspirational, not a description of what's actually covered.
 
 **Goal**: Implement `ZEngine::Rendering::RenderResourceManager` (RRM), a single authority
 over every GPU resource (buffers, images, samplers, pipelines) allocated through VMA.

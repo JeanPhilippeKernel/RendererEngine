@@ -2,7 +2,7 @@
 
 **Priority:** P0 — Without a policy, hot-path logging kills performance in production
 **Status:** Implemented
-**Modifies:** `Logger.h`, `Logger.cpp`, `LoggerConfiguration.h`, `LoggerDefinition.h`, `LogUIComponent.h/.cpp`, `Obelisk/EntryPoint.cpp`, `Scripts/CMake/LoggingDefaults.cmake`
+**Modifies:** `Logger.h`, `Logger.cpp`, `LoggerConfiguration.h`, `LoggerDefinition.h`, `ConsolePanel.h/.cpp (corrected — see note below; doc originally named this LogUIComponent, which does not exist in the shipped code)`, `Obelisk/EntryPoint.cpp`, `Scripts/CMake/LoggingDefaults.cmake`
 
 ---
 
@@ -18,7 +18,7 @@ The existing `Logger.h` / `Logger.cpp` provides a working foundation. The follow
 
 **Gaps that must be fixed:**
 
-- **`LogEventHandler` is `std::function<void(LogMessage)>`.** `std::function` performs a heap allocation for any callable that captures state. In the editor, the log panel registers a handler via `std::bind(&LogUIComponent::OnLog, this, ...)` which captures `this`; this allocation happens at startup but the type forces every call site that handles `LogEventHandler` values to go through a virtual dispatch. Replace with a plain function pointer + context pointer pair.
+- **`LogEventHandler` is `std::function<void(LogMessage)>`.** `std::function` performs a heap allocation for any callable that captures state. In the editor, the log panel (`ConsolePanel`, not `LogUIComponent` — see naming correction below) registers a handler via `std::bind(&ConsolePanel::OnLog, this, ...)` which captures `this`; this allocation happens at startup but the type forces every call site that handles `LogEventHandler` values to go through a virtual dispatch. Replace with a plain function pointer + context pointer pair.
 - **`AddEventHandler` has an unguarded write.** `s_log_event_handlers.insert` in `AddEventHandler` is called without holding `s_mutex`, making concurrent registration from two threads a data race. Both `AddEventHandler` and `RemoveEventHandler` must hold a `unique_lock` before mutating the map.
 - **No channel system.** All subsystems share one logger. There is no way to disable `ECS` verbose logging in a shipping build without also silencing engine lifecycle messages. Channels are required.
 - **No build-type level filtering.** Debug builds and Release builds produce the same verbosity. `TRACE` and `INFO` messages from the render graph in a shipping build add measurable overhead in the format and enqueue path even if spdlog drops them at the sink.
@@ -76,7 +76,15 @@ The following table defines the minimum level that is forwarded to any sink or e
 
 `Network` retains `INFO+` in RelWithDebInfo because packet loss events and session state changes are important for QA testing of networked builds.
 
-These defaults are set at compile time via CMake defines (one per channel, e.g. `ZENGINE_LOG_LEVEL_ECS`). They can be overridden per-channel by defining the corresponding CMake variable; they cannot be changed at runtime without a rebuild. Runtime log level adjustment is intentionally not supported to keep the fast path a simple compile-time constant comparison.
+These defaults are set at compile time via CMake defines (one per channel, e.g. `ZENGINE_LOG_LEVEL_ECS`) and are overridable per-channel by defining the corresponding CMake variable.
+
+**Correction**: contrary to what this paragraph originally claimed, runtime log level adjustment
+*is* supported — `k_min_level` (`Logger.cpp:36`) is a mutable `static int` array, not a
+`constexpr` one, and `Logger::SetMinLevel(LogChannel, LogLevel)` / `Logger::SetMinLevelAllChannels(LogLevel)`
+exist and mutate it directly. The comment above the array in the shipped code states it's mutable
+specifically so tests can lower the gate at runtime. The fast path in `Logger::Log` is still a
+simple integer comparison against `k_min_level[channel]` — the compile-time CMake defines set the
+*initial* values, but nothing prevents changing them afterward.
 
 The CMake snippet below sets a uniform baseline per build type, then applies the per-channel overrides that diverge from that baseline (matching the table above). The baseline is `TRACE` for Debug, `INFO` for RelWithDebInfo, and `WARN` for Release.
 
@@ -311,9 +319,15 @@ static void Error   (std::string_view msg);
 static void Critical(std::string_view msg);
 ```
 
-`Log` performs a runtime level check against the minimum level configured for `channel` in the current build (from the level policy table in Section 3, encoded as a `constexpr` array indexed by `LogChannel`). If the message passes, it is forwarded to the spdlog async queue and to any registered event handlers.
+`Log` performs a runtime level check against the minimum level configured for `channel` in the current build (from the level policy table in Section 3, a mutable array indexed by `LogChannel` — see the correction in §3, it is not `constexpr`). If the message passes, it is forwarded to the spdlog async queue and to any registered event handlers.
 
-`LogLevel` replaces `LogMessageType` with explicit numeric values that match the compile-time constants in Section 5, and uses uppercase names so the `##level` paste in `ZENGINE_LOG` resolves to valid enum members. The existing `LogMessageType` had a different ordinal order (`Info=0, Trace=1, ...`) which would silently corrupt any serialised log records. `LogMessageType` is kept as a `using` alias pointing to `LogLevel`, but the ordinal values change; any code that serialises or persists `LogMessageType` as a raw integer must be audited and remapped before migration:
+`LogLevel` replaces `LogMessageType` with explicit numeric values that match the compile-time constants in Section 5, and uses uppercase names so the `##level` paste in `ZENGINE_LOG` resolves to valid enum members. The existing `LogMessageType` had a different ordinal order (`Info=0, Trace=1, ...`) which would silently corrupt any serialised log records.
+
+**Correction**: `using LogMessageType = LogLevel` was never added — there is zero reference to
+`LogMessageType` anywhere in the shipped `Logging/` code. The migration went with a clean cut to
+`LogLevel` instead of keeping a compatibility alias; any code that serialises or persists
+`LogMessageType` as a raw integer must be audited and remapped, but there is no alias to lean on
+during that audit — every call site had to be updated directly:
 
 ```cpp
 enum class LogLevel : uint8_t {
@@ -325,14 +339,15 @@ enum class LogLevel : uint8_t {
     CRITICAL = 4,
 };
 
-using LogMessageType = LogLevel;  // source-compatible alias; integer values have changed
+// PLANNED, NOT SHIPPED: using LogMessageType = LogLevel;
+// The alias was never added — see the correction above this code block.
 ```
 
 ---
 
 ## 7. Fix LogEventHandler: std::function to Plain Function Pointer
 
-The current `using LogEventHandler = std::function<void(LogMessage)>` causes a heap allocation for every handler registration that captures state (e.g., `LogUIComponent` registers via `std::bind(&LogUIComponent::OnLog, this, ...)`).
+The current `using LogEventHandler = std::function<void(LogMessage)>` causes a heap allocation for every handler registration that captures state (e.g., `ConsolePanel` registers via `std::bind(&ConsolePanel::OnLog, this, ...)`).
 
 Replace with an explicit context pointer:
 
@@ -358,15 +373,15 @@ static uint32_t AddEventHandler(LogEventHandler handler);
 static void     RemoveEventHandler(uint32_t handle);
 ```
 
-Usage at the call site (e.g., `LogUIComponent`):
+Usage at the call site (e.g., `ConsolePanel`):
 
 ```cpp
 // Before: std::bind capturing this — causes heap allocation in std::function
-m_handler_cookie = Logger::AddEventHandler(std::bind(&LogUIComponent::OnLog, this, std::placeholders::_1));
+m_handler_cookie = Logger::AddEventHandler(std::bind(&ConsolePanel::OnLog, this, std::placeholders::_1));
 
 // After: plain function pointer + context
 static void OnLogMessage(void* ctx, const LogMessage& msg) {
-    static_cast<LogUIComponent*>(ctx)->OnLog(msg);
+    static_cast<ConsolePanel*>(ctx)->OnLog(msg);
 }
 m_handler_cookie = Logger::AddEventHandler({ OnLogMessage, this });
 ```
@@ -437,7 +452,7 @@ Handler registration and removal happen at startup and shutdown, not in the hot 
 
 **Updated `LogMessage` struct:**
 
-The current `LogMessage` carries a `float Color[4]` field that `LogUIComponent` uses to drive ImGui text color. This field must be retained. The updated struct adds `LogChannel` and renames `Type` to `Level` for consistency with `LogLevel`, while keeping `Color` so the editor log panel requires no changes to its rendering code:
+The current `LogMessage` carries a `float Color[4]` field that `ConsolePanel` uses to drive its ZUI text color (this doc's original wording said "ImGui text color" — the shipped panel is ZUI-based, not ImGui). This field must be retained. The updated struct adds `LogChannel` and renames `Type` to `Level` for consistency with `LogLevel`, while keeping `Color` so the editor log panel requires no changes to its rendering code:
 
 ```cpp
 // LogMessage — the record type passed to event handlers and stored in the ring buffer.
@@ -459,7 +474,7 @@ Message storage uses two parallel arena-allocated ring arrays:
 
 `LogMessage::Message` points into the corresponding `String` slot. The pointer is valid for the lifetime of that ring slot. Once the ring wraps and the slot is overwritten the pointer becomes invalid. Do not store `Message` pointers across frames or after calling `FlushRingBufferToCrashLog`.
 
-`Logger::Log` derives `Color` from the `LogLevel` using the same mapping the current code uses (`INFO` = green, `WARN` = orange, `ERR`/`CRITICAL` = red, `TRACE` = grey). This keeps `LogUIComponent` working without modification after migration.
+`Logger::Log` derives `Color` from the `LogLevel` using the same mapping the current code uses (`INFO` = green, `WARN` = orange, `ERR`/`CRITICAL` = red, `TRACE` = grey). This keeps `ConsolePanel` working without modification after migration.
 
 **Sink configuration (Release):**
 - Only `ERR` and `CRITICAL` messages reach the rotating file sink. All other messages are dropped at the `Logger::Log` runtime level check before touching spdlog.
@@ -551,19 +566,19 @@ Subsystems should be migrated to channel-specific macros opportunistically. Ther
 - [x] Change `Logger::Log` parameter to `std::string_view` (the old per-level shims were removed entirely; the unified `Log(LogChannel, LogLevel, std::string_view)` replaces them)
 - [x] Fix unguarded write in `AddEventHandler` — acquire `unique_lock` before `s_log_event_handlers.insert`
 - [x] Replace `s_log_event_handlers` copy-on-log pattern with `std::shared_mutex` shared read lock
-- [x] Update `LogUIComponent::AddEventHandler` call from `std::bind` to plain function pointer + context
+- [x] Update `ConsolePanel::AddEventHandler` call from `std::bind` to plain function pointer + context
 
 **New functionality:**
 
 - [x] Add `LogChannel` enum to `Logger.h`
-- [x] Add `LogLevel` enum with ordinals matching Section 5 constants; add `using LogMessageType = LogLevel`
+- [x] Add `LogLevel` enum with ordinals matching Section 5 constants (`using LogMessageType = LogLevel` was planned but never added — zero references to `LogMessageType` exist in the shipped code; call sites were migrated directly instead)
 - [x] Add `Logger::Log(LogChannel, LogLevel, std::string_view)` unified dispatch
-- [x] Implement runtime level policy table (`constexpr` array `k_min_level[LogChannel::COUNT]`) — initialized from the CMake-emitted `ZENGINE_LOG_LEVEL_*` defines; `Logger::Log` early-returns before touching spdlog, the ring buffer, or event handlers when the message level is below the channel minimum
+- [x] Implement runtime level policy table (mutable `static int` array `k_min_level[LogChannel::COUNT]` — not `constexpr`, see correction in §3) — initialized from the CMake-emitted `ZENGINE_LOG_LEVEL_*` defines, mutable at runtime via `Logger::SetMinLevel`/`SetMinLevelAllChannels`; `Logger::Log` early-returns before touching spdlog, the ring buffer, or event handlers when the message level is below the channel minimum
 - [x] Add per-channel `ZENGINE_LOG_CHANNEL_*` and `ZENGINE_LOG_LEVEL_*` defines to `LoggerDefinition.h`
 - [x] Add `ZENGINE_LOG(channel, level, ...)` core macro with dual compile-time guard
 - [x] Add all per-channel convenience macros listed in Section 5
 - [x] Redefine `ZENGINE_CORE_*` macros as ENGINE-channel aliases (backwards compatible)
-- [x] Add `Color` derivation in `Logger::Log` from `LogLevel` (keeps `LogUIComponent` working)
+- [x] Add `Color` derivation in `Logger::Log` from `LogLevel` (keeps `ConsolePanel` working)
 - [x] Implement in-memory ring buffer (arena-allocated, lock-free write; default size 1024 from `LoggerConfiguration::RingBufferSize`)
 - [x] Implement `Logger::FlushRingBufferToCrashLog(std::string_view path)` and no-arg overload (uses `CrashLogDir` stored at `Initialize` time)
 - [x] Wire `FlushRingBufferToCrashLog` into crash handler — done via `CrashHandler::SetPreCrashCallback` in `Obelisk/EntryPoint.cpp`

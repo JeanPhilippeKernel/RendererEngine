@@ -167,16 +167,15 @@ allocate MountPoint mp on m_arena:
     mp.Priority    = priority
 
 find insertion index i such that m_mounts[i].Priority < priority  (first lower-priority slot)
-// shift entries right to make room — Array supports push() but not insert(); use push + rotate
-m_mounts.push(mp)
-// rotate from i to end so mp sits at index i:
-for j = m_mounts.size()-1 downto i+1:
-    swap(m_mounts[j], m_mounts[j-1])
+m_mounts.insert(i, mp)
 
 return Ok(void)
 ```
 
-Note: `Array<T>` does not have `insert()`. The engineer must implement in-place rotation using swaps after `push()`. This is O(n) but the mount table is never large (< 64 entries in practice).
+**Correction**: `Array<T>` does have `insert()`/`erase()` (both exist in `Array.h`), so the
+shipped `Mount()`/`Unmount()` call them directly instead of the push+rotate / manual-shift
+workaround this section originally specified. The doc's "Array lacks insert/erase" premise was
+true at an earlier point in the container's development but not by the time this ticket shipped.
 
 **`Unmount(logical_root)`**
 
@@ -184,24 +183,33 @@ Note: `Array<T>` does not have `insert()`. The engineer must implement in-place 
 unique_lock(m_mutex)
 for i in [0, m_mounts.size()):
     if m_mounts[i].LogicalRoot == logical_root:
-        // Shift remaining entries left (no erase on Array — shift manually)
-        for j = i; j < m_mounts.size()-1; j++:
-            m_mounts[j] = m_mounts[j+1]
-        m_mounts.pop()    // shrinks logical size by 1
+        m_mounts.erase(i)
         return Ok(void)
 return Fail(VFSError::NotFound)
 ```
 
 **`Resolve(path)`**
 
+**Correction**: the shipped algorithm does not return the first (highest-priority) prefix match.
+It scans every mount and picks the **longest matching prefix** (most specific mount wins); priority
+only breaks ties between mounts whose prefixes are the same length (and since `m_mounts` is stored
+highest-priority-first, the first equal-length match encountered is the highest-priority one). This
+matters whenever a broader mount has higher priority than a more specific one — e.g. `/mods` at
+priority 100 vs `/mods/textures` at priority 1: the algorithm below would return `/mods`, but the
+real code returns `/mods/textures`.
+
 ```
 shared_lock(m_mutex)
-for each mp in m_mounts (already descending priority order):
-    if IsPrefixOf(mp.LogicalRoot, path):
-        rel = StripPrefix(mp.LogicalRoot, path)
-        if rel.Failed(): return Fail(rel.Error())
-        return Ok(ResolveResult{ mp.Backend, rel.Value() })
-return Fail(VFSError::NotFound)
+best_idx = NONE, best_prefix_len = 0
+for each mp in m_mounts:
+    if not IsPrefixOf(mp.LogicalRoot, path): continue
+    if mp.LogicalRoot.Length() > best_prefix_len:
+        best_prefix_len = mp.LogicalRoot.Length()
+        best_idx = mp
+if best_idx == NONE: return Fail(VFSError::NotFound)
+rel = StripPrefix(best_idx.LogicalRoot, path)
+if rel.Failed(): return Fail(rel.Error())
+return Ok(ResolveResult{ best_idx.Backend, rel.Value() })
 ```
 
 **`ResolveAll(dir_path, out_results)`**
@@ -466,8 +474,10 @@ namespace ZEngine::Core::VFS
     // IVFSBackend backed by a directory on the real filesystem.
     // Constructor probes case sensitivity and records m_native_root.
     //
-    // Every method validates that the resolved native path stays under
-    // m_native_root (sandbox check).
+    // NOTE (correction): ResolveNativePath does NOT validate containment under
+    // m_native_root — see "planned vs. shipped" note below. Safety against ".."
+    // traversal relies entirely on VFSPath::Parse (Ticket 1) rejecting such
+    // segments before a path reaches this backend.
     struct VFSDiskBackend : IVFSBackend
     {
         // native_root: absolute native OS path to the root directory.
@@ -524,60 +534,34 @@ m_arena          = arena
 m_case_sensitive = ProbeCaseSensitivity(m_native_root)
 ```
 
-**`ResolveNativePath(relative, out_buf)` — Sandbox Check Algorithm**
+**`ResolveNativePath(relative, out_buf)` — planned vs. shipped**
+
+**Correction**: none of the canonicalization/containment logic below was implemented. The shipped
+`ResolveNativePath` (`VFSDiskBackend.cpp:229`) is pure string concatenation of `m_native_root` +
+`relative.ToNative(...)`, bounds-checked only against `MAX_FILE_PATH_COUNT`. There is no
+`realpath`/`GetFullPathNameA` call, no manual `..` normalization, no `strncmp` containment check,
+and no sandbox-violation warning log. The actual function is:
 
 ```
-// Step 1: Build the candidate native path
-//   native = m_native_root + "/" + relative.Buffer()
-// Use snprintf to compose into a stack buffer (MAX_FILE_PATH_COUNT)
-
-char candidate[MAX_FILE_PATH_COUNT]
-int written = snprintf(candidate, MAX_FILE_PATH_COUNT, "%s/%s",
-                       m_native_root, relative.Buffer())
-if written < 0 || written >= MAX_FILE_PATH_COUNT:
-    return false  // path too long
-
-// Step 2: Canonicalize (resolve ".." and symlinks)
-#if defined(_WIN32)
-    char canonical[MAX_PATH]
-    DWORD result = GetFullPathNameA(candidate, MAX_PATH, canonical, nullptr)
-    if result == 0 || result >= MAX_PATH: return false
-#else
-    char canonical[PATH_MAX]
-    // Use realpath() if the path exists, else manually normalize
-    // For paths that don't exist yet (Create, Write), use manual normalization:
-    if realpath(candidate, canonical) == nullptr:
-        // Manual normalization: resolve ".." segments without hitting filesystem
-        NormalizePath(candidate, canonical, PATH_MAX)  // see below
-#endif
-
-// Step 3: Sandbox containment check
-// canonical must start with m_native_root
-// AND the next character is '/' or '\0'
-size_t canon_len = secure_strlen(canonical)
-if canon_len < m_native_root_len:
-    ZENGINE_CORE_WARN("VFSDiskBackend: sandbox violation detected: {}", candidate)
-    return false
-if strncmp(canonical, m_native_root, m_native_root_len) != 0:
-    ZENGINE_CORE_WARN("VFSDiskBackend: sandbox violation detected: {}", candidate)
-    return false
-char sep = canonical[m_native_root_len]
-if sep != '\0' && sep != '/':
-    ZENGINE_CORE_WARN("VFSDiskBackend: sandbox violation detected: {}", candidate)
-    return false
-
-secure_strcpy(out_buf, MAX_FILE_PATH_COUNT, canonical)
-return true
+bool ResolveNativePath(relative, out_buf):
+    native = relative.ToNative()   // relative path in native separator form
+    if m_native_root_len + native.length + 1 > MAX_FILE_PATH_COUNT:
+        return false               // path too long
+    out_buf = m_native_root + native
+    return true
 ```
 
-**Manual path normalization** (for paths that do not yet exist on disk, used by `Create`/`Write`):
+This backend has **no path-traversal protection of its own** — a relative path containing `..`
+segments is concatenated as-is. The doc's own test comment for this ticket already hedges this
+away by relying on `VFSPath::Parse` (Ticket 1) to reject `..` segments before a path ever reaches
+the backend; that means the real safety guarantee lives in `VFSPath::Parse`, not here, and this
+backend must not be reused with unparsed/raw strings. The plan below (kept for reference — it was
+never built) described a defense-in-depth canonicalization pass that this backend does not have:
 
 ```
-NormalizePath(input, output, output_size):
-    // Walk input, push each segment onto a stack; on ".." pop the stack
-    // Reconstruct from the stack
-    // This avoids filesystem calls for non-existent paths while still
-    // resolving ".." escape attempts
+// PLANNED, NOT IMPLEMENTED — canonicalize + verify containment under m_native_root
+// via realpath()/GetFullPathNameA() plus a manual ".." stack-based normalizer for
+// paths that don't exist yet, then a strncmp prefix check with a warning log on violation.
 ```
 
 **`Open(relative_path, flags)`**
@@ -698,6 +682,25 @@ return Ok(m_mapped_ptr)
 
 ## 5. `VFSZipBackend`, `ZipEntry`, and `VFSZipFile` — Full Declarations
 
+**Correction — shipped concurrency model is the opposite of what this section specifies.** The
+plan below keeps the archive fd open for raw `pread`/`ReadFile+OVERLAPPED` access and closes
+`mz_zip_reader` after building the central directory, specifically so multiple `VFSZipFile`
+instances can decompress in parallel via `tinfl_decompress_mem_to_mem` with no shared lock. The
+shipped code (`VFSZipBackend.cpp`) does the reverse: it keeps `mz_zip_archive` open for the
+backend's entire lifetime and every extraction goes through `mz_zip_reader_extract_to_mem` under
+one backend-wide `std::mutex m_archive_mutex` — fully serializing decompression across every open
+file in the archive, not just within one file. There is no `ReadArchiveBytes`/pread path and no
+`tinfl_decompress_mem_to_mem` call anywhere in the implementation.
+
+Worse, `VFSZipFile::m_decompressed` is declared as a plain unguarded `bool` (not
+`std::atomic_bool`), and `EnsureDecompressed()` has no lock of its own — it reads/writes
+`m_decompressed`/`m_data` with no synchronization at all. Concurrent `Read()` calls on the *same*
+`VFSZipFile` instance are a genuine data race, not "serialized by `m_decomp_mutex`" as the struct
+comment below claims (`m_decomp_mutex` does not exist on the real struct). The declarations below
+describe the original, unbuilt design; treat every mention of lock-free/parallel decompression,
+`m_decomp_mutex`, `m_archive_fd`/`m_archive_handle`, and `ReadArchiveBytes` as aspirational, not
+shipped.
+
 **File:** `ZEngine/ZEngine/Core/VFS/VFSZipBackend.h`
 
 ```cpp
@@ -742,7 +745,9 @@ namespace ZEngine::Core::VFS
     // Represents an opened (possibly not-yet-decompressed) entry.
     // On first Read(), decompresses the entire entry into m_data using the
     // parent backend's arena. Subsequent reads are memory copies.
-    // Concurrent reads on the same VFSZipFile are serialized by m_decomp_mutex.
+    // PLANNED (not shipped): concurrent reads on the same VFSZipFile serialized
+    // by m_decomp_mutex. Shipped m_decompressed is an unguarded plain bool with
+    // no lock — see correction note above §5.
     struct VFSZipFile : IVFSFile
     {
         // Set by VFSZipBackend::Open
@@ -796,7 +801,7 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>       CreateDir(const VFSPath&) override;   // always Fail(Unsupported)
         [[nodiscard]] VFSResult<void>       Remove(const VFSPath&) override;       // always Fail(Unsupported)
         [[nodiscard]] VFSResult<void>       Rename(const VFSPath&, const VFSPath&) override; // Fail(Unsupported)
-        VFSBackendCaps        Capabilities() const override;         // Read | List | MemoryMap
+        VFSBackendCaps        Capabilities() const override;         // Read | List — MemoryMap is NOT reported (correction: no VFSZipFile::MemoryMap exists)
 
         // Used by VFSZipFile::EnsureDecompressed to read raw compressed bytes.
         // offset is absolute byte offset into the archive file.
@@ -1131,9 +1136,19 @@ This is the core of `VFSContext::List()` and is critical for the editor's overla
 
 ---
 
-## 8. Sandbox Check Algorithm — Detailed Specification
+## 8. Sandbox Check Algorithm — NOT IMPLEMENTED (correction)
 
-The sandbox check in `VFSDiskBackend::ResolveNativePath` prevents path traversal attacks (e.g., `../../etc/passwd`).
+**Correction**: this entire section describes a canonicalization + containment check that was
+never built. The shipped `VFSDiskBackend::ResolveNativePath` (`VFSDiskBackend.cpp:229`) is a plain
+concatenation of `m_native_root` and `relative.ToNative(...)`, bounds-checked only against
+`MAX_FILE_PATH_COUNT`. There is no `realpath`/`GetFullPathNameA` call, no manual `..` normalizer,
+no `strncmp` containment check, and no `ZENGINE_CORE_WARN` sandbox-violation log — none of Steps
+1–3 below exist in the codebase. The actual path-traversal defense lives entirely in
+`VFSPath::Parse` (Ticket 1), which is expected to reject `..` segments before a path ever reaches
+this backend. If a caller ever bypasses `VFSPath::Parse` and hands `VFSDiskBackend` a raw
+unvalidated relative path, there is currently no protection against escaping `m_native_root`.
+
+The steps below are preserved for reference as the original (unimplemented) design intent:
 
 **Step 1 — Compose candidate path.**
 Concatenate `m_native_root`, `/`, and `relative.Buffer()` using `snprintf`. If the resulting string length equals or exceeds `MAX_FILE_PATH_COUNT`, return `false` (path too long, sandbox violation by exhaustion).

@@ -513,8 +513,8 @@ No new files beyond what `actor-ecs-architecture.md` already lists.
 - [x] `tests/ECS/SchedulerTest.cpp`:
   - [x] Two independent systems run in the same wave
   - [x] Two conflicting systems with `OrderBefore` run in separate waves
-  - [x] Two conflicting systems with no `OrderBefore` assert in debug
-  - [x] Cycle detection asserts
+  - [ ] Two conflicting systems with no `OrderBefore` assert in debug — no `EXPECT_DEATH` test covers this; the runtime assert itself exists and works (see line 510 above), only the test is missing
+  - [ ] Cycle detection asserts — same gap: runtime assert exists (line 511), no test covers it
   - [x] Systems execute in correct order (write before read verified via component state)
 
 ---

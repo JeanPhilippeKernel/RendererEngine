@@ -1043,11 +1043,12 @@ void DependencyGraph::CollectCascade(
 ```
 
 **Cycle protection**: the visited set ensures that even if a cycle exists in the dependency graph
-(which indicates an authoring error), the BFS terminates. If the visited table exceeds 66% load
-factor (>~680 entries in a 1024-slot table, or >~1365 entries in the 2048-slot table used here),
-`CollectCascade` returns `VFSResult<void>::Fail(VFSError::OutOfMemory)` immediately rather than
-continuing with degraded cycle protection. The caller (e.g., `OnAssetModified`) must handle this
-gracefully — log the error and skip the hot-reload cascade for this asset.
+(which indicates an authoring error), the BFS terminates. **Correction**: `CollectCascade` returns
+`void`, not `VFSResult<void>`, and has no failure path on visited-set growth. If the visited table
+exceeds its load-factor threshold, it rehashes into a larger table (doubling capacity) and continues
+the BFS — it does not fail with `VFSError::OutOfMemory` or abort the cascade. The caller (e.g.,
+`OnAssetModified`) does not need to handle an out-of-memory case here; the only bound is the actual
+heap/arena capacity backing the rehash.
 
 **Thread safety**: `CollectCascade` acquires `m_mutex` as `shared_lock` for the duration of the
 BFS walk. `OnAssetModified` calls it after acquiring no other locks — no lock inversion with

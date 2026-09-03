@@ -7,6 +7,17 @@
 **Estimated effort:** 2–3 days (1 engineer)  
 **Blocks:** `vfs-ticket2`, `vfs-ticket3`, `vfs-ticket4`, `vfs-ticket5`, `vfs-ticket6`, `import-pipeline.md`
 
+> **Naming note (verified against code):** `VFSPath`, `VFSError`, `IVFSFile`, `IVFSBackend`
+> match this doc closely — enum values, `VFSResult<T>` API, the `Parse()` normalization algorithm,
+> `IsPrefixOf` semantics, and the FNV-1a hash constants all check out. §5.5/§9's centerpiece,
+> `VFSDiskContext` ("the only concrete implementation in this ticket," a thin `std::filesystem`
+> passthrough with `Mount`/`Unmount` as stub warnings), does not exist — it was superseded before
+> landing by `VFSContext` (full priority-ordered `VFSMountTable`, `Core/VFS/VFSContext.h/.cpp`)
+> plus a standalone `VFSDiskBackend` (`Core/VFS/VFSDiskBackend.h/.cpp`). `Mount`/`Unmount`/`List`/
+> etc. are fully functional in the shipped code, not stubs — `List()` also does cross-backend
+> overlay merging (dedup by filename across mounts) that this doc never anticipated. In short:
+> what this doc calls "next ticket" scope is what actually shipped under this ticket's banner.
+
 ---
 
 ## Table of Contents
