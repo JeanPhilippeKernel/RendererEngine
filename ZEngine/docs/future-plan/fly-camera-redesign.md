@@ -2,20 +2,29 @@
 
 **Replaces:** `FlyCamera.h/.cpp`, `FlyCameraController.h/.cpp`, `EditorCameraController.h/.cpp`
 **Relates to:** `rendering-flow.md`, `input-system.md`
-**Status:** Superseded by a different implementation — see note below
+**Status:** Implemented — verified near-verbatim against code (correction below; an earlier pass on this doc wrongly claimed the opposite)
 **Scope:** Ground-up redesign of the editor fly camera — input model, state machine, coordinate system, HiDPI correctness, InputManager integration.
 
-> **Correctness note (verified against code):** the camera *was* redesigned, but not to this
-> doc's specific architecture — every checklist item below is unchecked because none of the
-> proposed types (`FlyCameraInput`, `FlyCameraState` enum, `EditorCameraController.h/.cpp`,
-> `ICameraController` gaining 4 pure virtuals) exist in the codebase. What actually shipped is
-> simpler: `FlyCameraController` owns a `CamState : uint8_t { Idle, Hover, Fly }` enum directly
-> (`FlyCameraController.h`), self-gates on viewport hover via `SetViewportRect(x0,y0,x1,y1)`
-> called every frame by `ViewportPanel`, and locks/unlocks the cursor on `Fly` state entry/exit —
-> no separate `FlyCameraInput` struct, no `Hooks`/`Input`/`State` split. This doc's problem
-> analysis (§1) is still accurate background reading; its proposed solution (§2 onward) is not
-> what was built. Do not treat the checklist at the bottom as a to-do list — the actual gap is a
-> full doc rewrite to describe the `CamState` design, not implementation work.
+> **Verified against code.** Every type in §3–§11 exists close to as written: `FlyCameraInput`/
+> `FlyCameraState` (`FlyCameraInput.h`), `FlyCamera` with public `Input`/`Hooks`/`State` and the
+> same private method set (`FlyCamera.h`), `FlyCameraController::Initialize(InputManager*,
+> ArenaAllocator*)` with the identical action-slot registration pattern, `EditorCameraController`
+> wiring `Hooks.Raycast`/`Hooks.GetSelectionBounds`, all 4 proposed `ICameraController` pure
+> virtuals, and `CameraSetting` with `FastMoveSpeed`/`MoveSpeed` removed exactly as §11 specifies.
+>
+> Two real differences from what's written below:
+> 1. **Addition, not a contradiction:** `FlyCameraController` layers an *outer* `CamState { Idle,
+>    Hover, Fly }` state machine on top of `FlyCamera`'s own `FlyCameraState`, self-gating on
+>    `SetViewportRect(x0,y0,x1,y1)` (a 5th `ICameraController` virtual, added beyond this doc's
+>    §8) called every frame by `ViewportPanel` (the ImGui-era `SceneViewportUIComponent.cpp` named
+>    in §12/§13 no longer exists — ZUI's `ViewportPanel` replaced it). This is what actually
+>    closes the §1 stuck-input/focus-loss bug: `PauseEventProcessing` force-exits `Fly`, resets to
+>    `Idle`, and calls `Input.Reset()` in one call — more robust than this doc's simpler §6.4.
+> 2. **Real remaining gap:** `EditorCameraController::Initialize` wires `Hooks.Raycast` to a stub
+>    (`[](Vec3f, Vec3f, float maxDist) { return maxDist; }`) — the hook exists, but there's no
+>    real scene raycast behind it yet, so `AdaptiveSpeed()` still effectively falls back to the
+>    height-based estimate §1 originally complained about. This is the one open item from this
+>    doc's own checklist worth tracking as a follow-up issue.
 
 ---
 
@@ -518,11 +527,11 @@ Tetragrama/Controllers/
 
 ## 13. Deliverables Checklist
 
-- [ ] `FlyCameraInput.h` — `FlyCameraInput` with `Reset()`/`FlushDeltas()`; `FlyCameraState` enum
-- [ ] `FlyCamera.h/.cpp` — `Input`/`Hooks`/`State` public; single `OnUpdate` entry; explicit state machine; `Input.FlushDeltas()` at end; all mouse math divided by `m_logicalW/H`; `AdaptiveSpeed` uses `Hooks.Raycast`
-- [ ] `ICameraController.h` — add 4 pure virtuals; `FlyCameraController` no longer inherits event callbacks
-- [ ] `FlyCameraController.h/.cpp` — `Initialize(InputManager*, ArenaAllocator*)`; `Update` fills `FlyCameraInput` from `InputManager`; `PauseEventProcessing` calls `Input.Reset()`; `OnEvent` is no-op
-- [ ] `EditorCameraController.h/.cpp` — `Initialize` gains `InputManager*`; explicit `CameraSetting`; hooks wired with defaults
-- [ ] `SceneViewportUIComponent.cpp` — `SetViewportOrigin` every frame; `SetViewport` on resize; no cast to concrete controller
-- [ ] `CameraSetting` — remove `FastMoveSpeed` and `MoveSpeed`
-- [ ] Tests: state machine transitions; `PauseEventProcessing` resets input; `Update` fills `FlyCameraInput` from mocked `InputManager`
+- [x] `FlyCameraInput.h` — `FlyCameraInput` with `Reset()`/`FlushDeltas()`; `FlyCameraState` enum
+- [x] `FlyCamera.h/.cpp` — `Input`/`Hooks`/`State` public; single `OnUpdate` entry; explicit state machine; `Input.FlushDeltas()` at end; all mouse math divided by `m_logicalW/H`; `AdaptiveSpeed` uses `Hooks.Raycast` (the hook is called; `EditorCameraController`'s default wiring is a stub — see note above)
+- [x] `ICameraController.h` — add 4 pure virtuals; `FlyCameraController` no longer inherits event callbacks (a 5th virtual, `SetViewportRect`, was added beyond this doc for the `CamState` self-gating addition)
+- [x] `FlyCameraController.h/.cpp` — `Initialize(InputManager*, ArenaAllocator*)`; `Update` fills `FlyCameraInput` from `InputManager`; `PauseEventProcessing` calls `Input.Reset()`; `OnEvent` is no-op
+- [x] `EditorCameraController.h/.cpp` — `Initialize` gains `InputManager*`; explicit `CameraSetting`; hooks wired with defaults
+- [x] Viewport wiring — `ViewportPanel.cpp` (successor to the ImGui-era `SceneViewportUIComponent.cpp`, which no longer exists) calls `SetViewportRect` every frame; no cast to concrete controller
+- [x] `CameraSetting` — remove `FastMoveSpeed` and `MoveSpeed`
+- [ ] Tests: state machine transitions; `PauseEventProcessing` resets input; `Update` fills `FlyCameraInput` from mocked `InputManager` — no camera tests exist yet
