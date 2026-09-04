@@ -51,6 +51,18 @@ protected:
 std::string LoggerTest::s_log_dir;
 std::string LoggerTest::s_crash_dir;
 
+TEST(LoggerUninitialized, LogBeforeInitializeDoesNotCrash)
+{
+    if (Logger::IsInitialized())
+    {
+        Logger::Dispose();
+    }
+
+    EXPECT_FALSE(Logger::IsInitialized());
+    Logger::Log(LogChannel::ENGINE, LogLevel::WARN, "before initialize");
+    ZENGINE_CORE_WARN("before initialize via macro");
+}
+
 TEST_F(LoggerTest, IsInitializedAfterInit)
 {
     EXPECT_TRUE(Logger::IsInitialized());
@@ -318,4 +330,12 @@ TEST_F(LoggerTest, LevelToStringAllValues)
     EXPECT_STREQ(Logger::LevelToString(LogLevel::WARN), "warn");
     EXPECT_STREQ(Logger::LevelToString(LogLevel::ERR), "error");
     EXPECT_STREQ(Logger::LevelToString(LogLevel::CRITICAL), "critical");
+}
+
+TEST_F(LoggerTest, LogAfterDisposeDoesNotCrash)
+{
+    Logger::Dispose();
+    EXPECT_FALSE(Logger::IsInitialized());
+    Logger::Log(LogChannel::ENGINE, LogLevel::ERR, "after dispose");
+    ZENGINE_CORE_ERROR("after dispose via macro");
 }

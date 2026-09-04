@@ -160,6 +160,11 @@ namespace ZEngine::Logging
 
     void Logger::Log(LogChannel channel, LogLevel level, std::string_view msg)
     {
+        if (!IsInitialized())
+        {
+            return;
+        }
+
         const int min = k_min_level[static_cast<size_t>(channel)];
         if (static_cast<int>(level) < min)
         {
