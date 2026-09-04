@@ -20,13 +20,25 @@ ZEngine/ZEngine/Rendering/Renderers/RendererPasses.cpp
 
 ### 1.1 Topological Sort
 
-`RenderGraph::Compile()` builds a DAG from resource producer/consumer relationships and runs a
-DFS post-order topological sort to produce an execution order. The sort detects cycles and logs
-an error via `ZENGINE_CORE_ERROR` without crashing. Passes are executed in sorted order during
-`Execute()`.
+`RenderGraph::BuildTopology()` (via the device-independent `BuildPassTopology()`,
+`RenderGraphTopology.h`) builds a DAG from resource producer/consumer relationships and runs
+Kahn's algorithm, with a lowest-declared-index tie-break, to produce an execution order. The sort
+detects cycles and logs an error via `ZENGINE_CORE_ERROR`, falling back to declaration order
+rather than crashing. Passes are executed in sorted order during `Execute()`; `Compile()` runs
+`BuildTopology()` before `BuildLifetimes()` so transient-resource lifetimes are computed against
+real execution order, not raw declaration order.
 
-Edges are built from resource declarations: if pass B declares a read on `"hdr_color"` and pass
-A declared it as a write, `Compile()` places A before B in execution order.
+Edges come from the RAW/WAW/WAR hazard triad. For a resource written by exactly one pass, every
+reader is bound to that writer directly — regardless of their relative declared order, which is
+what lets the sort actually fix a pass registered before the producer it depends on (e.g. if pass
+B declares a read on `"hdr_color"` and pass A writes it, A is placed before B in execution order
+even if B was registered first). A resource written by more than one pass (a ping-pong chain) has
+no versioning to disambiguate which write a given read wants, so that case falls back to a
+declared-order replay instead — not a limitation that matters for any pass shipped today.
+
+Full GPU memory aliasing (issue #312) is explicitly deferred — see that issue for the rationale.
+The `BuildLifetimes()` lifetime tracking this sort enables is the scaffolding a future aliasing
+pass would build on.
 
 ### 1.2 Resource Declaration via RenderGraphResourceBuilder (Setup phase only)
 

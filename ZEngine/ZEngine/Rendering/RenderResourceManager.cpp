@@ -235,38 +235,85 @@ namespace ZEngine::Rendering
     void RenderResourceManager::BeginFrame(uint32_t frame_index)
     {
         FlushPendingUploads(frame_index);
+        FlushPendingSwaps(frame_index);
     }
 
     void RenderResourceManager::EndFrame(uint32_t frame_index)
     {
-        std::lock_guard lock(m_pending_mutex);
+        m_current_frame = frame_index + 1;
+    }
 
-        uint32_t        write = 0;
-        for (uint32_t i = 0; i < m_swap_count; ++i)
+    void RenderResourceManager::FlushPendingSwaps(uint32_t frame_index)
+    {
+        uint32_t    count = 0;
+        PendingSwap local[MAX_PENDING];
         {
-            SwapEntry& e = m_swaps[i];
-            if (frame_index < e.SwapSafeFrame)
-            {
-                m_swaps[write++] = e;
-                continue;
-            }
+            std::lock_guard lock(m_pending_swap_mutex);
+            count = m_pending_swap_count;
+            secure_memcpy(local, sizeof(local), m_pending_swaps, count * sizeof(PendingSwap));
+            m_pending_swap_count = 0;
+        }
+        if (count == 0)
+        {
+            return;
+        }
 
-            if (e.Kind == SwapKind::Image)
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const PendingSwap& s = local[i];
+            if (s.Kind == SwapKind::Image)
             {
-                BufferImage* slot = GetImageMutable(e.OldImage);
-                if (slot)
+                BufferImage* old_slot = GetImageMutable(s.OldImage);
+                if (!old_slot)
                 {
-                    DeferredFreeEntry entry;
-                    entry.EntryKind     = DeferredFreeEntry::Kind::Image;
-                    entry.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
-                    entry.Data.Image    = *slot;
-                    m_device->DeferFree(entry);
-                    *slot = e.NewImage;
+                    continue; // stale handle — asset was released before the swap could apply
                 }
+                ImageHandle new_handle = DoUploadTexture(s.NewAsset);
+                if (!new_handle.IsValid())
+                {
+                    ZENGINE_LOG_RENDER_ERR("[RRM] Hot-reload swap failed to re-upload texture — old image left in place")
+                    continue;
+                }
+                BufferImage* new_slot = GetImageMutable(new_handle);
+                if (!new_slot)
+                {
+                    continue;
+                }
+
+                DeferredFreeEntry entry;
+                entry.EntryKind     = DeferredFreeEntry::Kind::Image;
+                entry.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
+                entry.Data.Image    = *old_slot;
+                m_device->DeferFree(entry);
+
+                *old_slot                                  = *new_slot;
+
+                // The scratch slot's data now lives in old_slot — release it.
+                *new_slot                                  = {};
+                m_image_slots[new_handle.Index].Generation = 0;
+            }
+            else if (s.OldBuffer.Generation & GBUF_GEN_TAG)
+            {
+                // No AssetHandle-driven re-upload path exists for generic buffers today —
+                // every live ScheduleSwap(BufferHandle,...) call carries a mesh handle.
+                ZENGINE_LOG_RENDER_WARN("[RRM] Hot-reload swap for generic buffers is not supported — skipping")
+            }
+            else
+            {
+                if (s.OldBuffer.Index >= m_mesh_slot_count || m_mesh_slots[s.OldBuffer.Index].Generation != s.OldBuffer.Generation)
+                {
+                    continue; // stale handle — asset was released before the swap could apply
+                }
+                MeshSlot new_data = AppendMeshData(s.NewAsset, frame_index);
+                if (new_data.VtxCount == 0)
+                {
+                    ZENGINE_LOG_RENDER_ERR("[RRM] Hot-reload swap failed to re-upload mesh data — old data left in place")
+                    continue;
+                }
+                // Append-only global buffer — no GPU free for the old region, just repoint.
+                m_mesh_slots[s.OldBuffer.Index].Data = new_data;
             }
         }
-        m_swap_count    = write;
-        m_current_frame = frame_index + 1;
     }
 
     static void RecordAndSubmit(VkDevice device, CommandBuffer* cmd, VkFence fence, VkQueue queue, std::function<void(VkCommandBuffer)> record_fn, VkSemaphore wait_semaphore = VK_NULL_HANDLE, uint64_t wait_value = 0)
@@ -414,18 +461,20 @@ namespace ZEngine::Rendering
         }
     }
 
-    BufferHandle RenderResourceManager::DoUploadMesh(AssetHandle asset, uint32_t frame_index)
+    RenderResourceManager::MeshSlot RenderResourceManager::AppendMeshData(AssetHandle asset, uint32_t frame_index)
     {
         AssetMesh* mesh = AssetManager::GetAsset<AssetMesh>(asset);
         if (!mesh || mesh->Vertices.empty())
+        {
             return {};
+        }
 
         size_t vert_bytes = mesh->Vertices.size() * sizeof(float);
         size_t idx_bytes  = mesh->Indices.size() * sizeof(uint32_t);
 
         if (m_vtx_cursor + vert_bytes > GLOBAL_VTX_CAPACITY || m_idx_cursor + idx_bytes > GLOBAL_IDX_CAPACITY)
         {
-            ZENGINE_CORE_ERROR("[RRM] DoUploadMesh: global buffer capacity exceeded")
+            ZENGINE_LOG_RENDER_ERR("[RRM] AppendMeshData: global buffer capacity exceeded")
             return {};
         }
 
@@ -443,11 +492,21 @@ namespace ZEngine::Rendering
         m_vtx_cursor                                     += vert_bytes;
         m_idx_cursor                                     += idx_bytes;
 
-        uint32_t slot                                     = AllocMeshSlot();
-        m_mesh_slots[slot].Data                           = {vtx_elem_offset, idx_elem_offset, vtx_elem_count, idx_elem_count};
+        ZENGINE_LOG_RENDER_INFO("[RRM] Uploaded mesh: {} verts ({} bytes), {} indices ({} bytes) — vtx@{} idx@{}", vtx_elem_count, vert_bytes, idx_elem_count, idx_bytes, vtx_elem_offset, idx_elem_offset)
 
-        ZENGINE_CORE_INFO("[RRM] Uploaded mesh: {} verts ({} bytes), {} indices ({} bytes) — vtx@{} idx@{}", vtx_elem_count, vert_bytes, idx_elem_count, idx_bytes, vtx_elem_offset, idx_elem_offset)
+        return {vtx_elem_offset, idx_elem_offset, vtx_elem_count, idx_elem_count};
+    }
 
+    BufferHandle RenderResourceManager::DoUploadMesh(AssetHandle asset, uint32_t frame_index)
+    {
+        MeshSlot data = AppendMeshData(asset, frame_index);
+        if (data.VtxCount == 0)
+        {
+            return {};
+        }
+
+        uint32_t slot           = AllocMeshSlot();
+        m_mesh_slots[slot].Data = data;
         return {slot, m_mesh_slots[slot].Generation};
     }
 
@@ -460,10 +519,10 @@ namespace ZEngine::Rendering
         if (!tex->Handle.Valid())
             return {};
 
-        // Texture is already on GPU (via SubmitTextureFile/UploadTextureBuffer); register its slot.
-        uint32_t slot_idx                  = AllocImageSlot();
-        // We don't own a BufferImage for this path yet — store a sentinel.
-        m_image_slots[slot_idx].Generation = slot_idx + 1;
+        // Texture is already on GPU (via SubmitTextureFile/UploadTextureBuffer); register its
+        // slot. AllocImageSlot already assigned Generation — we don't own a BufferImage for
+        // this path yet, so the slot's Data stays a sentinel.
+        uint32_t slot_idx = AllocImageSlot();
 
         return {slot_idx, m_image_slots[slot_idx].Generation};
     }
@@ -608,16 +667,38 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::ScheduleSwap(BufferHandle old_handle, AssetHandle new_asset)
     {
-        // Hot-reload buffer swap not yet implemented.
-        (void) old_handle;
-        (void) new_asset;
+        if (!old_handle.IsValid())
+        {
+            return;
+        }
+        std::lock_guard lock(m_pending_swap_mutex);
+        if (m_pending_swap_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_WARN("[RRM] Pending swap queue full — dropping hot-reload swap")
+            return;
+        }
+        PendingSwap& s = m_pending_swaps[m_pending_swap_count++];
+        s.Kind         = SwapKind::Buffer;
+        s.OldBuffer    = old_handle;
+        s.NewAsset     = new_asset;
     }
 
     void RenderResourceManager::ScheduleSwap(ImageHandle old_handle, AssetHandle new_asset)
     {
-        // Hot-reload image swap not yet implemented.
-        (void) old_handle;
-        (void) new_asset;
+        if (!old_handle.IsValid())
+        {
+            return;
+        }
+        std::lock_guard lock(m_pending_swap_mutex);
+        if (m_pending_swap_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_WARN("[RRM] Pending swap queue full — dropping hot-reload swap")
+            return;
+        }
+        PendingSwap& s = m_pending_swaps[m_pending_swap_count++];
+        s.Kind         = SwapKind::Image;
+        s.OldImage     = old_handle;
+        s.NewAsset     = new_asset;
     }
 
     bool RenderResourceManager::GetMeshOffsets(BufferHandle handle, uint32_t& vtx_offset, uint32_t& idx_offset) const
@@ -789,13 +870,13 @@ namespace ZEngine::Rendering
         {
             if (m_mesh_slots[i].Generation == 0)
             {
-                m_mesh_slots[i].Generation = i + 1;
+                m_mesh_slots[i].Generation = ++m_mesh_slot_gen_counter[i];
                 return i;
             }
         }
         ZENGINE_VALIDATE_ASSERT(m_mesh_slot_count < MAX_BUFFERS, "RRM: MAX_BUFFERS exceeded")
         uint32_t idx                 = m_mesh_slot_count++;
-        m_mesh_slots[idx].Generation = idx + 1;
+        m_mesh_slots[idx].Generation = ++m_mesh_slot_gen_counter[idx];
         return idx;
     }
 
@@ -805,14 +886,27 @@ namespace ZEngine::Rendering
         {
             if (m_image_slots[i].Generation == 0)
             {
-                m_image_slots[i].Generation = i + 1;
+                m_image_slots[i].Generation = ++m_image_slot_gen_counter[i];
                 return i;
             }
         }
         ZENGINE_VALIDATE_ASSERT(m_image_slot_count < MAX_IMAGES, "RRM: MAX_IMAGES exceeded")
         uint32_t idx                  = m_image_slot_count++;
-        m_image_slots[idx].Generation = idx + 1;
+        m_image_slots[idx].Generation = ++m_image_slot_gen_counter[idx];
         return idx;
+    }
+
+    // Masks the monotonic counter to 31 bits before OR-ing in GBUF_GEN_TAG (bit 31) so the
+    // counter can never collide with the tag, and skips 0 on the (practically unreachable)
+    // wraparound since Generation == 0 is the universal free/invalid sentinel.
+    uint32_t RenderResourceManager::NextGBufGeneration(uint32_t& counter)
+    {
+        uint32_t gen = (++counter) & 0x7FFF'FFFFu;
+        if (gen == 0)
+        {
+            gen = (++counter) & 0x7FFF'FFFFu;
+        }
+        return gen | GBUF_GEN_TAG;
     }
 
     uint32_t RenderResourceManager::AllocGBufSlot()
@@ -821,13 +915,13 @@ namespace ZEngine::Rendering
         {
             if (m_gbuf_slots[i].Generation == 0)
             {
-                m_gbuf_slots[i].Generation = (i + 1) | GBUF_GEN_TAG;
+                m_gbuf_slots[i].Generation = NextGBufGeneration(m_gbuf_slot_gen_counter[i]);
                 return i;
             }
         }
         ZENGINE_VALIDATE_ASSERT(m_gbuf_slot_count < MAX_GENERIC_BUFS, "RRM: MAX_GENERIC_BUFS exceeded")
         uint32_t idx                 = m_gbuf_slot_count++;
-        m_gbuf_slots[idx].Generation = (idx + 1) | GBUF_GEN_TAG;
+        m_gbuf_slots[idx].Generation = NextGBufGeneration(m_gbuf_slot_gen_counter[idx]);
         return idx;
     }
 

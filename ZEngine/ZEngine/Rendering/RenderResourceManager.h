@@ -33,8 +33,9 @@ namespace ZEngine::Rendering
     // THREAD SAFETY:
     //   Initialize / Shutdown     — main thread, once at startup/teardown
     //   BeginFrame / EndFrame     — render thread only
-    //   OnAssetReady / OnAssetStale callbacks — asset/import thread; protected by m_pending_mutex
-    //   GetBuffer / GetImage      — render thread read; asset thread writes via pending queue
+    //   OnAssetReady callback     — asset/import thread; protected by m_pending_mutex
+    //   OnAssetStale callback     — asset/import thread; ScheduleSwap protected by m_pending_swap_mutex
+    //   GetBuffer / GetImage      — render thread read; asset thread writes via pending queues
     class RenderResourceManager
     {
     public:
@@ -55,14 +56,15 @@ namespace ZEngine::Rendering
         void                               Shutdown();
 
         /// @brief Per-frame render-thread entry point.
-        /// @details Flushes pending mesh and texture uploads that were queued from the
-        ///          asset thread since the previous BeginFrame. Called by AppRenderPipeline.
+        /// @details Flushes pending mesh/texture uploads and pending hot-reload swaps that
+        ///          were queued from the asset thread since the previous BeginFrame.
+        ///          Called by AppRenderPipeline.
         /// @param frame_index Current swapchain frame index (0 .. FRAMES_IN_FLIGHT-1).
         void                               BeginFrame(uint32_t frame_index);
 
         /// @brief Per-frame render-thread exit point.
-        /// @details Drains hot-reload swap entries that have aged past FRAMES_IN_FLIGHT
-        ///          frames. Called by AppRenderPipeline after command buffer submission.
+        /// @details Advances the internal frame counter. Called by AppRenderPipeline after
+        ///          command buffer submission.
         /// @param frame_index Current swapchain frame index (0 .. FRAMES_IN_FLIGHT-1).
         void                               EndFrame(uint32_t frame_index);
 
@@ -152,15 +154,22 @@ namespace ZEngine::Rendering
         void                             ResetTextureTimelines();
 
         /// @brief Schedule a hot-reload swap for a mesh buffer.
-        /// @details Uploads the new version of new_asset and swaps it into old_handle after
-        ///          FRAMES_IN_FLIGHT frames have drained, then queues the old buffer for deletion.
+        /// @details Thread-safe: enqueues onto m_pending_swaps, applied by the next
+        ///          FlushPendingSwaps (render thread). No frame-in-flight delay — this
+        ///          engine has no consumer of RRM handles that would need one; applying
+        ///          immediately matches every other precedent in this file (first-time
+        ///          upload, slot reuse after Release()). The old buffer's mesh slot is
+        ///          repointed at newly-appended data; no GPU free is needed since the
+        ///          global buffer is append-only.
         /// @param old_handle The live BufferHandle to replace.
         /// @param new_asset  AssetHandle for the new version of the mesh.
         void                             ScheduleSwap(BufferHandle old_handle, Managers::AssetHandle new_asset);
 
         /// @brief Schedule a hot-reload swap for a texture image.
-        /// @details Uploads the new version of new_asset and swaps it into old_handle after
-        ///          FRAMES_IN_FLIGHT frames, then queues the old image for deletion.
+        /// @details Thread-safe: enqueues onto m_pending_swaps, applied by the next
+        ///          FlushPendingSwaps (render thread), which re-uploads new_asset and
+        ///          defers-frees the old image's GPU memory. See ScheduleSwap(BufferHandle,...)
+        ///          for why there's no frame-in-flight delay.
         /// @param old_handle The live ImageHandle to replace.
         /// @param new_asset  AssetHandle for the new version of the texture.
         void                             ScheduleSwap(ImageHandle old_handle, Managers::AssetHandle new_asset);
@@ -329,22 +338,17 @@ namespace ZEngine::Rendering
             Image  = 1,
         };
 
-        struct SwapEntry
+        // A hot-reload swap request, queued by ScheduleSwap (asset thread) and applied by
+        // FlushPendingSwaps (render thread, called from BeginFrame). Applied immediately on
+        // the next frame it's drained on — no frame-in-flight delay: nothing in this engine
+        // consumes RRM handles in a way that would need one (see the correction note on
+        // ScheduleSwap below).
+        struct PendingSwap
         {
-            SwapKind Kind;
-            union
-            {
-                BufferHandle OldBuffer;
-                ImageHandle  OldImage;
-            };
-            union
-            {
-                Core::Memory::BufferView  NewBuffer;
-                Core::Memory::BufferImage NewImage;
-            };
-            uint32_t SwapSafeFrame = 0;
-
-            SwapEntry() : Kind(SwapKind::Buffer), OldBuffer{}, NewBuffer{} {}
+            BufferHandle          OldBuffer = {}; // valid when Kind == Buffer
+            ImageHandle           OldImage  = {}; // valid when Kind == Image
+            Managers::AssetHandle NewAsset  = 0;
+            SwapKind              Kind      = SwapKind::Buffer;
         };
 
         template <typename Resource>
@@ -373,9 +377,17 @@ namespace ZEngine::Rendering
         BufferHandle                    DoUploadMesh(Managers::AssetHandle asset, uint32_t frame_index);
         ImageHandle                     DoUploadTexture(Managers::AssetHandle asset);
 
+        /// @brief Append one mesh asset's vertex/index data to the global buffers.
+        /// @details Shared by DoUploadMesh (allocates a new slot) and FlushPendingSwaps
+        ///          (reuses an existing slot). Returns a zero-VtxCount MeshSlot on failure.
+        MeshSlot                        AppendMeshData(Managers::AssetHandle asset, uint32_t frame_index);
+
         void                            AppendToGlobalBuffer(Core::Memory::BufferView& global_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index);
 
         void                            FlushPendingUploads(uint32_t frame_index);
+
+        /// @brief Drain m_pending_swaps and apply each swap immediately (render thread only).
+        void                            FlushPendingSwaps(uint32_t frame_index);
 
         // Batch upload helpers — render-thread only
         void                            BeginBatchUpload();
@@ -390,6 +402,9 @@ namespace ZEngine::Rendering
         uint32_t                        AllocImageSlot();
         uint32_t                        AllocGBufSlot();
 
+        /// @brief Advance counter and return the next GBUF_GEN_TAG-tagged generation value.
+        static uint32_t                 NextGBufGeneration(uint32_t& counter);
+
         Hardwares::VulkanDevice*        m_device                                         = nullptr;
         Core::VFS::AssetRegistry*       m_registry                                       = nullptr;
 
@@ -403,25 +418,31 @@ namespace ZEngine::Rendering
         void                            InitUploadSlabs(uint32_t worker_count);
 
         // Global geometry buffers — all mesh vertices/indices packed together.
-        static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~16M DrawVertex
-        static constexpr VkDeviceSize   GLOBAL_IDX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~128M uint32
-        Core::Memory::BufferView        m_global_vertex_buf            = {};
-        Core::Memory::BufferView        m_global_index_buf             = {};
-        VkDeviceSize                    m_vtx_cursor                   = 0; // byte offset of next write
-        VkDeviceSize                    m_idx_cursor                   = 0;
+        static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY                       = 512 * 1024 * 1024; // 512 MB → ~16M DrawVertex
+        static constexpr VkDeviceSize   GLOBAL_IDX_CAPACITY                       = 512 * 1024 * 1024; // 512 MB → ~128M uint32
+        Core::Memory::BufferView        m_global_vertex_buf                       = {};
+        Core::Memory::BufferView        m_global_index_buf                        = {};
+        VkDeviceSize                    m_vtx_cursor                              = 0; // byte offset of next write
+        VkDeviceSize                    m_idx_cursor                              = 0;
 
         // Mesh slot pool — stores per-mesh offsets into the global buffers.
-        Slot<MeshSlot>                  m_mesh_slots[MAX_BUFFERS]      = {};
-        uint32_t                        m_mesh_slot_count              = 0;
+        Slot<MeshSlot>                  m_mesh_slots[MAX_BUFFERS]                 = {};
+        uint32_t                        m_mesh_slot_count                         = 0;
+        // Never reset by Release() — gives each slot a monotonic generation on reuse
+        // instead of the deterministic idx+1 a released-then-reallocated slot would
+        // otherwise get back, which is what gave stale handles no real ABA protection.
+        uint32_t                        m_mesh_slot_gen_counter[MAX_BUFFERS]      = {};
 
         // Image pool
-        Slot<Core::Memory::BufferImage> m_image_slots[MAX_IMAGES]      = {};
-        uint32_t                        m_image_slot_count             = 0;
+        Slot<Core::Memory::BufferImage> m_image_slots[MAX_IMAGES]                 = {};
+        uint32_t                        m_image_slot_count                        = 0;
+        uint32_t                        m_image_slot_gen_counter[MAX_IMAGES]      = {};
 
         // Generic device-local buffer pool — for bone matrices, particle VBs, etc.
         // Handles carry GBUF_GEN_TAG in bit 31 to distinguish from mesh handles.
-        Slot<Core::Memory::BufferView>  m_gbuf_slots[MAX_GENERIC_BUFS] = {};
-        uint32_t                        m_gbuf_slot_count              = 0;
+        Slot<Core::Memory::BufferView>  m_gbuf_slots[MAX_GENERIC_BUFS]            = {};
+        uint32_t                        m_gbuf_slot_count                         = 0;
+        uint32_t                        m_gbuf_slot_gen_counter[MAX_GENERIC_BUFS] = {};
 
         // UUID → handle maps (for hot-reload swap lookup)
         // Written on first upload; read on OnAssetStale. Protected by m_uuid_map_mutex.
@@ -441,15 +462,17 @@ namespace ZEngine::Rendering
         UUIDImagePair                  m_uuid_to_image[MAX_UUID_MAP]     = {};
         uint32_t                       m_uuid_to_image_count             = 0;
 
-        // Swap list — written from asset thread, drained in EndFrame
-        static constexpr uint32_t      MAX_SWAPS                         = 256;
-        SwapEntry                      m_swaps[MAX_SWAPS]                = {};
-        uint32_t                       m_swap_count                      = 0;
-
         // Pending uploads — written from asset thread, flushed in BeginFrame
         static constexpr uint32_t      MAX_PENDING                       = 1024;
         PendingUpload                  m_pending[MAX_PENDING]            = {};
         uint32_t                       m_pending_count                   = 0;
+
+        // Pending hot-reload swaps — written from asset thread (ScheduleSwap), drained by
+        // FlushPendingSwaps on the render thread. A dedicated mutex, not m_pending_mutex:
+        // that lock is held across file I/O and a GPU call in SubmitTextureFile, and
+        // swap enqueue/drain must not stall behind a concurrent texture load.
+        PendingSwap                    m_pending_swaps[MAX_PENDING]      = {};
+        uint32_t                       m_pending_swap_count              = 0;
 
         // Geometry compaction request — set by asset thread, executed on render thread
         std::atomic<bool>              m_pending_reset                   = false;
@@ -501,6 +524,7 @@ namespace ZEngine::Rendering
         void                                                                       ShutdownTextureTimelines();
 
         std::mutex                                                                 m_pending_mutex;
+        std::mutex                                                                 m_pending_swap_mutex;
         std::mutex                                                                 m_uuid_map_mutex;
     };
 

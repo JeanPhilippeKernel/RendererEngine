@@ -1,5 +1,7 @@
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
+#include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
+#include <algorithm>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Helpers;
@@ -156,10 +158,13 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Compile()
     {
+        // BuildTopology must run first — BuildLifetimes indexes by sorted execution
+        // order, not raw declaration order, so lifetimes can only be computed once the
+        // real order is known.
+        BuildTopology();
         BuildLifetimes();
         AllocateTransientResources();
         BuildBarriers();
-        BuildTopology();
 
         for (uint32_t i = 0; i < SortedPassIndices.size(); ++i)
         {
@@ -460,42 +465,67 @@ namespace ZEngine::Rendering::Renderers
             res.RuntimeState   = {VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED};
         }
 
-        for (uint32_t i = 0; i < Passes.size(); ++i)
+        // Indexed by position in SortedPassIndices (real execution order), not by raw
+        // declaration order — BuildTopology() must run before this so transient-resource
+        // lifetimes reflect when a pass actually executes, not where it was declared.
+        for (uint32_t order_pos = 0; order_pos < SortedPassIndices.size(); ++order_pos)
         {
-            const auto& pass = Passes[i];
+            const auto& pass = Passes[SortedPassIndices[order_pos]];
             for (const auto& w : pass.Writes)
             {
                 if (!w.Handle.Valid())
+                {
                     continue;
+                }
                 auto& res = Resources[w.Handle.Index];
-                if (i < res.FirstPassIndex)
-                    res.FirstPassIndex = i;
-                if (i > res.LastPassIndex)
-                    res.LastPassIndex = i;
+                if (order_pos < res.FirstPassIndex)
+                {
+                    res.FirstPassIndex = order_pos;
+                }
+                if (order_pos > res.LastPassIndex)
+                {
+                    res.LastPassIndex = order_pos;
+                }
             }
             for (const auto& r : pass.Reads)
             {
                 if (!r.Handle.Valid())
+                {
                     continue;
+                }
                 auto& res = Resources[r.Handle.Index];
-                if (i < res.FirstPassIndex)
-                    res.FirstPassIndex = i;
-                if (i > res.LastPassIndex)
-                    res.LastPassIndex = i;
+                if (order_pos < res.FirstPassIndex)
+                {
+                    res.FirstPassIndex = order_pos;
+                }
+                if (order_pos > res.LastPassIndex)
+                {
+                    res.LastPassIndex = order_pos;
+                }
             }
         }
     }
 
     void RenderGraph::AllocateTransientResources()
     {
-        for (auto& res : Resources)
+        // Indexed loop (not range-based) so res_idx is available below — pre-existing bug
+        // fix: the storage-usage check used to compare a resource index against
+        // res.FirstPassIndex (a pass index), which could never match.
+        for (uint32_t res_idx = 0; res_idx < Resources.size(); ++res_idx)
         {
+            auto& res = Resources[res_idx];
             if (res.External || !res.Transient)
+            {
                 continue;
+            }
             if (res.FirstPassIndex == UINT32_MAX)
+            {
                 continue;
+            }
             if (res.TextureHandle.Valid())
+            {
                 continue;
+            }
             auto aliased = TransientPool.TryAlias(res.Spec, res.FirstPassIndex);
             if (aliased.Valid())
             {
@@ -508,8 +538,12 @@ namespace ZEngine::Rendering::Renderers
                 for (const auto& pass : Passes)
                 {
                     for (const auto& w : pass.Writes)
-                        if (w.Handle.Valid() && w.Handle.Index == res.FirstPassIndex && w.Access == RGAccess::ShaderReadWrite)
+                    {
+                        if (w.Handle.Valid() && w.Handle.Index == res_idx && w.Access == RGAccess::ShaderReadWrite)
+                        {
                             res.Spec.IsUsageStorage = true;
+                        }
+                    }
                 }
                 res.TextureHandle = Device->CreateTexture(res.Spec);
                 TransientPool.Register(res.TextureHandle, res.Spec, res.LastPassIndex);
@@ -519,6 +553,12 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::BuildBarriers()
     {
+        // NOTE: walks Passes in raw declaration order, not sorted execution order — its
+        // output (pass.ImageBarriers, res.CurrentState below) is never read outside this
+        // file today (Execute() derives its own barriers per-frame from RuntimeState in
+        // real SortedPassIndices order instead), so this is currently harmless dead
+        // compile-time simulation. If this machinery is ever wired up for real, it needs
+        // the same declaration-order-to-sorted-position fix BuildLifetimes() got.
         for (uint32_t i = 0; i < Passes.size(); ++i)
         {
             RGPass& pass = Passes[i];
@@ -566,13 +606,218 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
+    bool BuildPassTopology(Core::Memory::ArenaAllocator* scratch_arena, ArrayView<RGPass> passes, Array<uint32_t>& out_order, uint32_t* out_cycle_pass_index)
+    {
+        out_order.clear();
+        if (out_cycle_pass_index)
+        {
+            *out_cycle_pass_index = UINT32_MAX;
+        }
+
+        const uint32_t pass_count = static_cast<uint32_t>(passes.size());
+        if (pass_count == 0)
+        {
+            return true;
+        }
+
+        // Flatten every Read/Write into one event log — reads before writes within each
+        // pass, passes in declaration order. Stable-sorting this by resource groups each
+        // resource's events together while preserving their relative (pass) order, which
+        // is all the edge-construction walk below needs.
+        uint32_t total_events = 0;
+        for (uint32_t i = 0; i < pass_count; ++i)
+        {
+            total_events += static_cast<uint32_t>(passes[i].Reads.size() + passes[i].Writes.size());
+        }
+
+        Array<RGEvent> events;
+        events.init(scratch_arena, total_events > 0 ? total_events : 1);
+        for (uint32_t i = 0; i < pass_count; ++i)
+        {
+            const auto& pass = passes[i];
+            for (const auto& r : pass.Reads)
+            {
+                if (r.Handle.Valid())
+                {
+                    events.push({r.Handle.Index, i, false});
+                }
+            }
+            for (const auto& w : pass.Writes)
+            {
+                if (w.Handle.Valid())
+                {
+                    events.push({w.Handle.Index, i, true});
+                }
+            }
+        }
+        std::stable_sort(events.begin(), events.end(), [](const RGEvent& a, const RGEvent& b) { return a.ResourceIndex < b.ResourceIndex; });
+
+        Array<uint32_t> indegree;
+        indegree.init(scratch_arena, pass_count, pass_count);
+        for (uint32_t i = 0; i < pass_count; ++i)
+        {
+            indegree[i] = 0;
+        }
+
+        Array<RGEdge> edges;
+        edges.init(scratch_arena, events.size() * 2 + 1);
+
+        auto add_edge = [&](uint32_t from, uint32_t to) {
+            if (from == to) // drops same-pass self-edges (RMW passes, duplicate same-pass writes)
+            {
+                return;
+            }
+            edges.push({from, to});
+            indegree[to]++;
+        };
+
+        // Walk each resource's contiguous run and derive RAW/WAW/WAR edges.
+        //
+        // The common case — a resource written by exactly one pass — binds every reader
+        // to that sole writer directly, regardless of their relative declared order: this
+        // is what lets the sort actually fix a pass that was registered before the
+        // producer it depends on, instead of just reproducing declaration order (a single
+        // forward scan that only ever looks at writers seen so far can never do this — it
+        // can only ever emit edges pointing to a later declared index, which makes
+        // reordering, and therefore cycle detection, structurally impossible).
+        //
+        // A resource written by more than one pass (e.g. a ping-pong chain) has no
+        // versioning to say which write a given read wants, so that case falls back to a
+        // declared-order replay (nearest-preceding-write RAW/WAW/WAR) — a reasonable
+        // heuristic since no pass in this engine does this today.
+        uint32_t idx = 0;
+        while (idx < events.size())
+        {
+            uint32_t run_resource = events[idx].ResourceIndex;
+            uint32_t run_start    = idx;
+            while (idx < events.size() && events[idx].ResourceIndex == run_resource)
+            {
+                ++idx;
+            }
+            uint32_t run_end      = idx;
+
+            uint32_t writer_count = 0;
+            uint32_t sole_writer  = UINT32_MAX;
+            for (uint32_t e = run_start; e < run_end; ++e)
+            {
+                if (events[e].IsWrite)
+                {
+                    ++writer_count;
+                    sole_writer = events[e].PassIndex;
+                }
+            }
+
+            if (writer_count <= 1)
+            {
+                if (sole_writer != UINT32_MAX)
+                {
+                    for (uint32_t e = run_start; e < run_end; ++e)
+                    {
+                        if (!events[e].IsWrite)
+                        {
+                            add_edge(sole_writer, events[e].PassIndex);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            uint32_t        last_writer = UINT32_MAX;
+            Array<uint32_t> pending_readers;
+            pending_readers.init(scratch_arena, run_end - run_start);
+
+            for (uint32_t e = run_start; e < run_end; ++e)
+            {
+                uint32_t p = events[e].PassIndex;
+                if (!events[e].IsWrite)
+                {
+                    if (last_writer != UINT32_MAX)
+                    {
+                        add_edge(last_writer, p);
+                    }
+                    pending_readers.push(p);
+                }
+                else
+                {
+                    if (last_writer != UINT32_MAX)
+                    {
+                        add_edge(last_writer, p);
+                    }
+                    for (auto reader_pass : pending_readers)
+                    {
+                        add_edge(reader_pass, p);
+                    }
+                    pending_readers.clear();
+                    last_writer = p;
+                }
+            }
+        }
+
+        // Kahn's algorithm. O(pass_count^2) scan-for-lowest-ready-index is fine at
+        // frame-graph pass counts (this runs once at Compile(), not per frame) and keeps
+        // today's declaration order for independent passes as a stable tie-break.
+        Array<bool> emitted;
+        emitted.init(scratch_arena, pass_count, pass_count);
+        for (uint32_t i = 0; i < pass_count; ++i)
+        {
+            emitted[i] = false;
+        }
+
+        for (uint32_t emitted_count = 0; emitted_count < pass_count; ++emitted_count)
+        {
+            uint32_t best = UINT32_MAX;
+            for (uint32_t i = 0; i < pass_count; ++i)
+            {
+                if (emitted[i] || indegree[i] != 0)
+                {
+                    continue;
+                }
+                best = i;
+                break;
+            }
+            if (best == UINT32_MAX)
+            {
+                if (out_cycle_pass_index)
+                {
+                    for (uint32_t i = 0; i < pass_count; ++i)
+                    {
+                        if (!emitted[i])
+                        {
+                            *out_cycle_pass_index = i;
+                            break;
+                        }
+                    }
+                }
+                out_order.clear();
+                return false;
+            }
+            emitted[best] = true;
+            out_order.push(best);
+            for (const auto& e : edges)
+            {
+                if (e.From == best && !emitted[e.To])
+                {
+                    indegree[e.To]--;
+                }
+            }
+        }
+        return true;
+    }
+
     void RenderGraph::BuildTopology()
     {
-        // Simple insertion-order execution for now — passes execute in the order they were added.
-        // A full DFS topological sort can replace this once producer/consumer edges are tracked.
-        SortedPassIndices.clear();
-        for (uint32_t i = 0; i < Passes.size(); ++i)
-            SortedPassIndices.push(i);
+        auto     scratch   = ZGetScratch(Device->Arena);
+        uint32_t cycle_idx = UINT32_MAX;
+        if (!BuildPassTopology(scratch.Arena, Passes, SortedPassIndices, &cycle_idx))
+        {
+            ZENGINE_CORE_ERROR("[RenderGraph] Cycle detected in resource dependency graph at pass '{}' — falling back to declaration order", cycle_idx < Passes.size() ? Passes[cycle_idx].Name : "?")
+            SortedPassIndices.clear();
+            for (uint32_t i = 0; i < Passes.size(); ++i)
+            {
+                SortedPassIndices.push(i);
+            }
+        }
+        ZReleaseScratch(scratch);
     }
 
     void RenderGraph::AllocateFramebuffers()
