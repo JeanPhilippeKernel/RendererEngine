@@ -58,7 +58,99 @@ namespace ZEngine::Core::Memory
             HeapCount = memory_properties->memoryHeapCount;
         }
 
-        Ring.Initialize(Allocator);
+        // Segregated pools isolate each domain's allocation churn/fragmentation from the
+        // others. A pool that fails to create is left null — every call site below falls
+        // back to the default allocator, so this is an optimization, never a hard
+        // dependency for engine startup.
+        auto create_buffer_pool = [&](GpuMemoryDomain domain, VkBufferUsageFlags usage, VmaAllocationCreateInfo alloc_info, VkDeviceSize block_size, size_t max_block_count) {
+            VkBufferCreateInfo rep_buffer_info = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            rep_buffer_info.size                = 1;
+            rep_buffer_info.usage               = usage;
+
+            uint32_t memory_type_index = 0;
+            if (vmaFindMemoryTypeIndexForBufferInfo(Allocator, &rep_buffer_info, &alloc_info, &memory_type_index) != VK_SUCCESS)
+            {
+                ZENGINE_CORE_WARN("[GPU] Failed to find memory type index for domain {} pool — falling back to default pool", static_cast<int>(domain))
+                return;
+            }
+
+            VmaPoolCreateInfo pool_info = {};
+            pool_info.memoryTypeIndex   = memory_type_index;
+            pool_info.blockSize         = block_size;
+            pool_info.maxBlockCount     = max_block_count;
+            if (vmaCreatePool(Allocator, &pool_info, &Pools[static_cast<uint8_t>(domain)]) != VK_SUCCESS)
+            {
+                ZENGINE_CORE_WARN("[GPU] Failed to create pool for domain {} — falling back to default pool", static_cast<int>(domain))
+                Pools[static_cast<uint8_t>(domain)] = nullptr;
+            }
+        };
+
+        // DeviceGeometry — vertex/index/storage buffers. Fixed block size is fine here:
+        // geometry buffers don't vary in size the way textures do.
+        create_buffer_pool(GpuMemoryDomain::DeviceGeometry, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE}, GeometryBytes, 2);
+
+        // HostUniform — per-frame UBOs/SSBOs on the BAR window.
+        create_buffer_pool(GpuMemoryDomain::HostUniform, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VmaAllocationCreateInfo{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO}, UniformBytes, 1);
+
+        // HostStaging — built from the staging ring's OWN flags (AUTO_PREFER_DEVICE), not
+        // AllocateBuffer's generic HostStaging branch (plain AUTO): those can resolve to
+        // different memory type indices on a discrete GPU with a BAR window, and the ring
+        // is this domain's dominant consumer. The generic one-off staging buffers
+        // (AllocateBuffer with domain=HostStaging) share this same pool.
+        //
+        // blockSize=0 (auto-sized), not a fixed StagingBytes block: a block needs some
+        // alignment/bookkeeping headroom beyond its raw byte count, so a fixed block
+        // exactly equal to the ring's own StagingBytes allocation can't actually fit it
+        // (confirmed: fails with VK_ERROR_OUT_OF_DEVICE_MEMORY). Same underlying reason as
+        // DeviceTexture's blockSize=0 below, just triggered by exact-equality instead of
+        // exceeding the block.
+        create_buffer_pool(GpuMemoryDomain::HostStaging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VmaAllocationCreateInfo{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE}, 0, 1);
+
+        // DeviceTexture — images only (never buffers), so this MUST use the image-info
+        // query, not the buffer-info one: VMA's own docs warn against building a pool from
+        // buffer info and then allocating images into it. blockSize=0 (auto-sized) is
+        // deliberate, not the fixed-size pattern above — a fixed block disables VMA's
+        // dedicated-allocation fallback entirely and hard-fails on any single texture
+        // larger than the block (an 8K RGBA8 texture is already 256 MB with no
+        // compression/mips in the current import path).
+        {
+            VkImageCreateInfo rep_image_info  = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+            rep_image_info.imageType          = VK_IMAGE_TYPE_2D;
+            rep_image_info.format             = VK_FORMAT_R8G8B8A8_UNORM;
+            rep_image_info.extent             = {1, 1, 1};
+            rep_image_info.mipLevels          = 1;
+            rep_image_info.arrayLayers        = 1;
+            rep_image_info.samples            = VK_SAMPLE_COUNT_1_BIT;
+            rep_image_info.tiling             = VK_IMAGE_TILING_OPTIMAL;
+            rep_image_info.usage              = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            rep_image_info.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
+            rep_image_info.initialLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
+
+            VmaAllocationCreateInfo rep_alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+            uint32_t                memory_type_index = 0;
+            if (vmaFindMemoryTypeIndexForImageInfo(Allocator, &rep_image_info, &rep_alloc_info, &memory_type_index) == VK_SUCCESS)
+            {
+                VmaPoolCreateInfo pool_info = {};
+                pool_info.memoryTypeIndex   = memory_type_index;
+                pool_info.blockSize         = 0; // auto-sized — keeps dedicated-allocation fallback
+                pool_info.maxBlockCount     = 0; // unlimited
+                if (vmaCreatePool(Allocator, &pool_info, &Pools[static_cast<uint8_t>(GpuMemoryDomain::DeviceTexture)]) != VK_SUCCESS)
+                {
+                    ZENGINE_CORE_WARN("[GPU] Failed to create DeviceTexture pool — falling back to default pool")
+                    Pools[static_cast<uint8_t>(GpuMemoryDomain::DeviceTexture)] = nullptr;
+                }
+            }
+            else
+            {
+                ZENGINE_CORE_WARN("[GPU] Failed to find memory type index for DeviceTexture pool — falling back to default pool")
+            }
+        }
+
+        // RenderTarget intentionally has no pool — few, large images that individually
+        // benefit from VMA's automatic dedicated-allocation promotion; pooling would work
+        // against that.
+
+        Ring.Initialize(Allocator, Pools[static_cast<uint8_t>(GpuMemoryDomain::HostStaging)]);
     }
 
     void GpuAllocator::Shutdown()
@@ -70,6 +162,15 @@ namespace ZEngine::Core::Memory
         if (stats.total.statistics.allocationCount > 0)
         {
             ZENGINE_CORE_WARN("[GPU] VMA shutdown: {} allocation(s) still live ({} MB)", stats.total.statistics.allocationCount, stats.total.statistics.allocationBytes >> 20);
+        }
+
+        for (uint8_t i = 0; i < static_cast<uint8_t>(GpuMemoryDomain::Count); ++i)
+        {
+            if (Pools[i] != nullptr)
+            {
+                vmaDestroyPool(Allocator, Pools[i]);
+                Pools[i] = nullptr;
+            }
         }
 
         vmaDestroyAllocator(Allocator);
@@ -112,8 +213,22 @@ namespace ZEngine::Core::Memory
             allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
         }
 
+        if (Pools[static_cast<uint8_t>(domain)] != nullptr)
+        {
+            allocation_create_info.pool = Pools[static_cast<uint8_t>(domain)];
+        }
+
         BufferView buffer_view = {.DebugName = debug_name, .Domain = domain};
-        ZENGINE_VALIDATE_ASSERT(vmaCreateBuffer(Allocator, &buffer_create_info, &allocation_create_info, &buffer_view.Handle, &buffer_view.Allocation, nullptr) == VK_SUCCESS, "Failed to allocate buffer");
+        VkResult   result      = vmaCreateBuffer(Allocator, &buffer_create_info, &allocation_create_info, &buffer_view.Handle, &buffer_view.Allocation, nullptr);
+        // VMA signals VmaPool exhaustion via VK_ERROR_OUT_OF_DEVICE_MEMORY, not
+        // VK_ERROR_OUT_OF_POOL_MEMORY (that's for VkDescriptorPool, unrelated).
+        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && allocation_create_info.pool != VK_NULL_HANDLE)
+        {
+            ZENGINE_CORE_WARN("[GPU] Pool for domain {} exhausted — falling back to default pool", static_cast<int>(domain))
+            allocation_create_info.pool = VK_NULL_HANDLE;
+            result                      = vmaCreateBuffer(Allocator, &buffer_create_info, &allocation_create_info, &buffer_view.Handle, &buffer_view.Allocation, nullptr);
+        }
+        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to allocate buffer");
         vmaSetAllocationName(Allocator, buffer_view.Allocation, debug_name);
         return buffer_view;
     }
@@ -126,8 +241,22 @@ namespace ZEngine::Core::Memory
             allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
         }
 
+        if (Pools[static_cast<uint8_t>(domain)] != nullptr)
+        {
+            allocation_create_info.pool = Pools[static_cast<uint8_t>(domain)];
+        }
+
         BufferImage buffer_image = {.DebugName = debug_name, .Domain = domain};
-        ZENGINE_VALIDATE_ASSERT(vmaCreateImage(Allocator, &image_info, &allocation_create_info, &buffer_image.Handle, &buffer_image.Allocation, nullptr) == VK_SUCCESS, "Failed to allocate image");
+        VkResult    result       = vmaCreateImage(Allocator, &image_info, &allocation_create_info, &buffer_image.Handle, &buffer_image.Allocation, nullptr);
+        // VMA signals VmaPool exhaustion via VK_ERROR_OUT_OF_DEVICE_MEMORY, not
+        // VK_ERROR_OUT_OF_POOL_MEMORY (that's for VkDescriptorPool, unrelated).
+        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && allocation_create_info.pool != VK_NULL_HANDLE)
+        {
+            ZENGINE_CORE_WARN("[GPU] Pool for domain {} exhausted — falling back to default pool", static_cast<int>(domain))
+            allocation_create_info.pool = VK_NULL_HANDLE;
+            result                      = vmaCreateImage(Allocator, &image_info, &allocation_create_info, &buffer_image.Handle, &buffer_image.Allocation, nullptr);
+        }
+        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to allocate image");
         vmaSetAllocationName(Allocator, buffer_image.Allocation, debug_name);
 
         VkImageViewCreateInfo view_create_info           = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -208,7 +337,7 @@ namespace ZEngine::Core::Memory
         return (float) HeapBudgets[heap_index].usage / (float) HeapBudgets[heap_index].budget;
     }
 
-    void StagingRingBuffer::Initialize(VmaAllocator alloc)
+    void StagingRingBuffer::Initialize(VmaAllocator alloc, VmaPool pool)
     {
         VkBufferCreateInfo buffer_create_info          = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         buffer_create_info.size                        = kCapacity;
@@ -217,6 +346,7 @@ namespace ZEngine::Core::Memory
 
         VmaAllocationCreateInfo allocation_create_info = {.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
         allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+        allocation_create_info.pool                    = pool; // shares the GpuAllocator-owned HostStaging pool when one exists
         VmaAllocationInfo result                       = {};
         ZENGINE_VALIDATE_ASSERT(vmaCreateBuffer(alloc, &buffer_create_info, &allocation_create_info, &Buffer, &Allocation, &result) == VK_SUCCESS, "Failed to allocate buffer");
         vmaSetAllocationName(alloc, Allocation, DebugName);

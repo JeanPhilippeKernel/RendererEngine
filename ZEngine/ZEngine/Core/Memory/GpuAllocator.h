@@ -88,7 +88,7 @@ namespace ZEngine::Core::Memory
         uint32_t      ChunkHead          = 0;
         uint32_t      ChunkTail          = 0;
 
-        void          Initialize(VmaAllocator alloc);
+        void          Initialize(VmaAllocator alloc, VmaPool pool);
         void          Shutdown(VmaAllocator alloc);
 
         // Returns mapped pointer + VkBuffer byte offset. Returns nullptr when the ring is

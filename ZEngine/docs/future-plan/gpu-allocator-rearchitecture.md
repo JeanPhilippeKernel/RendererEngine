@@ -1,10 +1,17 @@
 # GPU Allocator Rearchitecture — VMA Pools, Staging Ring, Timeline Drain
 
 **Priority:** P0 — Required before 4K resolution target; fixes confirmed correctness bugs  
-**Status:** Partially implemented — moved back from `completed/` to `future-plan/` after a
-full-file re-verification found the doc's headline feature was never built (see correction below).
-The staging ring, `DeferredFreeQueue`, and `TickMemory` drain are real and match the doc; the "VMA
-segregated pools" title feature is not.
+**Status:** Segregated VMA pools now implemented (`DeviceGeometry`/`DeviceTexture`/`HostUniform`/
+`HostStaging`), as part of this month's rendering-foundation hardening pass — `RenderTarget`
+intentionally left on the default/dedicated-allocation pool (see the domain table in that track's
+plan for the reasoning). `DeviceTexture` and `HostStaging` use `blockSize=0` (auto-sized) rather
+than a fixed block — both a fixed-size single-allocation-exceeds-block case (`DeviceTexture`) and
+an exact-equal-to-block-size case (`HostStaging`, the ring's own buffer) were found to fail with
+`VK_ERROR_OUT_OF_DEVICE_MEMORY` during implementation; auto-sizing avoids both. Every custom pool
+is now destroyed in `Shutdown()` before the allocator (VMA asserts otherwise). Covered by
+`ZEngine/tests/Rendering/GpuAllocatorTest.cpp` against a real (headless) Vulkan device. Remaining
+stale items below (H3 mechanism, `AsyncResourceLoader.cpp` path) are unrelated pre-existing doc
+debt this track didn't touch — not yet moved back to `completed/` for that reason.
 **Depends on:** Nothing — self-contained hardware layer change  
 **Blocks:** `per-frame-upload-heap.md` (needs clean allocator API first)
 
@@ -13,12 +20,9 @@ segregated pools" title feature is not.
 ## Correction (re-verification finding)
 
 A deep-verification pass against the current codebase found this doc was moved to `completed/`
-prematurely. Specific gaps:
+prematurely. Specific gaps (the segregated-pools gap is now fixed, per the Status line above; the
+other two remain open):
 
-- **"VMA segregated pools" is fabricated.** `GpuAllocator::Pools[5]` (line ~163 below) is declared
-  but never populated anywhere in the codebase — there are **zero** `vmaCreatePool` calls in the
-  entire tree. Every allocation still goes through the default VMA pool, contradicting the doc's
-  title and its H1 "fix" claim.
 - **H3's actual fix mechanism is different from what's documented.** The doc specifies
   `AUTO_PREFER_DEVICE` + `ALLOW_TRANSFER_INSTEAD` for `HostUniform`. The shipped code uses plain
   `VMA_MEMORY_USAGE_AUTO` without `ALLOW_TRANSFER_INSTEAD_BIT` — a deliberate, differently-reasoned
@@ -27,8 +31,7 @@ prematurely. Specific gaps:
   deleted and its responsibilities absorbed into `RenderResourceManager.cpp`. Any section below
   that references `AsyncResourceLoader.cpp` line numbers is stale.
 - **Confirmed real and matching**: the core `GpuAllocator`/`StagingRing`/`DeferredFreeQueue`/
-  `TickMemory` mechanisms described elsewhere in this doc do exist and behave as documented — only
-  the segregated-pools feature and the H2/H3/H5 fix locations are wrong.
+  `TickMemory` mechanisms described elsewhere in this doc do exist and behave as documented.
 
 ---
 
