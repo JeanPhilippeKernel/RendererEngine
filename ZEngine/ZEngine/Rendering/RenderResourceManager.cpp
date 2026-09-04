@@ -64,40 +64,20 @@ namespace ZEngine::Rendering
             auto*              rrm = static_cast<RenderResourceManager*>(ctx);
 
             const AssetRecord* rec = rrm->m_registry->FindByUUID(uuid);
-            if (!rec)
-                return;
-
-            UploadKind kind;
-            if (rec->Type == AssetType::MESH)
-                kind = UploadKind::Mesh;
-            else if (rec->Type == AssetType::TEXTURE)
-                kind = UploadKind::Texture;
-            else
-                return;
+            if (!rec || rec->Type != AssetType::MESH)
+                return; // textures are ingested directly by AssetManager::IngestTexture, not via this path
 
             // Deduplicate: hold both locks together so two concurrent callbacks
             // for the same UUID can't both pass the check before either pushes.
             std::lock_guard map_lock(rrm->m_uuid_map_mutex);
             std::lock_guard pend_lock(rrm->m_pending_mutex);
 
-            if (kind == UploadKind::Mesh)
-            {
-                for (uint32_t i = 0; i < rrm->m_uuid_to_buffer_count; ++i)
-                    if (rrm->m_uuid_to_buffer[i].UUID == uuid)
-                        return;
-                for (uint32_t i = 0; i < rrm->m_pending_count; ++i)
-                    if (rrm->m_pending[i].Kind == UploadKind::Mesh && rrm->m_pending[i].UUID == uuid)
-                        return;
-            }
-            else
-            {
-                for (uint32_t i = 0; i < rrm->m_uuid_to_image_count; ++i)
-                    if (rrm->m_uuid_to_image[i].UUID == uuid)
-                        return;
-                for (uint32_t i = 0; i < rrm->m_pending_count; ++i)
-                    if (rrm->m_pending[i].Kind == UploadKind::Texture && rrm->m_pending[i].UUID == uuid)
-                        return;
-            }
+            for (uint32_t i = 0; i < rrm->m_uuid_to_buffer_count; ++i)
+                if (rrm->m_uuid_to_buffer[i].UUID == uuid)
+                    return;
+            for (uint32_t i = 0; i < rrm->m_pending_count; ++i)
+                if (rrm->m_pending[i].UUID == uuid)
+                    return;
 
             if (rrm->m_pending_count >= MAX_PENDING)
             {
@@ -105,13 +85,14 @@ namespace ZEngine::Rendering
                 return;
             }
 
-            rrm->m_pending[rrm->m_pending_count++] = {kind, handle, uuid};
+            rrm->m_pending[rrm->m_pending_count++] = {handle, uuid};
         });
 
         registry->SetOnStaleCallback(this, [](void* ctx, const uuids::uuid& uuid) {
             auto*           rrm = static_cast<RenderResourceManager*>(ctx);
 
-            // Look up current GPU handle for this UUID and schedule a swap.
+            // Look up current GPU handle for this UUID and schedule a swap. Mesh/buffer only —
+            // texture hot-reload is triggered via TextureImporter/ImportCoordinator instead.
             std::lock_guard lock(rrm->m_uuid_map_mutex);
             for (uint32_t i = 0; i < rrm->m_uuid_to_buffer_count; ++i)
             {
@@ -127,20 +108,12 @@ namespace ZEngine::Rendering
                     return;
                 }
             }
-            for (uint32_t i = 0; i < rrm->m_uuid_to_image_count; ++i)
-            {
-                if (rrm->m_uuid_to_image[i].UUID == uuid)
-                {
-                    AssetHandle new_asset = 0;
-                    {
-                        const AssetRecord* rec = rrm->m_registry->FindByUUID(uuid);
-                        if (rec)
-                            new_asset = rec->SlotHandle;
-                    }
-                    rrm->ScheduleSwap(rrm->m_uuid_to_image[i].Handle, new_asset);
-                    return;
-                }
-            }
+        });
+
+        registry->SetOnRemovedCallback(this, [](void* ctx, const uuids::uuid& uuid, AssetType type) {
+            if (type != AssetType::TEXTURE)
+                return;
+            static_cast<RenderResourceManager*>(ctx)->ReleaseTexture(uuid);
         });
     }
 
@@ -216,12 +189,6 @@ namespace ZEngine::Rendering
         if (m_global_index_buf)
             m_device->GpuMem.FreeBuffer(m_global_index_buf);
 
-        for (uint32_t i = 0; i < m_image_slot_count; ++i)
-        {
-            if (m_image_slots[i].Generation != 0 && m_image_slots[i].Data)
-                m_device->GpuMem.FreeImage(m_image_slots[i].Data, m_device->LogicalDevice);
-        }
-
         for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
         {
             if (m_gbuf_slots[i].Generation != 0 && m_gbuf_slots[i].Data)
@@ -236,6 +203,8 @@ namespace ZEngine::Rendering
     {
         FlushPendingUploads(frame_index);
         FlushPendingSwaps(frame_index);
+        FlushPendingTextureReloads();
+        FlushPendingTextureReleases();
     }
 
     void RenderResourceManager::EndFrame(uint32_t frame_index)
@@ -261,38 +230,7 @@ namespace ZEngine::Rendering
         for (uint32_t i = 0; i < count; ++i)
         {
             const PendingSwap& s = local[i];
-            if (s.Kind == SwapKind::Image)
-            {
-                BufferImage* old_slot = GetImageMutable(s.OldImage);
-                if (!old_slot)
-                {
-                    continue; // stale handle — asset was released before the swap could apply
-                }
-                ImageHandle new_handle = DoUploadTexture(s.NewAsset);
-                if (!new_handle.IsValid())
-                {
-                    ZENGINE_LOG_RENDER_ERR("[RRM] Hot-reload swap failed to re-upload texture — old image left in place")
-                    continue;
-                }
-                BufferImage* new_slot = GetImageMutable(new_handle);
-                if (!new_slot)
-                {
-                    continue;
-                }
-
-                DeferredFreeEntry entry;
-                entry.EntryKind     = DeferredFreeEntry::Kind::Image;
-                entry.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
-                entry.Data.Image    = *old_slot;
-                m_device->DeferFree(entry);
-
-                *old_slot                                  = *new_slot;
-
-                // The scratch slot's data now lives in old_slot — release it.
-                *new_slot                                  = {};
-                m_image_slots[new_handle.Index].Generation = 0;
-            }
-            else if (s.OldBuffer.Generation & GBUF_GEN_TAG)
+            if (s.OldBuffer.Generation & GBUF_GEN_TAG)
             {
                 // No AssetHandle-driven re-upload path exists for generic buffers today —
                 // every live ScheduleSwap(BufferHandle,...) call carries a mesh handle.
@@ -510,23 +448,6 @@ namespace ZEngine::Rendering
         return {slot, m_mesh_slots[slot].Generation};
     }
 
-    ImageHandle RenderResourceManager::DoUploadTexture(AssetHandle asset)
-    {
-        AssetTexture* tex = AssetManager::GetAsset<AssetTexture>(asset);
-        if (!tex || tex->Path.empty())
-            return {};
-
-        if (!tex->Handle.Valid())
-            return {};
-
-        // Texture is already on GPU (via SubmitTextureFile/UploadTextureBuffer); register its
-        // slot. AllocImageSlot already assigned Generation — we don't own a BufferImage for
-        // this path yet, so the slot's Data stays a sentinel.
-        uint32_t slot_idx = AllocImageSlot();
-
-        return {slot_idx, m_image_slots[slot_idx].Generation};
-    }
-
     void RenderResourceManager::FlushPendingUploads(uint32_t frame_index)
     {
         // Compact geometry buffers if a scene reload was requested
@@ -544,50 +465,23 @@ namespace ZEngine::Rendering
         if (count == 0)
             return;
 
-        // Partition into mesh and texture uploads
-        PendingUpload mesh_local[MAX_PENDING];
-        PendingUpload tex_local[MAX_PENDING];
-        uint32_t      mesh_count = 0, tex_count = 0;
+        // Batch all mesh uploads into one GPU command buffer submission
+        BeginBatchUpload();
         for (uint32_t i = 0; i < count; ++i)
         {
-            if (local[i].Kind == UploadKind::Mesh)
-                mesh_local[mesh_count++] = local[i];
-            else
-                tex_local[tex_count++] = local[i];
-        }
-
-        // Batch all mesh uploads into one GPU command buffer submission
-        if (mesh_count > 0)
-        {
-            BeginBatchUpload();
-            for (uint32_t i = 0; i < mesh_count; ++i)
-            {
-                BufferHandle h = DoUploadMesh(mesh_local[i].Asset, frame_index);
-                if (h.IsValid())
-                {
-                    std::lock_guard lock(m_uuid_map_mutex);
-                    if (m_uuid_to_buffer_count < MAX_UUID_MAP)
-                        m_uuid_to_buffer[m_uuid_to_buffer_count++] = {mesh_local[i].UUID, h};
-                }
-                else
-                {
-                    ZENGINE_CORE_ERROR("[RRM] Mesh upload failed for asset handle {}", mesh_local[i].Asset)
-                }
-            }
-            EndBatchUpload();
-        }
-
-        // Texture uploads: per-texture path (independent submission chain)
-        for (uint32_t i = 0; i < tex_count; ++i)
-        {
-            ImageHandle h = DoUploadTexture(tex_local[i].Asset);
+            BufferHandle h = DoUploadMesh(local[i].Asset, frame_index);
             if (h.IsValid())
             {
                 std::lock_guard lock(m_uuid_map_mutex);
-                if (m_uuid_to_image_count < MAX_UUID_MAP)
-                    m_uuid_to_image[m_uuid_to_image_count++] = {tex_local[i].UUID, h};
+                if (m_uuid_to_buffer_count < MAX_UUID_MAP)
+                    m_uuid_to_buffer[m_uuid_to_buffer_count++] = {local[i].UUID, h};
+            }
+            else
+            {
+                ZENGINE_CORE_ERROR("[RRM] Mesh upload failed for asset handle {}", local[i].Asset)
             }
         }
+        EndBatchUpload();
     }
 
     void RenderResourceManager::UpdateBuffer(BufferView& dst, const void* data, size_t byte_size, uint32_t dst_offset)
@@ -660,11 +554,6 @@ namespace ZEngine::Rendering
         return DoUploadMesh(asset, m_current_frame);
     }
 
-    ImageHandle RenderResourceManager::UploadTexture(AssetHandle asset)
-    {
-        return DoUploadTexture(asset);
-    }
-
     void RenderResourceManager::ScheduleSwap(BufferHandle old_handle, AssetHandle new_asset)
     {
         if (!old_handle.IsValid())
@@ -678,26 +567,7 @@ namespace ZEngine::Rendering
             return;
         }
         PendingSwap& s = m_pending_swaps[m_pending_swap_count++];
-        s.Kind         = SwapKind::Buffer;
         s.OldBuffer    = old_handle;
-        s.NewAsset     = new_asset;
-    }
-
-    void RenderResourceManager::ScheduleSwap(ImageHandle old_handle, AssetHandle new_asset)
-    {
-        if (!old_handle.IsValid())
-        {
-            return;
-        }
-        std::lock_guard lock(m_pending_swap_mutex);
-        if (m_pending_swap_count >= MAX_PENDING)
-        {
-            ZENGINE_LOG_RENDER_WARN("[RRM] Pending swap queue full — dropping hot-reload swap")
-            return;
-        }
-        PendingSwap& s = m_pending_swaps[m_pending_swap_count++];
-        s.Kind         = SwapKind::Image;
-        s.OldImage     = old_handle;
         s.NewAsset     = new_asset;
     }
 
@@ -776,36 +646,9 @@ namespace ZEngine::Rendering
         }
     }
 
-    void RenderResourceManager::Release(ImageHandle handle)
+    const Rendering::Textures::Texture* RenderResourceManager::GetTexture(const Rendering::Textures::TextureHandle& handle) const
     {
-        BufferImage* slot = GetImageMutable(handle);
-        if (!slot)
-            return;
-
-        DeferredFreeEntry e;
-        e.EntryKind     = DeferredFreeEntry::Kind::Image;
-        e.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
-        e.Data.Image    = *slot;
-        m_device->DeferFree(e);
-
-        *slot                                  = {};
-        m_image_slots[handle.Index].Generation = 0;
-    }
-
-    const BufferImage* RenderResourceManager::GetImage(ImageHandle handle) const
-    {
-        if (!handle.IsValid() || handle.Index >= m_image_slot_count)
-            return nullptr;
-        const auto& slot = m_image_slots[handle.Index];
-        return slot.Generation == handle.Generation ? &slot.Data : nullptr;
-    }
-
-    BufferImage* RenderResourceManager::GetImageMutable(ImageHandle handle)
-    {
-        if (!handle.IsValid() || handle.Index >= m_image_slot_count)
-            return nullptr;
-        auto& slot = m_image_slots[handle.Index];
-        return slot.Generation == handle.Generation ? &slot.Data : nullptr;
+        return m_device->GlobalTextures.Access(handle);
     }
 
     void RenderResourceManager::EnqueueDeletion(DeferredFreeEntry entry)
@@ -877,22 +720,6 @@ namespace ZEngine::Rendering
         ZENGINE_VALIDATE_ASSERT(m_mesh_slot_count < MAX_BUFFERS, "RRM: MAX_BUFFERS exceeded")
         uint32_t idx                 = m_mesh_slot_count++;
         m_mesh_slots[idx].Generation = ++m_mesh_slot_gen_counter[idx];
-        return idx;
-    }
-
-    uint32_t RenderResourceManager::AllocImageSlot()
-    {
-        for (uint32_t i = 0; i < m_image_slot_count; ++i)
-        {
-            if (m_image_slots[i].Generation == 0)
-            {
-                m_image_slots[i].Generation = ++m_image_slot_gen_counter[i];
-                return i;
-            }
-        }
-        ZENGINE_VALIDATE_ASSERT(m_image_slot_count < MAX_IMAGES, "RRM: MAX_IMAGES exceeded")
-        uint32_t idx                  = m_image_slot_count++;
-        m_image_slots[idx].Generation = ++m_image_slot_gen_counter[idx];
         return idx;
     }
 
@@ -1053,7 +880,7 @@ namespace ZEngine::Rendering
         uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
 
         auto     texture        = m_device->GlobalTextures.Access(handle);
-        auto     img_buf        = m_device->Image2DBufferManager.Access(texture->BufferHandle);
+        auto     img_buf        = m_device->ImageBufferManager.Access(texture->BufferHandle);
         auto     img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
         auto     buffer_handle  = img_buf->GetHandle();
 
@@ -1206,7 +1033,7 @@ namespace ZEngine::Rendering
 
         auto                            handle        = m_device->CreateTexture(spec);
         auto                            texture       = m_device->GlobalTextures.Access(handle);
-        auto                            img_buf       = m_device->Image2DBufferManager.Access(texture->BufferHandle);
+        auto                            img_buf       = m_device->ImageBufferManager.Access(texture->BufferHandle);
         auto                            buffer_handle = img_buf->GetHandle();
 
         ImageMemoryBarrierSpecification to_transfer   = {};
@@ -1373,7 +1200,94 @@ namespace ZEngine::Rendering
         }
     }
 
-    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(uint8_t frame_index, uint8_t thread_index, const char* filename)
+    Rendering::Textures::TextureHandle RenderResourceManager::IngestTexture(const uuids::uuid& uuid, const char* absolute_path, Rendering::Textures::TextureHandle existing)
+    {
+        ZENGINE_LOG_RENDER_INFO("[RRM] {} texture {} from {}", existing.Valid() ? "Reloading" : "Ingesting", uuids::to_string(uuid), absolute_path)
+        return SubmitTextureFile(0, 0, absolute_path, existing);
+    }
+
+    void RenderResourceManager::ScheduleTextureReload(const uuids::uuid& uuid)
+    {
+        std::lock_guard lock(m_pending_texture_reload_mutex);
+        for (uint32_t i = 0; i < m_pending_texture_reload_count; ++i)
+            if (m_pending_texture_reloads[i] == uuid)
+                return; // already pending — dedupe
+        if (m_pending_texture_reload_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_WARN("[RRM] Pending texture reload queue full — dropping reload for {}", uuids::to_string(uuid))
+            return;
+        }
+        m_pending_texture_reloads[m_pending_texture_reload_count++] = uuid;
+    }
+
+    void RenderResourceManager::FlushPendingTextureReloads()
+    {
+        uint32_t    count = 0;
+        uuids::uuid local[MAX_PENDING];
+        {
+            std::lock_guard lock(m_pending_texture_reload_mutex);
+            count = m_pending_texture_reload_count;
+            secure_memcpy(local, sizeof(local), m_pending_texture_reloads, count * sizeof(local[0]));
+            m_pending_texture_reload_count = 0;
+        }
+
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            Rendering::Textures::TextureHandle existing = AssetManager::FindTextureHandle(local[i]);
+            if (!existing.Valid())
+                continue;
+
+            // IngestMutex guards the read: AssetManager::Textures (unlike Meshes/Materials)
+            // is arena-backed, so a concurrent IngestTexture on the import thread can
+            // reallocate its backing storage mid-read without this lock.
+            char full_path[MAX_FILE_PATH_COUNT] = {};
+            {
+                std::lock_guard lock(AssetManager::Instance()->IngestMutex);
+                AssetTexture*   tex = AssetManager::GetAsset<AssetTexture>(local[i]);
+                if (!tex || tex->Path.empty())
+                    continue;
+                snprintf(full_path, sizeof(full_path), "%s%c%s", AssetManager::Instance()->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, tex->Path.c_str());
+            }
+            IngestTexture(local[i], full_path, existing);
+        }
+    }
+
+    void RenderResourceManager::ReleaseTexture(const uuids::uuid& uuid)
+    {
+        // Captured before AssetManager::ReleaseTexture's deferred patch runs — that patch
+        // erases the UUID→handle map entry, so the handle must be read now or it's lost.
+        Rendering::Textures::TextureHandle handle = AssetManager::FindTextureHandle(uuid);
+
+        AssetManager::ReleaseTexture(uuid);
+
+        if (!handle.Valid())
+            return;
+
+        std::lock_guard lock(m_pending_texture_release_mutex);
+        if (m_pending_texture_release_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_ERR("[RRM] Pending texture release queue full — texture handle (index {}) leaked", handle.Index)
+            return;
+        }
+        m_pending_texture_releases[m_pending_texture_release_count++] = handle;
+    }
+
+    void RenderResourceManager::FlushPendingTextureReleases()
+    {
+        uint32_t                           count = 0;
+        Rendering::Textures::TextureHandle local[MAX_PENDING];
+        {
+            std::lock_guard lock(m_pending_texture_release_mutex);
+            count = m_pending_texture_release_count;
+            secure_memcpy(local, sizeof(local), m_pending_texture_releases, count * sizeof(local[0]));
+            m_pending_texture_release_count = 0;
+        }
+
+        for (uint32_t i = 0; i < count; ++i)
+            m_device->DestroyTexture(local[i]);
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(uint8_t frame_index, uint8_t thread_index, const char* filename, Rendering::Textures::TextureHandle existing)
     {
         using namespace Rendering::Specifications;
 
@@ -1420,8 +1334,22 @@ namespace ZEngine::Rendering
             }
         }
 
-        spec.BytePerPixel                                    = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-        auto                               tex_handle        = m_device->CreateTexture(spec);
+        spec.BytePerPixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
+
+        Rendering::Textures::TextureHandle tex_handle;
+        if (existing.Valid())
+        {
+            // Reimport — reconstruct in place only if dimensions/format actually changed;
+            // same handle, same bindless index either way.
+            auto* texture = m_device->GlobalTextures.Access(existing);
+            if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format))
+                m_device->ReconstructTexture(existing, spec);
+            tex_handle = existing;
+        }
+        else
+        {
+            tex_handle = m_device->CreateTexture(spec);
+        }
 
         // Capture everything by value for the thread pool lambda.
         std::string                        captured_filename = abs_filename;
@@ -1536,7 +1464,7 @@ namespace ZEngine::Rendering
             deferral.ThreadIdx = ti;
             deferral.TexHandle = captured_handle;
             EnqueueTextureDeferral(std::move(deferral));
-            m_device->TextureHandleToUpdates.Enqueue(captured_handle);
+            m_device->RequestDescriptorUpdate(captured_handle);
         });
 
         return tex_handle;

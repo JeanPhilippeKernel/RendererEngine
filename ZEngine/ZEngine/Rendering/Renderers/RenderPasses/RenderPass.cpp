@@ -96,6 +96,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     void RenderPass::Dispose()
     {
+        // NOTE: dead code today. If wired up later, route through VulkanDevice::DestroyTexture
+        // instead — Remove() reclaims the slot with no timeline gate.
         for (auto& handle : Specification.ExternalOutputs)
         {
             m_device->GlobalTextures.Remove(handle);
@@ -257,7 +259,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         auto                   frame_count = m_device->SwapchainPtr->BufferredFrameCount;
         auto                   tex_buf     = m_device->GlobalTextures.Access(handle);
-        auto                   img_buf     = m_device->Image2DBufferManager.Access(tex_buf->BufferHandle);
+        auto                   img_buf     = m_device->ImageBufferManager.Access(tex_buf->BufferHandle);
         auto                   write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
 
         for (unsigned i = 0; i < frame_count; ++i)

@@ -5,7 +5,6 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
-#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
@@ -528,7 +527,7 @@ namespace ZEngine::Hardwares
         MaxGlobalTexture                        = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
-        Image2DBufferManager.Initialize(Arena, MaxGlobalTexture);
+        ImageBufferManager.Initialize(Arena, MaxGlobalTexture);
         {
             VkDescriptorSetLayoutCreateInfo empty_layout_info = {};
             empty_layout_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -663,25 +662,27 @@ namespace ZEngine::Hardwares
         GpuMem.Ring.Drain(UINT64_MAX);
 
         {
-            Rendering::Textures::TextureHandle tex_to_dispose = {};
-            while (TextureHandleToDispose.Pop(tex_to_dispose))
+            // Full shutdown — drain unconditionally, no timeline gate needed (mirrors
+            // PendingFree.Drain(..., UINT64_MAX) above).
+            TextureDisposeEntry entry = {};
+            while (TextureHandleToDispose.pop(entry))
             {
-                auto texture = GlobalTextures.Access(tex_to_dispose);
+                auto texture = GlobalTextures.Access(entry.Handle);
                 if (texture)
                 {
-                    auto buf = Image2DBufferManager.Access(texture->BufferHandle);
+                    auto buf = ImageBufferManager.Access(texture->BufferHandle);
                     if (buf)
                     {
                         buf->Dispose();
                     }
-                    Image2DBufferManager.Remove(texture->BufferHandle);
-                    GlobalTextures.Remove(tex_to_dispose);
+                    ImageBufferManager.Remove(texture->BufferHandle);
+                    GlobalTextures.Remove(entry.Handle);
                 }
             }
         }
 
         GlobalTextures.Dispose();
-        Image2DBufferManager.Dispose();
+        ImageBufferManager.Dispose();
         ShaderManager.Dispose();
 
         SwapchainPtr->Dispose();
@@ -1794,7 +1795,7 @@ namespace ZEngine::Hardwares
 
 
 
-    void Image2DBuffer::Construct(Hardwares::VulkanDevice* device)
+    void ImageBuffer::Construct(Hardwares::VulkanDevice* device)
     {
         Device = device;
         Layout = Rendering::Specifications::ImageLayout::UNDEFINED;
@@ -1813,32 +1814,32 @@ namespace ZEngine::Hardwares
         m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
     }
 
-    Image2DBuffer::~Image2DBuffer()
+    ImageBuffer::~ImageBuffer()
     {
         Dispose();
     }
 
-    BufferImage& Image2DBuffer::GetBuffer()
+    BufferImage& ImageBuffer::GetBuffer()
     {
         return m_buffer_image;
     }
 
-    const BufferImage& Image2DBuffer::GetBuffer() const
+    const BufferImage& ImageBuffer::GetBuffer() const
     {
         return m_buffer_image;
     }
 
-    VkImage Image2DBuffer::GetHandle() const
+    VkImage ImageBuffer::GetHandle() const
     {
         return m_buffer_image.Handle;
     }
 
-    VkSampler Image2DBuffer::GetSampler() const
+    VkSampler ImageBuffer::GetSampler() const
     {
         return m_buffer_image.Sampler;
     }
 
-    void Image2DBuffer::Dispose()
+    void ImageBuffer::Dispose()
     {
         if (m_buffer_image)
         {
@@ -1850,7 +1851,7 @@ namespace ZEngine::Hardwares
         }
     }
 
-    VkDescriptorImageInfo& Image2DBuffer::GetDescriptorImageInfo()
+    VkDescriptorImageInfo& ImageBuffer::GetDescriptorImageInfo()
     {
         m_image_info.sampler     = m_buffer_image.Sampler;
         m_image_info.imageView   = m_buffer_image.ViewHandle;
@@ -1858,7 +1859,7 @@ namespace ZEngine::Hardwares
         return m_image_info;
     }
 
-    VkImageView Image2DBuffer::GetImageViewHandle() const
+    VkImageView ImageBuffer::GetImageViewHandle() const
     {
         return m_buffer_image.ViewHandle;
     }
@@ -1873,55 +1874,27 @@ namespace ZEngine::Hardwares
 
 
 
-    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(uint32_t width, uint32_t height)
+    // Shared by CreateTexture and ReconstructTexture: derives Texture metadata and the
+    // ImageBuffer's Specification from a TextureSpecification. Does not call Construct().
+    static void PopulateTextureResource(const Rendering::Specifications::TextureSpecification& spec, Rendering::Textures::Texture* resource, ImageBuffer* buffer_res, VulkanDevice* device)
     {
-        return CreateTexture(width, height, 255, 255, 255, 255);
-    }
+        resource->Specification         = spec;
+        resource->Width                 = spec.Width;
+        resource->Height                = spec.Height;
+        resource->BytePerPixel          = spec.BytePerPixel;
+        resource->BufferSize            = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
+        resource->IsDepthTexture        = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
 
-    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(uint32_t width, uint32_t height, float r, float g, float b, float a)
-    {
-        uint32_t                             byte_per_pixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(Specifications::ImageFormat::R8G8B8A8_SRGB)];
+        uint32_t storage_bit            = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
+        uint32_t transfert_bit          = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
+        uint32_t sampled_bit            = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
+        uint32_t image_aspect           = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        uint32_t image_usage_attachment = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        Specifications::TextureSpecification spec           = {
-          // clang-format off
-                      .Width        = width,
-                      .Height       = height,
-                      .BytePerPixel = byte_per_pixel,
-                      .Format       = Specifications::ImageFormat::R8G8B8A8_SRGB,
-            // clang-format on
-        };
+        VkFormat image_format            = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? device->FindDepthFormat() : Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
-        auto tex_handle = CreateTexture(spec);
-
-        if (!tex_handle)
-        {
-            return Rendering::Textures::TextureHandle{};
-        }
-
-        auto                 scratch    = ZGetScratch(Arena);
-
-        size_t               data_size  = width * height * byte_per_pixel;
-        Array<unsigned char> image_data = {};
-        image_data.init(scratch.Arena, data_size, data_size);
-
-        unsigned char r_byte = static_cast<unsigned char>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-        unsigned char g_byte = static_cast<unsigned char>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-        unsigned char b_byte = static_cast<unsigned char>(std::clamp(b * 255.0f, 0.0f, 255.0f));
-        unsigned char a_byte = static_cast<unsigned char>(std::clamp(a * 255.0f, 0.0f, 255.0f));
-
-        for (size_t i = 0; i < data_size; i += byte_per_pixel)
-        {
-            image_data[i]     = r_byte;
-            image_data[i + 1] = g_byte;
-            image_data[i + 2] = b_byte;
-            image_data[i + 3] = a_byte;
-        }
-
-        if (RRM)
-            static_cast<Rendering::RenderResourceManager*>(RRM)->UploadTextureBuffer(0, 0, tex_handle, image_data.data());
-        ZReleaseScratch(scratch);
-
-        return tex_handle;
+        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.LayerCount};
+        buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
     }
 
     Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec)
@@ -1942,31 +1915,60 @@ namespace ZEngine::Hardwares
             return Rendering::Textures::TextureHandle{};
         }
 
-        resource->Specification              = spec;
-        resource->Width                      = spec.Width;
-        resource->Height                     = spec.Height;
-        resource->BytePerPixel               = spec.BytePerPixel;
-        resource->BufferSize                 = spec.Width * spec.Height * spec.BytePerPixel * spec.LayerCount;
-        resource->IsDepthTexture             = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
+        auto buff_handle       = ImageBufferManager.Create();
+        auto buffer_res        = ImageBufferManager.Access(buff_handle);
 
-        uint32_t storage_bit                 = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
-        uint32_t transfert_bit               = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
-        uint32_t sampled_bit                 = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
-        uint32_t image_aspect                = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        uint32_t image_usage_attachment      = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-        VkFormat image_format                = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? FindDepthFormat() : Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(spec.Format)];
-
-        auto     buff_handle                 = Image2DBufferManager.Create();
-        auto     buffer_res                  = Image2DBufferManager.Access(buff_handle);
-
-        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.LayerCount};
-        buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
+        PopulateTextureResource(spec, resource, buffer_res, this);
         buffer_res->Construct(this);
 
         resource->BufferHandle = buff_handle;
 
         return handle;
+    }
+
+    bool VulkanDevice::ReconstructTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec)
+    {
+        std::unique_lock l(Mutex);
+
+        auto             resource = GlobalTextures.Access(handle);
+        if (!resource)
+        {
+            return false;
+        }
+
+        auto buffer_res = ImageBufferManager.Access(resource->BufferHandle);
+        if (!buffer_res)
+        {
+            return false;
+        }
+
+        // Defer-free the old VkImage/VkImageView before overwriting it — Construct() doesn't
+        // dispose the previous image itself.
+        DeferredFreeEntry old_image_entry = {};
+        old_image_entry.EntryKind         = DeferredFreeEntry::Kind::Image;
+        old_image_entry.Data.Image        = buffer_res->GetBuffer();
+        DeferFree(old_image_entry);
+
+        PopulateTextureResource(spec, resource, buffer_res, this);
+        buffer_res->Construct(this);
+
+        return true;
+    }
+
+    void VulkanDevice::RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle)
+    {
+        TextureHandleToUpdates.Enqueue(handle);
+    }
+
+    void VulkanDevice::DestroyTexture(const Rendering::Textures::TextureHandle& handle)
+    {
+        TextureDisposeEntry entry = {};
+        entry.Handle              = handle;
+        entry.TimelineValue       = SwapchainPtr->RenderTimelineNextValue;
+        if (!TextureHandleToDispose.push(entry))
+        {
+            ZENGINE_CORE_ERROR("[!] TextureHandleToDispose overflow — texture handle (index {}) leaked", handle.Index)
+        }
     }
 
     BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data)
@@ -1977,7 +1979,7 @@ namespace ZEngine::Hardwares
         }
 
         auto     resource    = GlobalTextures.Access(handle);
-        auto     image_buf   = Image2DBufferManager.Access(resource->BufferHandle);
+        auto     image_buf   = ImageBufferManager.Access(resource->BufferHandle);
 
         uint32_t ring_offset = 0;
         void*    ring_ptr    = GpuMem.Ring.Allocate(static_cast<uint32_t>(resource->BufferSize), 4, &ring_offset);

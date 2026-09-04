@@ -357,7 +357,7 @@ namespace ZEngine::Hardwares
                     Device->TextureHandleToUpdates.Enqueue(tex_handle);
                     break;
                 }
-                auto        img_buf    = Device->Image2DBufferManager.Access(texture->BufferHandle);
+                auto        img_buf    = Device->ImageBufferManager.Access(texture->BufferHandle);
                 const auto& image_info = img_buf->GetDescriptorImageInfo();
 
                 auto        scratch    = ZGetScratch(&Arena);
@@ -388,19 +388,29 @@ namespace ZEngine::Hardwares
         }
 
         {
-            Textures::TextureHandle tex_to_dispose = {};
-            while (Device->TextureHandleToDispose.Pop(tex_to_dispose))
+            uint64_t completed = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &completed);
+
+            TextureDisposeEntry entry = {};
+            while (Device->TextureHandleToDispose.pop(entry))
             {
-                auto texture = Device->GlobalTextures.Access(tex_to_dispose);
+                if (entry.TimelineValue > completed)
+                {
+                    // Not yet safe — push back and stop rather than skip past it (mirrors the
+                    // TextureHandleToUpdates pattern above; render-thread-only, so no race).
+                    Device->TextureHandleToDispose.push(entry);
+                    break;
+                }
+                auto texture = Device->GlobalTextures.Access(entry.Handle);
                 if (texture)
                 {
-                    auto buf = Device->Image2DBufferManager.Access(texture->BufferHandle);
+                    auto buf = Device->ImageBufferManager.Access(texture->BufferHandle);
                     if (buf)
                     {
                         buf->Dispose();
                     }
-                    Device->Image2DBufferManager.Remove(texture->BufferHandle);
-                    Device->GlobalTextures.Remove(tex_to_dispose);
+                    Device->ImageBufferManager.Remove(texture->BufferHandle);
+                    Device->GlobalTextures.Remove(entry.Handle);
                 }
             }
         }

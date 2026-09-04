@@ -25,9 +25,6 @@ namespace ZEngine::Rendering
     struct BufferTag
     {
     };
-    struct ImageTag
-    {
-    };
     struct SamplerTag
     {
     };
@@ -36,7 +33,6 @@ namespace ZEngine::Rendering
     };
 
     using BufferHandle   = RenderHandle<BufferTag>;
-    using ImageHandle    = RenderHandle<ImageTag>;
     using SamplerHandle  = RenderHandle<SamplerTag>;
     using PipelineHandle = RenderHandle<PipelineTag>;
 

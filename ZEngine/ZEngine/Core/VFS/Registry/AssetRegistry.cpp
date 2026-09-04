@@ -150,6 +150,12 @@ namespace ZEngine::Core::VFS
         m_stale_cb     = cb;
     }
 
+    void AssetRegistry::SetOnRemovedCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetType))
+    {
+        m_removed_cb_ctx = ctx;
+        m_removed_cb     = cb;
+    }
+
     void AssetRegistry::OnAssetModified(const Core::VFS::VFSPath& path)
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByPath(path);
@@ -203,6 +209,16 @@ namespace ZEngine::Core::VFS
 
         if (m_reload_cb && !cascade.empty())
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(cascade.data(), cascade.size()));
+
+        if (m_removed_cb)
+        {
+            for (uint32_t i = 0; i < cascade.size(); ++i)
+            {
+                AssetRecord* cascade_rec = FindByUUID(cascade[i]);
+                if (cascade_rec)
+                    m_removed_cb(m_removed_cb_ctx, cascade[i], cascade_rec->Type);
+            }
+        }
 
         Remove(rec->UUID);
     }
@@ -356,7 +372,7 @@ namespace ZEngine::Core::VFS
         if (ext.Empty() || !ext.Data)
             return Managers::AssetType::MESH;
 
-        if (ext.Equals(".png") || ext.Equals(".jpg") || ext.Equals(".jpeg") || ext.Equals(".hdr") || ext.Equals(".ktx") || ext.Equals(".ktx2"))
+        if (ext.Equals(".png") || ext.Equals(".jpg") || ext.Equals(".jpeg") || ext.Equals(".bmp") || ext.Equals(".tga") || ext.Equals(".gif") || ext.Equals(".psd") || ext.Equals(".pic") || ext.Equals(".hdr") || ext.Equals(".exr") || ext.Equals(".ktx") || ext.Equals(".ktx2"))
             return Managers::AssetType::TEXTURE;
         if (ext.Equals(".zematerial"))
             return Managers::AssetType::MATERIAL;

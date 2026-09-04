@@ -30,7 +30,7 @@ namespace ZEngine::Rendering::Specifications
         ARRAYOF_2D_IMAGE
     };
 
-    struct Image2DBufferSpecification
+    struct ImageBufferSpecification
     {
         uint32_t              Width;
         uint32_t              Height;

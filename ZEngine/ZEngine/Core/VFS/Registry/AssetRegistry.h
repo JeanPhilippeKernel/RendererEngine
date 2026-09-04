@@ -72,6 +72,10 @@ namespace ZEngine::Core::VFS
         void                   SetOnReadyCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetHandle));
         void                   SetOnStaleCallback(void* ctx, void (*cb)(void*, const uuids::uuid&));
 
+        /// @brief Register a callback fired once per cascade UUID from OnAssetDeleted,
+        ///        before each record is erased (so it can still read the record's Type).
+        void                   SetOnRemovedCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetType));
+
         void                   OnAssetModified(const Core::VFS::VFSPath& path);
         void                   OnAssetDeleted(const Core::VFS::VFSPath& path);
         void                   OnAssetRenamed(const Core::VFS::VFSPath& old_path, const Core::VFS::VFSPath& new_path);
@@ -102,6 +106,8 @@ namespace ZEngine::Core::VFS
         void (*m_ready_cb)(void*, const uuids::uuid&, Managers::AssetHandle) = nullptr;
         void* m_stale_cb_ctx                                                 = nullptr;
         void (*m_stale_cb)(void*, const uuids::uuid&)                        = nullptr;
+        void* m_removed_cb_ctx                                               = nullptr;
+        void (*m_removed_cb)(void*, const uuids::uuid&, Managers::AssetType) = nullptr;
 
         Core::Memory::ArenaAllocator m_scratch                               = {};
 

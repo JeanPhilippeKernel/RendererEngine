@@ -52,6 +52,13 @@ namespace ZEngine::Managers
         // Recursive so IngestMaterial can call IngestTexture while holding the lock.
         mutable std::recursive_mutex                                                        IngestMutex;
 
+        // Pending texture releases — written from any thread via ReleaseTexture, drained by
+        // FlushTextureReleases on the render thread.
+        static constexpr uint32_t                                                           MAX_PENDING_TEXTURE_RELEASES                         = 256;
+        uuids::uuid                                                                         PendingTextureReleases[MAX_PENDING_TEXTURE_RELEASES] = {};
+        uint32_t                                                                            PendingTextureReleaseCount                           = 0;
+        std::mutex                                                                          PendingTextureReleaseMutex;
+
         Hardwares::VulkanDevice*                                                            Device   = nullptr;
         ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
 
@@ -80,6 +87,20 @@ namespace ZEngine::Managers
         static Rendering::Textures::TextureHandle                                           IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path);
         static void                                                                         IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
         static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
+
+        /// @brief Thread-safe lookup of a texture's current handle by UUID.
+        static Rendering::Textures::TextureHandle                                           FindTextureHandle(const uuids::uuid& uuid);
+
+        /// @brief Resolve a material's texture map field to a bindless index.
+        /// @details UUID lookup first, else ingest from path, else INVALID_MAP_HANDLE.
+        static uint32_t                                                                     ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path);
+
+        /// @brief Thread-safe enqueue: patches every referencing material to the sentinel
+        ///        once FlushTextureReleases drains it.
+        static void                                                                         ReleaseTexture(const uuids::uuid& uuid);
+
+        /// @brief Render-thread drain of ReleaseTexture's queue.
+        static void                                                                         FlushTextureReleases();
 
         static uuids::uuid                                                                  GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name);
 

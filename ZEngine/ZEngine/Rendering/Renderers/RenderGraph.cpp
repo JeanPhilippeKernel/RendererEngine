@@ -42,7 +42,7 @@ namespace ZEngine::Rendering::Renderers
         auto* tex = device->GlobalTextures.Access(handle);
         if (!tex)
             return VK_NULL_HANDLE;
-        auto* img_buf = device->Image2DBufferManager.Access(tex->BufferHandle);
+        auto* img_buf = device->ImageBufferManager.Access(tex->BufferHandle);
         if (!img_buf)
             return VK_NULL_HANDLE;
         return img_buf->GetBuffer().Handle;
@@ -274,13 +274,11 @@ namespace ZEngine::Rendering::Renderers
         // Do NOT call any vkDestroy* yet — new resources must be created first
         // so the driver cannot recycle these handles for new allocations.
         TransientPool.Clear();
-        uint64_t                  timeline      = Device->SwapchainPtr->RenderTimelineNextValue;
+        uint64_t      timeline     = Device->SwapchainPtr->RenderTimelineNextValue;
 
-        // Stack-local scratch for old handles (max 16 passes, max 32 transients).
-        VkFramebuffer             old_fbs[16]   = {};
-        uint32_t                  old_fb_count  = 0;
-        Core::Memory::BufferImage old_imgs[32]  = {};
-        uint32_t                  old_img_count = 0;
+        // Stack-local scratch for old framebuffer handles (max 16 passes).
+        VkFramebuffer old_fbs[16]  = {};
+        uint32_t      old_fb_count = 0;
 
         for (auto& pass : Passes)
         {
@@ -292,10 +290,9 @@ namespace ZEngine::Rendering::Renderers
             }
         }
 
-        // Swap the underlying Image2DBuffer in-place for each transient resource.
-        // TextureHandle and Image2DBufferManager slot are REUSED — no new slots,
-        // no slot exhaustion, handles stay stable so the editor's cached ImTextureID
-        // remains valid.  Old VkImage/VkImageView data is saved for DeferFree.
+        // Reconstruct each transient resource in place — same TextureHandle, same slot, so
+        // the editor's cached ImTextureID stays valid. Old VkImage is defer-freed inside
+        // ReconstructTexture itself.
         for (auto& res : Resources)
         {
             if (res.External || !res.Transient)
@@ -306,27 +303,10 @@ namespace ZEngine::Rendering::Renderers
             res.RuntimeState = {VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED};
             if (!res.TextureHandle.Valid())
                 continue;
-            auto* tex = Device->GlobalTextures.Access(res.TextureHandle);
-            if (!tex)
-                continue;
-            auto* img = Device->Image2DBufferManager.Access(tex->BufferHandle);
-            if (!img)
-                continue;
-            // Save old VkImage/VkImageView for deferred destruction.
-            if (old_img_count < 32)
-                old_imgs[old_img_count++] = img->GetBuffer();
-            // Reconstruct Image2DBuffer in the same slot with new dimensions.
-            // This creates new VkImage/VkImageView while old ones are still alive.
-            img->Specification.Width  = width;
-            img->Specification.Height = height;
-            img->Construct(Device);
-            // Update Texture metadata.
-            tex->Width      = width;
-            tex->Height     = height;
-            tex->BufferSize = width * height * res.Spec.BytePerPixel * res.Spec.LayerCount;
+            Device->ReconstructTexture(res.TextureHandle, res.Spec);
         }
 
-        // Phase 2 — rebuild framebuffers and re-bind descriptors with new Image2DBuffers.
+        // Phase 2 — rebuild framebuffers and re-bind descriptors with new ImageBuffers.
         // All TextureHandles remain valid (in-place swap) so AllocateTransientResources
         // is a no-op for existing resources; call it only for safety (skips valid handles).
 
@@ -393,14 +373,6 @@ namespace ZEngine::Rendering::Renderers
             e.Data.Vk       = {reinterpret_cast<void*>(old_fbs[i]), Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
             Device->DeferFree(e);
         }
-        for (uint32_t i = 0; i < old_img_count; ++i)
-        {
-            Hardwares::DeferredFreeEntry e;
-            e.EntryKind     = Hardwares::DeferredFreeEntry::Kind::Image;
-            e.TimelineValue = timeline;
-            e.Data.Image    = old_imgs[i];
-            Device->DeferFree(e);
-        }
     }
 
     void RenderGraph::Dispose()
@@ -412,7 +384,7 @@ namespace ZEngine::Rendering::Renderers
             auto* tex = Device->GlobalTextures.Access(res.TextureHandle);
             if (!tex)
                 continue;
-            auto* img = Device->Image2DBufferManager.Access(tex->BufferHandle);
+            auto* img = Device->ImageBufferManager.Access(tex->BufferHandle);
             if (img)
                 img->Dispose();
         }
@@ -843,7 +815,7 @@ namespace ZEngine::Rendering::Renderers
                 auto* tex = Device->GlobalTextures.Access(handle);
                 if (!tex)
                     return;
-                auto* img = Device->Image2DBufferManager.Access(tex->BufferHandle);
+                auto* img = Device->ImageBufferManager.Access(tex->BufferHandle);
                 if (!img)
                     return;
                 VkImageView view = img->GetImageViewHandle();

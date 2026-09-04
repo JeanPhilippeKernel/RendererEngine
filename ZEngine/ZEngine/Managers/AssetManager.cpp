@@ -198,7 +198,14 @@ namespace ZEngine::Managers
         // Use UUIDToTextureHandle (not IsRegistered): VFSScanner pre-registers texture
         // UUIDs without uploading them, so IsRegistered gives a false positive.
         if (auto* h = s_Instance->UUIDToTextureHandle.find(uuid))
+        {
+            // Already known — this is a reimport signal (e.g. TextureImporter after a file
+            // edit). The handle value doesn't change: RRM's reload path reconstructs the
+            // existing GPU resource in place. Ask RRM to do that on the render thread.
+            if (s_Instance->Device && s_Instance->Device->RRM)
+                static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->ScheduleTextureReload(uuid);
             return *h;
+        }
 
         auto  slot          = static_cast<uint32_t>(s_Instance->Textures.size());
         auto& new_tex       = s_Instance->Textures.push_use({});
@@ -263,24 +270,91 @@ namespace ZEngine::Managers
         gpu_mat.AmbientColor                     = mat.AmbientColor;
         gpu_mat.Factors                          = mat.Factors;
 
-        // Resolve handle for a texture slot: UUID lookup first, then fall back to uploading
-        // from the stored path — handles scene-reload and dragged-.zmesh cases where
-        // IngestTextures may not have run yet for this material's textures.
-        auto tex_handle                          = [&](const uuids::uuid& id, const Core::Containers::String& path) -> uint32_t {
-            if (id.is_nil())
-                return INVALID_MAP_HANDLE;
-            auto* h = s_Instance->UUIDToTextureHandle.find(id);
-            if (h)
-                return h->Index;
-            if (!path.empty())
-                return IngestTexture(id, path).Index;
+        // Resolve handle for each texture slot: UUID lookup first, then fall back to
+        // uploading from the stored path — handles scene-reload and dragged-.zmesh cases
+        // where IngestTextures may not have run yet for this material's textures.
+        gpu_mat.AlbedoMap                        = ResolveTextureMapIndex(mat.AlbedoTexUUID, mat.AlbedoTexPath);
+        gpu_mat.EmissiveMap                      = ResolveTextureMapIndex(mat.EmissiveTexUUID, mat.EmissiveTexPath);
+        gpu_mat.NormalMap                        = ResolveTextureMapIndex(mat.NormalTexUUID, mat.NormalTexPath);
+        gpu_mat.OpacityMap                       = ResolveTextureMapIndex(mat.OpacityTexUUID, mat.OpacityTexPath);
+        gpu_mat.SpecularMap                      = ResolveTextureMapIndex(mat.SpecularTexUUID, mat.SpecularTexPath);
+    }
+
+    uint32_t AssetManager::ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path)
+    {
+        if (!s_Instance || id.is_nil())
             return INVALID_MAP_HANDLE;
-        };
-        gpu_mat.AlbedoMap   = tex_handle(mat.AlbedoTexUUID, mat.AlbedoTexPath);
-        gpu_mat.EmissiveMap = tex_handle(mat.EmissiveTexUUID, mat.EmissiveTexPath);
-        gpu_mat.NormalMap   = tex_handle(mat.NormalTexUUID, mat.NormalTexPath);
-        gpu_mat.OpacityMap  = tex_handle(mat.OpacityTexUUID, mat.OpacityTexPath);
-        gpu_mat.SpecularMap = tex_handle(mat.SpecularTexUUID, mat.SpecularTexPath);
+        auto* h = s_Instance->UUIDToTextureHandle.find(id);
+        if (h)
+            return h->Index;
+        if (!path.empty())
+            return IngestTexture(id, path).Index;
+        return INVALID_MAP_HANDLE;
+    }
+
+    Rendering::Textures::TextureHandle AssetManager::FindTextureHandle(const uuids::uuid& uuid)
+    {
+        if (!s_Instance)
+            return {};
+        std::lock_guard lock(s_Instance->IngestMutex);
+        auto*           h = s_Instance->UUIDToTextureHandle.find(uuid);
+        return h ? *h : Rendering::Textures::TextureHandle{};
+    }
+
+    void AssetManager::ReleaseTexture(const uuids::uuid& uuid)
+    {
+        if (!s_Instance)
+            return;
+        std::lock_guard lock(s_Instance->PendingTextureReleaseMutex);
+        if (s_Instance->PendingTextureReleaseCount >= MAX_PENDING_TEXTURE_RELEASES)
+        {
+            ZENGINE_LOG_ASSET_WARN("[AssetManager] Pending texture release queue full — dropping release for {}", uuids::to_string(uuid))
+            return;
+        }
+        s_Instance->PendingTextureReleases[s_Instance->PendingTextureReleaseCount++] = uuid;
+    }
+
+    void AssetManager::FlushTextureReleases()
+    {
+        if (!s_Instance)
+            return;
+
+        uuids::uuid local[MAX_PENDING_TEXTURE_RELEASES];
+        uint32_t    count = 0;
+        {
+            std::lock_guard lock(s_Instance->PendingTextureReleaseMutex);
+            count = s_Instance->PendingTextureReleaseCount;
+            Helpers::secure_memcpy(local, sizeof(local), s_Instance->PendingTextureReleases, count * sizeof(local[0]));
+            s_Instance->PendingTextureReleaseCount = 0;
+        }
+        if (count == 0)
+            return;
+
+        // IngestMutex, not just PendingTextureReleaseMutex: Materials/GPUMeshMaterials are
+        // unsynchronized and also written by IngestMaterial/IngestTexture under this lock.
+        std::lock_guard lock(s_Instance->IngestMutex);
+        for (uint32_t r = 0; r < count; ++r)
+        {
+            s_Instance->UUIDToTextureHandle.remove(local[r]);
+
+            // Sentinel set directly, not via ResolveTextureMapIndex — its path fallback
+            // would re-ingest (undo) the release for any material with a stored path.
+            for (uint32_t i = 0; i < s_Instance->Materials.size(); ++i)
+            {
+                auto& mat     = s_Instance->Materials[i];
+                auto& gpu_mat = s_Instance->GPUMeshMaterials[i];
+                if (mat.AlbedoTexUUID == local[r])
+                    gpu_mat.AlbedoMap = INVALID_MAP_HANDLE;
+                if (mat.EmissiveTexUUID == local[r])
+                    gpu_mat.EmissiveMap = INVALID_MAP_HANDLE;
+                if (mat.NormalTexUUID == local[r])
+                    gpu_mat.NormalMap = INVALID_MAP_HANDLE;
+                if (mat.OpacityTexUUID == local[r])
+                    gpu_mat.OpacityMap = INVALID_MAP_HANDLE;
+                if (mat.SpecularTexUUID == local[r])
+                    gpu_mat.SpecularMap = INVALID_MAP_HANDLE;
+            }
+        }
     }
 
     Importers::AssetMesh* AssetManager::GetMeshAsset(const uuids::uuid& id)
@@ -335,6 +409,25 @@ namespace ZEngine::Managers
                     ZENGINE_LOG_ASSET_INFO("Reloading material from disk: {}", native)
                     IngestMaterial(std::move(mat));
                 }
+            }
+        }
+
+        // Textures — ingest each raster texture that has not been ingested yet.
+        {
+            auto result = s_Instance->Registry->Query({.Type = AssetType::TEXTURE}, scratch);
+            for (uint32_t i = 0; i < result.Handles.size(); ++i)
+            {
+                auto* rec = s_Instance->Registry->Access(result.Handles[i]);
+                if (!rec || rec->UUID.is_nil())
+                    continue;
+                if (s_Instance->UUIDToTextureHandle.find(rec->UUID) != nullptr)
+                    continue;
+
+                Core::Containers::String rel_path = {};
+                rel_path.init(scratch, rec->Path.CStr());
+
+                ZENGINE_LOG_ASSET_INFO("Reloading texture from disk: {}", rec->Path.CStr())
+                IngestTexture(rec->UUID, rel_path);
             }
         }
 

@@ -54,16 +54,15 @@ TEST(RenderHandle, EqualityRequiresBothFieldsToMatch)
 
 TEST(RenderHandle, DifferentTagTypesAreIncompatible)
 {
-    // Compile-time check: BufferHandle and ImageHandle are distinct types.
-    static_assert(!std::is_same_v<BufferHandle, ImageHandle>, "BufferHandle and ImageHandle must be distinct types");
+    // Compile-time check: BufferHandle and SamplerHandle are distinct types.
     static_assert(!std::is_same_v<BufferHandle, SamplerHandle>, "BufferHandle and SamplerHandle must be distinct types");
-    static_assert(!std::is_same_v<ImageHandle, PipelineHandle>, "ImageHandle and PipelineHandle must be distinct types");
+    static_assert(!std::is_same_v<SamplerHandle, PipelineHandle>, "SamplerHandle and PipelineHandle must be distinct types");
 
     // Runtime sanity: same {index, generation} in different handle types are not interchangeable.
-    BufferHandle buf{1, 2};
-    ImageHandle  img{1, 2};
-    EXPECT_EQ(buf.Index, img.Index);
-    EXPECT_EQ(buf.Generation, img.Generation);
+    BufferHandle  buf{1, 2};
+    SamplerHandle smp{1, 2};
+    EXPECT_EQ(buf.Index, smp.Index);
+    EXPECT_EQ(buf.Generation, smp.Generation);
     // They cannot be compared (different types) — confirmed by static_assert above.
     SUCCEED();
 }
@@ -71,7 +70,6 @@ TEST(RenderHandle, DifferentTagTypesAreIncompatible)
 TEST(RenderHandle, TriviallyCopiable)
 {
     static_assert(std::is_trivially_copyable_v<BufferHandle>, "BufferHandle must be trivially copyable");
-    static_assert(std::is_trivially_copyable_v<ImageHandle>, "ImageHandle must be trivially copyable");
     static_assert(std::is_trivially_copyable_v<SamplerHandle>, "SamplerHandle must be trivially copyable");
     static_assert(std::is_trivially_copyable_v<PipelineHandle>, "PipelineHandle must be trivially copyable");
     SUCCEED();
@@ -80,7 +78,6 @@ TEST(RenderHandle, TriviallyCopiable)
 TEST(RenderHandle, SizeFitsInEightBytes)
 {
     static_assert(sizeof(BufferHandle) == 8, "BufferHandle must fit in 8 bytes");
-    static_assert(sizeof(ImageHandle) == 8, "ImageHandle must fit in 8 bytes");
     static_assert(sizeof(SamplerHandle) == 8, "SamplerHandle must fit in 8 bytes");
     static_assert(sizeof(PipelineHandle) == 8, "PipelineHandle must fit in 8 bytes");
     SUCCEED();
