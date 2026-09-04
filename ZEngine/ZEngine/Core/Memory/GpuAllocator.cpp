@@ -64,10 +64,10 @@ namespace ZEngine::Core::Memory
         // dependency for engine startup.
         auto create_buffer_pool = [&](GpuMemoryDomain domain, VkBufferUsageFlags usage, VmaAllocationCreateInfo alloc_info, VkDeviceSize block_size, size_t max_block_count) {
             VkBufferCreateInfo rep_buffer_info = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            rep_buffer_info.size                = 1;
-            rep_buffer_info.usage               = usage;
+            rep_buffer_info.size               = 1;
+            rep_buffer_info.usage              = usage;
 
-            uint32_t memory_type_index = 0;
+            uint32_t memory_type_index         = 0;
             if (vmaFindMemoryTypeIndexForBufferInfo(Allocator, &rep_buffer_info, &alloc_info, &memory_type_index) != VK_SUCCESS)
             {
                 ZENGINE_CORE_WARN("[GPU] Failed to find memory type index for domain {} pool — falling back to default pool", static_cast<int>(domain))
@@ -114,19 +114,19 @@ namespace ZEngine::Core::Memory
         // larger than the block (an 8K RGBA8 texture is already 256 MB with no
         // compression/mips in the current import path).
         {
-            VkImageCreateInfo rep_image_info  = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-            rep_image_info.imageType          = VK_IMAGE_TYPE_2D;
-            rep_image_info.format             = VK_FORMAT_R8G8B8A8_UNORM;
-            rep_image_info.extent             = {1, 1, 1};
-            rep_image_info.mipLevels          = 1;
-            rep_image_info.arrayLayers        = 1;
-            rep_image_info.samples            = VK_SAMPLE_COUNT_1_BIT;
-            rep_image_info.tiling             = VK_IMAGE_TILING_OPTIMAL;
-            rep_image_info.usage              = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-            rep_image_info.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
-            rep_image_info.initialLayout      = VK_IMAGE_LAYOUT_UNDEFINED;
+            VkImageCreateInfo rep_image_info          = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+            rep_image_info.imageType                  = VK_IMAGE_TYPE_2D;
+            rep_image_info.format                     = VK_FORMAT_R8G8B8A8_UNORM;
+            rep_image_info.extent                     = {1, 1, 1};
+            rep_image_info.mipLevels                  = 1;
+            rep_image_info.arrayLayers                = 1;
+            rep_image_info.samples                    = VK_SAMPLE_COUNT_1_BIT;
+            rep_image_info.tiling                     = VK_IMAGE_TILING_OPTIMAL;
+            rep_image_info.usage                      = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            rep_image_info.sharingMode                = VK_SHARING_MODE_EXCLUSIVE;
+            rep_image_info.initialLayout              = VK_IMAGE_LAYOUT_UNDEFINED;
 
-            VmaAllocationCreateInfo rep_alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+            VmaAllocationCreateInfo rep_alloc_info    = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
             uint32_t                memory_type_index = 0;
             if (vmaFindMemoryTypeIndexForImageInfo(Allocator, &rep_image_info, &rep_alloc_info, &memory_type_index) == VK_SUCCESS)
             {

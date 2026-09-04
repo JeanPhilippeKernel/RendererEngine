@@ -418,30 +418,30 @@ namespace ZEngine::Rendering
         void                            InitUploadSlabs(uint32_t worker_count);
 
         // Global geometry buffers — all mesh vertices/indices packed together.
-        static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~16M DrawVertex
-        static constexpr VkDeviceSize   GLOBAL_IDX_CAPACITY            = 512 * 1024 * 1024; // 512 MB → ~128M uint32
-        Core::Memory::BufferView        m_global_vertex_buf            = {};
-        Core::Memory::BufferView        m_global_index_buf             = {};
-        VkDeviceSize                    m_vtx_cursor                   = 0; // byte offset of next write
-        VkDeviceSize                    m_idx_cursor                   = 0;
+        static constexpr VkDeviceSize   GLOBAL_VTX_CAPACITY                       = 512 * 1024 * 1024; // 512 MB → ~16M DrawVertex
+        static constexpr VkDeviceSize   GLOBAL_IDX_CAPACITY                       = 512 * 1024 * 1024; // 512 MB → ~128M uint32
+        Core::Memory::BufferView        m_global_vertex_buf                       = {};
+        Core::Memory::BufferView        m_global_index_buf                        = {};
+        VkDeviceSize                    m_vtx_cursor                              = 0; // byte offset of next write
+        VkDeviceSize                    m_idx_cursor                              = 0;
 
         // Mesh slot pool — stores per-mesh offsets into the global buffers.
-        Slot<MeshSlot>                  m_mesh_slots[MAX_BUFFERS]            = {};
-        uint32_t                        m_mesh_slot_count                   = 0;
+        Slot<MeshSlot>                  m_mesh_slots[MAX_BUFFERS]                 = {};
+        uint32_t                        m_mesh_slot_count                         = 0;
         // Never reset by Release() — gives each slot a monotonic generation on reuse
         // instead of the deterministic idx+1 a released-then-reallocated slot would
         // otherwise get back, which is what gave stale handles no real ABA protection.
-        uint32_t                        m_mesh_slot_gen_counter[MAX_BUFFERS] = {};
+        uint32_t                        m_mesh_slot_gen_counter[MAX_BUFFERS]      = {};
 
         // Image pool
-        Slot<Core::Memory::BufferImage> m_image_slots[MAX_IMAGES]            = {};
-        uint32_t                        m_image_slot_count                  = 0;
-        uint32_t                        m_image_slot_gen_counter[MAX_IMAGES] = {};
+        Slot<Core::Memory::BufferImage> m_image_slots[MAX_IMAGES]                 = {};
+        uint32_t                        m_image_slot_count                        = 0;
+        uint32_t                        m_image_slot_gen_counter[MAX_IMAGES]      = {};
 
         // Generic device-local buffer pool — for bone matrices, particle VBs, etc.
         // Handles carry GBUF_GEN_TAG in bit 31 to distinguish from mesh handles.
         Slot<Core::Memory::BufferView>  m_gbuf_slots[MAX_GENERIC_BUFS]            = {};
-        uint32_t                        m_gbuf_slot_count                        = 0;
+        uint32_t                        m_gbuf_slot_count                         = 0;
         uint32_t                        m_gbuf_slot_gen_counter[MAX_GENERIC_BUFS] = {};
 
         // UUID → handle maps (for hot-reload swap lookup)

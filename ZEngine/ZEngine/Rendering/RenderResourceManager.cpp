@@ -286,7 +286,7 @@ namespace ZEngine::Rendering
                 entry.Data.Image    = *old_slot;
                 m_device->DeferFree(entry);
 
-                *old_slot = *new_slot;
+                *old_slot                                  = *new_slot;
 
                 // The scratch slot's data now lives in old_slot — release it.
                 *new_slot                                  = {};
@@ -505,8 +505,8 @@ namespace ZEngine::Rendering
             return {};
         }
 
-        uint32_t slot            = AllocMeshSlot();
-        m_mesh_slots[slot].Data  = data;
+        uint32_t slot           = AllocMeshSlot();
+        m_mesh_slots[slot].Data = data;
         return {slot, m_mesh_slots[slot].Generation};
     }
 
@@ -876,7 +876,7 @@ namespace ZEngine::Rendering
         }
         ZENGINE_VALIDATE_ASSERT(m_mesh_slot_count < MAX_BUFFERS, "RRM: MAX_BUFFERS exceeded")
         uint32_t idx                 = m_mesh_slot_count++;
-        m_mesh_slots[idx].Generation  = ++m_mesh_slot_gen_counter[idx];
+        m_mesh_slots[idx].Generation = ++m_mesh_slot_gen_counter[idx];
         return idx;
     }
 

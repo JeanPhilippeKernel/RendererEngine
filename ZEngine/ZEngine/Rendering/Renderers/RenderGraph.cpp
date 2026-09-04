@@ -694,7 +694,7 @@ namespace ZEngine::Rendering::Renderers
             {
                 ++idx;
             }
-            uint32_t run_end = idx;
+            uint32_t run_end      = idx;
 
             uint32_t writer_count = 0;
             uint32_t sole_writer  = UINT32_MAX;

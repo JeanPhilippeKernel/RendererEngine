@@ -37,7 +37,7 @@ TEST(RenderGraphTopologyTest, SortsReadAfterWrite)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);
@@ -67,7 +67,7 @@ TEST(RenderGraphTopologyTest, PreservesDeclarationOrderForIndependentPasses)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);
@@ -100,7 +100,7 @@ TEST(RenderGraphTopologyTest, HandlesWriteAfterWrite)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);
@@ -129,7 +129,7 @@ TEST(RenderGraphTopologyTest, HandlesWriteAfterRead)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);
@@ -163,7 +163,7 @@ TEST(RenderGraphTopologyTest, DetectsSimpleCycle)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);
@@ -194,7 +194,7 @@ TEST(RenderGraphTopologyTest, DetectsLongerCycleWithoutHanging)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);
@@ -230,7 +230,7 @@ TEST(RenderGraphTopologyTest, FallsBackToDeclarationOrderOnCycle)
 {
     MemoryManager manager{};
     manager.Initialize(16384, {});
-    auto& arena = manager.MainArena;
+    auto&         arena = manager.MainArena;
 
     Array<RGPass> passes;
     passes.init(&arena, 4);

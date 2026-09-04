@@ -2,8 +2,8 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerConfiguration.h>
-#include <filesystem>
 #include <gtest/gtest.h>
+#include <filesystem>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Logging;
@@ -21,16 +21,16 @@ namespace
 
         bool             Create()
         {
-            VkApplicationInfo app_info  = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
-            app_info.apiVersion         = VK_API_VERSION_1_3;
+            VkApplicationInfo app_info         = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO};
+            app_info.apiVersion                = VK_API_VERSION_1_3;
 
             VkInstanceCreateInfo instance_info = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
-            instance_info.pApplicationInfo      = &app_info;
+            instance_info.pApplicationInfo     = &app_info;
 
-            const char* extensions[2] = {};
-            uint32_t    extension_count = 0;
+            const char* extensions[2]          = {};
+            uint32_t    extension_count        = 0;
 #ifdef __APPLE__
-            instance_info.flags      = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+            instance_info.flags           = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
             extensions[extension_count++] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
 #endif
             instance_info.enabledExtensionCount   = extension_count;
@@ -49,16 +49,16 @@ namespace
             }
             std::vector<VkPhysicalDevice> devices(device_count);
             vkEnumeratePhysicalDevices(Instance, &device_count, devices.data());
-            PhysicalDevice = devices[0];
+            PhysicalDevice                         = devices[0];
 
             float                   queue_priority = 1.0f;
-            VkDeviceQueueCreateInfo  queue_info     = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
-            queue_info.queueFamilyIndex              = 0;
-            queue_info.queueCount                    = 1;
-            queue_info.pQueuePriorities              = &queue_priority;
+            VkDeviceQueueCreateInfo queue_info     = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+            queue_info.queueFamilyIndex            = 0;
+            queue_info.queueCount                  = 1;
+            queue_info.pQueuePriorities            = &queue_priority;
 
-            const char* device_extensions[1]   = {"VK_KHR_portability_subset"};
-            uint32_t    device_extension_count = 0;
+            const char* device_extensions[1]       = {"VK_KHR_portability_subset"};
+            uint32_t    device_extension_count     = 0;
 #ifdef __APPLE__
             device_extension_count = 1;
 #endif
@@ -193,8 +193,8 @@ TEST_F(GpuAllocatorTest, AllocateBufferUsesDomainPool)
     BufferView view = allocator().AllocateBuffer(4096, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "test_geometry");
     ASSERT_TRUE(view);
 
-    VmaPool            pool  = allocator().Pools[static_cast<uint8_t>(GpuMemoryDomain::DeviceGeometry)];
-    VmaStatistics      stats = {};
+    VmaPool       pool  = allocator().Pools[static_cast<uint8_t>(GpuMemoryDomain::DeviceGeometry)];
+    VmaStatistics stats = {};
     vmaGetPoolStatistics(allocator().Allocator, pool, &stats);
     EXPECT_GT(stats.blockCount, 0u);
     EXPECT_GE(stats.allocationCount, 1u);
