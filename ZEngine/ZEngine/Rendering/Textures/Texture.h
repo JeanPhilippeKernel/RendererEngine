@@ -6,7 +6,7 @@
 
 namespace ZEngine::Hardwares
 {
-    struct Image2DBuffer;
+    struct ImageBuffer;
 }
 
 namespace ZEngine::Rendering::Textures
@@ -16,26 +16,19 @@ namespace ZEngine::Rendering::Textures
         Texture() = default;
         ~Texture();
 
-        bool                                      IsDepthTexture = false;
-        uint32_t                                  Width          = 1;
-        uint32_t                                  Height         = 1;
-        uint32_t                                  BytePerPixel   = 0;
-        VkDeviceSize                              BufferSize     = 0;
-        Specifications::TextureSpecification      Specification  = {};
-        Helpers::Handle<Hardwares::Image2DBuffer> BufferHandle   = {};
+        bool                                    IsDepthTexture = false;
+        uint32_t                                Width          = 1;
+        uint32_t                                Height         = 1;
+        uint32_t                                BytePerPixel   = 0;
+        VkDeviceSize                            BufferSize     = 0;
+        Specifications::TextureSpecification    Specification  = {};
+        Helpers::Handle<Hardwares::ImageBuffer> BufferHandle   = {};
 
-        void                                      Dispose();
+        void                                    Dispose();
     };
 
     using TextureHandle        = Helpers::Handle<Texture>;
     using TextureHandleManager = Helpers::HandleManager<Texture>;
-
-    /*
-     * To do : Should be deprecated
-     */
-    Texture* CreateTexture(const char* path);
-    Texture* CreateTexture(unsigned int width, unsigned int height);
-    Texture* CreateTexture(unsigned int width, unsigned int height, float r, float g, float b, float a);
 } // namespace ZEngine::Rendering::Textures
 
 namespace ZEngine::Helpers

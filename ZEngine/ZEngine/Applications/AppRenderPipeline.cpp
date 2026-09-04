@@ -122,6 +122,7 @@ namespace ZEngine::Applications
 
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
+        Managers::AssetManager::FlushTextureReleases();
 
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
         {

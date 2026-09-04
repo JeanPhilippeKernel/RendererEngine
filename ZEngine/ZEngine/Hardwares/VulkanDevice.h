@@ -1,6 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 // clang-format off
+#include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Rendering/RenderHandle.h>
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
@@ -64,24 +65,24 @@ namespace ZEngine::Hardwares
      */
     struct VulkanDevice;
 
-    struct Image2DBuffer
+    struct ImageBuffer
     {
-        Image2DBuffer() = default;
-        ~Image2DBuffer();
+        ImageBuffer() = default;
+        ~ImageBuffer();
 
-        Rendering::Specifications::ImageLayout                Layout        = Rendering::Specifications::ImageLayout::UNDEFINED;
-        Rendering::Specifications::Image2DBufferSpecification Specification = {};
-        VulkanDevice*                                         Device        = nullptr;
+        Rendering::Specifications::ImageLayout              Layout        = Rendering::Specifications::ImageLayout::UNDEFINED;
+        Rendering::Specifications::ImageBufferSpecification Specification = {};
+        VulkanDevice*                                       Device        = nullptr;
 
-        void                                                  Construct(VulkanDevice* device);
+        void                                                Construct(VulkanDevice* device);
 
-        BufferImage&                                          GetBuffer();
-        const BufferImage&                                    GetBuffer() const;
-        VkImageView                                           GetImageViewHandle() const;
-        VkImage                                               GetHandle() const;
-        VkSampler                                             GetSampler() const;
-        void                                                  Dispose();
-        VkDescriptorImageInfo&                                GetDescriptorImageInfo();
+        BufferImage&                                        GetBuffer();
+        const BufferImage&                                  GetBuffer() const;
+        VkImageView                                         GetImageViewHandle() const;
+        VkImage                                             GetHandle() const;
+        VkSampler                                           GetSampler() const;
+        void                                                Dispose();
+        VkDescriptorImageInfo&                              GetDescriptorImageInfo();
 
     private:
         BufferImage           m_buffer_image;
@@ -93,6 +94,17 @@ namespace ZEngine::Hardwares
         uint32_t FamilyIndex{0xFFFFFFFF};
         VkQueue  Handle{VK_NULL_HANDLE};
     };
+
+    /// @brief Element of TextureHandleToDispose; TimelineValue gates Present()'s drain.
+    struct TextureDisposeEntry
+    {
+        Rendering::Textures::TextureHandle Handle        = {};
+        uint64_t                           TimelineValue = 0;
+    };
+
+    /// @brief Lock-free SPSC ring for TextureHandleToDispose — producer and consumer are
+    ///        both render-thread only, so no mutex is needed.
+    using TextureDisposeQueue = Core::Containers::SPSCQueue<TextureDisposeEntry, 1024>;
 
     /*
      * Command Buffer definition
@@ -257,7 +269,7 @@ namespace ZEngine::Hardwares
         uint32_t                                                                                                                     TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
 
         uint32_t                                                                                                                     WriteDescriptorSetIndex                     = 0;
-        uint32_t                                                                                                                     MaxGlobalTexture                            = 1024;
+        uint32_t                                                                                                                     MaxGlobalTexture                            = 8192;
         VkInstance                                                                                                                   Instance                                    = VK_NULL_HANDLE;
         VkSurfaceKHR                                                                                                                 Surface                                     = VK_NULL_HANDLE;
         VkSurfaceFormatKHR                                                                                                           SurfaceFormat                               = {};
@@ -290,9 +302,9 @@ namespace ZEngine::Hardwares
         std::set<WriteDescriptorSetRequestKey>                                                                                       BindlessTextureSlotRequests                 = {};
         std::unordered_set<uint32_t>                                                                                                 ShaderReservedBindingSets                   = {};
         Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                              = {};
-        Helpers::HandleManager<Image2DBuffer>                                                                                        Image2DBufferManager                        = {};
+        Helpers::HandleManager<ImageBuffer>                                                                                          ImageBufferManager                          = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToUpdates                      = {};
-        Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToDispose                      = {};
+        TextureDisposeQueue                                                                                                          TextureHandleToDispose                      = {};
         Helpers::ThreadSafeQueue<AsyncGPUOperationHandle>                                                                            AsyncGPUOperations                          = {};
         Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                               = {};
         std::mutex                                                                                                                   Mutex                                       = {};
@@ -324,9 +336,18 @@ namespace ZEngine::Hardwares
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);
 
-        Rendering::Textures::TextureHandle              CreateTexture(uint32_t width, uint32_t height);
-        Rendering::Textures::TextureHandle              CreateTexture(uint32_t width, uint32_t height, float r = 255, float g = 255, float b = 255, float a = 255);
         Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec);
+
+        /// @brief In-place resize/format change: same handle, same slot, same bindless index.
+        /// @return false if handle is not live.
+        bool                                            ReconstructTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec);
+
+        /// @brief Dirty this handle's bindless descriptor for the next Present() to refresh.
+        void                                            RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+
+        /// @brief Timeline-gated disposal. Render-thread only.
+        void                                            DestroyTexture(const Rendering::Textures::TextureHandle& handle);
+
         BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
@@ -346,7 +367,7 @@ namespace ZEngine::Hardwares
 namespace ZEngine::Helpers
 {
     template <>
-    inline void HandleManager<Hardwares::Image2DBuffer>::Dispose()
+    inline void HandleManager<Hardwares::ImageBuffer>::Dispose()
     {
         for (size_t i = 0; i < m_count; ++i)
         {

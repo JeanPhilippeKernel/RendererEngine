@@ -52,7 +52,7 @@ namespace ZEngine::Rendering::Buffers
             auto handle   = m_device->GlobalTextures.ToHandle(index);
 
             auto resource = m_device->GlobalTextures.Access(handle);
-            auto img_buf  = m_device->Image2DBufferManager.Access(resource->BufferHandle);
+            auto img_buf  = m_device->ImageBufferManager.Access(resource->BufferHandle);
             views[i]      = img_buf->GetImageViewHandle();
         }
         Handle = m_device->CreateFramebuffer(views, m_specification.Attachment->GetHandle(), m_specification.Width, m_specification.Height, m_specification.Layers);

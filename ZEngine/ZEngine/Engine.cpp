@@ -19,6 +19,7 @@
 #include <ZEngine/Importers/FbxImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
+#include <ZEngine/Importers/TextureImporter.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -95,7 +96,7 @@ namespace ZEngine
         ECS::Components::RegisterBuiltInComponentReflection();
 
         // ImportPipeline arena: each importer carves its own sub-arena directly from this
-        // parent (glTF 64 MB + Assimp 128 MB + envmap 32 MB + editor ~414 MB).
+        // parent (glTF 64 MB + Assimp 128 MB + envmap 32 MB + texture 512 KB + editor ~414 MB).
         // Each Import() call ends with Arena.Clear() so the sub-arena is reused, not consumed.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
         memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
@@ -106,14 +107,17 @@ namespace ZEngine
         static Importers::FbxImporter            s_fbx_importer;
         static Importers::AssimpImporter         s_assimp_importer;
         static Importers::EnvironmentMapImporter s_env_map_importer;
+        static Importers::TextureImporter        s_texture_importer;
         s_gltf_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         s_fbx_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         s_assimp_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         s_env_map_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
+        s_texture_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_gltf_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_fbx_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_assimp_importer);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&s_env_map_importer);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_texture_importer);
 
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
         g_engine_ctx->RenderResourceManager = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);

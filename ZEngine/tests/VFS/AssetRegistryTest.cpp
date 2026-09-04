@@ -281,6 +281,50 @@ TEST_F(AssetRegistryTest, StateTransitionAndCascadeMarksStale)
     EXPECT_EQ(m_registry.FindByUUID(mat)->State, AssetState::Stale);
 }
 
+// InferTypeFromExtension — texture pipeline redesign: TextureImporter claims 8 raster
+// formats (png/jpg/jpeg/bmp/tga/gif/psd/pic); this must classify all of them (plus the
+// pre-existing hdr/exr/ktx/ktx2) as TEXTURE, or a file gets silently misrouted as MESH
+// (AssetRegistry.cpp's fallback default) and hits type-confused handle access downstream.
+TEST_F(AssetRegistryTest, InferTypeFromExtensionRecognizesAllRasterFormats)
+{
+    const char* texture_exts[] = {"/a.png", "/a.jpg", "/a.jpeg", "/a.bmp", "/a.tga", "/a.gif", "/a.psd", "/a.pic", "/a.hdr", "/a.exr", "/a.ktx", "/a.ktx2"};
+    for (const char* p : texture_exts)
+        EXPECT_EQ(AssetRegistry::InferTypeFromExtension(P(p)), Managers::AssetType::TEXTURE) << p;
+
+    EXPECT_EQ(AssetRegistry::InferTypeFromExtension(P("/a.zematerial")), Managers::AssetType::MATERIAL);
+    EXPECT_EQ(AssetRegistry::InferTypeFromExtension(P("/a.zemesh")), Managers::AssetType::MESH);
+}
+
+// OnRemoved callback — fired by OnAssetDeleted, the trigger RenderResourceManager::ReleaseTexture
+// is wired to for AssetType::TEXTURE. Mirrors OnStaleFiredByOnAssetModified's pattern.
+TEST_F(AssetRegistryTest, OnAssetDeletedFiresRemovedCallbackWithType)
+{
+    struct Ctx
+    {
+        uuids::uuid         uuid;
+        Managers::AssetType type  = Managers::AssetType::MESH;
+        int                 count = 0;
+    };
+    Ctx ctx{};
+
+    m_registry.SetOnRemovedCallback(&ctx, [](void* raw, const uuids::uuid& uuid, Managers::AssetType type) {
+        auto* c = static_cast<Ctx*>(raw);
+        c->uuid = uuid;
+        c->type = type;
+        c->count++;
+    });
+
+    uuids::uuid uuid = MakeUUID();
+    Reg(m_registry, uuid, Managers::AssetType::TEXTURE, "/p/removed.png");
+
+    m_registry.OnAssetDeleted(P("/p/removed.png"));
+
+    EXPECT_EQ(ctx.count, 1);
+    EXPECT_EQ(ctx.uuid, uuid);
+    EXPECT_EQ(ctx.type, Managers::AssetType::TEXTURE);
+    EXPECT_EQ(m_registry.FindByUUID(uuid), nullptr) << "root record must be removed";
+}
+
 // Test 11 — Registry initialises within the AssetManager budget (100 MB).
 // Regression guard: AssetRecord was once ~7 KB (full MetaFileData embedded),
 // making 4096 slots cost ~27 MB. Now AssetMetaSnapshot keeps it ~1.2 KB
