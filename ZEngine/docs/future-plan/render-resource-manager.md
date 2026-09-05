@@ -1,37 +1,39 @@
 # Render Resource Manager — GPU Lifetime & Hot-Reload
 
 **Priority:** P3 — Implement alongside import-pipeline.md  
-**Status:** Hot-reload swap and the ABA fix landed as part of this month's rendering-foundation
-hardening pass (see the corrected findings below — most of what sent this doc back from
-`completed/` is now fixed). Two doc claims remain fabricated and are NOT built (see the
-still-wrong bullets below) — not moving back to `completed/` for that reason, plus the Image
-hot-reload path still has no real end-to-end test (see the caveat below).
+**Status:** Mesh/buffer hot-reload swap and the ABA fix landed as part of the rendering-foundation
+hardening pass (PR #748) — see the first correction block below, still accurate. The RRM-owned
+`ImageHandle`/`GPUImage` system this doc describes for *textures* (§2's `ImageTag`, §3's
+`GPUImage`, §6-7's `ImageHandle`/`GPUImage` union members, §8's `m_uuid_to_image`) was then
+**deleted outright** by the texture-pipeline redesign (PR #751) — not fixed, not wired up, gone.
+Textures now go through a completely different design: see "Texture pipeline redesign" below.
+Sections 2-10 remain accurate for **buffers/meshes only**; every `ImageHandle`/`GPUImage`/
+`ScheduleSwap(ImageHandle,...)`/`GetImage`/`Release(ImageHandle)` reference in them describes a
+type or method that no longer exists in code.
 **Implemented in:** `ZEngine/ZEngine/Rendering/RenderResourceManager.h/.cpp`  
 **Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `gpu-allocator-rearchitecture.md`  
 **Blocks:** `animation-system.md` (SkinningUploadSystem), `shader-asset-pipeline.md`
 
 > **Naming note (verified against code):** §3 below proposes a dedicated `GPUResource.h` with
 > `GPUBuffer`/`GPUImage` plain aggregates. The shipped implementation reused the types already
-> established by `gpu-allocator-rearchitecture.md` instead — `GetBuffer`/`GetImage` return
-> `const Core::Memory::BufferView*` / `const Core::Memory::BufferImage*` (declared in
-> `GpuAllocator.h`), not a separate `GPUResource.h`. Same aggregate-struct, no-RAII design intent;
-> different file and type names than originally proposed.
+> established by `gpu-allocator-rearchitecture.md` instead — `GetBuffer` returns
+> `const Core::Memory::BufferView*` (declared in `GpuAllocator.h`), not a separate `GPUResource.h`.
+> Same aggregate-struct, no-RAII design intent; different file and type names than originally
+> proposed. (`GPUImage`/`GetImage` no longer apply to anything — see the texture section below.)
 >
-> **Correction — fixed this month (see GitHub issue #740 for the full history):**
-> - **`ScheduleSwap` was a complete no-op for both kinds — now implemented.** The original finding
->   here said only `SwapKind::Buffer` was dropped in `EndFrame` while `Image` worked; that was
->   wrong. `ScheduleSwap(BufferHandle,...)`/`ScheduleSwap(ImageHandle,...)` never enqueued anything
->   at all, so neither kind's swap logic was ever reachable. Fixed: `ScheduleSwap` now enqueues
->   onto a mutex-guarded `m_pending_swaps` queue, drained immediately by a new
+> **Correction — fixed as part of rendering-foundation hardening (GitHub issue #740):**
+> - **`ScheduleSwap` was a complete no-op for both kinds — now implemented for buffers/meshes.**
+>   The original finding here said only `SwapKind::Buffer` was dropped in `EndFrame` while `Image`
+>   worked; that was wrong — neither kind ever enqueued anything. Fixed: `ScheduleSwap` now
+>   enqueues onto a mutex-guarded `m_pending_swaps` queue, drained immediately by
 >   `FlushPendingSwaps` (called from `BeginFrame`) — no frame-in-flight delay, since no consumer
->   of RRM handles in this engine needs one (traced every call site; the old `SwapSafeFrame`
->   gating was independently broken anyway, comparing against a wrapped swapchain slot index that
->   could never satisfy its own condition). Mesh swaps repoint slot offsets at freshly-appended
->   data; image swaps re-upload and `DeferFree` the old image. `SwapEntry`/`m_swaps`/`EndFrame`'s
->   old drain loop were removed entirely — the design collapsed to one stage, not two.
-> - **No ABA protection — fixed.** `AllocMeshSlot`/`AllocImageSlot`/`AllocGBufSlot` now assign a
->   never-reset-by-`Release` monotonic counter instead of the deterministic `idx+1` that let a
->   stale handle from a recycled slot alias a different live resource.
+>   of RRM handles in this engine needs one. Mesh swaps repoint slot offsets at freshly-appended
+>   data. `SwapEntry`/`m_swaps`/`EndFrame`'s old drain loop were removed entirely — the design
+>   collapsed to one stage, not two. (The image branch this fix originally also added was itself
+>   removed later — see below.)
+> - **No ABA protection — fixed.** `AllocMeshSlot`/`AllocGBufSlot` now assign a never-reset-by-
+>   `Release` monotonic counter instead of the deterministic `idx+1` that let a stale handle from a
+>   recycled slot alias a different live resource.
 >
 > **Still fabricated, not built — unchanged from the original finding:**
 > - **The "deferred-release ring" (`m_deletion_queues[FRAMES_IN_FLIGHT]`) does not exist.** GPU
@@ -39,14 +41,34 @@ hot-reload path still has no real end-to-end test (see the caveat below).
 >   dedicated RRM-owned ring.
 > - **`ReleaseChecked` does not exist.**
 >
-> **Known limitation, not blocking:** the RRM-owned `ImageHandle` path has no real texture
-> producer wired to it (`DoUploadTexture` only stores a sentinel, never a real `BufferImage`) —
-> the swap *mechanism* is now correct for images too, but isn't exercised end-to-end by real asset
-> data. `GetBuffer`/`GetImage`'s generation check, `FRAMES_IN_FLIGHT = 3`, and the
-> `RenderHandle<Tag>`/`BeginFrame` mechanics were already confirmed accurate. The test file
+> **Texture pipeline redesign (PR #751) — supersedes every Image-related claim above and below:**
+> RRM's `ImageHandle`/`m_image_slots`/`GPUImage` bookkeeping for textures had zero real
+> consumers (confirmed: `GetImage`/`Release(ImageHandle)` were dead code, disconnected from what
+> actually renders) and was deleted, not fixed. Textures are now identified by the *same*
+> `Rendering::Textures::TextureHandle` the bindless renderer already used
+> (`Device->GlobalTextures`) — there is no separate RRM-local image handle anymore. The real API:
+> - `RenderResourceManager::IngestTexture(uuid, absolute_path, existing = {})` — first ingest
+>   (existing invalid) or in-place reimport (existing valid, same handle preserved) via
+>   `VulkanDevice::ReconstructTexture`/`WriteTextureData`.
+> - `RenderResourceManager::ScheduleTextureReload(uuid)` — thread-safe, deduped-by-UUID hot-reload
+>   trigger, drained by `FlushPendingTextureReloads` from `BeginFrame`.
+> - `RenderResourceManager::ReleaseTexture(uuid)` / `AssetManager::ReleaseTexture`+
+>   `FlushTextureReleases` — patches every material referencing the released UUID to the
+>   `INVALID_MAP_HANDLE` sentinel *before* the bindless slot can be reused (the reference-safety
+>   fix materials never had: they store a bare `uint64_t` index with no generation).
+> - `VulkanDevice::DestroyTexture(handle)` — the real, timeline-gated disposal producer;
+>   `TextureHandleToDispose` previously had a consumer but no producer at all.
+> - A new `TextureImporter` routes texture files through `ImportCoordinator` like every other
+>   asset type, closing the gap where `AssetManager::IngestTexture`'s dedup silently blocked
+>   re-ingest forever.
+>
+> `GetBuffer`'s generation check, `FRAMES_IN_FLIGHT = 3`, and the `RenderHandle<Tag>`/`BeginFrame`
+> mechanics remain accurate for buffers/meshes. The test file
 > (`RenderResourceManagerTest.cpp`) still only covers `RenderHandle` and `AssetRegistry` callback
-> plumbing — new hot-reload/ABA tests are skip-gated pending a headless-`VulkanDevice` fixture (see
-> `RenderResourceManagerHotReloadTest.cpp`).
+> plumbing; the 4 hot-reload/ABA tests in `RenderResourceManagerHotReloadTest.cpp` remain
+> skip-gated pending a headless-`VulkanDevice` fixture. Texture-specific new tests
+> (`AssetRegistryTest.cpp`'s extension/`OnRemoved` coverage, `TextureImporterTest.cpp`) landed with
+> PR #751 but do not require a real device.
 
 **Goal**: Implement `ZEngine::Rendering::RenderResourceManager` (RRM), a single authority
 over every GPU resource (buffers, images, samplers, pipelines) allocated through VMA.
@@ -919,9 +941,9 @@ TEST(RRM, GetBufferOnReleasedHandleReturnsNullptr)
 
 ## 10. Deliverables Checklist
 
-- [x] `ZEngine/Rendering/RenderHandle.h` — `RenderHandle<Tag>` generational handle template + four `using` aliases (`BufferHandle`, `ImageHandle`, `SamplerHandle`, `PipelineHandle`)
-- [x] `ZEngine/Rendering/GPUResource.h` — `GPUBuffer` and `GPUImage` plain aggregates; zero-initialised sentinel values; no RAII
-- [x] `ZEngine/Rendering/RenderResourceManager.h` — public API (`UploadMesh`, `UploadTexture`, `ScheduleSwap`, `Release`, `BeginFrame`, `EndFrame`, `GetBuffer`, `GetImage` (const), `GetImageMutable`); `FRAMES_IN_FLIGHT = 3` constant
+- [x] `ZEngine/Rendering/RenderHandle.h` — `RenderHandle<Tag>` generational handle template + `using` aliases (`BufferHandle`, `SamplerHandle`, `PipelineHandle`). `ImageTag`/`ImageHandle` were removed in PR #751 — textures use `Rendering::Textures::TextureHandle` instead, a pre-existing, unrelated handle type.
+- [x] `ZEngine/Rendering/GPUResource.h` — `GPUBuffer` plain aggregate (as `Core::Memory::BufferView`); zero-initialised sentinel values; no RAII. `GPUImage` never applied to textures — see the texture-pipeline-redesign callout above.
+- [x] `ZEngine/Rendering/RenderResourceManager.h` — public API for buffers/meshes (`UploadMesh`, `ScheduleSwap(BufferHandle,...)`, `Release(BufferHandle)`, `BeginFrame`, `EndFrame`, `GetBuffer`); `FRAMES_IN_FLIGHT = 3` constant. `UploadTexture`/`GetImage`/`GetImageMutable`/`ScheduleSwap(ImageHandle,...)`/`Release(ImageHandle)` do not exist — replaced by `IngestTexture`/`ScheduleTextureReload`/`ReleaseTexture`/`GetTexture` (see above).
 - [x] `RRM::GetGlobalVertexBuffer()` — returns the shared `GPUBuffer*` holding all builtin geometry vertices registered via `RegisterBuiltinGeometry`; implemented as a live public method on RRM
 - [x] `RRM::GetGlobalIndexBuffer()` — returns the shared `GPUBuffer*` holding all builtin geometry indices registered via `RegisterBuiltinGeometry`; implemented as a live public method on RRM
 - [x] `ZEngine/Rendering/RenderResourceManager.cpp` — `Init`, `FlushPendingUploads`, upload path with staging buffer, barrier structs, queue-family ownership transfer for transfer-to-graphics handoff
