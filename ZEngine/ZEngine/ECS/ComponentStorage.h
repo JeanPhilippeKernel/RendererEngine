@@ -120,6 +120,15 @@ namespace ZEngine::ECS
                 fn(m_dense_ids[i], m_dense[i]);
         }
 
+        void AddRaw(EntityID id) override
+        {
+            if (!id.IsValid() || Has(id))
+            {
+                return;
+            }
+            Add(id, T{});
+        }
+
         void* GetRaw(EntityID id) override
         {
             return Has(id) ? static_cast<void*>(Get(id)) : nullptr;

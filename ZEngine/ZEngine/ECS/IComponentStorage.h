@@ -16,6 +16,7 @@ namespace ZEngine::ECS
         // Returns true if this entity has a component in this storage.
         virtual bool        HasRaw(EntityID id) const = 0;
 
+        virtual void        AddRaw(EntityID id)       = 0;
         virtual void*       GetRaw(EntityID id)       = 0;
         virtual const void* GetRaw(EntityID id) const = 0;
     };

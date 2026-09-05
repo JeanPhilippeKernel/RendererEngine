@@ -242,3 +242,44 @@ TEST_F(ReflectionSceneFixture, AddComponentRawIgnoresUnknownTypesAndDeadEntities
     m_scene.AddComponentRaw(id, ComponentTypeOf<NameComponent>()); // dead entity
     EXPECT_EQ(m_scene.GetComponentRaw(id, ComponentTypeOf<NameComponent>()), nullptr);
 }
+
+TEST_F(ReflectionSceneFixture, AddComponentRawUsesExistingStorageForLaterEntities)
+{
+    EntityID first = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(first, ComponentTypeOf<LightComponent>());
+
+    EntityID second = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(second, ComponentTypeOf<LightComponent>());
+
+    auto* lc = m_scene.GetComponent<LightComponent>(second);
+    ASSERT_NE(lc, nullptr);
+    EXPECT_TRUE(MaskHas(m_scene.GetMask(second), ComponentTypeOf<LightComponent>()));
+    EXPECT_FLOAT_EQ(lc->Intensity, 1.f);
+    EXPECT_FLOAT_EQ(lc->Color[0], 1.f);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawPreservesInactiveSentinels)
+{
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, ComponentTypeOf<MeshComponent>());
+    m_scene.AddComponentRaw(id, ComponentTypeOf<RigidBodyComponent>());
+
+    auto* mc = m_scene.GetComponent<MeshComponent>(id);
+    auto* rb = m_scene.GetComponent<RigidBodyComponent>(id);
+    ASSERT_NE(mc, nullptr);
+    ASSERT_NE(rb, nullptr);
+
+    EXPECT_EQ(mc->RenderInstanceId, UINT32_MAX);
+    EXPECT_EQ(rb->BodyID, UINT32_MAX);
+    EXPECT_FLOAT_EQ(rb->Mass, 1.f);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawAcceptsMatchingSizeAndAlign)
+{
+    const ComponentMeta* meta = Registry().Lookup(ComponentTypeOf<CameraComponent>());
+    ASSERT_NE(meta, nullptr);
+
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, meta->TypeID, meta->Size, meta->Align);
+    EXPECT_NE(m_scene.GetComponentRaw(id, meta->TypeID), nullptr);
+}

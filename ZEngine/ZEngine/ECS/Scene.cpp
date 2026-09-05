@@ -71,7 +71,7 @@ namespace ZEngine::ECS
         });
     }
 
-    void Scene::AddComponentRaw(EntityID id, ComponentTypeID type_id)
+    void Scene::AddComponentRaw(EntityID id, ComponentTypeID type_id, uint32_t size, uint32_t align)
     {
         if (!IsAlive(id) || MaskHas(m_registry.GetMask(id), type_id))
         {
@@ -79,7 +79,22 @@ namespace ZEngine::ECS
         }
 
         const ComponentMeta* meta = ComponentReflectionRegistry::Get().Lookup(type_id);
-        if (meta && meta->Add)
+        if (!meta)
+        {
+            return;
+        }
+
+        ZENGINE_VALIDATE_ASSERT(size == 0 || size == meta->Size, "Scene::AddComponentRaw: size does not match the registered component size")
+        ZENGINE_VALIDATE_ASSERT(align == 0 || align == meta->Align, "Scene::AddComponentRaw: align does not match the registered component alignment")
+
+        if (IComponentStorage** found = m_storages.find(type_id))
+        {
+            (*found)->AddRaw(id);
+            m_registry.SetMaskBit(id, MaskBit(type_id));
+            return;
+        }
+
+        if (meta->Add)
         {
             meta->Add(*this, id);
         }
