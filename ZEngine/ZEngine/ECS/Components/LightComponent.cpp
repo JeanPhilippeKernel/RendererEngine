@@ -1,5 +1,6 @@
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
+#include <ZEngine/ECS/Scene.h>
 
 namespace ZEngine::ECS::Components
 {
@@ -33,6 +34,7 @@ namespace ZEngine::ECS::Components
             .Fields     = kFields,
             .FieldCount = static_cast<uint32_t>(sizeof(kFields) / sizeof(kFields[0])),
             .Category   = "Lighting",
+            .Add        = [](Scene& scene, EntityID id) { scene.AddComponent<LC>(id, {}); },
         });
     }
 } // namespace ZEngine::ECS::Components

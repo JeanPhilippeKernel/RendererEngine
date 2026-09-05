@@ -571,6 +571,39 @@ namespace Tetragrama::Panels
             ++comp_idx;
         });
 
+        {
+            ZUISpacer(ctx, 6.f);
+            if (ZUIButton(ctx, "+ Add Component", ZPct(1.f), ZPx(24.f)).Flags & ZUI_SignalClicked)
+                ZUIOpenPopup(ctx, "##add_component_popup");
+
+            if (ZUIBeginPopup(ctx, "##add_component_popup"))
+            {
+                bool any = false;
+                registry.ForEach([&](const ComponentMeta& meta) {
+                    if (MaskHas(mask, meta.TypeID))
+                    {
+                        return; // already on the actor
+                    }
+                    if (!meta.Add)
+                    {
+                        return; // display-only, cannot be constructed
+                    }
+                    any = true;
+                    if (ZUIMenuItem(ctx, meta.TypeName))
+                    {
+                        eng->Scene->AddComponentRaw(actor->GetEntityID(), meta.TypeID);
+                    }
+                });
+
+                if (!any)
+                {
+                    ZUIMenuItem(ctx, "No components left to add", false);
+                }
+
+                ZUIEndPopup(ctx);
+            }
+        }
+
         ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx);
     }

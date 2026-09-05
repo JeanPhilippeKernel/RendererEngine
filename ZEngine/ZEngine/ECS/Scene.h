@@ -102,6 +102,7 @@ namespace ZEngine::ECS
         // Call once per render frame before submitting to the renderer.
         void        FillRenderableTransforms(float alpha, Core::Containers::Array<RenderableTransform>& out);
 
+        void        AddComponentRaw(EntityID id, ComponentTypeID type_id);
         void*       GetComponentRaw(EntityID id, ComponentTypeID type_id);
         const void* GetComponentRaw(EntityID id, ComponentTypeID type_id) const;
 
