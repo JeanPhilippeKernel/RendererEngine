@@ -107,4 +107,16 @@ namespace ZEngine::ECS
         m_scene = nullptr;
         m_arena = nullptr;
     }
+
+    void ActorManager::DestroyAll()
+    {
+        // Destroy all live Actors in reverse creation order (head-1 down to 0)
+        uint32_t head = m_handles.Head();
+        for (int64_t i = static_cast<int64_t>(head) - 1; i >= 0; --i)
+        {
+            ActorHandle h = m_handles.ToHandle(static_cast<uint32_t>(i));
+            if (m_handles.IsLive(h))
+                Destroy(h);
+        }
+    }
 } // namespace ZEngine::ECS

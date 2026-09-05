@@ -1,11 +1,16 @@
 #include <Tetragrama/Editor.h>
-#include <Tetragrama/MessageToken.h>
-#include <Tetragrama/Messengers/Messenger.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <Tetragrama/Panels/ViewportPanel.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
@@ -13,6 +18,7 @@
 
 using namespace ZEngine::UI;
 using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::VFS;
 
 namespace Tetragrama::Panels
 {
@@ -75,11 +81,13 @@ namespace Tetragrama::Panels
             const char* dot = strrchr(drop_buf, '.');
             if (dot && strcmp(dot, ".zescene") == 0)
             {
-                Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer, Messengers::GenericMessage<std::string>>(Tetragrama::EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENSCENE, Messengers::GenericMessage<std::string>(drop_buf));
+                secure_strncpy(m_pending_scene_drop, sizeof(m_pending_scene_drop), drop_buf, sizeof(m_pending_scene_drop) - 1);
+                ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<ViewportPanel*>(ctx)->OpenDroppedScene(); });
             }
             else if (dot && strcmp(dot, ".zemesh") == 0)
             {
-                Messengers::IMessenger::SendAsync<ZEngine::Applications::Layer, Messengers::GenericMessage<std::string>>(Tetragrama::EDITOR_COMPONENT_DOCKSPACE_REQUEST_OPENMESH, Messengers::GenericMessage<std::string>(drop_buf));
+                secure_strncpy(m_pending_mesh_drop, sizeof(m_pending_mesh_drop), drop_buf, sizeof(m_pending_mesh_drop) - 1);
+                ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<ViewportPanel*>(ctx)->SpawnDroppedMesh(); });
             }
             else if (app->Configuration && dot && (strcmp(dot, ".glb") == 0 || strcmp(dot, ".gltf") == 0 || strcmp(dot, ".fbx") == 0 || strcmp(dot, ".obj") == 0))
             {
@@ -234,6 +242,82 @@ namespace Tetragrama::Panels
         }
 
         ZUIEndColumn(ctx);
+    }
+
+    // SpawnDroppedMesh (main-thread only)
+
+    void ViewportPanel::SpawnDroppedMesh()
+    {
+        auto* app   = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+        auto* ctx   = ZEngine::Engine::GetContext();
+        if (!scene || !ctx || !ctx->ActorManager || !app->Configuration)
+            return;
+
+        // m_pending_mesh_drop is a VFS-style path — resolve to native before file I/O.
+        char native_path[MAX_FILE_PATH_COUNT] = {};
+        auto vfs_pr                           = VFSPath::Parse(m_pending_mesh_drop);
+        if (!vfs_pr.Succeeded())
+            return;
+        vfs_pr.Value().ResolveNative(app->Configuration->WorkingSpacePath.c_str(), native_path, sizeof(native_path));
+
+        ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
+        if (!ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_path, header))
+            return;
+
+        // The registry's auto-ingest path is dead code (see #755) — ingest
+        // explicitly instead, matching every other real consumer. Idempotent.
+        {
+            auto                                   scratch = ZGetScratch(&ctx->AssetArena);
+            ZEngine::Importers::AssetMesh          mesh_data{};
+            ZEngine::Importers::AssetNodeHierarchy hier_data{};
+            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(scratch.Arena, native_path, mesh_data, hier_data);
+            ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh_data), std::move(hier_data));
+            ZReleaseScratch(scratch);
+        }
+
+        char iname[256] = {};
+        auto pr         = VFSPath::Parse(m_pending_mesh_drop);
+        if (pr.Succeeded())
+        {
+            auto s = pr.Value().Stem();
+            snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
+        }
+
+        uint32_t render_id = scene->AddMeshInstance(header.Id, iname);
+
+        using namespace ZEngine::ECS::Components;
+        ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
+        ZEngine::ECS::Actor*      actor  = ctx->ActorManager->Access(handle);
+        if (actor)
+        {
+            NameComponent nc = {};
+            secure_strncpy(nc.Value, sizeof(nc.Value), iname, secure_strlen(iname));
+            actor->AddComponent<NameComponent>(nc);
+            actor->AddComponent<TransformComponent>({});
+
+            MeshComponent mc    = {};
+            mc.MeshUUID         = header.Id;
+            mc.RenderInstanceId = render_id;
+            actor->AddComponent<MeshComponent>(mc);
+        }
+    }
+
+    // OpenDroppedScene (main-thread only)
+
+    void ViewportPanel::OpenDroppedScene()
+    {
+        auto* app = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        if (!app || !app->Configuration)
+            return;
+
+        // Resolve to native so OpenScene's contract matches the dialog call site.
+        char native_path[MAX_FILE_PATH_COUNT] = {};
+        auto vfs_pr                           = VFSPath::Parse(m_pending_scene_drop);
+        if (!vfs_pr.Succeeded())
+            return;
+        vfs_pr.Value().ResolveNative(app->Configuration->WorkingSpacePath.c_str(), native_path, sizeof(native_path));
+        app->OpenScene(native_path);
     }
 
 } // namespace Tetragrama::Panels

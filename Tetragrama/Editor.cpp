@@ -4,8 +4,6 @@
 #include <Tetragrama/Components/ZUI/ZUIStatusBarComponent.h>
 #include <Tetragrama/Controllers/EditorCameraController.h>
 #include <Tetragrama/Editor.h>
-#include <Tetragrama/MessageToken.h>
-#include <Tetragrama/Messengers/Messenger.h>
 #include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
@@ -197,6 +195,21 @@ namespace Tetragrama
     void Editor::OnClosing() {}
 
     void Editor::OnClosed() {}
+
+    void Editor::SaveScene()
+    {
+        ZENGINE_CORE_INFO("[Editor] Scene save not yet implemented — pending scene serializer rebuild, see #713-#719")
+    }
+
+    void Editor::SaveSceneAs()
+    {
+        ZENGINE_CORE_INFO("[Editor] Scene save not yet implemented — pending scene serializer rebuild, see #713-#719")
+    }
+
+    void Editor::OpenScene(const char* /*path*/)
+    {
+        ZENGINE_CORE_INFO("[Editor] Scene load not yet implemented — pending scene serializer rebuild, see #713-#719")
+    }
 
     void EditorConfiguration::ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file)
     {

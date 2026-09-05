@@ -11,6 +11,7 @@
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 using namespace ZEngine;
 using namespace ZEngine::ECS;
@@ -263,9 +264,11 @@ namespace Tetragrama::Panels
 
             case FieldType::AssetUUID:
             {
-                // Read-only UUID string
-                const char* uuid_str = static_cast<const char*>(ptr);
-                ZUILabel(ctx, uuid_str && uuid_str[0] ? uuid_str : "(none)", ctx->Theme.TextDefault);
+                // Read-only UUID — the field is a uuids::uuid (16 raw bytes), not a
+                // string, so it must be formatted rather than reinterpreted as one.
+                const auto* uuid     = static_cast<const uuids::uuid*>(ptr);
+                std::string uuid_str = (uuid && !uuid->is_nil()) ? uuids::to_string(*uuid) : std::string();
+                ZUILabel(ctx, uuid_str.empty() ? "(none)" : uuid_str.c_str(), ctx->Theme.TextDefault);
                 break;
             }
 

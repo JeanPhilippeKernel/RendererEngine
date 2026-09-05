@@ -2832,6 +2832,8 @@ namespace ZEngine::UI
         ZUIBoxSetCornerRadius(field, ctx->Style.FrameRounding);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
+        field->BorderThickness         = 1.f;
+        field->EdgeSoftness            = 0.5f;
 
         bool                is_focused = (ctx->FocusKey == field->Key);
         bool                changed    = false;
@@ -2839,6 +2841,10 @@ namespace ZEngine::UI
         ZUIPersistentState* ps         = ZUIStateGetOrInsert(&ctx->StateStore, field->Key);
         ZUIFont*            font       = ctx->GetFont(ZUIFontSize::Body);
 
+        if (!is_focused)
+        {
+            SetBdrArr(field, ctx->Theme.InputBorder);
+        }
         if (is_focused)
         {
             SetBdrArr(field, ctx->Theme.InputFocusBorder);

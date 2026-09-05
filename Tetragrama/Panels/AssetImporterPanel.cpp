@@ -573,7 +573,7 @@ namespace Tetragrama::Panels
             co_return;
         auto                          window  = m_layer->CurrentApp->CurrentWindow;
         std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
-        std::string                   picked  = co_await window->OpenFileDialogAsync(filters);
+        std::string                   picked  = co_await window->OpenFileDialogAsync(filters, {}, "Select a 3D asset file");
         if (!picked.empty())
         {
             secure_strncpy(m_path_buf, sizeof(m_path_buf), picked.c_str(), sizeof(m_path_buf) - 1);
