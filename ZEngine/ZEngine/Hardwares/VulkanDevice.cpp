@@ -791,13 +791,19 @@ namespace ZEngine::Hardwares
 
     bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
     {
-        ZENGINE_VALIDATE_ASSERT(fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
+        if (fence)
+        {
+            ZENGINE_VALIDATE_ASSERT(fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
+        }
 
         // Todo : Think of a way to signal/wait the same  semaphore signal_semaphore
-        ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
+        if (signal_semaphore)
+        {
+            ZENGINE_VALIDATE_ASSERT(signal_semaphore->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
+        }
 
         VkPipelineStageFlags flags[]      = {wait_stage_flag};
-        VkSemaphore          semaphores[] = {signal_semaphore->GetHandle()};
+        VkSemaphore          semaphores[] = {signal_semaphore ? signal_semaphore->GetHandle() : VK_NULL_HANDLE};
         VkCommandBuffer      buffers[]    = {command_buffer->GetHandle()};
         VkSubmitInfo         submit_info  = {
             // clang-format off
@@ -808,25 +814,37 @@ namespace ZEngine::Hardwares
                      .pWaitDstStageMask    = flags,
                      .commandBufferCount   = 1,
                      .pCommandBuffers      = buffers,
-                     .signalSemaphoreCount = 0,
-                     .pSignalSemaphores    = 0,
+                     .signalSemaphoreCount = signal_semaphore ? 1u : 0u,
+                     .pSignalSemaphores    = signal_semaphore ? semaphores : nullptr,
             //clang-format on
         };
 
-        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence->GetHandle()) == VK_SUCCESS, "Failed to submit queue")
+        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence ? fence->GetHandle() : VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit queue")
         command_buffer->SetState(CommandBufferState::Pending);
 
-        fence->SetState(FenceState::Submitted);
-        signal_semaphore->SetState(SemaphoreState::Submitted);
-
-        if (!fence->Wait())
+        if (fence)
         {
-            ZENGINE_CORE_WARN("Failed to wait for Command buffer's Fence, due to timeout")
-            return false;
+            fence->SetState(FenceState::Submitted);
+        }
+        if (signal_semaphore)
+        {
+            signal_semaphore->SetState(SemaphoreState::Submitted);
         }
 
-        fence->Reset();
-        signal_semaphore->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        if (fence)
+        {
+            if (!fence->Wait())
+            {
+                ZENGINE_CORE_WARN("Failed to wait for Command buffer's Fence, due to timeout")
+                return false;
+            }
+            fence->Reset();
+        }
+
+        if (signal_semaphore)
+        {
+            signal_semaphore->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        }
         command_buffer->SetState(CommandBufferState::Invalid);
 
         return true;
@@ -843,6 +861,14 @@ namespace ZEngine::Hardwares
 
     QueueView VulkanDevice::GetQueue(Rendering::QueueType type)
     {
+        // m_queue_map only has a TRANSFER_QUEUE entry when HasSeperateTransfertQueueFamily is
+        // true — fall back to GRAPHIC_QUEUE for both the family index and the map lookup,
+        // mirroring QueueWait's guard.
+        if (type == QueueType::TRANSFER_QUEUE && !HasSeperateTransfertQueueFamily)
+        {
+            type = QueueType::GRAPHIC_QUEUE;
+        }
+
         uint32_t queue_family_index = 0;
         switch (type)
         {
@@ -850,7 +876,7 @@ namespace ZEngine::Hardwares
                 queue_family_index = GraphicFamilyIndex;
                 break;
             case ZEngine::Rendering::QueueType::TRANSFER_QUEUE:
-                queue_family_index = HasSeperateTransfertQueueFamily ? TransferFamilyIndex : GraphicFamilyIndex;
+                queue_family_index = TransferFamilyIndex;
                 break;
         }
         return QueueView{.FamilyIndex = queue_family_index, .Handle = m_queue_map.at(type)};
