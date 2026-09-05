@@ -66,6 +66,10 @@ namespace ZEngine::ECS
         // Must be called before Scene::Shutdown().
         void         Shutdown();
 
+        /// @brief Destroys all live Actors but keeps the manager usable afterward,
+        ///        unlike Shutdown (m_scene/m_arena are left untouched).
+        void         DestroyAll();
+
         uint32_t     Count() const
         {
             return static_cast<uint32_t>(m_handles.Size());

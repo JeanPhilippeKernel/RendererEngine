@@ -69,6 +69,16 @@ namespace Tetragrama
 
         virtual void                       OnClosing() override;
         virtual void                       OnClosed() override;
+
+        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
+        void                               SaveScene();
+
+        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
+        void                               SaveSceneAs();
+
+        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
+        /// @param path Native filesystem path to the scene file.
+        void                               OpenScene(const char* path);
     };
     ZDEFINE_PTR(Editor);
 

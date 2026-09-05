@@ -205,8 +205,13 @@ namespace ZEngine
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
     {
-        s_close_requested.store(true, std::memory_order_release);
+        RequestClose();
         return true;
+    }
+
+    void Engine::RequestClose()
+    {
+        s_close_requested.store(true, std::memory_order_release);
     }
 
     void Engine::MainThreadRun()
