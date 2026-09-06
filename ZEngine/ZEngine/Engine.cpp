@@ -2,8 +2,10 @@
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSDirectoryCache.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/ECS/Reflection/BuiltInComponentReflection.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/ECS/Systems/HierarchySystem.h>
@@ -130,7 +132,13 @@ namespace ZEngine
         // Wire FileWatcher: Modified → AssetRegistry + ImportCoordinator::Enqueue(Immediate)
         if (app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0')
         {
-            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, nullptr, nullptr, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator);
+            static Core::VFS::VFSDirectoryCache s_vfs_directory_cache;
+            static Core::VFS::VFSScanner        s_vfs_scanner;
+            s_vfs_directory_cache.Initialize(&g_engine_ctx->AssetArena);
+            s_vfs_scanner.Initialize(&g_engine_ctx->AssetArena);
+            s_vfs_scanner.SetAssetRegistry(Managers::AssetManager::Instance()->Registry);
+
+            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, &s_vfs_directory_cache, &s_vfs_scanner, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator);
         }
 
         glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {

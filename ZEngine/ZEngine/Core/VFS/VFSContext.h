@@ -38,6 +38,11 @@ namespace ZEngine::Core::VFS
         // When a file is renamed:  registry->OnAssetRenamed
         void                                                    InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry = nullptr, Importers::ImportCoordinator* coordinator = nullptr);
 
+        // Scan the whole project into the registry/directory cache. Call once, after the
+        // project's own backend is mounted — InitWatcher's file watcher only reacts to
+        // changes from that point forward, it doesn't enumerate what's already on disk.
+        void                                                    ScanProject();
+
         // Pump the watcher — call once per frame from MainThreadRun.
         void                                                    Tick();
 

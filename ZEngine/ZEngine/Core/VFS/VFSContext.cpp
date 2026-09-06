@@ -207,6 +207,12 @@ namespace ZEngine::Core::VFS
         m_platform_watcher->StartThread();
     }
 
+    void VFSContext::ScanProject()
+    {
+        if (m_scanner && m_directory_cache)
+            m_scanner->Scan(this, VFSPath::Root(), m_directory_cache);
+    }
+
     void VFSContext::Tick()
     {
         if (m_file_watcher)

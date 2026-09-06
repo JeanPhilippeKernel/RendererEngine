@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -23,6 +24,13 @@ namespace ZEngine::Applications
             if (Engine::GetContext()->VFS->Mount(VFSBackend, Core::VFS::VFSPath::Root(), 0).Failed())
             {
                 ZENGINE_CORE_ERROR("GameApplication: failed to mount VFSBackend")
+            }
+            else
+            {
+                // Only now is the project's own backend actually visible at "/" — the
+                // watcher set up inside Engine::Initialize only reacts to changes from
+                // here forward, so pre-existing assets need this explicit initial scan.
+                static_cast<Core::VFS::VFSContext*>(Engine::GetContext()->VFS)->ScanProject();
             }
         }
 
