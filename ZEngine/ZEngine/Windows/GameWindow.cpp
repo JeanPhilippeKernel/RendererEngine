@@ -371,25 +371,13 @@ namespace ZEngine::Windows
             auto           native_hwnd = glfwGetWin32Window(m_native_window);
             FileOpenPicker file_picker;
             file_picker.ViewMode(PickerViewMode::Thumbnail);
-            if (!default_dir.empty())
-            {
-                // Best-effort: WinRT's SuggestedStartLocation only takes a fixed enum,
-                // not an arbitrary path. Not verified on this platform.
-                try
-                {
-                    auto folder = StorageFolder::GetFolderFromPathAsync(winrt::to_hstring(std::string(default_dir))).get();
-                    file_picker.SuggestedStartLocation(PickerLocationId::Unspecified);
-                    file_picker.SuggestedStartFolder(folder);
-                }
-                catch (...)
-                {
-                    file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
-                }
-            }
-            else
-            {
-                file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
-            }
+            // WinRT's FileOpenPicker only exposes a fixed PickerLocationId enum for
+            // its start location and has no title/message API — there is no public
+            // way to seed an arbitrary folder, so default_dir/message have no effect
+            // on Windows.
+            (void) default_dir;
+            (void) message;
+            file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
             file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
 
             if (!type_filters.empty())
