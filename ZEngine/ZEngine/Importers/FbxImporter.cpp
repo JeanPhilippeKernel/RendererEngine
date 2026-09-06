@@ -214,6 +214,11 @@ namespace ZEngine::Importers
 
     void FbxImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
+        // The caller's arena is sized only for a few short path strings (#760) — route
+        // everything through this importer's own, generously-sized private Arena instead.
+        Arena.Clear();
+        arena                                  = &Arena;
+
         AssetCodec::ImportConfiguration config = {};
         config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
         config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
