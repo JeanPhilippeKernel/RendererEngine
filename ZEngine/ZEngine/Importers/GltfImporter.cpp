@@ -466,6 +466,16 @@ namespace ZEngine::Importers
 
     void GltfImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
+        // The caller's arena is sized only for a few short path strings (#760) — carve a
+        // scratch sub-arena from this importer's own, generously-sized private Arena
+        // instead, matching the pattern Import() already uses for hot-reload. Declared
+        // once here (rather than down at the old ExtractMeshes call site) so the config
+        // copy below and the final serialized outputs share the same backing memory
+        // instead of each getting an independent, aliasing CreateSubArena carve-out.
+        Core::Memory::ArenaAllocator scratch{};
+        Arena.CreateSubArena(ZMega(32), &scratch);
+        arena                                  = &scratch;
+
         // Build arena-allocated config copy (same pattern as AssimpImporter::ImportFile)
         AssetCodec::ImportConfiguration config = {};
         config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
@@ -503,10 +513,7 @@ namespace ZEngine::Importers
         if (on_progress)
             on_progress(context, 0.3f);
 
-        fastgltf::Asset&             asset = result.get();
-
-        Core::Memory::ArenaAllocator scratch{};
-        Arena.CreateSubArena(ZMega(32), &scratch);
+        fastgltf::Asset&      asset = result.get();
 
         std::random_device    rd;
         std::mt19937          gen_mt(rd());

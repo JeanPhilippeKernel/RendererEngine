@@ -103,6 +103,13 @@ namespace ZEngine::Importers
 
     void AssimpImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
+        // The caller's arena is sized only for a few short path strings (#760) — carve a
+        // scratch sub-arena from this importer's own, generously-sized private Arena
+        // instead, matching the pattern Import() already uses for hot-reload.
+        Core::Memory::ArenaAllocator scratch{};
+        Arena.CreateSubArena(ZMega(64), &scratch);
+        arena                                  = &scratch;
+
         AssetCodec::ImportConfiguration config = {};
         config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
         config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
