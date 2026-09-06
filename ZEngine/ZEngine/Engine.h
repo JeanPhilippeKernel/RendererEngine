@@ -61,6 +61,9 @@ namespace ZEngine
         static bool             OnEngineClosed(Event::EngineClosedEvent&);
         static EngineContextPtr GetContext();
 
+        /// @brief Requests a clean shutdown — same effect as the OS window-close path.
+        static void             RequestClose();
+
         static void             MainThreadRun();
         static void             RenderThreadRun();
 

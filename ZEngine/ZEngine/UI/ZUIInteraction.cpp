@@ -199,10 +199,17 @@ namespace ZEngine::UI
         {
             if (ctx->DragSourceKey != 0)
             {
-                ctx->DragDropFired  = true;
-                ctx->DragTargetKey  = ctx->HotKey;
-                ctx->DragSourceKey  = 0;
-                ctx->DragPayloadLen = 0;
+                // ctx->HotKey is frozen while MouseDown[0] (see above), so it still
+                // points at wherever the drag started — new_hot is this frame's
+                // fresh hit-test, i.e. wherever the mouse was actually released.
+                //
+                // DragPayload/DragPayloadLen are left untouched: ZUIAcceptDrop reads
+                // them next frame, and clearing DragPayloadLen here made every drop
+                // report success with an empty payload. ZUIBeginDragSource overwrites
+                // both on the next drag, so nothing goes stale by leaving them.
+                ctx->DragDropFired = true;
+                ctx->DragTargetKey = new_hot;
+                ctx->DragSourceKey = 0;
             }
             ctx->ActiveKey = 0;
         }

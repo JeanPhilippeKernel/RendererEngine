@@ -7,10 +7,11 @@
 #include <vector>
 
 #if defined(__APPLE__)
-// Implemented in Windows/Platform/MacOSFileDialog.mm
-extern "C" std::string ZEngineOpenFileDialog(const char** extensions, int count);
+// Implemented in Windows/Platform/MacOSFileDialog.mm. Async — shows the panel
+// and returns immediately; on_complete fires later on the main run loop.
+extern "C" void ZEngineOpenFileDialogAsync(const char** extensions, int count, const char* default_dir, const char* message, void* user_ctx, void (*on_complete)(void* user_ctx, const char* path));
 // Implemented in Windows/Platform/MacOSAppIcon.mm
-extern "C" void        ZEngineSetDockIcon(const char* path);
+extern "C" void ZEngineSetDockIcon(const char* path);
 #endif
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -359,15 +360,9 @@ namespace ZEngine::Windows
             KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
             property->CallbackFn(e);
         }
-
-        if (key == GLFW_KEY_ESCAPE)
-        {
-            WindowClosedEvent e;
-            property->CallbackFn(e);
-        }
     }
 
-    std::future<std::string> GameWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters)
+    std::future<std::string> GameWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view message)
     {
         std::string path{};
 
@@ -376,6 +371,12 @@ namespace ZEngine::Windows
             auto           native_hwnd = glfwGetWin32Window(m_native_window);
             FileOpenPicker file_picker;
             file_picker.ViewMode(PickerViewMode::Thumbnail);
+            // WinRT's FileOpenPicker only exposes a fixed PickerLocationId enum for
+            // its start location and has no title/message API — there is no public
+            // way to seed an arbitrary folder, so default_dir/message have no effect
+            // on Windows.
+            (void) default_dir;
+            (void) message;
             file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
             file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
 
@@ -399,7 +400,21 @@ namespace ZEngine::Windows
             for (auto& f : type_filters)
                 exts.push_back(f.data());
 
-            path = ZEngineOpenFileDialog(exts.data(), static_cast<int>(exts.size()));
+            std::string              default_dir_str(default_dir);
+            std::string              message_str(message);
+
+            // Bridge the async callback into a future so co_await below suspends
+            // via CoroutineScheduler instead of blocking.
+            auto*                    result_promise = new std::promise<std::string>();
+            std::future<std::string> result_future  = result_promise->get_future();
+
+            ZEngineOpenFileDialogAsync(exts.data(), static_cast<int>(exts.size()), default_dir_str.empty() ? nullptr : default_dir_str.c_str(), message_str.empty() ? nullptr : message_str.c_str(), result_promise, [](void* ctx, const char* result) {
+                auto* promise = static_cast<std::promise<std::string>*>(ctx);
+                promise->set_value(result ? result : "");
+                delete promise;
+            });
+
+            path = co_await result_future;
         }
 
 #elif defined(__linux__)
@@ -415,16 +430,21 @@ namespace ZEngine::Windows
                 filter += std::string(f);
             }
 
+            std::string start_dir = default_dir.empty() ? "." : std::string(default_dir);
+            std::string title     = message.empty() ? "Select a file" : std::string(message);
+
             std::string cmd;
             if (system("which zenity > /dev/null 2>&1") == 0)
             {
-                cmd = "zenity --file-selection --title='Import Asset'";
+                cmd = "zenity --file-selection --title='" + title + "'";
+                if (!default_dir.empty())
+                    cmd += " --filename='" + start_dir + "/'";
                 if (!filter.empty())
                     cmd += " --file-filter='" + filter + "'";
             }
             else if (system("which kdialog > /dev/null 2>&1") == 0)
             {
-                cmd = "kdialog --getopenfilename . '";
+                cmd = "kdialog --getopenfilename " + start_dir + " '";
                 for (auto& f : type_filters)
                     cmd += '*' + std::string(f) + ' ';
                 if (!cmd.empty() && cmd.back() == ' ')

@@ -30,7 +30,7 @@ namespace ZEngine::Windows
         virtual float                    GetTime() override;
         virtual float                    GetDeltaTime() override;
 
-        virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) override;
+        virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}, std::string_view default_dir = {}, std::string_view message = {}) override;
 
         virtual bool                     CreateSurface(void* instance, void** out_window_surface) override;
 

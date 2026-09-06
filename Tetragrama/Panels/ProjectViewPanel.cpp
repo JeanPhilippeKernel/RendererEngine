@@ -461,7 +461,7 @@ namespace Tetragrama::Panels
             if (ZUIBeginPopupContextItem(ctx, ctx_key, sig))
             {
                 auto pr = VFSPath::Parse(e.full_path);
-                if (ZUIMenuItem(ctx, "Create Folder") && pr.Succeeded())
+                if (ZUIMenuItem(ctx, "New Folder") && pr.Succeeded())
                 {
                     m_modal        = Modal::CreateFolder;
                     m_modal_target = pr.Value();
@@ -581,7 +581,7 @@ namespace Tetragrama::Panels
             if (PassesFilters(m_entries[i], m_search, m_type_filter))
                 vis[nvis++] = i;
 
-        ZUIBeginScrollRegion(ctx, "##pv_grid_scroll", ZFill(), ZFill());
+        ZUIBox* grid_scroll = ZUIBeginScrollRegion(ctx, "##pv_grid_scroll", ZFill(), ZFill());
         ZUISpacer(ctx, 16.f);
 
         // HOT PATH — runs every frame, no heap allocation allowed.
@@ -806,58 +806,54 @@ namespace Tetragrama::Panels
                     if (!e.is_dir)
                         ZUIBeginDragSource(ctx, card, e.full_path, (uint32_t) strlen(e.full_path) + 1);
 
-                    // Right-click context menu
-                    if (ZUIBeginPopupContextItem(ctx, "##pv_grid_ctx", card_sig))
+                    // Right-click context menu — unique key per card (row/col), so
+                    // opening one card's menu doesn't also open every other card's.
+                    char ctx_key[32] = {};
+                    snprintf(ctx_key, sizeof(ctx_key), "##pvgctx_%d_%d", r, c);
+                    if (ZUIBeginPopupContextItem(ctx, ctx_key, card_sig))
                     {
+                        // Right-click also selects the card, so the visible highlight
+                        // always matches the item the menu is acting on.
+                        secure_strncpy(m_selected_path, sizeof(m_selected_path), e.full_path, sizeof(m_selected_path) - 1);
+
+                        auto pr = VFSPath::Parse(e.full_path);
                         if (e.is_dir)
                         {
-                            if (ZUIMenuItem(ctx, "Open"))
+                            if (ZUIMenuItem(ctx, "Open") && pr.Succeeded())
                             {
-                                auto pr = VFSPath::Parse(e.full_path);
-                                if (pr.Succeeded())
-                                {
-                                    m_current_dir   = pr.Value();
-                                    m_needs_refresh = true;
-                                }
+                                m_current_dir   = pr.Value();
+                                m_needs_refresh = true;
                             }
-                            if (ZUIMenuItem(ctx, "Rename"))
+                            if (ZUIMenuItem(ctx, "Rename") && pr.Succeeded())
                             {
-                                m_modal = Modal::RenameItem;
-                                auto pr = VFSPath::Parse(e.full_path);
-                                if (pr.Succeeded())
-                                    m_modal_target = pr.Value();
+                                m_modal        = Modal::RenameItem;
+                                m_modal_target = pr.Value();
                                 m_modal_is_dir = true;
                                 secure_strncpy(m_modal_buf, sizeof(m_modal_buf), e.name, sizeof(m_modal_buf) - 1);
                                 m_modal_opened = false;
                             }
-                            if (ZUIMenuItem(ctx, "Delete"))
+                            if (ZUIMenuItem(ctx, "Delete") && pr.Succeeded())
                             {
-                                m_modal = Modal::DeleteItem;
-                                auto pr = VFSPath::Parse(e.full_path);
-                                if (pr.Succeeded())
-                                    m_modal_target = pr.Value();
+                                m_modal        = Modal::DeleteItem;
+                                m_modal_target = pr.Value();
                                 m_modal_is_dir = true;
                                 m_modal_opened = false;
                             }
                         }
                         else
                         {
-                            if (ZUIMenuItem(ctx, "Rename"))
+                            if (ZUIMenuItem(ctx, "Rename") && pr.Succeeded())
                             {
-                                m_modal = Modal::RenameItem;
-                                auto pr = VFSPath::Parse(e.full_path);
-                                if (pr.Succeeded())
-                                    m_modal_target = pr.Value();
+                                m_modal        = Modal::RenameItem;
+                                m_modal_target = pr.Value();
                                 m_modal_is_dir = false;
                                 secure_strncpy(m_modal_buf, sizeof(m_modal_buf), e.name, sizeof(m_modal_buf) - 1);
                                 m_modal_opened = false;
                             }
-                            if (ZUIMenuItem(ctx, "Delete"))
+                            if (ZUIMenuItem(ctx, "Delete") && pr.Succeeded())
                             {
-                                m_modal = Modal::DeleteItem;
-                                auto pr = VFSPath::Parse(e.full_path);
-                                if (pr.Succeeded())
-                                    m_modal_target = pr.Value();
+                                m_modal        = Modal::DeleteItem;
+                                m_modal_target = pr.Value();
                                 m_modal_is_dir = false;
                                 m_modal_opened = false;
                             }
@@ -873,6 +869,28 @@ namespace Tetragrama::Panels
 
         ZUISpacer(ctx, 16.f); // bottom margin inside scroll
         ZUIEndScrollRegion(ctx);
+
+        // Right-click on empty grid space → New File / New Folder. Cards sit deeper
+        // in the box tree and always win the hit test, so this never fires over one.
+        ZUISignal bg_sig = ZUISignalFromBox(ctx, grid_scroll);
+        if (ZUIBeginPopupContextItem(ctx, "##pv_grid_bgctx", bg_sig))
+        {
+            if (ZUIMenuItem(ctx, "New File"))
+            {
+                m_modal        = Modal::CreateFile;
+                m_modal_target = m_current_dir;
+                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFile.txt", sizeof("NewFile.txt") - 1);
+                m_modal_opened = false;
+            }
+            if (ZUIMenuItem(ctx, "New Folder"))
+            {
+                m_modal        = Modal::CreateFolder;
+                m_modal_target = m_current_dir;
+                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFolder", sizeof("NewFolder") - 1);
+                m_modal_opened = false;
+            }
+            ZUIEndPopup(ctx);
+        }
     }
 
     // Modals
@@ -883,17 +901,62 @@ namespace Tetragrama::Panels
         if (!m_modal_opened)
         {
             m_modal_error[0] = '\0'; // clear any previous error when opening fresh
-            ZUIOpenPopup(ctx, "##pv_modal");
+
+            // Center on the window. Half-extent is a fixed estimate since the popup's
+            // real size isn't known until ZFit() measures its content.
+            float px = -1.f, py = -1.f;
+            if (ctx->Root && ctx->Root->ScreenMax[0] > 0.f && ctx->Root->ScreenMax[1] > 0.f)
+            {
+                px = ctx->Root->ScreenMax[0] * 0.5f - 150.f;
+                py = ctx->Root->ScreenMax[1] * 0.5f - 75.f;
+            }
+            ZUIOpenPopup(ctx, "##pv_modal", px, py);
             m_modal_opened = true;
+
+            // Auto-focus the name field: ZUITextField only accepts input when
+            // ctx->FocusKey matches, and nothing claims focus by default.
+            if (m_modal == Modal::CreateFile || m_modal == Modal::CreateFolder || m_modal == Modal::RenameItem)
+            {
+                uint64_t field_key = ZUIHashStr("##pv_mi", 7);
+                ctx->FocusKey      = field_key;
+                if (m_modal == Modal::RenameItem)
+                {
+                    // Pre-select the existing name so typing immediately replaces it.
+                    auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, field_key);
+                    if (ps)
+                    {
+                        ps->SelectStart = 0;
+                        ps->UserData    = (float) secure_strlen(m_modal_buf);
+                    }
+                }
+            }
+            // ZUIOpenPopup only stages a request; it's committed next frame. Calling
+            // ZUIBeginPopup for it now would always fail and wipe m_modal early.
+            return;
         }
         if (!ZUIBeginPopup(ctx, "##pv_modal"))
         {
             m_modal = Modal::None;
             return;
         }
+        if (ctx->EscapePressed)
+        {
+            // No early return: ZUIBeginPopup already pushed a box that must be
+            // balanced by ZUIEndPopup below, or ctx->Current is left dangling.
+            m_modal = Modal::None;
+            ZUIClosePopup(ctx);
+        }
 
-        float              fh         = ZUIGetFrameHeight(ctx);
-        static const float kErrCol[4] = {1.f, 0.40f, 0.35f, 1.f}; // red error text
+        float              fh                = ZUIGetFrameHeight(ctx);
+        static const float kErrCol[4]        = {1.f, 0.40f, 0.35f, 1.f}; // red error text
+        // Right-aligns whatever is pushed next: an invisible box that fills the
+        // remaining row width (same trick ZUIBeginPopup uses for its min-width sizer).
+        auto               push_right_filler = [&]() {
+            ZUIBox* filler  = ZUIPushBox(ctx, "##pv_mbtns_fill", 15, ZUI_None);
+            filler->Size[0] = ZFill();
+            filler->Size[1] = ZPx(0.f);
+            ZUIPopBox(ctx);
+        };
         ZUISpacer(ctx, 8.f);
 
         switch (m_modal)
@@ -911,8 +974,14 @@ namespace Tetragrama::Panels
                 }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
-                ZUISpacer(ctx, 8.f);
-                if (ZUIButton(ctx, "Create##pvc").Flags & ZUI_SignalClicked)
+                push_right_filler();
+                bool can_submit = m_modal_buf[0] != '\0';
+                if (!can_submit)
+                    ZUIBeginDisabled(ctx);
+                bool clicked = ZUIButton(ctx, "Create##pvc").Flags & ZUI_SignalClicked;
+                if (!can_submit)
+                    ZUIEndDisabled(ctx);
+                if (clicked || (can_submit && ctx->EnterPressed))
                 {
                     m_modal_error[0] = '\0';
                     bool ok          = false;
@@ -964,8 +1033,14 @@ namespace Tetragrama::Panels
                 }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
-                ZUISpacer(ctx, 8.f);
-                if (ZUIButton(ctx, "Rename##pvr").Flags & ZUI_SignalClicked)
+                push_right_filler();
+                bool rename_can_submit = m_modal_buf[0] != '\0';
+                if (!rename_can_submit)
+                    ZUIBeginDisabled(ctx);
+                bool rename_clicked = ZUIButton(ctx, "Rename##pvr").Flags & ZUI_SignalClicked;
+                if (!rename_can_submit)
+                    ZUIEndDisabled(ctx);
+                if (rename_clicked || (rename_can_submit && ctx->EnterPressed))
                 {
                     m_modal_error[0] = '\0';
                     bool ok          = false;
@@ -1012,8 +1087,29 @@ namespace Tetragrama::Panels
                 }
                 ZUISpacer(ctx, 8.f);
                 ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
-                ZUISpacer(ctx, 8.f);
-                if (ZUIButton(ctx, "Delete##pvd").Flags & ZUI_SignalClicked)
+                push_right_filler();
+                bool delete_clicked;
+                {
+                    // Destructive styling: override the theme colors temporarily instead
+                    // of adding a color param to ZUIButton, which every button shares.
+                    static const float kDangerBg[4]        = {0.55f, 0.16f, 0.16f, 1.f};
+                    static const float kDangerHoveredBg[4] = {0.70f, 0.20f, 0.20f, 1.f};
+                    static const float kDangerActiveBg[4]  = {0.45f, 0.12f, 0.12f, 1.f};
+                    float              save_bg[4], save_hovered[4], save_active[4];
+                    secure_memcpy(save_bg, sizeof(save_bg), ctx->Theme.ButtonBg, sizeof(save_bg));
+                    secure_memcpy(save_hovered, sizeof(save_hovered), ctx->Theme.ButtonHoveredBg, sizeof(save_hovered));
+                    secure_memcpy(save_active, sizeof(save_active), ctx->Theme.ButtonActiveBg, sizeof(save_active));
+                    secure_memcpy(ctx->Theme.ButtonBg, sizeof(ctx->Theme.ButtonBg), kDangerBg, sizeof(kDangerBg));
+                    secure_memcpy(ctx->Theme.ButtonHoveredBg, sizeof(ctx->Theme.ButtonHoveredBg), kDangerHoveredBg, sizeof(kDangerHoveredBg));
+                    secure_memcpy(ctx->Theme.ButtonActiveBg, sizeof(ctx->Theme.ButtonActiveBg), kDangerActiveBg, sizeof(kDangerActiveBg));
+
+                    delete_clicked = ZUIButton(ctx, "Delete##pvd").Flags & ZUI_SignalClicked;
+
+                    secure_memcpy(ctx->Theme.ButtonBg, sizeof(ctx->Theme.ButtonBg), save_bg, sizeof(save_bg));
+                    secure_memcpy(ctx->Theme.ButtonHoveredBg, sizeof(ctx->Theme.ButtonHoveredBg), save_hovered, sizeof(save_hovered));
+                    secure_memcpy(ctx->Theme.ButtonActiveBg, sizeof(ctx->Theme.ButtonActiveBg), save_active, sizeof(save_active));
+                }
+                if (delete_clicked)
                 {
                     m_modal_error[0] = '\0';
                     bool ok          = false;

@@ -1,19 +1,39 @@
-#include <GLFW/glfw3.h>
 #include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/EditorScene.h>
-#include <Tetragrama/Serializers/EditorSceneSerializer.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace ZEngine::UI;
 
 namespace Tetragrama::Components
 {
+    // Must run via MainThreadScheduler::Post, not inline in BuildUI — a native
+    // dialog called directly from the UI-build call stack previously deadlocked (#645).
+    static std::future<void> OpenSceneDialogAsync(EditorPtr app)
+    {
+        if (!app || !app->CurrentWindow || !app->Configuration)
+            co_return;
+
+        std::filesystem::path         ws(app->Configuration->WorkingSpacePath.c_str());
+        std::filesystem::path         scene_dir = ws / app->Configuration->ScenePath.c_str();
+
+        std::vector<std::string_view> filters   = {".zescene"};
+        std::string                   picked    = co_await app->CurrentWindow->OpenFileDialogAsync(filters, scene_dir.string(), "Select a scene file");
+        if (!picked.empty())
+            app->OpenScene(picked.c_str());
+    }
+
     static constexpr float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
 
     void                   ZUIDockspaceComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
@@ -73,11 +93,15 @@ namespace Tetragrama::Components
 
                 if (ZUIMenuItemEx(ctx, "New Scene", sc_new))
                 {
-                    if (file_app && file_app->CurrentScene)
-                    {
-                        auto* scene                = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
-                        scene->SelectedActorHandle = {};
-                    }
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
+                        auto* app     = reinterpret_cast<EditorPtr>(ptr);
+                        auto* eng_ctx = ZEngine::Engine::GetContext();
+                        if (app && app->CurrentScene && eng_ctx && eng_ctx->ActorManager)
+                        {
+                            eng_ctx->ActorManager->DestroyAll();
+                            reinterpret_cast<EditorScenePtr>(app->CurrentScene)->Reset();
+                        }
+                    });
                 }
                 if (ZUIMenuItemEx(ctx, "Import New Asset...", nullptr))
                 {
@@ -90,37 +114,27 @@ namespace Tetragrama::Components
                 ZUISeparator(ctx);
                 if (ZUIMenuItemEx(ctx, "Open Scene...", sc_open))
                 {
-                    ZENGINE_CORE_INFO("[Editor] Use the Project panel to locate and drop a .zescene into the viewport")
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) { OpenSceneDialogAsync(reinterpret_cast<EditorPtr>(ptr)); });
                 }
                 ZUISeparator(ctx);
                 if (ZUIMenuItemEx(ctx, "Save Scene", sc_save))
                 {
-                    if (file_app && file_app->CurrentScene && file_app->Configuration)
-                    {
-                        auto*                              scene = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
-                        Serializers::EditorSceneSerializer serializer;
-                        serializer.Serialize(scene);
-                        ZENGINE_CORE_INFO("[Editor] Scene saved")
-                    }
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
+                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
+                            app->SaveScene();
+                    });
                 }
                 if (ZUIMenuItemEx(ctx, "Save Scene As...", sc_save_as))
                 {
-                    if (file_app && file_app->CurrentScene)
-                    {
-                        auto*                              scene = reinterpret_cast<EditorScenePtr>(file_app->CurrentScene);
-                        Serializers::EditorSceneSerializer serializer;
-                        serializer.Serialize(scene);
-                    }
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
+                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
+                            app->SaveSceneAs();
+                    });
                 }
                 ZUISeparator(ctx);
                 if (ZUIMenuItemEx(ctx, "Quit", kQuitShortcut))
                 {
-                    if (file_app && file_app->CurrentWindow)
-                    {
-                        auto* glfw_win = static_cast<GLFWwindow*>(file_app->CurrentWindow->GetNativeWindow());
-                        if (glfw_win)
-                            glfwSetWindowShouldClose(glfw_win, GLFW_TRUE);
-                    }
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void*) { ZEngine::Engine::RequestClose(); });
                 }
                 ZUIEndMenu(ctx);
             }
@@ -625,6 +639,26 @@ namespace Tetragrama::Components
             }
 
             ZUIEndColumn(ctx); // window
+        }
+
+        // Drag ghost: small box following the cursor during a drag, so the
+        // user gets visual feedback regardless of which panel started it.
+        if (ctx->DragSourceKey != 0)
+        {
+            static constexpr float kGhostSz = 28.f;
+            ZUIBox*                ghost    = ZUIPushBox(ctx, "##drag_ghost", 12, ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
+            ghost->Size[0]                  = ZPx(kGhostSz);
+            ghost->Size[1]                  = ZPx(kGhostSz);
+            ghost->FloatPos[0]              = ctx->MousePos[0] - kGhostSz * 0.5f;
+            ghost->FloatPos[1]              = ctx->MousePos[1] - kGhostSz * 0.5f;
+            ZUIBoxSetColor(ghost, 0.10f, 0.70f, 0.65f, 0.85f); // teal
+            ghost->BorderColor[0]  = 1.f;
+            ghost->BorderColor[1]  = 1.f;
+            ghost->BorderColor[2]  = 1.f;
+            ghost->BorderColor[3]  = 0.9f;
+            ghost->BorderThickness = 2.f;
+            ZUIBoxSetCornerRadius(ghost, 4.f);
+            ZUIPopBox(ctx);
         }
 
         ZUIEndColumn(ctx);
