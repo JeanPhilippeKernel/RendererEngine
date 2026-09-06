@@ -78,6 +78,12 @@ namespace ZEngine::Core::VFS
 
         void                   OnAssetModified(const Core::VFS::VFSPath& path);
         void                   OnAssetDeleted(const Core::VFS::VFSPath& path);
+
+        /// @brief UUID-based equivalent of OnAssetModified's stale-marking, for callers
+        ///        (e.g. AssetManager::IngestMesh re-ingesting an in-memory asset) that
+        ///        have no VFSPath to look up. No dependency cascade — fires OnStale for
+        ///        this UUID only.
+        void                   MarkStale(const uuids::uuid& uuid);
         void                   OnAssetRenamed(const Core::VFS::VFSPath& old_path, const Core::VFS::VFSPath& new_path);
 
         // Called per-file from the scanner's ScanComplete callback.

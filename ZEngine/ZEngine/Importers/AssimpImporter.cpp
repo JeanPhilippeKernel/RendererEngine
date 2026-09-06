@@ -156,6 +156,19 @@ namespace ZEngine::Importers
             Array<AssetTexture>   textures    = {};
 
             ExtractMeshes(arena, scene, gen, mesh);
+
+            // Stabilize the mesh UUID (#762): re-importing the same destination path
+            // must keep the same identity, or a hot-reload swap can never recognize
+            // "this is an update to an existing mesh" — every re-cook would otherwise
+            // mint a fresh random UUID and look like a brand new, unrelated asset.
+            {
+                auto mesh_dir    = Core::VFS::VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+                auto mesh_path   = mesh_dir / config.OutputAssetFile.c_str();
+                auto meta_result = Core::VFS::MetaFileIO::Read(*config.VFS, mesh_path);
+                if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
+                    mesh.MeshUUID = meta_result.Value().AssetUUID;
+            }
+
             if (on_progress)
                 on_progress(context, 0.4f);
 
@@ -174,6 +187,24 @@ namespace ZEngine::Importers
             if (config.Options.ImportMaterials)
             {
                 ExtractMaterials(arena, scene, gen, materials, hierarchies);
+
+                // Stabilize material UUIDs (#762): re-importing the same source must
+                // keep each material's identity, or hot-reload can never recognize it
+                // as an update — every re-cook would otherwise mint a fresh random
+                // UUID. Keyed by the same (stable, name-derived) destination path
+                // SerializeMaterialAssetFile uses, so this stays in sync automatically.
+                // Runs before CreateHierachy below, which reads MaterialUUID by
+                // reference off this same materials array for each SubMesh.
+                for (size_t m = 0; m < materials.size(); ++m)
+                {
+                    auto        mat_dir      = Core::VFS::VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
+                    std::string mat_filename = fmt::format("{}{}", materials[m].Name.c_str(), ".zematerial");
+                    auto        mat_path     = mat_dir / mat_filename.c_str();
+                    auto        meta_result  = Core::VFS::MetaFileIO::Read(*config.VFS, mat_path);
+                    if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
+                        materials[m].MaterialUUID = meta_result.Value().AssetUUID;
+                }
+
                 if (config.Options.ImportTextures)
                 {
                     ExtractTextures(arena, scene, gen, materials, textures);

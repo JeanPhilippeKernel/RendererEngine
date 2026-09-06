@@ -110,7 +110,11 @@ namespace ZEngine::Core::VFS
             return;
         }
         m_file_watcher = new (fw_storage) VFSFileWatcher(m_platform_watcher);
-        m_file_watcher->Initialize(m_arena);
+        // Default capacity (64) is too small for a single material-heavy import —
+        // each material now also gets an explicit .meta write (#762), and a
+        // multi-material GLB (mesh + N materials + N textures) can generate more
+        // simultaneous pending debounce entries than that before any flush.
+        m_file_watcher->Initialize(m_arena, 256);
 
         const WatchHandle root_handle = m_file_watcher->Watch(m_project_root_native, /*recursive=*/true, [this](const VFSWatchEvent& ev) {
             const bool         full_rescan = (ev.Kind == WatchEventKind::Overflow);

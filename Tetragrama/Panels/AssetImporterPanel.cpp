@@ -747,37 +747,88 @@ namespace Tetragrama::Panels
             }
         }
 
+        // Write a .meta for every cooked material (#762) — mirrors the mesh handling
+        // below. Without this, AssimpImporter/GltfImporter/FbxImporter's material
+        // UUID stabilization (also #762) has no .meta to read on the next re-import,
+        // and every re-cook mints a brand-new, disconnected material identity.
+        {
+            auto*   ctx_engine = ZEngine::Engine::GetContext();
+            auto*   app        = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
+            cstring ws         = (app && app->Configuration) ? app->Configuration->WorkingSpacePath.c_str() : "";
+            if (ctx_engine && ctx_engine->VFS && ws[0] != '\0')
+            {
+                auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
+                for (unsigned i = 0; i < outputs.size(); ++i)
+                {
+                    if (outputs[i].Type != ZEngine::Importers::AssetFileType::MATERIAL)
+                        continue;
+
+                    cstring mat_path = outputs[i].Path.c_str();
+                    auto    rel      = VFSPath::Parse(mat_path);
+                    if (!rel.Succeeded())
+                        continue;
+
+                    char native_mat_path[MAX_FILE_PATH_COUNT] = {};
+                    rel.Value().ResolveNative(ws, native_mat_path, sizeof(native_mat_path));
+
+                    ZEngine::Importers::AssetMaterial material{};
+                    ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(&self->m_local_arena, native_mat_path, material);
+                    if (material.MaterialUUID.is_nil())
+                        continue;
+
+                    auto                             meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
+                    ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                    meta.AssetUUID                               = material.MaterialUUID;
+                    secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
+                    secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mat_path, sizeof(meta.ArtifactPath) - 1);
+                    secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
+                    ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                }
+            }
+        }
+
         if (has_mesh && mesh_path)
         {
+            // mesh_path is VFS-relative (e.g. "/Assets/Meshes/test_cube.zemesh") —
+            // ReadAssetMeshFileHeader does raw filesystem I/O and needs a native path.
+            char native_mesh_path[MAX_FILE_PATH_COUNT] = {};
+            {
+                auto*   header_app = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
+                cstring header_ws  = (header_app && header_app->Configuration) ? header_app->Configuration->WorkingSpacePath.c_str() : "";
+                auto    mesh_pr    = VFSPath::Parse(mesh_path);
+                if (mesh_pr.Succeeded() && header_ws[0] != '\0')
+                    mesh_pr.Value().ResolveNative(header_ws, native_mesh_path, sizeof(native_mesh_path));
+            }
+
             // Read once, shared by the meta write below and the add-to-scene block.
             ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
-            bool                                                has_header = ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(mesh_path, header);
+            bool                                                has_header = ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_mesh_path, header);
 
             // Write meta file (source path for re-import)
             auto*                                               ctx_engine = ZEngine::Engine::GetContext();
             if (ctx_engine && ctx_engine->VFS)
             {
-                auto*   vfs    = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
-                auto*   app    = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
-                cstring ws     = (app && app->Configuration) ? app->Configuration->WorkingSpacePath.c_str() : "";
-                size_t  ws_len = secure_strlen(ws);
+                auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
 
-                if (ws_len > 0 && strncmp(mesh_path, ws, ws_len) == 0)
+                // mesh_path (AssetImporterOutput::Path) is already a VFS-relative path
+                // (e.g. "Assets/Meshes/test_cube.zemesh") — config.OutputAssetsPath has
+                // no native workspace prefix to strip (see Editor.cpp's expand_nested:
+                // "Result is a workspace-relative sub-path ... no leading slash"). The
+                // previous strncmp-against-WorkingSpacePath check could never match,
+                // silently skipping this whole block on every import (#762).
+                auto  rel = VFSPath::Parse(mesh_path);
+                if (rel.Succeeded())
                 {
-                    auto rel = VFSPath::Parse(mesh_path + ws_len);
-                    if (rel.Succeeded())
-                    {
-                        auto                             meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
-                        ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
-                        // Sync to the file's own embedded UUID — otherwise a nil
-                        // AssetUUID gets locked in forever (#755).
-                        if (has_header)
-                            meta.AssetUUID = header.Id;
-                        secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
-                        secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
-                        secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
-                        ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
-                    }
+                    auto                             meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
+                    ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                    // Sync to the file's own embedded UUID — otherwise a nil
+                    // AssetUUID gets locked in forever (#755).
+                    if (has_header)
+                        meta.AssetUUID = header.Id;
+                    secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
+                    secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
+                    secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
+                    ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
                 }
             }
 
