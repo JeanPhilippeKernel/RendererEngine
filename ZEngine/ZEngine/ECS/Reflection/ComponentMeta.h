@@ -1,10 +1,12 @@
 #pragma once
 #include <ZEngine/ECS/ComponentTypeID.h>
+#include <ZEngine/ECS/EntityID.h>
 #include <ZEngine/ECS/Reflection/FieldType.h>
 #include <cstdint>
 
 namespace ZEngine::ECS
 {
+    class Scene;
 
     struct EnumValue
     {
@@ -40,6 +42,9 @@ namespace ZEngine::ECS
         uint32_t               FieldCount = 0;
         const char*            Category   = "General"; // compare with strcmp, not ==
         const char*            Tooltip    = nullptr;
+
+        using AddFn                       = void (*)(Scene&, EntityID);
+        AddFn Add                         = nullptr;
     };
 
 } // namespace ZEngine::ECS

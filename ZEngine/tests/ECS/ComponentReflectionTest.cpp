@@ -169,3 +169,117 @@ TEST(ComponentReflection, EveryFieldFitsWithinItsComponent)
         }
     });
 }
+
+class ReflectionSceneFixture : public ::testing::Test
+{
+protected:
+    MemoryManager m_manager;
+    Scene         m_scene;
+
+    void          SetUp() override
+    {
+        Registry();
+        m_manager.Initialize(ZMega(64), {});
+        m_scene.Initialize(&m_manager.MainArena);
+    }
+
+    void TearDown() override
+    {
+        m_scene.Shutdown();
+    }
+};
+
+TEST_F(ReflectionSceneFixture, EveryBuiltInHasAnAddFactory)
+{
+    Registry().ForEach([](const ComponentMeta& meta) { EXPECT_NE(meta.Add, nullptr) << meta.TypeName; });
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawCreatesEveryBuiltInType)
+{
+    EntityID id = m_scene.CreateEntity();
+
+    Registry().ForEach([&](const ComponentMeta& meta) {
+        EXPECT_EQ(m_scene.GetComponentRaw(id, meta.TypeID), nullptr) << meta.TypeName;
+        m_scene.AddComponentRaw(id, meta.TypeID);
+        EXPECT_NE(m_scene.GetComponentRaw(id, meta.TypeID), nullptr) << meta.TypeName;
+        EXPECT_TRUE(MaskHas(m_scene.GetMask(id), meta.TypeID)) << meta.TypeName;
+    });
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawAppliesDefaultMemberInitializers)
+{
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, ComponentTypeOf<TransformComponent>());
+
+    auto* tc = m_scene.GetComponent<TransformComponent>(id);
+    ASSERT_NE(tc, nullptr);
+    // NOT memset-to-zero: a zeroed Scale would make every added actor invisible.
+    EXPECT_FLOAT_EQ(tc->Scale.x, 1.f);
+    EXPECT_FLOAT_EQ(tc->Scale.y, 1.f);
+    EXPECT_FLOAT_EQ(tc->Scale.z, 1.f);
+    EXPECT_FLOAT_EQ(tc->Position.x, 0.f);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawIsANoOpOnDuplicate)
+{
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, ComponentTypeOf<CameraComponent>());
+
+    void* first = m_scene.GetComponentRaw(id, ComponentTypeOf<CameraComponent>());
+    ASSERT_NE(first, nullptr);
+
+    m_scene.AddComponentRaw(id, ComponentTypeOf<CameraComponent>());
+    EXPECT_EQ(m_scene.GetComponentRaw(id, ComponentTypeOf<CameraComponent>()), first);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawIgnoresUnknownTypesAndDeadEntities)
+{
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, 9999u);
+    EXPECT_EQ(m_scene.GetComponentRaw(id, 9999u), nullptr);
+
+    m_scene.DestroyEntity(id);
+    m_scene.AddComponentRaw(id, ComponentTypeOf<NameComponent>()); // dead entity
+    EXPECT_EQ(m_scene.GetComponentRaw(id, ComponentTypeOf<NameComponent>()), nullptr);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawUsesExistingStorageForLaterEntities)
+{
+    EntityID first = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(first, ComponentTypeOf<LightComponent>());
+
+    EntityID second = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(second, ComponentTypeOf<LightComponent>());
+
+    auto* lc = m_scene.GetComponent<LightComponent>(second);
+    ASSERT_NE(lc, nullptr);
+    EXPECT_TRUE(MaskHas(m_scene.GetMask(second), ComponentTypeOf<LightComponent>()));
+    EXPECT_FLOAT_EQ(lc->Intensity, 1.f);
+    EXPECT_FLOAT_EQ(lc->Color[0], 1.f);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawPreservesInactiveSentinels)
+{
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, ComponentTypeOf<MeshComponent>());
+    m_scene.AddComponentRaw(id, ComponentTypeOf<RigidBodyComponent>());
+
+    auto* mc = m_scene.GetComponent<MeshComponent>(id);
+    auto* rb = m_scene.GetComponent<RigidBodyComponent>(id);
+    ASSERT_NE(mc, nullptr);
+    ASSERT_NE(rb, nullptr);
+
+    EXPECT_EQ(mc->RenderInstanceId, UINT32_MAX);
+    EXPECT_EQ(rb->BodyID, UINT32_MAX);
+    EXPECT_FLOAT_EQ(rb->Mass, 1.f);
+}
+
+TEST_F(ReflectionSceneFixture, AddComponentRawAcceptsMatchingSizeAndAlign)
+{
+    const ComponentMeta* meta = Registry().Lookup(ComponentTypeOf<CameraComponent>());
+    ASSERT_NE(meta, nullptr);
+
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponentRaw(id, meta->TypeID, meta->Size, meta->Align);
+    EXPECT_NE(m_scene.GetComponentRaw(id, meta->TypeID), nullptr);
+}
