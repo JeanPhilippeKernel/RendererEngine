@@ -192,6 +192,20 @@ namespace ZEngine::Core::VFS
         }
     }
 
+    void AssetRegistry::MarkStale(const uuids::uuid& uuid)
+    {
+        Helpers::Handle<AssetRecord> handle = m_index.FindByUUID(uuid);
+        if (!handle.Valid())
+            return;
+
+        m_index.SetState(handle, AssetState::Stale);
+
+        if (m_reload_cb)
+            m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
+        if (m_stale_cb)
+            m_stale_cb(m_stale_cb_ctx, uuid);
+    }
+
     void AssetRegistry::OnAssetDeleted(const Core::VFS::VFSPath& path)
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByPath(path);

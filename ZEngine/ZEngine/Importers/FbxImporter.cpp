@@ -5,6 +5,7 @@
 #include <ZEngine/Importers/MeshOptimizer.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <fmt/format.h>
 #include <ufbx.h>
 #include <filesystem>
 #include <fstream>
@@ -266,6 +267,19 @@ namespace ZEngine::Importers
             total_tris += static_cast<uint32_t>(scene->meshes.data[mi]->num_triangles);
 
         mesh.MeshUUID = gen();
+
+        // Stabilize the mesh UUID (#762): re-importing the same destination path must
+        // keep the same identity, or a hot-reload swap can never recognize "this is an
+        // update to an existing mesh" — every re-cook would otherwise mint a fresh
+        // random UUID and look like a brand new, unrelated asset.
+        {
+            auto mesh_dir    = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
+            auto mesh_path   = mesh_dir / config.OutputAssetFile.c_str();
+            auto meta_result = Core::VFS::MetaFileIO::Read(*config.VFS, mesh_path);
+            if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
+                mesh.MeshUUID = meta_result.Value().AssetUUID;
+        }
+
         mesh.Vertices.init(scratch.Arena, (size_t) total_tris * 3 * 8);
         mesh.Indices.init(scratch.Arena, (size_t) total_tris * 3);
         mesh.SubMeshes.init(scratch.Arena, (uint32_t) scene->meshes.count);
@@ -407,6 +421,32 @@ namespace ZEngine::Importers
 
         if (on_progress)
             on_progress(context, 0.5f);
+
+        // Stabilize material UUIDs (#762): re-importing the same source must keep
+        // each material's identity, or hot-reload can never recognize it as an
+        // update. Keyed by the same (stable, name-derived) destination path
+        // SerializeMaterialAssetFile uses. Unlike Assimp/Gltf, the loop above
+        // already copied each material's original UUID into its SubMesh by value
+        // (not by reference), so matching submeshes need an explicit patch too.
+        if (config.Options.ImportMaterials)
+        {
+            for (size_t m = 0; m < materials.size(); ++m)
+            {
+                auto        mat_dir      = VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
+                std::string mat_filename = fmt::format("{}{}", materials[m].Name.c_str(), ".zematerial");
+                auto        mat_path     = mat_dir / mat_filename.c_str();
+                auto        meta_result  = Core::VFS::MetaFileIO::Read(*config.VFS, mat_path);
+                if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
+                {
+                    uuids::uuid old_uuid      = materials[m].MaterialUUID;
+                    uuids::uuid new_uuid      = meta_result.Value().AssetUUID;
+                    materials[m].MaterialUUID = new_uuid;
+                    for (size_t s = 0; s < mesh.SubMeshes.size(); ++s)
+                        if (mesh.SubMeshes[s].MaterialUUID == old_uuid)
+                            mesh.SubMeshes[s].MaterialUUID = new_uuid;
+                }
+            }
+        }
 
         if (config.Options.ImportMaterials && config.Options.ImportTextures)
         {

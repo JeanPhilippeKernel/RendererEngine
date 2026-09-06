@@ -103,12 +103,27 @@ namespace ZEngine::Managers
         // Use MeshToHierarchySlot — populated only after data is actually ingested.
         // IsRegistered / GetAsset both give false positives because VFSScanner
         // pre-registers UUIDs with SlotHandle=0 before any mesh data exists.
-        if (s_Instance->MeshToHierarchySlot.find(mesh.MeshUUID) != nullptr)
-            return;
+        uint32_t*       existing_hier_slot = s_Instance->MeshToHierarchySlot.find(mesh.MeshUUID);
+        bool            is_reload          = existing_hier_slot != nullptr;
 
-        auto  mesh_slot = static_cast<uint32_t>(s_Instance->Meshes.size());
-        auto& m         = s_Instance->Meshes.push_use({});
-        m.MeshUUID      = mesh.MeshUUID;
+        // Hot-reload (#762): overwrite the existing slots' data in place instead of
+        // pushing new ones, so the mesh/hierarchy keep the same AssetHandle and
+        // AssetRegistry::MarkStale below can hand RenderResourceManager's OnStaleCallback
+        // a handle that already points at the fresh data.
+        uint32_t        mesh_slot          = 0;
+        AssetMesh*      mp;
+        if (is_reload)
+        {
+            mp = GetAsset<AssetMesh>(mesh.MeshUUID);
+            ZENGINE_VALIDATE_ASSERT(mp != nullptr, "IngestMesh: MeshToHierarchySlot has this UUID but the mesh record is missing")
+        }
+        else
+        {
+            mesh_slot    = static_cast<uint32_t>(s_Instance->Meshes.size());
+            mp           = &s_Instance->Meshes.push_use({});
+            mp->MeshUUID = mesh.MeshUUID;
+        }
+        AssetMesh& m = *mp;
         m.SubMeshes.init(s_Instance->Arena, mesh.SubMeshes.size());
         m.Vertices.init(s_Instance->Arena, mesh.Vertices.size(), mesh.Vertices.size());
         m.Indices.init(s_Instance->Arena, mesh.Indices.size(), mesh.Indices.size());
@@ -140,12 +155,20 @@ namespace ZEngine::Managers
             }
         }
 
-        RegisterAsset(AssetType::MESH, m.MeshUUID, mesh_slot);
+        if (!is_reload)
+            RegisterAsset(AssetType::MESH, m.MeshUUID, mesh_slot);
 
-        auto  hier_slot     = static_cast<uint32_t>(s_Instance->NodeHierarchies.size());
-        auto& h             = s_Instance->NodeHierarchies.push_use({});
-        h.NodeHierarchyUUID = hierarchy.NodeHierarchyUUID;
-        h.MeshUUID          = hierarchy.MeshUUID;
+        // Hierarchy: same in-place-overwrite treatment as the mesh above. Deliberately
+        // keep the existing NodeHierarchyUUID/MeshUUID on reload rather than the new
+        // AssetNodeHierarchy's freshly-minted one — the registry entry (and this UUID's
+        // identity) must stay stable across reloads, not just the slot index.
+        uint32_t            hier_slot = is_reload ? *existing_hier_slot : static_cast<uint32_t>(s_Instance->NodeHierarchies.size());
+        AssetNodeHierarchy& h         = is_reload ? s_Instance->NodeHierarchies[hier_slot] : s_Instance->NodeHierarchies.push_use({});
+        if (!is_reload)
+        {
+            h.NodeHierarchyUUID = hierarchy.NodeHierarchyUUID;
+            h.MeshUUID          = hierarchy.MeshUUID;
+        }
 
         h.Hierarchies.init(s_Instance->Arena, hierarchy.Hierarchies.size(), hierarchy.Hierarchies.size());
         h.LocalTransforms.init(s_Instance->Arena, hierarchy.LocalTransforms.size(), hierarchy.LocalTransforms.size());
@@ -177,14 +200,28 @@ namespace ZEngine::Managers
         for (const auto& [k, v] : hierarchy.NodeMaterials)
             h.NodeMaterials.insert(k, v);
 
-        RegisterAsset(AssetType::MESH_HIERARCHY, h.NodeHierarchyUUID, hier_slot);
-        s_Instance->MeshToHierarchySlot.insert(h.MeshUUID, hier_slot);
+        if (!is_reload)
+        {
+            RegisterAsset(AssetType::MESH_HIERARCHY, h.NodeHierarchyUUID, hier_slot);
+            s_Instance->MeshToHierarchySlot.insert(h.MeshUUID, hier_slot);
+        }
 
-        // Notify the registry that both assets are now loaded so hot-reload callbacks fire.
         if (s_Instance->Registry)
         {
-            s_Instance->Registry->SetState(m.MeshUUID, Core::VFS::AssetState::Loaded);
-            s_Instance->Registry->SetState(h.NodeHierarchyUUID, Core::VFS::AssetState::Loaded);
+            if (is_reload)
+            {
+                // SetState(Loaded) would hit RenderResourceManager's OnReady callback,
+                // which skips any UUID that already has a GPU buffer — it never reaches
+                // ScheduleSwap. MarkStale is what actually drives the hot-reload swap.
+                s_Instance->Registry->MarkStale(m.MeshUUID);
+                s_Instance->Registry->MarkStale(h.NodeHierarchyUUID);
+            }
+            else
+            {
+                // Notify the registry that both assets are now loaded so hot-reload callbacks fire.
+                s_Instance->Registry->SetState(m.MeshUUID, Core::VFS::AssetState::Loaded);
+                s_Instance->Registry->SetState(h.NodeHierarchyUUID, Core::VFS::AssetState::Loaded);
+            }
         }
     }
 
