@@ -1,16 +1,23 @@
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
+#include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/Core/VFS/VFSScanner.h>
+#include <ZEngine/ZEngineDef.h>
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
+#include <random>
 #include <thread>
 
 using namespace ZEngine;
 using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Core::Memory;
 using ZEngine::Core::Containers::Array;
+using ZEngine::Core::Containers::ArrayView;
 using ZEngine::Core::Containers::UnorderedHashMap;
 
 namespace
@@ -272,4 +279,126 @@ TEST_F(VFSScannerTest, Rescan_After_Cancel_StartsFresh)
 
     EXPECT_EQ(m_stats.FilesFound, 2u); // /proj/root.txt + /proj/sub/a.txt
     EXPECT_EQ(m_stats.DirsFound, 1u);  // /proj/sub
+}
+
+// --- #755 regression: scanning a self-describing asset with no .meta yet
+// must register it under its own embedded UUID, not an unrelated random one.
+
+namespace
+{
+    uuids::uuid MakeUUID()
+    {
+        std::random_device           rd;
+        std::mt19937                 gen(rd());
+        uuids::uuid_random_generator ugen{gen};
+        return ugen();
+    }
+
+    // Matches AssetCodec::AssetMeshFileHeader's on-disk layout: magic, version,
+    // uuid written as three separate sequential writes, tightly packed.
+    Array<uint8_t> MakeZemeshBytes(ArenaAllocator* arena, const uuids::uuid& id)
+    {
+        Array<uint8_t> bytes;
+        bytes.init(arena, 24, 24);
+        uint32_t magic   = ZEMESH_MAGIC;
+        uint32_t version = ASSET_FILE_VERSION;
+        std::memcpy(bytes.data(), &magic, sizeof(magic));
+        std::memcpy(bytes.data() + sizeof(magic), &version, sizeof(version));
+        std::memcpy(bytes.data() + sizeof(magic) + sizeof(version), &id, sizeof(id));
+        return bytes;
+    }
+} // namespace
+
+class VFSScannerMetaUUIDTest : public ::testing::Test
+{
+protected:
+    std::atomic<bool> m_completed{false};
+
+    MemoryManager     m_manager;
+    ArenaAllocator*   m_arena = nullptr;
+    VFSDirectoryCache m_cache;
+    VFSMemoryBackend  m_backend;
+    VFSContext        m_ctx;
+    AssetRegistry     m_registry;
+    VFSScanner        m_scanner;
+
+    void              SetUp() override
+    {
+        m_manager.Initialize(ZMega(16), {});
+        m_arena = &m_manager.MainArena;
+        m_cache.Initialize(m_arena);
+        m_backend.Initialize(m_arena);
+        m_ctx.Initialize(m_arena, 8);
+        ASSERT_TRUE(m_ctx.Mount(&m_backend, VFSPath::Root(), 0).Succeeded());
+        m_registry.Initialize(m_arena);
+        m_scanner.Initialize(m_arena);
+        m_scanner.SetAssetRegistry(&m_registry);
+        m_scanner.SetOnScanComplete(this, [](void* ctx, ScanStats) { static_cast<VFSScannerMetaUUIDTest*>(ctx)->m_completed.store(true); });
+    }
+
+    VFSPath P(const char* raw)
+    {
+        return VFSPath::Parse(raw).Value();
+    }
+
+    bool WaitForCompletion(int timeout_ms)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        while (!m_completed.load())
+        {
+            if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(timeout_ms))
+                return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return true;
+    }
+};
+
+TEST_F(VFSScannerMetaUUIDTest, ZemeshWithNoMeta_RegistersUnderEmbeddedUUID)
+{
+    uuids::uuid    embedded = MakeUUID();
+    Array<uint8_t> bytes    = MakeZemeshBytes(m_arena, embedded);
+    ASSERT_TRUE(m_backend.WriteFile(P("/mesh.zemesh"), ArrayView<const uint8_t>(bytes.data(), bytes.size())).Succeeded());
+
+    m_scanner.Scan(&m_ctx, VFSPath::Root(), &m_cache);
+    ASSERT_TRUE(WaitForCompletion(2000));
+
+    const AssetRecord* rec = m_registry.FindByUUID(embedded);
+    ASSERT_NE(rec, nullptr) << "registry should have the mesh's own embedded UUID, not a freshly-minted random one";
+    EXPECT_EQ(rec->Type, Managers::AssetType::MESH);
+}
+
+TEST_F(VFSScannerMetaUUIDTest, ZematerialWithNoMeta_RegistersUnderEmbeddedUUID)
+{
+    uuids::uuid embedded = MakeUUID();
+    std::string json     = std::string("{\"uuid\":\"") + uuids::to_string(embedded) + "\"}";
+    ASSERT_TRUE(m_backend.WriteFile(P("/mat.zematerial"), ArrayView<const uint8_t>(reinterpret_cast<const uint8_t*>(json.data()), json.size())).Succeeded());
+
+    m_scanner.Scan(&m_ctx, VFSPath::Root(), &m_cache);
+    ASSERT_TRUE(WaitForCompletion(2000));
+
+    const AssetRecord* rec = m_registry.FindByUUID(embedded);
+    ASSERT_NE(rec, nullptr) << "registry should have the material's own embedded UUID, not a freshly-minted random one";
+    EXPECT_EQ(rec->Type, Managers::AssetType::MATERIAL);
+}
+
+TEST_F(VFSScannerMetaUUIDTest, ExistingMeta_IsNeverReplaced)
+{
+    // GetOrCreate's "never replace an existing UUID" policy must survive the
+    // new pre-seed step untouched.
+    uuids::uuid    embedded     = MakeUUID();
+    uuids::uuid    pre_existing = MakeUUID();
+    Array<uint8_t> bytes        = MakeZemeshBytes(m_arena, embedded);
+    ASSERT_TRUE(m_backend.WriteFile(P("/mesh.zemesh"), ArrayView<const uint8_t>(bytes.data(), bytes.size())).Succeeded());
+
+    MetaFileData seed = {};
+    seed.AssetUUID    = pre_existing;
+    ASSERT_TRUE(MetaFileIO::Write(m_ctx, P("/mesh.zemesh"), seed).Succeeded());
+
+    m_scanner.Scan(&m_ctx, VFSPath::Root(), &m_cache);
+    ASSERT_TRUE(WaitForCompletion(2000));
+
+    EXPECT_EQ(m_registry.FindByUUID(embedded), nullptr) << "must not have registered under the embedded UUID once a .meta already existed";
+    const AssetRecord* rec = m_registry.FindByUUID(pre_existing);
+    ASSERT_NE(rec, nullptr) << "must keep the pre-existing .meta's UUID";
 }

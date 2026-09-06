@@ -404,7 +404,41 @@ namespace ZEngine::Importers
             on_progress(context, 0.5f);
 
         if (config.Options.ImportMaterials && config.Options.ImportTextures)
+        {
             CopyTextureFiles(arena, textures, config);
+
+            // Fbx never synced texture paths into materials (pre-existing gap), and
+            // push_tex assigned throwaway random UUIDs (#755) — fix both here,
+            // matched by the original UUID before it's replaced.
+            for (size_t m = 0; m < materials.size(); ++m)
+            {
+                auto sync_texture = [&](uuids::uuid& uuid_field, Core::Containers::String& path_out) {
+                    for (size_t t = 0; t < textures.size(); ++t)
+                    {
+                        if (textures[t].TextureUUID == uuid_field && !textures[t].Path.empty())
+                        {
+                            path_out.init(arena, textures[t].Path.c_str());
+
+                            auto vfs_path = VFSPath::Parse(textures[t].Path.c_str());
+                            if (vfs_path.Succeeded() && config.VFS)
+                            {
+                                auto hash_result = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, vfs_path.Value());
+                                auto meta_result = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, vfs_path.Value(), "FbxImporter", hash_result.Succeeded() ? hash_result.Value() : 0);
+                                if (meta_result.Succeeded())
+                                {
+                                    textures[t].TextureUUID = meta_result.Value().AssetUUID;
+                                    uuid_field              = meta_result.Value().AssetUUID;
+                                }
+                            }
+                            return;
+                        }
+                    }
+                };
+                sync_texture(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
+                sync_texture(materials[m].NormalTexUUID, materials[m].NormalTexPath);
+                sync_texture(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+            }
+        }
 
         if (on_progress)
             on_progress(context, 0.8f);
