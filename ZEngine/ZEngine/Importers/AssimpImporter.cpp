@@ -173,21 +173,37 @@ namespace ZEngine::Importers
                     CopyTextureFiles(arena, textures, config);
                     for (size_t m = 0; m < materials.size(); ++m)
                     {
-                        auto set_path = [&](const uuids::uuid& uuid, Core::Containers::String& path_out) {
+                        // ExtractTextures assigned a throwaway random UUID (#755); now
+                        // that the file is at its final path, replace it with a stable,
+                        // content-hashed one, matched by the original UUID still held
+                        // in the material fields.
+                        auto sync_texture = [&](uuids::uuid& uuid_field, Core::Containers::String& path_out) {
                             for (size_t t = 0; t < textures.size(); ++t)
                             {
-                                if (textures[t].TextureUUID == uuid && !textures[t].Path.empty())
+                                if (textures[t].TextureUUID == uuid_field && !textures[t].Path.empty())
                                 {
                                     path_out.init(arena, textures[t].Path.c_str());
+
+                                    auto vfs_path = Core::VFS::VFSPath::Parse(textures[t].Path.c_str());
+                                    if (vfs_path.Succeeded() && config.VFS)
+                                    {
+                                        auto hash_result = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, vfs_path.Value());
+                                        auto meta_result = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, vfs_path.Value(), "AssimpImporter", hash_result.Succeeded() ? hash_result.Value() : 0);
+                                        if (meta_result.Succeeded())
+                                        {
+                                            textures[t].TextureUUID = meta_result.Value().AssetUUID;
+                                            uuid_field              = meta_result.Value().AssetUUID;
+                                        }
+                                    }
                                     return;
                                 }
                             }
                         };
-                        set_path(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
-                        set_path(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
-                        set_path(materials[m].NormalTexUUID, materials[m].NormalTexPath);
-                        set_path(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
-                        set_path(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+                        sync_texture(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
+                        sync_texture(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
+                        sync_texture(materials[m].NormalTexUUID, materials[m].NormalTexPath);
+                        sync_texture(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
+                        sync_texture(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
                     }
                 }
             }

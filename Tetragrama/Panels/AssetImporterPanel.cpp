@@ -749,8 +749,12 @@ namespace Tetragrama::Panels
 
         if (has_mesh && mesh_path)
         {
+            // Read once, shared by the meta write below and the add-to-scene block.
+            ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
+            bool                                                has_header = ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(mesh_path, header);
+
             // Write meta file (source path for re-import)
-            auto* ctx_engine = ZEngine::Engine::GetContext();
+            auto*                                               ctx_engine = ZEngine::Engine::GetContext();
             if (ctx_engine && ctx_engine->VFS)
             {
                 auto*   vfs    = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
@@ -765,6 +769,10 @@ namespace Tetragrama::Panels
                     {
                         auto                             meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
                         ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                        // Sync to the file's own embedded UUID — otherwise a nil
+                        // AssetUUID gets locked in forever (#755).
+                        if (has_header)
+                            meta.AssetUUID = header.Id;
                         secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
                         secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
                         secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
@@ -774,33 +782,29 @@ namespace Tetragrama::Panels
             }
 
             // Add mesh instance to scene if triggered by drag-drop
-            if (self->m_add_to_scene)
+            if (self->m_add_to_scene && has_header)
             {
-                ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
-                if (ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(mesh_path, header))
+                auto* app   = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
+                auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+                if (scene)
                 {
-                    auto* app   = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
-                    auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
-                    if (scene)
+                    char iname[256] = {};
+                    if (self->m_instance_name[0])
+                        secure_strncpy(iname, sizeof(iname), self->m_instance_name, sizeof(iname) - 1);
+                    else
                     {
-                        char iname[256] = {};
-                        if (self->m_instance_name[0])
-                            secure_strncpy(iname, sizeof(iname), self->m_instance_name, sizeof(iname) - 1);
-                        else
+                        auto pr = VFSPath::Parse(self->m_path_buf);
+                        if (pr.Succeeded())
                         {
-                            auto pr = VFSPath::Parse(self->m_path_buf);
-                            if (pr.Succeeded())
-                            {
-                                auto s = pr.Value().Stem();
-                                snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
-                            }
+                            auto s = pr.Value().Stem();
+                            snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
                         }
-                        uint32_t render_id              = scene->AddMeshInstance(header.Id, iname);
-                        self->m_pending_actor.uuid      = header.Id;
-                        self->m_pending_actor.render_id = render_id;
-                        self->m_pending_actor.valid     = true;
-                        secure_strncpy(self->m_pending_actor.name, sizeof(self->m_pending_actor.name), iname, sizeof(self->m_pending_actor.name) - 1);
                     }
+                    uint32_t render_id              = scene->AddMeshInstance(header.Id, iname);
+                    self->m_pending_actor.uuid      = header.Id;
+                    self->m_pending_actor.render_id = render_id;
+                    self->m_pending_actor.valid     = true;
+                    secure_strncpy(self->m_pending_actor.name, sizeof(self->m_pending_actor.name), iname, sizeof(self->m_pending_actor.name) - 1);
                 }
             }
             self->m_add_to_scene     = false;
