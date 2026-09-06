@@ -392,10 +392,15 @@ namespace Tetragrama::Panels
             return;
         }
 
-        // Actor header — name editing
+        ArchetypeMask mask     = actor->GetComponentMask();
+        const auto&   registry = ComponentReflectionRegistry::Get();
+
+        // Actor header — name editing + Add Component
         {
-            ZUIBox* hdr = ZUIBeginColumn(ctx, "##insp_hdr", ZFill(), ZPx(fh + 16.f));
-            hdr->Flags  = hdr->Flags | ZUI_DrawBackground;
+            constexpr float kAddBtnW = 70.f;
+
+            ZUIBox*         hdr      = ZUIBeginColumn(ctx, "##insp_hdr", ZFill(), ZPx(fh + 16.f));
+            hdr->Flags               = hdr->Flags | ZUI_DrawBackground;
             ZUIBoxSetColor(hdr, 0.18f, 0.18f, 0.22f, 1.f);
             hdr->EdgeSoftness = 0.f;
             hdr->Padding[1]   = 6.f; // top padding — vertically centers the field
@@ -405,11 +410,46 @@ namespace Tetragrama::Panels
             ZUIBeginRow(ctx, "##insp_hdr_r", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 8.f);
             if (nc_comp)
-                ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 24.f, 80.f));
+                ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 32.f - kAddBtnW, 80.f));
             else
                 ZUILabel(ctx, "Actor", ctx->Theme.TextDefault);
             ZUISpacer(ctx, 8.f);
+
+            static constexpr const char* kAddBtnLabel = "+ Add";
+            if (ZUIButton(ctx, kAddBtnLabel, ZPx(kAddBtnW), ZPx(fh)).Flags & ZUI_SignalClicked)
+            {
+                // The button sits flush against the panel's right edge, so opening at
+                // the click position (ZUIOpenPopup's default) clips the list against
+                // the window edge — anchor leftward from the button's own right edge
+                // instead, same pattern ZUIBeginCombo uses for its dropdown.
+                uint64_t            btn_key = ZUIHashStr(kAddBtnLabel, (uint32_t) strlen(kAddBtnLabel));
+                ZUIPersistentState* ps      = ZUIStateGetOrInsert(&ctx->StateStore, btn_key);
+                float               py      = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : ctx->MousePos[1];
+                float               px      = (ps && ps->ScreenMaxX > 0.f) ? fmaxf(ps->ScreenMaxX - ctx->Style.PopupMinWidth, 0.f) : ctx->MousePos[0];
+                ZUIOpenPopup(ctx, "##add_component_popup", px, py);
+            }
+
+            ZUISpacer(ctx, 8.f);
             ZUIEndRow(ctx);
+
+            if (ZUIBeginPopup(ctx, "##add_component_popup"))
+            {
+                bool any = false;
+                registry.ForEach([&](const ComponentMeta& meta) {
+                    if (MaskHas(mask, meta.TypeID))
+                        return; // already on the actor
+                    if (!meta.Add)
+                        return; // display-only, cannot be constructed
+                    any = true;
+                    if (ZUIMenuItem(ctx, meta.TypeName))
+                        eng->Scene->AddComponentRaw(actor->GetEntityID(), meta.TypeID);
+                });
+
+                if (!any)
+                    ZUIMenuItem(ctx, "No components left to add", false);
+
+                ZUIEndPopup(ctx);
+            }
 
             ZUIEndColumn(ctx);
         }
@@ -515,9 +555,7 @@ namespace Tetragrama::Panels
         ZUIPaddingXY(scroll, 0.f, 4.f); // 4px top/bottom breathing room
 
         // Reflection-driven component sections
-        ArchetypeMask mask     = actor->GetComponentMask();
-        uint32_t      comp_idx = 0;
-        const auto&   registry = ComponentReflectionRegistry::Get();
+        uint32_t comp_idx = 0;
 
         // HOT PATH — runs every frame, no heap allocation allowed.
         registry.ForEach([&](const ComponentMeta& meta) {
@@ -570,39 +608,6 @@ namespace Tetragrama::Panels
 
             ++comp_idx;
         });
-
-        {
-            ZUISpacer(ctx, 6.f);
-            if (ZUIButton(ctx, "+ Add Component", ZPct(1.f), ZPx(24.f)).Flags & ZUI_SignalClicked)
-                ZUIOpenPopup(ctx, "##add_component_popup");
-
-            if (ZUIBeginPopup(ctx, "##add_component_popup"))
-            {
-                bool any = false;
-                registry.ForEach([&](const ComponentMeta& meta) {
-                    if (MaskHas(mask, meta.TypeID))
-                    {
-                        return; // already on the actor
-                    }
-                    if (!meta.Add)
-                    {
-                        return; // display-only, cannot be constructed
-                    }
-                    any = true;
-                    if (ZUIMenuItem(ctx, meta.TypeName))
-                    {
-                        eng->Scene->AddComponentRaw(actor->GetEntityID(), meta.TypeID);
-                    }
-                });
-
-                if (!any)
-                {
-                    ZUIMenuItem(ctx, "No components left to add", false);
-                }
-
-                ZUIEndPopup(ctx);
-            }
-        }
 
         ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx);
