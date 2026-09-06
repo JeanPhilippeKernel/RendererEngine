@@ -4,6 +4,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <cstring>
 
 #if defined(__APPLE__)
 #include <ZEngine/Core/VFS/Platform/VFSFSEventsWatcher.h>
@@ -116,10 +117,22 @@ namespace ZEngine::Core::VFS
         // simultaneous pending debounce entries than that before any flush.
         m_file_watcher->Initialize(m_arena, 256);
 
-        const WatchHandle root_handle = m_file_watcher->Watch(m_project_root_native, /*recursive=*/true, [this](const VFSWatchEvent& ev) {
+        // ev.Path/ev.OldPath are native absolute paths from the OS watcher, but every
+        // downstream consumer expects a workspace-relative VFSPath and prepends the
+        // workspace root itself — VFSPath::FromNative is just Parse, so it wouldn't strip
+        // that root. Do it here, once, instead of double-prefixing everywhere downstream.
+        auto to_relative_vfs_path = [this](cstring native) -> VFSResult<VFSPath> {
+            const size_t root_len   = Helpers::secure_strlen(m_project_root_native);
+            const size_t native_len = Helpers::secure_strlen(native);
+            if (native_len >= root_len && strncmp(native, m_project_root_native, root_len) == 0 && (native[root_len] == '\0' || native[root_len] == PLATFORM_OS_BACKSLASH))
+                return VFSPath::Parse(native[root_len] != '\0' ? native + root_len : "/");
+            return VFSPath::FromNative(native);
+        };
+
+        const WatchHandle root_handle = m_file_watcher->Watch(m_project_root_native, /*recursive=*/true, [this, to_relative_vfs_path](const VFSWatchEvent& ev) {
             const bool         full_rescan = (ev.Kind == WatchEventKind::Overflow);
 
-            VFSResult<VFSPath> path        = full_rescan ? VFSPath::FromNative(m_project_root_native) : VFSPath::FromNative(ev.Path);
+            VFSResult<VFSPath> path        = full_rescan ? to_relative_vfs_path(m_project_root_native) : to_relative_vfs_path(ev.Path);
             if (path.Failed())
                 return;
 
@@ -132,7 +145,7 @@ namespace ZEngine::Core::VFS
                 m_directory_cache->Invalidate(target);
                 if (ev.Kind == WatchEventKind::Renamed && ev.OldPath[0] != '\0')
                 {
-                    VFSResult<VFSPath> old_path = VFSPath::FromNative(ev.OldPath);
+                    VFSResult<VFSPath> old_path = to_relative_vfs_path(ev.OldPath);
                     if (old_path.Succeeded())
                         m_directory_cache->Invalidate(ev.IsDirectory ? old_path.Value() : old_path.Value().Parent());
                 }
@@ -165,7 +178,7 @@ namespace ZEngine::Core::VFS
                     case WatchEventKind::Renamed:
                         if (m_registry && ev.OldPath[0] != '\0')
                         {
-                            VFSResult<VFSPath> old_path = VFSPath::FromNative(ev.OldPath);
+                            VFSResult<VFSPath> old_path = to_relative_vfs_path(ev.OldPath);
                             if (old_path.Succeeded())
                                 m_registry->OnAssetRenamed(old_path.Value(), file_path);
                         }

@@ -272,6 +272,16 @@ namespace Tetragrama::Panels
             ZEngine::Importers::AssetMesh          mesh_data{};
             ZEngine::Importers::AssetNodeHierarchy hier_data{};
             ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(scratch.Arena, native_path, mesh_data, hier_data);
+
+            // IngestMesh only loads geometry/hierarchy — ingest each submesh's material
+            // (and, transitively, its textures) first, before mesh_data is moved below.
+            for (uint32_t i = 0; i < mesh_data.SubMeshes.size(); ++i)
+            {
+                const auto& mat_uuid = mesh_data.SubMeshes[i].MaterialUUID;
+                if (!mat_uuid.is_nil())
+                    ZEngine::Managers::AssetManager::IngestMaterialFromUUID(scratch.Arena, mat_uuid);
+            }
+
             ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh_data), std::move(hier_data));
             ZReleaseScratch(scratch);
         }
