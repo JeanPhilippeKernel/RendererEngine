@@ -68,7 +68,8 @@ namespace
             ComponentReflectionRegistry::Get().Initialize(&s_manager.MainArena);
             RegisterBuiltInComponentReflection();
             ComponentSerializerRegistry::Get().Initialize(&s_manager.MainArena);
-            ComponentSerializerRegistry::Get().Register(ComponentTypeOf<TransformComponent>(),
+            ComponentSerializerRegistry::Get().Register(
+                ComponentTypeOf<TransformComponent>(),
                 {
                     .SerializeYAML   = SerializeTransform,
                     .DeserializeYAML = DeserializeTransform,
