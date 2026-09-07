@@ -59,7 +59,7 @@ namespace
         t->Scale           = {s[0].as<float>(), s[1].as<float>(), s[2].as<float>()};
     }
 
-// clang-format off
+    // clang-format off
     // Registries are process-wide singletons: set up once for the suite.
     void EnsureRegistries()
     {
@@ -79,7 +79,7 @@ namespace
         }();
         (void) s_once;
     }
-// clang-format on
+    // clang-format on
 } // namespace
 
 class YAMLSceneSerializerTest : public ::testing::Test
