@@ -68,11 +68,10 @@ namespace
             ComponentReflectionRegistry::Get().Initialize(&s_manager.MainArena);
             RegisterBuiltInComponentReflection();
             ComponentSerializerRegistry::Get().Initialize(&s_manager.MainArena);
-            ComponentSerializerRegistry::Get().Register(
-                ComponentTypeOf<TransformComponent>(),
+            ComponentSerializerRegistry::Get().Register(ComponentTypeOf<TransformComponent>(),
                 {
-                         .SerializeYAML   = SerializeTransform,
-                         .DeserializeYAML = DeserializeTransform,
+                    .SerializeYAML   = SerializeTransform,
+                    .DeserializeYAML = DeserializeTransform,
                 });
             return true;
         }();
@@ -125,7 +124,7 @@ protected:
     {
         char path[512];
         FullPath(rel, path);
-        out[0]       = '\0';
+        out[0]      = '\0';
         std::FILE* f = std::fopen(path, "rb");
         ASSERT_NE(f, nullptr);
         const size_t n = std::fread(out, 1, out_size - 1, f);
