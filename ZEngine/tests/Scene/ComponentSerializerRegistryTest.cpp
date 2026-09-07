@@ -3,8 +3,7 @@
 #include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/ECS/Scene.h>
 #include <gtest/gtest.h>
-#include <string>
-#include <vector>
+#include <cstring>
 
 using namespace ZEngine;
 using namespace ZEngine::ECS;
@@ -32,8 +31,17 @@ namespace
         const auto* t = scene.GetComponent<TransformComponent>(id);
         if (!t)
             return;
-        node["position"] = std::vector<float>{t->Position.x, t->Position.y, t->Position.z};
-        node["scale"]    = std::vector<float>{t->Scale.x, t->Scale.y, t->Scale.z};
+        YAML::Node position(YAML::NodeType::Sequence);
+        position.push_back(t->Position.x);
+        position.push_back(t->Position.y);
+        position.push_back(t->Position.z);
+        node["position"] = position;
+
+        YAML::Node scale(YAML::NodeType::Sequence);
+        scale.push_back(t->Scale.x);
+        scale.push_back(t->Scale.y);
+        scale.push_back(t->Scale.z);
+        node["scale"] = scale;
     }
 
     void DeserializeTransformYAML(void*, EntityID id, Scene& scene, const YAML::Node& node)
@@ -41,10 +49,10 @@ namespace
         auto* t = scene.GetComponent<TransformComponent>(id);
         if (!t)
             return;
-        const auto p = node["position"].as<std::vector<float>>();
-        t->Position  = {p[0], p[1], p[2]};
-        const auto s = node["scale"].as<std::vector<float>>();
-        t->Scale     = {s[0], s[1], s[2]};
+        const YAML::Node p = node["position"];
+        t->Position        = {p[0].as<float>(), p[1].as<float>(), p[2].as<float>()};
+        const YAML::Node s = node["scale"];
+        t->Scale           = {s[0].as<float>(), s[1].as<float>(), s[2].as<float>()};
     }
 
     void SerializeTransformBinary(void*, EntityID id, const Scene& scene, Core::Containers::Array<uint8_t>& out)
@@ -244,10 +252,10 @@ TEST_F(SerializerRegistryFixture, EmittedYAMLTextRoundTrips)
 
     YAML::Emitter emitter;
     emitter << out;
-    const std::string text = emitter.c_str();
+    cstring text = emitter.c_str();
 
-    EXPECT_NE(text.find("position"), std::string::npos);
-    EXPECT_EQ(text.find('{'), std::string::npos); // block YAML, not JSON-style flow
+    EXPECT_NE(std::strstr(text, "position"), nullptr);
+    EXPECT_EQ(std::strchr(text, '{'), nullptr); // block YAML, not JSON-style flow
 
     t->Position         = {0.f, 0.f, 0.f};
     YAML::Node reparsed = YAML::Load(text);
