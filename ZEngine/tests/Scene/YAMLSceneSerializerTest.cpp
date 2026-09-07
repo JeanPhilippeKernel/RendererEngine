@@ -59,6 +59,7 @@ namespace
         t->Scale           = {s[0].as<float>(), s[1].as<float>(), s[2].as<float>()};
     }
 
+// clang-format off
     // Registries are process-wide singletons: set up once for the suite.
     void EnsureRegistries()
     {
@@ -71,13 +72,14 @@ namespace
             ComponentSerializerRegistry::Get().Register(
                 ComponentTypeOf<TransformComponent>(),
                 {
-                    .SerializeYAML   = SerializeTransform,
-                    .DeserializeYAML = DeserializeTransform,
+                         .SerializeYAML   = SerializeTransform,
+                         .DeserializeYAML = DeserializeTransform,
                 });
             return true;
         }();
         (void) s_once;
     }
+// clang-format on
 } // namespace
 
 class YAMLSceneSerializerTest : public ::testing::Test
