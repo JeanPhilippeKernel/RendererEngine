@@ -85,12 +85,20 @@ namespace ZEngine::Core::Memory
             }
         };
 
-        // DeviceGeometry — vertex/index/storage buffers. Fixed block size is fine here:
-        // geometry buffers don't vary in size the way textures do.
-        create_buffer_pool(GpuMemoryDomain::DeviceGeometry, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE}, GeometryBytes, 2);
+        // DeviceGeometry — vertex/index/storage buffers. blockSize=0 (auto-sized),
+        // maxBlockCount=0 (unlimited): RRM's global vertex/index buffers are each exactly
+        // 512 MB, and a fixed block exactly equal to an allocation's size can't actually
+        // fit it (same bookkeeping-headroom issue as HostStaging below — confirmed by
+        // [GPU] Pool for domain 0 exhausted firing on every single geometry allocation,
+        // not just after a block-count cap was reached).
+        create_buffer_pool(GpuMemoryDomain::DeviceGeometry, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VmaAllocationCreateInfo{.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE}, 0, 0);
 
-        // HostUniform — per-frame UBOs/SSBOs on the BAR window.
-        create_buffer_pool(GpuMemoryDomain::HostUniform, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VmaAllocationCreateInfo{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO}, UniformBytes, 1);
+        // HostUniform — per-frame UBOs/SSBOs on the BAR window. blockSize=0, maxBlockCount=0
+        // for the same reason as DeviceGeometry above: PerFrameUploadHeap::kCapacity alone
+        // is exactly UniformBytes, and GraphicRenderer's Transform/RenderData/Material/Light
+        // buffers plus ZUI's per-frame vertex/index buffers all share this one domain —
+        // a single fixed 1-block pool was never going to fit all of that.
+        create_buffer_pool(GpuMemoryDomain::HostUniform, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VmaAllocationCreateInfo{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO}, 0, 0);
 
         // HostStaging — built from the staging ring's OWN flags (AUTO_PREFER_DEVICE), not
         // AllocateBuffer's generic HostStaging branch (plain AUTO): those can resolve to
