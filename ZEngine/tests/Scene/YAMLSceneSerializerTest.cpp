@@ -125,7 +125,7 @@ protected:
     {
         char path[512];
         FullPath(rel, path);
-        out[0]      = '\0';
+        out[0]       = '\0';
         std::FILE* f = std::fopen(path, "rb");
         ASSERT_NE(f, nullptr);
         const size_t n = std::fread(out, 1, out_size - 1, f);
