@@ -161,7 +161,7 @@ namespace ZEngine::Hardwares
         void                              DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
         void                              Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance);
         void                              TransitionImageLayout(const Rendering::Primitives::ImageMemoryBarrier& image_barrier);
-        void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
+        void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset = 0);
         void                              BindVertexBuffer(const Core::Memory::BufferView& buffer);
         void                              BindIndexBuffer(const Core::Memory::BufferView& buffer, VkIndexType type);
         void                              SetScissor(uint32_t w, uint32_t h, int32_t x = 0, int32_t y = 0);
@@ -348,7 +348,15 @@ namespace ZEngine::Hardwares
         /// @brief Timeline-gated disposal. Render-thread only.
         void                                            DestroyTexture(const Rendering::Textures::TextureHandle& handle);
 
-        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
+        /// @brief Copies data into the texture's backing image via the ring buffer when it
+        ///        fits, else a one-shot staging buffer (returned so the caller can free it
+        ///        once the copy's GPU work retires).
+        /// @param out_ring_offset When non-null, set to the ring's byte offset if the ring
+        ///        path was used (UINT32_MAX otherwise) — the caller must then call
+        ///        GpuMem.Ring.Submit(offset, size, signal_value) once it knows the timeline
+        ///        value the enqueued copy will signal, or this region is never marked safe
+        ///        to reclaim and a later allocation can overwrite it before the GPU reads it.
+        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
 

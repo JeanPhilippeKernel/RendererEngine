@@ -102,14 +102,6 @@ namespace ZEngine::Helpers
             task();
         }
 
-        /// @brief Register a per-worker init callback.
-        ///        Called exactly once per worker at the start of its task loop.
-        ///        If called after workers have started (the typical case — RRM
-        ///        initialises after the pool is constructed), all idle workers
-        ///        are woken via notify_one so they pick up the callback immediately.
-        ///        The callback runs before any queued tasks on each worker thread.
-        /// @param fn  Callback — fn(ctx, worker_idx). Must be thread-safe.
-        /// @param ctx Caller context forwarded to fn.
         void InitClosureSlab(Core::Memory::ArenaAllocator* arena, size_t bytes)
         {
             m_closure_slab.Init(arena, bytes);
@@ -120,6 +112,13 @@ namespace ZEngine::Helpers
             return m_closure_slab.Pool ? &m_closure_slab : nullptr;
         }
 
+        /// @brief Register a per-worker init callback.
+        ///        Each worker runs this at most once, the next time it reaches the top
+        ///        of its loop — whether that's before its first task (registered early)
+        ///        or after being woken by notify_one below (the typical case — RRM
+        ///        initialises after the pool is already running).
+        /// @param fn  Callback — fn(ctx, worker_idx). Must be thread-safe.
+        /// @param ctx Caller context forwarded to fn.
         void RegisterWorkerInit(WorkerInitFn fn, void* ctx)
         {
             m_init_ctx.value.store(ctx, std::memory_order_relaxed);
@@ -157,15 +156,28 @@ namespace ZEngine::Helpers
 
         void                       WorkerRun(size_t idx)
         {
-            // Call per-worker init callback if registered (e.g. set t_worker_slab).
-            // Runs before the first task — guaranteed by RegisterWorkerInit waking the worker.
-            WorkerInitFn init = m_init_fn.value.load(std::memory_order_acquire);
-            if (init)
-                init(m_init_ctx.value.load(std::memory_order_relaxed), idx);
+            // Re-checked every time this worker reaches the top of its loop, not just
+            // once before entering it — RegisterWorkerInit is normally called after the
+            // pool's workers are already running and idle-waiting in cv.wait below;
+            // notify_one wakes the wait but does NOT resume execution back at a one-time
+            // pre-loop check, so a "run once before the loop" version of this never
+            // actually ran the callback on any real worker. last_init dedupes so a plain
+            // task-arrival wake (no new registration) doesn't re-run the same callback.
+            WorkerInitFn last_init       = nullptr;
+            auto         run_init_if_new = [&] {
+                WorkerInitFn init = m_init_fn.value.load(std::memory_order_acquire);
+                if (init && init != last_init)
+                {
+                    init(m_init_ctx.value.load(std::memory_order_relaxed), idx);
+                    last_init = init;
+                }
+            };
 
             Worker& w = m_workers[idx];
             while (!m_cancellation.value.load(std::memory_order_acquire))
             {
+                run_init_if_new();
+
                 Task task;
                 while (w.queue.pop(task))
                     task();

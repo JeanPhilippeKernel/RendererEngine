@@ -34,6 +34,7 @@
 #include <stb/stb_image_write.h>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <set>
 
 using namespace ZEngine::Core::Memory;
@@ -912,22 +913,29 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily                = m_device->TransferFamilyIndex;
             to_transfer.DestinationQueueFamily           = m_device->TransferFamilyIndex;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout                                  = to_transfer.NewLayout;
+            img_buf->Layout             = to_transfer.NewLayout;
 
-            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data);
+            uint32_t   ring_offset      = 0;
+            BufferView transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, &ring_offset);
+            // Ring chunks retire against RenderTimeline (see VulkanDevice::TickMemory),
+            // not m_tex_transfer_timelines — the frame's own submission is on the same
+            // queue, after this one, so it's a safe (if slightly conservative) proxy for
+            // "the transfer copy has definitely finished reading the ring by then".
+            if (ring_offset != std::numeric_limits<uint32_t>::max())
+                m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
 
-            ImageMemoryBarrierSpecification release          = {};
-            release.ImageHandle                              = buffer_handle;
-            release.OldLayout                                = ImageLayout::TRANSFER_DST_OPTIMAL;
-            release.NewLayout                                = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            release.ImageAspectMask                          = VkImageAspectFlagBits(img_buf_aspect);
-            release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
-            release.DestinationAccessMask                    = VK_ACCESS_NONE;
-            release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            release.DestinationStageMask                     = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            release.LayerCount                               = texture->Specification.LayerCount;
-            release.SourceQueueFamily                        = m_device->TransferFamilyIndex;
-            release.DestinationQueueFamily                   = m_device->GraphicFamilyIndex;
+            ImageMemoryBarrierSpecification release = {};
+            release.ImageHandle                     = buffer_handle;
+            release.OldLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+            release.NewLayout                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            release.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
+            release.SourceAccessMask                = VK_ACCESS_TRANSFER_WRITE_BIT;
+            release.DestinationAccessMask           = VK_ACCESS_NONE;
+            release.SourceStageMask                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            release.DestinationStageMask            = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            release.LayerCount                      = texture->Specification.LayerCount;
+            release.SourceQueueFamily               = m_device->TransferFamilyIndex;
+            release.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{release});
             img_buf->Layout = release.NewLayout;
             transfer_cmd->End();
@@ -988,9 +996,14 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
             to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout                          = to_transfer.NewLayout;
+            img_buf->Layout        = to_transfer.NewLayout;
 
-            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data);
+            uint32_t   ring_offset = 0;
+            BufferView staging     = m_device->WriteTextureData(cmd, handle, data, &ring_offset);
+            // See the separate-transfer-queue branch above for why RenderTimelineNextValue
+            // (not signal_value/m_tex_timelines) is the correct retirement marker here.
+            if (ring_offset != std::numeric_limits<uint32_t>::max())
+                m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
 
             ImageMemoryBarrierSpecification to_final = {};
             to_final.ImageHandle                     = buffer_handle;
@@ -1067,8 +1080,9 @@ namespace ZEngine::Rendering
         vkResetCommandBuffer(cmd->GetHandle(), 0);
         cmd->Begin();
         cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-        img_buf->Layout    = to_transfer.NewLayout;
-        BufferView staging = m_device->WriteTextureData(cmd, handle, pixels);
+        img_buf->Layout        = to_transfer.NewLayout;
+        uint32_t   ring_offset = 0;
+        BufferView staging     = m_device->WriteTextureData(cmd, handle, pixels, &ring_offset);
         cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
         img_buf->Layout = to_final.NewLayout;
         cmd->End();
@@ -1084,6 +1098,11 @@ namespace ZEngine::Rendering
         vkQueueSubmit(gfx_queue, 1, &submit, m_upload_fence);
         vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
         cmd->ResetState();
+
+        // Fence wait above already blocked until the GPU finished reading the ring, so
+        // this chunk is retroactively safe — 0 always satisfies Drain's <= completed_value.
+        if (ring_offset != std::numeric_limits<uint32_t>::max())
+            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), 0);
 
         if (staging)
             m_device->GpuMem.FreeBuffer(staging);
@@ -1455,7 +1474,6 @@ namespace ZEngine::Rendering
                 pixels = static_cast<uint8_t*>(slab->Alloc(bytes));
                 Helpers::secure_memmove(pixels, bytes, buffer.data(), bytes);
             }
-
             TextureDeferral deferral;
             deferral.Pixels    = pixels;
             deferral.ByteSize  = bytes;

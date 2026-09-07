@@ -11,6 +11,7 @@
 #include <ZEngine/Windows/CoreWindow.h>
 #include <cstdlib>
 #include <filesystem>
+#include <limits>
 
 using namespace std::chrono_literals;
 using namespace ZEngine::Rendering::Primitives;
@@ -1480,12 +1481,12 @@ namespace ZEngine::Hardwares
         vkCmdPipelineBarrier(m_command_buffer, barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
     }
 
-    void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout)
+    void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
         VkBufferImageCopy buffer_image_copy               = {};
-        buffer_image_copy.bufferOffset                    = 0;
+        buffer_image_copy.bufferOffset                    = source_offset;
         buffer_image_copy.bufferRowLength                 = 0;
         buffer_image_copy.bufferImageHeight               = 0;
         buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1997,8 +1998,11 @@ namespace ZEngine::Hardwares
         }
     }
 
-    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data)
+    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset)
     {
+        if (out_ring_offset)
+            *out_ring_offset = std::numeric_limits<uint32_t>::max();
+
         if (!handle.Valid() || !(data) || !(command_buf))
         {
             return {};
@@ -2016,8 +2020,11 @@ namespace ZEngine::Hardwares
             BufferView ring_view = {};
             ring_view.Handle     = GpuMem.Ring.Buffer;
             ring_view.Allocation = GpuMem.Ring.Allocation;
-            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
-            // Return empty view — ring owns lifetime, caller must not free
+            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)], ring_offset);
+            // Ring owns lifetime, caller must not free — but must call GpuMem.Ring.Submit
+            // once it knows the timeline value this copy will signal (see out_ring_offset).
+            if (out_ring_offset)
+                *out_ring_offset = ring_offset;
             return {};
         }
 
