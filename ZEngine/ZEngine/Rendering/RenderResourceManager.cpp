@@ -335,7 +335,7 @@ namespace ZEngine::Rendering
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
     }
 
-    static void RecordAndSubmit(CommandBuffer* cmd, Rendering::Primitives::Fence* fence, VkQueue queue, void (*record_fn)(VkCommandBuffer, void*), void* record_ctx, VkSemaphore wait_semaphore = VK_NULL_HANDLE, uint64_t wait_value = 0)
+    static void RecordAndSubmit(CommandBuffer* cmd, Rendering::Primitives::Fence* fence, VkQueue queue, void (*record_fn)(VkCommandBuffer, void*), void* record_ctx)
     {
         cmd->ResetState();
         vkResetCommandBuffer(cmd->GetHandle(), 0);
@@ -343,24 +343,10 @@ namespace ZEngine::Rendering
         record_fn(cmd->GetHandle(), record_ctx);
         cmd->End();
 
-        VkTimelineSemaphoreSubmitInfo timeline_wait{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-        VkPipelineStageFlags          wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-        VkCommandBuffer               raw        = cmd->GetHandle();
-        VkSubmitInfo                  submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        VkCommandBuffer raw = cmd->GetHandle();
+        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submit.commandBufferCount = 1;
         submit.pCommandBuffers    = &raw;
-
-        if (wait_semaphore != VK_NULL_HANDLE && wait_value > 0)
-        {
-            timeline_wait.waitSemaphoreValueCount   = 1;
-            timeline_wait.pWaitSemaphoreValues      = &wait_value;
-            timeline_wait.signalSemaphoreValueCount = 0;
-            submit.pNext                            = &timeline_wait;
-            submit.waitSemaphoreCount               = 1;
-            submit.pWaitSemaphores                  = &wait_semaphore;
-            submit.pWaitDstStageMask                = &wait_stage;
-        }
 
         // Wait before reset — fence may be in-flight under MoltenVK async completion.
         fence->Wait(UINT64_MAX);
@@ -446,8 +432,8 @@ namespace ZEngine::Rendering
     void RenderResourceManager::BeginBatchUpload(uint8_t frame_index)
     {
         m_batch_frame_index    = frame_index;
-        // Instant buffer, not the regular pool's slot 0 — that slot is shared by
-        // synchronous callers (AppendToGlobalBuffer's non-batch branch, UpdateBuffer) that
+        // Instant buffer, not the regular pool's slot 0 — that slot is shared by the two
+        // remaining synchronous callers (UpdateBuffer's ring path, UploadFontAtlas), which
         // submit and block before returning; this buffer's submission is deferred instead.
         m_batch_cmd            = m_upload_cmd_mgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, 0, 0, false);
 
