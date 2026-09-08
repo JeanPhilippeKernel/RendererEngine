@@ -205,6 +205,17 @@ namespace ZEngine::Applications
                 if (!handle.IsValid())
                     continue;
 
+                // Skip non-resident meshes — either upload still in flight (Pending) or the
+                // slot was evicted (Unloaded). For evicted slots, enqueue a reload so the
+                // streaming manager re-uploads the data at the start of the next frame.
+                if (!rrm->IsMeshResident(handle))
+                {
+                    rrm->RequestMeshLoad(handle, inst.MeshUUID);
+                    continue;
+                }
+
+                rrm->MarkMeshReferenced(handle);
+
                 uint32_t vtx_base = 0, idx_base = 0;
                 rrm->GetMeshOffsets(handle, vtx_base, idx_base);
 

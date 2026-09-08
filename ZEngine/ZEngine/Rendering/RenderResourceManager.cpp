@@ -175,10 +175,14 @@ namespace ZEngine::Rendering
         }
 
         // Free all live buffer slots
-        if (m_global_vertex_buf)
-            m_device->GpuMem.FreeBuffer(m_global_vertex_buf);
-        if (m_global_index_buf)
-            m_device->GpuMem.FreeBuffer(m_global_index_buf);
+        if (m_pool.VertexBuffer)
+            m_device->GpuMem.FreeBuffer(m_pool.VertexBuffer);
+        if (m_pool.IndexBuffer)
+            m_device->GpuMem.FreeBuffer(m_pool.IndexBuffer);
+        if (m_builtin_vertex_buf)
+            m_device->GpuMem.FreeBuffer(m_builtin_vertex_buf);
+        if (m_builtin_index_buf)
+            m_device->GpuMem.FreeBuffer(m_builtin_index_buf);
 
         for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
         {
@@ -186,6 +190,7 @@ namespace ZEngine::Rendering
                 m_device->GpuMem.FreeBuffer(m_gbuf_slots[i].Data);
         }
 
+        m_streaming_mgr.Deinitialize();
         m_device   = nullptr;
         m_registry = nullptr;
     }
@@ -194,6 +199,9 @@ namespace ZEngine::Rendering
     {
         m_active_frame_index = static_cast<uint8_t>(frame_index);
         RetireBatchStagings();
+        m_streaming_mgr.Tick(frame_index);
+        if (m_streaming_mgr.IsCompactionRequested())
+            RunCompaction();
         FlushPendingUploads(frame_index);
         FlushPendingSwaps(frame_index);
         FlushPendingTextureReloads();
@@ -245,8 +253,13 @@ namespace ZEngine::Rendering
                     ZENGINE_LOG_RENDER_ERR("[RRM] Hot-reload swap failed to re-upload mesh data — old data left in place")
                     continue;
                 }
-                // Append-only global buffer — no GPU free for the old region, just repoint.
-                m_mesh_slots[s.OldBuffer.Index].Data = new_data;
+                // Free the old region before repointing the slot — pool is no longer append-only.
+                auto& slot = m_mesh_slots[s.OldBuffer.Index];
+                if (slot.Data.Region.VtxByteSize > 0)
+                    m_pool.Free(slot.Data.Region);
+                slot.Data            = new_data;
+                slot.Data.State      = StreamingState::Resident;
+                slot.Data.Referenced = false;
             }
         }
     }
@@ -356,37 +369,83 @@ namespace ZEngine::Rendering
         cmd->ResetState();
     }
 
+    // Derive a per-axis geometry streaming budget from the device's device-local VRAM.
+    // Uses 15% of the largest device-local heap, clamped to [GLOBAL_VTX_MIN, GLOBAL_VTX_CAPACITY].
+    // The same value is used for both vtx and idx axes (split evenly from the total budget).
+    static VkDeviceSize DeriveGeometryBudget(const VkPhysicalDeviceMemoryProperties& props)
+    {
+        VkDeviceSize largest_device_local = 0;
+        for (uint32_t i = 0; i < props.memoryHeapCount; ++i)
+        {
+            if ((props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) && props.memoryHeaps[i].size > largest_device_local)
+                largest_device_local = props.memoryHeaps[i].size;
+        }
+
+        if (largest_device_local == 0)
+            return RenderResourceManager::GLOBAL_VTX_CAPACITY;
+
+        VkDeviceSize half_budget = largest_device_local * 15 / 100 / 2;
+        half_budget              = std::max(half_budget, RenderResourceManager::GLOBAL_VTX_MIN);
+        half_budget              = std::min(half_budget, RenderResourceManager::GLOBAL_VTX_CAPACITY);
+        return half_budget;
+    }
+
     void RenderResourceManager::InitGlobalBuffers()
     {
-        m_global_vertex_buf = m_device->GpuMem.AllocateBuffer(GLOBAL_VTX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalVertexBuffer");
+        VkDeviceSize vtx_capacity = 0;
+        VkDeviceSize idx_capacity = 0;
 
-        m_global_index_buf  = m_device->GpuMem.AllocateBuffer(GLOBAL_IDX_CAPACITY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalIndexBuffer");
+        if (m_device->GeometryStreamingBudget != 0)
+        {
+            // Explicit project.json override: split evenly, clamp to [min, max].
+            VkDeviceSize half = m_device->GeometryStreamingBudget / 2;
+            half              = std::max(half, GLOBAL_VTX_MIN);
+            half              = std::min(half, GLOBAL_VTX_CAPACITY);
+            vtx_capacity      = half;
+            idx_capacity      = half;
+            ZENGINE_LOG_RENDER_INFO("[RRM] Geometry pool: project override {} MB vtx + {} MB idx", vtx_capacity >> 20, idx_capacity >> 20)
+        }
+        else
+        {
+            vtx_capacity = DeriveGeometryBudget(m_device->PhysicalDeviceMemoryProperties);
+            idx_capacity = vtx_capacity;
+            ZENGINE_LOG_RENDER_INFO("[RRM] Geometry pool: auto-detected {} MB vtx + {} MB idx (15% of largest device-local heap)", vtx_capacity >> 20, idx_capacity >> 20)
+        }
 
-        m_vtx_cursor        = 0;
-        m_idx_cursor        = 0;
+        m_pool.VertexBuffer = m_device->GpuMem.AllocateBuffer(vtx_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalVertexBuffer");
+        m_pool.IndexBuffer  = m_device->GpuMem.AllocateBuffer(idx_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalIndexBuffer");
+        ZENGINE_VALIDATE_ASSERT(m_pool.VertexBuffer, "RRM: global vertex buffer allocation failed")
+        ZENGINE_VALIDATE_ASSERT(m_pool.IndexBuffer, "RRM: global index buffer allocation failed")
+        m_pool.Initialize(m_device->Arena, vtx_capacity, idx_capacity, MAX_BUFFERS * 2);
 
-        ZENGINE_VALIDATE_ASSERT(m_global_vertex_buf, "RRM: global vertex buffer allocation failed")
-        ZENGINE_VALIDATE_ASSERT(m_global_index_buf, "RRM: global index buffer allocation failed")
+        m_builtin_vertex_buf = m_device->GpuMem.AllocateBuffer(BUILTIN_VTX_CAPACITY, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::BuiltinVertexBuffer");
+        m_builtin_index_buf  = m_device->GpuMem.AllocateBuffer(BUILTIN_IDX_CAPACITY, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::BuiltinIndexBuffer");
+        m_builtin_vtx_cursor = 0;
+        m_builtin_idx_cursor = 0;
+        ZENGINE_VALIDATE_ASSERT(m_builtin_vertex_buf, "RRM: builtin vertex buffer allocation failed")
+        ZENGINE_VALIDATE_ASSERT(m_builtin_index_buf, "RRM: builtin index buffer allocation failed")
+
+        m_streaming_mgr.Initialize(m_device, this);
     }
 
     void RenderResourceManager::RegisterBuiltinGeometry(const void* vtx_data, size_t vtx_bytes, const uint32_t* idx_data, uint32_t idx_count, uint32_t& out_vtx_offset, uint32_t& out_idx_offset)
     {
         const size_t idx_bytes = idx_count * sizeof(uint32_t);
-        ZENGINE_VALIDATE_ASSERT(m_vtx_cursor + vtx_bytes <= GLOBAL_VTX_CAPACITY, "RRM::RegisterBuiltinGeometry: global vertex buffer out of space")
-        ZENGINE_VALIDATE_ASSERT(m_idx_cursor + idx_bytes <= GLOBAL_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: global index buffer out of space")
+        ZENGINE_VALIDATE_ASSERT(m_builtin_vtx_cursor + vtx_bytes <= BUILTIN_VTX_CAPACITY, "RRM::RegisterBuiltinGeometry: builtin vertex buffer out of space")
+        ZENGINE_VALIDATE_ASSERT(m_builtin_idx_cursor + idx_bytes <= BUILTIN_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: builtin index buffer out of space")
 
-        // Called pre-render-thread (single-threaded init) — the batch this opens simply
-        // stays open, unclosed, until the first real frame's RRM::EndFrame, at which point
-        // any mesh uploads from that same first frame join it too. Safe: frame_index here
-        // is just "which reusable slot", decoupled from the swapchain's own frame index.
+        // Called pre-render-thread (single-threaded init) — the batch this opens stays
+        // open until the first real frame's RRM::EndFrame, where any mesh uploads from
+        // that frame join it too. Builtin data goes into the pinned builtin buffers, not
+        // the streaming global buffers, so a ResetGeometryBuffers never corrupts it.
         EnsureBatchOpen(static_cast<uint8_t>(m_active_frame_index));
-        AppendToGlobalBuffer(m_global_vertex_buf, vtx_data, vtx_bytes, m_vtx_cursor, m_active_frame_index);
-        AppendToGlobalBuffer(m_global_index_buf, idx_data, idx_bytes, m_idx_cursor, m_active_frame_index);
+        AppendToGlobalBuffer(m_builtin_vertex_buf, vtx_data, vtx_bytes, m_builtin_vtx_cursor, m_active_frame_index);
+        AppendToGlobalBuffer(m_builtin_index_buf, idx_data, idx_bytes, m_builtin_idx_cursor, m_active_frame_index);
 
-        out_vtx_offset  = static_cast<uint32_t>(m_vtx_cursor / (8 * sizeof(float)));
-        out_idx_offset  = static_cast<uint32_t>(m_idx_cursor / sizeof(uint32_t));
-        m_vtx_cursor   += vtx_bytes;
-        m_idx_cursor   += idx_bytes;
+        out_vtx_offset        = static_cast<uint32_t>(m_builtin_vtx_cursor / (8 * sizeof(float)));
+        out_idx_offset        = static_cast<uint32_t>(m_builtin_idx_cursor / sizeof(uint32_t));
+        m_builtin_vtx_cursor += vtx_bytes;
+        m_builtin_idx_cursor += idx_bytes;
     }
 
     void RenderResourceManager::ResetGeometryBuffers()
@@ -396,8 +455,7 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::ResetGeometryBuffersInternal()
     {
-        m_vtx_cursor = 0;
-        m_idx_cursor = 0;
+        m_pool.Reset();
         for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
             m_mesh_slots[i] = {};
         m_mesh_slot_count = 0;
@@ -406,6 +464,68 @@ namespace ZEngine::Rendering
         for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
             m_uuid_to_buffer[i] = {};
         m_uuid_to_buffer_count = 0;
+    }
+
+    void RenderResourceManager::RunCompaction()
+    {
+        // Snapshot all Resident slots with their AssetHandles before touching the pool.
+        // AssetManager::Meshes is always CPU-resident today (no CPU-side eviction), so
+        // GetAsset<AssetMesh> inside AppendMeshData is guaranteed to succeed for every
+        // Resident slot. If CPU streaming is added later, switch to a GPU self-copy.
+        struct CompactEntry
+        {
+            uint32_t              SlotIdx;
+            Managers::AssetHandle Asset;
+        };
+        CompactEntry entries[MAX_UUID_MAP];
+        uint32_t     entry_count = 0;
+
+        {
+            std::lock_guard lock(m_uuid_map_mutex);
+            for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+            {
+                const UUIDBufferPair& pair = m_uuid_to_buffer[i];
+                if (!pair.Handle.IsValid())
+                    continue;
+                uint32_t slot_idx = pair.Handle.Index;
+                if (slot_idx >= m_mesh_slot_count)
+                    continue;
+                const auto& slot = m_mesh_slots[slot_idx];
+                if (slot.Generation != pair.Handle.Generation)
+                    continue;
+                if (slot.Data.State != StreamingState::Resident)
+                    continue;
+                const AssetRecord* rec = m_registry->FindByUUID(pair.UUID);
+                if (!rec)
+                    continue;
+                entries[entry_count++] = {slot_idx, rec->SlotHandle};
+            }
+        }
+
+        // Reset the pool: zero cursors, clear free lists. VkBuffer content is irrelevant —
+        // every Resident byte will be re-uploaded into the new packed layout below.
+        m_pool.Reset();
+
+        // Clear stale regions so no slot holds a dangling offset after the reset.
+        for (uint32_t i = 0; i < entry_count; ++i)
+            m_mesh_slots[entries[i].SlotIdx].Data.Region = {};
+
+        // Re-upload each mesh into a fresh packed region.  EnsureBatchOpen opens the
+        // batch if nothing else has yet — it will be closed by EndFrame as normal.
+        EnsureBatchOpen(m_active_frame_index);
+        for (uint32_t i = 0; i < entry_count; ++i)
+        {
+            MeshSlot new_data = AppendMeshData(entries[i].Asset, m_active_frame_index);
+            if (new_data.VtxCount > 0)
+            {
+                m_mesh_slots[entries[i].SlotIdx].Data.Region   = new_data.Region;
+                m_mesh_slots[entries[i].SlotIdx].Data.VtxCount = new_data.VtxCount;
+                m_mesh_slots[entries[i].SlotIdx].Data.IdxCount = new_data.IdxCount;
+            }
+        }
+
+        m_streaming_mgr.ClearCompactionRequest();
+        ZENGINE_LOG_RENDER_INFO("[RRM] Geometry compaction complete — {} meshes re-packed, fragmentation now {:.1f}%", entry_count, m_pool.FragmentationRatio() * 100.f)
     }
 
     void RenderResourceManager::RetireBatchStagings()
@@ -486,13 +606,13 @@ namespace ZEngine::Rendering
         m_batch_cmd  = nullptr;
     }
 
-    void RenderResourceManager::AppendToGlobalBuffer(BufferView& global_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)
+    void RenderResourceManager::AppendToGlobalBuffer(BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)
     {
         BufferView staging = m_device->GpuMem.AllocateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, "RRM::Staging");
         ZENGINE_VALIDATE_ASSERT(staging, "RRM::AppendToGlobalBuffer: staging alloc failed")
         ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::AppendToGlobalBuffer: staging copy failed")
 
-        GlobalBufferCopyCtx ctx{staging.Handle, global_buf.Handle, byte_offset, byte_size};
+        GlobalBufferCopyCtx ctx{staging.Handle, dst_buf.Handle, byte_offset, byte_size};
 
         // Every caller (FlushPendingUploads, FlushPendingSwaps, RegisterBuiltinGeometry)
         // calls EnsureBatchOpen first — there is no longer a synchronous fallback path.
@@ -515,36 +635,31 @@ namespace ZEngine::Rendering
         static constexpr uint32_t FLOATS_PER_DRAW_VERTEX = 8;                                      // x,y,z, nx,ny,nz, u,v
         static constexpr uint32_t DRAW_VERTEX_BYTES      = FLOATS_PER_DRAW_VERTEX * sizeof(float); // 32
 
-        // Every downstream offset/count in this function assumes Vertices.size() is a whole
-        // number of DrawVertex elements — if that ever drifts, m_vtx_cursor stops being
-        // vertex-aligned and silently corrupts the GPU-side read offset for every mesh
-        // appended afterward. Enforced only by importer convention, not by any other check,
-        // so assert it here rather than let it corrupt the buffer quietly.
+        // Every downstream offset assumes Vertices.size() is a whole number of DrawVertex
+        // elements — enforced only by importer convention, so assert here rather than let
+        // a misaligned cursor corrupt every subsequent mesh's GPU-side read offset.
         ZENGINE_VALIDATE_ASSERT(mesh->Vertices.size() % FLOATS_PER_DRAW_VERTEX == 0, "RRM::AppendMeshData: Vertices.size() is not a whole number of DrawVertex elements")
 
-        size_t vert_bytes = mesh->Vertices.size() * sizeof(float);
-        size_t idx_bytes  = mesh->Indices.size() * sizeof(uint32_t);
-
-        if (m_vtx_cursor + vert_bytes > GLOBAL_VTX_CAPACITY || m_idx_cursor + idx_bytes > GLOBAL_IDX_CAPACITY)
+        size_t         vert_bytes = mesh->Vertices.size() * sizeof(float);
+        size_t         idx_bytes  = mesh->Indices.size() * sizeof(uint32_t);
+        GeometryRegion region;
+        if (!m_pool.Allocate(static_cast<VkDeviceSize>(vert_bytes), static_cast<VkDeviceSize>(idx_bytes), region))
         {
-            ZENGINE_LOG_RENDER_ERR("[RRM] AppendMeshData: global buffer capacity exceeded")
+            ZENGINE_LOG_RENDER_ERR("[RRM] AppendMeshData: geometry pool full")
             return {};
         }
 
-        AppendToGlobalBuffer(m_global_vertex_buf, mesh->Vertices.data(), vert_bytes, m_vtx_cursor, frame_index);
-        AppendToGlobalBuffer(m_global_index_buf, mesh->Indices.data(), idx_bytes, m_idx_cursor, frame_index);
+        AppendToGlobalBuffer(m_pool.VertexBuffer, mesh->Vertices.data(), vert_bytes, region.VtxByteOffset, frame_index);
+        AppendToGlobalBuffer(m_pool.IndexBuffer, mesh->Indices.data(), idx_bytes, region.IdxByteOffset, frame_index);
 
-        uint32_t vtx_elem_offset  = static_cast<uint32_t>(m_vtx_cursor / DRAW_VERTEX_BYTES); // DrawVertex[] index
-        uint32_t idx_elem_offset  = static_cast<uint32_t>(m_idx_cursor / sizeof(uint32_t));  // uint32[] index
-        uint32_t vtx_elem_count   = static_cast<uint32_t>(mesh->Vertices.size() / FLOATS_PER_DRAW_VERTEX);
-        uint32_t idx_elem_count   = static_cast<uint32_t>(mesh->Indices.size());
-
-        m_vtx_cursor             += vert_bytes;
-        m_idx_cursor             += idx_bytes;
+        uint32_t vtx_elem_offset = static_cast<uint32_t>(region.VtxByteOffset / DRAW_VERTEX_BYTES);
+        uint32_t idx_elem_offset = static_cast<uint32_t>(region.IdxByteOffset / sizeof(uint32_t));
+        uint32_t vtx_elem_count  = static_cast<uint32_t>(mesh->Vertices.size() / FLOATS_PER_DRAW_VERTEX);
+        uint32_t idx_elem_count  = static_cast<uint32_t>(mesh->Indices.size());
 
         ZENGINE_LOG_RENDER_INFO("[RRM] Uploaded mesh: {} verts ({} bytes), {} indices ({} bytes) — vtx@{} idx@{}", vtx_elem_count, vert_bytes, idx_elem_count, idx_bytes, vtx_elem_offset, idx_elem_offset)
 
-        return {vtx_elem_offset, idx_elem_offset, vtx_elem_count, idx_elem_count};
+        return {region, vtx_elem_count, idx_elem_count};
     }
 
     BufferHandle RenderResourceManager::DoUploadMesh(AssetHandle asset, uint32_t frame_index)
@@ -555,8 +670,11 @@ namespace ZEngine::Rendering
             return {};
         }
 
-        uint32_t slot           = AllocMeshSlot();
-        m_mesh_slots[slot].Data = data;
+        uint32_t slot                      = AllocMeshSlot();
+        m_mesh_slots[slot].Data            = data;
+        m_mesh_slots[slot].Data.State      = StreamingState::Resident;
+        m_mesh_slots[slot].Data.Referenced = false;
+        m_mesh_slots[slot].Data.Pinned     = false;
         return {slot, m_mesh_slots[slot].Generation};
     }
 
@@ -679,9 +797,36 @@ namespace ZEngine::Rendering
         const auto& slot = m_mesh_slots[handle.Index];
         if (slot.Generation != handle.Generation)
             return false;
-        vtx_offset = slot.Data.VtxOffset;
-        idx_offset = slot.Data.IdxOffset;
+        vtx_offset = static_cast<uint32_t>(slot.Data.Region.VtxByteOffset / DRAW_VERTEX_BYTES);
+        idx_offset = static_cast<uint32_t>(slot.Data.Region.IdxByteOffset / sizeof(uint32_t));
         return true;
+    }
+
+    bool RenderResourceManager::RequestMeshLoad(BufferHandle handle, const uuids::uuid& uuid)
+    {
+        const AssetRecord* rec = m_registry->FindByUUID(uuid);
+        if (!rec || rec->SlotHandle == 0)
+            return false;
+        return m_streaming_mgr.RequestLoad({uuid, rec->SlotHandle, handle, 0});
+    }
+
+    bool RenderResourceManager::IsMeshResident(BufferHandle handle) const
+    {
+        if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+            return false;
+        const auto& slot = m_mesh_slots[handle.Index];
+        if (slot.Generation != handle.Generation)
+            return false;
+        return slot.Data.State == StreamingState::Resident;
+    }
+
+    void RenderResourceManager::MarkMeshReferenced(BufferHandle handle)
+    {
+        if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+            return;
+        auto& slot = m_mesh_slots[handle.Index];
+        if (slot.Generation == handle.Generation)
+            slot.Data.Referenced = true;
     }
 
     BufferHandle RenderResourceManager::FindMeshBuffer(const uuids::uuid& uuid) const
@@ -705,9 +850,13 @@ namespace ZEngine::Rendering
             {
                 BufferHandle h = m_uuid_to_buffer[i].Handle;
 
-                // Free the mesh slot (geometry bytes stay in VB/IB — append-only)
                 if (h.IsValid() && !(h.Generation & GBUF_GEN_TAG) && h.Index < m_mesh_slot_count)
-                    m_mesh_slots[h.Index].Generation = 0;
+                {
+                    auto& slot = m_mesh_slots[h.Index];
+                    if (slot.Data.Region.VtxByteSize > 0)
+                        m_pool.Free(slot.Data.Region);
+                    slot.Generation = 0;
+                }
 
                 // Remove from UUID map (swap with last entry)
                 m_uuid_to_buffer[i] = m_uuid_to_buffer[--m_uuid_to_buffer_count];

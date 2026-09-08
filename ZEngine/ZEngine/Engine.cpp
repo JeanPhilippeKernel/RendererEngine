@@ -19,8 +19,10 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Windows/GameWindow.h>
+#include <nlohmann/json.hpp>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -33,7 +35,26 @@ namespace ZEngine
 {
     static EngineContextPtr g_engine_ctx = nullptr;
 
-    void                    Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
+    // Read memory.geometry_streaming_mb from a project.json file.
+    // Returns 0 if the file is absent, unparseable, or the key is missing — callers
+    // treat 0 as "use auto-detection from device VRAM".
+    static VkDeviceSize     ReadGeometryBudgetOverride(const char* config_file)
+    {
+        if (!config_file || config_file[0] == '\0')
+            return 0;
+        std::ifstream f(config_file);
+        if (!f.is_open())
+            return 0;
+        auto json = nlohmann::json::parse(f, nullptr, /*exceptions=*/false);
+        if (json.is_discarded() || !json.contains("memory"))
+            return 0;
+        const auto& mem = json["memory"];
+        if (!mem.contains("geometry_streaming_mb"))
+            return 0;
+        return static_cast<VkDeviceSize>(mem["geometry_streaming_mb"].get<uint32_t>()) << 20;
+    }
+
+    void Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
         ZENGINE_VALIDATE_ASSERT(memory != nullptr, "Engine::Initialize: memory is null — Obelisk must call MemoryManager::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
@@ -107,8 +128,13 @@ namespace ZEngine
         g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->EnvironmentMapImporter);
         g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->TextureImporter);
 
+        // Geometry streaming budget — auto-detected from device VRAM, overridable via
+        // project.json "memory.geometry_streaming_mb". Must be set before RRM::Initialize
+        // since InitGlobalBuffers reads it during VkBuffer allocation.
+        g_engine_ctx->Device->GeometryStreamingBudget = ReadGeometryBudgetOverride(app->ConfigFile);
+
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
-        g_engine_ctx->RenderResourceManager = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
+        g_engine_ctx->RenderResourceManager           = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
         g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry);
         g_engine_ctx->Device->RRM = g_engine_ctx->RenderResourceManager;
 
