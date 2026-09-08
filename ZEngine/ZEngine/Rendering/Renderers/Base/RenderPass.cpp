@@ -1,5 +1,5 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
+#include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <fmt/format.h>
 #include <numeric>
 

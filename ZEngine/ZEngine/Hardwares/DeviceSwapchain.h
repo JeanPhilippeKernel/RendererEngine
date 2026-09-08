@@ -3,7 +3,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Rendering/Primitives/Fence.h>
 #include <ZEngine/Rendering/Primitives/Semaphore.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
 #include <limits>

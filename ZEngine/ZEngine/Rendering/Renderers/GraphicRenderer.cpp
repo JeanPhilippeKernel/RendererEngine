@@ -3,7 +3,12 @@
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
-#include <ZEngine/Rendering/Renderers/RendererPasses.h>
+#include <ZEngine/Rendering/Renderers/Graphics/CompositePass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Hardwares;

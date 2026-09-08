@@ -2,7 +2,7 @@
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/Windows/CoreWindow.h>
