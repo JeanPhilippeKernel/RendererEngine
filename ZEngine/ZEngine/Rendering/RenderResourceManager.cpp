@@ -128,7 +128,7 @@ namespace ZEngine::Rendering
         m_batch_timeline     = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
         m_batch_frames.init(m_device->Arena, frame_count, frame_count);
         for (uint32_t i = 0; i < frame_count; ++i)
-            m_batch_frames[i] = {};
+            m_batch_frames[i] = BatchFrameState{};
 
         // RenderThread-only, single thread slot — cycles through BufferedFrameCount distinct
         // command buffers instead of resetting and resubmitting the same one every call (see
