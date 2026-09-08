@@ -36,8 +36,6 @@ namespace ZEngine::Rendering::Renderers
         ///        Stubbed until that lands.
         void                Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) final;
 
-        // ── Subclass interface ──────────────────────────────────────────────────
-
         /// @brief Declare resource reads and writes for this pass.
         ///        Called from Setup(); receives only the resource builder.
         virtual void        SetupCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceBuilderPtr const res_builder)                                                                                                                                        = 0;
