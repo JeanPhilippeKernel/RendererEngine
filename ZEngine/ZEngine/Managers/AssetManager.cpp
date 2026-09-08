@@ -68,7 +68,7 @@ namespace ZEngine::Managers
         Importers::AssetMaterial fallback_mat = {};
         s_Instance->Materials.push(fallback_mat);
         Rendering::Meshes::MeshMaterial fallback_gpu = {};
-        fallback_gpu.AlbedoColor                     = Rendering::gpuvec4(1.0f, 0.078f, 0.576f, 1.0f); // matches FallbackTextureHandle's (255, 20, 147)
+        fallback_gpu.AlbedoColor                     = Core::Maths::Vec4f(1.0f, 0.078f, 0.576f, 1.0f); // matches FallbackTextureHandle's (255, 20, 147)
         s_Instance->GPUMeshMaterials.push(fallback_gpu);
     }
 
@@ -309,12 +309,12 @@ namespace ZEngine::Managers
         s_Instance->UUIDToMaterialSlot.insert(mat.MaterialUUID, slot);
 
         Rendering::Meshes::MeshMaterial& gpu_mat = s_Instance->GPUMeshMaterials.push_use({});
-        gpu_mat.AlbedoColor                      = mat.AlbedoColor;
-        gpu_mat.EmissiveColor                    = mat.EmissiveColor;
-        gpu_mat.RoughnessColor                   = mat.RoughnessColor;
-        gpu_mat.SpecularColor                    = mat.SpecularColor;
-        gpu_mat.AmbientColor                     = mat.AmbientColor;
-        gpu_mat.Factors                          = mat.Factors;
+        gpu_mat.AlbedoColor                      = {mat.AlbedoColor[0], mat.AlbedoColor[1], mat.AlbedoColor[2], mat.AlbedoColor[3]};
+        gpu_mat.EmissiveColor                    = {mat.EmissiveColor[0], mat.EmissiveColor[1], mat.EmissiveColor[2], mat.EmissiveColor[3]};
+        gpu_mat.RoughnessColor                   = {mat.RoughnessColor[0], mat.RoughnessColor[1], mat.RoughnessColor[2], mat.RoughnessColor[3]};
+        gpu_mat.SpecularColor                    = {mat.SpecularColor[0], mat.SpecularColor[1], mat.SpecularColor[2], mat.SpecularColor[3]};
+        gpu_mat.AmbientColor                     = {mat.AmbientColor[0], mat.AmbientColor[1], mat.AmbientColor[2], mat.AmbientColor[3]};
+        gpu_mat.Factors                          = {mat.Factors[0], mat.Factors[1], mat.Factors[2], mat.Factors[3]};
 
         // Resolve handle for each texture slot: UUID lookup first, then fall back to
         // uploading from the stored path — handles scene-reload and dragged-.zmesh cases

@@ -1,6 +1,5 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
-#include <ZEngine/Rendering/GPUTypes.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
