@@ -1,6 +1,7 @@
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 
 namespace ZEngine::Core::VFS
@@ -240,6 +241,20 @@ namespace ZEngine::Core::VFS
         Helpers::secure_memcpy(out_buf, MAX_FILE_PATH_COUNT, m_native_root, m_native_root_len);
         Helpers::secure_memcpy(out_buf + m_native_root_len, MAX_FILE_PATH_COUNT - m_native_root_len, native, native_len);
         out_buf[m_native_root_len + native_len] = '\0';
+
+        // Defense-in-depth: verify the composed path stays within m_native_root.
+        // VFSPath::Parse already rejects '..' segments, but this backend must not rely
+        // solely on every upstream caller using Parse — any future code path that
+        // constructs a VFSPath from raw bytes could bypass that check.
+        if (std::memcmp(out_buf, m_native_root, m_native_root_len) != 0)
+        {
+            return false;
+        }
+        const char next = out_buf[m_native_root_len];
+        if (next != '\0' && next != '/' && next != '\\')
+        {
+            return false;
+        }
         return true;
     }
 

@@ -7,15 +7,25 @@ namespace ZEngine::Core::VFS
 
     VFSResult<const uint8_t*> VFSZipFile::EnsureDecompressed()
     {
-        if (m_decompressed)
+        // Fast path: already decompressed — acquire load pairs with the release store below.
+        if (m_decompressed.load(std::memory_order_acquire))
+        {
+            return VFSResult<const uint8_t*>::Ok(m_data);
+        }
+
+        // Slow path: decompress under the per-file lock.
+        // Double-checked: re-test after acquiring so two concurrent callers
+        // don't both allocate and extract.
+        std::lock_guard<std::mutex> lock(m_decompress_mutex);
+        if (m_decompressed.load(std::memory_order_relaxed))
         {
             return VFSResult<const uint8_t*>::Ok(m_data);
         }
 
         if (m_entry->UncompSize == 0)
         {
-            m_data         = static_cast<uint8_t*>(m_arena->Allocate(1));
-            m_decompressed = true;
+            m_data = static_cast<uint8_t*>(m_arena->Allocate(1));
+            m_decompressed.store(true, std::memory_order_release);
             return VFSResult<const uint8_t*>::Ok(m_data);
         }
 
@@ -29,8 +39,8 @@ namespace ZEngine::Core::VFS
             return VFSResult<const uint8_t*>::Fail(VFSError::Corrupted);
         }
 
-        m_data         = out;
-        m_decompressed = true;
+        m_data = out;
+        m_decompressed.store(true, std::memory_order_release);
         return VFSResult<const uint8_t*>::Ok(m_data);
     }
 
