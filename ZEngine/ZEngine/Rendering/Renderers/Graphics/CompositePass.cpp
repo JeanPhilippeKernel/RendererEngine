@@ -1,7 +1,7 @@
 #include <ZEngine/Engine.h>
-#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/CompositePass.h>
+#include <ZEngine/Rendering/Renderers/RendererContracts.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;

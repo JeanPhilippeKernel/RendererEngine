@@ -1,7 +1,6 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
-#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/CompositePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
@@ -9,10 +8,10 @@
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
+#include <ZEngine/Rendering/Renderers/RendererContracts.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Hardwares;
-using namespace ZEngine::Rendering::Renderers::Contracts;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Core::Containers;

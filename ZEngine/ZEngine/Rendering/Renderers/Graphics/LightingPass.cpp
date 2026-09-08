@@ -1,7 +1,7 @@
 #include <ZEngine/Engine.h>
-#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
+#include <ZEngine/Rendering/Renderers/RendererContracts.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
@@ -31,7 +31,7 @@ namespace ZEngine::Rendering::Renderers
             (*output_pass)->Bake();
         }
 
-        (*output_pass)->SetDynamicUniform("UBCamera", sizeof(Contracts::UBOCameraLayout));
+        (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
 
         auto albedo_ao_handle     = res_inspector->GetRenderTarget(RendererResourceName::GBufferAlbedoAOName);
         auto normal_rough_handle  = res_inspector->GetRenderTarget(RendererResourceName::GBufferNormalRoughnessName);

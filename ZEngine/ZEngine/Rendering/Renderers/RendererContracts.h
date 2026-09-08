@@ -1,7 +1,7 @@
 #pragma once
 #include <ZEngine/Core/Maths/Matrix.h>
 
-namespace ZEngine::Rendering::Renderers::Contracts
+namespace ZEngine::Rendering::Renderers
 {
     struct UBOCameraLayout
     {
@@ -11,4 +11,4 @@ namespace ZEngine::Rendering::Renderers::Contracts
         ZEngine::Core::Maths::Mat4f InvViewProj = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
     };
 
-} // namespace ZEngine::Rendering::Renderers::Contracts
+} // namespace ZEngine::Rendering::Renderers

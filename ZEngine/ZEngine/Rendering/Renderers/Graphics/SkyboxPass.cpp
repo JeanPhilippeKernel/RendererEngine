@@ -1,7 +1,7 @@
 #include <ZEngine/Engine.h>
-#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
+#include <ZEngine/Rendering/Renderers/RendererContracts.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
@@ -85,7 +85,7 @@ namespace ZEngine::Rendering::Renderers
 
         if (scene && m_env_map.Valid())
         {
-            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(Contracts::UBOCameraLayout));
+            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
             (*output_pass)->SetTexture("EnvMap", m_env_map);
             (*output_pass)->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
             (*output_pass)->Verify();

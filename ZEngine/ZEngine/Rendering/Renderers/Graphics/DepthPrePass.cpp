@@ -1,7 +1,7 @@
 #include <ZEngine/Engine.h>
-#include <ZEngine/Rendering/Renderers/Contracts/RendererDataContract.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
+#include <ZEngine/Rendering/Renderers/RendererContracts.h>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
@@ -35,7 +35,7 @@ namespace ZEngine::Rendering::Renderers
 
         if (scene)
         {
-            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(Contracts::UBOCameraLayout));
+            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
             // VertexSB/IndexSB/DrawDataSB/TransformSB bound by UpdateRMMBindings via BufferView*.
             (*output_pass)->Verify();
         }
