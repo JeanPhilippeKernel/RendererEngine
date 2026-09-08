@@ -1,5 +1,6 @@
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Hardwares/CommandBufferManager.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -11,6 +12,7 @@
 #include <ZEngine/Windows/CoreWindow.h>
 #include <cstdlib>
 #include <filesystem>
+#include <limits>
 
 using namespace std::chrono_literals;
 using namespace ZEngine::Rendering::Primitives;
@@ -749,7 +751,7 @@ namespace ZEngine::Hardwares
         Instance                       = VK_NULL_HANDLE;
     }
 
-    void VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)
+    bool VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
@@ -785,8 +787,12 @@ namespace ZEngine::Hardwares
             .pSignalSemaphores    = semaphores,
         };
 
-        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit queue")
+        VkResult submit_result = vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
+        if (CheckDeviceLost(submit_result, "QueueSubmit (timeline)"))
+            return false;
+        ZENGINE_VALIDATE_ASSERT(submit_result == VK_SUCCESS, "Failed to submit queue")
         command_buffer->SetState(CommandBufferState::Pending);
+        return true;
     }
 
     bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
@@ -819,7 +825,10 @@ namespace ZEngine::Hardwares
             //clang-format on
         };
 
-        ZENGINE_VALIDATE_ASSERT(vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence ? fence->GetHandle() : VK_NULL_HANDLE) == VK_SUCCESS, "Failed to submit queue")
+        VkResult submit_result = vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, fence ? fence->GetHandle() : VK_NULL_HANDLE);
+        if (CheckDeviceLost(submit_result, "QueueSubmit (fence)"))
+            return false;
+        ZENGINE_VALIDATE_ASSERT(submit_result == VK_SUCCESS, "Failed to submit queue")
         command_buffer->SetState(CommandBufferState::Pending);
 
         if (fence)
@@ -886,6 +895,18 @@ namespace ZEngine::Hardwares
     {
         QueueWait(Rendering::QueueType::TRANSFER_QUEUE);
         QueueWait(Rendering::QueueType::GRAPHIC_QUEUE);
+    }
+
+    bool VulkanDevice::CheckDeviceLost(VkResult result, const char* where)
+    {
+        if (result != VK_ERROR_DEVICE_LOST)
+            return false;
+
+        if (!IsDeviceLost.exchange(true, std::memory_order_acq_rel))
+        {
+            ZENGINE_CORE_CRITICAL("[GPU] VK_ERROR_DEVICE_LOST detected in {} — halting further Vulkan submission", where)
+        }
+        return true;
     }
 
     VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::__debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
@@ -1480,12 +1501,12 @@ namespace ZEngine::Hardwares
         vkCmdPipelineBarrier(m_command_buffer, barrier_spec.SourceStageMask, barrier_spec.DestinationStageMask, 0, 0, nullptr, 0, nullptr, 1, &barrier_handle);
     }
 
-    void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout)
+    void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
         VkBufferImageCopy buffer_image_copy               = {};
-        buffer_image_copy.bufferOffset                    = 0;
+        buffer_image_copy.bufferOffset                    = source_offset;
         buffer_image_copy.bufferRowLength                 = 0;
         buffer_image_copy.bufferImageHeight               = 0;
         buffer_image_copy.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1575,251 +1596,6 @@ namespace ZEngine::Hardwares
 
         ZReleaseScratch(scratch);
     }
-
-    void CommandBufferManager::Initialize(VulkanDevice* device, uint32_t image_count, uint8_t override_thread_count)
-    {
-        if (m_is_initialized)
-        {
-            ZENGINE_CORE_WARN("Attempted to call {}, but it has been already initialized", __FUNCTION__)
-            return;
-        }
-
-        Device                         = device;
-        TotalThreadCount               = override_thread_count > 0 ? override_thread_count : device->WorkerThreadCount;
-        TotalPoolCount                 = image_count * TotalThreadCount;
-        TotalCommandBufferCount        = TotalPoolCount * MaxBufferPerPool;
-        TotalInstantCommandBufferCount = MaxBufferPerPool * MaxBufferPerPool * TotalPoolCount; // We want to have enough instant command buffers for each pool, so we can guarantee that there will always be an instant command buffer available for each pool when needed
-
-        InstantGraphicsPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
-        InstantGraphicsCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);
-        CommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
-        CommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
-        EnqueuedCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
-
-        for (uint32_t i = 0; i < TotalPoolCount; ++i)
-        {
-            InstantGraphicsPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
-
-            for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
-            {
-                uint32_t buffer_idx                       = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
-                InstantGraphicsCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantGraphicsPools[i]->Handle, InstantGraphicsPools[i]->QueueType, true);
-            }
-        }
-
-        for (uint32_t i = 0; i < TotalPoolCount; ++i)
-        {
-            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
-            for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
-            {
-                uint32_t buffer_idx        = (i * MaxBufferPerPool) + buf_idx;
-                bool     is_primary        = (buffer_idx % 2) == 0;
-                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, CommandPools[i]->Handle, CommandPools[i]->QueueType, is_primary);
-            }
-        }
-
-        if (Device->HasSeperateTransfertQueueFamily)
-        {
-            InstantTransferPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
-            TransferCommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
-            TransferCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
-            InstantTransferCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);
-
-            for (uint32_t i = 0; i < TotalPoolCount; ++i)
-            {
-                InstantTransferPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
-                for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
-                {
-                    uint32_t buffer_idx                       = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
-                    InstantTransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantTransferPools[i]->Handle, InstantTransferPools[i]->QueueType, true);
-                }
-            }
-
-            for (uint32_t i = 0; i < TotalPoolCount; ++i)
-            {
-                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
-                for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
-                {
-                    uint32_t buffer_idx                = (i * MaxBufferPerPool) + buf_idx;
-                    TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, TransferCommandPools[i]->Handle, TransferCommandPools[i]->QueueType, true);
-                }
-            }
-        }
-
-        m_is_initialized = true;
-    }
-
-    void CommandBufferManager::Deinitialize()
-    {
-        // Explicitly destroy each CommandPool — vkDestroyCommandPool implicitly frees
-        // all VkCommandBuffers allocated from it.  The Array::clear() that follows only
-        // zeroes the pointer list; it never invokes C++ destructors, so skipping this
-        // step leaks every VkCommandPool and VkCommandBuffer past vkDestroyDevice.
-        for (uint32_t i = 0; i < InstantGraphicsPools.size(); ++i)
-            InstantGraphicsPools[i]->~CommandPool();
-        for (uint32_t i = 0; i < CommandPools.size(); ++i)
-            CommandPools[i]->~CommandPool();
-        for (uint32_t i = 0; i < TransferCommandPools.size(); ++i)
-            TransferCommandPools[i]->~CommandPool();
-        for (uint32_t i = 0; i < InstantTransferPools.size(); ++i)
-            InstantTransferPools[i]->~CommandPool();
-
-        InstantGraphicsPools.clear();
-        InstantGraphicsCommandBuffers.clear();
-        CommandBuffers.clear();
-        TransferCommandBuffers.clear();
-        InstantTransferCommandBuffers.clear();
-        CommandPools.clear();
-        TransferCommandPools.clear();
-        InstantTransferPools.clear();
-        EnqueuedCommandBuffers.clear();
-    }
-
-    CommandBuffer* CommandBufferManager::GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
-    {
-        auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * MaxBufferPerPool + buffer_per_pool_index;
-        CommandBuffer* buffer       = (type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
-
-        if (begin)
-        {
-            buffer->ResetState();
-            buffer->Begin();
-        }
-        return buffer;
-    }
-
-    CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin)
-    {
-        // MaxBufferPerPool * MaxBufferPerPool is the total number of instant command buffers per pool
-        auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * (MaxBufferPerPool * MaxBufferPerPool) + buffer_per_pool_index;
-        CommandBuffer* buffer       = (type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? InstantTransferCommandBuffers[buffer_index] : InstantGraphicsCommandBuffers[buffer_index];
-
-        if (begin)
-        {
-            buffer->ResetState();
-            vkResetCommandBuffer(buffer->GetHandle(), VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-            buffer->Begin();
-        }
-        return buffer;
-    }
-
-    Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
-    {
-        uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
-        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[pool_index] : CommandPools[pool_index];
-    }
-
-    Rendering::Pools::CommandPool* CommandBufferManager::GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
-    {
-        uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
-        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? InstantTransferPools[pool_index] : InstantGraphicsPools[pool_index];
-    }
-
-    void CommandBufferManager::ResetPool(uint8_t frame_index, uint8_t thread_index)
-    {
-        uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
-        vkResetCommandPool(Device->LogicalDevice, CommandPools[pool_index]->Handle, 0);
-        if (Device->HasSeperateTransfertQueueFamily)
-        {
-            vkResetCommandPool(Device->LogicalDevice, TransferCommandPools[pool_index]->Handle, 0);
-        }
-    }
-
-    void CommandBufferManager::ResetEnqueuedBufferIndex()
-    {
-        for (int i = 0; i < EnqueuedCommandBufferIndex && i < EnqueuedCommandBuffers.size(); ++i)
-        {
-            if (EnqueuedCommandBuffers[i])
-            {
-                EnqueuedCommandBuffers[i]->SetState(CommandBufferState::Pending);
-            }
-        }
-        EnqueuedCommandBufferIndex = 0u;
-    }
-
-    void CommandBufferManager::EndEnqueuedBuffers()
-    {
-        for (int i = 0; i < EnqueuedCommandBufferIndex; ++i)
-        {
-            EnqueuedCommandBuffers[i]->End();
-        }
-    }
-
-    void CommandBufferManager::EnqueueBuffer(CommandBufferPtr const buffer)
-    {
-        if (EnqueuedCommandBufferIndex < EnqueuedCommandBuffers.size())
-        {
-            EnqueuedCommandBuffers[EnqueuedCommandBufferIndex++] = buffer;
-            return;
-        }
-        ZENGINE_CORE_ERROR("[!] Enqueued Command Buffer overflow detected")
-    }
-
-    void CommandBufferManager::IncreaseBuffers()
-    {
-        // TotalPoolCount          = Device->SwapchainImageCount * TotalThreadCount;
-        // TotalCommandBufferCount = TotalPoolCount * MaxBufferPerPool;
-
-        // if (TotalCommandBufferCount > EnqueuedCommandBuffers.size())
-        // {
-        //     auto size = EnqueuedCommandBuffers.size();
-        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-        //     {
-        //         EnqueuedCommandBuffers.push(nullptr);
-        //     }
-        // }
-
-        // if (TotalPoolCount > CommandPools.size())
-        // {
-        //     auto size = CommandPools.size();
-        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-        //     {
-        //         CommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::GRAPHIC_QUEUE));
-        //     }
-        // }
-
-        // if (TotalCommandBufferCount > CommandBuffers.size())
-        // {
-        //     auto size = CommandBuffers.size();
-        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-        //     {
-        //         int   pool_index = GetPoolFromIndex(Rendering::QueueType::GRAPHIC_QUEUE, i);
-        //         auto& pool       = CommandPools[pool_index];
-        //         CommandBuffers.push(ZPushStructCtorArgs(
-        //             Device->Arena,
-        //             CommandBuffer,
-        //             Device,
-        //             pool->Handle,
-        //             pool->QueueType,
-        //             /*(i % MaxBufferPerPool) == 0 ? false : true */ false));
-        //     }
-        // }
-
-        // if (Device->HasSeperateTransfertQueueFamily)
-        // {
-        //     auto size = TransferCommandPools.size();
-        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-        //     {
-        //         TransferCommandPools.push(ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE));
-        //     }
-
-        //     size = TransferCommandBuffers.size();
-        //     for (uint32_t i = size; i < TotalCommandBufferCount; ++i)
-        //     {
-        //         int   pool_index = GetPoolFromIndex(Rendering::QueueType::TRANSFER_QUEUE, i);
-        //         auto& pool       = TransferCommandPools[pool_index];
-        //         TransferCommandBuffers.push(ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, pool->Handle, pool->QueueType, true));
-        //     }
-        // }
-    }
-
-    bool CommandBufferManager::IsInitialized() const
-    {
-        return m_is_initialized;
-    }
-
-
-
 
     void ImageBuffer::Construct(Hardwares::VulkanDevice* device)
     {
@@ -1997,8 +1773,11 @@ namespace ZEngine::Hardwares
         }
     }
 
-    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data)
+    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset)
     {
+        if (out_ring_offset)
+            *out_ring_offset = std::numeric_limits<uint32_t>::max();
+
         if (!handle.Valid() || !(data) || !(command_buf))
         {
             return {};
@@ -2016,8 +1795,11 @@ namespace ZEngine::Hardwares
             BufferView ring_view = {};
             ring_view.Handle     = GpuMem.Ring.Buffer;
             ring_view.Allocation = GpuMem.Ring.Allocation;
-            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
-            // Return empty view — ring owns lifetime, caller must not free
+            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)], ring_offset);
+            // Ring owns lifetime, caller must not free — but must call GpuMem.Ring.Submit
+            // once it knows the timeline value this copy will signal (see out_ring_offset).
+            if (out_ring_offset)
+                *out_ring_offset = ring_offset;
             return {};
         }
 

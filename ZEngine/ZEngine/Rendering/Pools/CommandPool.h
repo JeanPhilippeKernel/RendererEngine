@@ -11,7 +11,7 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::Rendering::Pools
 {
-    struct CommandPool : public Helpers::RefCounted
+    struct CommandPool
     {
         Hardwares::VulkanDevice* Device = nullptr;
 

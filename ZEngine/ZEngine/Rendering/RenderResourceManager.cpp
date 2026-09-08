@@ -34,6 +34,7 @@
 #include <stb/stb_image_write.h>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <set>
 
 using namespace ZEngine::Core::Memory;
@@ -119,19 +120,24 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::InitUploadPool()
     {
-        // Create fences pre-signaled so vkWaitForFences before the first submit returns immediately.
-        VkFenceCreateInfo fence_ci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT};
+        // Pre-signaled so the first Wait() before a submit returns immediately.
+        uint32_t frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        m_sync_upload_fence  = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Fence, m_device, true);
 
-        m_upload_pool = ZPushStructCtorArgs(m_device->Arena, Rendering::Pools::CommandPool, m_device, QueueType::GRAPHIC_QUEUE);
-        m_upload_cmd  = ZPushStructCtorArgs(m_device->Arena, CommandBuffer, m_device, m_upload_pool->Handle, QueueType::GRAPHIC_QUEUE, true);
-        vkCreateFence(m_device->LogicalDevice, &fence_ci, nullptr, &m_upload_fence);
+        // LastSignal == 0 means "never used yet" for a given frame index.
+        m_batch_timeline     = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+        m_batch_frames.init(m_device->Arena, frame_count, frame_count);
+        for (uint32_t i = 0; i < frame_count; ++i)
+            m_batch_frames[i] = BatchFrameState{};
 
-        if (m_device->HasSeperateTransfertQueueFamily)
-        {
-            m_transfer_pool = ZPushStructCtorArgs(m_device->Arena, Rendering::Pools::CommandPool, m_device, QueueType::TRANSFER_QUEUE);
-            m_transfer_cmd  = ZPushStructCtorArgs(m_device->Arena, CommandBuffer, m_device, m_transfer_pool->Handle, QueueType::TRANSFER_QUEUE, true);
-            vkCreateFence(m_device->LogicalDevice, &fence_ci, nullptr, &m_transfer_fence);
-        }
+        // RenderThread-only, single thread slot — cycles through BufferedFrameCount distinct
+        // command buffers instead of resetting and resubmitting the same one every call (see
+        // issue #764 follow-up: reusing a single command buffer across many upload cycles was
+        // suspected as a factor in an otherwise-unexplained GPU stall).
+        m_upload_cmd_mgr = ZPushStructCtor(m_device->Arena, CommandBufferManager);
+        m_upload_cmd_mgr->Initialize(m_device, m_device->SwapchainPtr->BufferredFrameCount, 1);
+
+        m_async_uploads.Initialize(m_device);
     }
 
     void RenderResourceManager::Shutdown()
@@ -150,38 +156,23 @@ namespace ZEngine::Rendering
             m_upload_slabs[i].Shutdown();
         m_upload_slab_count = 0;
 
-        // Free command buffers before destroying their parent pools, then destroy pools.
         // Arena-allocated objects have no automatic destructor — explicit calls are required.
-        if (m_upload_cmd)
+        if (m_upload_cmd_mgr)
         {
-            m_upload_cmd->Free();
-            m_upload_cmd = nullptr;
+            m_upload_cmd_mgr->Deinitialize();
+            m_upload_cmd_mgr = nullptr;
         }
-        if (m_upload_pool)
+        m_async_uploads.Deinitialize();
+        if (m_sync_upload_fence)
         {
-            m_upload_pool->~CommandPool();
-            m_upload_pool = nullptr;
+            m_sync_upload_fence->~Fence();
+            m_sync_upload_fence = nullptr;
         }
-        if (m_transfer_cmd)
+        if (m_batch_timeline)
         {
-            m_transfer_cmd->Free();
-            m_transfer_cmd = nullptr;
+            m_batch_timeline->~Semaphore();
+            m_batch_timeline = nullptr;
         }
-        if (m_transfer_pool)
-        {
-            m_transfer_pool->~CommandPool();
-            m_transfer_pool = nullptr;
-        }
-
-        auto destroy_fence = [&](VkFence& fence) {
-            if (fence != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(m_device->LogicalDevice, fence, nullptr);
-                fence = VK_NULL_HANDLE;
-            }
-        };
-        destroy_fence(m_upload_fence);
-        destroy_fence(m_transfer_fence);
 
         // Free all live buffer slots
         if (m_global_vertex_buf)
@@ -201,15 +192,18 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::BeginFrame(uint32_t frame_index)
     {
+        m_active_frame_index = static_cast<uint8_t>(frame_index);
+        RetireBatchStagings();
         FlushPendingUploads(frame_index);
         FlushPendingSwaps(frame_index);
         FlushPendingTextureReloads();
         FlushPendingTextureReleases();
     }
 
-    void RenderResourceManager::EndFrame(uint32_t frame_index)
+    void RenderResourceManager::EndFrame()
     {
-        m_current_frame = frame_index + 1;
+        if (m_batch_mode)
+            EndBatchUpload();
     }
 
     void RenderResourceManager::FlushPendingSwaps(uint32_t frame_index)
@@ -226,6 +220,9 @@ namespace ZEngine::Rendering
         {
             return;
         }
+
+        // Idempotent — no-op if FlushPendingUploads already opened the batch this frame.
+        EnsureBatchOpen(static_cast<uint8_t>(frame_index));
 
         for (uint32_t i = 0; i < count; ++i)
         {
@@ -254,38 +251,108 @@ namespace ZEngine::Rendering
         }
     }
 
-    static void RecordAndSubmit(VkDevice device, CommandBuffer* cmd, VkFence fence, VkQueue queue, std::function<void(VkCommandBuffer)> record_fn, VkSemaphore wait_semaphore = VK_NULL_HANDLE, uint64_t wait_value = 0)
+    // Contexts + C-style record callbacks for RecordAndSubmit (no std::function — matches the
+    // rest of the engine's zero-heap-alloc convention for hot-path callbacks, see ThreadPool's
+    // TaskFn).
+    struct GlobalBufferCopyCtx
+    {
+        VkBuffer     SrcBuffer;
+        VkBuffer     DstBuffer;
+        VkDeviceSize DstOffset;
+        size_t       ByteSize;
+    };
+
+    static void RecordGlobalBufferCopy(VkCommandBuffer cmd, void* ctx_ptr)
+    {
+        auto*        ctx = static_cast<GlobalBufferCopyCtx*>(ctx_ptr);
+        VkBufferCopy region{.srcOffset = 0, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
+
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = ctx->DstBuffer;
+        barrier.offset              = ctx->DstOffset;
+        barrier.size                = ctx->ByteSize;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    struct RingCopyCtx
+    {
+        VkBuffer     SrcBuffer;
+        VkBuffer     DstBuffer;
+        uint32_t     RingOffset;
+        VkDeviceSize DstOffset;
+        size_t       ByteSize;
+    };
+
+    static void RecordRingCopy(VkCommandBuffer cmd, void* ctx_ptr)
+    {
+        auto*        ctx = static_cast<RingCopyCtx*>(ctx_ptr);
+        VkBufferCopy region{.srcOffset = ctx->RingOffset, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
+
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = ctx->DstBuffer;
+        barrier.offset              = ctx->DstOffset;
+        barrier.size                = ctx->ByteSize;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    struct StagingCopyCtx
+    {
+        VkBuffer     SrcBuffer;
+        VkBuffer     DstBuffer;
+        VkDeviceSize DstOffset;
+        size_t       ByteSize;
+    };
+
+    static void RecordStagingCopy(VkCommandBuffer cmd, void* ctx_ptr)
+    {
+        auto*        ctx = static_cast<StagingCopyCtx*>(ctx_ptr);
+        VkBufferCopy region{.srcOffset = 0, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
+
+        // Same fallback destinations as RecordRingCopy (generic SSBOs, ZUI vertex/index
+        // buffers), so the same access/stage transition. Previously relied on the caller
+        // fully blocking on a fence before returning — harmless then, but once this runs
+        // as part of a deferred batch, the cross-submission consumer needs an explicit
+        // barrier, not just ordering.
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = ctx->DstBuffer;
+        barrier.offset              = ctx->DstOffset;
+        barrier.size                = ctx->ByteSize;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    static void RecordAndSubmit(CommandBuffer* cmd, Rendering::Primitives::Fence* fence, VkQueue queue, void (*record_fn)(VkCommandBuffer, void*), void* record_ctx)
     {
         cmd->ResetState();
         vkResetCommandBuffer(cmd->GetHandle(), 0);
         cmd->Begin();
-        record_fn(cmd->GetHandle());
+        record_fn(cmd->GetHandle(), record_ctx);
         cmd->End();
 
-        VkTimelineSemaphoreSubmitInfo timeline_wait{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-        VkPipelineStageFlags          wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-        VkCommandBuffer               raw        = cmd->GetHandle();
-        VkSubmitInfo                  submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        VkCommandBuffer raw = cmd->GetHandle();
+        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submit.commandBufferCount = 1;
         submit.pCommandBuffers    = &raw;
 
-        if (wait_semaphore != VK_NULL_HANDLE && wait_value > 0)
-        {
-            timeline_wait.waitSemaphoreValueCount   = 1;
-            timeline_wait.pWaitSemaphoreValues      = &wait_value;
-            timeline_wait.signalSemaphoreValueCount = 0;
-            submit.pNext                            = &timeline_wait;
-            submit.waitSemaphoreCount               = 1;
-            submit.pWaitSemaphores                  = &wait_semaphore;
-            submit.pWaitDstStageMask                = &wait_stage;
-        }
-
         // Wait before reset — fence may be in-flight under MoltenVK async completion.
-        vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-        vkResetFences(device, 1, &fence);
-        vkQueueSubmit(queue, 1, &submit, fence);
-        vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+        fence->Wait(UINT64_MAX);
+        fence->Reset();
+        vkQueueSubmit(queue, 1, &submit, fence->GetHandle());
+        fence->Wait(UINT64_MAX);
         cmd->ResetState();
     }
 
@@ -308,8 +375,13 @@ namespace ZEngine::Rendering
         ZENGINE_VALIDATE_ASSERT(m_vtx_cursor + vtx_bytes <= GLOBAL_VTX_CAPACITY, "RRM::RegisterBuiltinGeometry: global vertex buffer out of space")
         ZENGINE_VALIDATE_ASSERT(m_idx_cursor + idx_bytes <= GLOBAL_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: global index buffer out of space")
 
-        AppendToGlobalBuffer(m_global_vertex_buf, vtx_data, vtx_bytes, m_vtx_cursor, 0);
-        AppendToGlobalBuffer(m_global_index_buf, idx_data, idx_bytes, m_idx_cursor, 0);
+        // Called pre-render-thread (single-threaded init) — the batch this opens simply
+        // stays open, unclosed, until the first real frame's RRM::EndFrame, at which point
+        // any mesh uploads from that same first frame join it too. Safe: frame_index here
+        // is just "which reusable slot", decoupled from the swapchain's own frame index.
+        EnsureBatchOpen(static_cast<uint8_t>(m_active_frame_index));
+        AppendToGlobalBuffer(m_global_vertex_buf, vtx_data, vtx_bytes, m_vtx_cursor, m_active_frame_index);
+        AppendToGlobalBuffer(m_global_index_buf, idx_data, idx_bytes, m_idx_cursor, m_active_frame_index);
 
         out_vtx_offset  = static_cast<uint32_t>(m_vtx_cursor / (8 * sizeof(float)));
         out_idx_offset  = static_cast<uint32_t>(m_idx_cursor / sizeof(uint32_t));
@@ -336,30 +408,82 @@ namespace ZEngine::Rendering
         m_uuid_to_buffer_count = 0;
     }
 
-    void RenderResourceManager::BeginBatchUpload()
+    void RenderResourceManager::RetireBatchStagings()
     {
-        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
-        vkResetFences(m_device->LogicalDevice, 1, &m_upload_fence);
-        m_upload_cmd->ResetState();
-        vkResetCommandBuffer(m_upload_cmd->GetHandle(), 0);
-        m_upload_cmd->Begin();
-        m_batch_mode          = true;
-        m_batch_staging_count = 0;
+        uint64_t completed = 0;
+        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+        for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
+        {
+            BatchFrameState& frame = m_batch_frames[i];
+            if (frame.LastSignal == 0 || frame.LastSignal > completed || frame.StagingCount == 0)
+                continue;
+            for (uint32_t j = 0; j < frame.StagingCount; ++j)
+                m_device->GpuMem.FreeBuffer(frame.StagingBuffers[j]);
+            frame.StagingCount = 0;
+        }
+    }
+
+    void RenderResourceManager::EnsureBatchOpen(uint8_t frame_index)
+    {
+        if (!m_batch_mode)
+            BeginBatchUpload(frame_index);
+    }
+
+    void RenderResourceManager::BeginBatchUpload(uint8_t frame_index)
+    {
+        m_batch_frame_index    = frame_index;
+        // Instant buffer, not the regular pool's slot 0 — that slot is shared by the two
+        // remaining synchronous callers (UpdateBuffer's ring path, UploadFontAtlas), which
+        // submit and block before returning; this buffer's submission is deferred instead.
+        m_batch_cmd            = m_upload_cmd_mgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, 0, 0, false);
+
+        BatchFrameState& frame = m_batch_frames[frame_index];
+
+        // Wait for this frame index's buffer to be free of its last use before recording
+        // into it again. Almost always a no-op — BufferedFrameCount frames have already
+        // passed by the time this frame index comes back around.
+        if (frame.LastSignal != 0)
+            m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
+
+        // Guaranteed-safe fallback free, in case RetireBatchStagings' poll hasn't caught up
+        // yet — the wait above proves this frame index's previous batch is done either way.
+        for (uint32_t i = 0; i < frame.StagingCount; ++i)
+            m_device->GpuMem.FreeBuffer(frame.StagingBuffers[i]);
+        frame.StagingCount = 0;
+
+        m_batch_cmd->ResetState();
+        vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
+        m_batch_cmd->Begin();
+        m_batch_mode = true;
     }
 
     void RenderResourceManager::EndBatchUpload()
     {
-        m_upload_cmd->End();
-        VkCommandBuffer cmd_handle = m_upload_cmd->GetHandle();
-        VkQueue         gfx_queue  = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
-        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO, nullptr, 0, nullptr, nullptr, 1, &cmd_handle, 0, nullptr};
-        vkQueueSubmit(gfx_queue, 1, &submit, m_upload_fence);
-        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
-        m_upload_cmd->ResetState();
-        for (uint32_t i = 0; i < m_batch_staging_count; ++i)
-            m_device->GpuMem.FreeBuffer(m_batch_stagings[i]);
-        m_batch_staging_count = 0;
-        m_batch_mode          = false;
+        m_batch_cmd->End();
+
+        // Submission is deferred to SubmitAsyncUploads (AppRenderPipeline::EndFrame) instead
+        // of submitted-and-blocked-on here, so a mesh drop never stalls the render thread.
+        // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
+        // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
+        // drives independently; sharing it produced a timeline value Intel's Windows driver
+        // treats as non-monotonic.
+        uint64_t signal_value                          = ++m_batch_next_value;
+        m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
+
+        Hardwares::AsyncUploadJob job;
+        job.Buffer      = m_batch_cmd;
+        job.Timeline    = m_batch_timeline;
+        job.SignalValue = signal_value;
+        // Stages that actually consume the global vertex/index buffers, matching
+        // RecordGlobalBufferCopy's own barrier — so Present() waits at the right point.
+        job.WaitFlag    = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        m_async_uploads.Enqueue(job);
+
+        // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
+        // BeginBatchUpload for this same frame index) to free once m_batch_timeline proves
+        // this copy has completed.
+        m_batch_mode = false;
+        m_batch_cmd  = nullptr;
     }
 
     void RenderResourceManager::AppendToGlobalBuffer(BufferView& global_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)
@@ -368,35 +492,16 @@ namespace ZEngine::Rendering
         ZENGINE_VALIDATE_ASSERT(staging, "RRM::AppendToGlobalBuffer: staging alloc failed")
         ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::AppendToGlobalBuffer: staging copy failed")
 
-        auto record = [&](VkCommandBuffer cmd) {
-            VkBufferCopy region{.srcOffset = 0, .dstOffset = byte_offset, .size = byte_size};
-            vkCmdCopyBuffer(cmd, staging.Handle, global_buf.Handle, 1, &region);
+        GlobalBufferCopyCtx ctx{staging.Handle, global_buf.Handle, byte_offset, byte_size};
 
-            VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-            barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.buffer              = global_buf.Handle;
-            barrier.offset              = byte_offset;
-            barrier.size                = byte_size;
-            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
-        };
-
-        if (m_batch_mode)
-        {
-            record(m_upload_cmd->GetHandle());
-            ZENGINE_VALIDATE_ASSERT(m_batch_staging_count < MAX_PENDING * 2, "RRM::AppendToGlobalBuffer: batch staging overflow")
-            m_batch_stagings[m_batch_staging_count++] = staging;
-        }
-        else
-        {
-            VkSemaphore render_timeline = m_device->SwapchainPtr ? m_device->SwapchainPtr->RenderTimeline->GetHandle() : VK_NULL_HANDLE;
-            uint64_t    render_value    = m_device->SwapchainPtr ? m_device->SwapchainPtr->RenderTimelineNextValue : 0;
-            VkQueue     gfx_queue       = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
-            RecordAndSubmit(m_device->LogicalDevice, m_upload_cmd, m_upload_fence, gfx_queue, record, render_timeline, render_value);
-            m_device->GpuMem.FreeBuffer(staging);
-        }
+        // Every caller (FlushPendingUploads, FlushPendingSwaps, RegisterBuiltinGeometry)
+        // calls EnsureBatchOpen first — there is no longer a synchronous fallback path.
+        ZENGINE_VALIDATE_ASSERT(m_batch_mode, "RRM::AppendToGlobalBuffer: called without an open batch — call EnsureBatchOpen first")
+        ZENGINE_VALIDATE_ASSERT(static_cast<uint8_t>(frame_index) == m_batch_frame_index, "RRM::AppendToGlobalBuffer: frame_index does not match the currently open batch")
+        RecordGlobalBufferCopy(m_batch_cmd->GetHandle(), &ctx);
+        BatchFrameState& frame = m_batch_frames[m_batch_frame_index];
+        ZENGINE_VALIDATE_ASSERT(frame.StagingCount < MAX_PENDING * 2, "RRM::AppendToGlobalBuffer: batch staging overflow")
+        frame.StagingBuffers[frame.StagingCount++] = staging;
     }
 
     RenderResourceManager::MeshSlot RenderResourceManager::AppendMeshData(AssetHandle asset, uint32_t frame_index)
@@ -406,6 +511,16 @@ namespace ZEngine::Rendering
         {
             return {};
         }
+
+        static constexpr uint32_t FLOATS_PER_DRAW_VERTEX = 8;                                      // x,y,z, nx,ny,nz, u,v
+        static constexpr uint32_t DRAW_VERTEX_BYTES      = FLOATS_PER_DRAW_VERTEX * sizeof(float); // 32
+
+        // Every downstream offset/count in this function assumes Vertices.size() is a whole
+        // number of DrawVertex elements — if that ever drifts, m_vtx_cursor stops being
+        // vertex-aligned and silently corrupts the GPU-side read offset for every mesh
+        // appended afterward. Enforced only by importer convention, not by any other check,
+        // so assert it here rather than let it corrupt the buffer quietly.
+        ZENGINE_VALIDATE_ASSERT(mesh->Vertices.size() % FLOATS_PER_DRAW_VERTEX == 0, "RRM::AppendMeshData: Vertices.size() is not a whole number of DrawVertex elements")
 
         size_t vert_bytes = mesh->Vertices.size() * sizeof(float);
         size_t idx_bytes  = mesh->Indices.size() * sizeof(uint32_t);
@@ -419,16 +534,13 @@ namespace ZEngine::Rendering
         AppendToGlobalBuffer(m_global_vertex_buf, mesh->Vertices.data(), vert_bytes, m_vtx_cursor, frame_index);
         AppendToGlobalBuffer(m_global_index_buf, mesh->Indices.data(), idx_bytes, m_idx_cursor, frame_index);
 
-        static constexpr uint32_t FLOATS_PER_DRAW_VERTEX  = 8;                                      // x,y,z, nx,ny,nz, u,v
-        static constexpr uint32_t DRAW_VERTEX_BYTES       = FLOATS_PER_DRAW_VERTEX * sizeof(float); // 32
+        uint32_t vtx_elem_offset  = static_cast<uint32_t>(m_vtx_cursor / DRAW_VERTEX_BYTES); // DrawVertex[] index
+        uint32_t idx_elem_offset  = static_cast<uint32_t>(m_idx_cursor / sizeof(uint32_t));  // uint32[] index
+        uint32_t vtx_elem_count   = static_cast<uint32_t>(mesh->Vertices.size() / FLOATS_PER_DRAW_VERTEX);
+        uint32_t idx_elem_count   = static_cast<uint32_t>(mesh->Indices.size());
 
-        uint32_t                  vtx_elem_offset         = static_cast<uint32_t>(m_vtx_cursor / DRAW_VERTEX_BYTES); // DrawVertex[] index
-        uint32_t                  idx_elem_offset         = static_cast<uint32_t>(m_idx_cursor / sizeof(uint32_t));  // uint32[] index
-        uint32_t                  vtx_elem_count          = static_cast<uint32_t>(mesh->Vertices.size() / FLOATS_PER_DRAW_VERTEX);
-        uint32_t                  idx_elem_count          = static_cast<uint32_t>(mesh->Indices.size());
-
-        m_vtx_cursor                                     += vert_bytes;
-        m_idx_cursor                                     += idx_bytes;
+        m_vtx_cursor             += vert_bytes;
+        m_idx_cursor             += idx_bytes;
 
         ZENGINE_LOG_RENDER_INFO("[RRM] Uploaded mesh: {} verts ({} bytes), {} indices ({} bytes) — vtx@{} idx@{}", vtx_elem_count, vert_bytes, idx_elem_count, idx_bytes, vtx_elem_offset, idx_elem_offset)
 
@@ -465,8 +577,9 @@ namespace ZEngine::Rendering
         if (count == 0)
             return;
 
-        // Batch all mesh uploads into one GPU command buffer submission
-        BeginBatchUpload();
+        // Joins this frame's deferred batch (opened here if nothing else has yet) — closed
+        // once, by RRM::EndFrame, after everything else that might also join it this frame.
+        EnsureBatchOpen(static_cast<uint8_t>(frame_index));
         for (uint32_t i = 0; i < count; ++i)
         {
             BufferHandle h = DoUploadMesh(local[i].Asset, frame_index);
@@ -481,7 +594,6 @@ namespace ZEngine::Rendering
                 ZENGINE_CORE_ERROR("[RRM] Mesh upload failed for asset handle {}", local[i].Asset)
             }
         }
-        EndBatchUpload();
     }
 
     void RenderResourceManager::UpdateBuffer(BufferView& dst, const void* data, size_t byte_size, uint32_t dst_offset)
@@ -501,57 +613,46 @@ namespace ZEngine::Rendering
             return;
         }
 
-        // DEVICE_LOCAL — Ring staging → dedicated command buffer → vkQueueSubmit → fence wait.
-        uint32_t       ring_offset = 0;
-        void*          ring_ptr    = m_device->GpuMem.Ring.Allocate(static_cast<uint32_t>(byte_size), 4, &ring_offset);
-
-        VkQueue        gfx_queue   = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
-        CommandBuffer* upload_cmd  = m_upload_cmd;
+        // DEVICE_LOCAL. Two sub-cases with different lifecycles:
+        uint32_t ring_offset = 0;
+        void*    ring_ptr    = m_device->GpuMem.Ring.Allocate(static_cast<uint32_t>(byte_size), 4, &ring_offset);
 
         if (ring_ptr)
         {
+            // Ring path stays synchronous, deliberately not deferred: GpuAllocator::Ring's
+            // retirement (Ring::Drain, driven by VulkanDevice::TickMemory) tracks every
+            // chunk in one FIFO compared against RenderTimeline's completed value alone.
+            // Stamping a chunk with m_batch_timeline's (future, not-yet-reached) signal
+            // value instead would compare it against the wrong counter — the chunk could
+            // be reclaimed before the deferred copy on m_batch_timeline ever executes.
+            // Fixing that needs Ring to track more than one semaphore, which is out of
+            // scope here — so this sub-case keeps the fence-blocking model, just repointed
+            // at m_sync_upload_fence.
             secure_memmove(ring_ptr, byte_size, data, byte_size);
 
-            VkBuffer src_buf = m_device->GpuMem.Ring.Buffer;
-            RecordAndSubmit(m_device->LogicalDevice, upload_cmd, m_upload_fence, gfx_queue, [&](VkCommandBuffer cmd) {
-                VkBufferCopy region{.srcOffset = ring_offset, .dstOffset = dst_offset, .size = byte_size};
-                vkCmdCopyBuffer(cmd, src_buf, dst.Handle, 1, &region);
+            VkQueue        gfx_queue  = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+            CommandBuffer* upload_cmd = m_upload_cmd_mgr->GetCommandBuffer(QueueType::GRAPHIC_QUEUE, m_active_frame_index, 0, 0, false);
+            RingCopyCtx    ctx{m_device->GpuMem.Ring.Buffer, dst.Handle, ring_offset, dst_offset, byte_size};
+            RecordAndSubmit(upload_cmd, m_sync_upload_fence, gfx_queue, RecordRingCopy, &ctx);
 
-                VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-                barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
-                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                barrier.buffer              = dst.Handle;
-                barrier.offset              = dst_offset;
-                barrier.size                = byte_size;
-                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
-            });
-
-            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(byte_size), 0);
+            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(byte_size), m_device->SwapchainPtr->RenderTimelineNextValue);
         }
         else
         {
+            // Staging path joins this frame's deferred batch — no GpuAllocator::Ring
+            // involvement, so no cross-semaphore retirement hazard.
+            EnsureBatchOpen(m_active_frame_index);
+
             BufferView staging = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging);
             ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::UpdateBuffer: staging copy failed")
 
-            VkBuffer stg_buf = staging.Handle;
-            RecordAndSubmit(m_device->LogicalDevice, upload_cmd, m_upload_fence, gfx_queue, [&](VkCommandBuffer cmd) {
-                VkBufferCopy region{.srcOffset = 0, .dstOffset = dst_offset, .size = byte_size};
-                vkCmdCopyBuffer(cmd, stg_buf, dst.Handle, 1, &region);
-            });
+            StagingCopyCtx ctx{staging.Handle, dst.Handle, dst_offset, byte_size};
+            RecordStagingCopy(m_batch_cmd->GetHandle(), &ctx);
 
-            DeferredFreeEntry e;
-            e.EntryKind     = DeferredFreeEntry::Kind::Buffer;
-            e.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
-            e.Data.Buffer   = staging;
-            m_device->DeferFree(e);
+            BatchFrameState& frame = m_batch_frames[m_batch_frame_index];
+            ZENGINE_VALIDATE_ASSERT(frame.StagingCount < MAX_PENDING * 2, "RRM::UpdateBuffer: batch staging overflow")
+            frame.StagingBuffers[frame.StagingCount++] = staging;
         }
-    }
-
-    BufferHandle RenderResourceManager::UploadMesh(AssetHandle asset)
-    {
-        return DoUploadMesh(asset, m_current_frame);
     }
 
     void RenderResourceManager::ScheduleSwap(BufferHandle old_handle, AssetHandle new_asset)
@@ -762,7 +863,8 @@ namespace ZEngine::Rendering
         if (!buf)
             return {};
 
-        AppendToGlobalBuffer(buf, data, byte_size, 0, 0);
+        EnsureBatchOpen(m_active_frame_index);
+        AppendToGlobalBuffer(buf, data, byte_size, 0, m_active_frame_index);
 
         uint32_t slot_idx           = AllocGBufSlot();
         m_gbuf_slots[slot_idx].Data = buf;
@@ -788,6 +890,7 @@ namespace ZEngine::Rendering
         m_tex_next_values.init(m_device->Arena, total_pool_count, total_pool_count);
         m_tex_retire_values.init(m_device->Arena, total_pool_count, total_pool_count);
         m_tex_retire_staging.init(m_device->Arena, total_pool_count, total_pool_count);
+        m_tex_deferral_retry.init(m_device->Arena, MAX_DEFERRAL_RETRY);
 
         for (uint32_t i = 0; i < total_pool_count; ++i)
         {
@@ -894,7 +997,7 @@ namespace ZEngine::Rendering
             if (i >= GEOMETRY_UPLOAD_SLOT)
             {
                 ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free transfer slot — upload deferred")
-                return handle;
+                return {};
             }
 
             auto                            transfer_cmd = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, frame_index, thread_index, i);
@@ -912,22 +1015,29 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily                = m_device->TransferFamilyIndex;
             to_transfer.DestinationQueueFamily           = m_device->TransferFamilyIndex;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout                                  = to_transfer.NewLayout;
+            img_buf->Layout             = to_transfer.NewLayout;
 
-            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data);
+            uint32_t   ring_offset      = 0;
+            BufferView transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, &ring_offset);
+            // Ring chunks retire against RenderTimeline (see VulkanDevice::TickMemory),
+            // not m_tex_transfer_timelines — the frame's own submission is on the same
+            // queue, after this one, so it's a safe (if slightly conservative) proxy for
+            // "the transfer copy has definitely finished reading the ring by then".
+            if (ring_offset != std::numeric_limits<uint32_t>::max())
+                m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
 
-            ImageMemoryBarrierSpecification release          = {};
-            release.ImageHandle                              = buffer_handle;
-            release.OldLayout                                = ImageLayout::TRANSFER_DST_OPTIMAL;
-            release.NewLayout                                = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            release.ImageAspectMask                          = VkImageAspectFlagBits(img_buf_aspect);
-            release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
-            release.DestinationAccessMask                    = VK_ACCESS_NONE;
-            release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            release.DestinationStageMask                     = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            release.LayerCount                               = texture->Specification.LayerCount;
-            release.SourceQueueFamily                        = m_device->TransferFamilyIndex;
-            release.DestinationQueueFamily                   = m_device->GraphicFamilyIndex;
+            ImageMemoryBarrierSpecification release = {};
+            release.ImageHandle                     = buffer_handle;
+            release.OldLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+            release.NewLayout                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            release.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
+            release.SourceAccessMask                = VK_ACCESS_TRANSFER_WRITE_BIT;
+            release.DestinationAccessMask           = VK_ACCESS_NONE;
+            release.SourceStageMask                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            release.DestinationStageMask            = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            release.LayerCount                      = texture->Specification.LayerCount;
+            release.SourceQueueFamily               = m_device->TransferFamilyIndex;
+            release.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{release});
             img_buf->Layout = release.NewLayout;
             transfer_cmd->End();
@@ -937,7 +1047,7 @@ namespace ZEngine::Rendering
             if (transfer_staging)
                 m_tex_transfer_staging[pool_index][i] = transfer_staging;
 
-            m_tex_job_queue.Enqueue({transfer_cmd, m_tex_transfer_timelines[pool_index], nullptr, VK_PIPELINE_STAGE_TRANSFER_BIT, transfer_val, UINT64_MAX});
+            m_async_uploads.Enqueue({transfer_cmd, m_tex_transfer_timelines[pool_index], nullptr, VK_PIPELINE_STAGE_TRANSFER_BIT, transfer_val, UINT64_MAX});
 
             uint32_t acquire_slot  = 0;
             auto&    retire_values = m_tex_retire_values[pool_index];
@@ -945,7 +1055,15 @@ namespace ZEngine::Rendering
                 if (retire_values[acquire_slot] == 0)
                     break;
             if (acquire_slot >= GEOMETRY_UPLOAD_SLOT)
+            {
+                // Unlike the two early returns above, the transfer-queue copy has already
+                // been recorded and enqueued by this point (img_buf->Layout mutated) — this
+                // call cannot be safely retried from scratch, so it's treated as done rather
+                // than deferred (the texture just stays transfer-owned until a future upload
+                // call for the same handle happens to find a free acquire slot).
+                ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free acquire slot — texture left transfer-owned")
                 return handle;
+            }
 
             auto                            acquire_cmd  = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, acquire_slot);
             ImageMemoryBarrierSpecification acquire_spec = release;
@@ -958,7 +1076,7 @@ namespace ZEngine::Rendering
 
             uint64_t graphics_val       = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
             retire_values[acquire_slot] = graphics_val;
-            m_tex_job_queue.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (uint32_t) release.DestinationStageMask, graphics_val, transfer_val});
+            m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (uint32_t) release.DestinationStageMask, graphics_val, transfer_val});
         }
         else
         {
@@ -970,7 +1088,7 @@ namespace ZEngine::Rendering
             if (i >= GEOMETRY_UPLOAD_SLOT)
             {
                 ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free graphics slot — upload deferred")
-                return handle;
+                return {};
             }
 
             auto                            cmd         = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
@@ -988,9 +1106,14 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
             to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout                          = to_transfer.NewLayout;
+            img_buf->Layout        = to_transfer.NewLayout;
 
-            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data);
+            uint32_t   ring_offset = 0;
+            BufferView staging     = m_device->WriteTextureData(cmd, handle, data, &ring_offset);
+            // See the separate-transfer-queue branch above for why RenderTimelineNextValue
+            // (not signal_value/m_tex_timelines) is the correct retirement marker here.
+            if (ring_offset != std::numeric_limits<uint32_t>::max())
+                m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
 
             ImageMemoryBarrierSpecification to_final = {};
             to_final.ImageHandle                     = buffer_handle;
@@ -1011,7 +1134,7 @@ namespace ZEngine::Rendering
             retire_values[i]      = signal_value;
             if (staging)
                 m_tex_retire_staging[pool_index][i] = staging;
-            m_tex_job_queue.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
+            m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
             img_buf->Layout = to_final.NewLayout;
         }
         return handle;
@@ -1062,13 +1185,17 @@ namespace ZEngine::Rendering
         to_final.SourceQueueFamily                    = m_device->GraphicFamilyIndex;
         to_final.DestinationQueueFamily               = m_device->GraphicFamilyIndex;
 
-        auto* cmd                                     = m_upload_cmd;
+        auto*                         cmd             = m_upload_cmd_mgr->GetCommandBuffer(QueueType::GRAPHIC_QUEUE, m_active_frame_index, 0, 0, false);
+        Rendering::Primitives::Fence* fence           = m_sync_upload_fence;
+        fence->Wait(UINT64_MAX);
+        fence->Reset();
         cmd->ResetState();
         vkResetCommandBuffer(cmd->GetHandle(), 0);
         cmd->Begin();
         cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-        img_buf->Layout    = to_transfer.NewLayout;
-        BufferView staging = m_device->WriteTextureData(cmd, handle, pixels);
+        img_buf->Layout        = to_transfer.NewLayout;
+        uint32_t   ring_offset = 0;
+        BufferView staging     = m_device->WriteTextureData(cmd, handle, pixels, &ring_offset);
         cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
         img_buf->Layout = to_final.NewLayout;
         cmd->End();
@@ -1079,14 +1206,23 @@ namespace ZEngine::Rendering
         submit.commandBufferCount = 1;
         submit.pCommandBuffers    = &raw;
 
-        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
-        vkResetFences(m_device->LogicalDevice, 1, &m_upload_fence);
-        vkQueueSubmit(gfx_queue, 1, &submit, m_upload_fence);
-        vkWaitForFences(m_device->LogicalDevice, 1, &m_upload_fence, VK_TRUE, UINT64_MAX);
+        vkQueueSubmit(gfx_queue, 1, &submit, fence->GetHandle());
+        fence->Wait(UINT64_MAX);
         cmd->ResetState();
 
+        // Gated on the render timeline's own progress rather than marked safe at value 0 —
+        // the fence wait above is not trustworthy proof of completion once any command
+        // buffer on the queue has already timed out (issue #764 follow-up investigation).
+        if (ring_offset != std::numeric_limits<uint32_t>::max())
+            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
+
         if (staging)
-            m_device->GpuMem.FreeBuffer(staging);
+        {
+            DeferredFreeEntry e;
+            e.EntryKind   = DeferredFreeEntry::Kind::Buffer;
+            e.Data.Buffer = staging;
+            m_device->DeferFree(e);
+        }
 
         return handle;
     }
@@ -1096,30 +1232,34 @@ namespace ZEngine::Rendering
         m_tex_deferral_queue.Emplace(std::forward<TextureDeferral>(deferral));
     }
 
-    void RenderResourceManager::CompleteDeferrals()
+    void RenderResourceManager::CompleteDeferrals(uint8_t frame_index)
     {
+        // Deferrals that found no free upload slot this pass are collected here and
+        // requeued after the loop — retried next frame instead of freeing pixel data
+        // that was never actually copied to the GPU, and instead of spinning in place
+        // waiting for a slot that won't free up within this same call.
+        m_tex_deferral_retry.clear();
         while (!m_tex_deferral_queue.Empty())
         {
             TextureDeferral d = {};
             m_tex_deferral_queue.Pop(d);
-            UploadTextureBuffer(d.FrameIdx, d.ThreadIdx, d.TexHandle, d.Pixels);
+            auto result = UploadTextureBuffer(frame_index, 0, d.TexHandle, d.Pixels);
+            if (!result.Valid())
+            {
+                m_tex_deferral_retry.push(std::move(d));
+                continue;
+            }
             // Free slab-owned pixels after upload. Nullptr = borrowed pointer, skip.
             if (d.Slab && d.Pixels)
                 d.Slab->Free(d.Pixels);
         }
+        for (auto& d : m_tex_deferral_retry)
+            m_tex_deferral_queue.Emplace(std::move(d));
     }
 
-    void RenderResourceManager::SubmitTextureJobs()
+    void RenderResourceManager::SubmitAsyncUploads()
     {
-        while (!m_tex_job_queue.Empty())
-        {
-            TextureTimelineJob job;
-            if (m_tex_job_queue.Pop(job))
-            {
-                m_device->QueueSubmit(job.Buffer, job.Timeline, job.WaitFlag, job.SignalValue, job.WaitValue, job.WaitTimeline);
-                m_device->EnqueueAsyncGPUOperation({job.WaitFlag, job.SignalValue, job.Timeline});
-            }
-        }
+        m_async_uploads.SubmitAll();
     }
 
     void RenderResourceManager::RetireTextureSlots(uint8_t frame_index, uint8_t thread_index)
@@ -1168,9 +1308,9 @@ namespace ZEngine::Rendering
         }
     }
 
-    void RenderResourceManager::ClearTextureJobs()
+    void RenderResourceManager::ClearAsyncUploads()
     {
-        m_tex_job_queue.Clear();
+        m_async_uploads.Clear();
         m_device->AsyncGPUOperations.Clear();
     }
 
@@ -1203,7 +1343,7 @@ namespace ZEngine::Rendering
     Rendering::Textures::TextureHandle RenderResourceManager::IngestTexture(const uuids::uuid& uuid, const char* absolute_path, Rendering::Textures::TextureHandle existing)
     {
         ZENGINE_LOG_RENDER_INFO("[RRM] {} texture {} from {}", existing.Valid() ? "Reloading" : "Ingesting", uuids::to_string(uuid), absolute_path)
-        return SubmitTextureFile(0, 0, absolute_path, existing);
+        return SubmitTextureFile(absolute_path, existing);
     }
 
     void RenderResourceManager::ScheduleTextureReload(const uuids::uuid& uuid)
@@ -1287,7 +1427,7 @@ namespace ZEngine::Rendering
             m_device->DestroyTexture(local[i]);
     }
 
-    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(uint8_t frame_index, uint8_t thread_index, const char* filename, Rendering::Textures::TextureHandle existing)
+    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing)
     {
         using namespace Rendering::Specifications;
 
@@ -1355,10 +1495,9 @@ namespace ZEngine::Rendering
         std::string                        captured_filename = abs_filename;
         std::string                        captured_ext      = file_ext;
         TextureSpecification               captured_spec     = spec;
-        uint8_t                            fi = frame_index, ti = thread_index;
-        Rendering::Textures::TextureHandle captured_handle = tex_handle;
+        Rendering::Textures::TextureHandle captured_handle   = tex_handle;
 
-        Helpers::ThreadPoolHelper::Submit([this, captured_filename, captured_ext, captured_spec, fi, ti, captured_handle]() mutable {
+        Helpers::ThreadPoolHelper::Submit([this, captured_filename, captured_ext, captured_spec, captured_handle]() mutable {
             std::vector<uint8_t> buffer;
 
             if (captured_spec.IsCubemap)
@@ -1455,13 +1594,10 @@ namespace ZEngine::Rendering
                 pixels = static_cast<uint8_t*>(slab->Alloc(bytes));
                 Helpers::secure_memmove(pixels, bytes, buffer.data(), bytes);
             }
-
             TextureDeferral deferral;
             deferral.Pixels    = pixels;
             deferral.ByteSize  = bytes;
             deferral.Slab      = slab;
-            deferral.FrameIdx  = fi;
-            deferral.ThreadIdx = ti;
             deferral.TexHandle = captured_handle;
             EnqueueTextureDeferral(std::move(deferral));
             m_device->RequestDescriptorUpdate(captured_handle);
@@ -1490,7 +1626,7 @@ namespace ZEngine::Rendering
             stbi_write_png(kFallbackPath, W, H, 4, pixels, W * 4);
         }
 
-        return SubmitTextureFile(0, 0, kFallbackPath);
+        return SubmitTextureFile(kFallbackPath);
     }
 
 } // namespace ZEngine::Rendering

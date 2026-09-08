@@ -285,7 +285,11 @@ namespace ZEngine::Core::VFS
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
         }
 
-        void* mem = m_file_pool.Allocate();
+        void* mem;
+        {
+            std::lock_guard<std::mutex> lock(m_file_pool_mutex);
+            mem = m_file_pool.Allocate();
+        }
         if (!mem)
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
@@ -310,6 +314,7 @@ namespace ZEngine::Core::VFS
         if (file->m_handle == INVALID_HANDLE_VALUE)
         {
             file->~VFSDiskFile();
+            std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             m_file_pool.Free(file);
             return VFSResult<IVFSFile*>::Fail(VFSError::NotFound);
         }
@@ -330,6 +335,7 @@ namespace ZEngine::Core::VFS
         if (file->m_fd < 0)
         {
             file->~VFSDiskFile();
+            std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             m_file_pool.Free(file);
             return VFSResult<IVFSFile*>::Fail(VFSError::NotFound);
         }
@@ -349,6 +355,7 @@ namespace ZEngine::Core::VFS
             return;
         }
         file->~IVFSFile();
+        std::lock_guard<std::mutex> lock(m_file_pool_mutex);
         m_file_pool.Free(file);
     }
 

@@ -88,6 +88,11 @@ namespace ZEngine::Managers
         static void                                                                         IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
         static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
 
+        /// @brief Single-UUID counterpart to ReloadFromDisk's material block — resolves,
+        ///        deserializes, and ingests one material (and its textures) by UUID.
+        ///        No-op if uuid is nil, unregistered, or already ingested.
+        static void                                                                         IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid);
+
         /// @brief Thread-safe lookup of a texture's current handle by UUID.
         static Rendering::Textures::TextureHandle                                           FindTextureHandle(const uuids::uuid& uuid);
 
@@ -160,7 +165,9 @@ namespace ZEngine::Managers
         if (!Instance()->Registry)
             return nullptr;
         const auto* rec = Instance()->Registry->FindByUUID(id);
-        if (!rec)
+        // VFSScanner pre-registers every .zematerial UUID with SlotHandle=0 before any
+        // ingest happens — IsLoaded() tells a real ingest apart from that placeholder.
+        if (!rec || !rec->IsLoaded())
             return nullptr;
         return GetAsset<Importers::AssetMaterial, AssetHandle>(rec->SlotHandle);
     }

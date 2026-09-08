@@ -60,7 +60,16 @@ namespace ZEngine::Managers
 
         static Core::VFS::AssetRegistry s_registry;
         s_registry.Initialize(s_Instance->Arena);
-        s_Instance->Registry = &s_registry;
+        s_Instance->Registry                  = &s_registry;
+
+        // Reserve slot 0 as an intentional fallback material: AppRenderPipeline defaults
+        // an unresolved submesh to index 0, so without this it would silently alias
+        // whichever real material happens to be ingested first.
+        Importers::AssetMaterial fallback_mat = {};
+        s_Instance->Materials.push(fallback_mat);
+        Rendering::Meshes::MeshMaterial fallback_gpu = {};
+        fallback_gpu.AlbedoColor                     = Rendering::gpuvec4(1.0f, 0.078f, 0.576f, 1.0f); // matches FallbackTextureHandle's (255, 20, 147)
+        s_Instance->GPUMeshMaterials.push(fallback_gpu);
     }
 
     void AssetManager::InitFallbackTexture()
@@ -254,7 +263,7 @@ namespace ZEngine::Managers
             char full_path[MAX_FILE_PATH_COUNT] = {};
             snprintf(full_path, sizeof(full_path), "%s%c%s", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
             auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
-            new_tex.Handle = rrm->SubmitTextureFile(0, 0, full_path);
+            new_tex.Handle = rrm->SubmitTextureFile(full_path);
             if (!new_tex.Handle.Valid())
             {
                 ZENGINE_VALIDATE_ASSERT(s_Instance->FallbackTextureHandle.Valid(), "FallbackTextureHandle not initialized — InitFallbackTexture must be called before ingesting assets")
@@ -315,6 +324,27 @@ namespace ZEngine::Managers
         gpu_mat.NormalMap                        = ResolveTextureMapIndex(mat.NormalTexUUID, mat.NormalTexPath);
         gpu_mat.OpacityMap                       = ResolveTextureMapIndex(mat.OpacityTexUUID, mat.OpacityTexPath);
         gpu_mat.SpecularMap                      = ResolveTextureMapIndex(mat.SpecularTexUUID, mat.SpecularTexPath);
+    }
+
+    void AssetManager::IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid)
+    {
+        if (!s_Instance || !s_Instance->Registry || !scratch || material_uuid.is_nil())
+            return;
+        // Same dedup key IngestMaterial uses — no-op if already ingested.
+        if (s_Instance->UUIDToMaterialSlot.find(material_uuid) != nullptr)
+            return;
+
+        auto* rec = s_Instance->Registry->FindByUUID(material_uuid);
+        if (!rec)
+            return;
+
+        char native[MAX_FILE_PATH_COUNT] = {};
+        rec->Path.ResolveNative(s_Instance->CurrentWorkingSpacePath, native, sizeof(native));
+
+        Importers::AssetMaterial mat = {};
+        Importers::AssetCodec::DeserializeMaterialAssetFile(scratch, native, mat);
+        if (!mat.MaterialUUID.is_nil())
+            IngestMaterial(std::move(mat)); // transitively ingests each referenced texture map
     }
 
     uint32_t AssetManager::ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path)

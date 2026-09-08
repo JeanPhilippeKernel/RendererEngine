@@ -24,9 +24,14 @@ namespace ZEngine::Importers
     {
         (void) ctx;
 
-        // Resolve to native path — stbi_info works on the filesystem, not the VFS.
-        char native[MAX_FILE_PATH_COUNT] = {};
-        path.ToNative(native, sizeof(native));
+        // path is workspace-relative — ToNative alone only swaps separators and would
+        // leave the workspace root missing, so resolve it like every other importer.
+        char        native[MAX_FILE_PATH_COUNT] = {};
+        const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        if (working_space && working_space[0] != '\0')
+            path.ResolveNative(working_space, native, sizeof(native));
+        else
+            path.ToNative(native, sizeof(native));
 
         int w = 0, h = 0, ch = 0;
         if (!stbi_info(native, &w, &h, &ch))

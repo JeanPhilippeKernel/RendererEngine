@@ -133,7 +133,7 @@ namespace ZEngine::Rendering::Renderers
         {
             auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
             if (rrm)
-                m_env_map = rrm->SubmitTextureFile(0, 0, EnvMapPath);
+                m_env_map = rrm->SubmitTextureFile(EnvMapPath);
         }
 
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);

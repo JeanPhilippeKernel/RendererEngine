@@ -14,12 +14,6 @@
 #include <ZEngine/Engine/FrameRateCap.h>
 #include <ZEngine/Engine/FrameTimer.h>
 #include <ZEngine/Helpers/ThreadPool.h>
-#include <ZEngine/Importers/AssimpImporter.h>
-#include <ZEngine/Importers/EnvironmentMapImporter.h>
-#include <ZEngine/Importers/FbxImporter.h>
-#include <ZEngine/Importers/GltfImporter.h>
-#include <ZEngine/Importers/ImportCoordinator.h>
-#include <ZEngine/Importers/TextureImporter.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -37,13 +31,9 @@ using namespace std::chrono_literals;
 
 namespace ZEngine
 {
-    static std::atomic_bool                 s_request_terminate = false;
-    static std::atomic_bool                 s_close_requested   = false;
-    static EngineContextPtr                 g_engine_ctx        = nullptr;
-    static Applications::GameApplicationPtr g_app               = nullptr;
-    static std::thread                      g_render_thread     = {};
+    static EngineContextPtr g_engine_ctx = nullptr;
 
-    void                                    Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
+    void                    Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
     {
         ZENGINE_VALIDATE_ASSERT(memory != nullptr, "Engine::Initialize: memory is null — Obelisk must call MemoryManager::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
@@ -72,7 +62,10 @@ namespace ZEngine
             g_engine_ctx->EngineAssetsBackend.Initialize(engine_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
             auto mount_path = Core::VFS::VFSPath::Parse("/ZodiacEngine");
             if (mount_path.Succeeded())
-                vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
+            {
+                auto res = vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
+                (void) res;
+            }
         }
 
         memory->CreateBudgetedArena(memory->Budget.AssetManager, &g_engine_ctx->AssetArena);
@@ -103,21 +96,16 @@ namespace ZEngine
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
-        static Importers::GltfImporter           s_gltf_importer;
-        static Importers::FbxImporter            s_fbx_importer;
-        static Importers::AssimpImporter         s_assimp_importer;
-        static Importers::EnvironmentMapImporter s_env_map_importer;
-        static Importers::TextureImporter        s_texture_importer;
-        s_gltf_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
-        s_fbx_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
-        s_assimp_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
-        s_env_map_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
-        s_texture_importer.Initialize(&g_engine_ctx->ImportPipelineArena);
-        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_gltf_importer);
-        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_fbx_importer);
-        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_assimp_importer);
-        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_env_map_importer);
-        g_engine_ctx->ImportCoordinator->RegisterImporter(&s_texture_importer);
+        g_engine_ctx->GltfImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
+        g_engine_ctx->FbxImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
+        g_engine_ctx->AssimpImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
+        g_engine_ctx->EnvironmentMapImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
+        g_engine_ctx->TextureImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->GltfImporter);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->FbxImporter);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->AssimpImporter);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->EnvironmentMapImporter);
+        g_engine_ctx->ImportCoordinator->RegisterImporter(&g_engine_ctx->TextureImporter);
 
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
         g_engine_ctx->RenderResourceManager = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
@@ -130,7 +118,11 @@ namespace ZEngine
         // Wire FileWatcher: Modified → AssetRegistry + ImportCoordinator::Enqueue(Immediate)
         if (app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0')
         {
-            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, nullptr, nullptr, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator);
+            g_engine_ctx->VFSDirectoryCache.Initialize(&g_engine_ctx->AssetArena);
+            g_engine_ctx->VFSScanner.Initialize(&g_engine_ctx->AssetArena);
+            g_engine_ctx->VFSScanner.SetAssetRegistry(Managers::AssetManager::Instance()->Registry);
+
+            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, &g_engine_ctx->VFSDirectoryCache, &g_engine_ctx->VFSScanner, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator);
         }
 
         glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {
@@ -141,7 +133,7 @@ namespace ZEngine
         Core::MainThreadScheduler::Initialize(&arena);
 
         app->CurrentWindow = g_engine_ctx->Window;
-        g_app              = app;
+        g_engine_ctx->App  = app;
 
         ZENGINE_CORE_INFO("Engine initialized")
     }
@@ -149,12 +141,12 @@ namespace ZEngine
     void Engine::Deinitialize()
     {
         // Step 1 — signal all loops to exit
-        s_request_terminate.store(true, std::memory_order_release);
+        g_engine_ctx->RequestTerminate.value.store(true, std::memory_order_release);
 
         // Step 2 — join render thread before any GPU resource is destroyed
-        if (g_render_thread.joinable())
+        if (g_engine_ctx->RenderThread.joinable())
         {
-            g_render_thread.join();
+            g_engine_ctx->RenderThread.join();
         }
 
         Core::MainThreadScheduler::Shutdown();
@@ -173,7 +165,7 @@ namespace ZEngine
         Managers::AssetManager::Shutdown();
 
         // Step 4 — destroy framebuffers, render passes, descriptor sets
-        g_app->RenderPipeline->Shutdown();
+        g_engine_ctx->App->RenderPipeline->Shutdown();
 
         // Step 12 — close VFS file handles
         if (g_engine_ctx->VFS)
@@ -211,7 +203,7 @@ namespace ZEngine
 
     void Engine::RequestClose()
     {
-        s_close_requested.store(true, std::memory_order_release);
+        g_engine_ctx->CloseRequested.value.store(true, std::memory_order_release);
     }
 
     void Engine::MainThreadRun()
@@ -224,7 +216,7 @@ namespace ZEngine
 
         ZENGINE_CORE_INFO("Engine main loop starting — FixedDT={:.4f}s MaxSteps=5", accumulator.FixedDt())
 
-        while (!s_close_requested.load(std::memory_order_acquire))
+        while (!g_engine_ctx->CloseRequested.value.load(std::memory_order_acquire))
         {
             if (!g_engine_ctx || !g_engine_ctx->Window || !g_engine_ctx->Device)
                 break;
@@ -276,10 +268,10 @@ namespace ZEngine
             Core::MainThreadScheduler::Drain();
 
             // Application update (non-ECS game logic)
-            g_app->Update(raw_dt);
+            g_engine_ctx->App->Update(raw_dt);
 
             // Render payload
-            auto     pipeline = g_app->RenderPipeline;
+            auto     pipeline = g_engine_ctx->App->RenderPipeline;
             uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
             uint32_t next     = (head + 1) % pipeline->MaxMailBoxBufferCount;
             uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
@@ -297,23 +289,23 @@ namespace ZEngine
             auto& r_payload = pipeline->RenderPayloads[head];
             r_payload.RenderUIOverlay.value.store(false, std::memory_order_release);
 
-            if (g_app->EnableRenderOverlay)
+            if (g_engine_ctx->App->EnableRenderOverlay)
             {
                 pipeline->BeginOverlayFrame(raw_dt);
-                g_app->OnRenderUI();
+                g_engine_ctx->App->OnRenderUI();
                 pipeline->EndOverlayFrame();
                 r_payload.RenderUIOverlay.value.store(true, std::memory_order_release);
                 pipeline->FillOverlayPayload(r_payload);
             }
 
-            if (g_engine_ctx->Scene && g_app->CurrentScene)
+            if (g_engine_ctx->Scene && g_engine_ctx->App->CurrentScene)
             {
                 ECS::Systems::SyncHierarchy(*g_engine_ctx->Scene);
-                ECS::Systems::SyncECSToRenderScene(*g_engine_ctx->Scene, alpha, *g_app->CurrentScene);
-                ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_app->CurrentScene);
+                ECS::Systems::SyncECSToRenderScene(*g_engine_ctx->Scene, alpha, *g_engine_ctx->App->CurrentScene);
+                ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_engine_ctx->App->CurrentScene);
             }
 
-            g_app->PrepareScene(r_payload);
+            g_engine_ctx->App->PrepareScene(r_payload);
 
             pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
 
@@ -346,15 +338,25 @@ namespace ZEngine
 #endif
         while (true)
         {
-            if (s_request_terminate.load(std::memory_order_acquire))
+            if (g_engine_ctx->RequestTerminate.value.load(std::memory_order_acquire))
             {
                 break;
             }
 
-            auto     pipeline = g_app->RenderPipeline;
+            auto pipeline = g_engine_ctx->App->RenderPipeline;
 
-            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
-            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
+            // Once the GPU device is lost (see VulkanDevice::CheckDeviceLost), continuing to
+            // call into Vulkan is undefined behaviour and has been observed to segfault inside
+            // the loader rather than return an error. Freeze the render loop instead of
+            // crashing — there is no recovery path yet, so this is a safe stop, not a resume.
+            if (pipeline->Device && pipeline->Device->IsDeviceLost.load(std::memory_order_acquire))
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+
+            uint32_t tail = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
+            uint32_t head = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
 
             // Buffer empty
             if (tail == head)
@@ -396,11 +398,11 @@ namespace ZEngine
     void Engine::Run()
     {
 
-        g_render_thread = std::thread(Engine::RenderThreadRun);
+        g_engine_ctx->RenderThread = std::thread(Engine::RenderThreadRun);
         MainThreadRun();
 
-        // OnClosing fires while all subsystems are live; Deinitialize sets s_request_terminate
-        g_app->OnClosing();
+        // OnClosing fires while all subsystems are live; Deinitialize sets RequestTerminate
+        g_engine_ctx->App->OnClosing();
 
         Deinitialize();
     }

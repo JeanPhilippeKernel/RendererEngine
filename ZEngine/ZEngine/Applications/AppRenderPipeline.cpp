@@ -132,7 +132,7 @@ namespace ZEngine::Applications
         }
 
         if (Device->RRM)
-            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->CompleteDeferrals();
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->CompleteDeferrals(swapchain->CurrentFrame->Index);
 
         CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swapchain->CurrentFrame->Index, RenderMainThreadIndex, 0, false);
         vkResetCommandBuffer(CurrentCmdBuf->GetHandle(), 0);
@@ -145,15 +145,15 @@ namespace ZEngine::Applications
     void AppRenderPipeline::EndFrame()
     {
         if (Device->RRM)
-            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitTextureJobs();
+        {
+            auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+            rrm->EndFrame();
+            rrm->SubmitAsyncUploads();
+        }
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
         Device->SwapchainPtr->Present();
-
-        // RRM::EndFrame AFTER Present so swap entries drain with the correct frame counter.
-        if (Device->RRM)
-            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame(Device->SwapchainPtr->CurrentFrame->Index);
     }
 
     void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
