@@ -12,6 +12,8 @@ namespace ZEngine::ECS
         uuids::uuid                       SceneUUID = {};
         Core::Containers::String          Name      = {};
 
+        /// @note Do not call push() directly on a default-constructed SceneSnapshot.
+        ///       Use SceneSnapshot::Create() to ensure Entities is initialized before use.
         Core::Containers::Array<EntityID> Entities  = {};
 
         static SceneSnapshot              Create(Core::Memory::ArenaAllocator* arena, cstring name, uint32_t entity_capacity = 64)

@@ -252,6 +252,8 @@ namespace ZEngine::ECS
         }
         (void) file->Close();
 
+        // yaml-cpp's YAML::Load has no non-throwing parse API — this is the single
+        // mandatory exception boundary for the third-party library.
         YAML::Node root;
         try
         {
@@ -297,7 +299,8 @@ namespace ZEngine::ECS
             out_scene.Name.init(m_arena, name_node.Scalar().c_str());
         }
 
-        out_scene.Entities.init(m_arena, 64);
+        const uint32_t entity_count = entities.IsDefined() && entities.IsSequence() ? static_cast<uint32_t>(entities.size()) : 0;
+        out_scene.Entities.init(m_arena, entity_count ? entity_count : 1);
 
         const auto& serializers = ComponentSerializerRegistry::Get();
         const auto& reflection  = ComponentReflectionRegistry::Get();
@@ -318,40 +321,33 @@ namespace ZEngine::ECS
                 continue;
             }
 
-            try
+            for (const auto& kv : components)
             {
-                for (const auto& kv : components)
+                if (!kv.first.IsScalar())
                 {
-                    if (!kv.first.IsScalar())
-                    {
-                        continue;
-                    }
-
-                    cstring              type_name = kv.first.Scalar().c_str();
-                    const ComponentMeta* meta      = reflection.LookupByName(type_name);
-                    if (!meta)
-                    {
-                        ZENGINE_CORE_WARN("YAMLSceneSerializer: unknown component '{}', skipping", type_name);
-                        continue;
-                    }
-
-                    const ComponentSerializeFns* fns = serializers.Lookup(meta->TypeID);
-                    if (!fns || !fns->DeserializeYAML)
-                    {
-                        ZENGINE_CORE_WARN("YAMLSceneSerializer: '{}' has no YAML deserializer, skipping", type_name);
-                        continue;
-                    }
-
-                    // The component must exist before the callback writes into it.
-                    m_scene->AddComponentRaw(id, meta->TypeID);
-                    fns->DeserializeYAML(fns->Context, id, *m_scene, kv.second);
+                    continue;
                 }
-            }
-            catch (const YAML::Exception& e)
-            {
-                ZENGINE_CORE_WARN("YAMLSceneSerializer: entity dropped, malformed component data: {}", e.what());
-                m_scene->DestroyEntity(id);
-                out_scene.Entities.pop();
+
+                cstring              type_name = kv.first.Scalar().c_str();
+                const ComponentMeta* meta      = reflection.LookupByName(type_name);
+                if (!meta)
+                {
+                    ZENGINE_CORE_WARN("YAMLSceneSerializer: unknown component '{}', skipping", type_name);
+                    continue;
+                }
+
+                const ComponentSerializeFns* fns = serializers.Lookup(meta->TypeID);
+                if (!fns || !fns->DeserializeYAML)
+                {
+                    ZENGINE_CORE_WARN("YAMLSceneSerializer: '{}' has no YAML deserializer, skipping", type_name);
+                    continue;
+                }
+
+                // The component must exist before the callback writes into it.
+                // DeserializeYAML callbacks must use safe yaml-cpp APIs (check IsScalar()
+                // before reading, use as<T>(default) overloads) — no exception handling here.
+                m_scene->AddComponentRaw(id, meta->TypeID);
+                fns->DeserializeYAML(fns->Context, id, *m_scene, kv.second);
             }
         }
 
