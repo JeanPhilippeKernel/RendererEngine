@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include "SceneTestRegistries.h"
 
 using namespace ZEngine;
 using namespace ZEngine::ECS;
@@ -30,56 +31,6 @@ namespace
         return VFSPath::Parse(s).Value();
     }
 
-    void SerializeTransform(void*, EntityID id, const Scene& scene, YAML::Node& node)
-    {
-        const auto* t = scene.GetComponent<TransformComponent>(id);
-        if (!t)
-            return;
-        YAML::Node position(YAML::NodeType::Sequence);
-        position.push_back(t->Position.x);
-        position.push_back(t->Position.y);
-        position.push_back(t->Position.z);
-        node["position"] = position;
-
-        YAML::Node scale(YAML::NodeType::Sequence);
-        scale.push_back(t->Scale.x);
-        scale.push_back(t->Scale.y);
-        scale.push_back(t->Scale.z);
-        node["scale"] = scale;
-    }
-
-    void DeserializeTransform(void*, EntityID id, Scene& scene, const YAML::Node& node)
-    {
-        auto* t = scene.GetComponent<TransformComponent>(id);
-        if (!t)
-            return;
-        const YAML::Node p = node["position"];
-        t->Position        = {p[0].as<float>(), p[1].as<float>(), p[2].as<float>()};
-        const YAML::Node s = node["scale"];
-        t->Scale           = {s[0].as<float>(), s[1].as<float>(), s[2].as<float>()};
-    }
-
-    // clang-format off
-    // Registries are process-wide singletons: set up once for the suite.
-    void EnsureRegistries()
-    {
-        static MemoryManager s_manager;
-        static bool          s_once = [] {
-            s_manager.Initialize(ZMega(8), {});
-            ComponentReflectionRegistry::Get().Initialize(&s_manager.MainArena);
-            RegisterBuiltInComponentReflection();
-            ComponentSerializerRegistry::Get().Initialize(&s_manager.MainArena);
-            ComponentSerializerRegistry::Get().Register(
-                ComponentTypeOf<TransformComponent>(),
-                {
-                         .SerializeYAML   = SerializeTransform,
-                         .DeserializeYAML = DeserializeTransform,
-                });
-            return true;
-        }();
-        (void) s_once;
-    }
-    // clang-format on
 } // namespace
 
 class YAMLSceneSerializerTest : public ::testing::Test
@@ -94,7 +45,7 @@ protected:
 
     void                SetUp() override
     {
-        EnsureRegistries();
+        SceneTests::EnsureRegistries();
         m_manager.Initialize(ZMega(32), {});
 
         m_root.init(&m_manager.MainArena, (std::filesystem::temp_directory_path() / "zengine_yaml_scene_tests").string().c_str());
@@ -298,3 +249,40 @@ MeshComponent:
     EXPECT_TRUE(YAMLSceneSerializer::ValidateAssetRefs(node).Succeeded());
 }
 #endif // ZENGINE_EDITOR
+
+TEST_F(YAMLSceneSerializerTest, MalformedComponentValueDropsTheEntity)
+{
+    const uint32_t alive_before = m_scene.AliveCount();
+
+    WriteRaw("throwy.scene.yaml", R"(
+scene:
+  uuid: "550e8400-e29b-41d4-a716-446655440000"
+  name: Throwy
+  entities:
+    - id: 1
+      components:
+        TransformComponent:
+          position: [notanumber, 2.0, 3.0]
+          scale:    [1.0, 1.0, 1.0]
+)");
+
+    SceneSnapshot loaded{};
+    EXPECT_TRUE(m_serializer.Deserialize(m_ctx, P("/scenes/throwy.scene.yaml"), loaded).Succeeded());
+    EXPECT_EQ(loaded.Entities.size(), 0u);
+    EXPECT_EQ(m_scene.AliveCount(), alive_before);
+}
+
+TEST_F(YAMLSceneSerializerTest, EmitsBlockStyleWithTwoSpaceIndent)
+{
+    EntityID id = m_scene.CreateEntity();
+    m_scene.AddComponent<TransformComponent>(id, {});
+
+    SceneSnapshot snap = SceneSnapshot::Create(&m_manager.MainArena, "Block", 4);
+    snap.Entities.push(id);
+    ASSERT_TRUE(m_serializer.Serialize(m_ctx, P("/scenes/block.scene.yaml"), snap).Succeeded());
+
+    char text[4096];
+    ReadRaw("block.scene.yaml", text, sizeof(text));
+    EXPECT_EQ(std::strchr(text, '{'), nullptr);         // no JSON-style flow mappings
+    EXPECT_NE(std::strstr(text, "\n  uuid:"), nullptr); // two-space indent under scene:
+}

@@ -13,11 +13,23 @@ namespace ZEngine::ECS
         return s_instance;
     }
 
-    void ComponentReflectionRegistry::Initialize(Core::Memory::ArenaAllocator* arena)
+    bool ComponentReflectionRegistry::IsInitialized() const
+    {
+        return m_arena != nullptr;
+    }
+
+    void ComponentReflectionRegistry::Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity)
     {
         ZENGINE_VALIDATE_ASSERT(arena != nullptr, "ComponentReflectionRegistry::Initialize: arena must not be null")
+        ZENGINE_VALIDATE_ASSERT(capacity > 0, "ComponentReflectionRegistry::Initialize: capacity must be > 0")
+
+        if (m_arena)
+        {
+            return; // already initialized
+        }
+
         m_arena = arena;
-        m_meta.init(arena, 64);
+        m_meta.init(arena, capacity);
     }
 
     void ComponentReflectionRegistry::Register(const ComponentMeta& meta)
@@ -32,7 +44,7 @@ namespace ZEngine::ECS
             return;
         }
 
-        ZENGINE_VALIDATE_ASSERT(m_meta.size() < m_meta.capacity(), "ComponentReflectionRegistry::Register: exceeded reserved capacity")
+        ZENGINE_VALIDATE_ASSERT(m_meta.size() < m_meta.capacity(), "ComponentReflectionRegistry::Register: exceeded the capacity reserved by Initialize() — pass a larger capacity there")
 
         m_meta.push(meta);
     }

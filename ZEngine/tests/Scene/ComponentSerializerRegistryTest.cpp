@@ -1,93 +1,26 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/ECS/ComponentSerializerRegistry.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/ECS/Scene.h>
+#include <ZEngine/ECS/SceneSnapshot.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 #include <cstring>
+#include "SceneTestRegistries.h"
 
 using namespace ZEngine;
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
 using namespace ZEngine::Core::Memory;
+using ZEngine::Helpers::secure_strcmp;
 
 namespace
 {
     ComponentSerializerRegistry& Registry()
     {
-        static MemoryManager s_manager = [] {
-            MemoryManager m;
-            m.Initialize(ZMega(8), {});
-            ComponentSerializerRegistry::Get().Initialize(&m.MainArena);
-            return m;
-        }();
-        (void) s_manager;
+        SceneTests::EnsureRegistries();
         return ComponentSerializerRegistry::Get();
-    }
-
-    void SerializeTransformYAML(void* ctx, EntityID id, const Scene& scene, YAML::Node& node)
-    {
-        if (ctx)
-            *static_cast<int*>(ctx) += 1; // proves Context reaches the callback
-        const auto* t = scene.GetComponent<TransformComponent>(id);
-        if (!t)
-            return;
-        YAML::Node position(YAML::NodeType::Sequence);
-        position.push_back(t->Position.x);
-        position.push_back(t->Position.y);
-        position.push_back(t->Position.z);
-        node["position"] = position;
-
-        YAML::Node scale(YAML::NodeType::Sequence);
-        scale.push_back(t->Scale.x);
-        scale.push_back(t->Scale.y);
-        scale.push_back(t->Scale.z);
-        node["scale"] = scale;
-    }
-
-    void DeserializeTransformYAML(void*, EntityID id, Scene& scene, const YAML::Node& node)
-    {
-        auto* t = scene.GetComponent<TransformComponent>(id);
-        if (!t)
-            return;
-        const YAML::Node p = node["position"];
-        t->Position        = {p[0].as<float>(), p[1].as<float>(), p[2].as<float>()};
-        const YAML::Node s = node["scale"];
-        t->Scale           = {s[0].as<float>(), s[1].as<float>(), s[2].as<float>()};
-    }
-
-    void SerializeTransformBinary(void*, EntityID id, const Scene& scene, Core::Containers::Array<uint8_t>& out)
-    {
-        const auto*    t   = scene.GetComponent<TransformComponent>(id);
-        const uint8_t* raw = reinterpret_cast<const uint8_t*>(t);
-        for (uint32_t i = 0; i < sizeof(TransformComponent); ++i)
-            out.push(raw[i]);
-    }
-
-    void DeserializeTransformBinary(void*, EntityID id, Scene& scene, const uint8_t* data, uint32_t size)
-    {
-        auto* t = scene.GetComponent<TransformComponent>(id);
-        if (!t || size != sizeof(TransformComponent))
-            return;
-        *t = *reinterpret_cast<const TransformComponent*>(data);
-    }
-
-    int  s_yaml_ctx_hits = 0;
-
-    void RegisterTestSerializers()
-    {
-        static bool s_once = [] {
-            Registry().Register(
-                ComponentTypeOf<TransformComponent>(),
-                {
-                .SerializeYAML     = SerializeTransformYAML,
-                .DeserializeYAML   = DeserializeTransformYAML,
-                .SerializeBinary   = SerializeTransformBinary,
-                .DeserializeBinary = DeserializeTransformBinary,
-                .Context           = &s_yaml_ctx_hits,
-                });
-            return true;
-        }();
-        (void) s_once;
     }
 
     struct CountCtx
@@ -112,7 +45,7 @@ protected:
 
     void          SetUp() override
     {
-        RegisterTestSerializers();
+        SceneTests::EnsureRegistries();
         m_manager.Initialize(ZMega(32), {});
         m_scene.Initialize(&m_manager.MainArena);
     }
@@ -176,10 +109,10 @@ TEST_F(SerializerRegistryFixture, YAMLRoundTripThroughDispatch)
     const auto* fns = Registry().Lookup(ComponentTypeOf<TransformComponent>());
     ASSERT_NE(fns, nullptr);
 
-    int        hits_before = s_yaml_ctx_hits;
+    int        hits_before = SceneTests::YAMLContextHits();
     YAML::Node node;
     fns->SerializeYAML(fns->Context, id, m_scene, node);
-    EXPECT_EQ(s_yaml_ctx_hits, hits_before + 1); // Context was forwarded
+    EXPECT_EQ(SceneTests::YAMLContextHits(), hits_before + 1); // Context was forwarded
 
     t->Position = {0.f, 0.f, 0.f};
     t->Scale    = {0.f, 0.f, 0.f};
@@ -263,4 +196,41 @@ TEST_F(SerializerRegistryFixture, EmittedYAMLTextRoundTrips)
 
     EXPECT_FLOAT_EQ(t->Position.x, 10.f);
     EXPECT_FLOAT_EQ(t->Position.z, 30.f);
+}
+
+TEST_F(SerializerRegistryFixture, SecondInitializeDoesNotDiscardRegistrations)
+{
+    ASSERT_TRUE(Registry().IsInitialized());
+    const uint32_t before = Registry().Count();
+    ASSERT_GT(before, 0u);
+
+    MemoryManager other;
+    other.Initialize(ZMega(1), {});
+    ComponentSerializerRegistry::Get().Initialize(&other.MainArena);
+
+    EXPECT_EQ(Registry().Count(), before);
+    EXPECT_NE(Registry().Lookup(ComponentTypeOf<TransformComponent>()), nullptr);
+}
+
+TEST_F(SerializerRegistryFixture, ReflectionRegistrySurvivesSecondInitializeToo)
+{
+    const uint32_t before = ComponentReflectionRegistry::Get().Count();
+    ASSERT_GT(before, 0u);
+
+    MemoryManager other;
+    other.Initialize(ZMega(1), {});
+    ComponentReflectionRegistry::Get().Initialize(&other.MainArena);
+
+    EXPECT_EQ(ComponentReflectionRegistry::Get().Count(), before);
+}
+
+TEST_F(SerializerRegistryFixture, SnapshotCreateInitializesItsContainers)
+{
+    SceneSnapshot snap = SceneSnapshot::Create(&m_manager.MainArena, "Level", 4);
+    EXPECT_EQ(snap.Entities.size(), 0u);
+    EXPECT_GE(snap.Entities.capacity(), 4u);
+
+    snap.Entities.push(EntityID{1, 1}); // would assert on an uninitialized Array
+    EXPECT_EQ(snap.Entities.size(), 1u);
+    EXPECT_EQ(secure_strcmp(snap.Name.c_str(), "Level"), 0);
 }

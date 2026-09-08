@@ -10,16 +10,14 @@ namespace ZEngine::ECS
     class ComponentReflectionRegistry
     {
     public:
-        // Process-wide singleton. Get() is safe at any time, but the instance is
-        // unusable until Initialize() supplies an arena.
         static ComponentReflectionRegistry& Get();
 
-        void                                Initialize(Core::Memory::ArenaAllocator* arena);
+        void                                Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
+
+        [[nodiscard]] bool                  IsInitialized() const;
 
         void                                Register(const ComponentMeta& meta);
 
-        // Returned pointers dangle once Register() grows past the 64 slots
-        // reserved in Initialize(). Keep component types <= 64.
         [[nodiscard]] const ComponentMeta*  Lookup(ComponentTypeID id) const;
         [[nodiscard]] const ComponentMeta*  LookupByName(const char* type_name) const;
 

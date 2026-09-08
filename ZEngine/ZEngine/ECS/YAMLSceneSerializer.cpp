@@ -15,19 +15,6 @@ namespace ZEngine::ECS
 {
     namespace
     {
-        bool LooksLikePath(cstring v)
-        {
-            for (cstring c = v; *c; ++c)
-            {
-                // separators
-                if (*c == '/' || *c == '\\' || *c == '.')
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         bool EndsWithUUIDKey(cstring key)
         {
             constexpr size_t kSuffixLen = 5;
@@ -123,7 +110,7 @@ namespace ZEngine::ECS
             {
                 cstring value  = kv.second.Scalar().c_str();
                 auto    parsed = uuids::uuid::from_string(value);
-                if (LooksLikePath(value) || !parsed.has_value())
+                if (!parsed.has_value())
                 {
                     ZENGINE_CORE_ERROR("YAMLSceneSerializer: '{}' must be a UUID, found '{}'", key, value);
                     return VFSResult<void>::Fail(VFSError::Corrupted);
@@ -216,7 +203,8 @@ namespace ZEngine::ECS
         root["scene"] = scene_node;
 
         YAML::Emitter emitter;
-        emitter << root;
+        emitter.SetIndent(2);
+        emitter << YAML::Block << root;
         if (!emitter.good())
         {
             ZENGINE_CORE_ERROR("YAMLSceneSerializer::Serialize: emitter failed: {}", emitter.GetLastError())
@@ -330,30 +318,40 @@ namespace ZEngine::ECS
                 continue;
             }
 
-            for (const auto& kv : components)
+            try
             {
-                if (!kv.first.IsScalar())
+                for (const auto& kv : components)
                 {
-                    continue;
-                }
-                cstring              type_name = kv.first.Scalar().c_str();
-                const ComponentMeta* meta      = reflection.LookupByName(type_name);
-                if (!meta)
-                {
-                    ZENGINE_CORE_WARN("YAMLSceneSerializer: unknown component '{}', skipping", type_name);
-                    continue;
-                }
+                    if (!kv.first.IsScalar())
+                    {
+                        continue;
+                    }
 
-                const ComponentSerializeFns* fns = serializers.Lookup(meta->TypeID);
-                if (!fns || !fns->DeserializeYAML)
-                {
-                    ZENGINE_CORE_WARN("YAMLSceneSerializer: '{}' has no YAML deserializer, skipping", type_name);
-                    continue;
-                }
+                    cstring              type_name = kv.first.Scalar().c_str();
+                    const ComponentMeta* meta      = reflection.LookupByName(type_name);
+                    if (!meta)
+                    {
+                        ZENGINE_CORE_WARN("YAMLSceneSerializer: unknown component '{}', skipping", type_name);
+                        continue;
+                    }
 
-                // The component must exist before the callback writes into it.
-                m_scene->AddComponentRaw(id, meta->TypeID);
-                fns->DeserializeYAML(fns->Context, id, *m_scene, kv.second);
+                    const ComponentSerializeFns* fns = serializers.Lookup(meta->TypeID);
+                    if (!fns || !fns->DeserializeYAML)
+                    {
+                        ZENGINE_CORE_WARN("YAMLSceneSerializer: '{}' has no YAML deserializer, skipping", type_name);
+                        continue;
+                    }
+
+                    // The component must exist before the callback writes into it.
+                    m_scene->AddComponentRaw(id, meta->TypeID);
+                    fns->DeserializeYAML(fns->Context, id, *m_scene, kv.second);
+                }
+            }
+            catch (const YAML::Exception& e)
+            {
+                ZENGINE_CORE_WARN("YAMLSceneSerializer: entity dropped, malformed component data: {}", e.what());
+                m_scene->DestroyEntity(id);
+                out_scene.Entities.pop();
             }
         }
 

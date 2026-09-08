@@ -10,12 +10,24 @@ namespace ZEngine::ECS
         return s_instance;
     }
 
-    void ComponentSerializerRegistry::Initialize(Core::Memory::ArenaAllocator* arena)
+    bool ComponentSerializerRegistry::IsInitialized() const
+    {
+        return m_arena != nullptr;
+    }
+
+    void ComponentSerializerRegistry::Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity)
     {
         ZENGINE_VALIDATE_ASSERT(arena != nullptr, "ComponentSerializerRegistry::Initialize: arena must not be null")
+        ZENGINE_VALIDATE_ASSERT(capacity > 0, "ComponentSerializerRegistry::Initialize: capacity must be > 0")
+
+        if (m_arena)
+        {
+            return;
+        }
+
         m_arena = arena;
-        m_ids.init(arena, 64);
-        m_fns.init(arena, 64);
+        m_ids.init(arena, capacity);
+        m_fns.init(arena, capacity);
     }
 
     void ComponentSerializerRegistry::Register(ComponentTypeID type_id, ComponentSerializeFns fns)
@@ -28,7 +40,7 @@ namespace ZEngine::ECS
             return;
         }
 
-        ZENGINE_VALIDATE_ASSERT(m_ids.size() < m_ids.capacity(), "ComponentSerializerRegistry::Register: exceeded reserved capacity")
+        ZENGINE_VALIDATE_ASSERT(m_ids.size() < m_ids.capacity(), "ComponentSerializerRegistry::Register: exceeded the capacity reserved by Initialize() — pass a larger capacity there")
 
         m_ids.push(type_id);
         m_fns.push(fns);

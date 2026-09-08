@@ -31,7 +31,9 @@ namespace ZEngine::ECS
     public:
         static ComponentSerializerRegistry&        Get();
 
-        void                                       Initialize(Core::Memory::ArenaAllocator* arena);
+        void                                       Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
+
+        [[nodiscard]] bool                         IsInitialized() const;
 
         void                                       Register(ComponentTypeID type_id, ComponentSerializeFns fns);
 
