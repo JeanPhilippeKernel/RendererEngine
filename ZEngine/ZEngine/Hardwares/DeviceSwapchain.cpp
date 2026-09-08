@@ -471,7 +471,7 @@ namespace ZEngine::Hardwares
         if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
             CurrentFrame->Fence->Wait(UINT64_MAX);
 
-        QueueView                     queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
+        QueueView queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
         // for the rendering and presentation, we use the 3-submit pattern
         // This is due to Intel drivers bug that deosn't support well the combinaison of Timeline + Binary Semaphore.
@@ -481,9 +481,10 @@ namespace ZEngine::Hardwares
         // 3 - Present bridge
 
         // 1- Binary Acquire to a Timeline value
-        uint64_t                      frame_start_value = ++RenderTimelineNextValue;
-        uint64_t                      ignored_wait_val  = 0;
-        VkTimelineSemaphoreSubmitInfo timeline_info0    = {
+        uint64_t  frame_start_value = ++RenderTimelineNextValue;
+        ASSERT_TIMELINE_MONOTONIC(Device->LogicalDevice, RenderTimeline->GetHandle(), frame_start_value);
+        uint64_t                      ignored_wait_val = 0;
+        VkTimelineSemaphoreSubmitInfo timeline_info0   = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
             .waitSemaphoreValueCount   = 1, // must match waitSemaphoreCount
             .pWaitSemaphoreValues      = &ignored_wait_val,
@@ -558,7 +559,8 @@ namespace ZEngine::Hardwares
             stage_flags.push(val.StageMask);
         }
 
-        uint64_t                      work_complete_value      = ++RenderTimelineNextValue;
+        uint64_t work_complete_value = ++RenderTimelineNextValue;
+        ASSERT_TIMELINE_MONOTONIC(Device->LogicalDevice, RenderTimeline->GetHandle(), work_complete_value);
         VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
         VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,

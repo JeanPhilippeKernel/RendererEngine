@@ -787,6 +787,8 @@ namespace ZEngine::Hardwares
             .pSignalSemaphores    = semaphores,
         };
 
+        ASSERT_TIMELINE_MONOTONIC(LogicalDevice, signal_semaphore->GetHandle(), signal_value);
+
         VkResult submit_result = vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
         if (CheckDeviceLost(submit_result, "QueueSubmit (timeline)"))
             return false;
