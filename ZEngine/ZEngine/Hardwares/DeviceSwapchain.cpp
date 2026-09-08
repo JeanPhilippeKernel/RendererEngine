@@ -365,23 +365,42 @@ namespace ZEngine::Hardwares
         }
 
         {
-            Textures::TextureHandle tex_handle = {};
-            while (Device->TextureHandleToUpdates.Pop(tex_handle))
+            // Watermark — warn once when live texture slots exceed 75% of pool capacity.
+            static bool s_watermark_warned = false;
+            if (!s_watermark_warned)
             {
-                auto texture = Device->GlobalTextures.Access(tex_handle);
-
-                if (!texture)
+                size_t   live     = Device->GlobalTextures.Size();
+                uint32_t capacity = Device->MaxGlobalTexture;
+                if (live > static_cast<size_t>(capacity) * 3 / 4)
                 {
-                    Device->TextureHandleToUpdates.Enqueue(tex_handle);
-                    break;
+                    ZENGINE_CORE_WARN("[Bindless] Texture pool at {}/{} slots ({:.0f}%) — consider releasing unused textures", live, capacity, live * 100.0 / capacity)
+                    s_watermark_warned = true;
                 }
-                auto        img_buf    = Device->ImageBufferManager.Access(texture->BufferHandle);
-                const auto& image_info = img_buf->GetDescriptorImageInfo();
+            }
 
-                auto        scratch    = ZGetScratch(&Arena);
+            // Drain all pending texture updates into one batched vkUpdateDescriptorSets call.
+            // One call per frame (covering all dequeued handles × all registered DstSets) is
+            // cheaper than N calls for N textures arriving in the same frame (e.g. scene load).
+            auto scratch = ZGetScratch(&Arena);
+            {
+                size_t                       req_count             = Device->BindlessTextureSlotRequests.size();
+                Array<VkWriteDescriptorSet>  write_descriptor_sets = {};
+                Array<VkDescriptorImageInfo> image_infos           = {};
+                write_descriptor_sets.init(scratch.Arena, 64 * req_count);
+                image_infos.init(scratch.Arena, 64);
+
+                Textures::TextureHandle tex_handle = {};
+                while (Device->TextureHandleToUpdates.Pop(tex_handle))
                 {
-                    Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-                    write_descriptor_sets.init(scratch.Arena, Device->BindlessTextureSlotRequests.size());
+                    auto texture = Device->GlobalTextures.Access(tex_handle);
+                    if (!texture)
+                    {
+                        Device->TextureHandleToUpdates.Enqueue(tex_handle);
+                        break;
+                    }
+                    auto img_buf = Device->ImageBufferManager.Access(texture->BufferHandle);
+                    image_infos.push(img_buf->GetDescriptorImageInfo());
+                    const VkDescriptorImageInfo* info_ptr = &image_infos[image_infos.size() - 1];
 
                     for (auto& req : Device->BindlessTextureSlotRequests)
                     {
@@ -394,15 +413,17 @@ namespace ZEngine::Hardwares
                             .dstArrayElement  = (uint32_t) tex_handle.Index,
                             .descriptorCount  = 1,
                             .descriptorType   = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                            .pImageInfo       = &(image_info),
+                            .pImageInfo       = info_ptr,
                             .pBufferInfo      = nullptr,
                             .pTexelBufferView = nullptr,
                             });
                     }
-                    vkUpdateDescriptorSets(Device->LogicalDevice, (uint32_t) write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
                 }
-                ZReleaseScratch(scratch);
+
+                if (write_descriptor_sets.size() > 0)
+                    vkUpdateDescriptorSets(Device->LogicalDevice, (uint32_t) write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
             }
+            ZReleaseScratch(scratch);
         }
 
         {

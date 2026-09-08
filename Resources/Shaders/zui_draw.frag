@@ -14,6 +14,6 @@ layout(location = 0) in struct
 void main()
 {
     uint texId  = uint(floor(In.TexData.z + 0.5));
-    vec4 texVal = texture(sampler2D(TextureArray[texId], LinearClampSampler), In.TexData.xy);
+    vec4 texVal = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearClampSampler), In.TexData.xy);
     fColor      = In.Color * texVal;
 }
