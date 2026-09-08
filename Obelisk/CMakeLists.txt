@@ -50,4 +50,11 @@ target_link_libraries(${TARGET_NAME} PUBLIC
 
 set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
 
+if(APPLE)
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND codesign --force --sign - $<TARGET_FILE:${TARGET_NAME}>
+        COMMENT "Ad-hoc signing ${TARGET_NAME}"
+    )
+endif()
+
 install(TARGETS ${TARGET_NAME} DESTINATION bin)
