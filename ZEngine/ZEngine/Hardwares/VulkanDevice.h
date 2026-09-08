@@ -1,5 +1,19 @@
 #pragma once
 #include <vulkan/vulkan.h>
+
+// Diagnostic guard for Intel Windows timeline semaphore corruption.
+// Intel drivers report UINT64_MAX as the current semaphore value when the signal
+// sequence went non-monotonic. Asserting before every signal lets us pinpoint
+// the first violating site rather than crashing later at Present().
+// Remove this macro block once the root cause is confirmed on Windows.
+#define ASSERT_TIMELINE_MONOTONIC(device, semaphore_handle, next_signal_value)                                                                   \
+    do                                                                                                                                           \
+    {                                                                                                                                            \
+        uint64_t _current = 0;                                                                                                                   \
+        vkGetSemaphoreCounterValue((device), (semaphore_handle), &_current);                                                                     \
+        ZENGINE_VALIDATE_ASSERT(_current != UINT64_MAX, "DIAG: Timeline semaphore already corrupted (current == UINT64_MAX) BEFORE this signal") \
+        ZENGINE_VALIDATE_ASSERT((next_signal_value) > _current, "DIAG: Timeline semaphore non-monotonic — next_signal_value <= current_value")   \
+    } while (0)
 // clang-format off
 #include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>

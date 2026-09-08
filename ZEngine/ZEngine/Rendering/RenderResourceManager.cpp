@@ -589,6 +589,7 @@ namespace ZEngine::Rendering
         // treats as non-monotonic.
         uint64_t signal_value                          = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
+        ASSERT_TIMELINE_MONOTONIC(m_device->LogicalDevice, m_batch_timeline->GetHandle(), signal_value);
 
         Hardwares::AsyncUploadJob job;
         job.Buffer      = m_batch_cmd;
@@ -1192,7 +1193,8 @@ namespace ZEngine::Rendering
             transfer_cmd->End();
 
             uint64_t transfer_val = m_tex_transfer_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            transfer_retire[i]    = transfer_val;
+            ASSERT_TIMELINE_MONOTONIC(m_device->LogicalDevice, m_tex_transfer_timelines[pool_index]->GetHandle(), transfer_val);
+            transfer_retire[i] = transfer_val;
             if (transfer_staging)
                 m_tex_transfer_staging[pool_index][i] = transfer_staging;
 
@@ -1223,7 +1225,8 @@ namespace ZEngine::Rendering
             acquire_cmd->TransitionImageLayout(ImageMemoryBarrier{acquire_spec});
             acquire_cmd->End();
 
-            uint64_t graphics_val       = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            uint64_t graphics_val = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            ASSERT_TIMELINE_MONOTONIC(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), graphics_val);
             retire_values[acquire_slot] = graphics_val;
             m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (uint32_t) release.DestinationStageMask, graphics_val, transfer_val});
         }
@@ -1280,7 +1283,8 @@ namespace ZEngine::Rendering
             cmd->End();
 
             uint64_t signal_value = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            retire_values[i]      = signal_value;
+            ASSERT_TIMELINE_MONOTONIC(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), signal_value);
+            retire_values[i] = signal_value;
             if (staging)
                 m_tex_retire_staging[pool_index][i] = staging;
             m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
