@@ -29,7 +29,10 @@ namespace ZEngine::Core::Memory
             return;
 
         m_total_size              = size;
-        m_mem_page_size           = page_size;
+        // Default to 4096 when the caller passes 0 — prevents the commit-size mask
+        // (offset + size + page_size - 1) & ~(page_size - 1) from evaluating to 0
+        // on Windows and causing VirtualAlloc(MEM_COMMIT, 0) to fail.
+        m_mem_page_size           = page_size ? page_size : 4096;
         m_initial_current_offset  = 0;
         m_initial_previous_offset = 0;
 #ifndef _WIN32

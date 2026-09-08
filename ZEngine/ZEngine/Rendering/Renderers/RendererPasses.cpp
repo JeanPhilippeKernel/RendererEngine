@@ -194,8 +194,8 @@ namespace ZEngine::Rendering::Renderers
         }
         auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(*rrm->GetGlobalVertexBuffer());
-        command_buffer->BindIndexBuffer(*rrm->GetGlobalIndexBuffer(), VK_INDEX_TYPE_UINT32);
+        command_buffer->BindVertexBuffer(*rrm->GetBuiltinVertexBuffer());
+        command_buffer->BindIndexBuffer(*rrm->GetBuiltinIndexBuffer(), VK_INDEX_TYPE_UINT32);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->DrawIndexed(36, 1, m_idx_offset, static_cast<int32_t>(m_vtx_offset), 0);
         command_buffer->EndRenderPass();
@@ -269,8 +269,8 @@ namespace ZEngine::Rendering::Renderers
         }
         auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
         command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindVertexBuffer(*rrm->GetGlobalVertexBuffer());
-        command_buffer->BindIndexBuffer(*rrm->GetGlobalIndexBuffer(), VK_INDEX_TYPE_UINT32);
+        command_buffer->BindVertexBuffer(*rrm->GetBuiltinVertexBuffer());
+        command_buffer->BindIndexBuffer(*rrm->GetBuiltinIndexBuffer(), VK_INDEX_TYPE_UINT32);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GridPushConstantData), &PushData);
         command_buffer->DrawIndexed(6, 1, m_idx_offset, static_cast<int32_t>(m_vtx_offset), 0);

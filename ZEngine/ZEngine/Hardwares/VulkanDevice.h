@@ -235,6 +235,11 @@ namespace ZEngine::Hardwares
 
         uint32_t                                                                                                                     WriteDescriptorSetIndex                     = 0;
         uint32_t                                                                                                                     MaxGlobalTexture                            = 8192;
+        /// @brief Geometry streaming pool budget in bytes (vtx + idx combined).
+        ///        0 = auto-detect from PhysicalDeviceMemoryProperties (default).
+        ///        Set by Engine::Initialize from project.json memory.geometry_streaming_mb
+        ///        before RenderResourceManager::Initialize runs.
+        VkDeviceSize                                                                                                                 GeometryStreamingBudget                     = 0;
         VkInstance                                                                                                                   Instance                                    = VK_NULL_HANDLE;
         VkSurfaceKHR                                                                                                                 Surface                                     = VK_NULL_HANDLE;
         VkSurfaceFormatKHR                                                                                                           SurfaceFormat                               = {};
