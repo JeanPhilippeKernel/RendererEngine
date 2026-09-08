@@ -263,7 +263,7 @@ namespace ZEngine::Managers
             char full_path[MAX_FILE_PATH_COUNT] = {};
             snprintf(full_path, sizeof(full_path), "%s%c%s", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
             auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
-            new_tex.Handle = rrm->SubmitTextureFile(0, 0, full_path);
+            new_tex.Handle = rrm->SubmitTextureFile(full_path);
             if (!new_tex.Handle.Valid())
             {
                 ZENGINE_VALIDATE_ASSERT(s_Instance->FallbackTextureHandle.Valid(), "FallbackTextureHandle not initialized — InitFallbackTexture must be called before ingesting assets")

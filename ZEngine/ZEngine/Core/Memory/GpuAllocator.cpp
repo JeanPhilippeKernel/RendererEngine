@@ -378,7 +378,9 @@ namespace ZEngine::Core::Memory
 
         if (WritePos >= ReadPos)
         {
-            if ((offset + size) < static_cast<uint32_t>(kCapacity))
+            // <= (not <): a perfect-fit allocation landing exactly at kCapacity is valid —
+            // no need to force an unnecessary wrap attempt.
+            if ((offset + size) <= static_cast<uint32_t>(kCapacity))
             {
                 *out_vk_offset = offset;
                 WritePos       = offset + size;

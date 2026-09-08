@@ -260,7 +260,7 @@ namespace ZEngine::Hardwares
             if (Device->RRM)
             {
                 auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
-                rrm->ClearTextureJobs();
+                rrm->ClearAsyncUploads();
                 rrm->ResetTextureTimelines();
             }
 
@@ -319,6 +319,14 @@ namespace ZEngine::Hardwares
             return;
         }
 
+        if (Device->CheckDeviceLost(acquire_image_result, "AcquireNextImage"))
+        {
+            frame.ImageIndex = std::numeric_limits<uint32_t>::max();
+            CurrentFrame     = &frame;
+            Recreation       = RecreationState::FrameAborted;
+            return;
+        }
+
         if (PresentCompletes[image_idx]->GetState() == Rendering::Primitives::FenceState::Submitted)
         {
             PresentCompletes[image_idx]->Wait(UINT64_MAX);
@@ -342,6 +350,16 @@ namespace ZEngine::Hardwares
         {
             // OOD at acquire: semaphore not signalled, no GPU work submitted.
             IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
+            Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
+            return;
+        }
+
+        // The device can go lost mid-frame, inside AppRenderPipeline::EndFrame's own
+        // SubmitAsyncUploads() call, before Present() runs — continuing into more Vulkan
+        // calls (including the unchecked vkGetSemaphoreCounterValue below) here would just
+        // add cascade errors on top of an already-lost device.
+        if (Device->IsDeviceLost.load(std::memory_order_acquire))
+        {
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
             return;
         }
@@ -466,6 +484,11 @@ namespace ZEngine::Hardwares
             .pSignalSemaphores    = acquire_signal_semaphores,
         };
         VkResult r0 = vkQueueSubmit(queue.Handle, 1, &submit_0, VK_NULL_HANDLE);
+        if (Device->CheckDeviceLost(r0, "Present: acquire bridge submit"))
+        {
+            ZReleaseScratch(scratch);
+            return;
+        }
         ZENGINE_VALIDATE_ASSERT(r0 == VK_SUCCESS, "Failed to submit acquire bridge")
 
         struct TimelineAggregate
@@ -484,14 +507,18 @@ namespace ZEngine::Hardwares
         wait_values.init(scratch.Arena, 10);
         max_val_timeline_semaphores.init(scratch.Arena);
 
-        wait_semaphores.push(RenderTimeline->GetHandle());
-        wait_values.push(frame_start_value);
-        stage_flags.push(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        // Seed with RenderTimeline's own acquire-bridge value rather than pushing it
+        // directly — an AsyncGPUOperation can also target RenderTimeline (e.g. RRM's mesh
+        // batch upload), and pushing both separately would put the same semaphore twice
+        // in one submit's wait list with two different values.
+        max_val_timeline_semaphores.insert(RenderTimeline, {frame_start_value, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT});
 
         {
             Hardwares::AsyncGPUOperationHandle op;
             while (Device->AsyncGPUOperations.Pop(op))
             {
+                ZENGINE_CORE_TRACE("[Present] AsyncGPUOperation: timeline={} signal_value={} stage_flags={:#x}", (void*) op.Timeline->GetHandle(), op.SignalValue, op.StageFlags)
+
                 if (!max_val_timeline_semaphores.contains(op.Timeline))
                 {
                     max_val_timeline_semaphores.insert(op.Timeline, {op.SignalValue, op.StageFlags});
@@ -535,6 +562,11 @@ namespace ZEngine::Hardwares
         Device->FrameHeaps[CurrentFrame->Index].Flush(&Device->GpuMem);
 
         auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info_1), CurrentFrame->Fence->GetHandle());
+        if (Device->CheckDeviceLost(submit, "Present: render work submit"))
+        {
+            ZReleaseScratch(scratch);
+            return;
+        }
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 
         ZReleaseScratch(scratch);
@@ -566,6 +598,8 @@ namespace ZEngine::Hardwares
         };
 
         VkResult r2 = vkQueueSubmit(queue.Handle, 1, &submit2, present_complete->GetHandle());
+        if (Device->CheckDeviceLost(r2, "Present: present bridge submit"))
+            return;
         ZENGINE_VALIDATE_ASSERT(r2 == VK_SUCCESS, "Failed to submit present bridge")
 
         render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
@@ -586,6 +620,9 @@ namespace ZEngine::Hardwares
         VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
 
         IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
+
+        if (Device->CheckDeviceLost(present_result, "Present: vkQueuePresentKHR"))
+            return;
 
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
         {

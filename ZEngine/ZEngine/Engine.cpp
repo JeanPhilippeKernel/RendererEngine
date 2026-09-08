@@ -62,7 +62,10 @@ namespace ZEngine
             g_engine_ctx->EngineAssetsBackend.Initialize(engine_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
             auto mount_path = Core::VFS::VFSPath::Parse("/ZodiacEngine");
             if (mount_path.Succeeded())
-                vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
+            {
+                auto res = vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
+                (void) res;
+            }
         }
 
         memory->CreateBudgetedArena(memory->Budget.AssetManager, &g_engine_ctx->AssetArena);
@@ -340,10 +343,20 @@ namespace ZEngine
                 break;
             }
 
-            auto     pipeline = g_engine_ctx->App->RenderPipeline;
+            auto pipeline = g_engine_ctx->App->RenderPipeline;
 
-            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
-            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
+            // Once the GPU device is lost (see VulkanDevice::CheckDeviceLost), continuing to
+            // call into Vulkan is undefined behaviour and has been observed to segfault inside
+            // the loader rather than return an error. Freeze the render loop instead of
+            // crashing — there is no recovery path yet, so this is a safe stop, not a resume.
+            if (pipeline->Device && pipeline->Device->IsDeviceLost.load(std::memory_order_acquire))
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+
+            uint32_t tail = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
+            uint32_t head = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
 
             // Buffer empty
             if (tail == head)

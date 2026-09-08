@@ -4,6 +4,7 @@
 #include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Rendering/RenderHandle.h>
+#include <ZEngine/Hardwares/CommandBufferManager.h>
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/PerFrameUploadHeap.h>
@@ -27,6 +28,7 @@
 #include <unordered_set>
 #include <limits>
 #include <cstdint>
+#include <atomic>
 // clang-format on
 
 namespace ZEngine::Windows
@@ -57,7 +59,6 @@ namespace ZEngine::Hardwares
     using Core::Memory::GpuMemoryDomain;
 
     struct WriteDescriptorSetRequestKey;
-    struct CommandBufferManager;
     struct AsyncGPUOperation;
     struct AsyncGPUOperationHandle;
     /*
@@ -181,47 +182,6 @@ namespace ZEngine::Hardwares
 
     ZDEFINE_PTR(CommandBuffer);
 
-    struct CommandBufferManager
-    {
-        struct InstantCommandBufferInfo;
-
-        void                                                            Initialize(VulkanDevice* device, uint32_t image_count = 0, uint8_t override_thread_count = 0);
-        void                                                            Deinitialize();
-        CommandBuffer*                                                  GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
-        CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin = true);
-        Rendering::Pools::CommandPool*                                  GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
-        Rendering::Pools::CommandPool*                                  GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
-        void                                                            ResetPool(uint8_t frame_index, uint8_t thread_index);
-        void                                                            IncreaseBuffers();
-        void                                                            EnqueueBuffer(CommandBufferPtr const buffer);
-        void                                                            EndEnqueuedBuffers();
-        void                                                            ResetEnqueuedBufferIndex();
-        bool                                                            IsInitialized() const;
-
-        uint32_t                                                        TotalCommandBufferCount        = 0;
-        uint32_t                                                        TotalInstantCommandBufferCount = 0;
-        uint32_t                                                        TotalPoolCount                 = 0;
-        uint32_t                                                        TotalThreadCount               = 0;
-        uint32_t                                                        EnqueuedCommandBufferIndex     = 0;
-        const uint32_t                                                  MaxBufferPerPool               = 4;
-        VulkanDevice*                                                   Device                         = nullptr;
-
-        Core::Containers::Array<Rendering::Pools::CommandPool*>         InstantGraphicsPools           = {};
-        Core::Containers::Array<Rendering::Pools::CommandPool*>         InstantTransferPools           = {};
-        Core::Containers::Array<CommandBuffer*>                         InstantGraphicsCommandBuffers  = {};
-        Core::Containers::Array<CommandBuffer*>                         InstantTransferCommandBuffers  = {};
-
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> CommandPools                   = {};
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> TransferCommandPools           = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 CommandBuffers                 = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 TransferCommandBuffers         = {};
-        Core::Containers::Array<CommandBuffer*>                         EnqueuedCommandBuffers         = {};
-
-    private:
-        bool m_is_initialized = false;
-    };
-    ZDEFINE_PTR(CommandBufferManager);
-
     struct WriteDescriptorSetRequestKey
     {
         uint32_t        Binding = 0;
@@ -262,6 +222,11 @@ namespace ZEngine::Hardwares
         bool                                                                                                                         PhysicalDeviceSupportSampledImageBindless   = false;
         bool                                                                                                                         PhysicalDeviceSupportStorageBufferBindless  = false;
         bool                                                                                                                         PhysicalDeviceSupportTimelineSemaphore      = false;
+        // Sticky, set once VK_ERROR_DEVICE_LOST is observed on any queue/swapchain call —
+        // see CheckDeviceLost. The render loop checks this and stops issuing further Vulkan
+        // calls: once a device is lost, continuing to call into it is undefined behaviour and
+        // has been observed to segfault inside the Vulkan loader rather than return cleanly.
+        std::atomic_bool                                                                                                             IsDeviceLost                                = false;
         const char*                                                                                                                  ApplicationName                             = "Tetragrama";
         const char*                                                                                                                  EngineName                                  = "ZEngine";
         uint32_t                                                                                                                     WorkerThreadCount                           = 1;
@@ -315,8 +280,13 @@ namespace ZEngine::Hardwares
         void                                                                                                                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                         Deinitialize();
         void                                                                                                                         Dispose();
-        void                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
+        bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
         bool                                                                                                                         QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
+        /// @brief If result is VK_ERROR_DEVICE_LOST, sets IsDeviceLost (logging once, on the
+        ///        first caller to observe it) and returns true so the caller can bail out
+        ///        instead of asserting or continuing to submit to a dead device.
+        /// @param where Short description of the call site, for the one-time log line.
+        bool                                                                                                                         CheckDeviceLost(VkResult result, const char* where);
         void                                                                                                                         EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         QueueView                                                                                                                    GetQueue(Rendering::QueueType type);
         void                                                                                                                         QueueWait(Rendering::QueueType type);
