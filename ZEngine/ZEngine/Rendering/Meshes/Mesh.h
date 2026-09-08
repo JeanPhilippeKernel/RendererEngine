@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngine/Rendering/GPUTypes.h>
+#include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/ZEngineDef.h>
 
 #define INVALID_MAP_HANDLE 0xFFFFFFFFu
@@ -46,18 +46,18 @@ namespace ZEngine::Rendering::Meshes
 
     struct MeshMaterial
     {
-        gpuvec4  AmbientColor   = 1.0f;
-        gpuvec4  EmissiveColor  = 0.0f;
-        gpuvec4  AlbedoColor    = 1.0f;
-        gpuvec4  SpecularColor  = 1.0f;
-        gpuvec4  RoughnessColor = 1.0f;
-        gpuvec4  Factors        = 1.0f; // {x : transparency, y : Metallic, z : AlphaTest, w : _padding}
-        uint64_t EmissiveMap    = INVALID_MAP_HANDLE;
-        uint64_t AlbedoMap      = INVALID_MAP_HANDLE;
-        uint64_t SpecularMap    = INVALID_MAP_HANDLE;
-        uint64_t NormalMap      = INVALID_MAP_HANDLE;
-        uint64_t OpacityMap     = INVALID_MAP_HANDLE;
-        uint64_t _padding       = INVALID_MAP_HANDLE;
+        ZEngine::Core::Maths::Vec4f AmbientColor   = {1.f, 1.f, 1.f, 1.f};
+        ZEngine::Core::Maths::Vec4f EmissiveColor  = {};
+        ZEngine::Core::Maths::Vec4f AlbedoColor    = {1.f, 1.f, 1.f, 1.f};
+        ZEngine::Core::Maths::Vec4f SpecularColor  = {1.f, 1.f, 1.f, 1.f};
+        ZEngine::Core::Maths::Vec4f RoughnessColor = {1.f, 1.f, 1.f, 1.f};
+        ZEngine::Core::Maths::Vec4f Factors        = {1.f, 1.f, 1.f, 1.f}; // {x : transparency, y : Metallic, z : AlphaTest, w : _padding}
+        uint64_t                    EmissiveMap    = INVALID_MAP_HANDLE;
+        uint64_t                    AlbedoMap      = INVALID_MAP_HANDLE;
+        uint64_t                    SpecularMap    = INVALID_MAP_HANDLE;
+        uint64_t                    NormalMap      = INVALID_MAP_HANDLE;
+        uint64_t                    OpacityMap     = INVALID_MAP_HANDLE;
+        uint64_t                    _padding       = INVALID_MAP_HANDLE;
     };
 
     struct MaterialFile

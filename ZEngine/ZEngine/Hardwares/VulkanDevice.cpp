@@ -6,9 +6,9 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <cstdlib>
 #include <filesystem>

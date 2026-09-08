@@ -1,6 +1,6 @@
 #pragma once
+#include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/ZEngineDef.h>
 #include <cstdint>

@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Maths/Matrix.h>
+#include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
-#include <ZEngine/Rendering/GPUTypes.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <ZEngine/ZEngineDef.h>
@@ -54,19 +54,19 @@ namespace ZEngine::Rendering::Scenes
 
     struct GpuDirectionalLight
     {
-        gpuvec4 Direction = {};
-        gpuvec4 Color     = {};
-        float   Intensity = 0.f;
-        float   _pad[3]   = {};
+        ZEngine::Core::Maths::Vec4f Direction = {};
+        ZEngine::Core::Maths::Vec4f Color     = {};
+        float                       Intensity = 0.f;
+        float                       _pad[3]   = {};
     };
 
     struct GpuPointLight
     {
-        gpuvec4 Position  = {};
-        gpuvec4 Color     = {};
-        float   Intensity = 0.f;
-        float   Radius    = 0.f;
-        float   _pad[2]   = {};
+        ZEngine::Core::Maths::Vec4f Position  = {};
+        ZEngine::Core::Maths::Vec4f Color     = {};
+        float                       Intensity = 0.f;
+        float                       Radius    = 0.f;
+        float                       _pad[2]   = {};
     };
 
     struct LightArrayUBO

@@ -1,6 +1,6 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/ZEngineDef.h>
 
 using namespace ZEngine::Hardwares;

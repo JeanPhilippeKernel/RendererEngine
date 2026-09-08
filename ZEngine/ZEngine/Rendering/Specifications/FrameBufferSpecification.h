@@ -1,6 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 
 namespace ZEngine::Rendering::Specifications

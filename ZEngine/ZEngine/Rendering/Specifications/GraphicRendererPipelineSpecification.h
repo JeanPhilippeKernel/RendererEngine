@@ -1,7 +1,7 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Rendering/Buffers/Framebuffer.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Specifications/ShaderSpecification.h>
 
 namespace ZEngine::Rendering::Specifications
