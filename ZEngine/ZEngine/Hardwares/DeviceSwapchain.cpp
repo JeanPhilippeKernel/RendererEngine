@@ -346,17 +346,6 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Present()
     {
-        // DIAG: snapshot RenderTimeline before any of our logic so we can tell whether
-        // corruption arrived from outside Present() or from within it.
-        {
-            uint64_t _diag_rt = 0;
-            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &_diag_rt);
-            ZENGINE_CORE_INFO("[DIAG-PRESENT] RenderTimeline driver_current={} cpu_next={}", _diag_rt, RenderTimelineNextValue + 1)
-            if (_diag_rt == UINT64_MAX)
-            {
-                ZENGINE_CORE_ERROR("[DIAG-PRESENT] RenderTimeline ALREADY UINT64_MAX on Present() entry — corruption happened OUTSIDE Present(), in EndFrame or earlier")
-            }
-        }
 
         if (Recreation == RecreationState::FrameAborted)
         {
@@ -492,14 +481,17 @@ namespace ZEngine::Hardwares
         // 2 - Rendering work
         // 3 - Present bridge
 
-        // 1- Binary Acquire to a Timeline value
+        // 1- Binary Acquire to a Timeline value.
+        // waitSemaphoreValueCount=0: the wait is a BINARY semaphore (Acquired) so it has no
+        // timeline value. Per spec the value would be ignored, but Intel's driver was reading
+        // the spurious entry (ignored_wait_val=0) as a timeline wait-at-0, corrupting the
+        // semaphore. Setting the count to 0 is unambiguous.
         uint64_t  frame_start_value = ++RenderTimelineNextValue;
         ASSERT_TIMELINE_MONOTONIC(Device->LogicalDevice, RenderTimeline->GetHandle(), frame_start_value);
-        uint64_t                      ignored_wait_val = 0;
-        VkTimelineSemaphoreSubmitInfo timeline_info0   = {
+        VkTimelineSemaphoreSubmitInfo timeline_info0 = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = 1, // must match waitSemaphoreCount
-            .pWaitSemaphoreValues      = &ignored_wait_val,
+            .waitSemaphoreValueCount   = 0,
+            .pWaitSemaphoreValues      = nullptr,
             .signalSemaphoreValueCount = 1,
             .pSignalSemaphoreValues    = &frame_start_value,
         };
@@ -541,11 +533,9 @@ namespace ZEngine::Hardwares
         wait_values.init(scratch.Arena, 10);
         max_val_timeline_semaphores.init(scratch.Arena);
 
-        // Seed with RenderTimeline's own acquire-bridge value rather than pushing it
-        // directly — an AsyncGPUOperation can also target RenderTimeline (e.g. RRM's mesh
-        // batch upload), and pushing both separately would put the same semaphore twice
-        // in one submit's wait list with two different values.
-        max_val_timeline_semaphores.insert(RenderTimeline, {frame_start_value, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT});
+        // DO NOT seed with RenderTimeline here — removing the self-wait on RenderTimeline
+        // in submit_1. See commit message for full explanation.
+        // For NVIDIA: m_tex_transfer_timelines are included via AsyncGPUOperations drain below.
 
         {
             Hardwares::AsyncGPUOperationHandle op;
@@ -573,8 +563,7 @@ namespace ZEngine::Hardwares
 
         uint64_t work_complete_value = ++RenderTimelineNextValue;
         ASSERT_TIMELINE_MONOTONIC(Device->LogicalDevice, RenderTimeline->GetHandle(), work_complete_value);
-        ZENGINE_VALIDATE_ASSERT(wait_semaphores.size() == wait_values.size(), "[DIAG] submit_1 wait array size mismatch: waitSemaphoreCount != waitSemaphoreValueCount — Intel driver may read uninitialized values as phantom signals")
-        ZENGINE_CORE_INFO("[DIAG-SUBMIT1] wait_count={} signal RenderTimeline to {}", (uint32_t) wait_semaphores.size(), work_complete_value)
+        ZENGINE_VALIDATE_ASSERT(wait_semaphores.size() == wait_values.size(), "[DIAG] submit_1 wait array count mismatch")
         VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
         VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
