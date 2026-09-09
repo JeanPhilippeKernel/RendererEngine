@@ -1225,7 +1225,7 @@ namespace ZEngine::Rendering
 
             uint64_t graphics_val       = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
             retire_values[acquire_slot] = graphics_val;
-            m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (uint32_t) release.DestinationStageMask, graphics_val, transfer_val});
+            m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (VkPipelineStageFlags2) release.DestinationStageMask, graphics_val, transfer_val});
         }
         else
         {
@@ -1283,7 +1283,7 @@ namespace ZEngine::Rendering
             retire_values[i]      = signal_value;
             if (staging)
                 m_tex_retire_staging[pool_index][i] = staging;
-            m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
+            m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (VkPipelineStageFlags2) to_final.DestinationStageMask, signal_value, UINT64_MAX});
             img_buf->Layout = to_final.NewLayout;
         }
         return handle;
@@ -1749,7 +1749,7 @@ namespace ZEngine::Rendering
             deferral.Slab      = slab;
             deferral.TexHandle = captured_handle;
             EnqueueTextureDeferral(std::move(deferral));
-            m_device->RequestDescriptorUpdate(captured_handle);
+            m_device->RequestDeferredDescriptorUpdate(captured_handle);
         });
 
         return tex_handle;
@@ -1775,7 +1775,21 @@ namespace ZEngine::Rendering
             stbi_write_png(kFallbackPath, W, H, 4, pixels, W * 4);
         }
 
-        return SubmitTextureFile(kFallbackPath);
+        auto result = SubmitTextureFile(kFallbackPath);
+        if (result.Valid())
+        {
+            auto texture = m_device->GlobalTextures.Access(result);
+            if (texture)
+            {
+                auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
+                if (img_buf)
+                {
+                    m_device->FallbackDescriptorImageInfo             = img_buf->GetDescriptorImageInfo();
+                    m_device->FallbackDescriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                }
+            }
+        }
+        return result;
     }
 
 } // namespace ZEngine::Rendering
