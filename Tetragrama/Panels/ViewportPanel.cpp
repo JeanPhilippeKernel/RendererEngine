@@ -265,52 +265,99 @@ namespace Tetragrama::Panels
         if (!ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_path, header))
             return;
 
-        // The registry's auto-ingest path is dead code (see #755) — ingest
-        // explicitly instead, matching every other real consumer. Idempotent.
-        {
-            auto                                   scratch = ZGetScratch(&ctx->AssetArena);
-            ZEngine::Importers::AssetMesh          mesh_data{};
-            ZEngine::Importers::AssetNodeHierarchy hier_data{};
-            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(scratch.Arena, native_path, mesh_data, hier_data);
+        std::string mesh_path = native_path;
+        std::string drop_path = m_pending_mesh_drop;
+        auto*       layer_ptr = m_layer;
 
-            // IngestMesh only loads geometry/hierarchy — ingest each submesh's material
-            // (and, transitively, its textures) first, before mesh_data is moved below.
-            for (uint32_t i = 0; i < mesh_data.SubMeshes.size(); ++i)
+        // Deserialize + material ingest on a worker thread — both are synchronous file
+        // reads that block the render loop. A dedicated arena (4× file size + 8 MB)
+        // outlives the lambda; the main-thread callback owns and shuts it down after use.
+
+        uint64_t file_bytes = 0;
+        if (FILE* f = fopen(mesh_path.c_str(), "rb"))
+        {
+            fseek(f, 0, SEEK_END);
+            file_bytes = static_cast<uint64_t>(ftell(f));
+            fclose(f);
+        }
+
+        struct MeshPayload
+        {
+            ZEngine::Core::Memory::ArenaAllocator* Arena    = nullptr;
+            ZEngine::Importers::AssetMesh          Mesh     = {};
+            ZEngine::Importers::AssetNodeHierarchy Hierarchy = {};
+            uuids::uuid                            MeshId   = {};
+            std::string                            DropPath = {};
+            void*                                  Layer    = nullptr;
+        };
+
+        auto* payload      = new MeshPayload();
+        payload->Arena     = new ZEngine::Core::Memory::ArenaAllocator{};
+        payload->Arena->Initialize(file_bytes * 4 + (8u << 20), 0);
+        payload->MeshId    = header.Id;
+        payload->DropPath  = drop_path;
+        payload->Layer     = layer_ptr;
+
+        ZEngine::Helpers::ThreadPoolHelper::Submit([payload, mesh_path]() mutable {
+            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(
+                payload->Arena, mesh_path.c_str(), payload->Mesh, payload->Hierarchy);
+
+            // IngestMaterialFromUUID is also file I/O — keep it on the worker.
+            auto* ctx = ZEngine::Engine::GetContext();
+            if (ctx)
             {
-                const auto& mat_uuid = mesh_data.SubMeshes[i].MaterialUUID;
-                if (!mat_uuid.is_nil())
-                    ZEngine::Managers::AssetManager::IngestMaterialFromUUID(scratch.Arena, mat_uuid);
+                auto scratch = ZGetScratch(&ctx->AssetArena);
+                for (uint32_t i = 0; i < payload->Mesh.SubMeshes.size(); ++i)
+                {
+                    const auto& mat_uuid = payload->Mesh.SubMeshes[i].MaterialUUID;
+                    if (!mat_uuid.is_nil())
+                        ZEngine::Managers::AssetManager::IngestMaterialFromUUID(scratch.Arena, mat_uuid);
+                }
+                ZReleaseScratch(scratch);
             }
 
-            ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh_data), std::move(hier_data));
-            ZReleaseScratch(scratch);
-        }
+            ZEngine::Core::MainThreadScheduler::Post(payload, [](void* raw) {
+                auto* p     = static_cast<MeshPayload*>(raw);
+                auto* ctx   = ZEngine::Engine::GetContext();
+                auto* app   = p->Layer ? reinterpret_cast<EditorPtr>(reinterpret_cast<Tetragrama::Layers::ZUILayer*>(p->Layer)->CurrentApp) : nullptr;
+                auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
 
-        char iname[256] = {};
-        auto pr         = VFSPath::Parse(m_pending_mesh_drop);
-        if (pr.Succeeded())
-        {
-            auto s = pr.Value().Stem();
-            snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
-        }
+                if (ctx && scene && ctx->ActorManager)
+                {
+                    ZEngine::Managers::AssetManager::IngestMesh(std::move(p->Mesh), std::move(p->Hierarchy));
 
-        uint32_t render_id = scene->AddMeshInstance(header.Id, iname);
+                    char iname[256] = {};
+                    auto pr         = VFSPath::Parse(p->DropPath.c_str());
+                    if (pr.Succeeded())
+                    {
+                        auto s = pr.Value().Stem();
+                        snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
+                    }
 
-        using namespace ZEngine::ECS::Components;
-        ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
-        ZEngine::ECS::Actor*      actor  = ctx->ActorManager->Access(handle);
-        if (actor)
-        {
-            NameComponent nc = {};
-            secure_strncpy(nc.Value, sizeof(nc.Value), iname, secure_strlen(iname));
-            actor->AddComponent<NameComponent>(nc);
-            actor->AddComponent<TransformComponent>({});
+                    uint32_t render_id = scene->AddMeshInstance(p->MeshId, iname);
 
-            MeshComponent mc    = {};
-            mc.MeshUUID         = header.Id;
-            mc.RenderInstanceId = render_id;
-            actor->AddComponent<MeshComponent>(mc);
-        }
+                    using namespace ZEngine::ECS::Components;
+                    ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
+                    ZEngine::ECS::Actor*      actor  = ctx->ActorManager->Access(handle);
+                    if (actor)
+                    {
+                        NameComponent nc = {};
+                        secure_strncpy(nc.Value, sizeof(nc.Value), iname, secure_strlen(iname));
+                        actor->AddComponent<NameComponent>(nc);
+                        actor->AddComponent<TransformComponent>({});
+
+                        MeshComponent mc    = {};
+                        mc.MeshUUID         = p->MeshId;
+                        mc.RenderInstanceId = render_id;
+                        actor->AddComponent<MeshComponent>(mc);
+                    }
+                }
+
+                p->Arena->Shutdown();
+                delete p->Arena;
+                delete p;
+            });
+        });
     }
 
     // OpenDroppedScene (main-thread only)
