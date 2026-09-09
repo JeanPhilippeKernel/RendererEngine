@@ -357,6 +357,12 @@ namespace ZEngine::Hardwares
         // Required for MaterialData.AlbedoMap / NormalMap etc. (uint64_t handles in g_buffer.frag)
         device_features_2.features.shaderInt64               = PhysicalDeviceFeature.features.shaderInt64;
 
+        // synchronization2 is required for vkQueueSubmit2 (used for all timeline semaphore submits).
+        VkPhysicalDeviceSynchronization2Features sync2_features = {};
+        sync2_features.sType                                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        sync2_features.synchronization2                          = VK_TRUE;
+        device_features_2.pNext                                  = &sync2_features;
+
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
             if (PhysicalDeviceSupportSampledImageBindless)
@@ -369,7 +375,11 @@ namespace ZEngine::Hardwares
             vulkan_1_2_features.descriptorBindingPartiallyBound = VK_TRUE;
             vulkan_1_2_features.runtimeDescriptorArray          = VK_TRUE;
 
-            device_features_2.pNext                             = &vulkan_1_2_features;
+            sync2_features.pNext                                 = &vulkan_1_2_features;
+        }
+        else if (PhysicalDeviceSupportTimelineSemaphore)
+        {
+            sync2_features.pNext                                 = &vulkan_1_2_features;
         }
 
         device_create_info.pNext = &device_features_2;
@@ -751,45 +761,44 @@ namespace ZEngine::Hardwares
         Instance                       = VK_NULL_HANDLE;
     }
 
-    bool VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)
+    bool VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, VkPipelineStageFlags2 wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)
     {
         ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
 
-        bool                          has_wait                       = (wait_semaphore != nullptr && wait_value != UINT64_MAX);
+        bool has_wait = (wait_semaphore != nullptr && wait_value != UINT64_MAX);
 
-        VkPipelineStageFlags          flag                           = VkPipelineStageFlagBits(wait_flag);
-
-        VkCommandBuffer               command_buffers[]              = {command_buffer->GetHandle()};
-        VkSemaphore                   semaphores[]                   = {signal_semaphore->GetHandle()};
-        VkSemaphore                   wait_sems[]                    = {has_wait ? wait_semaphore->GetHandle() : VK_NULL_HANDLE};
-        uint64_t                      wait_values[]                  = {wait_value};
-        uint64_t                      signal_values[]                = {signal_value};
-
-        VkTimelineSemaphoreSubmitInfo timeline_semaphore_submit_info = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .pNext                     = nullptr,
-            .waitSemaphoreValueCount   = has_wait ? 1u : 0u,
-            .pWaitSemaphoreValues      = has_wait ? wait_values : nullptr,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = signal_values,
+        VkCommandBufferSubmitInfo cmd_info = {
+            .sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = command_buffer->GetHandle(),
+        };
+        VkSemaphoreSubmitInfo signal_info = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = signal_semaphore->GetHandle(),
+            .value     = signal_value,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        VkSemaphoreSubmitInfo wait_info = {};
+        if (has_wait)
+        {
+            wait_info = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = wait_semaphore->GetHandle(),
+                .value     = wait_value,
+                .stageMask = (VkPipelineStageFlags2) wait_flag,
+            };
+        }
+        VkSubmitInfo2 submit_info = {
+            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount   = has_wait ? 1u : 0u,
+            .pWaitSemaphoreInfos      = has_wait ? &wait_info : nullptr,
+            .commandBufferInfoCount   = 1,
+            .pCommandBufferInfos      = &cmd_info,
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos    = &signal_info,
         };
 
-        VkSubmitInfo submit_info = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_semaphore_submit_info,
-            .waitSemaphoreCount   = has_wait ? 1u : 0u,
-            .pWaitSemaphores      = has_wait ? wait_sems : nullptr,
-            .pWaitDstStageMask    = has_wait ? &flag : nullptr,
-            .commandBufferCount   = 1,
-            .pCommandBuffers      = command_buffers,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = semaphores,
-        };
-
-        ASSERT_TIMELINE_MONOTONIC(LogicalDevice, signal_semaphore->GetHandle(), signal_value);
-
-        VkResult submit_result = vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
+        VkResult submit_result = vkQueueSubmit2(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
         if (CheckDeviceLost(submit_result, "QueueSubmit (timeline)"))
             return false;
         ZENGINE_VALIDATE_ASSERT(submit_result == VK_SUCCESS, "Failed to submit queue")
@@ -1849,6 +1858,33 @@ namespace ZEngine::Hardwares
     void VulkanDevice::EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& operation)
     {
         AsyncGPUOperations.Enqueue(operation);
+    }
+
+    void VulkanDevice::EnqueueDeferredAsyncGPUOperation(const AsyncGPUOperationHandle& operation)
+    {
+        DeferredAsyncGPUOperations.push(operation);
+    }
+
+    void VulkanDevice::RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle)
+    {
+        // Pre-fill the slot with the fallback so it's valid during the 1-frame upload window.
+        if (FallbackDescriptorImageInfo.imageView != VK_NULL_HANDLE)
+        {
+            for (const auto& req : BindlessTextureSlotRequests)
+            {
+                VkWriteDescriptorSet write = {
+                    .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet          = req.DstSet,
+                    .dstBinding      = req.Binding,
+                    .dstArrayElement = (uint32_t) handle.Index,
+                    .descriptorCount = 1,
+                    .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                    .pImageInfo      = &FallbackDescriptorImageInfo,
+                };
+                vkUpdateDescriptorSets(LogicalDevice, 1, &write, 0, nullptr);
+            }
+        }
+        DeferredTextureDescriptorUpdates.push(handle);
     }
 
 } // namespace ZEngine::Hardwares
