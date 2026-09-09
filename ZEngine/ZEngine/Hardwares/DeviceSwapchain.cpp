@@ -465,7 +465,7 @@ namespace ZEngine::Hardwares
             }
         }
 
-        auto                   scratch = ZGetScratch(&Arena);
+        auto                             scratch   = ZGetScratch(&Arena);
 
         Array<VkCommandBufferSubmitInfo> cmd_infos = {};
         cmd_infos.init(scratch.Arena, Device->CommandBufferMgr->EnqueuedCommandBufferIndex, Device->CommandBufferMgr->EnqueuedCommandBufferIndex);
@@ -485,7 +485,7 @@ namespace ZEngine::Hardwares
         if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
             CurrentFrame->Fence->Wait(UINT64_MAX);
 
-        QueueView queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
+        QueueView             queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
         // 3-submit pattern using vkQueueSubmit2:
         //   1 - Acquire bridge: binary Acquired → timeline RenderTimeline
@@ -495,7 +495,7 @@ namespace ZEngine::Hardwares
         // the parallel-array count ambiguity that caused Intel driver corruption with
         // the old VkTimelineSemaphoreSubmitInfo + vkQueueSubmit path.
 
-        uint64_t frame_start_value = ++RenderTimelineNextValue;
+        uint64_t              frame_start_value = ++RenderTimelineNextValue;
 
         VkSemaphoreSubmitInfo acquire_wait_info = {
             .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -566,7 +566,7 @@ namespace ZEngine::Hardwares
             });
         }
 
-        uint64_t work_complete_value = ++RenderTimelineNextValue;
+        uint64_t              work_complete_value  = ++RenderTimelineNextValue;
 
         VkSemaphoreSubmitInfo work_complete_signal = {
             .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,

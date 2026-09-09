@@ -265,15 +265,15 @@ namespace Tetragrama::Panels
         if (!ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_path, header))
             return;
 
-        std::string mesh_path = native_path;
-        std::string drop_path = m_pending_mesh_drop;
-        auto*       layer_ptr = m_layer;
+        std::string mesh_path  = native_path;
+        std::string drop_path  = m_pending_mesh_drop;
+        auto*       layer_ptr  = m_layer;
 
         // Deserialize + material ingest on a worker thread — both are synchronous file
         // reads that block the render loop. A dedicated arena (4× file size + 8 MB)
         // outlives the lambda; the main-thread callback owns and shuts it down after use.
 
-        uint64_t file_bytes = 0;
+        uint64_t    file_bytes = 0;
         if (FILE* f = fopen(mesh_path.c_str(), "rb"))
         {
             fseek(f, 0, SEEK_END);
@@ -283,24 +283,23 @@ namespace Tetragrama::Panels
 
         struct MeshPayload
         {
-            ZEngine::Core::Memory::ArenaAllocator* Arena    = nullptr;
-            ZEngine::Importers::AssetMesh          Mesh     = {};
+            ZEngine::Core::Memory::ArenaAllocator* Arena     = nullptr;
+            ZEngine::Importers::AssetMesh          Mesh      = {};
             ZEngine::Importers::AssetNodeHierarchy Hierarchy = {};
-            uuids::uuid                            MeshId   = {};
-            std::string                            DropPath = {};
-            void*                                  Layer    = nullptr;
+            uuids::uuid                            MeshId    = {};
+            std::string                            DropPath  = {};
+            void*                                  Layer     = nullptr;
         };
 
-        auto* payload      = new MeshPayload();
-        payload->Arena     = new ZEngine::Core::Memory::ArenaAllocator{};
+        auto* payload  = new MeshPayload();
+        payload->Arena = new ZEngine::Core::Memory::ArenaAllocator{};
         payload->Arena->Initialize(file_bytes * 4 + (8u << 20), 0);
-        payload->MeshId    = header.Id;
-        payload->DropPath  = drop_path;
-        payload->Layer     = layer_ptr;
+        payload->MeshId   = header.Id;
+        payload->DropPath = drop_path;
+        payload->Layer    = layer_ptr;
 
         ZEngine::Helpers::ThreadPoolHelper::Submit([payload, mesh_path]() mutable {
-            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(
-                payload->Arena, mesh_path.c_str(), payload->Mesh, payload->Hierarchy);
+            ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(payload->Arena, mesh_path.c_str(), payload->Mesh, payload->Hierarchy);
 
             // IngestMaterialFromUUID is also file I/O — keep it on the worker.
             auto* ctx = ZEngine::Engine::GetContext();
