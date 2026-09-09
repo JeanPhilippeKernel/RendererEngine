@@ -145,15 +145,16 @@ namespace ZEngine::Applications
     void AppRenderPipeline::EndFrame()
     {
         if (Device->RRM)
-        {
-            auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
-            rrm->EndFrame();
-            rrm->SubmitAsyncUploads();
-        }
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
+
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
+        // Present before SubmitAsyncUploads: texture upload ops go into the deferred
+        // queues and are waited on by the next frame's submit_1, not the current one.
         Device->SwapchainPtr->Present();
+        if (Device->RRM)
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
     void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
