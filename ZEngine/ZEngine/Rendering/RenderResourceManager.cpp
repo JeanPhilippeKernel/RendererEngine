@@ -530,12 +530,17 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::RetireBatchStagings()
     {
-        uint64_t completed = 0;
-        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+        uint64_t render_completed = 0;
+        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_device->SwapchainPtr->RenderTimeline->GetHandle(), &render_completed);
         for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
         {
             BatchFrameState& frame = m_batch_frames[i];
-            if (frame.LastSignal == 0 || frame.LastSignal > completed || frame.StagingCount == 0)
+            if (frame.StagingCount == 0)
+                continue;
+            // Gate on RenderTimeline, not m_batch_timeline: submit_1 waits for the batch
+            // before signalling RenderTimeline, so this check cannot fire before the GPU
+            // finishes reading the staging buffers (guards against early-signalling drivers).
+            if (frame.SafeRetireAfterRenderValue == 0 || frame.SafeRetireAfterRenderValue > render_completed)
                 continue;
             for (uint32_t j = 0; j < frame.StagingCount; ++j)
                 m_device->GpuMem.FreeBuffer(frame.StagingBuffers[j]);
@@ -565,12 +570,11 @@ namespace ZEngine::Rendering
         if (frame.LastSignal != 0)
             m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
 
-        // Guaranteed-safe fallback free, in case RetireBatchStagings' poll hasn't caught up
-        // yet — the wait above proves this frame index's previous batch is done either way.
-        for (uint32_t i = 0; i < frame.StagingCount; ++i)
-            m_device->GpuMem.FreeBuffer(frame.StagingBuffers[i]);
-        frame.StagingCount = 0;
-
+        // RetireBatchStagings (called earlier in BeginFrame) handles staging cleanup via
+        // the RenderTimeline gate — it always runs before this point. If stagings remain
+        // here it means RetireBatchStagings hasn't confirmed GPU completion yet (render
+        // timeline hasn't reached SafeRetireAfterRenderValue). Leave them for the next poll
+        // rather than freeing while the command buffer may still be tracked as in-use.
         m_batch_cmd->ResetState();
         vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
         m_batch_cmd->Begin();
@@ -589,15 +593,23 @@ namespace ZEngine::Rendering
         // treats as non-monotonic.
         uint64_t signal_value                          = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
+        // Stage retirement via RenderTimeline (not m_batch_timeline): submit_1 waits for the
+        // batch before signalling RenderTimeline, so RenderTimeline >= (NextValue+2) guarantees
+        // the GPU is done with the staging buffers. On Intel, m_batch_timeline can appear
+        // signalled before GPU execution completes, causing premature vkDestroyBuffer.
+        m_batch_frames[m_batch_frame_index].SafeRetireAfterRenderValue =
+            m_device->SwapchainPtr->RenderTimelineNextValue + 2;
 
-        Hardwares::AsyncUploadJob job;
-        job.Buffer      = m_batch_cmd;
-        job.Timeline    = m_batch_timeline;
-        job.SignalValue = signal_value;
-        // Stages that actually consume the global vertex/index buffers, matching
-        // RecordGlobalBufferCopy's own barrier — so Present() waits at the right point.
-        job.WaitFlag    = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        m_async_uploads.Enqueue(job);
+        // Submit the batch directly and enqueue its async op immediately (not via
+        // m_async_uploads which is deferred to after Present()). The batch geometry copy
+        // MUST be in submit_1's wait list of the SAME frame — deferring it causes render
+        // commands to execute before the geometry is written, corrupting GPU state on
+        // drivers like Intel that strictly enforce timeline ordering.
+        VkPipelineStageFlags2 wait_flag = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
+                                          VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, wait_flag, signal_value, UINT64_MAX, nullptr);
+        m_device->EnqueueAsyncGPUOperation({wait_flag, signal_value, m_batch_timeline});
 
         // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
         // BeginBatchUpload for this same frame index) to free once m_batch_timeline proves
