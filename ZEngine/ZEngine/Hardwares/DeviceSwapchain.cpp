@@ -597,7 +597,11 @@ namespace ZEngine::Hardwares
         Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
         CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
 
-        uint64_t                      dummy_signal_val            = 0;
+        // present_signal_semaphores[0] is a BINARY semaphore (render_complete) — the spec
+        // says pSignalSemaphoreValues entries for binary semaphores are ignored, but Intel's
+        // driver was treating dummy_signal_val=0 as a timeline signal of value 0, which is
+        // non-monotonic when RenderTimeline > 0 and sets current = UINT64_MAX. Fix: set
+        // signalSemaphoreValueCount = 0 since no timeline semaphore is being signalled here.
         VkPipelineStageFlags          present_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSemaphore                   present_wait_semaphores[]   = {RenderTimeline->GetHandle()};
         VkSemaphore                   present_signal_semaphores[] = {render_complete->GetHandle()};
@@ -605,8 +609,8 @@ namespace ZEngine::Hardwares
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
             .waitSemaphoreValueCount   = 1,
             .pWaitSemaphoreValues      = &work_complete_value,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &dummy_signal_val,
+            .signalSemaphoreValueCount = 0,
+            .pSignalSemaphoreValues    = nullptr,
         };
 
         VkSubmitInfo submit2 = {
