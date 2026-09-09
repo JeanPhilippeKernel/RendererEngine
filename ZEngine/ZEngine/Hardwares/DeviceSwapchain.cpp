@@ -346,6 +346,18 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Present()
     {
+        // DIAG: snapshot RenderTimeline before any of our logic so we can tell whether
+        // corruption arrived from outside Present() or from within it.
+        {
+            uint64_t _diag_rt = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &_diag_rt);
+            ZENGINE_CORE_INFO("[DIAG-PRESENT] RenderTimeline driver_current={} cpu_next={}", _diag_rt, RenderTimelineNextValue + 1)
+            if (_diag_rt == UINT64_MAX)
+            {
+                ZENGINE_CORE_ERROR("[DIAG-PRESENT] RenderTimeline ALREADY UINT64_MAX on Present() entry — corruption happened OUTSIDE Present(), in EndFrame or earlier")
+            }
+        }
+
         if (Recreation == RecreationState::FrameAborted)
         {
             // OOD at acquire: semaphore not signalled, no GPU work submitted.
