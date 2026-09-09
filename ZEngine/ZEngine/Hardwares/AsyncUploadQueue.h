@@ -1,4 +1,5 @@
 #pragma once
+#include <vulkan/vulkan.h>
 #include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <cstdint>
 
@@ -18,7 +19,7 @@ namespace ZEngine::Hardwares
         CommandBuffer*                    Buffer       = nullptr;
         Rendering::Primitives::Semaphore* Timeline     = nullptr;
         Rendering::Primitives::Semaphore* WaitTimeline = nullptr;
-        uint32_t                          WaitFlag     = 0;
+        VkPipelineStageFlags2             WaitFlag     = 0;
         uint64_t                          SignalValue  = 0;
         uint64_t                          WaitValue    = UINT64_MAX;
     };

@@ -1,28 +1,5 @@
 #pragma once
-#include <ZEngine/Logging/LoggerDefinition.h>
 #include <vulkan/vulkan.h>
-
-// Diagnostic guard for Intel Windows timeline semaphore corruption.
-// Intel drivers report UINT64_MAX as the current semaphore value when the signal
-// sequence went non-monotonic. Asserting before every signal lets us pinpoint
-// the first violating site rather than crashing later at Present().
-// Remove this macro block once the root cause is confirmed on Windows.
-#define ASSERT_TIMELINE_MONOTONIC(device, semaphore_handle, next_signal_value)                                                                                                                \
-    do                                                                                                                                                                                        \
-    {                                                                                                                                                                                         \
-        uint64_t _current = 0;                                                                                                                                                                \
-        vkGetSemaphoreCounterValue((device), (semaphore_handle), &_current);                                                                                                                  \
-        if (_current == UINT64_MAX)                                                                                                                                                           \
-        {                                                                                                                                                                                     \
-            ZENGINE_CORE_ERROR("[DIAG] Semaphore {:p} ALREADY CORRUPTED before signalling {} — corruption is upstream", (void*) (semaphore_handle), (uint64_t) (next_signal_value))           \
-            ZENGINE_VALIDATE_ASSERT(false, "[DIAG] Timeline semaphore corrupted — see engine log")                                                                                            \
-        }                                                                                                                                                                                     \
-        if ((uint64_t) (next_signal_value) <= _current)                                                                                                                                       \
-        {                                                                                                                                                                                     \
-            ZENGINE_CORE_ERROR("[DIAG] Semaphore {:p} NON-MONOTONIC: current={} next={} — THIS is the corrupting site", (void*) (semaphore_handle), _current, (uint64_t) (next_signal_value)) \
-            ZENGINE_VALIDATE_ASSERT(false, "[DIAG] Timeline semaphore non-monotonic — see engine log")                                                                                        \
-        }                                                                                                                                                                                     \
-    } while (0)
 // clang-format off
 #include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
@@ -223,7 +200,7 @@ namespace ZEngine::Hardwares
      */
     struct AsyncGPUOperationHandle
     {
-        uint32_t                          StageFlags  = 0;
+        VkPipelineStageFlags2             StageFlags  = 0;
         uint64_t                          SignalValue = 0;
         Rendering::Primitives::Semaphore* Timeline    = nullptr;
     };
@@ -297,8 +274,11 @@ namespace ZEngine::Hardwares
         Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                              = {};
         Helpers::HandleManager<ImageBuffer>                                                                                          ImageBufferManager                          = {};
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToUpdates                      = {};
+        Core::Containers::SPSCQueue<Rendering::Textures::TextureHandle, 128>                                                         DeferredTextureDescriptorUpdates            = {};
         TextureDisposeQueue                                                                                                          TextureHandleToDispose                      = {};
         Helpers::ThreadSafeQueue<AsyncGPUOperationHandle>                                                                            AsyncGPUOperations                          = {};
+        Core::Containers::SPSCQueue<AsyncGPUOperationHandle, 128>                                                                    DeferredAsyncGPUOperations                  = {};
+        VkDescriptorImageInfo                                                                                                        FallbackDescriptorImageInfo                 = {};
         Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                               = {};
         std::mutex                                                                                                                   Mutex                                       = {};
         Windows::CoreWindow*                                                                                                         CurrentWindow                               = nullptr;
@@ -308,7 +288,7 @@ namespace ZEngine::Hardwares
         void                                                                                                                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                         Deinitialize();
         void                                                                                                                         Dispose();
-        bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
+        bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, VkPipelineStageFlags2 wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
         bool                                                                                                                         QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
         /// @brief If result is VK_ERROR_DEVICE_LOST, sets IsDeviceLost (logging once, on the
         ///        first caller to observe it) and returns true so the caller can bail out
@@ -316,6 +296,7 @@ namespace ZEngine::Hardwares
         /// @param where Short description of the call site, for the one-time log line.
         bool                                                                                                                         CheckDeviceLost(VkResult result, const char* where);
         void                                                                                                                         EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
+        void                                                                                                                         EnqueueDeferredAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         QueueView                                                                                                                    GetQueue(Rendering::QueueType type);
         void                                                                                                                         QueueWait(Rendering::QueueType type);
         void                                                                                                                         QueueWaitAll();
@@ -342,6 +323,7 @@ namespace ZEngine::Hardwares
 
         /// @brief Dirty this handle's bindless descriptor for the next Present() to refresh.
         void                                            RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+        void                                            RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
 
         /// @brief Timeline-gated disposal. Render-thread only.
         void                                            DestroyTexture(const Rendering::Textures::TextureHandle& handle);
