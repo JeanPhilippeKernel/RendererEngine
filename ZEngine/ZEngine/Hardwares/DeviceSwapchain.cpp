@@ -573,6 +573,8 @@ namespace ZEngine::Hardwares
 
         uint64_t work_complete_value = ++RenderTimelineNextValue;
         ASSERT_TIMELINE_MONOTONIC(Device->LogicalDevice, RenderTimeline->GetHandle(), work_complete_value);
+        ZENGINE_VALIDATE_ASSERT(wait_semaphores.size() == wait_values.size(), "[DIAG] submit_1 wait array size mismatch: waitSemaphoreCount != waitSemaphoreValueCount — Intel driver may read uninitialized values as phantom signals")
+        ZENGINE_CORE_INFO("[DIAG-SUBMIT1] wait_count={} signal RenderTimeline to {}", (uint32_t) wait_semaphores.size(), work_complete_value)
         VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
         VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
             .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
