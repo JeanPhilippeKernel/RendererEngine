@@ -355,7 +355,7 @@ namespace ZEngine::Hardwares
         device_features_2.features.multiDrawIndirect            = PhysicalDeviceFeature.features.multiDrawIndirect;
         device_features_2.features.samplerAnisotropy            = PhysicalDeviceFeature.features.samplerAnisotropy;
         // Required for MaterialData.AlbedoMap / NormalMap etc. (uint64_t handles in g_buffer.frag)
-        device_features_2.features.shaderInt64                  = PhysicalDeviceFeature.features.shaderInt64;
+        // shaderInt64 no longer required — material map indices use uint32 in shader and CPU struct.
 
         // synchronization2 is required for vkQueueSubmit2 (used for all timeline semaphore submits).
         VkPhysicalDeviceSynchronization2Features sync2_features = {};
