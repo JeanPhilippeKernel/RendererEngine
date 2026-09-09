@@ -363,13 +363,10 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        // Promote last frame's deferred texture ops into the live queues.
-        // SubmitAsyncUploads runs after Present(), so these only hold prior-frame items.
+        // Promote last frame's deferred upload ops so submit_1 can wait on them.
+        // SubmitAsyncUploads runs after Present(), so DeferredAsyncGPUOperations only
+        // holds ops from prior frames when we reach this point.
         {
-            Rendering::Textures::TextureHandle deferred_handle = {};
-            while (Device->DeferredTextureDescriptorUpdates.pop(deferred_handle))
-                Device->TextureHandleToUpdates.Enqueue(deferred_handle);
-
             Hardwares::AsyncGPUOperationHandle deferred_op = {};
             while (Device->DeferredAsyncGPUOperations.pop(deferred_op))
                 Device->AsyncGPUOperations.Enqueue(deferred_op);
@@ -670,6 +667,34 @@ namespace ZEngine::Hardwares
         if (present_result == VK_SUBOPTIMAL_KHR)
         {
             Recreation = RecreationState::Pending;
+        }
+
+        // Drain new deferred descriptor updates after the frame is submitted.
+        // Writing the fallback here (render thread only) avoids concurrent vkUpdateDescriptorSets
+        // with Present()'s own descriptor batch. The real image follows next frame via
+        // TextureHandleToUpdates once submit_1 has waited for the upload to complete.
+        {
+            Rendering::Textures::TextureHandle deferred_handle = {};
+            while (Device->DeferredTextureDescriptorUpdates.pop(deferred_handle))
+            {
+                if (Device->FallbackDescriptorImageInfo.imageView != VK_NULL_HANDLE)
+                {
+                    for (const auto& req : Device->BindlessTextureSlotRequests)
+                    {
+                        VkWriteDescriptorSet write = {
+                            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet          = req.DstSet,
+                            .dstBinding      = req.Binding,
+                            .dstArrayElement = (uint32_t) deferred_handle.Index,
+                            .descriptorCount = 1,
+                            .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                            .pImageInfo      = &Device->FallbackDescriptorImageInfo,
+                        };
+                        vkUpdateDescriptorSets(Device->LogicalDevice, 1, &write, 0, nullptr);
+                    }
+                }
+                Device->TextureHandleToUpdates.Enqueue(deferred_handle);
+            }
         }
     }
 } // namespace ZEngine::Hardwares

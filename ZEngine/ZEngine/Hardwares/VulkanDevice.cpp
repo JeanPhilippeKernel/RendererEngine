@@ -1867,23 +1867,9 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle)
     {
-        // Pre-fill the slot with the fallback so it's valid during the 1-frame upload window.
-        if (FallbackDescriptorImageInfo.imageView != VK_NULL_HANDLE)
-        {
-            for (const auto& req : BindlessTextureSlotRequests)
-            {
-                VkWriteDescriptorSet write = {
-                    .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet          = req.DstSet,
-                    .dstBinding      = req.Binding,
-                    .dstArrayElement = (uint32_t) handle.Index,
-                    .descriptorCount = 1,
-                    .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                    .pImageInfo      = &FallbackDescriptorImageInfo,
-                };
-                vkUpdateDescriptorSets(LogicalDevice, 1, &write, 0, nullptr);
-            }
-        }
+        // Push to the deferred queue only — the render thread drains this and writes
+        // the fallback then the real image, both from a single thread so vkUpdateDescriptorSets
+        // is never called concurrently with Present()'s own descriptor batch.
         DeferredTextureDescriptorUpdates.push(handle);
     }
 

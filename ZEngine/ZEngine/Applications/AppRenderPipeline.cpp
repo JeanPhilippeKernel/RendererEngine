@@ -240,8 +240,8 @@ namespace ZEngine::Applications
                 for (uint32_t sub_i = 0; sub_i < static_cast<uint32_t>(mesh->SubMeshes.size()); ++sub_i)
                 {
                     const auto&                          sub      = mesh->SubMeshes[sub_i];
-                    auto*                                mat      = Managers::AssetManager::GetAsset<Importers::AssetMaterial>(sub.MaterialUUID);
-                    uint32_t                             mat_idx  = mat ? static_cast<uint32_t>(mat - mgr->Materials.data()) : 0;
+                    uint32_t*                            mat_slot = mgr ? mgr->UUIDToMaterialSlot.find(sub.MaterialUUID) : nullptr;
+                    uint32_t                             mat_idx  = mat_slot ? *mat_slot : 0;
                     uint32_t                             draw_idx = static_cast<uint32_t>(allocs.size());
 
                     Rendering::Meshes::SubMeshAllocation alloc    = {};
