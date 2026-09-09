@@ -1,6 +1,6 @@
 #pragma once
-#include <vulkan/vulkan.h>
 #include <ZEngine/Core/Containers/SPSCQueue.h>
+#include <vulkan/vulkan.h>
 #include <cstdint>
 
 namespace ZEngine::Rendering::Primitives

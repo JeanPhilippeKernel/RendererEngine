@@ -1192,7 +1192,7 @@ namespace ZEngine::Rendering
             transfer_cmd->End();
 
             uint64_t transfer_val = m_tex_transfer_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            transfer_retire[i] = transfer_val;
+            transfer_retire[i]    = transfer_val;
             if (transfer_staging)
                 m_tex_transfer_staging[pool_index][i] = transfer_staging;
 
@@ -1223,7 +1223,7 @@ namespace ZEngine::Rendering
             acquire_cmd->TransitionImageLayout(ImageMemoryBarrier{acquire_spec});
             acquire_cmd->End();
 
-            uint64_t graphics_val = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            uint64_t graphics_val       = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
             retire_values[acquire_slot] = graphics_val;
             m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (VkPipelineStageFlags2) release.DestinationStageMask, graphics_val, transfer_val});
         }
@@ -1280,7 +1280,7 @@ namespace ZEngine::Rendering
             cmd->End();
 
             uint64_t signal_value = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            retire_values[i] = signal_value;
+            retire_values[i]      = signal_value;
             if (staging)
                 m_tex_retire_staging[pool_index][i] = staging;
             m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (VkPipelineStageFlags2) to_final.DestinationStageMask, signal_value, UINT64_MAX});
@@ -1784,7 +1784,7 @@ namespace ZEngine::Rendering
                 auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
                 if (img_buf)
                 {
-                    m_device->FallbackDescriptorImageInfo            = img_buf->GetDescriptorImageInfo();
+                    m_device->FallbackDescriptorImageInfo             = img_buf->GetDescriptorImageInfo();
                     m_device->FallbackDescriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                 }
             }

@@ -349,19 +349,19 @@ namespace ZEngine::Hardwares
             vulkan_1_2_features.timelineSemaphore = VK_TRUE;
         }
 
-        VkPhysicalDeviceFeatures2 device_features_2          = {};
-        device_features_2.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.features.drawIndirectFirstInstance = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
-        device_features_2.features.multiDrawIndirect         = PhysicalDeviceFeature.features.multiDrawIndirect;
-        device_features_2.features.samplerAnisotropy         = PhysicalDeviceFeature.features.samplerAnisotropy;
+        VkPhysicalDeviceFeatures2 device_features_2             = {};
+        device_features_2.sType                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.features.drawIndirectFirstInstance    = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect            = PhysicalDeviceFeature.features.multiDrawIndirect;
+        device_features_2.features.samplerAnisotropy            = PhysicalDeviceFeature.features.samplerAnisotropy;
         // Required for MaterialData.AlbedoMap / NormalMap etc. (uint64_t handles in g_buffer.frag)
-        device_features_2.features.shaderInt64               = PhysicalDeviceFeature.features.shaderInt64;
+        device_features_2.features.shaderInt64                  = PhysicalDeviceFeature.features.shaderInt64;
 
         // synchronization2 is required for vkQueueSubmit2 (used for all timeline semaphore submits).
         VkPhysicalDeviceSynchronization2Features sync2_features = {};
-        sync2_features.sType                                     = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-        sync2_features.synchronization2                          = VK_TRUE;
-        device_features_2.pNext                                  = &sync2_features;
+        sync2_features.sType                                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        sync2_features.synchronization2                         = VK_TRUE;
+        device_features_2.pNext                                 = &sync2_features;
 
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
@@ -375,11 +375,11 @@ namespace ZEngine::Hardwares
             vulkan_1_2_features.descriptorBindingPartiallyBound = VK_TRUE;
             vulkan_1_2_features.runtimeDescriptorArray          = VK_TRUE;
 
-            sync2_features.pNext                                 = &vulkan_1_2_features;
+            sync2_features.pNext                                = &vulkan_1_2_features;
         }
         else if (PhysicalDeviceSupportTimelineSemaphore)
         {
-            sync2_features.pNext                                 = &vulkan_1_2_features;
+            sync2_features.pNext = &vulkan_1_2_features;
         }
 
         device_create_info.pNext = &device_features_2;
@@ -766,7 +766,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
         ZENGINE_VALIDATE_ASSERT(signal_semaphore->IsTimeline == true, "Signal semaphore must be a timeline semaphore.")
 
-        bool has_wait = (wait_semaphore != nullptr && wait_value != UINT64_MAX);
+        bool                      has_wait = (wait_semaphore != nullptr && wait_value != UINT64_MAX);
 
         VkCommandBufferSubmitInfo cmd_info = {
             .sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
