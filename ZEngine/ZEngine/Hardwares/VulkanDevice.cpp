@@ -210,14 +210,30 @@ namespace ZEngine::Hardwares
         auto try_select_device = [&](VkPhysicalDeviceType preferred_type) {
             for (VkPhysicalDevice physical_device : physical_device_collection)
             {
+                VkPhysicalDeviceDriverProperties driver_props            = {};
+                driver_props.sType                                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+
                 VkPhysicalDeviceVulkan12Properties vulkan_1_2_properties = {};
                 vulkan_1_2_properties.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+                vulkan_1_2_properties.pNext                              = &driver_props;
 
                 VkPhysicalDeviceProperties2 physical_device_properties   = {};
                 physical_device_properties.sType                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
                 physical_device_properties.pNext                         = &vulkan_1_2_properties;
 
                 vkGetPhysicalDeviceProperties2(physical_device, &physical_device_properties);
+
+                // VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS: fences/semaphores signal before
+                // GPU execution completes — no reliable Vulkan workaround. Halt early.
+                if (driver_props.driverID == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS)
+                {
+                    ZENGINE_CORE_CRITICAL(
+                        "[GPU] Unsupported Vulkan driver detected: Intel HD/UHD Graphics (Windows proprietary). "
+                        "This driver has known Vulkan synchronization bugs that cause GPU device loss. "
+                        "Please update to the latest Intel graphics driver from https://www.intel.com/content/www/us/en/download-center/home.html "
+                        "or wait for the DirectX 12 backend.")
+                    ZENGINE_VALIDATE_ASSERT(false, "Intel HD/UHD Windows proprietary Vulkan driver is not supported — see engine log.")
+                }
 
                 VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
                 vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;

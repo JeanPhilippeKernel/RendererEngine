@@ -530,17 +530,16 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::RetireBatchStagings()
     {
-        uint64_t render_completed = 0;
-        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_device->SwapchainPtr->RenderTimeline->GetHandle(), &render_completed);
+        uint64_t completed = 0;
+        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+
         for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
         {
             BatchFrameState& frame = m_batch_frames[i];
             if (frame.StagingCount == 0)
                 continue;
-            // Gate on RenderTimeline, not m_batch_timeline: submit_1 waits for the batch
-            // before signalling RenderTimeline, so this check cannot fire before the GPU
-            // finishes reading the staging buffers (guards against early-signalling drivers).
-            if (frame.SafeRetireAfterRenderValue == 0 || frame.SafeRetireAfterRenderValue > render_completed)
+            uint64_t gate = frame.LastSignal;
+            if (gate == 0 || gate > completed)
                 continue;
             for (uint32_t j = 0; j < frame.StagingCount; ++j)
                 m_device->GpuMem.FreeBuffer(frame.StagingBuffers[j]);
@@ -589,25 +588,11 @@ namespace ZEngine::Rendering
         // of submitted-and-blocked-on here, so a mesh drop never stalls the render thread.
         // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
         // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
-        // drives independently; sharing it produced a timeline value Intel's Windows driver
-        // treats as non-monotonic.
+        // drives independently.
         uint64_t signal_value                          = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
-        // Stage retirement via RenderTimeline (not m_batch_timeline): submit_1 waits for the
-        // batch before signalling RenderTimeline, so RenderTimeline >= (NextValue+2) guarantees
-        // the GPU is done with the staging buffers. On Intel, m_batch_timeline can appear
-        // signalled before GPU execution completes, causing premature vkDestroyBuffer.
-        m_batch_frames[m_batch_frame_index].SafeRetireAfterRenderValue =
-            m_device->SwapchainPtr->RenderTimelineNextValue + 2;
 
-        // Submit the batch directly and enqueue its async op immediately (not via
-        // m_async_uploads which is deferred to after Present()). The batch geometry copy
-        // MUST be in submit_1's wait list of the SAME frame — deferring it causes render
-        // commands to execute before the geometry is written, corrupting GPU state on
-        // drivers like Intel that strictly enforce timeline ordering.
-        VkPipelineStageFlags2 wait_flag = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
-                                          VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-                                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        VkPipelineStageFlags2 wait_flag                = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, wait_flag, signal_value, UINT64_MAX, nullptr);
         m_device->EnqueueAsyncGPUOperation({wait_flag, signal_value, m_batch_timeline});
 
@@ -1426,6 +1411,7 @@ namespace ZEngine::Rendering
     void RenderResourceManager::RetireTextureSlots(uint8_t frame_index, uint8_t thread_index)
     {
         uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+
         uint64_t graphics_value = 0;
         vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), &graphics_value);
 
