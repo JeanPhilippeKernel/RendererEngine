@@ -788,6 +788,7 @@ namespace ZEngine::Hardwares
         };
 
         ASSERT_TIMELINE_MONOTONIC(LogicalDevice, signal_semaphore->GetHandle(), signal_value);
+        ZENGINE_CORE_TRACE("[DIAG-QSUBMIT] signal_sem={:p} signal_val={} wait_sem={:p} wait_val={}", (void*) signal_semaphore->GetHandle(), signal_value, has_wait ? (void*) wait_semaphore->GetHandle() : nullptr, has_wait ? wait_value : 0u)
 
         VkResult submit_result = vkQueueSubmit(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
         if (CheckDeviceLost(submit_result, "QueueSubmit (timeline)"))
