@@ -1010,10 +1010,19 @@ namespace ZEngine::Rendering
             return {};
 
         EnsureBatchOpen(m_active_frame_index);
-        AppendToGlobalBuffer(buf, data, byte_size, 0, m_active_frame_index);
 
-        uint32_t slot_idx           = AllocGBufSlot();
-        m_gbuf_slots[slot_idx].Data = buf;
+        BufferView staging = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging);
+        ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::UploadBuffer: staging copy failed")
+
+        StagingCopyCtx ctx{staging.Handle, buf.Handle, 0, byte_size};
+        RecordStagingCopy(m_batch_cmd->GetHandle(), &ctx);
+
+        BatchFrameState& frame = m_batch_frames[m_batch_frame_index];
+        ZENGINE_VALIDATE_ASSERT(frame.StagingCount < MAX_PENDING * 2, "RRM::UploadBuffer: batch staging overflow")
+        frame.StagingBuffers[frame.StagingCount++] = staging;
+
+        uint32_t slot_idx                          = AllocGBufSlot();
+        m_gbuf_slots[slot_idx].Data                = buf;
         return {slot_idx, m_gbuf_slots[slot_idx].Generation};
     }
 
