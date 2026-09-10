@@ -17,8 +17,8 @@ namespace ZEngine::Rendering::Renderers
 
     void SkySystem::SetConfig(const Sky::SkyConfig& cfg)
     {
-        m_mode_changed = (cfg.Mode != m_config.Mode);
-        m_config       = cfg;
+        m_mode_changed          = (cfg.Mode != m_config.Mode);
+        m_config                = cfg;
 
         m_skysphere_pass.Config = cfg;
 

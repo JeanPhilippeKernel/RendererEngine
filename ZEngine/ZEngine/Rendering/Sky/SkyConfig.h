@@ -29,10 +29,10 @@ namespace ZEngine::Rendering::Sky
      */
     struct SkyConfig
     {
-        SkyMode            Mode = SkyMode::Atmosphere;
+        SkyMode            Mode                = SkyMode::Atmosphere;
 
         /// Rayleigh scattering coefficients (RGB, m⁻¹) at sea level. [Bruneton08]
-        Core::Maths::Vec4f RayleighScattering = {5.802e-6f, 13.558e-6f, 33.100e-6f, 0.0f};
+        Core::Maths::Vec4f RayleighScattering  = {5.802e-6f, 13.558e-6f, 33.100e-6f, 0.0f};
         /// Rayleigh exponential scale height (m). [Bruneton08]
         float              RayleighScaleHeight = 8000.0f;
         /// Mie scattering coefficient (m⁻¹), wavelength-independent. [Hillaire20 Table 1]

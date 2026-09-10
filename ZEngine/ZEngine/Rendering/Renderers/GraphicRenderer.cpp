@@ -8,8 +8,8 @@
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
-#include <ZEngine/Rendering/Renderers/Sky/SkySystem.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
+#include <ZEngine/Rendering/Renderers/Sky/SkySystem.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
 using namespace ZEngine::Hardwares;
