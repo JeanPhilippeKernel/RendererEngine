@@ -1,4 +1,6 @@
 #pragma once
+#include <ZEngine/Rendering/Pools/CommandPool.h>
+#include <ZEngine/Rendering/Primitives/Semaphore.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <ZEngine/Rendering/Sky/SkyConfig.h>
@@ -41,33 +43,43 @@ namespace ZEngine::Rendering::Renderers
         void           Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
         void           Deinitialize(Hardwares::VulkanDevicePtr const device) override;
 
+        // Called from AppRenderPipeline::EndFrame() BEFORE Present():
+        // submits LUT compute on COMPUTE_QUEUE, enqueues the LUT semaphore into
+        // AsyncGPUOperations so Present()'s submit_1 waits for it automatically.
+        void           SubmitLUTs(Hardwares::VulkanDevice* device, Rendering::Scenes::SceneDataPtr const scene);
+
     private:
-        void                       InitLUTs(Hardwares::VulkanDevice* device);
-        void                       InitComputePipelines(Hardwares::VulkanDevice* device);
-        void                       InitLUTDescriptors(Hardwares::VulkanDevice* device);
-        void                       DispatchLUTs(Hardwares::VulkanDevice* device, Hardwares::CommandBuffer* cmd);
+        void                              InitLUTs(Hardwares::VulkanDevice* device);
+        void                              InitComputePipelines(Hardwares::VulkanDevice* device);
+        void                              InitLUTDescriptors(Hardwares::VulkanDevice* device);
+        void                              DispatchLUTs(Hardwares::VulkanDevice* device, Hardwares::CommandBuffer* cmd);
 
         // Persistent LUT textures (DeviceTexture domain, never freed while pass is alive)
-        Textures::TextureHandle    m_transmittance_lut;
-        Textures::TextureHandle    m_multiscatter_lut;
-        Textures::TextureHandle    m_skyview_lut;
+        Textures::TextureHandle           m_transmittance_lut;
+        Textures::TextureHandle           m_multiscatter_lut;
+        Textures::TextureHandle           m_skyview_lut;
 
         // Descriptor sets for compute pipelines (one per LUT generation step)
-        VkDescriptorSet            m_transmittance_ds   = VK_NULL_HANDLE;
-        VkDescriptorSet            m_multiscatter_ds    = VK_NULL_HANDLE;
-        VkDescriptorSet            m_skyview_ds         = VK_NULL_HANDLE;
-        VkDescriptorSetLayout      m_lut_ds_layout      = VK_NULL_HANDLE;
-        VkDescriptorPool           m_ds_pool            = VK_NULL_HANDLE;
+        VkDescriptorSet                   m_transmittance_ds   = VK_NULL_HANDLE;
+        VkDescriptorSet                   m_multiscatter_ds    = VK_NULL_HANDLE;
+        VkDescriptorSet                   m_skyview_ds         = VK_NULL_HANDLE;
+        VkDescriptorSetLayout             m_lut_ds_layout      = VK_NULL_HANDLE;
+        VkDescriptorPool                  m_ds_pool            = VK_NULL_HANDLE;
 
         // Atmosphere UBO heap offset (pushed per-frame)
-        uint32_t                   m_camera_heap_offset = 0;
-        uint32_t                   m_atmo_heap_offset   = 0;
+        uint32_t                          m_camera_heap_offset = 0;
+        uint32_t                          m_atmo_heap_offset   = 0;
 
-        Pipelines::ComputePipeline m_transmittance_pipeline;
-        Pipelines::ComputePipeline m_multiscatter_pipeline;
-        Pipelines::ComputePipeline m_skyview_pipeline;
+        Pipelines::ComputePipeline        m_transmittance_pipeline;
+        Pipelines::ComputePipeline        m_multiscatter_pipeline;
+        Pipelines::ComputePipeline        m_skyview_pipeline;
 
-        bool                       m_luts_initialized = false;
-        bool                       m_combine_ready    = false;
+        bool                              m_luts_initialized = false;
+        bool                              m_luts_registered  = false;
+        uint64_t                          m_lut_signal_value = 0;
+
+        Rendering::Pools::CommandPool*    m_lut_cmd_pool     = nullptr;
+        Hardwares::CommandBuffer*         m_lut_cmds[3]      = {};
+        Rendering::Primitives::Semaphore* m_lut_semaphore    = nullptr;
     };
 } // namespace ZEngine::Rendering::Renderers

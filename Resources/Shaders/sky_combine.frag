@@ -22,14 +22,15 @@ layout(set = 0, binding = 1) uniform UBAtmosphere
     float SunIlluminanceScale;
     vec4  SunDirection;
     float SunAngularRadius;
-    float _pad0[3];
+    float _pad0_a;
+    float _pad0_b;
+    float _pad0_c;
     vec4  CameraPositionKm;
     uint  TransmittanceLUTIndex;
     uint  MultiscatterLUTIndex;
     uint  SkyviewLUTIndex;
     float _pad1;
-}
-Atmo;
+};
 
 const float PI = 3.14159265;
 
@@ -41,14 +42,14 @@ void        main()
     float v         = sign(lat) * sqrt(abs(lat) / (PI * 0.5));
     vec2  sky_uv    = clamp(vec2(azimuth / (2.0 * PI) + 0.5, v * 0.5 + 0.5), 0.0, 1.0);
 
-    vec3  sky       = texture(sampler2D(TextureArray[Atmo.SkyviewLUTIndex], LinearClampSampler), sky_uv).rgb;
+    vec3  sky       = texture(sampler2D(TextureArray[SkyviewLUTIndex], LinearClampSampler), sky_uv).rgb;
 
-    float cos_angle = dot(dir, normalize(Atmo.SunDirection.xyz));
-    float cos_disc  = cos(Atmo.SunAngularRadius * PI / 180.0);
+    float cos_angle = dot(dir, normalize(SunDirection.xyz));
+    float cos_disc  = cos(SunAngularRadius * PI / 180.0);
     if (cos_angle > cos_disc)
     {
         float t  = (cos_angle - cos_disc) / (1.0 - cos_disc);
-        sky     += vec3(Atmo.SunIlluminanceScale) * smoothstep(0.0, 1.0, t);
+        sky     += vec3(SunIlluminanceScale) * smoothstep(0.0, 1.0, t);
     }
     o_color = vec4(sky, 1.0);
 }

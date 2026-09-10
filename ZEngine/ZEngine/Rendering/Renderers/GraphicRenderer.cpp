@@ -160,6 +160,11 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->Execute(cb);
     }
 
+    void GraphicRenderer::SubmitSkyLUTs(Scenes::SceneDataPtr scene)
+    {
+        m_sky_system.SubmitLUTs(Device, scene);
+    }
+
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
         return RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName);

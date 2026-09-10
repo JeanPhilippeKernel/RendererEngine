@@ -23,23 +23,24 @@ layout(set = 0, binding = 1) uniform UBAtmosphere
     float SunIlluminanceScale;
     vec4  SunDirection;
     float SunAngularRadius;
-    float _pad0[3];
+    float _pad0_a;
+    float _pad0_b;
+    float _pad0_c;
     vec4  CameraPositionKm;
     uint  TransmittanceLUTIndex;
     uint  MultiscatterLUTIndex;
     uint  SkyviewLUTIndex;
     float _pad1;
-}
-Atmo;
+};
 
 shared vec3 s_lum[64];
 shared vec3 s_f_ms[64];
 
 vec3        GetTransmittance(float altitude, float cos_view)
 {
-    float h = clamp((altitude - Atmo.PlanetRadius) / (Atmo.AtmosphereRadius - Atmo.PlanetRadius), 0.0, 1.0);
-    return texture(sampler2D(TextureArray[Atmo.TransmittanceLUTIndex], LinearClampSampler), vec2(cos_view * 0.5 + 0.5, h)).rgb;
-}
+    float h = clamp((altitude - PlanetRadius) / (AtmosphereRadius - PlanetRadius), 0.0, 1.0);
+    return texture(sampler2D(TextureArray[TransmittanceLUTIndex], LinearClampSampler), vec2(cos_view * 0.5 + 0.5, h)).rgb;
+};
 
 vec2 RaySphereIntersect(vec3 o, vec3 d, float r)
 {
@@ -48,19 +49,19 @@ vec2 RaySphereIntersect(vec3 o, vec3 d, float r)
         return vec2(-1.0);
     float sq = sqrt(det);
     return vec2(-b - sq, -b + sq);
-}
+};
 vec3 Scattering(float alt_m)
 {
-    float h = alt_m - Atmo.PlanetRadius;
-    return Atmo.RayleighScattering.rgb * exp(-h / Atmo.RayleighScaleHeight) + Atmo.MieScattering.rgb * exp(-h / Atmo.MieScaleHeight);
-}
+    float h = alt_m - PlanetRadius;
+    return RayleighScattering.rgb * exp(-h / RayleighScaleHeight) + MieScattering.rgb * exp(-h / MieScaleHeight);
+};
 vec3 Extinction(float alt_m)
 {
-    float h  = alt_m - Atmo.PlanetRadius;
-    float rd = exp(-h / Atmo.RayleighScaleHeight), md = exp(-h / Atmo.MieScaleHeight);
-    float od = max(0.0, 1.0 - abs(h - Atmo.OzoneLayerCentre) / (Atmo.OzoneLayerWidth * 0.5));
-    return Atmo.RayleighScattering.rgb * rd + (Atmo.MieScattering.rgb + Atmo.MieAbsorption.rgb) * md + Atmo.OzoneAbsorption.rgb * od;
-}
+    float h  = alt_m - PlanetRadius;
+    float rd = exp(-h / RayleighScaleHeight), md = exp(-h / MieScaleHeight);
+    float od = max(0.0, 1.0 - abs(h - OzoneLayerCentre) / (OzoneLayerWidth * 0.5));
+    return RayleighScattering.rgb * rd + (MieScattering.rgb + MieAbsorption.rgb) * md + OzoneAbsorption.rgb * od;
+};
 
 void main()
 {
@@ -70,18 +71,18 @@ void main()
     if (coord.x >= size.x || coord.y >= size.y)
         return;
     vec2  uv       = (vec2(coord) + 0.5) / vec2(size);
-    float altitude = Atmo.PlanetRadius + uv.y * (Atmo.AtmosphereRadius - Atmo.PlanetRadius);
+    float altitude = PlanetRadius + uv.y * (AtmosphereRadius - PlanetRadius);
     float cos_sun  = uv.x * 2.0 - 1.0;
     float phi      = (float(tid) + 0.5) / 64.0 * 6.2831853;
     float ct       = float(tid) * 2.0 / 64.0 - 1.0 + 1.0 / 64.0;
     float st       = sqrt(max(0.0, 1.0 - ct * ct));
     vec3  dir      = vec3(st * cos(phi), ct, st * sin(phi));
     vec3  pos      = vec3(0.0, altitude, 0.0);
-    vec2  at       = RaySphereIntersect(pos, dir, Atmo.AtmosphereRadius);
+    vec2  at       = RaySphereIntersect(pos, dir, AtmosphereRadius);
     float t_max    = max(at.x, at.y);
     if (t_max < 0.0)
         t_max = 0.0;
-    vec2 pt = RaySphereIntersect(pos, dir, Atmo.PlanetRadius);
+    vec2 pt = RaySphereIntersect(pos, dir, PlanetRadius);
     if (pt.x > 0.0)
         t_max = min(t_max, pt.x);
     float step = t_max / 20.0;
@@ -116,4 +117,4 @@ void main()
         vec3 fms = s_f_ms[0] / 64.0, lv = s_lum[0] / 64.0;
         imageStore(o_multiscatter, coord, vec4(lv / max(vec3(1e-7), vec3(1.0) - fms), 1.0));
     }
-}
+};

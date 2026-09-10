@@ -13,8 +13,7 @@ layout(set = 0, binding = 0) uniform UBCamera
     mat4 Projection;
     vec4 Position;
     mat4 InvViewProj;
-}
-Camera;
+};
 
 layout(set = 0, binding = 1) uniform UBAtmosphere
 {
@@ -32,22 +31,23 @@ layout(set = 0, binding = 1) uniform UBAtmosphere
     float SunIlluminanceScale;
     vec4  SunDirection;
     float SunAngularRadius;
-    float _pad0[3];
+    float _pad0_a;
+    float _pad0_b;
+    float _pad0_c;
     vec4  CameraPositionKm;
     uint  TransmittanceLUTIndex;
     uint  MultiscatterLUTIndex;
     uint  SkyviewLUTIndex;
     float _pad1;
-}
-Atmo;
+};
 
 const float PI = 3.14159265;
 
 vec3        GetLUT(uint idx, float alt, float cv)
 {
-    float h = clamp((alt - Atmo.PlanetRadius) / (Atmo.AtmosphereRadius - Atmo.PlanetRadius), 0.0, 1.0);
+    float h = clamp((alt - PlanetRadius) / (AtmosphereRadius - PlanetRadius), 0.0, 1.0);
     return texture(sampler2D(TextureArray[idx], LinearClampSampler), vec2(cv * 0.5 + 0.5, h)).rgb;
-}
+};
 
 vec2 RSI(vec3 o, vec3 d, float r)
 {
@@ -56,28 +56,28 @@ vec2 RSI(vec3 o, vec3 d, float r)
         return vec2(-1.0);
     float sq = sqrt(det);
     return vec2(-b - sq, -b + sq);
-}
+};
 float PhaseHG(float c, float g)
 {
     float g2 = g * g;
     return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * c, 1.5));
-}
+};
 float PhaseR(float c)
 {
     return 3.0 / (16.0 * PI) * (1.0 + c * c);
-}
+};
 vec3 Scattering(float alt_m)
 {
-    float h = alt_m - Atmo.PlanetRadius;
-    return Atmo.RayleighScattering.rgb * exp(-h / Atmo.RayleighScaleHeight) + Atmo.MieScattering.rgb * exp(-h / Atmo.MieScaleHeight);
-}
+    float h = alt_m - PlanetRadius;
+    return RayleighScattering.rgb * exp(-h / RayleighScaleHeight) + MieScattering.rgb * exp(-h / MieScaleHeight);
+};
 vec3 Extinction(float alt_m)
 {
-    float h  = alt_m - Atmo.PlanetRadius;
-    float rd = exp(-h / Atmo.RayleighScaleHeight), md = exp(-h / Atmo.MieScaleHeight);
-    float od = max(0.0, 1.0 - abs(h - Atmo.OzoneLayerCentre) / (Atmo.OzoneLayerWidth * 0.5));
-    return Atmo.RayleighScattering.rgb * rd + (Atmo.MieScattering.rgb + Atmo.MieAbsorption.rgb) * md + Atmo.OzoneAbsorption.rgb * od;
-}
+    float h  = alt_m - PlanetRadius;
+    float rd = exp(-h / RayleighScaleHeight), md = exp(-h / MieScaleHeight);
+    float od = max(0.0, 1.0 - abs(h - OzoneLayerCentre) / (OzoneLayerWidth * 0.5));
+    return RayleighScattering.rgb * rd + (MieScattering.rgb + MieAbsorption.rgb) * md + OzoneAbsorption.rgb * od;
+};
 
 void main()
 {
@@ -90,18 +90,18 @@ void main()
     float v       = uv.y * 2.0 - 1.0;
     float lat     = sign(v) * (PI * 0.5) * v * v;
     vec3  dir     = vec3(cos(lat) * sin(az), sin(lat), cos(lat) * cos(az));
-    vec3  sun     = normalize(Atmo.SunDirection.xyz);
+    vec3  sun     = normalize(SunDirection.xyz);
     float cs      = dot(dir, sun);
-    float cam_alt = Atmo.PlanetRadius + max(length(Camera.Position.xyz), 0.001);
+    float cam_alt = PlanetRadius + max(length(Position.xyz), 0.001);
     vec3  pos     = vec3(0.0, cam_alt, 0.0);
-    vec2  at      = RSI(pos, dir, Atmo.AtmosphereRadius);
+    vec2  at      = RSI(pos, dir, AtmosphereRadius);
     float t_max   = max(at.x, at.y);
     if (t_max < 0.0)
     {
         imageStore(o_skyview, coord, vec4(0.0, 0.0, 0.0, 1.0));
         return;
     }
-    vec2 pt = RSI(pos, dir, Atmo.PlanetRadius);
+    vec2 pt = RSI(pos, dir, PlanetRadius);
     if (pt.x > 0.0)
         t_max = min(t_max, pt.x);
     float step = t_max / 32.0;
@@ -111,14 +111,14 @@ void main()
         float t      = (float(i) + 0.5) * step;
         vec3  sp     = pos + dir * t;
         float alt    = length(sp);
-        float h      = alt - Atmo.PlanetRadius;
-        vec3  sray   = Atmo.RayleighScattering.rgb * exp(-h / Atmo.RayleighScaleHeight);
-        vec3  smie   = Atmo.MieScattering.rgb * exp(-h / Atmo.MieScaleHeight);
+        float h      = alt - PlanetRadius;
+        vec3  sray   = RayleighScattering.rgb * exp(-h / RayleighScaleHeight);
+        vec3  smie   = MieScattering.rgb * exp(-h / MieScaleHeight);
         float cv     = dot(normalize(sp), sun);
-        vec3  T_sun  = GetLUT(Atmo.TransmittanceLUTIndex, alt, cv);
-        vec3  ms     = GetLUT(Atmo.MultiscatterLUTIndex, alt, cv) * (sray + smie);
-        lum         += thru * ((sray * PhaseR(cs) + smie * PhaseHG(cs, Atmo.MieAnisotropy)) * T_sun + ms) * step;
+        vec3  T_sun  = GetLUT(TransmittanceLUTIndex, alt, cv);
+        vec3  ms     = GetLUT(MultiscatterLUTIndex, alt, cv) * (sray + smie);
+        lum         += thru * ((sray * PhaseR(cs) + smie * PhaseHG(cs, MieAnisotropy)) * T_sun + ms) * step;
         thru        *= exp(-Extinction(alt) * step);
     }
-    imageStore(o_skyview, coord, vec4(lum * Atmo.SunIlluminanceScale, 1.0));
-}
+    imageStore(o_skyview, coord, vec4(lum * SunIlluminanceScale, 1.0));
+};

@@ -27,6 +27,12 @@ namespace ZEngine::Rendering::Renderers
         ApplyMode();
     }
 
+    void SkySystem::SubmitLUTs(Hardwares::VulkanDevicePtr device, Rendering::Scenes::SceneDataPtr const scene)
+    {
+        if (m_config.Mode == Sky::SkyMode::Atmosphere)
+            m_atmosphere_pass.SubmitLUTs(device, scene);
+    }
+
     void SkySystem::Dispose(Hardwares::VulkanDevicePtr device)
     {
         m_atmosphere_pass.Deinitialize(device);

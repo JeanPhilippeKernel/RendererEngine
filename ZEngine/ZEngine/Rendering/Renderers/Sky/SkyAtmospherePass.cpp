@@ -1,3 +1,4 @@
+#include <ZEngine/Rendering/Pools/CommandPool.h>
 #include <ZEngine/Rendering/Primitives/ImageMemoryBarrier.h>
 #include <ZEngine/Rendering/Primitives/MemoryBarrier.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
@@ -69,19 +70,35 @@ namespace ZEngine::Rendering::Renderers
         auto  atmo_alloc          = heap.Push(&ubo, sizeof(SkyAtmosphereUBO), device->MinUniformBufferOffsetAlignment());
         m_atmo_heap_offset        = atmo_alloc.Offset;
 
-        if (m_luts_initialized)
+        // LUT dispatches are submitted on COMPUTE_QUEUE by SubmitLUTs() (called from
+        // AppRenderPipeline::EndFrame() before Present()). By the time Execute() runs,
+        // Present()'s submit_1 already waits on the LUT semaphore, so the combine
+        // pass is guaranteed to see up-to-date LUT content.
+
+        // If the compute queue is a separate family, acquire the sky-view LUT image
+        // for the graphics queue (release was recorded at the end of SubmitLUTs).
+        if (m_luts_initialized && device->HasSeparateComputeQueueFamily)
         {
-            DispatchLUTs(device, command_buffer);
-            // Frame 0: bindless array is updated in Present() after this Execute().
-            // Set m_combine_ready on the NEXT frame so the combine pass runs only
-            // when TextureArray[SkyviewLUTIndex] is guaranteed to be valid.
-            if (!m_combine_ready)
+            auto* tex = device->GlobalTextures.Access(m_skyview_lut);
+            if (tex)
             {
-                m_combine_ready = true;
-                LUTsDirty       = false;
-                return;
+                auto* img = device->ImageBufferManager.Access(tex->BufferHandle);
+                if (img)
+                {
+                    Specifications::ImageMemoryBarrierSpecification acquire_spec = {};
+                    acquire_spec.OldLayout                                       = ImageLayout::GENERAL;
+                    acquire_spec.NewLayout                                       = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                    acquire_spec.ImageHandle                                     = img->GetHandle();
+                    acquire_spec.SourceAccessMask                                = 0;
+                    acquire_spec.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
+                    acquire_spec.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
+                    acquire_spec.SourceStageMask                                 = static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+                    acquire_spec.DestinationStageMask                            = static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                    acquire_spec.SourceQueueFamily                               = device->ComputeFamilyIndex;
+                    acquire_spec.DestinationQueueFamily                          = device->GraphicFamilyIndex;
+                    command_buffer->TransitionImageLayout(Primitives::ImageMemoryBarrier{acquire_spec});
+                }
             }
-            LUTsDirty = false;
         }
 
         auto*    gp             = static_cast<RenderPasses::GraphicPass*>(pass);
@@ -98,6 +115,25 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyAtmospherePass::Deinitialize(Hardwares::VulkanDevicePtr const device)
     {
+        if (m_lut_semaphore)
+        {
+            m_lut_semaphore->~Semaphore();
+            m_lut_semaphore = nullptr;
+        }
+        for (auto& cmd : m_lut_cmds)
+        {
+            if (cmd)
+            {
+                cmd->Free();
+                cmd = nullptr;
+            }
+        }
+        if (m_lut_cmd_pool)
+        {
+            m_lut_cmd_pool->~CommandPool();
+            m_lut_cmd_pool = nullptr;
+        }
+
         m_transmittance_pipeline.Dispose();
         m_multiscatter_pipeline.Dispose();
         m_skyview_pipeline.Dispose();
@@ -142,6 +178,14 @@ namespace ZEngine::Rendering::Renderers
             m_multiscatter_pipeline.Bake();
         if (m_skyview_pipeline.Shader)
             m_skyview_pipeline.Bake();
+
+        // Dedicated compute command pool + single command buffer for LUT dispatches.
+        m_lut_cmd_pool = ZPushStructCtorArgs(device->Arena, Rendering::Pools::CommandPool, device, Rendering::QueueType::COMPUTE_QUEUE);
+        for (uint32_t i = 0; i < device->SwapchainPtr->BufferredFrameCount && i < 3; ++i)
+            m_lut_cmds[i] = ZPushStructCtorArgs(device->Arena, Hardwares::CommandBuffer, device, m_lut_cmd_pool->Handle, Rendering::QueueType::COMPUTE_QUEUE, true);
+
+        // Timeline semaphore that signals when LUT compute is complete each frame.
+        m_lut_semaphore = ZPushStructCtorArgs(device->Arena, Rendering::Primitives::Semaphore, device, true);
 
         InitLUTDescriptors(device);
     }
@@ -238,6 +282,71 @@ namespace ZEngine::Rendering::Renderers
             device->TextureHandleToUpdates.Enqueue(m_skyview_lut);
     }
 
+    void SkyAtmospherePass::SubmitLUTs(Hardwares::VulkanDevice* device, Rendering::Scenes::SceneDataPtr const scene)
+    {
+        uint8_t frame_index = device->SwapchainPtr->CurrentFrame->Index;
+        auto*   cmd         = (frame_index < 3) ? m_lut_cmds[frame_index] : nullptr;
+        if (!m_luts_initialized || !cmd || m_skyview_pipeline.Handle == VK_NULL_HANDLE)
+            return;
+
+        // Push LUT textures into the global bindless TextureArray on first call.
+        // This runs before Present() which processes TextureHandleToUpdates, so the
+        // descriptors are written to the bindless array before submit_1 executes.
+        if (!m_luts_registered)
+        {
+            if (m_transmittance_lut.Valid())
+                device->TextureHandleToUpdates.Enqueue(m_transmittance_lut);
+            if (m_multiscatter_lut.Valid())
+                device->TextureHandleToUpdates.Enqueue(m_multiscatter_lut);
+            if (m_skyview_lut.Valid())
+                device->TextureHandleToUpdates.Enqueue(m_skyview_lut);
+            ZENGINE_CORE_INFO("[Sky] LUT slots — transmittance={} multiscatter={} skyview={}", m_transmittance_lut.Index, m_multiscatter_lut.Index, m_skyview_lut.Index)
+            m_luts_registered = true;
+        }
+
+        cmd->ResetState();
+        vkResetCommandBuffer(cmd->GetHandle(), 0);
+        cmd->Begin();
+
+        DispatchLUTs(device, cmd);
+
+        cmd->End();
+
+        // Submit on COMPUTE_QUEUE and signal m_lut_semaphore at ++m_lut_signal_value.
+        uint64_t                  signal_value = ++m_lut_signal_value;
+
+        VkCommandBufferSubmitInfo cmd_info     = {
+            .sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = cmd->GetHandle(),
+        };
+        VkSemaphoreSubmitInfo signal_info = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = m_lut_semaphore->GetHandle(),
+            .value     = signal_value,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        VkSubmitInfo2 submit = {
+            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .commandBufferInfoCount   = 1,
+            .pCommandBufferInfos      = &cmd_info,
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos    = &signal_info,
+        };
+
+        Hardwares::QueueView compute_queue = device->GetQueue(Rendering::QueueType::COMPUTE_QUEUE);
+        vkQueueSubmit2(compute_queue.Handle, 1, &submit, VK_NULL_HANDLE);
+
+        // Enqueue into AsyncGPUOperations so Present()'s submit_1 waits for the
+        // LUT compute to complete before the sky combine fragment shader runs.
+        Hardwares::AsyncGPUOperationHandle op = {};
+        op.Timeline                           = m_lut_semaphore;
+        op.SignalValue                        = signal_value;
+        op.StageFlags                         = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        device->AsyncGPUOperations.Enqueue(op);
+
+        LUTsDirty = false;
+    }
+
     static void TransitionLUT(Hardwares::VulkanDevice* device, Hardwares::CommandBuffer* cmd, Textures::TextureHandle handle, Specifications::ImageLayout old_layout, Specifications::ImageLayout new_layout, VkAccessFlags src_access, VkAccessFlags dst_access, VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage)
     {
         auto* tex = device->GlobalTextures.Access(handle);
@@ -312,13 +421,37 @@ namespace ZEngine::Rendering::Renderers
         }
 
         // Sky-view: 192x108, local_size 8x8x1 → (24, 14, 1)
-        // sky_skyview.comp reads both camera (binding 0) and atmosphere (binding 1) UBOs.
         uint32_t skyview_offsets[2] = {m_camera_heap_offset, m_atmo_heap_offset};
         cmd->BindPipeline(&m_skyview_pipeline);
         cmd->BindDescriptorSets(frame_index, skyview_offsets, 2u);
         cmd->Dispatch(24, 14, 1);
-        // Transition sky-view GENERAL → SHADER_READ_ONLY before combine frag reads it
-        TransitionLUT(device, cmd, m_skyview_lut, ImageLayout::GENERAL, ImageLayout::SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+        // If separate compute queue: release sky-view LUT ownership to graphics family.
+        // If shared queue: just transition to SHADER_READ_ONLY_OPTIMAL.
+        uint32_t src_family = device->HasSeparateComputeQueueFamily ? device->ComputeFamilyIndex : VK_QUEUE_FAMILY_IGNORED;
+        uint32_t dst_family = device->HasSeparateComputeQueueFamily ? device->GraphicFamilyIndex : VK_QUEUE_FAMILY_IGNORED;
+
+        auto*    tex        = device->GlobalTextures.Access(m_skyview_lut);
+        if (tex)
+        {
+            auto* img = device->ImageBufferManager.Access(tex->BufferHandle);
+            if (img)
+            {
+                Specifications::ImageMemoryBarrierSpecification release_spec = {};
+                release_spec.OldLayout                                       = ImageLayout::GENERAL;
+                release_spec.NewLayout                                       = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                release_spec.ImageHandle                                     = img->GetHandle();
+                release_spec.SourceAccessMask                                = VK_ACCESS_SHADER_WRITE_BIT;
+                release_spec.DestinationAccessMask                           = VK_ACCESS_SHADER_READ_BIT;
+                release_spec.ImageAspectMask                                 = VK_IMAGE_ASPECT_COLOR_BIT;
+                release_spec.SourceStageMask                                 = static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                release_spec.DestinationStageMask                            = static_cast<VkPipelineStageFlagBits>(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                release_spec.SourceQueueFamily                               = src_family;
+                release_spec.DestinationQueueFamily                          = dst_family;
+                cmd->TransitionImageLayout(Primitives::ImageMemoryBarrier{release_spec});
+            }
+        }
+
         cmd->PipelineBarrier(compute_to_fragment);
     }
 } // namespace ZEngine::Rendering::Renderers

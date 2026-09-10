@@ -23,14 +23,15 @@ layout(set = 0, binding = 1) uniform UBAtmosphere
     float SunIlluminanceScale;
     vec4  SunDirection;
     float SunAngularRadius;
-    float _pad0[3];
+    float _pad0_a;
+    float _pad0_b;
+    float _pad0_c;
     vec4  CameraPositionKm;
     uint  TransmittanceLUTIndex;
     uint  MultiscatterLUTIndex;
     uint  SkyviewLUTIndex;
     float _pad1;
-}
-Atmo;
+};
 
 vec2 RaySphereIntersect(vec3 o, vec3 d, float r)
 {
@@ -39,16 +40,16 @@ vec2 RaySphereIntersect(vec3 o, vec3 d, float r)
         return vec2(-1.0);
     float sq = sqrt(det);
     return vec2(-b - sq, -b + sq);
-}
+};
 
 vec3 Extinction(float alt_m)
 {
-    float h  = alt_m - Atmo.PlanetRadius;
-    float rd = exp(-h / Atmo.RayleighScaleHeight);
-    float md = exp(-h / Atmo.MieScaleHeight);
-    float od = max(0.0, 1.0 - abs(h - Atmo.OzoneLayerCentre) / (Atmo.OzoneLayerWidth * 0.5));
-    return Atmo.RayleighScattering.rgb * rd + (Atmo.MieScattering.rgb + Atmo.MieAbsorption.rgb) * md + Atmo.OzoneAbsorption.rgb * od;
-}
+    float h  = alt_m - PlanetRadius;
+    float rd = exp(-h / RayleighScaleHeight);
+    float md = exp(-h / MieScaleHeight);
+    float od = max(0.0, 1.0 - abs(h - OzoneLayerCentre) / (OzoneLayerWidth * 0.5));
+    return RayleighScattering.rgb * rd + (MieScattering.rgb + MieAbsorption.rgb) * md + OzoneAbsorption.rgb * od;
+};
 
 void main()
 {
@@ -59,18 +60,18 @@ void main()
 
     vec2  uv       = (vec2(coord) + 0.5) / vec2(size);
     float cos_view = uv.x * 2.0 - 1.0;
-    float altitude = Atmo.PlanetRadius + uv.y * (Atmo.AtmosphereRadius - Atmo.PlanetRadius);
+    float altitude = PlanetRadius + uv.y * (AtmosphereRadius - PlanetRadius);
 
     vec3  pos      = vec3(0.0, altitude, 0.0);
     vec3  dir      = vec3(sqrt(max(0.0, 1.0 - cos_view * cos_view)), cos_view, 0.0);
-    vec2  at       = RaySphereIntersect(pos, dir, Atmo.AtmosphereRadius);
+    vec2  at       = RaySphereIntersect(pos, dir, AtmosphereRadius);
     float t_max    = max(at.x, at.y);
     if (t_max <= 0.0)
     {
         imageStore(o_transmittance, coord, vec4(1.0));
         return;
     }
-    vec2 pt = RaySphereIntersect(pos, dir, Atmo.PlanetRadius);
+    vec2 pt = RaySphereIntersect(pos, dir, PlanetRadius);
     if (pt.x > 0.0)
         t_max = min(t_max, pt.x);
 
@@ -80,4 +81,4 @@ void main()
         od += Extinction(length(pos + dir * ((float(i) + 0.5) * step))) * step;
 
     imageStore(o_transmittance, coord, vec4(exp(-od), 1.0));
-}
+};

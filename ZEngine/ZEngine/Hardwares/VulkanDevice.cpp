@@ -925,9 +925,10 @@ namespace ZEngine::Hardwares
         // true — fall back to GRAPHIC_QUEUE for both the family index and the map lookup,
         // mirroring QueueWait's guard.
         if (type == QueueType::TRANSFER_QUEUE && !HasSeperateTransfertQueueFamily)
-        {
             type = QueueType::GRAPHIC_QUEUE;
-        }
+
+        if (type == QueueType::COMPUTE_QUEUE && !HasSeparateComputeQueueFamily)
+            type = QueueType::GRAPHIC_QUEUE;
 
         uint32_t queue_family_index = 0;
         switch (type)
@@ -938,6 +939,9 @@ namespace ZEngine::Hardwares
             case ZEngine::Rendering::QueueType::TRANSFER_QUEUE:
                 queue_family_index = TransferFamilyIndex;
                 break;
+            case ZEngine::Rendering::QueueType::COMPUTE_QUEUE:
+                queue_family_index = ComputeFamilyIndex;
+                break;
         }
         return QueueView{.FamilyIndex = queue_family_index, .Handle = m_queue_map.at(type)};
     }
@@ -946,6 +950,8 @@ namespace ZEngine::Hardwares
     {
         QueueWait(Rendering::QueueType::TRANSFER_QUEUE);
         QueueWait(Rendering::QueueType::GRAPHIC_QUEUE);
+        if (HasSeparateComputeQueueFamily)
+            QueueWait(Rendering::QueueType::COMPUTE_QUEUE);
     }
 
     bool VulkanDevice::CheckDeviceLost(VkResult result, const char* where)

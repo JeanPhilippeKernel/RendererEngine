@@ -147,6 +147,11 @@ namespace ZEngine::Applications
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
 
+        // Submit sky LUTs on COMPUTE_QUEUE before Present() so that Present()'s
+        // submit_1 can wait on the LUT semaphore before the sky combine pass runs.
+        if (SceneRenderer)
+            SceneRenderer->SubmitSkyLUTs(SceneRenderer->RenderSceneData);
+
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
