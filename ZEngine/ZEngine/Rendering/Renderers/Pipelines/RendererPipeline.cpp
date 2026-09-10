@@ -7,6 +7,59 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
+    void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, cstring shader_name, uint32_t /*push_constant_size*/)
+    {
+        Device = device;
+        Specifications::ShaderSpecification spec{};
+        spec.Name          = shader_name;
+        auto shader_handle = Device->CompileShader(spec);
+        if (!shader_handle)
+        {
+            ZENGINE_CORE_ERROR("")
+            return;
+        }
+
+        Shader = Device->ShaderManager.Access(shader_handle);
+    }
+
+    void ComputePipeline::Bake()
+    {
+        ZENGINE_VALIDATE_ASSERT(Shader, "ComputePipeline::Bake called with no shader")
+        ZENGINE_VALIDATE_ASSERT(!Shader->ShaderCreateInfos.empty(), "Compute shader has no stage info")
+        ZENGINE_VALIDATE_ASSERT(Shader->ShaderCreateInfos[0].stage == VK_SHADER_STAGE_COMPUTE_BIT, "Shader stage is not VK_SHADER_STAGE_COMPUTE_BIT")
+
+        VkPipelineLayoutCreateInfo layout_ci = {};
+        layout_ci.sType                      = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_ci.setLayoutCount             = (uint32_t) Shader->SetLayouts.size();
+        layout_ci.pSetLayouts                = Shader->SetLayouts.data();
+        layout_ci.pushConstantRangeCount     = (uint32_t) Shader->PushConstants.size();
+        layout_ci.pPushConstantRanges        = Shader->PushConstants.data();
+        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(Device->LogicalDevice, &layout_ci, nullptr, &Layout) == VK_SUCCESS, "Failed to create compute pipeline layout")
+
+        VkComputePipelineCreateInfo ci = {};
+        ci.sType                       = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        ci.stage                       = Shader->ShaderCreateInfos[0];
+        ci.layout                      = Layout;
+        ZENGINE_VALIDATE_ASSERT(vkCreateComputePipelines(Device->LogicalDevice, VK_NULL_HANDLE, 1, &ci, nullptr, &Handle) == VK_SUCCESS, "Failed to create compute pipeline")
+    }
+
+    void ComputePipeline::Dispose()
+    {
+        if (Shader)
+            Shader->Dispose();
+
+        if (Layout != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(Device->LogicalDevice, Layout, nullptr);
+            Layout = VK_NULL_HANDLE;
+        }
+        if (Handle != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(Device->LogicalDevice, Handle, nullptr);
+            Handle = VK_NULL_HANDLE;
+        }
+    }
+
     void GraphicPipeline::Initialize(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec)
     {
         Device             = device;

@@ -6,7 +6,7 @@ namespace ZEngine::Rendering::Renderers
 {
     struct BloomPass final : public IComputeCallbackPass
     {
-        const char* GetShaderName() const override
+        cstring GetShaderName() const override
         {
             return "bloom_threshold_compute";
         }

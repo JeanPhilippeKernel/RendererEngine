@@ -1,5 +1,15 @@
 #pragma once
 #include <vulkan/vulkan.h>
+
+namespace ZEngine::Rendering::Renderers::Pipelines
+{
+    struct IPipeline;
+}
+namespace ZEngine::Rendering::Renderers::RenderPasses
+{
+    struct GraphicPass;
+}
+
 // clang-format off
 #include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
@@ -138,7 +148,7 @@ namespace ZEngine::Hardwares
         void                              Free();
         VkCommandBuffer                   GetHandle() const;
         void                              Begin();
-        void                              BeginSecondary(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer);
+        void                              BeginSecondary(Rendering::Renderers::RenderPasses::GraphicPass* const render_pass, VkFramebuffer framebuffer);
         void                              End();
         bool                              Completed();
         bool                              IsExecutable();
@@ -152,11 +162,11 @@ namespace ZEngine::Hardwares
         Rendering::Primitives::Fence*     GetSignalFence();
         void                              ClearColor(float r, float g, float b, float a);
         void                              ClearDepth(float depth_color, uint32_t stencil);
-        void                              BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
+        void                              BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
         void                              EndRenderPass();
         void                              BindDescriptorSets(uint32_t frame_index = 0, const uint32_t* dynamic_offsets = nullptr, uint32_t dynamic_offset_count = 0);
         void                              BindDescriptorSet(const VkDescriptorSet& descriptor);
-        void                              BindPipeline(Rendering::Specifications::PipelineBindPoint bind_point, Rendering::Renderers::Pipelines::GraphicPipeline* const pipeline);
+        void                              BindPipeline(Rendering::Renderers::Pipelines::IPipeline* const pipeline);
         void                              DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count);
         void                              DrawIndexedIndirect(VkBuffer buffer, uint32_t offset, uint32_t count);
         void                              DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
@@ -177,7 +187,8 @@ namespace ZEngine::Hardwares
         VkClearValue        m_clear_value[2] = {0};
         ZRawPtr(Rendering::Primitives::Fence) m_signal_fence;
         ZRawPtr(Rendering::Primitives::Semaphore) m_signal_semaphore;
-        ZRawPtr(Rendering::Renderers::RenderPasses::RenderPass) m_active_render_pass;
+        Rendering::Renderers::Pipelines::IPipeline* m_active_pipeline = nullptr;
+        bool                                        m_in_render_pass  = false;
     };
 
     ZDEFINE_PTR(CommandBuffer);

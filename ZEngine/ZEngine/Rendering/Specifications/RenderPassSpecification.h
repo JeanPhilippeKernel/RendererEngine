@@ -20,6 +20,8 @@ namespace ZEngine::Rendering::Specifications
         bool                                                                     SwapchainAsRenderTarget = false;
         RenderPassType                                                           Type                    = {RenderPassType::GRAPHIC};
         Specifications::GraphicRendererPipelineSpecification                     PipelineSpecification   = {};
+        const char*                                                              ComputeShaderName       = nullptr;
+        uint32_t                                                                 ComputePushConstantSize = 0;
         Core::Containers::Array<Textures::TextureHandle>                         Inputs                  = {};
         Core::Containers::UnorderedHashMap<const char*, Textures::TextureHandle> InputTextures           = {};
         Core::Containers::Array<Specifications::TextureSpecification>            Outputs                 = {};

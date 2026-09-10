@@ -351,15 +351,16 @@ namespace ZEngine::Rendering::Renderers
 
         for (auto& pass : Passes)
         {
-            if (!pass.Handle)
+            if (!pass.Handle || pass.Handle->Specification.Type == Specifications::RenderPassType::COMPUTE)
                 continue;
+            auto* gp = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
             for (const auto& r : pass.Reads)
             {
                 if (!r.Handle.Valid() || !r.BindingKey)
                     continue;
                 const auto& res = Resources[r.Handle.Index];
                 if (res.TextureHandle.Valid())
-                    pass.Handle->SetTexture(r.BindingKey, res.TextureHandle);
+                    gp->SetTexture(r.BindingKey, res.TextureHandle);
             }
         }
 
@@ -847,11 +848,12 @@ namespace ZEngine::Rendering::Renderers
             if (view_count == 0 || w == 0)
                 continue;
 
-            pass.Handle->RenderAreaWidth  = w;
-            pass.Handle->RenderAreaHeight = h;
+            auto* gp             = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
+            gp->RenderAreaWidth  = w;
+            gp->RenderAreaHeight = h;
 
-            VkRenderPass  rp              = pass.Handle->GetAttachment()->GetHandle();
-            VkFramebuffer vk_fb           = Device->CreateFramebuffer(Core::Containers::ArrayView<VkImageView>{view_buf, view_count}, rp, w, h);
+            VkRenderPass  rp     = gp->GetAttachment()->GetHandle();
+            VkFramebuffer vk_fb  = Device->CreateFramebuffer(Core::Containers::ArrayView<VkImageView>{view_buf, view_count}, rp, w, h);
 
             if (vk_fb == VK_NULL_HANDLE)
             {

@@ -1,9 +1,8 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/ContainerCommon.h>
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/ZEngineDef.h>
-#include <rapidhash.h>
 #include <cstddef>
 #include <stdexcept>
 #include <type_traits>
@@ -21,13 +20,6 @@
 
 namespace ZEngine::Core::Containers
 {
-    enum class EntryState : uint8_t
-    {
-        Empty    = 0,
-        Occupied = 1,
-        Deleted  = 2,
-    };
-
     template <typename K, typename V>
     struct HashEntry
     {
@@ -372,10 +364,5 @@ namespace ZEngine::Core::Containers
         size_type               m_capacity_mask = 0;
         size_type               m_size          = 0;
     };
-
-    inline uint64_t hash_compute(const char* str)
-    {
-        return rapidhash(str, Helpers::secure_strlen(str));
-    }
 
 } // namespace ZEngine::Core::Containers

@@ -39,23 +39,23 @@ namespace ZEngine::Rendering::Renderers
 
     struct ZUIRenderer : public IRenderer
     {
-        static constexpr uint32_t FRAMES_IN_FLIGHT              = 3;
-        static constexpr uint32_t ZUICommandBufferIndex         = 1;
+        static constexpr uint32_t  FRAMES_IN_FLIGHT              = 3;
+        static constexpr uint32_t  ZUICommandBufferIndex         = 1;
 
-        RenderPasses::RenderPass* DrawPass                      = nullptr; // zui_draw pipeline
+        RenderPasses::GraphicPass* DrawPass                      = nullptr;
 
         // Per-frame vertex + index buffers
-        Core::Memory::BufferView  VtxBHandles[FRAMES_IN_FLIGHT] = {};
-        Core::Memory::BufferView  IdxBHandles[FRAMES_IN_FLIGHT] = {};
+        Core::Memory::BufferView   VtxBHandles[FRAMES_IN_FLIGHT] = {};
+        Core::Memory::BufferView   IdxBHandles[FRAMES_IN_FLIGHT] = {};
 
-        void                      Initialize(Hardwares::VulkanDevicePtr device) override;
-        void                      Deinitialize() override;
+        void                       Initialize(Hardwares::VulkanDevicePtr device) override;
+        void                       Deinitialize() override;
 
         // Translate the ZUIBox tree into a flat ZUIRenderPayload.
-        void                      PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena);
+        void                       PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena);
 
         // Submit to Vulkan.
-        void                      Submit(Hardwares::CommandBuffer* primary_cmd, const ZUIRenderPayload& payload);
+        void                       Submit(Hardwares::CommandBuffer* primary_cmd, const ZUIRenderPayload& payload);
     };
 
     ZDEFINE_PTR(ZUIRenderer);

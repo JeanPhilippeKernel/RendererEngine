@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/HashSet.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Rendering/Buffers/Framebuffer.h>
@@ -7,61 +8,81 @@
 #include <ZEngine/Rendering/Specifications/RenderPassSpecification.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <vulkan/vulkan.h>
-#include <set>
-#include <unordered_set>
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
+    // Base node stored by the render graph. The concrete subtype is determined by
+    // Specification.Type at creation time (VulkanDevice::CreateRenderPass).
     struct RenderPass
     {
-        RenderPass() {}
-        ~RenderPass();
+        RenderPass()                                                                                                                               = default;
+        virtual ~RenderPass()                                                                                                                      = default;
 
-        uint32_t                                RenderAreaWidth  = 0;
-        uint32_t                                RenderAreaHeight = 0;
+        Specifications::RenderPassSpecification Specification                                                                                      = {};
 
-        Specifications::RenderPassSpecification Specification    = {};
-        std::set<std::string>                   Inputs           = {};
-        Core::Containers::Array<uint32_t>       RenderTargets    = {};
-        Renderers::RenderPasses::Attachment*    Attachment       = {nullptr};
-        Pipelines::GraphicPipeline*             Pipeline         = {nullptr};
+        virtual void                            Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) = 0;
+        virtual void                            Dispose()                                                                                          = 0;
+        virtual void                            Bake()                                                                                             = 0;
+        virtual bool                            Verify()
+        {
+            return true;
+        }
+    };
+    ZDEFINE_PTR(RenderPass);
 
-        void                                    Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification);
-        void                                    Dispose();
-        void                                    Bake();
-        bool                                    Verify();
+    struct GraphicPass : RenderPass
+    {
+    public:
+        ~GraphicPass();
 
-        // Bind a storage buffer (STORAGE_BUFFER) to all frame descriptor sets by name.
-        void                                    SetStorageBuffer(std::string_view name, const Core::Memory::BufferView* buffer);
+        uint32_t                           RenderAreaWidth  = 0;
+        uint32_t                           RenderAreaHeight = 0;
 
-        // Bind a per-frame dynamic uniform (UNIFORM_BUFFER_DYNAMIC) from the FrameHeap.
-        void                                    SetDynamicUniform(std::string_view name, VkDeviceSize range);
+        Core::Containers::HashSet<cstring> BoundBindings    = {};
+        Core::Containers::Array<uint32_t>  RenderTargets    = {};
+        struct Attachment*                 Attachment       = {nullptr};
+        Pipelines::GraphicPipeline*        Pipeline         = {nullptr};
 
-        // Bind a single texture as SAMPLED_IMAGE (or the type declared in the shader).
-        void                                    SetTexture(std::string_view name, const Textures::TextureHandle& texture);
+        void                               Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
+        void                               Dispose() override;
+        void                               Bake() override;
+        bool                               Verify() override;
 
-        // Bind a sampler at compile time (SAMPLER). Use for LinearWrapSampler etc.
-        void                                    SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
+        void                               SetStorageBuffer(std::string_view name, const Core::Memory::BufferView* buffer);
+        void                               SetDynamicUniform(std::string_view name, VkDeviceSize range);
+        void                               SetTexture(std::string_view name, const Textures::TextureHandle& texture);
+        void                               SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
+        void                               UseTextureArray(std::string_view name);
 
-        // Connects this pass to the engine's global bindless TextureArray
-        // (set=1, binding=0, 600 slots). Registers descriptor sets for per-frame
-        // texture slot updates via DeviceSwapchain::Present().
-        // Asserts that the named binding is VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE.
-        void                                    UseTextureArray(std::string_view name);
-
-        void                                    UpdateInputBinding();
-        ZRawPtr(Renderers::RenderPasses::Attachment) GetAttachment() const;
-        void     UpdateRenderTargets();
-        uint32_t GetRenderAreaWidth() const;
-        uint32_t GetRenderAreaHeight() const;
+        void                               UpdateInputBinding();
+        struct Attachment*                 GetAttachment() const;
+        void                               UpdateRenderTargets();
+        uint32_t                           GetRenderAreaWidth() const;
+        uint32_t                           GetRenderAreaHeight() const;
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
 
     private:
-        Hardwares::VulkanDevice* m_device;
+        Hardwares::VulkanDevice* m_device = nullptr;
     };
-    ZDEFINE_PTR(RenderPass);
+    ZDEFINE_PTR(GraphicPass);
+
+    struct ComputePass : RenderPass
+    {
+    public:
+        ~ComputePass();
+
+        Pipelines::ComputePipeline* Pipeline = {nullptr};
+
+        void                        Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
+        void                        Dispose() override;
+        void                        Bake() override;
+
+    private:
+        Hardwares::VulkanDevice* m_device = nullptr;
+    };
+    ZDEFINE_PTR(ComputePass);
 
     struct RenderPassBuilder
     {
@@ -90,6 +111,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RenderPassBuilder&                      SetOffset(uint32_t input_attribute_index, uint32_t offset);
 
         RenderPassBuilder&                      UseShader(std::string_view name);
+        RenderPassBuilder&                      UseComputeShader(cstring name, uint32_t push_constant_size = 0);
         RenderPassBuilder&                      UseRenderTarget(const Textures::TextureHandle& target);
         RenderPassBuilder&                      AddRenderTarget(const Specifications::TextureSpecification& target_spec);
         RenderPassBuilder&                      AddInputAttachment(const Textures::TextureHandle& target);

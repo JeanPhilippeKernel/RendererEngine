@@ -6,7 +6,7 @@ namespace ZEngine::Rendering::Renderers
 {
     struct SkinningPass final : public IComputeCallbackPass
     {
-        const char* GetShaderName() const override
+        cstring GetShaderName() const override
         {
             return "skinning_compute";
         }

@@ -85,10 +85,11 @@ namespace ZEngine::Rendering::Renderers
 
         if (scene && m_env_map.Valid())
         {
-            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
-            (*output_pass)->SetTexture("EnvMap", m_env_map);
-            (*output_pass)->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
-            (*output_pass)->Verify();
+            auto* gp = static_cast<RenderPasses::GraphicPass*>(*output_pass);
+            gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+            gp->SetTexture("EnvMap", m_env_map);
+            gp->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
+            gp->Verify();
         }
     }
 
@@ -97,15 +98,12 @@ namespace ZEngine::Rendering::Renderers
         if (!m_env_map.Valid())
             return;
 
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
-        {
-            uint32_t w = pass->GetRenderAreaWidth();
-            uint32_t h = pass->GetRenderAreaHeight();
-            command_buffer->SetViewport(w, h);
-            command_buffer->SetScissor(w, h);
-        }
+        auto* gp  = static_cast<RenderPasses::GraphicPass*>(pass);
         auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
-        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+        command_buffer->BeginRenderPass(gp, framebuffer->Handle, false);
+        command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindVertexBuffer(*rrm->GetBuiltinVertexBuffer());
         command_buffer->BindIndexBuffer(*rrm->GetBuiltinIndexBuffer(), VK_INDEX_TYPE_UINT32);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);

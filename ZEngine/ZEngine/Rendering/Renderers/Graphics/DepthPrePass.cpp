@@ -35,28 +35,23 @@ namespace ZEngine::Rendering::Renderers
 
         if (scene)
         {
-            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
-            // VertexSB/IndexSB/DrawDataSB/TransformSB bound by UpdateRMMBindings via BufferView*.
-            (*output_pass)->Verify();
+            auto* gp = static_cast<RenderPasses::GraphicPass*>(*output_pass);
+            gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+            gp->Verify();
         }
     }
 
     void DepthPrePass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
         if (!scene || scene->IndirectCommandCount == 0 || !scene->RMMVertexHandle.IsValid())
-        {
             return;
-        }
 
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
-        {
-            uint32_t w = pass->GetRenderAreaWidth();
-            uint32_t h = pass->GetRenderAreaHeight();
-            command_buffer->SetViewport(w, h);
-            command_buffer->SetScissor(w, h);
-        }
-        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
+        command_buffer->BeginRenderPass(gp, framebuffer->Handle, false);
+        command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->BindPipeline(gp->Pipeline);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
         command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
         command_buffer->EndRenderPass();
     }

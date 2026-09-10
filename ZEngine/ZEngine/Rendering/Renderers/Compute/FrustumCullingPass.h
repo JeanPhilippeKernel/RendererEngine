@@ -6,7 +6,7 @@ namespace ZEngine::Rendering::Renderers
 {
     struct FrustumCullingPass final : public IComputeCallbackPass
     {
-        const char* GetShaderName() const override
+        cstring GetShaderName() const override
         {
             return "frustum_cull_compute";
         }
