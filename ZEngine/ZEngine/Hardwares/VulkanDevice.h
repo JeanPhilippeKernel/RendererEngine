@@ -233,6 +233,7 @@ namespace ZEngine::Hardwares
     struct VulkanDevice
     {
         bool                                                                                                                         HasSeperateTransfertQueueFamily             = false;
+        bool                                                                                                                         HasSeparateComputeQueueFamily               = false;
         bool                                                                                                                         PhysicalDeviceSupportSampledImageBindless   = false;
         bool                                                                                                                         PhysicalDeviceSupportStorageBufferBindless  = false;
         bool                                                                                                                         PhysicalDeviceSupportTimelineSemaphore      = false;
@@ -246,6 +247,7 @@ namespace ZEngine::Hardwares
         uint32_t                                                                                                                     WorkerThreadCount                           = 1;
         uint32_t                                                                                                                     GraphicFamilyIndex                          = std::numeric_limits<uint32_t>::max();
         uint32_t                                                                                                                     TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                                                                                     ComputeFamilyIndex                          = std::numeric_limits<uint32_t>::max();
 
         uint32_t                                                                                                                     WriteDescriptorSetIndex                     = 0;
         uint32_t                                                                                                                     MaxGlobalTexture                            = 8192;

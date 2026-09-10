@@ -330,12 +330,24 @@ namespace ZEngine::Hardwares
             {
                 TransferFamilyIndex = index;
             }
+            else if ((physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_COMPUTE_BIT) && (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
+            {
+                // Dedicated async compute queue — compute only, no graphics.
+                ComputeFamilyIndex = index;
+            }
         }
 
-        HasSeperateTransfertQueueFamily                             = GraphicFamilyIndex != TransferFamilyIndex;
+        // Fall back compute to the graphics family if no dedicated queue was found.
+        if (ComputeFamilyIndex == std::numeric_limits<uint32_t>::max())
+            ComputeFamilyIndex = GraphicFamilyIndex;
+
+        HasSeperateTransfertQueueFamily = GraphicFamilyIndex != TransferFamilyIndex;
+        HasSeparateComputeQueueFamily   = GraphicFamilyIndex != ComputeFamilyIndex;
+
+        ZENGINE_CORE_INFO("[GPU] Async compute queue: {} (family {})", HasSeparateComputeQueueFamily ? "dedicated" : "shared with graphics", ComputeFamilyIndex)
 
         const float                    queue_prorities[]            = {1.0f};
-        auto                           family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex};
+        auto                           family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex, ComputeFamilyIndex};
         Array<VkDeviceQueueCreateInfo> queue_create_info_collection = {};
         queue_create_info_collection.init(scratch.Arena, family_index_collection.size());
         for (uint32_t queue_family_index : family_index_collection)
@@ -413,6 +425,18 @@ namespace ZEngine::Hardwares
             VkQueue transfer_queue = VK_NULL_HANDLE;
             vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &transfer_queue);
             m_queue_map.insert(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
+        }
+
+        /*Create Vulkan Compute Queue — dedicated async compute if available, otherwise alias graphics.*/
+        if (HasSeparateComputeQueueFamily)
+        {
+            VkQueue compute_queue = VK_NULL_HANDLE;
+            vkGetDeviceQueue(LogicalDevice, ComputeFamilyIndex, 0, &compute_queue);
+            m_queue_map.insert(Rendering::QueueType::COMPUTE_QUEUE, std::move(compute_queue));
+        }
+        else
+        {
+            m_queue_map.insert(Rendering::QueueType::COMPUTE_QUEUE, m_queue_map.at(Rendering::QueueType::GRAPHIC_QUEUE));
         }
 
         /* Surface format selection */
@@ -581,9 +605,9 @@ namespace ZEngine::Hardwares
         ShaderReservedLayoutBindingSpecificationMap.init(Arena, 1);
 
         ShaderReservedLayoutBindingSpecificationMap[1].init(Arena, 2);
-        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE, .Flags = ShaderStageFlags::FRAGMENT});
-        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 1, .Count = 1, .Name = "LinearWrapSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
-        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 2, .Count = 1, .Name = "LinearClampSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 0, .Count = MaxGlobalTexture, .Name = "TextureArray", .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE, .Flags = ShaderStageFlags::ALL});
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 1, .Count = 1, .Name = "LinearWrapSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::ALL});
+        ShaderReservedLayoutBindingSpecificationMap[1].push(LayoutBindingSpecification{.Set = 1, .Binding = 2, .Count = 1, .Name = "LinearClampSampler", .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::ALL});
 
         ShaderReservedDescriptorSetMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());
         ShaderReservedDescriptorSetLayoutMap.init(Arena, ShaderReservedLayoutBindingSpecificationMap.size());

@@ -5,7 +5,8 @@ namespace ZEngine::Rendering
     enum class QueueType
     {
         GRAPHIC_QUEUE = 0,
-        TRANSFER_QUEUE
+        TRANSFER_QUEUE,
+        COMPUTE_QUEUE
     };
 
     enum class DeviceResourceType
