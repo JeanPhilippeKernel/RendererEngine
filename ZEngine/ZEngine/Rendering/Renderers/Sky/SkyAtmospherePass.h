@@ -24,7 +24,10 @@ namespace ZEngine::Rendering::Renderers
         float              SunAngularRadius;
         float              _pad[3];
         Core::Maths::Vec4f CameraPositionKm;
-        float              _pad2[4];
+        uint32_t           TransmittanceLUTIndex;
+        uint32_t           MultiscatterLUTIndex;
+        uint32_t           SkyviewLUTIndex;
+        float              _pad2;
     };
     static_assert(sizeof(SkyAtmosphereUBO) == 160);
 
@@ -41,6 +44,7 @@ namespace ZEngine::Rendering::Renderers
     private:
         void                       InitLUTs(Hardwares::VulkanDevice* device);
         void                       InitComputePipelines(Hardwares::VulkanDevice* device);
+        void                       InitLUTDescriptors(Hardwares::VulkanDevice* device);
         void                       DispatchLUTs(Hardwares::VulkanDevice* device, Hardwares::CommandBuffer* cmd);
 
         // Persistent LUT textures (DeviceTexture domain, never freed while pass is alive)
@@ -49,19 +53,21 @@ namespace ZEngine::Rendering::Renderers
         Textures::TextureHandle    m_skyview_lut;
 
         // Descriptor sets for compute pipelines (one per LUT generation step)
-        VkDescriptorSet            m_transmittance_ds = VK_NULL_HANDLE;
-        VkDescriptorSet            m_multiscatter_ds  = VK_NULL_HANDLE;
-        VkDescriptorSet            m_skyview_ds       = VK_NULL_HANDLE;
-        VkDescriptorSetLayout      m_lut_ds_layout    = VK_NULL_HANDLE;
-        VkDescriptorPool           m_ds_pool          = VK_NULL_HANDLE;
+        VkDescriptorSet            m_transmittance_ds   = VK_NULL_HANDLE;
+        VkDescriptorSet            m_multiscatter_ds    = VK_NULL_HANDLE;
+        VkDescriptorSet            m_skyview_ds         = VK_NULL_HANDLE;
+        VkDescriptorSetLayout      m_lut_ds_layout      = VK_NULL_HANDLE;
+        VkDescriptorPool           m_ds_pool            = VK_NULL_HANDLE;
 
         // Atmosphere UBO heap offset (pushed per-frame)
-        uint32_t                   m_atmo_heap_offset = 0;
+        uint32_t                   m_camera_heap_offset = 0;
+        uint32_t                   m_atmo_heap_offset   = 0;
 
         Pipelines::ComputePipeline m_transmittance_pipeline;
         Pipelines::ComputePipeline m_multiscatter_pipeline;
         Pipelines::ComputePipeline m_skyview_pipeline;
 
         bool                       m_luts_initialized = false;
+        bool                       m_combine_ready    = false;
     };
 } // namespace ZEngine::Rendering::Renderers
