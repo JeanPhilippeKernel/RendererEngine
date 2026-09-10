@@ -1255,7 +1255,7 @@ namespace ZEngine::Hardwares
         m_command_buffer_state = CommandBufferState::Recording;
     }
 
-    void CommandBuffer::BeginSecondary(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer)
+    void CommandBuffer::BeginSecondary(Rendering::Renderers::RenderPasses::GraphicPass* const render_pass, VkFramebuffer framebuffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer_state == CommandBufferState::Idle, "command buffer must be in Idle state")
         ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Secondary, "command buffer must be Secondary Buffer Type")
@@ -1273,7 +1273,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(vkBeginCommandBuffer(m_command_buffer, &command_buffer_begin_info) == VK_SUCCESS, "Failed to begin the Command Buffer")
 
         m_command_buffer_state = CommandBufferState::Recording;
-        m_active_render_pass   = render_pass;
+        m_in_render_pass       = true;
     }
 
     void CommandBuffer::End()
@@ -1347,7 +1347,7 @@ namespace ZEngine::Hardwares
         m_clear_value[1].depthStencil.stencil = stencil;
     }
 
-    void CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer)
+    void CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const render_pass, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
@@ -1402,18 +1402,19 @@ namespace ZEngine::Hardwares
 
         vkCmdBeginRenderPass(m_command_buffer, &render_pass_begin_info, is_content_secondary_command_buffer ? VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS : VK_SUBPASS_CONTENTS_INLINE);
 
-        m_active_render_pass = render_pass;
+        m_in_render_pass = true;
 
         ZReleaseScratch(scratch);
     }
 
     void CommandBuffer::EndRenderPass()
     {
-        if (m_active_render_pass)
+        if (m_in_render_pass)
         {
             ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
             vkCmdEndRenderPass(m_command_buffer);
-            m_active_render_pass = nullptr;
+            m_active_pipeline = nullptr;
+            m_in_render_pass  = false;
         }
     }
 
@@ -1421,11 +1422,10 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        if (auto render_pass = m_active_render_pass)
+        if (m_active_pipeline)
         {
-            auto                   pipeline           = render_pass->Pipeline;
-            auto                   pipeline_layout    = pipeline->Layout;
-            auto                   shader             = pipeline->Shader;
+            auto                   pipeline_layout    = m_active_pipeline->Layout;
+            auto                   shader             = m_active_pipeline->Shader;
             const auto&            set_layout         = shader->SetLayouts;
             const auto&            descriptor_set_map = shader->DescriptorSetMap;
 
@@ -1459,7 +1459,7 @@ namespace ZEngine::Hardwares
 
                 const uint32_t* offsets = (actual_dynamic_count > 0) ? dynamic_offsets : nullptr;
                 uint32_t        count   = (actual_dynamic_count > 0) ? actual_dynamic_count : 0;
-                vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, frame_sets.size(), frame_sets.data(), count, offsets);
+                vkCmdBindDescriptorSets(m_command_buffer, m_active_pipeline->GetBindPoint(), pipeline_layout, 0, frame_sets.size(), frame_sets.data(), count, offsets);
             }
             ZReleaseScratch(scratch);
         }
@@ -1469,22 +1469,21 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         ZENGINE_VALIDATE_ASSERT(descriptor != nullptr, "DescriptorSet can't be null")
-        if (auto render_pass = m_active_render_pass)
+        if (m_active_pipeline)
         {
-            auto            pipeline_layout = render_pass->Pipeline->Layout;
-            VkDescriptorSet desc_set[1]     = {descriptor};
-            vkCmdBindDescriptorSets(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, desc_set, 0, nullptr);
+            VkDescriptorSet desc_set[1] = {descriptor};
+            vkCmdBindDescriptorSets(m_command_buffer, m_active_pipeline->GetBindPoint(), m_active_pipeline->Layout, 0, 1, desc_set, 0, nullptr);
         }
     }
 
-    void CommandBuffer::BindPipeline(Rendering::Specifications::PipelineBindPoint bind_point, Rendering::Renderers::Pipelines::GraphicPipeline* const pipeline)
+    void CommandBuffer::BindPipeline(Rendering::Renderers::Pipelines::IPipeline* const pipeline)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         ZENGINE_VALIDATE_ASSERT(pipeline != nullptr, "Pipeline can't be null")
         ZENGINE_VALIDATE_ASSERT(pipeline->Handle != VK_NULL_HANDLE, "Pipeline Handle can't be null")
 
-        // todo : adapt value based on bind_point
-        vkCmdBindPipeline(m_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->Handle);
+        vkCmdBindPipeline(m_command_buffer, pipeline->GetBindPoint(), pipeline->Handle);
+        m_active_pipeline = pipeline;
     }
 
     void CommandBuffer::DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count)
@@ -1592,10 +1591,9 @@ namespace ZEngine::Hardwares
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
-        if (auto render_pass = m_active_render_pass)
+        if (m_active_pipeline)
         {
-            auto pipeline_layout = render_pass->Pipeline->Layout;
-            vkCmdPushConstants(m_command_buffer, pipeline_layout, stage_flags, offset, size, data);
+            vkCmdPushConstants(m_command_buffer, m_active_pipeline->Layout, stage_flags, offset, size, data);
         }
     }
 
@@ -1838,7 +1836,13 @@ namespace ZEngine::Hardwares
 
     Rendering::Renderers::RenderPasses::RenderPass* VulkanDevice::CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec)
     {
-        auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::RenderPass);
+        if (spec.Type == Rendering::Specifications::RenderPassType::COMPUTE)
+        {
+            auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::ComputePass);
+            pass->Initialize(this, std::move(spec));
+            return pass;
+        }
+        auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::GraphicPass);
         pass->Initialize(this, std::move(spec));
         return pass;
     }

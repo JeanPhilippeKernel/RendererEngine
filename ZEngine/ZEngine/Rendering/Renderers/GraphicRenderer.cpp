@@ -88,17 +88,19 @@ namespace ZEngine::Rendering::Renderers
             auto* light_pass   = RenderGraph->GetPass("Lighting Pass");
             if (depth_pass && depth_pass->Handle)
             {
-                depth_pass->Handle->SetStorageBuffer("TransformSB", &scene->TransformBuffer);
-                depth_pass->Handle->SetStorageBuffer("DrawDataSB", &scene->RenderDataBuffer);
+                auto* gp = static_cast<RenderPasses::GraphicPass*>(depth_pass->Handle);
+                gp->SetStorageBuffer("TransformSB", &scene->TransformBuffer);
+                gp->SetStorageBuffer("DrawDataSB", &scene->RenderDataBuffer);
             }
             if (gbuffer_pass && gbuffer_pass->Handle)
             {
-                gbuffer_pass->Handle->SetStorageBuffer("TransformSB", &scene->TransformBuffer);
-                gbuffer_pass->Handle->SetStorageBuffer("DrawDataSB", &scene->RenderDataBuffer);
-                gbuffer_pass->Handle->SetStorageBuffer("MatSB", &scene->MaterialBuffer);
+                auto* gp = static_cast<RenderPasses::GraphicPass*>(gbuffer_pass->Handle);
+                gp->SetStorageBuffer("TransformSB", &scene->TransformBuffer);
+                gp->SetStorageBuffer("DrawDataSB", &scene->RenderDataBuffer);
+                gp->SetStorageBuffer("MatSB", &scene->MaterialBuffer);
             }
             if (light_pass && light_pass->Handle && scene->LightBuffer.Handle)
-                light_pass->Handle->SetStorageBuffer("LightSB", &scene->LightBuffer);
+                static_cast<RenderPasses::GraphicPass*>(light_pass->Handle)->SetStorageBuffer("LightSB", &scene->LightBuffer);
             m_static_buffers_bound = true;
             ZENGINE_CORE_INFO("[GraphicRenderer] Bound TransformSB/DrawDataSB/MatSB/LightSB to passes")
         }
@@ -117,14 +119,16 @@ namespace ZEngine::Rendering::Renderers
             auto*       gbuffer_pass = RenderGraph->GetPass("G-Buffer Pass");
             if (depth_pass && depth_pass->Handle)
             {
-                depth_pass->Handle->SetStorageBuffer("VertexSB", vtx_buf);
-                depth_pass->Handle->SetStorageBuffer("IndexSB", idx_buf);
+                auto* gp = static_cast<RenderPasses::GraphicPass*>(depth_pass->Handle);
+                gp->SetStorageBuffer("VertexSB", vtx_buf);
+                gp->SetStorageBuffer("IndexSB", idx_buf);
             }
             if (gbuffer_pass && gbuffer_pass->Handle)
             {
-                gbuffer_pass->Handle->SetStorageBuffer("VertexSB", vtx_buf);
-                gbuffer_pass->Handle->SetStorageBuffer("IndexSB", idx_buf);
-                gbuffer_pass->Handle->UseTextureArray("TextureArray");
+                auto* gp = static_cast<RenderPasses::GraphicPass*>(gbuffer_pass->Handle);
+                gp->SetStorageBuffer("VertexSB", vtx_buf);
+                gp->SetStorageBuffer("IndexSB", idx_buf);
+                gp->UseTextureArray("TextureArray");
             }
             m_global_buffers_bound = true;
             ZENGINE_CORE_INFO("[GraphicRenderer] Bound global VertexSB/IndexSB to geometry passes")

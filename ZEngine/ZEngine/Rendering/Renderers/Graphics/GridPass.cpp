@@ -59,24 +59,22 @@ namespace ZEngine::Rendering::Renderers
             (*output_pass)->Bake();
         }
 
-        if (scene)
         {
-            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+            auto* gp = static_cast<RenderPasses::GraphicPass*>(*output_pass);
+            if (scene)
+                gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+            gp->Verify();
         }
-        (*output_pass)->Verify();
     }
 
     void GridPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
-        {
-            uint32_t w = pass->GetRenderAreaWidth();
-            uint32_t h = pass->GetRenderAreaHeight();
-            command_buffer->SetViewport(w, h);
-            command_buffer->SetScissor(w, h);
-        }
+        auto* gp  = static_cast<RenderPasses::GraphicPass*>(pass);
         auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
-        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+        command_buffer->BeginRenderPass(gp, framebuffer->Handle, false);
+        command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindVertexBuffer(*rrm->GetBuiltinVertexBuffer());
         command_buffer->BindIndexBuffer(*rrm->GetBuiltinIndexBuffer(), VK_INDEX_TYPE_UINT32);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);

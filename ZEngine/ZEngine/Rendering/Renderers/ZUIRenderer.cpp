@@ -66,7 +66,7 @@ namespace ZEngine::Rendering::Renderers
             .UseShader("zui_draw")
             .UseSwapchainAsRenderTarget();
 
-        DrawPass = Device->CreateRenderPass(pass_builder->Detach());
+        DrawPass = static_cast<RenderPasses::GraphicPass*>(Device->CreateRenderPass(pass_builder->Detach()));
         DrawPass->UseTextureArray("TextureArray");
         DrawPass->SetSampler("LinearClampSampler", Device->GlobalLinearClampToEdgeSamplerImageInfo);
         DrawPass->Verify();
@@ -766,7 +766,7 @@ namespace ZEngine::Rendering::Renderers
             secondary_cb->ResetState();
             secondary_cb->BeginSecondary(DrawPass, current_fb);
             secondary_cb->SetViewport(DrawPass->GetRenderAreaWidth(), DrawPass->GetRenderAreaHeight());
-            secondary_cb->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, DrawPass->Pipeline);
+            secondary_cb->BindPipeline(DrawPass->Pipeline);
             secondary_cb->BindVertexBuffer(VtxBHandles[fi]);
             secondary_cb->BindIndexBuffer(IdxBHandles[fi], VK_INDEX_TYPE_UINT16);
 

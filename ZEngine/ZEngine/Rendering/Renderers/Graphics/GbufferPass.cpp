@@ -32,12 +32,11 @@ namespace ZEngine::Rendering::Renderers
 
         if (scene)
         {
-            (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
-            // VertexSB / IndexSB bound by GraphicRenderer::UpdateRMMBindings (RMM path).
-            // DrawDataSB/TransformSB/MatSB bound by UpdateRMMBindings via BufferView*.
-            (*output_pass)->UseTextureArray("TextureArray");
-            (*output_pass)->SetSampler("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
-            (*output_pass)->Verify();
+            auto* gp = static_cast<RenderPasses::GraphicPass*>(*output_pass);
+            gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+            gp->UseTextureArray("TextureArray");
+            gp->SetSampler("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
+            gp->Verify();
         }
     }
 
@@ -45,14 +44,13 @@ namespace ZEngine::Rendering::Renderers
     {
         CHECK_AND_ESCAPE_NULL(scene)
 
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
+        command_buffer->BeginRenderPass(gp, framebuffer->Handle, false);
         if (scene->IndirectCommandCount > 0 && scene->RMMVertexHandle.IsValid())
         {
-            uint32_t w = pass->GetRenderAreaWidth();
-            uint32_t h = pass->GetRenderAreaHeight();
-            command_buffer->SetViewport(w, h);
-            command_buffer->SetScissor(w, h);
-            command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+            command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+            command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+            command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
             command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
         }

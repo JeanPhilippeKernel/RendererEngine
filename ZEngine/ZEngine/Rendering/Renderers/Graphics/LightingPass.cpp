@@ -31,7 +31,8 @@ namespace ZEngine::Rendering::Renderers
             (*output_pass)->Bake();
         }
 
-        (*output_pass)->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(*output_pass);
+        gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
 
         auto albedo_ao_handle     = res_inspector->GetRenderTarget(RendererResourceName::GBufferAlbedoAOName);
         auto normal_rough_handle  = res_inspector->GetRenderTarget(RendererResourceName::GBufferNormalRoughnessName);
@@ -39,31 +40,28 @@ namespace ZEngine::Rendering::Renderers
         auto depth_handle         = res_inspector->GetRenderTarget(RendererResourceName::FrameDepthRenderTargetName);
 
         if (albedo_ao_handle.Valid())
-            (*output_pass)->SetTexture("GBufferAlbedoAO", albedo_ao_handle);
+            gp->SetTexture("GBufferAlbedoAO", albedo_ao_handle);
         if (normal_rough_handle.Valid())
-            (*output_pass)->SetTexture("GBufferNormalRoughness", normal_rough_handle);
+            gp->SetTexture("GBufferNormalRoughness", normal_rough_handle);
         if (metallic_emit_handle.Valid())
-            (*output_pass)->SetTexture("GBufferMetallicEmissive", metallic_emit_handle);
+            gp->SetTexture("GBufferMetallicEmissive", metallic_emit_handle);
         if (depth_handle.Valid())
-            (*output_pass)->SetTexture("GBufferDepth", depth_handle);
+            gp->SetTexture("GBufferDepth", depth_handle);
 
         if (scene && scene->LightBuffer.Handle)
-            (*output_pass)->SetStorageBuffer("LightSB", &scene->LightBuffer);
+            gp->SetStorageBuffer("LightSB", &scene->LightBuffer);
 
-        (*output_pass)->SetSampler("GBufferSampler", device->GlobalLinearWrapSamplerImageInfo);
-        (*output_pass)->Verify();
+        gp->SetSampler("GBufferSampler", device->GlobalLinearWrapSamplerImageInfo);
+        gp->Verify();
     }
 
     void LightingPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-        command_buffer->BeginRenderPass(pass, framebuffer->Handle, false);
-        {
-            uint32_t w = pass->GetRenderAreaWidth();
-            uint32_t h = pass->GetRenderAreaHeight();
-            command_buffer->SetViewport(w, h);
-            command_buffer->SetScissor(w, h);
-        }
-        command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
+        command_buffer->BeginRenderPass(gp, framebuffer->Handle, false);
+        command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+        command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
         command_buffer->Draw(3, 1, 0, 0);
         command_buffer->EndRenderPass();
