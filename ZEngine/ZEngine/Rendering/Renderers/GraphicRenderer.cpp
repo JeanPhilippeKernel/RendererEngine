@@ -8,6 +8,7 @@
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
+#include <ZEngine/Rendering/Renderers/Sky/SkySystem.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 
@@ -54,6 +55,8 @@ namespace ZEngine::Rendering::Renderers
         // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
+
+        m_sky_system.Initialize(Device, RenderGraph);
 
         RenderGraph->Setup();
         RenderGraph->Compile();
@@ -164,42 +167,18 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky)
     {
-        if (!sky.IsHDRI())
-        {
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
-            return;
-        }
+        Sky::SkyConfig cfg = {};
+        if (sky.IsAtmosphere())
+            cfg.Mode = Sky::SkyMode::Atmosphere;
+        else if (sky.IsHDRI())
+            cfg.Mode = Sky::SkyMode::HDRI;
+        else if (sky.IsSkySphere())
+            cfg.Mode = Sky::SkyMode::SkySphere;
 
-        auto env_path = sky.EnvironmentMap.c_str();
-        if (!env_path || env_path[0] == '\0')
-        {
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
-            return;
-        }
+        if (!sky.EnvironmentMap.empty())
+            cfg.EnvironmentMapPath = sky.EnvironmentMap.c_str();
 
-        auto* vfs = ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr;
-        if (!vfs)
-        {
-            ZENGINE_CORE_ERROR("[Renderer] VFS not available — cannot resolve environment map: {}", env_path)
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
-            return;
-        }
-
-        auto path_result   = ZEngine::Core::VFS::VFSPath::FromNative(env_path);
-        auto exists_result = path_result.Succeeded() ? vfs->Exists(path_result.Value()) : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
-        if (exists_result.Failed() || !exists_result.Value())
-        {
-            ZENGINE_CORE_ERROR("[Renderer] Environment map not found in VFS: {}", env_path)
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
-            return;
-        }
-
-        auto* pass = RenderGraph->GetPass("Skybox Pass");
-        if (pass)
-        {
-            static_cast<SkyboxPass*>(pass->Callback)->EnvMapPath = env_path;
-            pass->Enabled                                        = true;
-        }
+        m_sky_system.SetConfig(cfg);
     }
 
     void GraphicRenderer::ApplyGridConfig(const Scenes::GridConfig& cfg)

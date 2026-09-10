@@ -142,6 +142,8 @@ namespace ZEngine::Rendering::Scenes
         void                                  RemoveMeshInstance(uint32_t id, ZEngine::Rendering::RenderResourceManager* rrm = nullptr);
         void                                  SetInstanceTransform(uint32_t id, const Core::Maths::Mat4f& t);
         void                                  MarkInstancesDirty();
+        void                                  MarkSkyDirty();
+        void                                  MarkGridDirty();
 
         // Fills `out` with a consistent copy; retries if a write was in progress.
         void                                  GetInstancesSnapshot(Core::Memory::ArenaAllocator* scratch, Core::Containers::Array<MeshInstance>& out) const;

@@ -2,6 +2,7 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Cameras/Camera.h>
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
+#include <ZEngine/Rendering/Renderers/Sky/SkySystem.h>
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -27,8 +28,9 @@ namespace ZEngine::Rendering::Renderers
         Textures::TextureHandle GetFrameOutput();
 
     private:
-        bool m_static_buffers_bound = false;
-        bool m_global_buffers_bound = false;
+        bool      m_static_buffers_bound = false;
+        bool      m_global_buffers_bound = false;
+        SkySystem m_sky_system           = {};
     };
     ZDEFINE_PTR(GraphicRenderer);
 } // namespace ZEngine::Rendering::Renderers

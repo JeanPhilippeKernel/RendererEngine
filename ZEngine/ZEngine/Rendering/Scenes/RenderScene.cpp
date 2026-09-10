@@ -96,6 +96,18 @@ namespace ZEngine::Rendering::Scenes
             flag.value.store(true, std::memory_order_release);
     }
 
+    void RenderScene::MarkSkyDirty()
+    {
+        for (auto& flag : SkyDirty)
+            flag.value.store(true, std::memory_order_release);
+    }
+
+    void RenderScene::MarkGridDirty()
+    {
+        for (auto& flag : GridDirty)
+            flag.value.store(true, std::memory_order_release);
+    }
+
     void RenderScene::GetInstancesSnapshot(Core::Memory::ArenaAllocator* scratch, Core::Containers::Array<MeshInstance>& out) const
     {
         while (true)

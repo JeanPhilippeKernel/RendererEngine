@@ -230,6 +230,7 @@ namespace Tetragrama::Serializers
             scene.Sky.Mode.init(&Arena, sky_mode_buf);
             if (sky_env_buf[0] != '\0')
                 scene.Sky.EnvironmentMap.init(&Arena, sky_env_buf);
+            scene.MarkSkyDirty();
 
             REPORT_LOG(Context, "Extracting mesh instances...")
 

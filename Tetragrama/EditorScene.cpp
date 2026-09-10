@@ -25,6 +25,7 @@ namespace Tetragrama
 
         Name = name;
         Sky.Mode.init(&LocalArena, "atmosphere");
+        MarkSkyDirty();
 
         AssetFiles.init(&LocalArena, 500);
         HashToAssetFile.init(&LocalArena, 500);
