@@ -532,10 +532,14 @@ namespace ZEngine::Rendering
     {
         uint64_t completed = 0;
         vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+
         for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
         {
             BatchFrameState& frame = m_batch_frames[i];
-            if (frame.LastSignal == 0 || frame.LastSignal > completed || frame.StagingCount == 0)
+            if (frame.StagingCount == 0)
+                continue;
+            uint64_t gate = frame.LastSignal;
+            if (gate == 0 || gate > completed)
                 continue;
             for (uint32_t j = 0; j < frame.StagingCount; ++j)
                 m_device->GpuMem.FreeBuffer(frame.StagingBuffers[j]);
@@ -565,12 +569,11 @@ namespace ZEngine::Rendering
         if (frame.LastSignal != 0)
             m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
 
-        // Guaranteed-safe fallback free, in case RetireBatchStagings' poll hasn't caught up
-        // yet — the wait above proves this frame index's previous batch is done either way.
-        for (uint32_t i = 0; i < frame.StagingCount; ++i)
-            m_device->GpuMem.FreeBuffer(frame.StagingBuffers[i]);
-        frame.StagingCount = 0;
-
+        // RetireBatchStagings (called earlier in BeginFrame) handles staging cleanup via
+        // the RenderTimeline gate — it always runs before this point. If stagings remain
+        // here it means RetireBatchStagings hasn't confirmed GPU completion yet (render
+        // timeline hasn't reached SafeRetireAfterRenderValue). Leave them for the next poll
+        // rather than freeing while the command buffer may still be tracked as in-use.
         m_batch_cmd->ResetState();
         vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
         m_batch_cmd->Begin();
@@ -585,19 +588,13 @@ namespace ZEngine::Rendering
         // of submitted-and-blocked-on here, so a mesh drop never stalls the render thread.
         // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
         // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
-        // drives independently; sharing it produced a timeline value Intel's Windows driver
-        // treats as non-monotonic.
+        // drives independently.
         uint64_t signal_value                          = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
 
-        Hardwares::AsyncUploadJob job;
-        job.Buffer      = m_batch_cmd;
-        job.Timeline    = m_batch_timeline;
-        job.SignalValue = signal_value;
-        // Stages that actually consume the global vertex/index buffers, matching
-        // RecordGlobalBufferCopy's own barrier — so Present() waits at the right point.
-        job.WaitFlag    = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        m_async_uploads.Enqueue(job);
+        VkPipelineStageFlags2 wait_flag                = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, wait_flag, signal_value, UINT64_MAX, nullptr);
+        m_device->EnqueueAsyncGPUOperation({wait_flag, signal_value, m_batch_timeline});
 
         // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
         // BeginBatchUpload for this same frame index) to free once m_batch_timeline proves
@@ -1225,7 +1222,7 @@ namespace ZEngine::Rendering
 
             uint64_t graphics_val       = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
             retire_values[acquire_slot] = graphics_val;
-            m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (uint32_t) release.DestinationStageMask, graphics_val, transfer_val});
+            m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (VkPipelineStageFlags2) release.DestinationStageMask, graphics_val, transfer_val});
         }
         else
         {
@@ -1283,7 +1280,7 @@ namespace ZEngine::Rendering
             retire_values[i]      = signal_value;
             if (staging)
                 m_tex_retire_staging[pool_index][i] = staging;
-            m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (uint32_t) to_final.DestinationStageMask, signal_value, UINT64_MAX});
+            m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (VkPipelineStageFlags2) to_final.DestinationStageMask, signal_value, UINT64_MAX});
             img_buf->Layout = to_final.NewLayout;
         }
         return handle;
@@ -1414,6 +1411,7 @@ namespace ZEngine::Rendering
     void RenderResourceManager::RetireTextureSlots(uint8_t frame_index, uint8_t thread_index)
     {
         uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+
         uint64_t graphics_value = 0;
         vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), &graphics_value);
 
@@ -1749,7 +1747,7 @@ namespace ZEngine::Rendering
             deferral.Slab      = slab;
             deferral.TexHandle = captured_handle;
             EnqueueTextureDeferral(std::move(deferral));
-            m_device->RequestDescriptorUpdate(captured_handle);
+            m_device->RequestDeferredDescriptorUpdate(captured_handle);
         });
 
         return tex_handle;
@@ -1775,7 +1773,21 @@ namespace ZEngine::Rendering
             stbi_write_png(kFallbackPath, W, H, 4, pixels, W * 4);
         }
 
-        return SubmitTextureFile(kFallbackPath);
+        auto result = SubmitTextureFile(kFallbackPath);
+        if (result.Valid())
+        {
+            auto texture = m_device->GlobalTextures.Access(result);
+            if (texture)
+            {
+                auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
+                if (img_buf)
+                {
+                    m_device->FallbackDescriptorImageInfo             = img_buf->GetDescriptorImageInfo();
+                    m_device->FallbackDescriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                }
+            }
+        }
+        return result;
     }
 
 } // namespace ZEngine::Rendering

@@ -52,12 +52,12 @@ namespace ZEngine::Rendering::Meshes
         ZEngine::Core::Maths::Vec4f SpecularColor  = {1.f, 1.f, 1.f, 1.f};
         ZEngine::Core::Maths::Vec4f RoughnessColor = {1.f, 1.f, 1.f, 1.f};
         ZEngine::Core::Maths::Vec4f Factors        = {1.f, 1.f, 1.f, 1.f}; // {x : transparency, y : Metallic, z : AlphaTest, w : _padding}
-        uint64_t                    EmissiveMap    = INVALID_MAP_HANDLE;
-        uint64_t                    AlbedoMap      = INVALID_MAP_HANDLE;
-        uint64_t                    SpecularMap    = INVALID_MAP_HANDLE;
-        uint64_t                    NormalMap      = INVALID_MAP_HANDLE;
-        uint64_t                    OpacityMap     = INVALID_MAP_HANDLE;
-        uint64_t                    _padding       = INVALID_MAP_HANDLE;
+        uint32_t                    EmissiveMap    = INVALID_MAP_HANDLE;
+        uint32_t                    AlbedoMap      = INVALID_MAP_HANDLE;
+        uint32_t                    SpecularMap    = INVALID_MAP_HANDLE;
+        uint32_t                    NormalMap      = INVALID_MAP_HANDLE;
+        uint32_t                    OpacityMap     = INVALID_MAP_HANDLE;
+        uint32_t                    _pad           = 0;
     };
 
     struct MaterialFile

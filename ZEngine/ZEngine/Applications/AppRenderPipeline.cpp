@@ -145,15 +145,16 @@ namespace ZEngine::Applications
     void AppRenderPipeline::EndFrame()
     {
         if (Device->RRM)
-        {
-            auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
-            rrm->EndFrame();
-            rrm->SubmitAsyncUploads();
-        }
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
+
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
+        // Present before SubmitAsyncUploads: texture upload ops go into the deferred
+        // queues and are waited on by the next frame's submit_1, not the current one.
         Device->SwapchainPtr->Present();
+        if (Device->RRM)
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
     void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
@@ -239,8 +240,8 @@ namespace ZEngine::Applications
                 for (uint32_t sub_i = 0; sub_i < static_cast<uint32_t>(mesh->SubMeshes.size()); ++sub_i)
                 {
                     const auto&                          sub      = mesh->SubMeshes[sub_i];
-                    auto*                                mat      = Managers::AssetManager::GetAsset<Importers::AssetMaterial>(sub.MaterialUUID);
-                    uint32_t                             mat_idx  = mat ? static_cast<uint32_t>(mat - mgr->Materials.data()) : 0;
+                    uint32_t*                            mat_slot = mgr ? mgr->UUIDToMaterialSlot.find(sub.MaterialUUID) : nullptr;
+                    uint32_t                             mat_idx  = mat_slot ? *mat_slot : 0;
                     uint32_t                             draw_idx = static_cast<uint32_t>(allocs.size());
 
                     Rendering::Meshes::SubMeshAllocation alloc    = {};

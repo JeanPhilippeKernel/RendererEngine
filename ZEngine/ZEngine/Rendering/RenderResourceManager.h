@@ -434,6 +434,7 @@ namespace ZEngine::Rendering
         struct BatchFrameState
         {
             uint64_t                 LastSignal                      = 0;
+            uint64_t                 SafeRetireAfterRenderValue      = 0; // RenderTimeline value after which stagings are safe to free
             Core::Memory::BufferView StagingBuffers[MAX_PENDING * 2] = {};
             uint32_t                 StagingCount                    = 0;
         };

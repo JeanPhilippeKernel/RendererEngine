@@ -346,6 +346,7 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Present()
     {
+
         if (Recreation == RecreationState::FrameAborted)
         {
             // OOD at acquire: semaphore not signalled, no GPU work submitted.
@@ -354,14 +355,21 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        // The device can go lost mid-frame, inside AppRenderPipeline::EndFrame's own
-        // SubmitAsyncUploads() call, before Present() runs — continuing into more Vulkan
-        // calls (including the unchecked vkGetSemaphoreCounterValue below) here would just
-        // add cascade errors on top of an already-lost device.
+        // The device can go lost mid-frame before Present() runs — continuing into more
+        // Vulkan calls here would just add cascade errors on top of the real failure.
         if (Device->IsDeviceLost.load(std::memory_order_acquire))
         {
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
             return;
+        }
+
+        // Promote last frame's deferred upload ops so submit_1 can wait on them.
+        // SubmitAsyncUploads runs after Present(), so DeferredAsyncGPUOperations only
+        // holds ops from prior frames when we reach this point.
+        {
+            Hardwares::AsyncGPUOperationHandle deferred_op = {};
+            while (Device->DeferredAsyncGPUOperations.pop(deferred_op))
+                Device->AsyncGPUOperations.Enqueue(deferred_op);
         }
 
         {
@@ -454,13 +462,16 @@ namespace ZEngine::Hardwares
             }
         }
 
-        auto                   scratch = ZGetScratch(&Arena);
+        auto                             scratch   = ZGetScratch(&Arena);
 
-        Array<VkCommandBuffer> buffer  = {};
-        buffer.init(scratch.Arena, Device->CommandBufferMgr->EnqueuedCommandBufferIndex, Device->CommandBufferMgr->EnqueuedCommandBufferIndex);
-        for (int i = 0; i < buffer.size(); ++i)
+        Array<VkCommandBufferSubmitInfo> cmd_infos = {};
+        cmd_infos.init(scratch.Arena, Device->CommandBufferMgr->EnqueuedCommandBufferIndex, Device->CommandBufferMgr->EnqueuedCommandBufferIndex);
+        for (int i = 0; i < cmd_infos.size(); ++i)
         {
-            buffer[i] = Device->CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle();
+            cmd_infos[i] = {
+                .sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = Device->CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle(),
+            };
         }
 
         auto render_complete  = RenderCompletes[CurrentFrame->ImageIndex];
@@ -471,40 +482,39 @@ namespace ZEngine::Hardwares
         if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
             CurrentFrame->Fence->Wait(UINT64_MAX);
 
-        QueueView                     queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
+        QueueView             queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
-        // for the rendering and presentation, we use the 3-submit pattern
-        // This is due to Intel drivers bug that deosn't support well the combinaison of Timeline + Binary Semaphore.
-        //
-        // 1 - Acquire bridge
-        // 2 - Rendering work
-        // 3 - Present bridge
+        // 3-submit pattern using vkQueueSubmit2:
+        //   1 - Acquire bridge: binary Acquired → timeline RenderTimeline
+        //   2 - Render work:    timeline waits (async GPU ops) → timeline RenderTimeline
+        //   3 - Present bridge: timeline RenderTimeline → binary render_complete
+        // vkQueueSubmit2 uses per-semaphore VkSemaphoreSubmitInfo structs, eliminating
+        // the parallel-array count ambiguity that caused Intel driver corruption with
+        // the old VkTimelineSemaphoreSubmitInfo + vkQueueSubmit path.
 
-        // 1- Binary Acquire to a Timeline value
-        uint64_t                      frame_start_value = ++RenderTimelineNextValue;
-        uint64_t                      ignored_wait_val  = 0;
-        VkTimelineSemaphoreSubmitInfo timeline_info0    = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = 1, // must match waitSemaphoreCount
-            .pWaitSemaphoreValues      = &ignored_wait_val,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &frame_start_value,
+        uint64_t              frame_start_value = ++RenderTimelineNextValue;
+
+        VkSemaphoreSubmitInfo acquire_wait_info = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = CurrentFrame->Acquired->GetHandle(),
+            .value     = 0,
+            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         };
-
-        VkPipelineStageFlags acquire_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSemaphore          acquire_wait_semaphores[]   = {CurrentFrame->Acquired->GetHandle()};
-        VkSemaphore          acquire_signal_semaphores[] = {RenderTimeline->GetHandle()};
-        VkSubmitInfo         submit_0                    = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info0,
-            .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = acquire_wait_semaphores,
-            .pWaitDstStageMask    = &acquire_wait_stage,
-            .commandBufferCount   = 0,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = acquire_signal_semaphores,
+        VkSemaphoreSubmitInfo frame_start_signal = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = RenderTimeline->GetHandle(),
+            .value     = frame_start_value,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
-        VkResult r0 = vkQueueSubmit(queue.Handle, 1, &submit_0, VK_NULL_HANDLE);
+        VkSubmitInfo2 submit_0 = {
+            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount   = 1,
+            .pWaitSemaphoreInfos      = &acquire_wait_info,
+            .commandBufferInfoCount   = 0,
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos    = &frame_start_signal,
+        };
+        VkResult r0 = vkQueueSubmit2(queue.Handle, 1, &submit_0, VK_NULL_HANDLE);
         if (Device->CheckDeviceLost(r0, "Present: acquire bridge submit"))
         {
             ZReleaseScratch(scratch);
@@ -514,32 +524,24 @@ namespace ZEngine::Hardwares
 
         struct TimelineAggregate
         {
-            uint64_t             MaxValue  = 0;
-            VkPipelineStageFlags StageMask = 0;
+            uint64_t              MaxValue  = 0;
+            VkPipelineStageFlags2 StageMask = 0;
         };
 
-        Array<VkSemaphore>                                          wait_semaphores             = {};
-        Array<uint64_t>                                             wait_values                 = {};
-        Array<VkPipelineStageFlags>                                 stage_flags                 = {};
+        Array<VkSemaphoreSubmitInfo>                                wait_sem_infos              = {};
         UnorderedHashMap<Primitives::Semaphore*, TimelineAggregate> max_val_timeline_semaphores = {};
 
-        wait_semaphores.init(scratch.Arena, 10);
-        stage_flags.init(scratch.Arena, 10);
-        wait_values.init(scratch.Arena, 10);
+        wait_sem_infos.init(scratch.Arena, 10);
         max_val_timeline_semaphores.init(scratch.Arena);
 
-        // Seed with RenderTimeline's own acquire-bridge value rather than pushing it
-        // directly — an AsyncGPUOperation can also target RenderTimeline (e.g. RRM's mesh
-        // batch upload), and pushing both separately would put the same semaphore twice
-        // in one submit's wait list with two different values.
-        max_val_timeline_semaphores.insert(RenderTimeline, {frame_start_value, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT});
+        // DO NOT seed with RenderTimeline here — removing the self-wait on RenderTimeline
+        // in submit_1. See commit message for full explanation.
+        // For NVIDIA: m_tex_transfer_timelines are included via AsyncGPUOperations drain below.
 
         {
             Hardwares::AsyncGPUOperationHandle op;
             while (Device->AsyncGPUOperations.Pop(op))
             {
-                ZENGINE_CORE_TRACE("[Present] AsyncGPUOperation: timeline={} signal_value={} stage_flags={:#x}", (void*) op.Timeline->GetHandle(), op.SignalValue, op.StageFlags)
-
                 if (!max_val_timeline_semaphores.contains(op.Timeline))
                 {
                     max_val_timeline_semaphores.insert(op.Timeline, {op.SignalValue, op.StageFlags});
@@ -553,36 +555,35 @@ namespace ZEngine::Hardwares
 
         for (auto [sem, val] : max_val_timeline_semaphores)
         {
-            wait_semaphores.push(sem->GetHandle());
-            wait_values.push(val.MaxValue);
-            stage_flags.push(val.StageMask);
+            wait_sem_infos.push({
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = sem->GetHandle(),
+                .value     = val.MaxValue,
+                .stageMask = val.StageMask,
+            });
         }
 
-        uint64_t                      work_complete_value      = ++RenderTimelineNextValue;
-        VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
-        VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
-            .pWaitSemaphoreValues      = wait_values.data(),
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &work_complete_value,
-        };
+        uint64_t              work_complete_value  = ++RenderTimelineNextValue;
 
-        VkSubmitInfo submit_info_1 = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info_1,
-            .waitSemaphoreCount   = (uint32_t) wait_semaphores.size(),
-            .pWaitSemaphores      = wait_semaphores.data(),
-            .pWaitDstStageMask    = stage_flags.data(),
-            .commandBufferCount   = (uint32_t) buffer.size(),
-            .pCommandBuffers      = buffer.data(),
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = work_signal_semaphores,
+        VkSemaphoreSubmitInfo work_complete_signal = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = RenderTimeline->GetHandle(),
+            .value     = work_complete_value,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        VkSubmitInfo2 submit_info_1 = {
+            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount   = (uint32_t) wait_sem_infos.size(),
+            .pWaitSemaphoreInfos      = wait_sem_infos.data(),
+            .commandBufferInfoCount   = (uint32_t) cmd_infos.size(),
+            .pCommandBufferInfos      = cmd_infos.data(),
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos    = &work_complete_signal,
         };
 
         Device->FrameHeaps[CurrentFrame->Index].Flush(&Device->GpuMem);
 
-        auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info_1), CurrentFrame->Fence->GetHandle());
+        auto submit = vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
         if (Device->CheckDeviceLost(submit, "Present: render work submit"))
         {
             ZReleaseScratch(scratch);
@@ -595,30 +596,28 @@ namespace ZEngine::Hardwares
         Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
         CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
 
-        uint64_t                      dummy_signal_val            = 0;
-        VkPipelineStageFlags          present_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSemaphore                   present_wait_semaphores[]   = {RenderTimeline->GetHandle()};
-        VkSemaphore                   present_signal_semaphores[] = {render_complete->GetHandle()};
-        VkTimelineSemaphoreSubmitInfo timeline_info2              = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = 1,
-            .pWaitSemaphoreValues      = &work_complete_value,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &dummy_signal_val,
+        VkSemaphoreSubmitInfo present_wait_info = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = RenderTimeline->GetHandle(),
+            .value     = work_complete_value,
+            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        };
+        VkSemaphoreSubmitInfo present_signal_info = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = render_complete->GetHandle(),
+            .value     = 0,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        VkSubmitInfo2 submit2 = {
+            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount   = 1,
+            .pWaitSemaphoreInfos      = &present_wait_info,
+            .commandBufferInfoCount   = 0,
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos    = &present_signal_info,
         };
 
-        VkSubmitInfo submit2 = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info2,
-            .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = present_wait_semaphores,
-            .pWaitDstStageMask    = &present_wait_stage,
-            .commandBufferCount   = 0,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = present_signal_semaphores,
-        };
-
-        VkResult r2 = vkQueueSubmit(queue.Handle, 1, &submit2, present_complete->GetHandle());
+        VkResult r2 = vkQueueSubmit2(queue.Handle, 1, &submit2, present_complete->GetHandle());
         if (Device->CheckDeviceLost(r2, "Present: present bridge submit"))
             return;
         ZENGINE_VALIDATE_ASSERT(r2 == VK_SUCCESS, "Failed to submit present bridge")
@@ -668,6 +667,34 @@ namespace ZEngine::Hardwares
         if (present_result == VK_SUBOPTIMAL_KHR)
         {
             Recreation = RecreationState::Pending;
+        }
+
+        // Drain new deferred descriptor updates after the frame is submitted.
+        // Writing the fallback here (render thread only) avoids concurrent vkUpdateDescriptorSets
+        // with Present()'s own descriptor batch. The real image follows next frame via
+        // TextureHandleToUpdates once submit_1 has waited for the upload to complete.
+        {
+            Rendering::Textures::TextureHandle deferred_handle = {};
+            while (Device->DeferredTextureDescriptorUpdates.pop(deferred_handle))
+            {
+                if (Device->FallbackDescriptorImageInfo.imageView != VK_NULL_HANDLE)
+                {
+                    for (const auto& req : Device->BindlessTextureSlotRequests)
+                    {
+                        VkWriteDescriptorSet write = {
+                            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                            .dstSet          = req.DstSet,
+                            .dstBinding      = req.Binding,
+                            .dstArrayElement = (uint32_t) deferred_handle.Index,
+                            .descriptorCount = 1,
+                            .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                            .pImageInfo      = &Device->FallbackDescriptorImageInfo,
+                        };
+                        vkUpdateDescriptorSets(Device->LogicalDevice, 1, &write, 0, nullptr);
+                    }
+                }
+                Device->TextureHandleToUpdates.Enqueue(deferred_handle);
+            }
         }
     }
 } // namespace ZEngine::Hardwares

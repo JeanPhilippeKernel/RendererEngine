@@ -26,7 +26,7 @@ void main()
 
     if (material.AlbedoMap < INVALID_MAP_HANDLE)
     {
-        uint texId        = uint(material.AlbedoMap);
+        uint texId        = material.AlbedoMap;
         vec4 albedoSample = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord);
         albedo            = albedoSample.rgb;
         alpha             = albedoSample.a;
@@ -37,7 +37,7 @@ void main()
 
     if (material.NormalMap < INVALID_MAP_HANDLE)
     {
-        uint texId        = uint(material.NormalMap);
+        uint texId        = material.NormalMap;
         vec3 normalSample = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord).rgb;
         normal            = perturbNormal(normalize(WorldNormal), WorldPos, normalSample, TexCoord);
     }
@@ -45,7 +45,7 @@ void main()
     if (material.SpecularMap < INVALID_MAP_HANDLE)
     {
         // glTF metallicRoughnessTexture: R=occlusion, G=roughness, B=metallic
-        uint texId = uint(material.SpecularMap);
+        uint texId = material.SpecularMap;
         vec3 orm   = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord).rgb;
         ao         = orm.r;
         roughness  = orm.g;
@@ -54,7 +54,7 @@ void main()
 
     if (material.EmissiveMap < INVALID_MAP_HANDLE)
     {
-        uint texId = uint(material.EmissiveMap);
+        uint texId = material.EmissiveMap;
         emissive   = texture(sampler2D(TextureArray[nonuniformEXT(texId)], LinearWrapSampler), TexCoord).r;
     }
 
