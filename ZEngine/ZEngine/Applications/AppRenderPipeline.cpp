@@ -301,6 +301,10 @@ namespace ZEngine::Applications
                 rrm->UpdateBuffer(gpu_buf->LightBuffer, &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
         }
 
+        // Keep sky sun direction in sync with the first active directional light every frame.
+        if (SceneRenderer && scene->PendingLights.DirectionalCount > 0)
+            SceneRenderer->UpdateSkySunDirection(scene->PendingLights.DirectionalLights[0].Direction);
+
         SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 

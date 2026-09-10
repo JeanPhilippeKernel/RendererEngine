@@ -39,6 +39,13 @@ namespace ZEngine::Rendering::Renderers
         m_graph = nullptr;
     }
 
+    void SkySystem::UpdateSunDirection(const Core::Maths::Vec4f& direction)
+    {
+        m_config.SunDirection                 = direction;
+        m_atmosphere_pass.Config.SunDirection = direction;
+        m_skysphere_pass.Config.SunDirection  = direction;
+    }
+
     void SkySystem::ApplyMode()
     {
         if (!m_graph)

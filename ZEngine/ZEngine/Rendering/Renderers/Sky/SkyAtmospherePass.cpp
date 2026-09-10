@@ -300,7 +300,6 @@ namespace ZEngine::Rendering::Renderers
                 device->TextureHandleToUpdates.Enqueue(m_multiscatter_lut);
             if (m_skyview_lut.Valid())
                 device->TextureHandleToUpdates.Enqueue(m_skyview_lut);
-            ZENGINE_CORE_INFO("[Sky] LUT slots — transmittance={} multiscatter={} skyview={}", m_transmittance_lut.Index, m_multiscatter_lut.Index, m_skyview_lut.Index)
             m_luts_registered = true;
         }
 

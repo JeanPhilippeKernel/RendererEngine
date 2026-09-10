@@ -11,6 +11,7 @@ namespace ZEngine::Rendering::Renderers
         void         Initialize(Hardwares::VulkanDevicePtr device, RenderGraph* graph);
         void         SetConfig(const Sky::SkyConfig& cfg);
         void         SubmitLUTs(Hardwares::VulkanDevicePtr device, Rendering::Scenes::SceneDataPtr const scene);
+        void         UpdateSunDirection(const Core::Maths::Vec4f& direction);
         void         Dispose(Hardwares::VulkanDevicePtr device);
 
         Sky::SkyMode GetActiveMode() const

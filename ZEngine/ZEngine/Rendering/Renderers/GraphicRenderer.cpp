@@ -160,6 +160,11 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->Execute(cb);
     }
 
+    void GraphicRenderer::UpdateSkySunDirection(const Core::Maths::Vec4f& direction)
+    {
+        m_sky_system.UpdateSunDirection(direction);
+    }
+
     void GraphicRenderer::SubmitSkyLUTs(Scenes::SceneDataPtr scene)
     {
         m_sky_system.SubmitLUTs(Device, scene);

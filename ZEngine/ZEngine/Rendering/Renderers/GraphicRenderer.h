@@ -27,6 +27,7 @@ namespace ZEngine::Rendering::Renderers
         void                    ApplyGridConfig(const Scenes::GridConfig& cfg);
         Textures::TextureHandle GetFrameOutput();
         void                    SubmitSkyLUTs(Scenes::SceneDataPtr scene);
+        void                    UpdateSkySunDirection(const Core::Maths::Vec4f& direction);
 
     private:
         bool      m_static_buffers_bound = false;
