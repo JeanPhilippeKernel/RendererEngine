@@ -1,6 +1,6 @@
 #version 460
 
-layout(location = 0) in  vec3 v_ray_dir;
+layout(location = 0) in vec3 v_ray_dir;
 layout(location = 0) out vec4 o_color;
 
 layout(push_constant) uniform SkySpherePush
@@ -8,7 +8,7 @@ layout(push_constant) uniform SkySpherePush
     vec4  HorizonColor;
     vec4  ZenithColor;
     vec4  GroundColor;
-    vec4  SunDirection;    // w unused
+    vec4  SunDirection; // w unused
     float SunDiscSize;
     float SunDiscIntensity;
     float HorizonSharpness;
@@ -21,7 +21,7 @@ void main()
     vec3  dir = normalize(v_ray_dir);
     float h   = dir.y; // -1 = nadir, 0 = horizon, +1 = zenith
 
-    vec3 sky;
+    vec3  sky;
     if (h >= 0.0)
         sky = mix(pc.HorizonColor.rgb, pc.ZenithColor.rgb, pow(h, 1.0 / max(pc.HorizonSharpness, 0.001)));
     else
@@ -34,8 +34,8 @@ void main()
         float cos_disc  = cos(pc.SunDiscSize);
         if (cos_angle > cos_disc)
         {
-            float t = (cos_angle - cos_disc) / (1.0 - cos_disc);
-            sky += vec3(1.0) * pc.SunDiscIntensity * smoothstep(0.0, 1.0, t);
+            float t  = (cos_angle - cos_disc) / (1.0 - cos_disc);
+            sky     += vec3(1.0) * pc.SunDiscIntensity * smoothstep(0.0, 1.0, t);
         }
     }
 
