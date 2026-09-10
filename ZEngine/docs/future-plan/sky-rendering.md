@@ -40,7 +40,7 @@ struct SkyConfig
     // SkyAtmospherePass params
     Core::Maths::Vec4f RayleighScattering    = { 5.802e-6f, 13.558e-6f, 33.100e-6f, 0.0f };
     float              RayleighScaleHeight    = 8000.0f;
-    float              MieScattering          = 3.996e-6f;
+    float              MieScattering          = 3.996e-6f;   // scalar — wavelength-independent
     float              MieAbsorption          = 4.400e-6f;
     float              MieScaleHeight         = 1200.0f;
     float              MieAnisotropy          = 0.8f;
@@ -53,7 +53,8 @@ struct SkyConfig
     float              SunIlluminanceScale    = 10.0f;
 
     // HDRIBackdropPass params
-    cstring            EnvironmentMapPath     = nullptr;  // VFS path to .hdr / .exr asset
+    // Note: .exr is not supported in the initial implementation (stb_image handles .hdr only).
+    cstring            EnvironmentMapPath     = nullptr;  // VFS path to .hdr asset
     float              HDRIExposure           = 1.0f;
     Core::Maths::Vec4f HDRITint               = { 1.0f, 1.0f, 1.0f, 1.0f };
 
@@ -68,18 +69,9 @@ struct SkyConfig
 };
 ```
 
-project.json extension:
+**Sky config is per-scene, not per-project.** Each `.zescene` binary carries its own sky configuration serialized by the scene serializer. `SkySystem::SetConfig` is called by `GraphicRenderer` at scene load time, with `SkyConfig` populated from the deserialized scene data. The `project.json` file has no sky block — sky settings belong to the scene.
 
-```json
-{
-    "sky": {
-        "mode": "atmosphere",
-        "environmentMap": "$(workingSpace)/Assets/HDRI/outdoor_noon.hdr"
-    }
-}
-```
-
-When `mode` is `"atmosphere"` or `"skySphere"`, the `environmentMap` field is not required. When `mode` is `"hdri"`, a missing `environmentMap` causes `HDRIBackdropPass` to render solid black until an asset is assigned at runtime.
+When `EnvironmentMapPath` is null or empty and mode is `HDRI`, `HDRIBackdropPass` renders solid black until an asset is assigned at runtime.
 
 ---
 
@@ -108,11 +100,14 @@ Transmittance and multiscattering LUTs are persistent — allocated once via `Gp
 // sizeof(SkyAtmosphereUBO) == 160 bytes, std140-compatible
 // Pushed into PerFrameUploadHeap each frame via:
 //   heap.Push(&atmo_ubo, sizeof(SkyAtmosphereUBO), device->MinUniformBufferOffsetAlignment())
+//
+// CPU packing note: SkyConfig::MieScattering and MieAbsorption are scalars (wavelength-
+// independent). Pack them as Vec4f(x, x, x, 0) when uploading to this UBO.
 struct SkyAtmosphereUBO
 {
     Core::Maths::Vec4f RayleighScattering;     //   0
-    Core::Maths::Vec4f MieScattering;          //  16
-    Core::Maths::Vec4f MieAbsorption;          //  32
+    Core::Maths::Vec4f MieScattering;          //  16  (x==y==z, w==0)
+    Core::Maths::Vec4f MieAbsorption;          //  32  (x==y==z, w==0)
     Core::Maths::Vec4f OzoneAbsorption;        //  48
     float              PlanetRadius;           //  64
     float              AtmosphereRadius;       //  68
@@ -124,9 +119,9 @@ struct SkyAtmosphereUBO
     float              SunIlluminanceScale;    //  92
     Core::Maths::Vec4f SunDirection;           //  96
     float              SunAngularRadius;       // 112
-    float              _pad[3];                // 116
+    float              _pad[3];               // 116
     Core::Maths::Vec4f CameraPositionKm;       // 128
-    float              _pad2[4];               // 144
+    float              _pad2[4];              // 144
 };
 // static_assert(sizeof(SkyAtmosphereUBO) == 160);
 ```
@@ -134,27 +129,30 @@ struct SkyAtmosphereUBO
 ### 3.4 GLSL binding layout
 
 ```glsl
+// Canonical set assignments (matches section 9):
 // set 0 binding 0 — camera UBO (dynamic offset, shared with all passes)
 // set 0 binding 1 — SkyAtmosphereUBO (dynamic offset, PerFrameUploadHeap)
 
-// LUT samplers (sky-view and combine passes)
+// LUT samplers — sky-view and combine passes read these:
 layout(set = 1, binding = 0) uniform sampler2D  u_transmittance_lut;
 layout(set = 1, binding = 1) uniform sampler2D  u_multiscatter_lut;
 layout(set = 1, binding = 2) uniform sampler2D  u_skyview_lut;
 layout(set = 1, binding = 3) uniform sampler3D  u_aerial_perspective_lut;
 
-// LUT generation outputs (compute passes — storage images)
-layout(set = 1, binding = 0, r11f_g11f_b10f) uniform writeonly image2D  o_transmittance;
-layout(set = 1, binding = 0, rgba16f)          uniform writeonly image2D  o_multiscatter;
-layout(set = 1, binding = 0, rgba16f)          uniform writeonly image2D  o_skyview;
-layout(set = 1, binding = 0, rgba16f)          uniform writeonly image3D  o_aerial_persp;
+// LUT generation outputs — each binding below belongs to a DIFFERENT compute shader.
+// They share set 1 binding 0 because each shader has its own pipeline/descriptor layout;
+// they are never co-resident in the same shader.
+layout(set = 1, binding = 0, r11f_g11f_b10f) uniform writeonly image2D  o_transmittance;  // sky_transmittance.comp
+layout(set = 1, binding = 0, rgba16f)          uniform writeonly image2D  o_multiscatter;   // sky_multiscatter.comp
+layout(set = 1, binding = 0, rgba16f)          uniform writeonly image2D  o_skyview;         // sky_skyview.comp
+layout(set = 1, binding = 0, rgba16f)          uniform writeonly image3D  o_aerial_persp;    // sky_aerial_perspective.comp
 ```
 
 Shader files:
 - `sky_transmittance.comp` — local_size 8x8x1, 256x64 output, optical depth integration
 - `sky_multiscatter.comp` — local_size 1x1x64, 32x32 output, first N scattering orders
 - `sky_skyview.comp` — local_size 8x8x1, 192x108, non-linear lat-lon parameterisation (Hillaire 2020)
-- `sky_aerial_perspective.comp` — local_size 8x8x1, 32x32x32, froxel in-scatter integration
+- `sky_aerial_perspective.comp` — local_size 8x8x4, 32x32x32, froxel in-scatter integration
 - `sky_combine.frag` — composite sky over geometry; aerial perspective for scene pixels, sky-view for background pixels
 
 ### 3.5 Render graph integration
@@ -174,7 +172,7 @@ Execute():
            barrier: compute SHADER_WRITE -> SHADER_READ
            LUTsDirty = false
     2. dispatch sky-view LUT compute (24x14 groups)
-    3. dispatch aerial perspective LUT compute (4x4x8 groups)
+    3. dispatch aerial perspective LUT compute (4x4x8 groups)   // local_size 8x8x4, 32x32x32 total
     4. sky combine fullscreen draw(3,1,0,0) onto hdr_lit
 ```
 
@@ -224,8 +222,8 @@ layout(set = 0, binding = 2, rgba16f) uniform writeonly imageCube o_prefiltered_
 
 // Push constants
 layout(push_constant) uniform IBLPush {
-    uint  FaceIndex;
-    uint  MipLevel;
+    uint  FaceIndex;    // used by sky_prefilter.comp (one dispatch per face/mip)
+    uint  MipLevel;     // used by sky_prefilter.comp
     float Roughness;
     uint  SampleCount;  // 1024 for prefiltered mip0, 64 for irradiance
 } pc;
@@ -233,18 +231,20 @@ layout(push_constant) uniform IBLPush {
 
 Shader files:
 - `sky_brdf_lut.comp` — split-sum GGX A/B, 512x512 RG16F, local_size 8x8x1, run once at startup
-- `sky_irradiance.comp` — cosine-weighted hemisphere integral, 64 samples, local_size 8x8x6, 32x32 cubemap output
-- `sky_prefilter.comp` — GGX NDF importance sampling, 1024 samples at mip0, local_size 8x8x1
+- `sky_irradiance.comp` — cosine-weighted hemisphere integral, 64 samples, local_size 8x8x6, 32x32 cubemap output; face encoded in gl_GlobalInvocationID.z (dispatch 4x4x1 groups)
+- `sky_prefilter.comp` — GGX NDF importance sampling, 1024 samples at mip0, local_size 8x8x1; one dispatch per face per mip (FaceIndex and MipLevel push constants select target)
 
 ### 4.4 Integration with LightingPass
 
-`SkyLightPass` exposes three getters. `LightingPass::Compile` calls them and binds to set 4:
+`SkyLightPass` exposes three getters. `LightingPass::Compile` calls them and binds to set 2:
 
 ```glsl
-layout(set = 4, binding = 0) uniform samplerCube u_diffuse_irradiance;
-layout(set = 4, binding = 1) uniform samplerCube u_specular_env_map;
-layout(set = 4, binding = 2) uniform sampler2D   u_brdf_lut;
+layout(set = 2, binding = 0) uniform samplerCube u_diffuse_irradiance;
+layout(set = 2, binding = 1) uniform samplerCube u_specular_env_map;
+layout(set = 2, binding = 2) uniform sampler2D   u_brdf_lut;
 ```
+
+The IBL cubemaps are persistent externals — not RenderGraph transient resources. `SkyLightPass` writes them via compute dispatches inside `Execute()`. A `vkCmdPipelineBarrier` (`COMPUTE_SHADER_WRITE` → `FRAGMENT_SHADER_READ`) must be recorded at the end of `SkyLightPass::ExecuteCompute()` before `LightingPass` reads them in the same frame.
 
 ### 4.5 Memory budget
 
@@ -261,7 +261,7 @@ layout(set = 4, binding = 2) uniform sampler2D   u_brdf_lut;
 
 ### 5.1 Pipeline
 
-1. User places an `.hdr` or `.exr` in their project assets
+1. User places an `.hdr` in their project assets (`.exr` not supported in initial implementation)
 2. Editor import pipeline (via `IAssetImporter`) converts to internal format and stores in `{project}/Assets/HDRI/`
 3. `project.json` references the asset: `"sky": { "mode": "hdri", "environmentMap": "$(workingSpace)/Assets/HDRI/noon.hdr" }`
 4. At scene load, `SkySystem::SetConfig` requests async load via the asset pipeline
@@ -319,7 +319,6 @@ struct SkySpherePush  // 80 bytes, within 128-byte guaranteed minimum
     float SunDiscIntensity;
     float HorizonSharpness;
     float ShowSunDisc;      // float bool
-    float _pad;
 };
 ```
 
@@ -348,8 +347,8 @@ struct SkySystem
 
 private:
     SkyConfig         m_config;
-    SkyMode           m_active_mode = SkyMode::Atmosphere;
-    bool              m_ibl_dirty   = true;
+    SkyMode           m_active_mode  = SkyMode::Atmosphere;
+    bool              m_ibl_dirty    = true;
     bool              m_mode_changed = false;
 
     SkyAtmospherePass m_atmosphere_pass;
@@ -363,14 +362,14 @@ private:
 
 ```cpp
 // Mode = Atmosphere or HDRI: register SkyLightPass first (IBL needed before LightingPass)
-graph->AddCallbackPass("SkyLightPass", &m_sky_light_pass, mode != SkySphere);
+graph->AddCallbackPass("SkyLightPass", &m_sky_light_pass, mode != SkyMode::SkySphere);
 
 switch (mode) {
-    case Atmosphere: graph->AddCallbackPass("SkyAtmospherePass", &m_atmosphere_pass, true); break;
-    case HDRI:       graph->AddCallbackPass("HDRIBackdropPass",  &m_hdri_pass,        true); break;
-    case SkySphere:  graph->AddCallbackPass("SkySpherePass",     &m_skysphere_pass,   true); break;
+    case SkyMode::Atmosphere: graph->AddCallbackPass("SkyAtmospherePass", &m_atmosphere_pass, true); break;
+    case SkyMode::HDRI:       graph->AddCallbackPass("HDRIBackdropPass",  &m_hdri_pass,        true); break;
+    case SkyMode::SkySphere:  graph->AddCallbackPass("SkySpherePass",     &m_skysphere_pass,   true); break;
 }
-graph->NodeMap["SkyboxPass"].Enabled = false;  // disable legacy pass
+graph->SetPassEnabled("SkyboxPass", false);  // disable legacy pass
 ```
 
 Mode changes at runtime require `RenderGraph::Compile()` — `SkySystem::Update` sets `m_mode_changed`; `GraphicRenderer::DrawScene` detects it and calls `m_render_graph->Compile()` before the next `Execute()`.
@@ -383,8 +382,8 @@ Sun direction is derived from the scene's first active directional light each fr
 
 ```
 [DepthPrePass]         -> hdr_depth
-[GeometryPass]         -> hdr_gbuffer
-[SkyLightPass]         (conditional; rebuilds IBL cubemaps if dirty)
+[GbufferPass]          -> hdr_gbuffer
+[SkyLightPass]         (conditional; rebuilds IBL cubemaps if dirty; records compute->fragment barrier internally)
 [LightingPass]         -> hdr_lit   (reads gbuffer + IBL from SkyLightPass)
 [SkyAtmospherePass]    (or HDRIBackdropPass, or SkySpherePass)
     reads hdr_depth    (sky/geometry compositing)
@@ -393,7 +392,7 @@ Sun direction is derived from the scene's first active directional light each fr
 [ToneMappingPass]      -> ldr_color
 ```
 
-`SkyLightPass` declares no RenderGraph attachments (its IBL cubemaps are persistent externals). Its graph registration ensures `Setup` and `Execute` are called in the correct frame slot before `LightingPass` consumes the IBL handles.
+`SkyLightPass` declares no RenderGraph attachments (its IBL cubemaps are persistent externals). Its graph registration ensures `Setup` and `Execute` are called in the correct frame slot before `LightingPass` consumes the IBL handles. The compute→fragment barrier is recorded inside `SkyLightPass::ExecuteCompute()` — not managed by the graph.
 
 ---
 
@@ -402,9 +401,11 @@ Sun direction is derived from the scene's first active directional light each fr
 | Set | Binding | Purpose |
 |---|---|---|
 | 0 | 0 | Camera UBO (UNIFORM_BUFFER_DYNAMIC, PerFrameUploadHeap) |
-| 0 | 1..N | Pass-specific LUT samplers / cubemaps |
-| 1 | 0 | `SkyAtmosphereUBO` (UNIFORM_BUFFER_DYNAMIC, PerFrameUploadHeap) |
-| 2 | 0-3 | IBL outputs for LightingPass (diffuse irradiance, specular env map, BRDF LUT) |
+| 0 | 1 | `SkyAtmosphereUBO` (UNIFORM_BUFFER_DYNAMIC, PerFrameUploadHeap) — sky passes only |
+| 1 | 0..N | Pass-specific LUT samplers / cubemaps (per-pipeline layout) |
+| 2 | 0 | Diffuse irradiance cubemap (LightingPass, sampled from SkyLightPass output) |
+| 2 | 1 | Specular pre-filtered env map (LightingPass) |
+| 2 | 2 | BRDF integration LUT (LightingPass) |
 
 Sky passes do not use the global bindless texture array. LUTs and cubemaps are explicit combined image samplers.
 
@@ -450,14 +451,14 @@ Resources/Shaders/Sky/
 | 6 | `SkyAtmospherePass` — sky combine fullscreen graphics pass | Step 5 | Low |
 | 7 | `SkyLightPass` — BRDF LUT (once at startup) | Step 4 | Low |
 | 8 | `SkyLightPass` — irradiance + specular prefilter | Steps 6-7 | Medium |
-| 9 | `SkyLightPass` integration with `LightingPass` set 4 | Step 8 | Medium |
+| 9 | `SkyLightPass` integration with `LightingPass` set 2 | Step 8 | Medium |
 | 10 | `HDRIBackdropPass` — equirect-to-cube compute | Steps 3, 8; `.hdr` importer | High |
 | 11 | `HDRIBackdropPass` — backdrop fullscreen pass | Step 10 | Low |
 | 12 | `HDRIBackdropPass` IBL source for `SkyLightPass` | Steps 9, 11 | Low |
 | 13 | `SkySystem::Update` with mode change + dirty tracking | Steps 3-12 | Medium |
 | 14 | Remove `SkyboxPass`, `skybox.vert/frag`, cube-map binding | All steps | Low |
 
-Note: Step 5 requires `TextureSpecification` to support a `Depth` field and a `Type3D` image view type for the 32x32x32 aerial perspective LUT. This must be added before Step 5 can proceed.
+Note: Step 5 requires `TextureSpecification` to support a `Depth` field and a `Type3D` image view type for the 32x32x32 aerial perspective LUT. This must be added as a separate sub-task before Step 5 can proceed.
 
 ---
 
