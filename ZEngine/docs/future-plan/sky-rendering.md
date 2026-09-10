@@ -69,18 +69,9 @@ struct SkyConfig
 };
 ```
 
-project.json extension:
+**Sky config is per-scene, not per-project.** Each `.zescene` binary carries its own sky configuration serialized by the scene serializer. `SkySystem::SetConfig` is called by `GraphicRenderer` at scene load time, with `SkyConfig` populated from the deserialized scene data. The `project.json` file has no sky block — sky settings belong to the scene.
 
-```json
-{
-    "sky": {
-        "mode": "atmosphere",
-        "environmentMap": "$(workingSpace)/Assets/HDRI/outdoor_noon.hdr"
-    }
-}
-```
-
-When `mode` is `"atmosphere"` or `"skySphere"`, the `environmentMap` field is not required. When `mode` is `"hdri"`, a missing `environmentMap` causes `HDRIBackdropPass` to render solid black until an asset is assigned at runtime.
+When `EnvironmentMapPath` is null or empty and mode is `HDRI`, `HDRIBackdropPass` renders solid black until an asset is assigned at runtime.
 
 ---
 
