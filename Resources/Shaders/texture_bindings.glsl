@@ -6,3 +6,4 @@
 
 layout(set = 1, binding = 0) uniform texture2D TextureArray[];
 layout(set = 1, binding = 1) uniform sampler LinearWrapSampler;
+layout(set = 1, binding = 2) uniform sampler LinearClampSampler;
