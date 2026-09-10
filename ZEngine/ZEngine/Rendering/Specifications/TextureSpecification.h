@@ -14,6 +14,7 @@ namespace ZEngine::Rendering::Specifications
         bool          IsCubemap         = false;
         uint32_t      Width             = 0;
         uint32_t      Height            = 0;
+        uint32_t      Depth             = 1;
         uint32_t      BytePerPixel      = 4;
         uint32_t      LayerCount        = 1;
         ImageFormat   Format            = ImageFormat::UNDEFINED;
@@ -34,6 +35,7 @@ namespace ZEngine::Rendering::Specifications
     {
         uint32_t              Width;
         uint32_t              Height;
+        uint32_t              Depth              = 1;
 
         ImageViewType         ImageViewTypeValue = ImageViewType::TYPE_2D;
         ImageBufferUsageType  BufferUsageType;

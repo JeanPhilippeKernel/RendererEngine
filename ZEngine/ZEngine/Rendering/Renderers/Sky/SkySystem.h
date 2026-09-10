@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
+#include <ZEngine/Rendering/Renderers/Sky/SkyAtmospherePass.h>
 #include <ZEngine/Rendering/Renderers/Sky/SkySpherePass.h>
 #include <ZEngine/Rendering/Sky/SkyConfig.h>
 
@@ -9,7 +10,7 @@ namespace ZEngine::Rendering::Renderers
     {
         void         Initialize(Hardwares::VulkanDevicePtr device, RenderGraph* graph);
         void         SetConfig(const Sky::SkyConfig& cfg);
-        void         Dispose();
+        void         Dispose(Hardwares::VulkanDevicePtr device);
 
         Sky::SkyMode GetActiveMode() const
         {
@@ -17,12 +18,13 @@ namespace ZEngine::Rendering::Renderers
         }
 
     private:
-        void           ApplyMode();
+        void              ApplyMode();
 
-        Sky::SkyConfig m_config       = {};
-        RenderGraph*   m_graph        = nullptr;
-        bool           m_mode_changed = false;
+        Sky::SkyConfig    m_config       = {};
+        RenderGraph*      m_graph        = nullptr;
+        bool              m_mode_changed = false;
 
-        SkySpherePass  m_skysphere_pass;
+        SkyAtmospherePass m_atmosphere_pass;
+        SkySpherePass     m_skysphere_pass;
     };
 } // namespace ZEngine::Rendering::Renderers

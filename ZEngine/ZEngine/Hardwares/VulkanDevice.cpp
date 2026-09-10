@@ -1063,7 +1063,9 @@ namespace ZEngine::Hardwares
         image_create_info.imageType                    = image_type;
         image_create_info.extent.width                 = width;
         image_create_info.extent.height                = height;
-        image_create_info.extent.depth                 = 1;
+        image_create_info.extent.depth                 = (image_type == VK_IMAGE_TYPE_3D) ? layer_count : 1;
+        if (image_type == VK_IMAGE_TYPE_3D)
+            image_create_info.arrayLayers              = 1;
         image_create_info.mipLevels                    = 1;
         image_create_info.arrayLayers                  = layer_count;
         image_create_info.format                       = image_format;
@@ -1190,8 +1192,9 @@ namespace ZEngine::Hardwares
                 out = s;
             };
 
-            try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_vertex.spv", spec.Name), spec.VertexFilename);
+            try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_vertex.spv",   spec.Name), spec.VertexFilename);
             try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_fragment.spv", spec.Name), spec.FragmentFilename);
+            try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_compute.spv",  spec.Name), spec.ComputeFilename);
 
             shader->Initialize(this, spec);
         }
@@ -1476,6 +1479,20 @@ namespace ZEngine::Hardwares
         }
     }
 
+    void CommandBuffer::Dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        vkCmdDispatch(m_command_buffer, group_count_x, group_count_y, group_count_z);
+    }
+
+    void CommandBuffer::PipelineBarrier(const Rendering::Primitives::MemoryBarrier& barrier)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        const auto& spec   = barrier.GetSpecification();
+        const auto& handle = barrier.GetHandle();
+        vkCmdPipelineBarrier(m_command_buffer, spec.SourceStageMask, spec.DestinationStageMask, 0, 1, &handle, 0, nullptr, 0, nullptr);
+    }
+
     void CommandBuffer::BindPipeline(Rendering::Renderers::Pipelines::IPipeline* const pipeline)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
@@ -1631,14 +1648,20 @@ namespace ZEngine::Hardwares
 
         Specifications::ImageViewType   image_view_type   = Specifications::ImageViewType::TYPE_2D;
         Specifications::ImageCreateFlag image_create_flag = Specifications::ImageCreateFlag::NONE;
+        VkImageType                     vk_image_type     = VK_IMAGE_TYPE_2D;
 
         if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
         {
             image_view_type   = Specifications::ImageViewType::TYPE_CUBE;
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
         }
+        else if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE)
+        {
+            image_view_type = Specifications::ImageViewType::TYPE_3D;
+            vk_image_type   = VK_IMAGE_TYPE_3D;
+        }
 
-        m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
+        m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, vk_image_type, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)]);
     }
 
     ImageBuffer::~ImageBuffer()
@@ -1720,7 +1743,15 @@ namespace ZEngine::Hardwares
 
         VkFormat image_format            = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? device->FindDepthFormat() : Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
-        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.LayerCount};
+        Specifications::ImageBufferUsageType buf_usage;
+        if (spec.IsCubemap)
+            buf_usage = Specifications::ImageBufferUsageType::CUBEMAP;
+        else if (spec.Depth > 1)
+            buf_usage = Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE;
+        else
+            buf_usage = Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE;
+
+        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .Depth = spec.Depth, .BufferUsageType = buf_usage, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.Depth > 1 ? 1u : spec.LayerCount};
         buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
     }
 

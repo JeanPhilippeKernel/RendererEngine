@@ -26,6 +26,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 #include <ZEngine/Rendering/Primitives/Semaphore.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
 #include <ZEngine/Rendering/Primitives/ImageMemoryBarrier.h>
+#include <ZEngine/Rendering/Primitives/MemoryBarrier.h>
 #include <ZEngine/Rendering/ResourceTypes.h>
 #include <ZEngine/Rendering/Specifications/ShaderSpecification.h>
 #include <ZEngine/Rendering/Specifications/RenderPassSpecification.h>
@@ -167,6 +168,8 @@ namespace ZEngine::Hardwares
         void                              BindDescriptorSets(uint32_t frame_index = 0, const uint32_t* dynamic_offsets = nullptr, uint32_t dynamic_offset_count = 0);
         void                              BindDescriptorSet(const VkDescriptorSet& descriptor);
         void                              BindPipeline(Rendering::Renderers::Pipelines::IPipeline* const pipeline);
+        void                              Dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z);
+        void                              PipelineBarrier(const Rendering::Primitives::MemoryBarrier& barrier);
         void                              DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count);
         void                              DrawIndexedIndirect(VkBuffer buffer, uint32_t offset, uint32_t count);
         void                              DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);

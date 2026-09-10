@@ -6,27 +6,30 @@ namespace ZEngine::Rendering::Renderers
     {
         m_graph = graph;
 
-        // Register all sky backends. The graph will compile all of them; only one is enabled
-        // per frame based on the active SkyMode. All start disabled; ApplyMode enables the
-        // correct one. The graph is recompiled via Compile() on the first mode change.
-        graph->AddCallbackPass("Sky Sphere Pass", &m_skysphere_pass, true);
+        // Register all sky backends. The graph compiles all of them at startup; ApplyMode
+        // enables exactly one per frame. See issue #779 for runtime recompilation design.
+        graph->AddCallbackPass("Sky Atmosphere Pass", &m_atmosphere_pass, true);
+        graph->AddCallbackPass("Sky Sphere Pass", &m_skysphere_pass, false);
 
-        // Disable the legacy skybox pass — it is replaced by the new sky system.
+        // Disable the legacy skybox pass — replaced by the new sky system.
         graph->SetPassEnabled("Skybox Pass", false);
     }
 
     void SkySystem::SetConfig(const Sky::SkyConfig& cfg)
     {
-        m_mode_changed          = (cfg.Mode != m_config.Mode);
-        m_config                = cfg;
+        m_mode_changed              = (cfg.Mode != m_config.Mode);
+        m_config                    = cfg;
 
-        m_skysphere_pass.Config = cfg;
+        m_atmosphere_pass.Config    = cfg;
+        m_atmosphere_pass.LUTsDirty = m_mode_changed || m_atmosphere_pass.LUTsDirty;
+        m_skysphere_pass.Config     = cfg;
 
         ApplyMode();
     }
 
-    void SkySystem::Dispose()
+    void SkySystem::Dispose(Hardwares::VulkanDevicePtr device)
     {
+        m_atmosphere_pass.Deinitialize(device);
         m_graph = nullptr;
     }
 
@@ -35,6 +38,7 @@ namespace ZEngine::Rendering::Renderers
         if (!m_graph)
             return;
 
+        m_graph->SetPassEnabled("Sky Atmosphere Pass", m_config.Mode == Sky::SkyMode::Atmosphere);
         m_graph->SetPassEnabled("Sky Sphere Pass", m_config.Mode == Sky::SkyMode::SkySphere);
     }
 } // namespace ZEngine::Rendering::Renderers

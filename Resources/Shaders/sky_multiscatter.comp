@@ -1,0 +1,155 @@
+#version 460
+// Bruneton 2008 / Hillaire 2020 — multiple scattering LUT
+// Output: 32x32 RGBA16F
+//   Approximates the sum of all orders of scattering beyond the first.
+//   Uses the uniform-phase isotropic approximation from Hillaire 2020 §5.
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 64) in;
+
+layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D o_multiscatter;
+
+layout(set = 0, binding = 1) uniform UBAtmosphere
+{
+    vec4  RayleighScattering;
+    vec4  MieScattering;
+    vec4  MieAbsorption;
+    vec4  OzoneAbsorption;
+    float PlanetRadius;
+    float AtmosphereRadius;
+    float RayleighScaleHeight;
+    float MieScaleHeight;
+    float MieAnisotropy;
+    float OzoneLayerCentre;
+    float OzoneLayerWidth;
+    float SunIlluminanceScale;
+    vec4  SunDirection;
+    float SunAngularRadius;
+    float _pad0[3];
+    vec4  CameraPositionKm;
+    float _pad1[4];
+}
+Atmo;
+
+layout(set = 1, binding = 1) uniform sampler2D u_transmittance;
+
+shared vec3 s_lum[64];
+shared vec3 s_f_ms[64];
+
+// Sample transmittance LUT
+vec3        GetTransmittance(float altitude, float cos_view)
+{
+    float h_norm = clamp((altitude - Atmo.PlanetRadius) / (Atmo.AtmosphereRadius - Atmo.PlanetRadius), 0.0, 1.0);
+    vec2  uv     = vec2(cos_view * 0.5 + 0.5, h_norm);
+    return texture(u_transmittance, uv).rgb;
+}
+
+vec2 RaySphereIntersect(vec3 origin, vec3 dir, float radius)
+{
+    float b   = dot(origin, dir);
+    float c   = dot(origin, origin) - radius * radius;
+    float det = b * b - c;
+    if (det < 0.0)
+        return vec2(-1.0);
+    float sq = sqrt(det);
+    return vec2(-b - sq, -b + sq);
+}
+
+vec3 Scattering(float altitude_m)
+{
+    float h                = altitude_m - Atmo.PlanetRadius;
+    float rayleigh_density = exp(-h / Atmo.RayleighScaleHeight);
+    float mie_density      = exp(-h / Atmo.MieScaleHeight);
+    return Atmo.RayleighScattering.rgb * rayleigh_density + Atmo.MieScattering.rgb * mie_density;
+}
+
+vec3 Extinction(float altitude_m)
+{
+    float h                = altitude_m - Atmo.PlanetRadius;
+    float rayleigh_density = exp(-h / Atmo.RayleighScaleHeight);
+    float mie_density      = exp(-h / Atmo.MieScaleHeight);
+    float ozone_density    = max(0.0, 1.0 - abs(h - Atmo.OzoneLayerCentre) / (Atmo.OzoneLayerWidth * 0.5));
+    return Atmo.RayleighScattering.rgb * rayleigh_density + (Atmo.MieScattering.rgb + Atmo.MieAbsorption.rgb) * mie_density + Atmo.OzoneAbsorption.rgb * ozone_density;
+}
+
+void main()
+{
+    ivec2 coord     = ivec2(gl_WorkGroupID.xy);
+    ivec2 size      = imageSize(o_multiscatter);
+    uint  thread_id = gl_LocalInvocationID.z;
+
+    if (coord.x >= size.x || coord.y >= size.y)
+        return;
+
+    vec2  uv        = (vec2(coord) + 0.5) / vec2(size);
+    float altitude  = Atmo.PlanetRadius + uv.y * (Atmo.AtmosphereRadius - Atmo.PlanetRadius);
+    float cos_sun   = uv.x * 2.0 - 1.0;
+
+    // Distribute 64 ray directions uniformly over the sphere
+    float phi       = (float(thread_id) + 0.5) / 64.0 * 2.0 * 3.14159265;
+    float cos_theta = (float(thread_id) * 2.0 / 64.0) - 1.0 + 1.0 / 64.0;
+    float sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
+    vec3  dir       = vec3(sin_theta * cos(phi), cos_theta, sin_theta * sin(phi));
+
+    vec3  pos       = vec3(0.0, altitude, 0.0);
+    vec2  atmo_t    = RaySphereIntersect(pos, dir, Atmo.AtmosphereRadius);
+    float t_max     = max(atmo_t.x, atmo_t.y);
+    if (t_max < 0.0)
+        t_max = 0.0;
+    vec2 planet_t = RaySphereIntersect(pos, dir, Atmo.PlanetRadius);
+    if (planet_t.x > 0.0)
+        t_max = min(t_max, planet_t.x);
+
+    const int STEPS      = 20;
+    float     step_size  = t_max / float(STEPS);
+    vec3      lum        = vec3(0.0);
+    vec3      f_ms       = vec3(0.0);
+    vec3      throughput = vec3(1.0);
+
+    for (int i = 0; i < STEPS; ++i)
+    {
+        float t           = (float(i) + 0.5) * step_size;
+        vec3  sample_pos  = pos + dir * t;
+        float alt         = length(sample_pos);
+
+        vec3  sigma_s     = Scattering(alt);
+        vec3  sigma_t     = Extinction(alt);
+
+        // Sun transmittance at this point
+        vec3  to_sun      = normalize(vec3(sqrt(1.0 - cos_sun * cos_sun), cos_sun, 0.0));
+        float cos_v_sun   = dot(normalize(sample_pos), to_sun);
+        vec3  T_sun       = GetTransmittance(alt, cos_v_sun);
+
+        vec3  s           = sigma_s * T_sun * (1.0 / (4.0 * 3.14159265));
+        vec3  s_f         = sigma_s * (1.0 / (4.0 * 3.14159265));
+
+        lum              += throughput * s * step_size;
+        f_ms             += throughput * s_f * step_size;
+
+        vec3 new_through  = throughput * exp(-sigma_t * step_size);
+        throughput        = new_through;
+    }
+
+    s_lum[thread_id]  = lum;
+    s_f_ms[thread_id] = f_ms;
+
+    barrier();
+
+    // Reduce across 64 threads
+    for (uint stride = 32; stride > 0; stride >>= 1)
+    {
+        if (thread_id < stride)
+        {
+            s_lum[thread_id]  += s_lum[thread_id + stride];
+            s_f_ms[thread_id] += s_f_ms[thread_id + stride];
+        }
+        barrier();
+    }
+
+    if (thread_id == 0)
+    {
+        vec3 f_ms_val = s_f_ms[0] / 64.0;
+        vec3 lum_val  = s_lum[0] / 64.0;
+        vec3 ms       = lum_val / max(vec3(1e-7), vec3(1.0) - f_ms_val);
+        imageStore(o_multiscatter, coord, vec4(ms, 1.0));
+    }
+}

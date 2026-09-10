@@ -57,7 +57,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
-        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Sky::SkySpherePush), &pc);
+        command_buffer->PushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Sky::SkySpherePush), &pc);
         command_buffer->Draw(3, 1, 0, 0);
         command_buffer->EndRenderPass();
     }

@@ -58,6 +58,7 @@ namespace ZEngine::Rendering::Specifications
         uint32_t OverloadPoolSize = 0;
         cstring  VertexFilename   = {};
         cstring  FragmentFilename = {};
+        cstring  ComputeFilename  = {};
         cstring  Name             = {};
     };
 } // namespace ZEngine::Rendering::Specifications
