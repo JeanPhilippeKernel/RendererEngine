@@ -106,7 +106,7 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreateModule()
     {
-        Scope<spirv_cross::Compiler> spirv_compiler = nullptr;
+        auto scratch = ZGetScratch(m_device->Arena);
 
         /*
          * Vertex Shader processing
@@ -115,7 +115,7 @@ namespace ZEngine::Rendering::Shaders
         {
             auto&                    shader_create_info_collection = ShaderCreateInfos.push_use({});
             auto&                    shader_module                 = ShaderModules.push_use({});
-            std::vector<uint32_t>    vertex_shader_binary_code     = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.VertexFilename);
+            Array<uint32_t>          vertex_shader_binary_code     = Rendering::Shaders::ShaderReader::ReadAsBinary(scratch.Arena, m_specification.VertexFilename);
             VkShaderModuleCreateInfo vertex_shader_create_info     = {};
             vertex_shader_create_info.sType                        = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             vertex_shader_create_info.codeSize                     = vertex_shader_binary_code.size() * sizeof(uint32_t);
@@ -128,7 +128,7 @@ namespace ZEngine::Rendering::Shaders
             /*
              * Source Reflection
              */
-            spirv_compiler                       = CreateScope<spirv_cross::Compiler>(vertex_shader_binary_code);
+            auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(vertex_shader_binary_code.data(), vertex_shader_binary_code.size());
             auto vertex_resources                = spirv_compiler->get_shader_resources();
             for (const auto& UB_resource : vertex_resources.uniform_buffers)
             {
@@ -199,7 +199,7 @@ namespace ZEngine::Rendering::Shaders
         {
             auto&                    shader_create_info_collection = ShaderCreateInfos.push_use({});
             auto&                    shader_module                 = ShaderModules.push_use({});
-            std::vector<uint32_t>    fragment_shader_binary_code   = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.FragmentFilename);
+            Array<uint32_t>          fragment_shader_binary_code   = Rendering::Shaders::ShaderReader::ReadAsBinary(scratch.Arena, m_specification.FragmentFilename);
             VkShaderModuleCreateInfo fragment_shader_create_info   = {};
             fragment_shader_create_info.sType                      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             fragment_shader_create_info.codeSize                   = fragment_shader_binary_code.size() * sizeof(uint32_t);
@@ -212,7 +212,7 @@ namespace ZEngine::Rendering::Shaders
             /*
              * Source Reflection
              */
-            spirv_compiler                       = CreateScope<spirv_cross::Compiler>(fragment_shader_binary_code);
+            auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(fragment_shader_binary_code.data(), fragment_shader_binary_code.size());
             auto fragment_resources              = spirv_compiler->get_shader_resources();
             for (const auto& UB_resource : fragment_resources.uniform_buffers)
             {
@@ -399,6 +399,69 @@ namespace ZEngine::Rendering::Shaders
                 LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
             }
         }
+
+        if (Helpers::secure_strlen(m_specification.ComputeFilename))
+        {
+            auto&                    shader_create_info_collection = ShaderCreateInfos.push_use({});
+            auto&                    shader_module                 = ShaderModules.push_use({});
+            Array<uint32_t>          compute_shader_binary_code    = Rendering::Shaders::ShaderReader::ReadAsBinary(scratch.Arena, m_specification.ComputeFilename);
+            VkShaderModuleCreateInfo compute_shader_create_info    = {};
+            compute_shader_create_info.sType                       = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            compute_shader_create_info.codeSize                    = compute_shader_binary_code.size() * sizeof(uint32_t);
+            compute_shader_create_info.pCode                       = compute_shader_binary_code.data();
+            ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(m_device->LogicalDevice, &compute_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
+            shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shader_create_info_collection.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
+            shader_create_info_collection.module = shader_module;
+            shader_create_info_collection.pName  = "main";
+
+            auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(compute_shader_binary_code.data(), compute_shader_binary_code.size());
+            auto compute_resources               = spirv_compiler->get_shader_resources();
+            for (const auto& UB_resource : compute_resources.uniform_buffers)
+            {
+                uint32_t set     = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationBinding);
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+
+                auto name_c_size = UB_resource.name.size() + 1u;
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, UB_resource.name.c_str());
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::COMPUTE});
+            }
+
+            for (const auto& SB_resource : compute_resources.storage_buffers)
+            {
+                uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+
+                auto name_c_size = SB_resource.name.size() + 1u;
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, SB_resource.name.c_str());
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::COMPUTE});
+            }
+
+            for (const auto& push_constant_resource : compute_resources.push_constant_buffers)
+            {
+                const spirv_cross::SPIRType& type = spirv_compiler->get_type(push_constant_resource.base_type_id);
+                if (type.basetype != spirv_cross::SPIRType::Struct)
+                    continue;
+
+                uint32_t struct_total_size = 0;
+                for (uint32_t i = 0; i < type.member_types.size(); ++i)
+                    struct_total_size += spirv_compiler->get_declared_struct_member_size(type, i);
+
+                auto name_c_size = push_constant_resource.name.size() + 1u;
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, push_constant_resource.name.c_str());
+                const uint32_t struct_offset = PushConstantSpecifications.empty() ? 0 : PushConstantSpecifications.back().Offset + PushConstantSpecifications.back().Size;
+                PushConstantSpecifications.push(PushConstantSpecification{.Name = name_c_str, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::COMPUTE});
+            }
+        }
+
+        ZReleaseScratch(scratch);
     }
 
     Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(cstring name)

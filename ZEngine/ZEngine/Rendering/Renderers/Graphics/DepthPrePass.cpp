@@ -13,6 +13,9 @@ namespace ZEngine::Rendering::Renderers
     {
         uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
         uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->ReadBuffer(RendererBufferName::Transform, "TransformSB");
+        res_builder->ReadBuffer(RendererBufferName::RenderData, "DrawDataSB");
+        res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
         res_builder->WriteDepthAttachment(RendererResourceName::FrameDepthRenderTargetName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
     }
 
@@ -52,7 +55,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
-        command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
+        command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->IndirectCommandCount);
         command_buffer->EndRenderPass();
     }
 } // namespace ZEngine::Rendering::Renderers

@@ -13,6 +13,10 @@ namespace ZEngine::Rendering::Renderers
     {
         uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
         uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->ReadBuffer(RendererBufferName::Transform, "TransformSB");
+        res_builder->ReadBuffer(RendererBufferName::RenderData, "DrawDataSB");
+        res_builder->ReadBuffer(RendererBufferName::Material, "MatSB");
+        res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
         res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
@@ -52,7 +56,7 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
             command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
-            command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
+            command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->IndirectCommandCount);
         }
         command_buffer->EndRenderPass();
     }

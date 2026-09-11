@@ -6,20 +6,21 @@ namespace ZEngine::Rendering::Specifications
 {
     struct TextureSpecification
     {
-        bool          IsUsageSampled    = true;
-        bool          IsUsageStorage    = false;
-        bool          IsUsageTransfert  = true;
+        bool          IsUsageSampled        = true;
+        bool          IsUsageStorage        = false;
+        bool          IsUsageTransfert      = true;
+        bool          IsUsageTransferSource = false;
         /*Deprecated property - please avoid using it*/
-        bool          PerformTransition = true;
-        bool          IsCubemap         = false;
-        uint32_t      Width             = 0;
-        uint32_t      Height            = 0;
-        uint32_t      BytePerPixel      = 4;
-        uint32_t      LayerCount        = 1;
-        ImageFormat   Format            = ImageFormat::UNDEFINED;
-        LoadOperation LoadOp            = LoadOperation::CLEAR;
+        bool          PerformTransition     = true;
+        bool          IsCubemap             = false;
+        uint32_t      Width                 = 0;
+        uint32_t      Height                = 0;
+        uint32_t      BytePerPixel          = 4;
+        uint32_t      LayerCount            = 1;
+        ImageFormat   Format                = ImageFormat::UNDEFINED;
+        LoadOperation LoadOp                = LoadOperation::CLEAR;
         /*Deprecated property - please avoid using it*/
-        const void*   Data              = nullptr;
+        const void*   Data                  = nullptr;
     };
 
     enum class ImageBufferUsageType

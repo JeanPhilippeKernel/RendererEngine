@@ -1467,7 +1467,7 @@ namespace ZEngine::Rendering
     void RenderResourceManager::ClearAsyncUploads()
     {
         m_async_uploads.Clear();
-        m_device->AsyncGPUOperations.Clear();
+        m_device->AsyncGPUOperations.clear();
     }
 
     void RenderResourceManager::ResetTextureTimelines()

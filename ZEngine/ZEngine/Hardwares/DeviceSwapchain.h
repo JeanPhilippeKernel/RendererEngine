@@ -34,6 +34,13 @@ namespace ZEngine::Hardwares
     };
     ZDEFINE_PTR(FrameContext);
 
+    struct FrameAsyncOperation
+    {
+        VkPipelineStageFlags2             StageFlags  = 0;
+        uint64_t                          SignalValue = 0;
+        Rendering::Primitives::Semaphore* Timeline    = nullptr;
+    };
+
     struct DeviceSwapchain
     {
         Core::Memory::ArenaAllocator                               Arena                          = {};
@@ -64,6 +71,9 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
         Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
+        // Render-thread-owned snapshot of asynchronous GPU work relevant to the
+        // current frame. Both graph batches and Present() consume this list.
+        Core::Containers::Array<FrameAsyncOperation>               FrameAsyncOperations           = {};
 
         // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
         // zero-size surface). Callers must skip all rendering work for that frame.
@@ -78,6 +88,7 @@ namespace ZEngine::Hardwares
         void Dispose();
 
         void AcquireNextImage(uint32_t frame_context_idx);
+        void CollectAsyncGPUOperations();
         void Present();
 
 #if !defined(NDEBUG)

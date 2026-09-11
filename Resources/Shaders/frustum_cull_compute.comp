@@ -1,0 +1,54 @@
+#version 460
+
+// A fixed-size GPU culling list is used deliberately. Writing a zero
+// instanceCount for a rejected candidate keeps the path portable across Vulkan
+// implementations, including MoltenVK, without VK_KHR_draw_indirect_count.
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct CullingInput
+{
+    vec4  WorldBounds; // xyz = sphere center; w <= 0 = always visible
+    uvec4 Command;     // VkDrawIndirectCommand packed as four uints
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer CullingInputSB
+{
+    CullingInput Inputs[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer CulledIndirectSB
+{
+    uvec4 Commands[];
+};
+
+layout(push_constant) uniform FrustumCullingPushConstants
+{
+    vec4 FrustumPlanes[6];
+    uint DrawCount;
+    uint Padding[3];  // scalar array: 4-byte stride in std430, no alignment gap — matches C++ uint32_t Padding[3]
+} Push;
+
+bool SphereInFrustum(vec4 bounds)
+{
+    if (bounds.w <= 0.0)
+        return true;
+
+    for (uint i = 0; i < 6; ++i)
+    {
+        vec4 plane = Push.FrustumPlanes[i];
+        if (dot(plane.xyz, bounds.xyz) + plane.w < -bounds.w)
+            return false;
+    }
+    return true;
+}
+
+void main()
+{
+    const uint index = gl_GlobalInvocationID.x;
+    if (index >= Push.DrawCount)
+        return;
+
+    uvec4 command = Inputs[index].Command;
+    command.y = SphereInFrustum(Inputs[index].WorldBounds) ? command.y : 0u;
+    Commands[index] = command;
+}

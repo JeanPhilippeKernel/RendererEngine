@@ -26,5 +26,9 @@ namespace ZEngine::Rendering::Specifications
         Core::Containers::UnorderedHashMap<const char*, Textures::TextureHandle> InputTextures           = {};
         Core::Containers::Array<Specifications::TextureSpecification>            Outputs                 = {};
         Core::Containers::Array<Textures::TextureHandle>                         ExternalOutputs         = {};
+        // One entry per ExternalOutputs item. Load behaviour belongs to a pass use,
+        // rather than to the backing texture: the same image may be cleared by its
+        // first writer and loaded by later overlay passes.
+        Core::Containers::Array<LoadOperation>                                   ExternalOutputLoadOps   = {};
     };
 } // namespace ZEngine::Rendering::Specifications

@@ -6,7 +6,9 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    struct IComputeCallbackPass : public IRenderGraphCallbackPass
+    // Compute work recorded inline in the render graph batch selected for the pass.
+    // RenderGraph::Execute deliberately does not require a framebuffer for this pass type.
+    struct IInlineComputePass : public IRenderGraphCallbackPass
     {
         void             Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) final;
         void             Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) final;

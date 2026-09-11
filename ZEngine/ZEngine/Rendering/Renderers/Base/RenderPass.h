@@ -49,6 +49,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         bool                               Verify() override;
 
         void                               SetStorageBuffer(std::string_view name, const Core::Memory::BufferView* buffer);
+        void                               SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
         void                               SetDynamicUniform(std::string_view name, VkDeviceSize range);
         void                               SetTexture(std::string_view name, const Textures::TextureHandle& texture);
         void                               SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
@@ -78,6 +79,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                        Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
         void                        Dispose() override;
         void                        Bake() override;
+        void                        SetStorageBuffer(cstring name, const Core::Memory::BufferView* buffer);
+        void                        SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
 
     private:
         Hardwares::VulkanDevice* m_device = nullptr;
@@ -112,6 +115,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         RenderPassBuilder&                      UseShader(std::string_view name);
         RenderPassBuilder&                      UseComputeShader(cstring name, uint32_t push_constant_size = 0);
+        RenderPassBuilder&                      UseRenderTarget(const Textures::TextureHandle& target, Specifications::LoadOperation load_op);
+        // Compatibility overload for callers outside the render graph. New graph
+        // declarations always provide their own per-pass load operation.
         RenderPassBuilder&                      UseRenderTarget(const Textures::TextureHandle& target);
         RenderPassBuilder&                      AddRenderTarget(const Specifications::TextureSpecification& target_spec);
         RenderPassBuilder&                      AddInputAttachment(const Textures::TextureHandle& target);

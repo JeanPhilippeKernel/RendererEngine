@@ -111,7 +111,7 @@ namespace ZEngine::Hardwares
 #endif
 
         Array<const char*> enabled_extension_layer_name_collection;
-        enabled_extension_layer_name_collection.init(scratch.Arena, 5);
+        enabled_extension_layer_name_collection.init(scratch.Arena, 16);
 
         for (LayerProperty* const layer : selected_layer_property_collection)
         {
@@ -129,6 +129,40 @@ namespace ZEngine::Hardwares
             for (const auto& extension : window->RequiredExtensionLayers)
             {
                 enabled_extension_layer_name_collection.push(extension);
+            }
+        }
+
+        // GPU debug labels are useful independently of validation layers (for
+        // RenderDoc, Xcode GPU Frame Capture, and RenderDoc on Linux/Windows).
+        // Enable the instance extension only when the loader advertises it.
+        uint32_t global_extension_count = 0;
+        if (vkEnumerateInstanceExtensionProperties(nullptr, &global_extension_count, nullptr) == VK_SUCCESS && global_extension_count > 0)
+        {
+            Array<VkExtensionProperties> global_extensions;
+            global_extensions.init(scratch.Arena, global_extension_count, global_extension_count);
+            if (vkEnumerateInstanceExtensionProperties(nullptr, &global_extension_count, global_extensions.data()) == VK_SUCCESS)
+            {
+                bool debug_utils_available = false;
+                for (const auto& extension : global_extensions)
+                {
+                    if (Helpers::secure_strcmp(extension.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
+                    {
+                        debug_utils_available = true;
+                        break;
+                    }
+                }
+
+                bool debug_utils_enabled = false;
+                for (const char* extension : enabled_extension_layer_name_collection)
+                {
+                    if (Helpers::secure_strcmp(extension, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
+                    {
+                        debug_utils_enabled = true;
+                        break;
+                    }
+                }
+                if (debug_utils_available && !debug_utils_enabled)
+                    enabled_extension_layer_name_collection.push(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             }
         }
 
@@ -304,7 +338,13 @@ namespace ZEngine::Hardwares
         VkQueueFamilyProperties queue_family_properties = {};
         for (size_t index = 0; index < physical_device_queue_family_count; ++index)
         {
-            if (physical_device_queue_family_collection[index].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            const VkQueueFlags flags = physical_device_queue_family_collection[index].queueFlags;
+            // Prefer a compute-capable family that does not also run graphics.
+            // A compute-only queue can overlap independent graph work with graphics.
+            if ((flags & VK_QUEUE_COMPUTE_BIT) && !(flags & VK_QUEUE_GRAPHICS_BIT) && ComputeFamilyIndex == std::numeric_limits<uint32_t>::max())
+                ComputeFamilyIndex = static_cast<uint32_t>(index);
+
+            if (flags & VK_QUEUE_GRAPHICS_BIT)
             {
                 // Ensuring presentation support
                 if (Surface)
@@ -332,10 +372,19 @@ namespace ZEngine::Hardwares
             }
         }
 
+        // Graphics-capable queues support compute; transfer support is guaranteed by
+        // Vulkan for graphics queues. These fallbacks cover devices with no dedicated
+        // transfer or compute family without creating an invalid queue-create entry.
+        if (TransferFamilyIndex == std::numeric_limits<uint32_t>::max())
+            TransferFamilyIndex = GraphicFamilyIndex;
+        if (ComputeFamilyIndex == std::numeric_limits<uint32_t>::max())
+            ComputeFamilyIndex = GraphicFamilyIndex;
+
         HasSeperateTransfertQueueFamily                             = GraphicFamilyIndex != TransferFamilyIndex;
+        HasSeparateComputeQueueFamily                               = GraphicFamilyIndex != ComputeFamilyIndex;
 
         const float                    queue_prorities[]            = {1.0f};
-        auto                           family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex};
+        auto                           family_index_collection      = std::set{GraphicFamilyIndex, TransferFamilyIndex, ComputeFamilyIndex};
         Array<VkDeviceQueueCreateInfo> queue_create_info_collection = {};
         queue_create_info_collection.init(scratch.Arena, family_index_collection.size());
         for (uint32_t queue_family_index : family_index_collection)
@@ -402,6 +451,11 @@ namespace ZEngine::Hardwares
 
         ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
 
+        // Debug labels are optional tooling. Loading the commands after device
+        // creation lets callers use one portable no-op wrapper on all platforms.
+        __beginDebugLabelPtr  = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(vkGetDeviceProcAddr(LogicalDevice, "vkCmdBeginDebugUtilsLabelEXT"));
+        __endDebugLabelPtr    = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(vkGetDeviceProcAddr(LogicalDevice, "vkCmdEndDebugUtilsLabelEXT"));
+
         /*Create Vulkan Graphic Queue*/
         VkQueue graphic_queue = VK_NULL_HANDLE;
         vkGetDeviceQueue(LogicalDevice, GraphicFamilyIndex, 0, &graphic_queue);
@@ -413,6 +467,13 @@ namespace ZEngine::Hardwares
             VkQueue transfer_queue = VK_NULL_HANDLE;
             vkGetDeviceQueue(LogicalDevice, TransferFamilyIndex, 0, &transfer_queue);
             m_queue_map.insert(Rendering::QueueType::TRANSFER_QUEUE, std::move(transfer_queue));
+        }
+
+        if (HasSeparateComputeQueueFamily)
+        {
+            VkQueue compute_queue = VK_NULL_HANDLE;
+            vkGetDeviceQueue(LogicalDevice, ComputeFamilyIndex, 0, &compute_queue);
+            m_queue_map.insert(Rendering::QueueType::COMPUTE_QUEUE, std::move(compute_queue));
         }
 
         /* Surface format selection */
@@ -822,6 +883,22 @@ namespace ZEngine::Hardwares
         return true;
     }
 
+    bool VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, const VkSemaphoreSubmitInfo* wait_infos, uint32_t wait_info_count)
+    {
+        ZENGINE_VALIDATE_ASSERT(command_buffer->GetState() == CommandBufferState::Executable, "Command buffer must be in executable state to be submitted.")
+        ZENGINE_VALIDATE_ASSERT(signal_semaphore && signal_semaphore->IsTimeline, "Signal semaphore must be a timeline semaphore.")
+
+        VkCommandBufferSubmitInfo command_info  = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, .commandBuffer = command_buffer->GetHandle()};
+        VkSemaphoreSubmitInfo     signal_info   = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, .semaphore = signal_semaphore->GetHandle(), .value = signal_value, .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
+        VkSubmitInfo2             submit_info   = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2, .waitSemaphoreInfoCount = wait_info_count, .pWaitSemaphoreInfos = wait_infos, .commandBufferInfoCount = 1, .pCommandBufferInfos = &command_info, .signalSemaphoreInfoCount = 1, .pSignalSemaphoreInfos = &signal_info};
+        VkResult                  submit_result = vkQueueSubmit2(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
+        if (CheckDeviceLost(submit_result, "QueueSubmit (timeline waits)"))
+            return false;
+        ZENGINE_VALIDATE_ASSERT(submit_result == VK_SUCCESS, "Failed to submit queue")
+        command_buffer->SetState(CommandBufferState::Pending);
+        return true;
+    }
+
     bool VulkanDevice::QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, Rendering::Primitives::Fence* const fence)
     {
         if (fence)
@@ -888,22 +965,27 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::QueueWait(Rendering::QueueType type)
     {
-        if (!HasSeperateTransfertQueueFamily)
+        ZENGINE_VALIDATE_ASSERT(type != QueueType::COUNT, "QueueType::COUNT is not a Vulkan queue")
+        if (type == QueueType::TRANSFER_QUEUE && !HasSeperateTransfertQueueFamily)
         {
             type = QueueType::GRAPHIC_QUEUE;
         }
+        if (type == QueueType::COMPUTE_QUEUE && !HasSeparateComputeQueueFamily)
+            type = QueueType::GRAPHIC_QUEUE;
         ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(m_queue_map.at(type)) == VK_SUCCESS, "Failed to wait on queue")
     }
 
     QueueView VulkanDevice::GetQueue(Rendering::QueueType type)
     {
-        // m_queue_map only has a TRANSFER_QUEUE entry when HasSeperateTransfertQueueFamily is
-        // true — fall back to GRAPHIC_QUEUE for both the family index and the map lookup,
-        // mirroring QueueWait's guard.
+        ZENGINE_VALIDATE_ASSERT(type != QueueType::COUNT, "QueueType::COUNT is not a Vulkan queue")
+        // Dedicated queue map entries exist only for distinct families. Fall back to
+        // graphics for both the family index and map lookup otherwise.
         if (type == QueueType::TRANSFER_QUEUE && !HasSeperateTransfertQueueFamily)
         {
             type = QueueType::GRAPHIC_QUEUE;
         }
+        if (type == QueueType::COMPUTE_QUEUE && !HasSeparateComputeQueueFamily)
+            type = QueueType::GRAPHIC_QUEUE;
 
         uint32_t queue_family_index = 0;
         switch (type)
@@ -914,6 +996,11 @@ namespace ZEngine::Hardwares
             case ZEngine::Rendering::QueueType::TRANSFER_QUEUE:
                 queue_family_index = TransferFamilyIndex;
                 break;
+            case ZEngine::Rendering::QueueType::COMPUTE_QUEUE:
+                queue_family_index = ComputeFamilyIndex;
+                break;
+            case ZEngine::Rendering::QueueType::COUNT:
+                break;
         }
         return QueueView{.FamilyIndex = queue_family_index, .Handle = m_queue_map.at(type)};
     }
@@ -921,7 +1008,32 @@ namespace ZEngine::Hardwares
     void VulkanDevice::QueueWaitAll()
     {
         QueueWait(Rendering::QueueType::TRANSFER_QUEUE);
+        QueueWait(Rendering::QueueType::COMPUTE_QUEUE);
         QueueWait(Rendering::QueueType::GRAPHIC_QUEUE);
+    }
+
+    void VulkanDevice::BeginDebugLabel(VkCommandBuffer command_buffer, cstring name) const
+    {
+        // The messenger is created only when VK_EXT_debug_utils was enabled for
+        // this instance. Do not call an extension command merely because a
+        // loader exposed its function pointer.
+        if (m_debug_messenger == VK_NULL_HANDLE || !__beginDebugLabelPtr || command_buffer == VK_NULL_HANDLE)
+            return;
+
+        VkDebugUtilsLabelEXT label = {};
+        label.sType                 = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        label.pLabelName            = name ? name : "RenderGraph pass";
+        label.color[0]              = 0.20f;
+        label.color[1]              = 0.55f;
+        label.color[2]              = 0.95f;
+        label.color[3]              = 1.00f;
+        __beginDebugLabelPtr(command_buffer, &label);
+    }
+
+    void VulkanDevice::EndDebugLabel(VkCommandBuffer command_buffer) const
+    {
+        if (m_debug_messenger != VK_NULL_HANDLE && __endDebugLabelPtr && command_buffer != VK_NULL_HANDLE)
+            __endDebugLabelPtr(command_buffer);
     }
 
     bool VulkanDevice::CheckDeviceLost(VkResult result, const char* where)
@@ -1192,6 +1304,7 @@ namespace ZEngine::Hardwares
 
             try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_vertex.spv", spec.Name), spec.VertexFilename);
             try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_fragment.spv", spec.Name), spec.FragmentFilename);
+            try_set(fmt::format("/ZodiacEngine/Shaders/Cache/{}_compute.spv", spec.Name), spec.ComputeFilename);
 
             shader->Initialize(this, spec);
         }
@@ -1504,6 +1617,13 @@ namespace ZEngine::Hardwares
         }
     }
 
+    void CommandBuffer::Dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+        if (group_count_x > 0 && group_count_y > 0 && group_count_z > 0)
+            vkCmdDispatch(m_command_buffer, group_count_x, group_count_y, group_count_z);
+    }
+
     void CommandBuffer::DrawIndexed(uint32_t index_count, uint32_t instanceCount, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
@@ -1516,6 +1636,23 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
         vkCmdDraw(m_command_buffer, vertex_count, instance_count, first_index, first_instance);
+    }
+
+    void CommandBuffer::PipelineBarrier2(const VkDependencyInfo& dependency_info)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
+
+        vkCmdPipelineBarrier2(m_command_buffer, &dependency_info);
+    }
+
+    void CommandBuffer::BeginDebugLabel(cstring name)
+    {
+        Device->BeginDebugLabel(m_command_buffer, name);
+    }
+
+    void CommandBuffer::EndDebugLabel()
+    {
+        Device->EndDebugLabel(m_command_buffer);
     }
 
     void CommandBuffer::TransitionImageLayout(const Rendering::Primitives::ImageMemoryBarrier& image_barrier)
@@ -1713,7 +1850,8 @@ namespace ZEngine::Hardwares
         resource->IsDepthTexture        = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
 
         uint32_t storage_bit            = spec.IsUsageStorage ? VK_IMAGE_USAGE_STORAGE_BIT : 0;
-        uint32_t transfert_bit          = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
+        uint32_t transfert_dst_bit      = spec.IsUsageTransfert ? VK_IMAGE_USAGE_TRANSFER_DST_BIT : 0;
+        uint32_t transfert_src_bit      = spec.IsUsageTransferSource ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0;
         uint32_t sampled_bit            = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
         uint32_t image_aspect           = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
         uint32_t image_usage_attachment = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -1721,7 +1859,7 @@ namespace ZEngine::Hardwares
         VkFormat image_format            = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? device->FindDepthFormat() : Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
         buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .LayerCount = spec.LayerCount};
-        buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_bit | sampled_bit | storage_bit);
+        buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_dst_bit | transfert_src_bit | sampled_bit | storage_bit);
     }
 
     Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec)
@@ -1877,7 +2015,7 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& operation)
     {
-        AsyncGPUOperations.Enqueue(operation);
+        ZENGINE_VALIDATE_ASSERT(AsyncGPUOperations.push(operation), "Async GPU operation queue overflow")
     }
 
     void VulkanDevice::EnqueueDeferredAsyncGPUOperation(const AsyncGPUOperationHandle& operation)

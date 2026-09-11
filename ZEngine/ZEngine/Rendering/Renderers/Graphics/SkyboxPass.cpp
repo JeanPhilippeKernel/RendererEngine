@@ -9,6 +9,30 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
+    bool SkyboxPass::ConfigureEnvironmentMap(cstring path)
+    {
+        EnvMapPath = path;
+        if (!EnvMapPath || EnvMapPath[0] == '\0')
+            return false;
+
+        auto* rrm = ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->RenderResourceManager : nullptr;
+        if (!rrm)
+        {
+            ZENGINE_CORE_ERROR("[SkyboxPass] RenderResourceManager not available — cannot load environment map")
+            return false;
+        }
+
+        auto handle = rrm->SubmitTextureFile(EnvMapPath, m_env_map);
+        if (!handle.Valid())
+        {
+            ZENGINE_CORE_ERROR("[SkyboxPass] Failed to submit environment map '{}'", EnvMapPath)
+            return false;
+        }
+
+        m_env_map = handle;
+        return true;
+    }
+
     void SkyboxPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
     {
         // DrawVertex layout: x y z nx ny nz u v (8 floats = 32 bytes)
@@ -42,14 +66,10 @@ namespace ZEngine::Rendering::Renderers
         }
 
         if (env_map_available)
-        {
-            auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
-            if (rrm)
-                m_env_map = rrm->SubmitTextureFile(EnvMapPath);
-        }
+            ConfigureEnvironmentMap(EnvMapPath);
 
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {});
+        res_builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
     }
 
     void SkyboxPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)

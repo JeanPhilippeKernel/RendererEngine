@@ -59,7 +59,7 @@ outputs changed size.
 ```cpp
 struct RGResourceHandle {
     uint32_t Index   = UINT32_MAX;
-    uint32_t Version = 0;           // incremented on each write to detect read-after-write
+    uint32_t Version = 0;           // incremented on each write; reads bind to that version
 
     bool Valid() const { return Index != UINT32_MAX; }
 };
@@ -140,10 +140,9 @@ struct RGPass {
     Core::Containers::Array<RGPassResource> Reads;   // inputs
     Core::Containers::Array<RGPassResource> Writes;  // outputs
 
-    // Filled by Compile() — the full barrier batch to emit before Execute().
-    Core::Containers::Array<VkImageMemoryBarrier>  ImageBarriers;
-    VkPipelineStageFlags                           BarrierSrcStage = 0;
-    VkPipelineStageFlags                           BarrierDstStage = 0;
+    // Filled by Compile(). VkImage and source state are stamped at Execute(),
+    // since imported images and prior-frame layouts are runtime state.
+    Core::Containers::Array<RGImageBarrierPlan> BarrierPlans;
 };
 ```
 
@@ -365,104 +364,76 @@ constexpr RGAccessInfo kAccessTable[] = {
 };
 ```
 
-### 6.3 Barrier build loop (runs once in Compile())
+### 6.3 Barrier-plan build loop (runs once in Compile())
 
 ```cpp
-for (uint32_t i = 0; i < Passes.size(); ++i) {
-    RGPass& pass = Passes[i];
+for (uint32_t order = 0; order < SortedPassIndices.size(); ++order) {
+    RGPass& pass = Passes[SortedPassIndices[order]];
+    if (!pass.Enabled) continue;
 
-    VkPipelineStageFlags srcStage = 0;
-    VkPipelineStageFlags dstStage = 0;
+    auto recordTransition = [&](const RGPassResource& use) {
+        RGResource& res = Resources[use.Handle.Index];
+        const RGResourceState dst = kAccessTable[(int)use.Access];
+        bool discard = res.Transient && res.FirstPassIndex == order;
 
-    // Collect all image barriers needed before this pass executes.
-    for (auto& rd : pass.Reads) {
-        RGResource& res  = Resources[rd.Handle.Index];
-        RGAccessInfo dst = kAccessTable[(int)rd.Access];
+        // A write after any access requires ordering. Same-layout reads do not;
+        // their stage masks are merged so a later write waits for all readers.
+        if (!discard && !NeedsImageBarrier(res.CurrentState, dst)) {
+            MergeReadState(res.CurrentState, dst);
+            return;
+        }
 
-        // Only emit a barrier if layout or access changes.
-        if (res.CurrentState.Layout == dst.Layout &&
-            res.CurrentState.Access == dst.Access)
-            continue;
-
-        VkImageMemoryBarrier barrier = {};
-        barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.oldLayout           = res.CurrentState.Layout;
-        barrier.newLayout           = dst.Layout;
-        barrier.srcAccessMask       = res.CurrentState.Access;
-        barrier.dstAccessMask       = dst.Access;
-        // Aliased resources always transition from UNDEFINED on first use,
-        // discarding stale contents from the previous alias owner.
-        if (res.FirstPassIndex == i)
-            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barrier.image               = GetVkImage(res.TextureHandle);
-        barrier.subresourceRange    = FullSubresourceRange(res);
-
-        pass.ImageBarriers.push(barrier);
-        srcStage |= res.CurrentState.Stage;
-        dstStage |= dst.Stage;
-
-        res.CurrentState = { dst.Stage, dst.Access, dst.Layout };
-    }
-
-    for (auto& wr : pass.Writes) {
-        RGResource& res  = Resources[wr.Handle.Index];
-        RGAccessInfo dst = kAccessTable[(int)wr.Access];
-
-        if (res.CurrentState.Layout == dst.Layout &&
-            res.CurrentState.Access == dst.Access)
-            continue;
-
-        VkImageMemoryBarrier barrier = {};
-        barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.oldLayout           = res.CurrentState.Layout;
-        barrier.newLayout           = dst.Layout;
-        barrier.srcAccessMask       = res.CurrentState.Access;
-        barrier.dstAccessMask       = dst.Access;
-        if (res.FirstPassIndex == i)
-            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        barrier.image               = GetVkImage(res.TextureHandle);
-        barrier.subresourceRange    = FullSubresourceRange(res);
-
-        pass.ImageBarriers.push(barrier);
-        srcStage |= res.CurrentState.Stage;
-        dstStage |= dst.Stage;
-
-        res.CurrentState = { dst.Stage, dst.Access, dst.Layout };
-    }
-
-    // Fallback: if no barriers needed, stage masks remain zero.
-    // Guard against the degenerate case (TOP_OF_PIPE | 0).
-    if (srcStage == 0) srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    if (dstStage == 0) dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-
-    pass.BarrierSrcStage = srcStage;
-    pass.BarrierDstStage = dstStage;
+        pass.BarrierPlans.push({ use.Handle.Index, dst, discard });
+        res.CurrentState = dst;
+    };
+    for (const RGPassResource& write : pass.Writes) recordTransition(write);
+    for (const RGPassResource& read : pass.Reads) recordTransition(read);
 }
 ```
 
-The barrier arrays are arena-allocated once per Compile() call. Execute() just reads them.
+The plan arrays are arena-allocated once per Compile(). They intentionally do not contain
+`VkImage`, `oldLayout`, or source masks: an imported resource can be rebound and the old
+state is determined by the actual preceding frame. Execution stamps those fields without
+re-deriving graph accesses.
 
 ### 6.4 Execute loop — barrier emission
 
 ```cpp
 void RenderGraph::Execute(Hardwares::CommandBufferPtr cb)
 {
-    for (uint32_t i = 0; i < Passes.size(); ++i) {
-        RGPass& pass = Passes[i];
+    for (uint32_t i = 0; i < SortedPassIndices.size(); ++i) {
+        RGPass& pass = Passes[SortedPassIndices[i]];
 
         if (!pass.Enabled) continue;
 
-        // Emit the pre-computed barrier batch — one vkCmdPipelineBarrier call.
-        if (!pass.ImageBarriers.empty()) {
+        Array<VkImageMemoryBarrier> barriers;
+        VkPipelineStageFlags srcStage = 0;
+        VkPipelineStageFlags dstStage = 0;
+        for (const RGImageBarrierPlan& plan : pass.BarrierPlans) {
+            RGResource& res = Resources[plan.ResourceIndex];
+            if (!plan.DiscardContents &&
+                !NeedsImageBarrier(res.RuntimeState, plan.DestinationState)) {
+                MergeReadState(res.RuntimeState, plan.DestinationState);
+                continue;
+            }
+            VkImageMemoryBarrier barrier = StampBarrier(res, plan);
+            if (barrier.image == VK_NULL_HANDLE) continue;
+            barriers.push(barrier);
+            srcStage |= plan.DiscardContents ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
+                                              : res.RuntimeState.Stage;
+            dstStage |= plan.DestinationState.Stage;
+            res.RuntimeState = plan.DestinationState;
+        }
+        if (!barriers.empty()) {
             vkCmdPipelineBarrier(
                 cb->Handle,
-                pass.BarrierSrcStage,
-                pass.BarrierDstStage,
+                srcStage,
+                dstStage,
                 0,
                 0, nullptr,       // memory barriers
                 0, nullptr,       // buffer barriers
-                pass.ImageBarriers.size(),
-                pass.ImageBarriers.data());
+                barriers.size(),
+                barriers.data());
         }
 
         pass.Callback->Execute(
@@ -472,8 +443,8 @@ void RenderGraph::Execute(Hardwares::CommandBufferPtr cb)
 }
 ```
 
-No hash lookups. No per-pass barrier computation. One `vkCmdPipelineBarrier` per pass,
-batching all image transitions for that pass. Total: O(N) where N = pass count.
+No hash lookups or declaration traversal on the hot path. One `vkCmdPipelineBarrier` per
+pass batches all required image transitions. Total: O(N) where N = pass count.
 
 ---
 
@@ -544,8 +515,12 @@ for each pass i:
 // Result: SortedPassIndices[] — the execution order.
 ```
 
-The sorted index array is filled once in Compile() and read back by Execute(). No string
-comparisons anywhere in the sort or the execution loop.
+Only enabled passes participate in this compiled subgraph. Toggling a conditional pass marks
+the graph for recompilation, so it cannot introduce a false cycle or extend a transient
+resource lifetime while inactive. The sorted index array is filled once in Compile() and read
+back by Execute(). A cycle rejects that compile; the graph must never fall back to declaration
+order because that order does not satisfy its declared hazards. No string comparisons occur in
+the sort or the execution loop.
 
 ---
 
@@ -776,8 +751,8 @@ to query device headroom dynamically at runtime.
 ### Barrier system
 
 - [ ] `kAccessTable` constexpr array — stage + access + layout for every `RGAccess` value
-- [ ] Barrier build loop in `Compile()` — one `VkImageMemoryBarrier` per resource state transition, stored in `RGPass.ImageBarriers`; transitions from `UNDEFINED` for aliased/first-use resources
-- [ ] Execute loop emits `vkCmdPipelineBarrier` once per pass from pre-built arrays; no per-frame barrier construction
+- [ ] Barrier-plan build loop in `Compile()` — one `RGImageBarrierPlan` per resource state transition; aliased/first-use transients transition from `UNDEFINED`
+- [ ] Execute loop stamps plans with the live `VkImage` and prior runtime state, then emits at most one `vkCmdPipelineBarrier` per pass
 
 ### Topology
 
@@ -788,7 +763,7 @@ to query device headroom dynamically at runtime.
 - [ ] `ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h/.cpp` — add `ComputePipeline* ComputePipeline = nullptr` field; split `Initialize` and `Bake` on `RenderPassType::COMPUTE`; compute path creates `ComputePipeline`, skips `Attachment` and `VkRenderPass`
 - [ ] `Compile()` framebuffer loop — guard: skip `FramebufferVNext` creation for `RenderPassType::COMPUTE` passes
 - [ ] `Execute()` loop — pass null `Framebuffer` to compute callbacks; no `BeginRenderPass` call
-- [ ] See `compute-pipeline.md` for `ComputePipeline`, `CommandBuffer::Dispatch`, `ShaderType::COMPUTE`, and `IComputeCallbackPass` deliverables
+- [ ] See `compute-pipeline.md` for `ComputePipeline`, `CommandBuffer::Dispatch`, `ShaderType::COMPUTE`, and `IInlineComputePass` deliverables
 
 ### Migration
 

@@ -13,11 +13,12 @@ namespace ZEngine::Rendering::Renderers
     {
         uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
         uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->ReadBuffer(RendererBufferName::Light, "LightSB");
         res_builder->ReadTexture(RendererResourceName::GBufferAlbedoAOName, "GBufferAlbedoAO");
         res_builder->ReadTexture(RendererResourceName::GBufferNormalRoughnessName, "GBufferNormalRoughness");
         res_builder->ReadTexture(RendererResourceName::GBufferMetallicEmissiveName, "GBufferMetallicEmissive");
         res_builder->ReadTexture(RendererResourceName::FrameDepthRenderTargetName, "GBufferDepth");
-        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::LOAD});
+        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM, .LoadOp = LoadOperation::CLEAR});
     }
 
     void LightingPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
@@ -47,9 +48,6 @@ namespace ZEngine::Rendering::Renderers
             gp->SetTexture("GBufferMetallicEmissive", metallic_emit_handle);
         if (depth_handle.Valid())
             gp->SetTexture("GBufferDepth", depth_handle);
-
-        if (scene && scene->LightBuffer.Handle)
-            gp->SetStorageBuffer("LightSB", &scene->LightBuffer);
 
         gp->SetSampler("GBufferSampler", device->GlobalLinearWrapSamplerImageInfo);
         gp->Verify();

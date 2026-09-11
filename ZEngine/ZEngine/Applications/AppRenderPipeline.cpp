@@ -45,17 +45,6 @@ namespace
         out[5] = normalize(sub(row(3), row(2))); // far
     }
 
-    bool SphereInFrustum(const FrustumPlane planes[6], Vec3f center, float radius)
-    {
-        for (int i = 0; i < 6; ++i)
-        {
-            float d = planes[i].x * center.x + planes[i].y * center.y + planes[i].z * center.z + planes[i].w;
-            if (d < -radius)
-                return false;
-        }
-        return true;
-    }
-
     float MaxColumnScale(const Mat4f& m)
     {
         float s0 = Vec3f(m(0, 0), m(1, 0), m(2, 0)).magnitude();
@@ -122,6 +111,8 @@ namespace ZEngine::Applications
 
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
+        swapchain->FrameAsyncOperations.clear();
+        swapchain->CollectAsyncGPUOperations();
         Managers::AssetManager::FlushTextureReleases();
 
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
@@ -191,11 +182,11 @@ namespace ZEngine::Applications
             FrustumPlane planes[6];
             ExtractFrustumPlanes(vp, planes);
 
-            Core::Containers::Array<Rendering::Meshes::SubMeshAllocation> allocs;
-            Core::Containers::Array<VkDrawIndirectCommand>                draws;
-            Core::Containers::Array<Core::Maths::Mat4f>                   transforms;
+            Core::Containers::Array<Rendering::Meshes::SubMeshAllocation>   allocs;
+            Core::Containers::Array<Rendering::Scenes::FrustumCullingInput> culling_inputs;
+            Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
             allocs.init(scratch.Arena, instances.size() * 4);
-            draws.init(scratch.Arena, instances.size() * 4);
+            culling_inputs.init(scratch.Arena, instances.size() * 4);
             transforms.init(scratch.Arena, instances.size());
 
             for (uint32_t inst_i = 0; inst_i < instances.size(); ++inst_i)
@@ -224,14 +215,15 @@ namespace ZEngine::Applications
                 if (!mesh)
                     continue;
 
-                // Frustum cull — sphere test in world space.
+                // Build a world-space sphere for the GPU culling pass. A mesh with
+                // no authored bound is deliberately retained as always visible.
+                Vec4f world_bounds(0.f, 0.f, 0.f, -1.f);
                 if (mesh->BoundsRadius > 0.f)
                 {
                     const Vec3f& c = mesh->BoundsCenter;
                     Vec3f        worldCenter(inst.Transform(0, 0) * c.x + inst.Transform(0, 1) * c.y + inst.Transform(0, 2) * c.z + inst.Transform(0, 3), inst.Transform(1, 0) * c.x + inst.Transform(1, 1) * c.y + inst.Transform(1, 2) * c.z + inst.Transform(1, 3), inst.Transform(2, 0) * c.x + inst.Transform(2, 1) * c.y + inst.Transform(2, 2) * c.z + inst.Transform(2, 3));
                     float        worldRadius = mesh->BoundsRadius * MaxColumnScale(inst.Transform);
-                    if (!SphereInFrustum(planes, worldCenter, worldRadius))
-                        continue;
+                    world_bounds             = Vec4f(worldCenter, worldRadius);
                 }
 
                 transforms.push(inst.Transform);
@@ -253,29 +245,26 @@ namespace ZEngine::Applications
                     alloc.TransformId                             = transform_idx;
                     alloc.MaterialId                              = mat_idx;
                     allocs.push(alloc);
-                    draws.push({.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx});
+                    VkDrawIndirectCommand draw = {.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx};
+                    culling_inputs.push({.WorldBounds = world_bounds, .Command = draw});
                 }
             }
 
-            if (rrm && gpu->TransformBuffer.Handle && transforms.size() > 0)
-                rrm->UpdateBuffer(gpu->TransformBuffer, transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
-            if (rrm && gpu->RenderDataBuffer.Handle && allocs.size() > 0)
-                rrm->UpdateBuffer(gpu->RenderDataBuffer, allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
-
-            gpu->IndirectCommandCount = static_cast<uint32_t>(draws.size());
+            gpu->IndirectCommandCount = static_cast<uint32_t>(culling_inputs.size());
             ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
-            for (uint32_t dc = 0; dc < gpu->IndirectCommandCount; ++dc)
-                gpu->CachedDrawCmds[dc] = draws[dc];
+
+            if (rrm && gpu->TransformBuffers[frame_index].Handle && transforms.size() > 0)
+                rrm->UpdateBuffer(gpu->TransformBuffers[frame_index], transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
+            if (rrm && gpu->RenderDataBuffers[frame_index].Handle && allocs.size() > 0)
+                rrm->UpdateBuffer(gpu->RenderDataBuffers[frame_index], allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
+            if (rrm && gpu->CullingInputBuffers[frame_index].Handle && culling_inputs.size() > 0)
+                rrm->UpdateBuffer(gpu->CullingInputBuffers[frame_index], culling_inputs.data(), culling_inputs.size() * sizeof(Rendering::Scenes::FrustumCullingInput));
+
+            for (uint32_t i = 0; i < 6; ++i)
+                gpu->CullingPushConstants.FrustumPlanes[i] = Vec4f(planes[i].x, planes[i].y, planes[i].z, planes[i].w);
+            gpu->CullingPushConstants.DrawCount = gpu->IndirectCommandCount;
 
             ZReleaseScratch(scratch);
-        }
-
-        // Always push draw commands to the heap this frame (heap resets every frame).
-        if (gpu->IndirectCommandCount > 0)
-        {
-            auto& heap              = Device->FrameHeaps[frame_index];
-            auto  indirect_alloc    = heap.Push(gpu->CachedDrawCmds, gpu->IndirectCommandCount * sizeof(VkDrawIndirectCommand), sizeof(VkDrawIndirectCommand));
-            gpu->IndirectHeapOffset = indirect_alloc.Offset;
         }
 
         if (Device->RRM)
@@ -292,11 +281,11 @@ namespace ZEngine::Applications
         {
             auto* rrm     = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
             auto* gpu_buf = SceneRenderer->RenderSceneData;
-            if (gpu_buf->LightBuffer.Handle)
-                rrm->UpdateBuffer(gpu_buf->LightBuffer, &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
+            if (gpu_buf->LightBuffers[frame_index].Handle)
+                rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
         }
 
-        SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
+        CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
     }
 
     void AppRenderPipeline::BeginOverlayFrame(float dt)

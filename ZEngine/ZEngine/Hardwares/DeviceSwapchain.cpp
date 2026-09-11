@@ -38,6 +38,7 @@ namespace ZEngine::Hardwares
 
         IdleFrameThreshold                                    = (BufferredFrameCount * 3 * 3 * 3);
         FrameContexts.init(&Arena, FrameContextPoolSize, FrameContextPoolSize);
+        FrameAsyncOperations.init(&Arena, 32);
 
         for (uint32_t i = 0; i < FrameContextPoolSize; ++i)
         {
@@ -344,6 +345,17 @@ namespace ZEngine::Hardwares
         // SUBOPTIMAL: image is valid; Present() schedules recreation after vkQueuePresentKHR.
     }
 
+    void DeviceSwapchain::CollectAsyncGPUOperations()
+    {
+        AsyncGPUOperationHandle deferred_op = {};
+        while (Device->DeferredAsyncGPUOperations.pop(deferred_op))
+            ZENGINE_VALIDATE_ASSERT(Device->AsyncGPUOperations.push(deferred_op), "Async GPU operation queue overflow")
+
+        AsyncGPUOperationHandle operation = {};
+        while (Device->AsyncGPUOperations.pop(operation))
+            FrameAsyncOperations.push({operation.StageFlags, operation.SignalValue, operation.Timeline});
+    }
+
     void DeviceSwapchain::Present()
     {
 
@@ -363,14 +375,7 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        // Promote last frame's deferred upload ops so submit_1 can wait on them.
-        // SubmitAsyncUploads runs after Present(), so DeferredAsyncGPUOperations only
-        // holds ops from prior frames when we reach this point.
-        {
-            Hardwares::AsyncGPUOperationHandle deferred_op = {};
-            while (Device->DeferredAsyncGPUOperations.pop(deferred_op))
-                Device->AsyncGPUOperations.Enqueue(deferred_op);
-        }
+        CollectAsyncGPUOperations();
 
         {
             // Watermark — warn once when live texture slots exceed 75% of pool capacity.
@@ -539,8 +544,7 @@ namespace ZEngine::Hardwares
         // For NVIDIA: m_tex_transfer_timelines are included via AsyncGPUOperations drain below.
 
         {
-            Hardwares::AsyncGPUOperationHandle op;
-            while (Device->AsyncGPUOperations.Pop(op))
+            for (const auto& op : FrameAsyncOperations)
             {
                 if (!max_val_timeline_semaphores.contains(op.Timeline))
                 {
@@ -650,12 +654,12 @@ namespace ZEngine::Hardwares
             VkPipelineStageFlags drain_stage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
             VkSemaphore          drain_wait[] = {render_complete->GetHandle()};
             VkSubmitInfo         drain        = {
-                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .waitSemaphoreCount   = 1,
-                .pWaitSemaphores      = drain_wait,
-                .pWaitDstStageMask    = &drain_stage,
-                .commandBufferCount   = 0,
-                .signalSemaphoreCount = 0,
+                               .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                               .waitSemaphoreCount   = 1,
+                               .pWaitSemaphores      = drain_wait,
+                               .pWaitDstStageMask    = &drain_stage,
+                               .commandBufferCount   = 0,
+                               .signalSemaphoreCount = 0,
             };
             vkQueueSubmit(queue.Handle, 1, &drain, VK_NULL_HANDLE);
             render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);

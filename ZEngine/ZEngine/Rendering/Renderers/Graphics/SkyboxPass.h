@@ -11,6 +11,10 @@ namespace ZEngine::Rendering::Renderers
         // Set before Setup() is called. Empty string = no env map, pass is disabled.
         cstring      EnvMapPath = nullptr;
 
+        // The graph runs Setup() once. Scene configuration arriving afterwards
+        // must load its texture explicitly before enabling this optional pass.
+        bool         ConfigureEnvironmentMap(cstring path);
+
         virtual void Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
         virtual void Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
         virtual void Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;

@@ -19,6 +19,7 @@ namespace ZEngine::Hardwares
         TotalPoolCount                 = image_count * TotalThreadCount;
         TotalCommandBufferCount        = TotalPoolCount * MaxBufferPerPool;
         TotalInstantCommandBufferCount = MaxBufferPerPool * MaxBufferPerPool * TotalPoolCount; // We want to have enough instant command buffers for each pool, so we can guarantee that there will always be an instant command buffer available for each pool when needed
+        TotalGraphCommandBufferCount   = TotalPoolCount * MaxGraphBatchesPerPool;
 
         InstantGraphicsPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
         InstantGraphicsCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);
@@ -48,6 +49,16 @@ namespace ZEngine::Hardwares
             }
         }
 
+        // Graph batches always need primary buffers and must not collide with
+        // the normal primary/secondary or instant-upload allocations. The slots
+        // are allocated lazily by GetGraphBatchCommandBuffer(): reserving a
+        // reasonably-sized batch budget must not also reserve each buffer's
+        // 120 KiB recording arena on devices that never use async queues.
+        GraphGraphicsCommandBuffers.init(Device->Arena, TotalGraphCommandBufferCount, TotalGraphCommandBufferCount);
+        for (uint32_t i = 0; i < TotalPoolCount; ++i)
+            for (uint32_t buffer_index = 0; buffer_index < MaxGraphBatchesPerPool; ++buffer_index)
+                GraphGraphicsCommandBuffers[i * MaxGraphBatchesPerPool + buffer_index] = nullptr;
+
         if (Device->HasSeperateTransfertQueueFamily)
         {
             InstantTransferPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
@@ -64,7 +75,6 @@ namespace ZEngine::Hardwares
                     InstantTransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantTransferPools[i]->Handle, InstantTransferPools[i]->QueueType, true);
                 }
             }
-
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
                 TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
@@ -74,6 +84,39 @@ namespace ZEngine::Hardwares
                     TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, TransferCommandPools[i]->Handle, TransferCommandPools[i]->QueueType, true);
                 }
             }
+            GraphTransferCommandBuffers.init(Device->Arena, TotalGraphCommandBufferCount, TotalGraphCommandBufferCount);
+            for (uint32_t i = 0; i < TotalPoolCount; ++i)
+                for (uint32_t buffer_index = 0; buffer_index < MaxGraphBatchesPerPool; ++buffer_index)
+                    GraphTransferCommandBuffers[i * MaxGraphBatchesPerPool + buffer_index] = nullptr;
+        }
+
+        if (Device->HasSeparateComputeQueueFamily)
+        {
+            InstantComputePools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
+            ComputeCommandPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
+            ComputeCommandBuffers.init(Device->Arena, TotalCommandBufferCount, TotalCommandBufferCount);
+            InstantComputeCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);
+
+            for (uint32_t i = 0; i < TotalPoolCount; ++i)
+            {
+                InstantComputePools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::COMPUTE_QUEUE);
+                for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
+                {
+                    uint32_t buffer_idx                      = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
+                    InstantComputeCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantComputePools[i]->Handle, InstantComputePools[i]->QueueType, true);
+                }
+
+                ComputeCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::COMPUTE_QUEUE);
+                for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
+                {
+                    uint32_t buffer_idx               = (i * MaxBufferPerPool) + buf_idx;
+                    ComputeCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, ComputeCommandPools[i]->Handle, ComputeCommandPools[i]->QueueType, true);
+                }
+            }
+            GraphComputeCommandBuffers.init(Device->Arena, TotalGraphCommandBufferCount, TotalGraphCommandBufferCount);
+            for (uint32_t i = 0; i < TotalPoolCount; ++i)
+                for (uint32_t buffer_index = 0; buffer_index < MaxGraphBatchesPerPool; ++buffer_index)
+                    GraphComputeCommandBuffers[i * MaxGraphBatchesPerPool + buffer_index] = nullptr;
         }
 
         m_is_initialized = true;
@@ -93,22 +136,33 @@ namespace ZEngine::Hardwares
             TransferCommandPools[i]->~CommandPool();
         for (uint32_t i = 0; i < InstantTransferPools.size(); ++i)
             InstantTransferPools[i]->~CommandPool();
+        for (uint32_t i = 0; i < ComputeCommandPools.size(); ++i)
+            ComputeCommandPools[i]->~CommandPool();
+        for (uint32_t i = 0; i < InstantComputePools.size(); ++i)
+            InstantComputePools[i]->~CommandPool();
 
         InstantGraphicsPools.clear();
         InstantGraphicsCommandBuffers.clear();
         CommandBuffers.clear();
         TransferCommandBuffers.clear();
+        ComputeCommandBuffers.clear();
+        GraphGraphicsCommandBuffers.clear();
+        GraphTransferCommandBuffers.clear();
+        GraphComputeCommandBuffers.clear();
         InstantTransferCommandBuffers.clear();
+        InstantComputeCommandBuffers.clear();
         CommandPools.clear();
         TransferCommandPools.clear();
+        ComputeCommandPools.clear();
         InstantTransferPools.clear();
+        InstantComputePools.clear();
         EnqueuedCommandBuffers.clear();
     }
 
     CommandBuffer* CommandBufferManager::GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin)
     {
         auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * MaxBufferPerPool + buffer_per_pool_index;
-        CommandBuffer* buffer       = (type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
+        CommandBuffer* buffer       = type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily ? TransferCommandBuffers[buffer_index] : type == Rendering::QueueType::COMPUTE_QUEUE && Device->HasSeparateComputeQueueFamily ? ComputeCommandBuffers[buffer_index] : CommandBuffers[buffer_index];
 
         if (begin)
         {
@@ -118,11 +172,45 @@ namespace ZEngine::Hardwares
         return buffer;
     }
 
+    CommandBuffer* CommandBufferManager::GetGraphBatchCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t batch_index, bool begin)
+    {
+        ZENGINE_VALIDATE_ASSERT(static_cast<uint32_t>(type) < static_cast<uint32_t>(QueueType::COUNT), "Invalid render graph queue type")
+        ZENGINE_VALIDATE_ASSERT(batch_index < MaxGraphBatchesPerPool, "Render graph batch command buffer overflow")
+        const uint32_t  index         = ((frame_index * TotalThreadCount) + thread_index) * MaxGraphBatchesPerPool + batch_index;
+        const uint32_t  pool_index    = (frame_index * TotalThreadCount) + thread_index;
+        CommandBuffer** slot          = &GraphGraphicsCommandBuffers[index];
+        VkCommandPool   command_pool  = CommandPools[pool_index]->Handle;
+        QueueType       resolved_type = QueueType::GRAPHIC_QUEUE;
+        if (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily)
+        {
+            slot          = &GraphTransferCommandBuffers[index];
+            command_pool  = TransferCommandPools[pool_index]->Handle;
+            resolved_type = QueueType::TRANSFER_QUEUE;
+        }
+        else if (type == QueueType::COMPUTE_QUEUE && Device->HasSeparateComputeQueueFamily)
+        {
+            slot          = &GraphComputeCommandBuffers[index];
+            command_pool  = ComputeCommandPools[pool_index]->Handle;
+            resolved_type = QueueType::COMPUTE_QUEUE;
+        }
+
+        if (!*slot)
+            *slot = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, command_pool, resolved_type, true);
+        CommandBuffer* buffer = *slot;
+        if (begin)
+        {
+            buffer->ResetState();
+            vkResetCommandBuffer(buffer->GetHandle(), 0);
+            buffer->Begin();
+        }
+        return buffer;
+    }
+
     CommandBuffer* CommandBufferManager::GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin)
     {
         // MaxBufferPerPool * MaxBufferPerPool is the total number of instant command buffers per pool
         auto           buffer_index = ((frame_index * TotalThreadCount) + thread_index) * (MaxBufferPerPool * MaxBufferPerPool) + buffer_per_pool_index;
-        CommandBuffer* buffer       = (type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? InstantTransferCommandBuffers[buffer_index] : InstantGraphicsCommandBuffers[buffer_index];
+        CommandBuffer* buffer       = type == Rendering::QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily ? InstantTransferCommandBuffers[buffer_index] : type == Rendering::QueueType::COMPUTE_QUEUE && Device->HasSeparateComputeQueueFamily ? InstantComputeCommandBuffers[buffer_index] : InstantGraphicsCommandBuffers[buffer_index];
 
         if (begin)
         {
@@ -136,13 +224,13 @@ namespace ZEngine::Hardwares
     Rendering::Pools::CommandPool* CommandBufferManager::GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
     {
         uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
-        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? TransferCommandPools[pool_index] : CommandPools[pool_index];
+        return type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily ? TransferCommandPools[pool_index] : type == QueueType::COMPUTE_QUEUE && Device->HasSeparateComputeQueueFamily ? ComputeCommandPools[pool_index] : CommandPools[pool_index];
     }
 
     Rendering::Pools::CommandPool* CommandBufferManager::GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index)
     {
         uint32_t pool_index = (frame_index * TotalThreadCount) + thread_index;
-        return (type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily) ? InstantTransferPools[pool_index] : InstantGraphicsPools[pool_index];
+        return type == QueueType::TRANSFER_QUEUE && Device->HasSeperateTransfertQueueFamily ? InstantTransferPools[pool_index] : type == QueueType::COMPUTE_QUEUE && Device->HasSeparateComputeQueueFamily ? InstantComputePools[pool_index] : InstantGraphicsPools[pool_index];
     }
 
     void CommandBufferManager::ResetPool(uint8_t frame_index, uint8_t thread_index)
@@ -153,6 +241,8 @@ namespace ZEngine::Hardwares
         {
             vkResetCommandPool(Device->LogicalDevice, TransferCommandPools[pool_index]->Handle, 0);
         }
+        if (Device->HasSeparateComputeQueueFamily)
+            vkResetCommandPool(Device->LogicalDevice, ComputeCommandPools[pool_index]->Handle, 0);
     }
 
     void CommandBufferManager::ResetEnqueuedBufferIndex()

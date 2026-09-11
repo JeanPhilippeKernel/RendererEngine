@@ -12,6 +12,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
 // clang-format off
 #include <ZEngine/Core/Containers/SPSCQueue.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Rendering/RenderHandle.h>
 #include <ZEngine/Hardwares/CommandBufferManager.h>
@@ -169,8 +170,12 @@ namespace ZEngine::Hardwares
         void                              BindPipeline(Rendering::Renderers::Pipelines::IPipeline* const pipeline);
         void                              DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count);
         void                              DrawIndexedIndirect(VkBuffer buffer, uint32_t offset, uint32_t count);
+        void                              Dispatch(uint32_t group_count_x, uint32_t group_count_y = 1, uint32_t group_count_z = 1);
         void                              DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
         void                              Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance);
+        void                              PipelineBarrier2(const VkDependencyInfo& dependency_info);
+        void                              BeginDebugLabel(cstring name);
+        void                              EndDebugLabel();
         void                              TransitionImageLayout(const Rendering::Primitives::ImageMemoryBarrier& image_barrier);
         void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset = 0);
         void                              BindVertexBuffer(const Core::Memory::BufferView& buffer);
@@ -230,6 +235,7 @@ namespace ZEngine::Hardwares
     struct VulkanDevice
     {
         bool                                                                                                                         HasSeperateTransfertQueueFamily             = false;
+        bool                                                                                                                         HasSeparateComputeQueueFamily               = false;
         bool                                                                                                                         PhysicalDeviceSupportSampledImageBindless   = false;
         bool                                                                                                                         PhysicalDeviceSupportStorageBufferBindless  = false;
         bool                                                                                                                         PhysicalDeviceSupportTimelineSemaphore      = false;
@@ -243,6 +249,7 @@ namespace ZEngine::Hardwares
         uint32_t                                                                                                                     WorkerThreadCount                           = 1;
         uint32_t                                                                                                                     GraphicFamilyIndex                          = std::numeric_limits<uint32_t>::max();
         uint32_t                                                                                                                     TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                                                                                     ComputeFamilyIndex                          = std::numeric_limits<uint32_t>::max();
 
         uint32_t                                                                                                                     WriteDescriptorSetIndex                     = 0;
         uint32_t                                                                                                                     MaxGlobalTexture                            = 8192;
@@ -287,7 +294,7 @@ namespace ZEngine::Hardwares
         Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToUpdates                      = {};
         Core::Containers::SPSCQueue<Rendering::Textures::TextureHandle, 128>                                                         DeferredTextureDescriptorUpdates            = {};
         TextureDisposeQueue                                                                                                          TextureHandleToDispose                      = {};
-        Helpers::ThreadSafeQueue<AsyncGPUOperationHandle>                                                                            AsyncGPUOperations                          = {};
+        Core::Containers::MPSCQueue<AsyncGPUOperationHandle, 256>                                                                    AsyncGPUOperations                          = {};
         Core::Containers::SPSCQueue<AsyncGPUOperationHandle, 128>                                                                    DeferredAsyncGPUOperations                  = {};
         VkDescriptorImageInfo                                                                                                        FallbackDescriptorImageInfo                 = {};
         Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                               = {};
@@ -300,6 +307,7 @@ namespace ZEngine::Hardwares
         void                                                                                                                         Deinitialize();
         void                                                                                                                         Dispose();
         bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, VkPipelineStageFlags2 wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
+        bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, const VkSemaphoreSubmitInfo* wait_infos, uint32_t wait_info_count);
         bool                                                                                                                         QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
         /// @brief If result is VK_ERROR_DEVICE_LOST, sets IsDeviceLost (logging once, on the
         ///        first caller to observe it) and returns true so the caller can bail out
@@ -311,6 +319,10 @@ namespace ZEngine::Hardwares
         QueueView                                                                                                                    GetQueue(Rendering::QueueType type);
         void                                                                                                                         QueueWait(Rendering::QueueType type);
         void                                                                                                                         QueueWaitAll();
+        // Optional VK_EXT_debug_utils instrumentation. These are no-ops when the
+        // extension is unavailable, so render-graph execution stays portable.
+        void                                                                                                                         BeginDebugLabel(VkCommandBuffer command_buffer, cstring name) const;
+        void                                                                                                                         EndDebugLabel(VkCommandBuffer command_buffer) const;
         void                                                                                                                         MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
         BufferView                                                                                                                   CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, Core::Memory::GpuMemoryDomain domain, const char* debug_name = nullptr);
         void                                                                                                                         TickMemory();
@@ -357,6 +369,8 @@ namespace ZEngine::Hardwares
         VkDebugUtilsMessengerEXT                                          m_debug_messenger{VK_NULL_HANDLE};
         PFN_vkCreateDebugUtilsMessengerEXT                                __createDebugMessengerPtr{VK_NULL_HANDLE};
         PFN_vkDestroyDebugUtilsMessengerEXT                               __destroyDebugMessengerPtr{VK_NULL_HANDLE};
+        PFN_vkCmdBeginDebugUtilsLabelEXT                                  __beginDebugLabelPtr{VK_NULL_HANDLE};
+        PFN_vkCmdEndDebugUtilsLabelEXT                                    __endDebugLabelPtr{VK_NULL_HANDLE};
         static VKAPI_ATTR VkBool32 VKAPI_CALL                             __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
     };
 

@@ -1,5 +1,7 @@
 #pragma once
+#include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Rendering/Shaders/ShaderInformation.h>
+#include <ZEngine/ZEngineDef.h>
 #include <glslang/Public/ShaderLang.h>
 #include <filesystem>
 #include <fstream>
@@ -19,7 +21,8 @@ namespace ZEngine::Rendering::Shaders
         ShaderReader();
         ~ShaderReader();
 
-        static std::vector<uint32_t>       ReadAsBinary(std::string_view filename);
+        /// @brief Reads a SPIR-V file into the supplied arena.
+        static Core::Containers::Array<uint32_t> ReadAsBinary(Core::Memory::ArenaAllocator* arena, cstring filename);
 
         /**
          * Read asynchronously content of shader file
@@ -27,7 +30,7 @@ namespace ZEngine::Rendering::Shaders
          * @param filename  Path to the shader file
          * @return enum ShaderReaderState that describes the read operation state
          */
-        std::future<ShaderOperationResult> ReadAsync(std::string_view filename);
+        std::future<ShaderOperationResult>       ReadAsync(std::string_view filename);
 
         /**
          * Get shaders information collected during Reading process
@@ -35,7 +38,7 @@ namespace ZEngine::Rendering::Shaders
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        const ShaderInformation&           GetInformations() const;
+        const ShaderInformation&                 GetInformations() const;
 
         /**
          * Get shaders information collected during Reading process
@@ -43,8 +46,8 @@ namespace ZEngine::Rendering::Shaders
          * @see Read(std::string_view) and ReadAsync(std::string_view) methods
          * @return ShaderInformation
          */
-        ShaderInformation&                 GetInformations();
-        ShaderType                         GetShaderType(const std::filesystem::path& path);
+        ShaderInformation&                       GetInformations();
+        ShaderType                               GetShaderType(const std::filesystem::path& path);
 
     private:
         std::ifstream     m_filestream{};

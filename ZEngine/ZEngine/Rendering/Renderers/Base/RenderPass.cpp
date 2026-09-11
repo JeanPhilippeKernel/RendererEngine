@@ -61,18 +61,20 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            for (const auto& handle : Specification.ExternalOutputs)
+            for (uint32_t output_index = 0; output_index < Specification.ExternalOutputs.size(); ++output_index)
             {
-                auto        texture                                                 = device->GlobalTextures.Access(handle);
-                auto&       output_spec                                             = texture->Specification;
-                bool        is_depth_image_format                                   = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
-                ImageLayout initial_layout                                          = (output_spec.LoadOp == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED : is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                ImageLayout final_layout                                            = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                ImageLayout reference_layout                                        = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                const auto&   handle                                                = Specification.ExternalOutputs[output_index];
+                auto          texture                                               = device->GlobalTextures.Access(handle);
+                auto&         output_spec                                           = texture->Specification;
+                bool          is_depth_image_format                                 = (output_spec.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
+                LoadOperation load_op                                               = output_index < Specification.ExternalOutputLoadOps.size() ? Specification.ExternalOutputLoadOps[output_index] : output_spec.LoadOp;
+                ImageLayout   initial_layout                                        = (load_op == LoadOperation::CLEAR) ? ImageLayout::UNDEFINED : is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                ImageLayout   final_layout                                          = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                ImageLayout   reference_layout                                      = is_depth_image_format ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
 
                 attachment_specification.ColorsMap[color_map_index]                 = {};
                 attachment_specification.ColorsMap[color_map_index].Format          = output_spec.Format;
-                attachment_specification.ColorsMap[color_map_index].Load            = output_spec.LoadOp;
+                attachment_specification.ColorsMap[color_map_index].Load            = load_op;
                 attachment_specification.ColorsMap[color_map_index].Store           = StoreOperation::STORE;
                 attachment_specification.ColorsMap[color_map_index].Initial         = initial_layout;
                 attachment_specification.ColorsMap[color_map_index].Final           = final_layout;
@@ -225,6 +227,43 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         BoundBindings.insert(key_name.data());
     }
 
+    void GraphicPass::SetStorageBufferForFrame(cstring key_name, uint32_t frame_index, const Core::Memory::BufferView* buffer)
+    {
+        if (!buffer || !buffer->Handle)
+        {
+            ZENGINE_CORE_WARN("SetStorageBufferForFrame: null buffer for key '{}'", key_name)
+            return;
+        }
+
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first)
+            return;
+
+        const auto& spec      = validity_output.second;
+        auto        shader    = Pipeline->Shader;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array || frame_index >= set_array->size())
+        {
+            ZENGINE_CORE_ERROR("SetStorageBufferForFrame: descriptor set {} or frame {} not found for key '{}'", spec.Set, frame_index, key_name)
+            return;
+        }
+
+        VkDescriptorBufferInfo buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        VkWriteDescriptorSet   write       = {
+                    .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet          = (*set_array)[frame_index],
+                    .dstBinding      = spec.Binding,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo     = &buffer_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
+        BoundBindings.insert(key_name);
+    }
+
     void GraphicPass::SetTexture(std::string_view key_name, const Textures::TextureHandle& handle)
     {
         auto validity_output = ValidateInput(key_name);
@@ -252,14 +291,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         {
             auto& image_info = img_buf->GetDescriptorImageInfo();
             write_reqs[i]    = VkWriteDescriptorSet{
-                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .pNext           = nullptr,
-                .dstSet          = (*set_array)[i],
-                .dstBinding      = spec.Binding,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType  = vk_type,
-                .pImageInfo      = &(image_info),
+                   .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                   .pNext           = nullptr,
+                   .dstSet          = (*set_array)[i],
+                   .dstBinding      = spec.Binding,
+                   .dstArrayElement = 0,
+                   .descriptorCount = 1,
+                   .descriptorType  = vk_type,
+                   .pImageInfo      = &(image_info),
             };
         }
         vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
@@ -443,6 +482,89 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             Pipeline->Bake();
     }
 
+    void ComputePass::SetStorageBuffer(cstring key_name, const Core::Memory::BufferView* buffer)
+    {
+        if (!Pipeline || !Pipeline->Shader || !buffer || !buffer->Handle)
+        {
+            ZENGINE_CORE_WARN("ComputePass::SetStorageBuffer: null pipeline or buffer for key '{}'", key_name)
+            return;
+        }
+
+        const auto binding_spec = Pipeline->Shader->GetLayoutBindingSpecification(key_name);
+        if (binding_spec.Set == 0xFFFFFFFF || binding_spec.Binding == 0xFFFFFFFF)
+        {
+            ZENGINE_CORE_ERROR("ComputePass::SetStorageBuffer: shader input not found: '{}'", key_name)
+            return;
+        }
+        if (binding_spec.DescriptorTypeValue != DescriptorType::STORAGE_BUFFER)
+        {
+            ZENGINE_CORE_ERROR("ComputePass::SetStorageBuffer: shader input '{}' is not a storage buffer", key_name)
+            return;
+        }
+
+        const auto* set_array = Pipeline->Shader->DescriptorSetMap.find(binding_spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("ComputePass::SetStorageBuffer: descriptor set {} not found for key '{}'", binding_spec.Set, key_name)
+            return;
+        }
+
+        const uint32_t                                frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        VkDescriptorBufferInfo                        buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        auto                                          scratch     = ZGetScratch(m_device->Arena);
+        Core::Containers::Array<VkWriteDescriptorSet> writes;
+        writes.init(scratch.Arena, frame_count, frame_count);
+        for (uint32_t i = 0; i < frame_count; ++i)
+        {
+            writes[i] = VkWriteDescriptorSet{
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = (*set_array)[i],
+                .dstBinding      = binding_spec.Binding,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .pBufferInfo     = &buffer_info,
+            };
+        }
+        vkUpdateDescriptorSets(m_device->LogicalDevice, frame_count, writes.data(), 0, nullptr);
+        ZReleaseScratch(scratch);
+    }
+
+    void ComputePass::SetStorageBufferForFrame(cstring key_name, uint32_t frame_index, const Core::Memory::BufferView* buffer)
+    {
+        if (!Pipeline || !Pipeline->Shader || !buffer || !buffer->Handle)
+        {
+            ZENGINE_CORE_WARN("ComputePass::SetStorageBufferForFrame: null pipeline or buffer for key '{}'", key_name)
+            return;
+        }
+
+        const auto binding_spec = Pipeline->Shader->GetLayoutBindingSpecification(key_name);
+        if (binding_spec.Set == 0xFFFFFFFF || binding_spec.Binding == 0xFFFFFFFF || binding_spec.DescriptorTypeValue != DescriptorType::STORAGE_BUFFER)
+        {
+            ZENGINE_CORE_ERROR("ComputePass::SetStorageBufferForFrame: storage-buffer shader input not found: '{}'", key_name)
+            return;
+        }
+
+        const auto* set_array = Pipeline->Shader->DescriptorSetMap.find(binding_spec.Set);
+        if (!set_array || frame_index >= set_array->size())
+        {
+            ZENGINE_CORE_ERROR("ComputePass::SetStorageBufferForFrame: descriptor set {} or frame {} not found for key '{}'", binding_spec.Set, frame_index, key_name)
+            return;
+        }
+
+        VkDescriptorBufferInfo buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        VkWriteDescriptorSet   write       = {
+                    .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet          = (*set_array)[frame_index],
+                    .dstBinding      = binding_spec.Binding,
+                    .dstArrayElement = 0,
+                    .descriptorCount = 1,
+                    .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .pBufferInfo     = &buffer_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
+    }
+
     /*
      * RenderPassBuilder
      */
@@ -571,12 +693,20 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         return *this;
     }
 
-    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
+    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target, Specifications::LoadOperation load_op)
     {
         if (m_spec.ExternalOutputs.capacity() <= 0)
             m_spec.ExternalOutputs.init(Arena, 4);
+        if (m_spec.ExternalOutputLoadOps.capacity() <= 0)
+            m_spec.ExternalOutputLoadOps.init(Arena, 4);
         m_spec.ExternalOutputs.push(target);
+        m_spec.ExternalOutputLoadOps.push(load_op);
         return *this;
+    }
+
+    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
+    {
+        return UseRenderTarget(target, Specifications::LoadOperation::CLEAR);
     }
 
     RenderPassBuilder& RenderPassBuilder::AddRenderTarget(const Specifications::TextureSpecification& target_spec)

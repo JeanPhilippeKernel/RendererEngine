@@ -93,6 +93,15 @@ namespace ZEngine::Core::Containers
             return slot->seq.value.load(std::memory_order_acquire) != m_read + 1;
         }
 
+        // Consumer thread only. Used during render-thread teardown/reset.
+        void clear()
+        {
+            T discarded{};
+            while (pop(discarded))
+            {
+            }
+        }
+
     private:
         // Slot already carries a PaddedAtomic seq, so alignof(Slot) == CACHE_LINE_SIZE.
         // The array is correctly aligned without an explicit alignas.

@@ -24,7 +24,7 @@ namespace ZEngine::Rendering::Renderers
         rrm->RegisterBuiltinGeometry(verts, sizeof(verts), idxs, 6, m_vtx_offset, m_idx_offset);
 
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->WriteColorAttachment(RendererResourceName::FrameColorRenderTargetName, {});
+        res_builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
     }
 
     void GridPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
