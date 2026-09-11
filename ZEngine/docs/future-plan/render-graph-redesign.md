@@ -1,788 +1,1477 @@
-# Render Graph Redesign — Production-Grade Barrier Insertion and Memory Aliasing
+# Render Graph Redesign
 
-**Relates to:** `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`, `render-graph-integration.md`
-**Replaces:** `RenderGraph.h/.cpp`, `IRenderGraphCallbackPass`, `RenderGraphNode`, `RenderGraphResourceBuilder`, `RenderGraphResourceInspector`
-**Scope:** Full redesign of the render graph compile and execute paths to produce automatic pipeline barriers and alias transient render target memory.
+**Relates to:** `sky-rendering.md`, `per-frame-upload-heap.md`, `pso-cache-architecture.md`
+**Status:** Design
+**Scope:** Typed pass hierarchy, declarative resources, dependency culling, subresource-aware Synchronization2 barriers, transient allocation/aliasing, multi-queue scheduling, runtime recompilation, and parallel command recording.
 
----
+**Prerequisite:** `pso-cache-architecture.md` must land before or concurrently with Option B (§6.3) and multi-threaded recording (§13). `Compile()` on every `IRenderGraphCallbackPass` uses the PSO cache 4-step lookup rather than calling `vkCreateGraphicsPipelines` directly. Passes borrow pipeline handles; `Pipeline::Dispose` forgets the borrowed handle without destroying it.
 
-## 1. What Is Wrong With the Current Design
-
-Reading `RenderGraph.cpp` directly:
-
-**Barrier insertion is manual and wrong.** `Execute()` emits one barrier per input texture
-(always `COLOR_ATTACHMENT_OUTPUT -> SHADER_READ_ONLY`) and one barrier per output attachment
-(always `TOP_OF_PIPE -> COLOR_ATTACHMENT / DEPTH_STENCIL`). The source stage is hardcoded
-regardless of what the previous pass actually was. This produces over-synchronisation every
-frame — every pass stalls the full pipeline before it starts, even when the previous pass was
-a compute dispatch or a transfer, not a color attachment write.
-
-**No transient resource lifetime tracking.** `Compile()` calls `Device->CreateTexture()` once
-per attachment resource with no record of when that resource is first written or last read.
-G-buffer normals at 4K (`R16G16B16A16_SFLOAT`) = 134 MB. That memory is allocated, held for
-the entire frame, and freed at graph teardown — even though the lighting pass is the last
-consumer and the resource is dead for the remaining 60%+ of the frame.
-
-**`UnorderedHashMap` on the hot path.** `Execute()` calls `NodeMap[node_name]` and
-`ResourceMap[input.Name]` inside the per-pass loop. Both are string-keyed hash map lookups.
-At 25 passes with 3-5 resources each that is 100+ hash lookups per frame on the critical path.
-
-**`Resize()` leaks.** Line 342: `Device->GlobalTextures.Create()` + `Device->GlobalTextures.Update()`
-copies the old texture descriptor into a temp slot, then enqueues the temp for disposal. The
-resize path allocates two texture slots per resource per resize event. Rapid viewport dragging
-creates a leak storm. The deferred free queue also never receives the VkImage memory — only
-the texture slot is enqueued.
-
-**`Compile()` rebuilds framebuffers unconditionally** even if the render area has not changed.
-`Resize()` also rebuilds all framebuffers for every node regardless of whether that node's
-outputs changed size.
+Reference implementations: Frostbite Framegraph (O'Donnell, GDC 2017), UE5 RDG (`FRDGBuilder`).
 
 ---
 
-## 2. Design Goals
+## 1. Motivation
 
-1. Automatic pipeline barriers — no pass implementation ever calls `vkCmdPipelineBarrier` directly.
-2. Transient attachment aliasing — non-overlapping transient resources share physical memory via VMA alias pools.
-3. `VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT` + `VMA_MEMORY_USAGE_GPU_LAZILY_ALLOCATED` for any
-   attachment consumed only within a single render pass (tile memory on Mali/Adreno/Apple GPU).
-4. Execute loop is array-indexed, not hash-keyed — zero string hashing on the hot path.
-5. Barrier batching — collect all barriers needed before a pass into one `vkCmdPipelineBarrier` call.
-6. Keep the existing `IRenderGraphCallbackPass` interface intact. Existing pass implementations
-   (~~UploadPass~~ — removed; SkyboxPass and GridPass now use global VB/IB via RRM::RegisterBuiltinGeometry, `BasePass`, `DepthPrePass`, `SkyboxPass`, `GridPass`) require no changes.
+The current render graph was designed for serial, graphics-only execution. The addition of `SkyAtmospherePass` exposed fundamental structural problems:
 
----
-
-## 3. Core Data Model
-
-### 3.1 ResourceHandle — typed index, no string on hot path
-
-```cpp
-struct RGResourceHandle {
-    uint32_t Index   = UINT32_MAX;
-    uint32_t Version = 0;           // incremented on each write; reads bind to that version
-
-    bool Valid() const { return Index != UINT32_MAX; }
-};
-```
-
-### 3.2 RGResource — flat struct, all state in one place
-
-```cpp
-enum class RGResourceKind : uint8_t {
-    Attachment,   // VkImage written as render target / depth target
-    Texture,      // VkImage read-only (external or imported)
-    Buffer,       // VkBuffer (external — per-frame heap, storage buffer set, etc.)
-};
-
-// Access describes how a pass uses a resource.
-// The compiler uses this to derive src/dst stage + access masks for barriers.
-enum class RGAccess : uint8_t {
-    None,
-    ColorWrite,           // vkCmdBeginRenderPass as color attachment
-    DepthWrite,           // vkCmdBeginRenderPass as depth attachment
-    DepthRead,            // input attachment, read-only depth
-    ShaderRead,           // sampler2D / combined image sampler
-    ShaderReadWrite,      // storage image read + write (compute)
-    TransferRead,
-    TransferWrite,
-    Present,
-};
-
-struct RGResourceState {
-    VkPipelineStageFlags Stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    VkAccessFlags        Access = 0;
-    VkImageLayout        Layout = VK_IMAGE_LAYOUT_UNDEFINED;
-};
-
-struct RGResource {
-    cstring              Name           = nullptr;
-    RGResourceKind       Kind           = RGResourceKind::Attachment;
-    bool                 External       = false;    // imported, not owned by the graph
-
-    // Transient physical backing — null for external resources.
-    // Set by the aliasing allocator during Compile().
-    Textures::TextureHandle  TextureHandle  = {};
-    RGResourceState          CurrentState   = {};
-
-    // Lifetime — filled by the lifetime analysis pass in Compile().
-    uint32_t             FirstPassIndex = UINT32_MAX;
-    uint32_t             LastPassIndex  = 0;
-
-    // For aliasing: physical memory can be reused after LastPassIndex.
-    bool                 Transient      = true;
-
-    // Spec used to (re-)allocate the physical backing on resize.
-    Specifications::TextureSpecification Spec = {};
-};
-```
-
-### 3.3 RGPassResource — a pass's declaration of one resource use
-
-```cpp
-struct RGPassResource {
-    RGResourceHandle Handle = {};
-    RGAccess         Access = RGAccess::None;
-    cstring          BindingKey = nullptr;  // descriptor slot name, for textures
-};
-```
-
-### 3.4 RGPass — compiled representation of one pass
-
-```cpp
-struct RGPass {
-    cstring                               Name       = nullptr;
-    bool                                  Enabled    = true;
-    IRenderGraphCallbackPass*             Callback   = nullptr;
-    RenderPasses::RenderPass*             Handle     = nullptr;
-    Buffers::FramebufferVNext*            Framebuffer = nullptr;
-
-    // Declared by the pass in Setup() via RGBuilder.
-    Core::Containers::Array<RGPassResource> Reads;   // inputs
-    Core::Containers::Array<RGPassResource> Writes;  // outputs
-
-    // Filled by Compile(). VkImage and source state are stamped at Execute(),
-    // since imported images and prior-frame layouts are runtime state.
-    Core::Containers::Array<RGImageBarrierPlan> BarrierPlans;
-};
-```
-
-### 3.5 RenderGraph — the new top-level struct
-
-```cpp
-struct RenderGraph {
-    Hardwares::VulkanDevicePtr   Device      = nullptr;
-    Scenes::SceneDataPtr         SceneData   = nullptr;
-
-    // Flat arrays — indexed by compile-time order.
-    // No hash map on the Execute hot path.
-    Core::Containers::Array<RGPass>     Passes;
-    Core::Containers::Array<RGResource> Resources;
-
-    // String -> index map used only during Setup/Compile, not Execute.
-    Core::Containers::UnorderedHashMap<cstring, uint32_t> ResourceIndex;
-    Core::Containers::UnorderedHashMap<cstring, uint32_t> PassIndex;
-
-    // Builder and inspector exposed to pass Setup() implementations.
-    // Same API surface as today so existing pass code compiles unchanged.
-    RGBuilder*    Builder    = nullptr;
-    RGInspector*  Inspector  = nullptr;
-
-    // Transient resource pool used by the aliasing allocator.
-    RGTransientPool TransientPool;
-
-    void Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene);
-    void AddCallbackPass(cstring name, IRenderGraphCallbackPass* cb, bool enabled = true);
-    void Setup();
-    void Compile();
-    void Execute(Hardwares::CommandBufferPtr cb);
-    void Resize(uint32_t width, uint32_t height);
-    void Dispose();
-
-    RGResourceHandle ImportRenderTarget(cstring name, Textures::TextureHandle handle);
-    RGResourceHandle CreateTransientAttachment(cstring name, const Specifications::TextureSpecification& spec);
-};
-```
+| Problem | Root cause |
+|---|---|
+| Compute passes never execute | Framebuffer-null guard in `Execute()` applies to all pass types |
+| Sky LUT work bypasses the graph entirely | No async compute path in the graph; pass owns its own command pool, semaphores, lifecycle |
+| Compile-time barriers are dead code | `BuildBarriers()` walks declaration order, not sorted order; `Execute()` ignores its output |
+| Runtime pass enable/disable is broken | `SetPassEnabled()` flips a boolean but never recompiles — disabled-at-compile passes stay null |
+| Transient memory over-allocated | Exact format+size match only; no lifetime-overlap aliasing |
+| No GPU debug visibility | Pass names never emitted as GPU labels |
+| No storage image or buffer declarations | `WriteStorageImage`, `WriteBuffer` don't exist in the builder API |
 
 ---
 
-## 4. Lifetime Analysis
+## 2. Pass Type Hierarchy
 
-This runs in `Compile()` after all passes have called `Setup()` and declared their reads and writes.
+```mermaid
+classDiagram
+    class IRenderGraphPass {
+        <<interface>>
+        +Setup(device, name, builder, inspector)
+        +Compile(device, scene, pass_builder, inspector, out_pass**)
+        +Execute(device, inspector, scene, pass, framebuffer, cmd)
+        +GetPassFlags() RGPassFlags
+        +Deinitialize(device)
+    }
 
+    class IGraphicsPass {
+        Execute receives cmd + framebuffer
+        Calls BeginRenderPass / EndRenderPass
+        Phase 1: no interface change from current
+        Phase 2: RecordDraw body-only contract for secondary recording
+        Examples: GbufferPass, LightingPass, GridPass
+    }
+
+    class IInlineComputePass {
+        Replaces IComputeCallbackPass
+        Execute receives cmd only — no framebuffer guard
+        Dispatches in-order on graphics queue cmd buffer
+        Keeps: SetupCompute, ExecuteCompute, GetShaderName, GetPushConstantSize
+        Examples: BloomPass, SSAOPass, SkinningPass, FrustumCullingPass
+    }
+
+    class IAsyncComputePass {
+        +SubmitAsync(device, scene) AsyncGPUOperationHandle
+        Phase 1 compatibility adapter only
+        Returns NeverCull pass flag
+        Submitted on COMPUTE_QUEUE before Present
+        Examples: SkyAtmospherePass LUTs, SkyLightPass IBL
+    }
+
+    IRenderGraphPass <|-- IGraphicsPass
+    IRenderGraphPass <|-- IInlineComputePass
+    IRenderGraphPass <|-- IAsyncComputePass
 ```
-for i in 0..Passes.size():
-    pass = Passes[i]
-    for each write in pass.Writes:
-        resource = Resources[write.Handle.Index]
-        resource.FirstPassIndex = min(resource.FirstPassIndex, i)
-    for each read in pass.Reads:
-        resource = Resources[read.Handle.Index]
-        resource.LastPassIndex  = max(resource.LastPassIndex,  i)
-    // A pass that both reads and writes the same resource (read-modify-write)
-    // contributes to both.
-    for each write in pass.Writes where resource also in pass.Reads:
-        resource.LastPassIndex  = max(resource.LastPassIndex,  i)
-```
-
-After this loop every transient resource knows exactly when it is born (first write) and
-when it dies (last read).
-
----
-
-## 5. Transient Aliasing Allocator
-
-### 5.1 RGTransientPool
 
 ```cpp
-struct RGTransientSlot {
-    Textures::TextureHandle Handle         = {};
-    Specifications::TextureSpecification Spec = {};
-    uint32_t                FreeAfterPass  = 0;  // resource is dead after this pass index
-};
-
-struct RGTransientPool {
-    // Arena-backed flat list of all allocated slots.
-    Core::Containers::Array<RGTransientSlot> Slots;
-
-    // Try to find an existing slot compatible with `spec` that is free
-    // (FreeAfterPass < firstPassIndex). Returns invalid handle if none found.
-    Textures::TextureHandle TryAlias(
-        const Specifications::TextureSpecification& spec,
-        uint32_t firstPassIndex);
-
-    // Register a newly allocated slot into the pool.
-    void Register(Textures::TextureHandle handle,
-                  const Specifications::TextureSpecification& spec,
-                  uint32_t lastPassIndex);
-
-    // Update the free-after index when a slot is reused.
-    void MarkInUse(Textures::TextureHandle handle, uint32_t lastPassIndex);
-
-    void Clear();
-};
-```
-
-### 5.2 Alias compatibility
-
-Two texture specs are alias-compatible when:
-- Same `VkFormat`
-- Same width and height (or the slot's dimensions are >= the requested dimensions — exact match preferred)
-- Same or superset of `VkImageUsageFlags` — the slot must support at least everything the new resource needs
-- Same `layerCount` and `mipLevels`
-
-This is a conservative check. Two resources with non-overlapping lifetimes and compatible specs
-share one `VkImage` allocation. The Vulkan spec allows this as long as the aliased image is
-re-initialized (transition from `VK_IMAGE_LAYOUT_UNDEFINED`) before use — which the barrier
-system does automatically on every first write.
-
-### 5.3 Allocation path in Compile()
-
-```
-for each transient resource r in dependency order (FirstPassIndex ascending):
-
-    aliased = TransientPool.TryAlias(r.Spec, r.FirstPassIndex)
-
-    if aliased.Valid():
-        r.TextureHandle = aliased
-        TransientPool.MarkInUse(aliased, r.LastPassIndex)
-    else:
-        // Determine usage flags from all accesses declared against this resource.
-        usage = DeriveUsageFlags(r)  // see Section 5.4
-        r.Spec.UsageFlags = usage
-        r.TextureHandle = Device->CreateTexture(r.Spec)
-        TransientPool.Register(r.TextureHandle, r.Spec, r.LastPassIndex)
-```
-
-### 5.4 Deriving `VkImageUsageFlags`
-
-Walk all passes, collect every `RGAccess` declared against resource `r`:
-
-```cpp
-VkImageUsageFlags DeriveUsageFlags(const RGResource& r, const Array<RGPass>& passes)
+enum class RGPassFlags : uint8_t
 {
-    VkImageUsageFlags flags = 0;
-    bool wroteAsColor = false, wroteAsDepth = false;
-    bool readAsShader = false;
-
-    for (auto& pass : passes) {
-        for (auto& w : pass.Writes) {
-            if (w.Handle.Index != r.Index) continue;
-            if (w.Access == RGAccess::ColorWrite) { flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; wroteAsColor = true; }
-            if (w.Access == RGAccess::DepthWrite) { flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; wroteAsDepth = true; }
-        }
-        for (auto& rd : pass.Reads) {
-            if (rd.Handle.Index != r.Index) continue;
-            if (rd.Access == RGAccess::ShaderRead)      { flags |= VK_IMAGE_USAGE_SAMPLED_BIT; readAsShader = true; }
-            if (rd.Access == RGAccess::ShaderReadWrite)   flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-            if (rd.Access == RGAccess::TransferRead)      flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-            if (rd.Access == RGAccess::TransferWrite)     flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        }
-    }
-
-    // Transient attachment: written and read only as an attachment within a single pass
-    // (first and last pass are the same). Never sampled by a shader.
-    bool singlePassLifetime = (r.FirstPassIndex == r.LastPassIndex);
-    if (singlePassLifetime && !readAsShader && (wroteAsColor || wroteAsDepth)) {
-        flags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-        // Caller sets VMA_MEMORY_USAGE_GPU_LAZILY_ALLOCATED for this resource.
-        // On tiled GPUs the image never touches DRAM.
-    }
-
-    return flags;
-}
-```
-
-The `VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT` path covers:
-- SSAO blur intermediates (R8, half-res, written and blurred in a single compute pass)
-- Bloom downsample/upsample intermediates at each mip level
-- Shadow resolve buffer (depth-only, not sampled after the cascade pass resolves)
-- G-buffer normals/specular on hardware where the lighting pass uses input attachments (TBDR path)
-
----
-
-## 6. Automatic Barrier Insertion
-
-### 6.1 State tracking
-
-Each `RGResource` carries a `CurrentState` (stage, access mask, image layout). The graph
-initialises all states to `{TOP_OF_PIPE, 0, UNDEFINED}` at the start of Compile. States are
-then advanced pass-by-pass during the barrier-building loop.
-
-### 6.2 Access -> stage + mask table
-
-```cpp
-struct RGAccessInfo {
-    VkPipelineStageFlags Stage;
-    VkAccessFlags        Access;
-    VkImageLayout        Layout;
+    None                = 0,
+    NeverCull           = 1 << 0, // intentional external side effect only
+    ExternalSideEffects = 1 << 1,
 };
 
-constexpr RGAccessInfo kAccessTable[] = {
-    // None
-    { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,                0,                                          VK_IMAGE_LAYOUT_UNDEFINED                     },
-    // ColorWrite
-    { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL      },
-    // DepthWrite
-    { VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
-      | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-      VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
-      | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL                                                                                             },
-    // DepthRead
-    { VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL },
-    // ShaderRead
-    { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,            VK_ACCESS_SHADER_READ_BIT,                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL      },
-    // ShaderReadWrite (compute)
-    { VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,             VK_ACCESS_SHADER_READ_BIT
-                                                        | VK_ACCESS_SHADER_WRITE_BIT,                VK_IMAGE_LAYOUT_GENERAL                       },
-    // TransferRead
-    { VK_PIPELINE_STAGE_TRANSFER_BIT,                   VK_ACCESS_TRANSFER_READ_BIT,                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL          },
-    // TransferWrite
-    { VK_PIPELINE_STAGE_TRANSFER_BIT,                   VK_ACCESS_TRANSFER_WRITE_BIT,                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL          },
-    // Present
-    { VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,             0,                                           VK_IMAGE_LAYOUT_PRESENT_SRC_KHR               },
+constexpr bool HasPassFlag(RGPassFlags flags, RGPassFlags flag)
+{
+    return (static_cast<uint8_t>(flags) & static_cast<uint8_t>(flag)) != 0;
+}
+
+struct IRenderGraphPass
+{
+    // All callback kinds expose this metadata; culling never downcasts to a pass subtype.
+    virtual RGPassFlags GetPassFlags() const { return RGPassFlags::None; }
 };
 ```
 
-### 6.3 Barrier-plan build loop (runs once in Compile())
+### 2.1 IGraphicsPass
+
+No interface change in Phase 1. Existing passes (GbufferPass, LightingPass, GridPass, SkySpherePass, ZUIPass) keep `Execute()` with command buffer + framebuffer. Phase 2 adds the body-only `RecordDraw()` contract described in §13.
+
+### 2.2 IInlineComputePass
+
+Replaces `IComputeCallbackPass`. Identical virtual methods (`SetupCompute`, `ExecuteCompute`, `GetShaderName`, `GetPushConstantSize`). The only change: `RenderGraph::Execute()` removes the framebuffer-null guard for this pass type.
 
 ```cpp
-for (uint32_t order = 0; order < SortedPassIndices.size(); ++order) {
-    RGPass& pass = Passes[SortedPassIndices[order]];
-    if (!pass.Enabled) continue;
-
-    auto recordTransition = [&](const RGPassResource& use) {
-        RGResource& res = Resources[use.Handle.Index];
-        const RGResourceState dst = kAccessTable[(int)use.Access];
-        bool discard = res.Transient && res.FirstPassIndex == order;
-
-        // A write after any access requires ordering. Same-layout reads do not;
-        // their stage masks are merged so a later write waits for all readers.
-        if (!discard && !NeedsImageBarrier(res.CurrentState, dst)) {
-            MergeReadState(res.CurrentState, dst);
-            return;
-        }
-
-        pass.BarrierPlans.push({ use.Handle.Index, dst, discard });
-        res.CurrentState = dst;
-    };
-    for (const RGPassResource& write : pass.Writes) recordTransition(write);
-    for (const RGPassResource& read : pass.Reads) recordTransition(read);
-}
-```
-
-The plan arrays are arena-allocated once per Compile(). They intentionally do not contain
-`VkImage`, `oldLayout`, or source masks: an imported resource can be rebound and the old
-state is determined by the actual preceding frame. Execution stamps those fields without
-re-deriving graph accesses.
-
-### 6.4 Execute loop — barrier emission
-
-```cpp
-void RenderGraph::Execute(Hardwares::CommandBufferPtr cb)
+struct IInlineComputePass : public IRenderGraphPass
 {
-    for (uint32_t i = 0; i < SortedPassIndices.size(); ++i) {
-        RGPass& pass = Passes[SortedPassIndices[i]];
+    void             Setup(...)   final;
+    void             Compile(...) final;
+    void             Execute(...) final;  // ← graph no longer gates on framebuffer
 
-        if (!pass.Enabled) continue;
-
-        Array<VkImageMemoryBarrier> barriers;
-        VkPipelineStageFlags srcStage = 0;
-        VkPipelineStageFlags dstStage = 0;
-        for (const RGImageBarrierPlan& plan : pass.BarrierPlans) {
-            RGResource& res = Resources[plan.ResourceIndex];
-            if (!plan.DiscardContents &&
-                !NeedsImageBarrier(res.RuntimeState, plan.DestinationState)) {
-                MergeReadState(res.RuntimeState, plan.DestinationState);
-                continue;
-            }
-            VkImageMemoryBarrier barrier = StampBarrier(res, plan);
-            if (barrier.image == VK_NULL_HANDLE) continue;
-            barriers.push(barrier);
-            srcStage |= plan.DiscardContents ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-                                              : res.RuntimeState.Stage;
-            dstStage |= plan.DestinationState.Stage;
-            res.RuntimeState = plan.DestinationState;
-        }
-        if (!barriers.empty()) {
-            vkCmdPipelineBarrier(
-                cb->Handle,
-                srcStage,
-                dstStage,
-                0,
-                0, nullptr,       // memory barriers
-                0, nullptr,       // buffer barriers
-                barriers.size(),
-                barriers.data());
-        }
-
-        pass.Callback->Execute(
-            Device, Inspector, SceneData,
-            pass.Handle, pass.Framebuffer, cb);
-    }
-}
-```
-
-No hash lookups or declaration traversal on the hot path. One `vkCmdPipelineBarrier` per
-pass batches all required image transitions. Total: O(N) where N = pass count.
-
----
-
-## 7. RGBuilder API (replaces RenderGraphResourceBuilder)
-
-The `RGBuilder` is the same object as today's `RenderGraphResourceBuilder` from the pass's
-perspective, but returns `RGResourceHandle` instead of `RenderGraphResource&`. Pass
-implementations call it identically from `Setup()`.
-
-```cpp
-struct RGBuilder {
-    RenderGraph* Graph = nullptr;
-
-    // Declare that the current pass writes a transient color attachment.
-    // If the resource does not yet exist it is created.
-    RGResourceHandle WriteColorAttachment(cstring name,
-                                          const Specifications::TextureSpecification& spec);
-
-    // Declare that the current pass writes a transient depth attachment.
-    RGResourceHandle WriteDepthAttachment(cstring name,
-                                          const Specifications::TextureSpecification& spec);
-
-    // Declare that the current pass reads a resource as a shader texture.
-    RGResourceHandle ReadTexture(cstring name, cstring binding_key);
-
-    // Declare that the current pass reads a resource as a depth input attachment (read-only).
-    RGResourceHandle ReadDepth(cstring name);
-
-    // Import an externally-owned resource into the graph.
-    RGResourceHandle ImportRenderTarget(cstring name, Textures::TextureHandle handle);
-    RGResourceHandle ImportTexture(cstring name, Textures::TextureHandle handle);
-
-    // Buffer resources (vertex, index, storage, indirect) — identical to today.
-    RGResourceHandle AttachBuffer(cstring name, const Hardwares::StorageBufferSetHandle&);
-    RGResourceHandle AttachBuffer(cstring name, const Hardwares::VertexBufferSetHandle&);
-    RGResourceHandle AttachBuffer(cstring name, const Hardwares::IndexBufferSetHandle&);
-    RGResourceHandle AttachBuffer(cstring name, const Hardwares::IndirectBufferSetHandle&);
-    RGResourceHandle AttachBuffer(cstring name, const Hardwares::UniformBufferSetHandle&);
+    virtual void     SetupCompute(...)   = 0;
+    virtual void     ExecuteCompute(...) = 0;
+    virtual cstring  GetShaderName() const = 0;
+    virtual uint32_t GetPushConstantSize() const { return 0; }
 };
 ```
 
-Each `Write*` / `Read*` call:
-1. Creates or looks up the `RGResource` entry by name.
-2. Records the access type on the current pass's `Reads` or `Writes` array.
-3. Records `ProducerPassIndex` on the resource (for topology).
-4. Returns the `RGResourceHandle` — the pass can store it for use in `Execute()`.
+Passes migrated: `BloomPass`, `SSAOPass`, `SkinningPass`, `FrustumCullingPass` — base class rename only.
+
+### 2.3 IAsyncComputePass
+
+New pass type for work that runs on the COMPUTE_QUEUE. The graph calls `SubmitAsync()` before `Present()`; the returned `AsyncGPUOperationHandle` is enqueued into `AsyncGPUOperations`; Present's `submit_1` waits on it automatically.
+
+```cpp
+struct IAsyncComputePass : public IRenderGraphPass
+{
+    virtual Hardwares::AsyncGPUOperationHandle
+                        SubmitAsync(Hardwares::VulkanDevice*, Scenes::SceneDataPtr) = 0;
+    RGPassFlags         GetPassFlags() const override { return RGPassFlags::NeverCull; }
+};
+```
+
+`IAsyncComputePass` is a Phase 1 compatibility adapter. It returns
+`RGPassFlags::NeverCull` because its consumer semaphore wait is outside the Phase 1
+graph's visibility. It is not the Phase 3 model for async compute.
+
+`Hardwares::AsyncGPUOperationHandle` already exists and is the type drained by
+`DeviceSwapchain::Present()`; do not introduce a duplicate graph-local handle.
+An async pass must also declare its produced resources and their consuming graphics
+passes must declare reads. The graph owns the release/acquire transition when compute
+and graphics use different queue families; a timeline semaphore wait alone does not
+perform queue-family ownership transfer. The imported/produced resource contract must
+specify its initial layout, final layout, and owning queue family.
+
+Passes migrated: `SkyAtmospherePass` LUTs → `IAsyncComputePass` + separate `SkyCombinePass : IGraphicsPass`.
+
+In Phase 3, migrate this adapter to an ordinary graph compute pass with
+`RGQueuePreference::AsyncCompute`. It remains in the versioned dependency DAG, so its
+outputs participate in culling, lifetime analysis, barriers, queue submission planning,
+and graphics-queue fallback. `IAsyncComputePass` can then be removed.
 
 ---
 
-## 8. Topology — Replacing the Hand-Written DFS
+## 3. Resource Declaration API
 
-The current topological sort walks `EdgeNodes` sets attached to each node. EdgeNodes are
-populated during Compile() from the resource producer map.
+`RenderGraphResourceBuilder` methods already return `RGResourceHandle`. Storage-image and
+swapchain declarations are additive; buffer declarations additionally require the physical
+buffer and barrier work described below.
 
-The new design uses the same DFS but operates on indices, not strings:
+```mermaid
+graph TD
+    subgraph Existing["Existing methods — no change"]
+        WCA[WriteColorAttachment → RGHandle]
+        WDA[WriteDepthAttachment → RGHandle]
+        RT[ReadTexture binding_key → RGHandle]
+        RD[ReadDepth → RGHandle]
+        IR[ImportRenderTarget → RGHandle]
+    end
 
+    subgraph New["New methods"]
+        WSI["WriteStorageImage(name, spec) → RGHandle\nRGAccess::StorageWrite NEW\nGENERAL layout, COMPUTE stage, WRITE-only access\nMUST add both enum entry AND kAccessTable row"]
+        RWSI["ReadWriteStorageImage(name) → RGHandle\nRGAccess::ShaderReadWrite — already exists\nOnly needs builder method"]
+        WB["WriteBuffer(name, size) → RGHandle\nrequires RG buffer allocation + VkBufferMemoryBarrier"]
+        RB["ReadBuffer(name) → RGHandle\nrequires buffer state tracking"]
+        IRL["ImportTexture(name, handle, initialLayout) → RGHandle\nAdds VkImageLayout param — drives first-use barrier\nBackbuffer=PRESENT_SRC_KHR, mesh tex=SHADER_READ_ONLY, new=UNDEFINED"]
+        WS["WriteSwapchain() → RGHandle\nExplicit graph sink — blocks culling\nReplaces UseSwapchainAsRenderTarget()"]
+    end
+
+    WSI --> ACP[IAsyncComputePass — LUT outputs]
+    WB  --> ICP[IInlineComputePass — FrustumCulling indirect buffer]
+    RWSI --> ICP2[IInlineComputePass — Bloom ping-pong, SSAO output]
+    WS  --> ZUI[ZUIPass — swapchain present]
 ```
-// Build adjacency from resource producer/consumer declarations.
-for each pass i:
-    for each read r in pass.Reads:
-        res = Resources[r.Handle.Index]
-        if res.ProducerPassIndex is valid and != i:
-            // pass[res.ProducerPassIndex] must execute before pass[i]
-            Adjacency[res.ProducerPassIndex].insert(i)
 
-// DFS post-order topological sort on integer pass indices.
-// Cycle detection: same logic as current, but using index sets instead of string sets.
-// Result: SortedPassIndices[] — the execution order.
+**`StorageWrite` requires both enum entry AND table row, inserted immediately before `Count_`.** `kAccessTable` in `RenderGraph.cpp` is a C array indexed by `RGAccess` ordinal. Inserting `StorageWrite` anywhere other than before `Count_` shifts every subsequent entry's ordinal, silently mapping existing `ShaderRead`, `ShaderReadWrite`, `TransferRead`, `TransferWrite`, `Present` accesses to wrong barriers at runtime with no compiler warning.
+
+```cpp
+// Correct position — insert before Count_
+..., ShaderReadWrite, TransferRead, TransferWrite, Present, StorageWrite /*NEW*/, Count_
 ```
 
-Only enabled passes participate in this compiled subgraph. Toggling a conditional pass marks
-the graph for recompilation, so it cannot introduce a false cycle or extend a transient
-resource lifetime while inactive. The sorted index array is filled once in Compile() and read
-back by Execute(). A cycle rejects that compile; the graph must never fall back to declaration
-order because that order does not satisfy its declared hazards. No string comparisons occur in
-the sort or the execution loop.
+Corresponding `kAccessTable` row at the same position: `VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT`, `VK_ACCESS_SHADER_WRITE_BIT`, `VK_IMAGE_LAYOUT_GENERAL`. Differs from `ShaderReadWrite` (read+write bits) — write-only.
+
+**Cached handles per pass (Phase 1 only).** `GetTextureHandle(RGResourceHandle)` already exists on `RenderGraphResourceInspector`. With the persistent Phase 1 graph, passes may capture builder return values at `Setup()` and use them at `Execute()`:
+
+```cpp
+class LightingPass : public IGraphicsPass {
+    RGHandle m_albedo;
+    void Setup(...)   { m_albedo = builder->ReadTexture(GBufferAlbedoAOName, "GBufferAlbedoAO"); }
+    void Execute(...) { auto tex = inspector->GetTextureHandle(m_albedo); }  // O(1) — no string hash
+};
+```
+
+Under Option B/Phase 3, an `RGResourceHandle` belongs to one frame-arena graph and
+must not be retained in a persistent callback object. `Register()` writes handles into
+per-frame pass data/context, and `RecordDraw()` consumes that same frame data. Persistent
+pass state may cache only immutable data such as shaders, PSO descriptions, and material
+configuration.
 
 ---
 
-## 9. Resize Path
+## 4. Pass Culling
 
-The current resize path (lines 339-354 of RenderGraph.cpp) allocates two new texture slots
-per resource and leaks the VkImage. The new path:
-
-```cpp
-void RenderGraph::Resize(uint32_t width, uint32_t height)
-{
-    // Rebuild the transient pool with new dimensions.
-    TransientPool.Clear();
-
-    for (auto& res : Resources) {
-        if (res.External || !res.Transient) continue;
-
-        // Enqueue the old VkImage for deferred destruction.
-        if (res.TextureHandle.Valid())
-            Device->DeferFree({ .Kind = DeferredFreeEntry::Image,
-                                .Image = res.TextureHandle });
-
-        res.TextureHandle = {};
-        res.Spec.Width    = width;
-        res.Spec.Height   = height;
-        res.CurrentState  = { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_IMAGE_LAYOUT_UNDEFINED };
-    }
-
-    // Re-run the aliasing allocator with the new dimensions.
-    // This re-allocates only transient resources, in FirstPassIndex order.
-    AllocateTransientResources();
-
-    // Rebuild framebuffers only for passes whose output dimensions changed.
-    for (auto& pass : Passes) {
-        if (OutputsResized(pass))
-            RebuildFramebuffer(pass, width, height);
-    }
-
-    // Notify the swapchain/bindless system about the new frame color RT.
-    for (auto& res : Resources) {
-        if (res.Name == RendererResourceName::FrameColorRenderTargetName)
-            Device->TextureHandleToUpdates.Enqueue(res.TextureHandle);
-    }
-}
+```mermaid
+flowchart TD
+    A[BuildTopology produces SortedPassIndices] --> B["Mark sinks:\n• passes with WriteSwapchain\n• passes whose GetPassFlags includes NeverCull\n• passes writing external resources\n  with downstream consumers outside graph"]
+    B --> C[Walk backwards from sinks via write→read edges]
+    C --> D{Pass reached from any sink?}
+    D -- yes --> E[Live — kept in SortedPassIndices]
+    D -- no --> F["Culled — removed from SortedPassIndices\nCompile() and Execute() skip this pass"]
+    E & F --> G[SortedPassIndices contains only live passes]
 ```
 
-`Device->DeferFree` is the timeline-semaphore-gated path from `gpu-allocator-rearchitecture.md`.
-`vmaDestroyImage` is called by `DeferredFreeQueue::Drain` in `TickMemory` — the resize path
-never calls it directly.
+Replaces the runtime `if (!pass.Enabled) continue` check as the primary gate. A temporarily disabled pass produces no GPU work; its resources are not allocated; its barriers are not recorded.
 
 ---
 
-## 10. Compute Pass Support
+## 5. Compile-Time Barrier Derivation
 
-The redesigned graph supports compute passes with no special registration path. A compute pass
-calls `AddCallbackPass` identically to a graphics pass. The barrier system handles it automatically
-via `RGAccess::ShaderReadWrite` which maps to `VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT` in
-`kAccessTable`. The only structural differences are in `Compile()` and in how `RenderPass`
-creates its pipeline.
+```mermaid
+sequenceDiagram
+    participant OLD as Current (broken)
+    participant NEW as Fixed
 
-### 10.1 Framebuffer skip
+    Note over OLD: BuildBarriers() walks Passes[] — declaration order
+    Note over OLD: Execute() ignores pass.ImageBarriers
+    Note over OLD: Execute() re-derives from RuntimeState every frame
 
-`Compile()` creates a `FramebufferVNext` for every pass after building pipelines. Compute passes
-have no render pass object and no framebuffer — the guard is:
-
-```cpp
-for (auto& pass : Passes) {
-    if (!pass.Handle) continue;
-    if (pass.Handle->Specification.Type == RenderPassType::COMPUTE) continue;
-
-    Specifications::FrameBufferSpecificationVNext fb_spec = {
-        .Width         = pass.Handle->RenderAreaWidth,
-        .Height        = pass.Handle->RenderAreaHeight,
-        .RenderTargets = pass.Handle->RenderTargets,
-        .Attachment    = pass.Handle->Attachment,
-    };
-    pass.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device, fb_spec);
-}
+    Note over NEW: BuildBarriers() walks SortedPassIndices — sorted execution order
+    Note over NEW: Emits no barrier when old_state == new_state (read-after-read skip)
+    Note over NEW: Emits aliasing barrier when needs_alias_barrier=true
+    Note over NEW: Execute() stamps pass.ImageBarriers — no per-frame rebuild
+    Note over NEW: RuntimeState kept only for resize path
 ```
 
-`pass.Framebuffer` remains null for compute passes. The `Execute()` loop passes it as-is to
-`Callback->Execute` — compute pass implementations receive a null framebuffer and must not
-call `BeginRenderPass`.
+**Compile phase order — transients must be allocated BEFORE barriers.**
 
-### 10.2 Compute pipeline creation in RenderPass
+`BuildBarriers()` calls `GetVkImage(Device, res.TextureHandle)` for every resource. Transient resources have no `VkImage` until `AllocateTransientResources()` runs. Running `BuildBarriers` before allocation produces `VkImage == VK_NULL_HANDLE` for every transient — silently dropping all GBuffer and intermediate attachment barriers, causing validation errors and rendering corruption. The current code's order is correct; the fix only changes *which pass array* `BuildBarriers` iterates.
 
-`RenderPass::Initialize` is split on `Specification.Type`:
-
-```cpp
-void RenderPass::Initialize(VulkanDevice* device, const RenderPassSpecification& spec)
-{
-    m_device      = device;
-    Specification = spec;
-
-    if (spec.Type == RenderPassType::COMPUTE) {
-        // No attachment, no VkRenderPass object.
-        ComputePipeline = ZPushStructCtorArgs(device->Arena, Pipelines::ComputePipeline);
-        ComputePipeline->Initialize(device, spec.PipelineSpecification.ShaderSpecificationValue.Name);
-        return;
-    }
-
-    if (spec.Type != RenderPassType::GRAPHIC) return;
-
-    // ... existing graphics path unchanged ...
-}
-
-void RenderPass::Bake()
-{
-    if (Specification.Type == RenderPassType::COMPUTE) {
-        ComputePipeline->Bake();  // calls vkCreateComputePipelines
-        return;
-    }
-    if (Specification.Type != RenderPassType::GRAPHIC) return;
-    Pipeline->Bake();
-}
+```mermaid
+flowchart LR
+    BT[BuildTopology\n+ culling] --> BL[BuildLifetimes\nalready uses SortedPassIndices]
+    BL --> AT["AllocateTransients\n— lifetime-overlap\n— set needs_alias_barrier on reuse\nMUST precede BuildBarriers"]
+    AT --> BB["BuildBarriers FIXED\n— sorted order\n— read-read skip\n— aliasing barriers\n— skip swapchain images"]
+    BB --> CP["Per-pass Compile() loop\n— PSO cache 4-step lookup; borrow pipeline handle\n— descriptor bindings run each Compile"]
+    CP --> AF[AllocateFramebuffers\nGraphicsPass only]
 ```
 
-`RenderPass` gains a `ComputePipeline* ComputePipeline = nullptr` field alongside
-`GraphicPipeline* Pipeline`. Exactly one is non-null depending on pass type.
+**Swapchain image exception.** Pre-compiled `VkImageMemoryBarrier` entries embed a raw `VkImage` handle. Swapchain images are distinct objects per slot (index 0, 1, 2) that change on every `vkAcquireNextImageKHR`. Baking a specific swapchain `VkImage` at compile time would reference the wrong image on subsequent frames, triggering VUID-vkCmdPipelineBarrier-image-parameter.
 
-### 10.3 Execute path for compute passes
+Fix: add a `bool RGResource::IsSwapchain = false` field, set to `true` inside `WriteSwapchain()` when the resource is registered. During `BuildBarriers()`, skip any resource where `res.IsSwapchain == true`. `Execute()` retains the per-frame rebuild path **only for swapchain resources** (checks `res.IsSwapchain` at runtime), stamping pre-compiled barriers for all others. `IsSwapchainResource(handle)` does not exist in the current codebase — this flag is a new addition alongside `WriteSwapchain()`.
 
-A compute pass `Execute()` implementation follows this pattern:
-
-```cpp
-void SSAOComputePass::Execute(
-    VulkanDevicePtr device, RGInspector* inspector, SceneDataPtr,
-    RenderPass* pass, FramebufferVNext* /*null*/, CommandBufferPtr cb)
-{
-    VkCommandBuffer cmd = cb->GetHandle();
-
-    // Bind the compute pipeline.
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                      pass->ComputePipeline->Handle);
-
-    // Bind descriptor sets (device global bindless set + pass-local set).
-    // vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, ...)
-
-    // Push dispatch size as a push constant if the shader needs it.
-    // vkCmdPushConstants(...)
-
-    uint32_t gx = (m_width  + 7) / 8;
-    uint32_t gy = (m_height + 7) / 8;
-    vkCmdDispatch(cmd, gx, gy, 1);
-}
-```
-
-`CommandBuffer::Dispatch` is a new method added in `compute-pipeline.md`:
-```cpp
-void CommandBuffer::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
-    vkCmdDispatch(m_command_buffer, x, y, z);
-}
-```
-
-Barriers before the dispatch are pre-built by the graph's barrier loop in `Compile()` and
-emitted automatically in `Execute()` — the pass implementation never calls
-`vkCmdPipelineBarrier` directly.
+**Persistent import contract.** Precompiled barriers are valid only if an imported
+resource begins every frame in the layout/access/queue-family state declared by its
+import. A resource touched outside the graph must be re-imported with its actual state
+(or the external owner must transition it back to the declared final state). This is a
+per-frame ownership rule, not merely a parameter captured at graph compile time.
 
 ---
 
-## 11. Migration from the Current Design
+## 6. Runtime Recompilation (Issue #779)
 
-The current pass implementations (~~UploadPass~~ — removed; SkyboxPass and GridPass now use global VB/IB via RRM::RegisterBuiltinGeometry, `BasePass`, `DepthPrePass`, `SkyboxPass`,
-`GridPass`) call `res_builder->CreateBufferSet`, `CreateRenderTarget`, `CreateRenderPassNode`,
-and `res_inspector->GetVertexBufferSet` etc. These APIs are preserved with identical
-signatures on `RGBuilder` and `RGInspector`. Migration is mechanical:
+### 6.1 The Problem
 
-| Current call | New call | Notes |
+```mermaid
+sequenceDiagram
+    participant App as SkySystem::ApplyMode
+    participant G as RenderGraph
+    participant E as Execute (current — broken)
+
+    App->>G: SetPassEnabled("Sky Sphere Pass", true)
+    Note right of G: Enabled=true but Handle=nullptr, Framebuffer=nullptr
+
+    E->>G: for pass in SortedPassIndices
+    G->>E: pass.Enabled=true ✓
+    G->>E: pass.Framebuffer=nullptr → SKIP ✗
+    Note right of E: SkySpherePass never executes
+```
+
+`SetPassEnabled()` flips `Enabled` but never recompiles. A pass that was disabled at compile time has no pipeline and no framebuffer — enabling it at runtime does nothing.
+
+### 6.2 Option A — Deferred Structural Recompile (Phase 1)
+
+```mermaid
+sequenceDiagram
+    participant App as SkySystem::ApplyMode
+    participant G as RenderGraph
+    participant E as Execute (fixed)
+
+    App->>G: SetPassEnabled("Sky Sphere Pass", true)
+    G->>G: m_needs_recompile = true
+
+    E->>G: if m_needs_recompile
+    G->>G: BuildTopology() → BuildLifetimes()
+    G->>G: AllocateTransients() → BuildBarriers()
+    G->>G: Compile()  [idempotent — only null-handle passes get pipelines]
+    G->>G: AllocateFramebuffers()
+    G->>G: m_needs_recompile = false
+    Note right of G: SkySpherePass now has valid Handle + Framebuffer
+    E->>E: Callback->Execute() called ✓
+```
+
+**Cost:** topology sort + barrier computation + `vkCreateFramebuffer` calls + per-pass `vkUpdateDescriptorSets` rewrite. No GPU pipeline rebuild — `Compile()` is a PSO cache lookup (see `pso-cache-architecture.md`); on a warm cache this is a hash lookup with no Vulkan call, making Option A recompile essentially free for pipeline state. Descriptor binding calls (`SetDynamicUniform`, `UseTextureArray`, `SetSampler`) run unconditionally on every `Compile()` call; they issue `vkUpdateDescriptorSets` each time — idempotent but not free. If a pass's PSO is `Compiling` (async) or was hot-reload-invalidated, `GetOrCreateGraphics` returns `VK_NULL_HANDLE`; the pass's `Execute()` must skip draw calls for that frame (see §11).
+
+**Implementation:** add `bool m_needs_recompile` to `RenderGraph`; `SetPassEnabled()` sets it; `Execute()` checks at top.
+
+### 6.3 Option B — Per-Frame Lightweight Rebuild (Phase 2)
+
+```mermaid
+flowchart TD
+    subgraph EveryFrame["Every Frame"]
+        R["Register(builder, ctx)\nPasses add themselves conditionally\nIf not registered → does not exist\nVirtual structure rebuilt cheaply"]
+        S["BuildTopology + BuildBarriers\nO(passes × resources), no Vulkan calls"]
+        E["Execute()"]
+        R --> S --> E
+    end
+
+    subgraph Persistent["Persistent — never rebuilt"]
+        P["PSOCache (pso-cache-architecture.md)\nkeyed by canonical GraphicsPSOKey\nGetOrCreateGraphics at Register time\nPasses borrow handles — never own them"]
+        T["Transient pool\nPhysical allocations persist\nRe-bound to new virtual resources"]
+    end
+
+    R --> P
+    R --> T
+```
+
+```cpp
+// Conditional registration — no disabled-pass concept
+void SkyAtmospherePass::Register(builder, ctx) {
+    if (ctx.sky_mode != SkyMode::Atmosphere) return;   // simply not registered
+    m_skyview = builder->WriteStorageImage("sky_view_lut", spec);
+}
+```
+
+No `SetPassEnabled()`, no enabled/disabled flags. Mode switch = different passes call `Register()`.
+
+| | Option A | Option B |
 |---|---|---|
-| `res_builder->CreateRenderTarget(name, spec)` | `builder->WriteColorAttachment(name, spec)` | Returns `RGResourceHandle` instead of `RenderGraphResource&` |
-| `res_builder->AttachRenderTarget(name, handle)` | `builder->ImportRenderTarget(name, handle)` | Same |
-| `res_builder->AttachTexture(name, handle)` | `builder->ImportTexture(name, handle)` | Same |
-| `res_builder->CreateBufferSet(name, type)` | `builder->AttachBuffer(name, ...)` | Typed overloads |
-| `res_builder->CreateRenderPassNode(creation)` | Removed — each `Write*/Read*` call registers the node implicitly | |
-| `res_inspector->GetRenderTarget(name)` | `inspector->GetTextureHandle(handle)` | Handle-indexed, no string |
-| `res_inspector->GetVertexBufferSet(name)` | `inspector->GetVertexBufferSet(handle)` | Handle-indexed |
-| `NodeMap[name].Enabled = false` | `graph->SetPassEnabled(name, false)` | String lookup only at setup time |
+| Fixes Issue #779 immediately | ✓ | requires interface migration |
+| Existing passes unchanged | ✓ | requires `Register()` addition |
+| GPU memory — only active backends | With PSO cache: warm but evictable | ✓ |
+| Conditional per-frame resource decls | ✗ | ✓ |
+| Industry-standard model | partial | ✓ |
+| PSO cache required | optional (speeds up Compile()) | hard prerequisite |
 
-The `IRenderGraphCallbackPass` interface signatures are unchanged. Existing `Setup`, `Compile`,
-and `Execute` implementations compile without modification after the builder/inspector API swap.
+**Recommendation:** implement Option A first (2 files changed, fixes Issue #779 and all compute stubs). PSO cache must land before Option B — passes cannot be stateless without a cache to look up their pipeline handle each frame. File Option B as follow-up after PSO cache and the rest of the redesign land.
 
 ---
 
-## 12. Memory Budget Impact at 4K
+## 7. Transient Reuse and True Memory Aliasing
 
-Based on the `GpuMemoryDomain::RenderTarget` pool from `gpu-allocator-rearchitecture.md`
-(172 MB budget). With aliasing and transient bit:
+```mermaid
+graph LR
+    subgraph Lifetimes["Sorted execution order"]
+        R1[GBufferAlbedo\npasses 2 → 5]
+        R2[LightingOutput\npasses 6 → 9]
+        R3[SkyViewLUT\npasses 1 → 8]
+    end
 
-| Resource | Format | Size (4K) | Aliasable with | Lazy alloc? |
-|---|---|---|---|---|
-| FrameDepthRT | D32_SFLOAT | 33 MB | — | No (persists frame-to-frame) |
-| FrameColorRT (HDR) | R16G16B16A16_SFLOAT | 134 MB | — | No (read by ImGui) |
-| G-buffer normals | R16G16B16A16_SFLOAT | 134 MB | Bloom ping (lifetime gap) | No |
-| G-buffer albedo | R8G8B8A8_UNORM | 33 MB | Bloom pong | No |
-| SSAO occlusion | R8_UNORM, half-res | 8 MB | Any half-res R8 | Yes |
-| Bloom threshold | R16G16B16A16_SFLOAT | 134 MB | G-buffer normals (dead) | No |
-| Bloom ping/pong × 5 levels | R16G16B16A16_SFLOAT | ~42 MB total | Each other (alternating) | No |
-| Shadow depth (per cascade) | D32_SFLOAT, 2K | 16 MB | Other shadow maps | Yes |
+    subgraph Pool["Transient Pool"]
+        S1["Slot A — compatible image description\nFreeAfterPass=5"]
+        S2["Slot B — 8-byte format group"]
+    end
 
-Without aliasing: ~534 MB transient RT memory.
-With aliasing (normals aliased with bloom threshold, ping aliases pong per-level, lazy SSAO/shadow): ~205 MB.
-Net saving: ~329 MB — comfortably within the 172 MB budget when the two persistent RTs (depth + HDR color) are subtracted (167 MB combined), leaving 5 MB for small temporaries.
+    R1 -->|uses| S1
+    R2 -->|"aliases Slot A\nFreeAfterPass 5 < FirstPass 6\nsets needs_alias_barrier=true"| S1
+    R3 -->|uses| S2
+```
 
-If the 172 MB budget proves tight, increase `GpuBudget::RenderTarget` or use `VK_EXT_memory_budget`
-to query device headroom dynamically at runtime.
+The current pool returns the same `TextureHandle`. That is **compatible image reuse**,
+not Vulkan memory aliasing. Phase 1 may reuse an image only when its full image
+description is compatible with the new virtual resource (format, extent, mip count,
+layers, samples, tiling, usage, and view requirements); pixel byte size and an
+allocation-size comparison are not sufficient. The reused image must not be live:
+`slot.FreeAfterPass < resource.FirstPassIndex`.
+
+**True memory aliasing is Phase 2.** It requires distinct `VkImage` objects bound to
+compatible regions of one allocator allocation, `VK_IMAGE_CREATE_ALIAS_BIT` where
+required, memory-requirement validation, and an aliasing/discard barrier before the
+new image's first use. It cannot be implemented by returning a larger or different
+format `TextureHandle` from `TryAlias()`. Keep `needs_alias_barrier` for that Phase 2
+path; its first use transitions from `UNDEFINED` because previous contents are
+discarded.
 
 ---
 
-## 13. Deliverables Checklist
+## 8. Render Pass Clear Values
 
-### Core graph
+Remove unconditional `cb->ClearColor(0.11, 0.11, 0.11)` and `cb->ClearDepth(1.0, 0)` from `Execute()`. Per-pass clear values in `TextureSpecification`:
 
-- [ ] `ZEngine/Rendering/Renderers/RenderGraph.h` — `RGResourceHandle`, `RGResource`, `RGResourceKind`, `RGAccess`, `RGAccessInfo`, `RGResourceState`, `RGPassResource`, `RGPass`, `RenderGraph`; remove `IRenderGraphCallbackPass*` raw pointer from `RenderGraphNode` (it moves to `RGPass.Callback`)
-- [ ] `ZEngine/Rendering/Renderers/RenderGraph.cpp` — `Initialize`, `Setup`, `Compile` (lifetime analysis + aliasing allocator + barrier build), `Execute` (index loop + pre-built barriers), `Resize` (DeferFree + re-allocate + partial framebuffer rebuild), `Dispose`
-- [ ] Keep `IRenderGraphCallbackPass` interface unchanged — `Setup`, `Compile`, `Execute` virtual methods; existing pass structs compile without changes
+```cpp
+float    ClearColor[4]  = {0.f, 0.f, 0.f, 0.f};
+float    ClearDepth     = 1.0f;
+uint32_t ClearStencil   = 0;
+```
 
-### Builder and inspector
+`GraphicPass::Initialize()` already constructs `VkClearValue` entries — read these fields instead of hardcoding.
 
-- [ ] `ZEngine/Rendering/Renderers/RGBuilder.h/.cpp` — `WriteColorAttachment`, `WriteDepthAttachment`, `ReadTexture`, `ReadDepth`, `ImportRenderTarget`, `ImportTexture`, `AttachBuffer` (typed overloads); each call registers read/write on current pass and returns `RGResourceHandle`
-- [ ] `ZEngine/Rendering/Renderers/RGInspector.h/.cpp` — all `Get*` methods indexed by `RGResourceHandle`; string-keyed overloads preserved for pass `Execute()` callsites that use names
+---
 
-### Aliasing allocator
+## 9. GPU Debug Markers
 
-- [ ] `ZEngine/Rendering/Renderers/RGTransientPool.h/.cpp` — `TryAlias`, `Register`, `MarkInUse`, `Clear`; alias compatibility check: format + dimensions + usage superset + layer/mip count
-- [ ] `DeriveUsageFlags(RGResource, passes)` free function — derives `VkImageUsageFlags` and sets `VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT` for single-pass-lifetime resources
-- [ ] VMA allocation path: transient bit resources use `VMA_MEMORY_USAGE_GPU_LAZILY_ALLOCATED`; all others use `GpuMemoryDomain::RenderTarget` segregated pool
+`vkCmdBeginDebugUtilsLabelEXT` / `vkCmdEndDebugUtilsLabelEXT` are extension functions — must be loaded via `vkGetDeviceProcAddr`. Not core Vulkan. Guarded by null-pointer check (absent when validation layers not loaded).
 
-### Barrier system
+```mermaid
+sequenceDiagram
+    participant E as Execute()
+    participant V as VulkanDevice
+    participant P as Pass N
 
-- [ ] `kAccessTable` constexpr array — stage + access + layout for every `RGAccess` value
-- [ ] Barrier-plan build loop in `Compile()` — one `RGImageBarrierPlan` per resource state transition; aliased/first-use transients transition from `UNDEFINED`
-- [ ] Execute loop stamps plans with the live `VkImage` and prior runtime state, then emits at most one `vkCmdPipelineBarrier` per pass
+    E->>V: if (m_beginDebugLabelFn)\n  vkCmdBeginDebugUtilsLabelEXT(pass.Name)
+    E->>P: Callback->Execute(ctx)
+    P-->>E: returns
+    E->>V: if (m_endDebugLabelFn)\n  vkCmdEndDebugUtilsLabelEXT()
+```
 
-### Topology
+Add to `VulkanDevice`: `PFN_vkCmdBeginDebugUtilsLabelEXT m_beginDebugLabelFn` and `PFN_vkCmdEndDebugUtilsLabelEXT m_endDebugLabelFn`, loaded via `vkGetDeviceProcAddr` after `vkCreateDevice`.
 
-- [ ] Index-based DFS topological sort; integer adjacency sets (no string sets in sort); cycle detection preserved; result stored in `SortedPassIndices: Array<uint32_t>`
+---
 
-### Compute pass
+## 10. Graph-Managed Async Compute (SkyAtmospherePass Migration)
 
-- [ ] `ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h/.cpp` — add `ComputePipeline* ComputePipeline = nullptr` field; split `Initialize` and `Bake` on `RenderPassType::COMPUTE`; compute path creates `ComputePipeline`, skips `Attachment` and `VkRenderPass`
-- [ ] `Compile()` framebuffer loop — guard: skip `FramebufferVNext` creation for `RenderPassType::COMPUTE` passes
-- [ ] `Execute()` loop — pass null `Framebuffer` to compute callbacks; no `BeginRenderPass` call
-- [ ] See `compute-pipeline.md` for `ComputePipeline`, `CommandBuffer::Dispatch`, `ShaderType::COMPUTE`, and `IInlineComputePass` deliverables
+```mermaid
+sequenceDiagram
+    participant Old as Current (bypass)
+    participant New as Redesigned (in-graph)
 
-### Migration
+    Note over Old: AppRenderPipeline::EndFrame()
+    Old->>Old: SceneRenderer->SubmitSkyLUTs()
+    Note right of Old: direct vkQueueSubmit2 — own cmd pool, own semaphore
 
-- [ ] ~~UploadPass~~ — removed; SkyboxPass and GridPass now use global VB/IB via RRM::RegisterBuiltinGeometry; `BasePass`, `DepthPrePass`, `SkyboxPass`, `GridPass` updated to use new `RGBuilder`/`RGInspector` API — builder call sites only; `Execute()` bodies unchanged
-- [ ] `GraphicRenderer::Initialize` updated — `RGBuilder::ImportRenderTarget` for `FrameColorRenderTarget` and `FrameDepthRenderTarget`; remove `ResourceBuilder->AttachRenderTarget` calls
-- [ ] `GbufferPass::Setup` and `LightingPass::Setup` updated to use `WriteColorAttachment` and `ReadTexture` — these are currently commented out; enable them as part of this migration
+    Note over New: AppRenderPipeline::EndFrame()
+    New->>New: RenderGraph->SubmitAsync(device, scene)
+    New->>New: SkyAtmospherePass::SubmitAsync()
+    Note right of New: returns AsyncGPUOperationHandle{semaphore, value, FRAGMENT_BIT}
+    New->>New: graph enqueues → AsyncGPUOperations
+    New->>New: Present() submit_1 waits automatically
+```
 
-### Tests
+Sky combine draw extracted into `SkyCombinePass : IGraphicsPass` that reads `m_skyview_lut` via `ReadTexture()`.
 
-- [ ] `tests/Rendering/RenderGraphTest.cpp`:
-  - Test 1 — linear chain A -> B -> C produces correct barrier sequence (A COLOR_WRITE -> B SHADER_READ has `COLOR_ATTACHMENT_OUTPUT -> FRAGMENT_SHADER` barrier)
-  - Test 2 — diamond dependency A -> {B, C} -> D; B and C have no barrier between them; D waits on both
-  - Test 3 — aliasing: resources X (lives pass 0-1) and Y (lives pass 3-4) with identical specs share one `VkImage`; confirmed via `TextureHandle` equality
-  - Test 4 — transient bit: resource live only in pass 2 gets `VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT`
-  - Test 5 — resize: old handles enqueued in `DeferFree`, new handles allocated, state reset to UNDEFINED
-  - All tests pass under AddressSanitizer and UBSanitizer
+---
 
-### Manual smoke test
+## 11. Fixed Execute() Loop
 
-- [ ] Profile with RenderDoc: open a capture, confirm that all image transitions between passes match the expected layouts (no validation layer errors, no redundant full-pipeline stalls)
-- [ ] Profile with Tracy: `ZENGINE_PROFILE_SCOPE("RenderGraph::Execute")` should show linear per-pass cost with no hash lookup spikes
-- [ ] Measure RT memory with `vmaCalculateStatistics` before and after; confirm transient pool reduces peak allocation by at least 40% vs the baseline at 1440p
+```mermaid
+flowchart TD
+    A[for pass in SortedPassIndices] --> B{Enabled AND not culled?}
+    B -- no --> A
+    B -- yes --> C["vkCmdBeginDebugUtilsLabelEXT(pass.Name)\n[if fn ptr loaded]"]
+    C --> D[Stamp pre-compiled pass.ImageBarriers]
+    D --> E{Pass type?}
+    E -- Graphics --> F{Framebuffer valid?}
+    F -- no --> G[log error + skip]
+    F -- yes --> FP{Pipeline handle non-null?}
+    FP -- no --> GP["skip draw calls this frame\n(PSO Compiling or hot-reload invalidated)\npass retries next Compile()"]
+    FP -- yes --> H["Callback->Execute(cmd + framebuffer)"]
+    E -- InlineCompute --> FP2{Pipeline handle non-null?}
+    FP2 -- no --> GP2[skip dispatch this frame]
+    FP2 -- yes --> I["Callback->Execute(cmd)\n[no framebuffer guard]"]
+    E -- AsyncCompute --> J[skip — SubmitAsync() submitted GPU work]
+    H & I & J & G & GP & GP2 --> K[vkCmdEndDebugUtilsLabelEXT]
+    K --> A
+```
+
+---
+
+## 12. Full Architecture Overview
+
+```mermaid
+flowchart TD
+    subgraph CompileTime["Compile-Time (once per resize or recompile)"]
+        S1[Setup/Register — passes declare resources via builder\nPhase 1: cache RGHandles; Option B: store them in frame pass data]
+        S2["BuildTopology — Kahn sort\n+ reverse-reachability culling"]
+        S3[BuildLifetimes — already uses SortedPassIndices]
+        S4["AllocateTransients\n— lifetime-overlap + size-compat aliasing\n— set needs_alias_barrier on slot reuse\nMUST run before BuildBarriers — VkImages\nnot valid until physical alloc is done"]
+        S5["BuildBarriers FIXED\n— sorted execution order\n— read-read skip\n— aliasing barriers\n— skip pre-compile for swapchain images"]
+        S6["Per-pass Compile() loop\n— 4-step PSO cache lookup (pso-cache-architecture.md)\n  1. SetLayouts.GetOrCreate per descriptor set\n  2. Layouts.GetOrCreate for VkPipelineLayout\n  3. Build GraphicsPSOKey with PipelineLayoutHash\n  4. PSOCache.GetOrCreateGraphics → borrowed VkPipeline\n— SetDynamicUniform / SetSampler / UseTextureArray\n— populates pass.Handle for AllocateFramebuffers"]
+        S7[AllocateFramebuffers — GraphicsPass only]
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+    end
+
+    subgraph PerFrame["Per-Frame"]
+        E1["Execute(primary_cmd)\n— debug labels around each pass\n— stamp pre-compiled barriers\n— type-aware dispatch"]
+        E2["SubmitAsync(device, scene)\n— calls IAsyncComputePass::SubmitAsync\n— enqueues AsyncGPUOperationHandles → AsyncGPUOperations\n→ Present submit_1 waits automatically"]
+        E1 --> E2
+    end
+
+    subgraph PassTypes["Pass Types"]
+        GP[IGraphicsPass\nGBuffer, Lighting, SkyCombine\nGrid, SkySphere, ZUI]
+        ICP[IInlineComputePass\nBloom, SSAO, Skinning\nFrustumCulling]
+        ACP[IAsyncComputePass\nSkyAtmospherePass\nSkyLightPass IBL]
+    end
+
+    GP --> E1
+    ICP --> E1
+    ACP --> E2
+    CompileTime --> PerFrame
+```
+
+---
+
+## 13. Multi-Threaded Command Recording (Phase 2)
+
+### 13.1 Existing Infrastructure
+
+The engine has useful building blocks, but Phase 2 also needs worker-affine scheduling,
+dedicated secondary-buffer ownership, and a body-only graphics-pass contract:
+
+| Existing API | What it provides |
+|---|---|
+| `CommandBuffer::BeginSecondary(GraphicPass*, VkFramebuffer)` | Secondary cmd buffer for a graphics pass |
+| `CommandBuffer::ExecuteSecondaryCommandBuffers(ArrayView<CommandBuffer>)` | Primary records secondaries |
+| `CommandBufferManager::GetCommandBuffer(queue, frame, thread_index, buffer_index)` | Per-thread per-frame command buffer pool |
+| `GraphicRenderer::DrawScene(frame_index, thread_index, cb, camera)` | `thread_index` passed but unused |
+| `VulkanDevice::WorkerThreadCount` | Thread count available |
+
+### 13.2 Topology Levels
+
+After the topological sort produces `SortedPassIndices`, passes can be grouped into **dependency levels** — passes within the same level have no direct dependencies between them and can be recorded in parallel:
+
+```mermaid
+graph TD
+    subgraph Level0["Level 0 — no predecessors"]
+        DP[DepthPrePass]
+    end
+    subgraph Level1["Level 1 — depends on depth only"]
+        GB[GBufferPass]
+    end
+    subgraph Level2["Level 2 — depends on GBuffer"]
+        LP[LightingPass]
+        SK[SkyCombinePass when it has no Lighting dependency]
+    end
+    subgraph Level3["Level 3 — depends on lighting or depth"]
+        GP[GridPass]
+        BL[BloomPass — IInlineComputePass]
+    end
+    subgraph Level4["Level 4 — depends on everything"]
+        ZUI[ZUIPass]
+    end
+
+    DP --> GB --> LP --> GP --> ZUI
+    GB --> SK --> ZUI
+    LP --> BL --> ZUI
+    DP --> GP
+```
+
+Note: `IAsyncComputePass` instances (e.g. `SkyAtmospherePass` LUTs) are **never** in a topology level — they are submitted on the COMPUTE_QUEUE by `SubmitAsync()` and bypass the graphics command buffer entirely.
+
+Passes in the same level are independent. `IAsyncComputePass` is excluded from these
+levels entirely; a graphics `SkyCombinePass` can share a level only when its declared
+resource accesses have no dependency on the other pass.
+
+**Level computation** (runs once, after `BuildTopology()`):
+
+```cpp
+// Assign each pass the maximum depth of any of its predecessors + 1
+Array<uint32_t> pass_level;
+pass_level.init(arena, Passes.size(), Passes.size());
+for (uint32_t i = 0; i < Passes.size(); ++i)
+    pass_level[i] = 0;
+for (uint32_t i : SortedPassIndices) {
+    for (auto& dep : predecessors_of(i))
+        pass_level[i] = max(pass_level[i], pass_level[dep] + 1);
+}
+// Group into TopologyLevels[level] = [pass indices with that level value]
+```
+
+### 13.3 Execute() with Parallel Recording
+
+```mermaid
+sequenceDiagram
+    participant RT as RenderThread (primary cmd)
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+
+    Note over RT,W2: Level 0 — single pass
+    RT->>W1: Submit: record DepthPrePass → secondary_0_0
+    W1-->>RT: done (latch.arrive)
+    RT->>RT: wait latch → stitch barriers/render-pass scope → execute secondary_0_0
+
+    Note over RT,W2: Inter-level barrier in primary
+    RT->>RT: vkCmdPipelineBarrier (depth WRITE → depth READ)
+
+    Note over RT,W2: Level 2 — parallel recording
+    RT->>W1: Submit: record LightingPass → secondary_2_0
+    RT->>W2: Submit: record SkyCombinePass → secondary_2_1
+    W1-->>RT: latch.arrive
+    W2-->>RT: latch.arrive
+    RT->>RT: wait latch → stitch each pass in sorted order
+```
+
+**Barrier placement — primary command buffer only:**
+
+Every resource hazard creates a topology edge, so a producer and consumer cannot be
+in the same dependency level. Therefore an `IntraLevelBarriers` category is neither
+needed nor sound. Keep one pre-pass barrier list on `RGPass`; the render thread stamps
+it in the primary immediately before executing that pass's secondary command buffer.
+
+This is required for graphics passes: a graphics secondary is recorded with
+`VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT` and executes inside an active
+primary render-pass instance. Ordinary pipeline barriers do not belong in that scope.
+
+### 13.4 Secondary Command Buffer Ownership
+
+```mermaid
+graph LR
+    subgraph PerFrame["Per Frame — FrameIndex N"]
+        subgraph Thread0["Thread 0 (render thread)"]
+            T0P[Primary cmd\nstitches levels\nvkCmdExecuteCommands]
+        end
+        subgraph Thread1["Thread 1"]
+            T1S0[Secondary — DepthPrePass]
+            T1S1[Secondary — LightingPass]
+        end
+        subgraph Thread2["Thread 2"]
+            T2S0[Secondary — GBufferPass]
+            T2S1[Secondary — inline compute pass]
+        end
+    end
+    T1S0 & T1S1 & T2S0 & T2S1 -->|vkCmdExecuteCommands| T0P
+```
+
+`CommandBufferManager::GetCommandBuffer()` cannot be used as-is for this feature.
+Its four slots alternate primary/secondary (`0,2` are primary; `1,3` are secondary),
+so it does not provide four secondaries per worker and an arbitrary slot may select a
+primary buffer. Introduce a dedicated, explicitly-secondary per-frame worker pool
+whose capacity grows to the number of passes assigned to that worker. Do not wrap a
+fixed slot index; wrapping would overwrite a secondary that is still needed by the
+primary.
+
+Tasks also need worker affinity. `ThreadPool::Submit()` chooses a queue dynamically
+and falls back to inline execution if all queues are full, so an item index is not a
+safe command-buffer identity. Submit one batch task to each worker with an explicit
+`SubmitToWorker(worker_index, ...)`, partition the level's pass indices among those
+tasks, and let each worker acquire its secondaries with a local monotonically
+increasing ordinal. `SubmitToWorker` is safe only with the render thread as its sole
+producer, preserving the existing `SPSCQueue` invariant. It must not use the inline
+fallback; report/backpressure on a full queue instead.
+
+### 13.5 Graphics Pass vs Compute Pass Threading
+
+**Graphics passes** require `VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS` in
+`vkCmdBeginRenderPass`. Existing callbacks cannot be recorded directly into such a
+secondary: they currently call `BeginRenderPass` / `EndRenderPass` themselves. Phase
+2 therefore adds a body-only recording contract (for example `RecordDraw(...)`) and
+migrates graphics passes to it. The primary records, in sorted execution order:
+
+```cpp
+StampPrePassBarriers(primary, pass);
+primary->BeginRenderPass(pass.Handle, pass.Framebuffer->Handle,
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+primary->ExecuteSecondaryCommandBuffers(pass.secondary);
+primary->EndRenderPass();
+```
+
+This also means a graphics and inline-compute pass may be recorded in parallel but
+must be stitched serially: execute a compute secondary outside any render-pass scope.
+
+**Inline compute passes** have no render pass. Their secondary command buffers must be begun differently — the existing `BeginSecondary(GraphicPass*, VkFramebuffer)` is render-pass-specific and cannot be used. A new overload is needed:
+
+```cpp
+// New overload — needed for compute secondary cmd buffers
+void CommandBuffer::BeginSecondaryCompute();
+// Implementation: begin with no pInheritanceInfo render pass fields,
+// VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT only
+```
+
+This must be added to `VulkanDevice.h/.cpp` as part of the Phase 2 multi-threading implementation.
+
+### 13.6 Thread Pool Prerequisites — Worker-Affine Batches and CountedLatch
+
+The multi-threaded recording depends on a per-batch latch and an explicit
+render-thread-to-worker submission API. This is not a generic `ParallelFor`: command
+buffer ownership must be deterministic.
+
+**CountedLatch / WaitAll**
+
+C++20 `std::latch` (already available — engine requires C++20) provides exactly the semantics needed. No custom implementation is required; one latch counts the submitted worker-batch tasks.
+
+`WaitAll` is not a pool method — it's the call-site `fence.wait()`. A global `ThreadPool::WaitAll()` would block all other submitted work; per-batch latches are the correct design.
+
+**Worker-affine batches**
+
+Add `SubmitToWorker(uint32_t worker_idx, void* ctx, TaskFn fn)` to `ThreadPool`, and
+use it only from the render thread. It pushes directly to that worker's SPSC queue,
+returns failure when full, and never invokes the task inline. `ThreadPoolHelper` then
+creates at most one task per worker for a level; each task records its partition
+serially and counts down the latch once. A worker index passed at submission time is
+the authoritative ownership identity; no `thread_local` lookup is required.
+
+`ThreadPoolHelper::ParallelForWorkers(level, fn)` is a thin render-thread-only wrapper
+over those worker batches. Its callback receives `(pass_idx, worker_idx, local_ordinal)`.
+
+```cpp
+std::latch fence(active_worker_count);
+for (uint32_t worker = 0; worker < active_worker_count; ++worker)
+    SubmitToWorker(worker, MakeBatchContext(level, worker, &fence), RecordWorkerPartition);
+fence.wait();
+```
+
+| Addition | Lines | Files | Risk |
+|---|---|---|---|
+| `CountedLatch` | 0 — use `std::latch` (C++20) | 0 | None |
+| `WaitAll` | 0 — `fence.wait()` at call site | 0 | None |
+| Worker-affine batch submission | ~40 | `ThreadPool.h`, `CommandBufferManager` | Medium |
+
+These should be landed as a **standalone PR before the render graph multi-threading work**.
+
+---
+
+### 13.7 What Cannot Be Parallelized
+
+- Passes with explicit dependency edges (cannot be in the same level by construction)
+- `IAsyncComputePass` submissions — these go to a separate queue entirely, not the graphics cmd buffer
+- The primary command buffer work (barrier stitching, `vkCmdExecuteCommands`) — always on the render thread
+- Resize and recompile operations — already guarded as single-frame operations
+
+### 13.8 Implementation Sketch
+
+**New fields required on `RenderGraph`** (Phase 2 additions):
+```cpp
+// Add to RenderGraph
+Core::Containers::Array<Core::Containers::Array<uint32_t>> m_topology_levels;
+// RGPass retains one pre-pass barrier array.
+// It is always stamped by the primary before this pass executes.
+Core::Containers::Array<VkImageMemoryBarrier> ImageBarriers;
+```
+
+**Implementation using worker-affine batches from §13.6:**
+
+```cpp
+void RenderGraph::Execute(CommandBuffer* primary) {
+    uint8_t frame_idx = Device->SwapchainPtr->CurrentFrame->Index;
+
+    for (uint32_t level_idx = 0; level_idx < m_topology_levels.size(); ++level_idx) {
+        auto& level = m_topology_levels[level_idx];
+
+        // Parallel: one affine batch per worker. Each worker acquires only its own
+        // dedicated secondary buffers and records its assigned pass bodies serially.
+        Helpers::ThreadPoolHelper::ParallelForWorkers(level, [&](uint32_t pass_idx,
+                                                                 uint32_t worker_idx,
+                                                                 uint32_t local_ordinal) {
+                RGPass& pass = Passes[pass_idx];
+                if (!pass.Enabled) return;
+
+                CommandBuffer* secondary = Device->CommandBufferMgr->AcquireWorkerSecondary(
+                    QueueType::GRAPHIC_QUEUE, frame_idx, worker_idx, local_ordinal);
+
+                if (/*Graphics*/ ...) {
+                    secondary->BeginSecondary(static_cast<GraphicPass*>(pass.Handle),
+                                              pass.Framebuffer->Handle);
+                    pass.Callback->RecordDraw(..., secondary); // no Begin/EndRenderPass here
+                } else {
+                    secondary->BeginSecondaryCompute();
+                    pass.Callback->Execute(..., secondary);
+                }
+                secondary->End();
+            });
+
+        // Primary: preserve sorted order, barriers, and render-pass boundaries.
+        for (uint32_t pass_idx : level) {
+            RGPass& pass = Passes[pass_idx];
+            StampPrePassBarriers(primary, pass);
+            ExecuteRecordedPass(primary, pass); // graphics opens/closes its render pass;
+                                               // inline compute executes outside it
+        }
+    }
+}
+```
+
+**Key notes:**
+- Frame index: `Device->SwapchainPtr->CurrentFrame->Index` — not a `RenderGraph` member
+- Thread pool: worker-affine batches from §13.6, synchronized with `std::latch` — **no spin-wait**
+- Secondary ownership: `AcquireWorkerSecondary()` returns an explicitly-secondary buffer owned by the assigned worker; capacity grows instead of wrapping a fixed slot.
+- Barriers: `ImageBarriers` remain a single per-pass array and are always stamped by the primary.
+- `BeginSecondaryCompute()`: new `CommandBuffer` overload for compute secondaries (§13.5)
+- Swapchain resources: excluded from precompiled `ImageBarriers`; transitioned dynamically per frame (§5)
+
+---
+
+## 14. Advanced Production Features (Phase 3)
+
+| Feature | Why it matters | Approach |
+|---|---|---|
+| **Option B per-frame rebuild** | Eliminates persistent enabled/disabled graph state | Conditional `Register()` each frame; **requires PSO cache** |
+| **Split barriers** | Allows producer/consumer overlap across queues | Release/acquire barrier pairs plus timeline waits |
+| **True async compute overlap** | Lets independent compute overlap graphics | Queue scheduler with a critical-path cost model |
+| **Subresource granularity** | Avoids unnecessary whole-image transitions | Per-aspect/mip/layer state intervals |
+| **Render-pass fusion** | Preserves tile memory on TBDR GPUs | Legacy-render-pass fusion backend; dynamic rendering remains the default backend |
+| **Parallel secondary recording** | Reduces CPU recording time | Worker-affine body recording; primary owns barriers and render-pass scopes (§13) |
+| **Versioned writes** | Removes declaration-order multi-writer heuristic | Every write creates a new resource version |
+| **Transfer queue integration** | Streaming uploads have no graph-declared consumer dependency | `ITransferPass` + ticket-based `ImportStreamingTexture` |
+| **Bindless as graph resource** | Graph/bindless dependency gap causes missing barriers | `ReadBindless` declaration + frame-begin graph-owned descriptor batch |
+| **Conditional rendering** | GPU-driven visibility requires no CPU readback stall | `UseConditional` wrapping via `VK_EXT_conditional_rendering` |
+| **Readback and query pools** | Auto-exposure, occlusion results need deferred CPU delivery | `RGReadbackRing` + callback delivery at `RenderTimelineNextValue` |
+| **Material permutation system** | PSO cache needs an author-side variant resolution layer | `MaterialTemplate`, `MaterialInstance`, `ResolveVariantKey`, `DrawSorter` |
+
+The following section makes these target features explicit. They are implementation
+milestones, not optional correctness work once the corresponding capability is enabled.
+
+---
+
+## 15. Complete Production-Grade Graph Target
+
+### 15.1 Per-Frame Builder and Versioned Resources
+
+Option B is the steady-state architecture. Each frame constructs a lightweight virtual
+graph in a frame arena, compiles it, records it, and releases only the virtual metadata.
+Physical images, buffers, descriptor layouts, PSOs, and allocator pages remain cached.
+
+Every write produces a new version. A read consumes an explicit version, so a graph no
+longer guesses which of several writers a reader intended to observe. `RGResourceHandle`
+already has `Version`; Phase 3 makes it semantically authoritative.
+
+```cpp
+RGImageHandle gbuffer = builder.CreateImage("gbuffer", gbuffer_desc);
+gbuffer = builder.WriteColor(pass, gbuffer, RGLoadOp::Clear, clear_value); // version 1
+builder.ReadSampled(lighting, gbuffer, RGShaderStages::Fragment);           // reads v1
+
+RGImageHandle lit = builder.CreateImage("lit", hdr_desc);
+lit = builder.WriteColor(lighting, lit, RGLoadOp::Clear, clear_value);      // version 1
+lit = builder.WriteStorage(bloom, lit, RGShaderStages::Compute);            // version 2
+builder.ReadSampled(composite, lit, RGShaderStages::Fragment);              // reads v2
+```
+
+The compiler emits edges from the producer of the consumed version to its reader, and
+from a prior version to the pass that creates the next version. A read of an unproduced,
+non-imported version is a compile error. Passes with side effects must declare an
+explicit sink (`WriteSwapchain`, `Export`, readback, query resolve, or `NeverCull`);
+`NeverCull` is reserved for intentional external effects and is reported by validation.
+
+### 15.2 Unified Images, Buffers, and Subresources
+
+Resources are a tagged physical variant, not an image-only record with a `Kind` enum:
+
+```cpp
+struct RGSubresourceRange {
+    VkImageAspectFlags Aspects;
+    uint16_t BaseMip, MipCount;
+    uint16_t BaseLayer, LayerCount;
+};
+
+struct RGUse {
+    RGResourceHandle Handle;       // exact produced/imported version
+    RGUsage          Usage;        // ColorAttachment, Sampled, StorageReadWrite, Transfer...
+    RGShaderStages   Stages;       // vertex/fragment/compute/ray tracing; never inferred globally
+    RGSubresourceRange Range;      // images; whole-range sentinel for buffers
+};
+
+struct RGPhysicalResource {
+    RGResourceKind Kind;
+    Textures::TextureHandle Image; // valid only for image kinds
+    Rendering::BufferHandle Buffer;// valid only for buffer kinds
+};
+```
+
+The compiler tracks state as interval maps over image aspect/mip/layer ranges and one
+whole-resource state for a buffer. It splits only ranges touched by a use, coalesces
+equal adjacent states after the pass, and emits `VkImageMemoryBarrier2` or
+`VkBufferMemoryBarrier2` accordingly. A use declares exact stages, so fragment sampled
+reads, vertex sampled reads, compute storage writes, indirect reads, and transfer work
+receive different synchronization scopes.
+
+### 15.3 Synchronization2, Queue Ownership, and Scheduling
+
+All new graph barriers use `vkCmdPipelineBarrier2` with `VkDependencyInfo`; legacy
+`vkCmdPipelineBarrier` remains only as a compatibility wrapper during migration. The
+graph has one queue assignment per pass: graphics, async compute, or transfer. It
+builds a queue submission plan from version edges.
+
+Phase 3 replaces the Phase 1 `IAsyncComputePass` bypass with ordinary graph passes:
+
+```cpp
+enum class RGQueuePreference : uint8_t { Graphics, AsyncCompute, Transfer };
+
+// Registration metadata, not a separate callback hierarchy. The compiler may fall back
+// to Graphics when QueueTopology lacks a usable independent queue.
+RGPassDesc{ .QueuePreference = RGQueuePreference::AsyncCompute };
+```
+
+An async-compute pass remains in the versioned DAG. Its produced versions therefore
+drive culling, lifetimes, barrier derivation, and submission waits exactly like graphics
+or transfer passes. Once all users migrate, delete `IAsyncComputePass`, `SubmitAsync()`,
+and the special `Present()`-wait path.
+
+```mermaid
+flowchart LR
+    G0[GBuffer — graphics] --> L[Lighting — graphics]
+    C0[Hi-Z / culling — async compute] --> L
+    L --> B[Bloom — async compute]
+    B --> T[Tonemap — graphics]
+
+    G0 -. graphics timeline .-> L
+    C0 -. compute signal / graphics wait .-> L
+    L -. graphics signal / compute wait .-> B
+    B -. compute signal / graphics wait .-> T
+```
+
+For a cross-queue resource edge, compilation emits:
+
+1. A release barrier after the producer's last use.
+2. A timeline semaphore signal in that queue submission.
+3. A wait at the first consumer stage in the receiving submission.
+4. An acquire barrier before the consumer's first use.
+
+If queue families differ, the release/acquire pair carries the source and destination
+family indices. If they are the same family, both indices are `VK_QUEUE_FAMILY_IGNORED`.
+The scheduler may place a pass on async compute only when its dependencies permit it and
+the estimated overlap exceeds synchronization cost; otherwise it records as inline
+compute. A deterministic debug switch must force all passes onto the graphics queue.
+
+#### 15.3.1 Cross-Platform Queue Topology and Capability Resolution
+
+The engine targets Windows, macOS, and Linux. The graph is Vulkan/WSI-neutral: platform
+surface creation is selected by the window layer (Win32, Metal/MoltenVK portability,
+XCB, or Wayland), while queue selection is made solely from the physical device's queue
+families, queue counts, present support for the active surface, and enabled device
+features. No platform or vendor is assigned a hard-coded queue-family index.
+
+At device creation, `VulkanDevice` builds an immutable `QueueTopology` from
+`vkGetPhysicalDeviceQueueFamilyProperties`, surface-support queries, and enabled
+features. It records graphics and present families independently, optional compute and
+transfer families, whether each queue is a distinct `VkQueue`, and whether a
+queue-family ownership transfer is required. The graph receives this topology; passes
+declare their preferred queue class, never a queue-family number.
+
+The normal selection policy requires the graphics family to support the active surface.
+If no such family exists but a separate present family does, the device is accepted only
+when the swapchain backend implements explicit graphics→present ownership release and
+present→graphics acquire for swapchain images, plus the corresponding submission waits.
+Otherwise reject that physical device for the active surface rather than assuming that
+graphics capability implies presentation support.
+
+| Runtime topology | Scheduling policy | Synchronization policy |
+|---|---|---|
+| One graphics-capable queue | Graphics, compute, and transfer record/submit in topological order on that queue. | No inter-queue semaphore or ownership transfer; ordinary in-queue barriers only. |
+| Graphics plus a dedicated transfer queue | Upload/copy passes use transfer only when dependency analysis finds useful overlap; compute remains inline unless an eligible compute queue exists. | Timeline wait for cross-queue dependencies; release/acquire ownership barriers only when families differ. |
+| Graphics plus compute queue | Eligible compute passes may use async compute; small or dependency-bound work remains inline. | Different queues in the same family still use timeline waits, but family indices are `VK_QUEUE_FAMILY_IGNORED`. Distinct families additionally use release/acquire ownership barriers. |
+| Graphics, compute, and transfer queues | Scheduler constructs the multi-queue DAG and may overlap independent work subject to cost heuristics and queue availability. | One signal/wait edge per cross-queue dependency, coalesced per semaphore/submission; ownership transfers only across families. |
+
+Two queues are considered separate only when the driver exposes distinct queue handles
+(`queueCount` is sufficient for both allocations) or distinct families. A compute or
+transfer family that aliases the graphics `VkQueue` is treated as one queue, even if it
+advertises the relevant capability bits. The scheduler must always retain a legal
+graphics-queue fallback for every pass.
+
+Feature-dependent paths are selected at runtime, not by OS: Synchronization2 is Vulkan
+1.3 or `VK_KHR_synchronization2`; timeline semaphores are Vulkan 1.2 or
+`VK_KHR_timeline_semaphore`; dynamic rendering is Vulkan 1.3 or
+`VK_KHR_dynamic_rendering`; conditional rendering remains optional. A device missing an
+advanced feature uses the documented compatibility backend or disables only that
+optional graph feature with a diagnostic. The platform window backend supplies the
+appropriate surface extension at instance creation. When required by a macOS Vulkan
+implementation, instance creation enables `VK_KHR_portability_enumeration` and its
+enumeration flag, while device creation enables the advertised
+`VK_KHR_portability_subset`; these are capability constraints, not a separate
+render-graph design.
+
+Timeline semaphores are mandatory for the Phase 3 multi-queue scheduler. A device that
+lacks them uses the single-graphics-queue compatibility path; it does not attempt an
+unbounded binary-semaphore emulation. This keeps semaphore lifetime, submission
+coalescing, and deferred retirement deterministic on every supported OS.
+
+### 15.4 Transient Allocator, Aliasing, and Memory Budgeting
+
+The production allocator owns Vulkan memory pages rather than treating a texture handle
+as memory. Compilation performs interval coloring over compatible transient resource
+lifetimes, then binds distinct `VkImage`/`VkBuffer` objects to non-overlapping aliases
+of allocator-page memory. Compatibility includes Vulkan memory requirements,
+dedicated-allocation requirements, alignment, memory type, image-create flags, and all
+view/usage constraints. Image aliases use `VK_IMAGE_CREATE_ALIAS_BIT` when required.
+
+```mermaid
+flowchart LR
+    A[Virtual image A: passes 1..4] --> P[Allocator page / range 0]
+    B[Virtual image B: passes 5..8] --> P
+    C[Virtual buffer C: passes 2..7] --> Q[Allocator page / range 1]
+    A -. alias discard barrier before B .-> B
+```
+
+Aliasing is forbidden for exported, imported, history, readback, sparse, dedicated, or
+cross-frame resources. The allocator records peak bytes by heap, reports alias savings,
+honors a configurable transient budget, and has a deterministic fallback: allocate an
+unaliased compatible page or fail graph compilation with a resource report—never reuse
+live memory.
+
+### 15.5 Rendering Backends, Load/Store Semantics, and PSOs
+
+The graph declaration owns attachment load/store operations, clears, resolves, sample
+count, and render area. A pass never performs implicit global clears. The default Vulkan
+backend uses dynamic rendering; its `GraphicsPSOKey` includes the canonical attachment
+format tuple, depth/stencil format, sample count, view mask, and pipeline layout hash.
+This keeps PSO-cache identity aligned with rendering compatibility.
+
+For tile-based GPUs, an optional legacy-render-pass backend may fuse consecutive,
+dependency-compatible graphics passes when their attachments, subresource ranges,
+render area, sample count, and load/store semantics permit it. Fusion is an optimization
+behind a backend capability check; it must never change graph ordering or visibility.
+Secondaries under dynamic rendering use the appropriate rendering inheritance info;
+under the legacy backend they use render-pass continuation inheritance.
+
+### 15.6 Validation, Observability, and Determinism
+
+Development builds validate every compile: unique version producer, valid imported
+initial state, no read-before-write, no overlapping alias lifetimes, legal queue-family
+transfer pairs, descriptor/resource usage compatibility, and a present sink. They emit
+a DOT/JSON graph dump containing passes, versions, culled passes, lifetimes, physical
+allocations, barriers, queue submissions, and PSO-cache outcomes.
+
+GPU labels nest as `Frame → Queue submission → Pass`; timestamps are placed around
+passes and queue submissions. RenderDoc names physical resources with virtual-version
+and alias-slot information. A deterministic test mode disables culling only when asked,
+forces graphics queue execution, disables aliasing/fusion independently, and compares
+output against the optimized plan. This makes synchronization and aliasing failures
+reproducible rather than timing-dependent.
+
+### 15.7 Transfer Queue and Streaming Integration
+
+Texture streaming and buffer uploads currently bypass the graph entirely. The RRM calls
+`SubmitAsyncUploads` after `Present`. Those uploads are consumed by `submit_1` of the
+**next** frame, not the current one. Phase 3 gives the graph explicit ownership of the
+consumer-side wait and acquire barrier through a streaming-upload ticket; RRM remains
+the producer of copy commands and producer-side release barriers.
+
+**Two integration points:**
+
+**Streaming import** — the common case. The RRM publishes one ticket per submitted
+upload from the prior frame. The ticket is available while the copy may still be
+in-flight; the graph makes it visible by placing its timeline wait in the current
+graphics submission. RRM must stop recording the graphics-side acquire command once
+this path is enabled.
+
+```cpp
+struct StreamingUploadTicket {
+    TextureHandle                         Texture;
+    Hardwares::AsyncGPUOperationHandle    Completion;
+    VkImageLayout                         PostReleaseLayout; // normally SHADER_READ_ONLY_OPTIMAL
+    uint32_t                              ProducerQueueFamily;
+};
+
+RGImageHandle ImportStreamingTexture(cstring name, const StreamingUploadTicket& ticket);
+// RRM's transfer submission transitions TRANSFER_DST_OPTIMAL → PostReleaseLayout and
+// releases ownership. The graph imports that post-release state, waits on Completion,
+// then emits the graphics acquire before the first reader. It does not transition from
+// TRANSFER_DST_OPTIMAL or emit a second release/acquire pair.
+```
+
+If producer and graphics queues belong to different queue families, the graph's acquire
+barrier carries the ticket's producer family and the graphics family. If they share a
+family, those indices are `VK_QUEUE_FAMILY_IGNORED`; the timeline wait is still required
+when producer and consumer are separate queue submissions. A texture without a pending
+ticket is imported in its declared steady-state layout (normally
+`SHADER_READ_ONLY_OPTIMAL`) with no upload wait.
+
+**Explicit transfer pass** — for in-graph copies (mipmap generation, buffer
+initialization, readback copies). These are ordinary passes with explicit resource
+declarations. They are **cullable** when their outputs have no live consumers — making
+every transfer pass non-cullable defeats graph culling and is wrong for internal copies.
+A transfer pass that exists only for side effects (e.g., exporting data to the CPU)
+must declare a readback sink or `Export` resource to prevent culling:
+
+```cpp
+struct ITransferPass : IRenderGraphPass
+{
+    virtual void RecordTransfer(VulkanDevice*, CommandBuffer* transfer_cmd) = 0;
+    // No NeverCull override: GetPassFlags() belongs to IRenderGraphPass.
+    // Passes with side effects declare an Export or readback sink in Setup().
+    // Internal copies (mip generation) are culled when their output is unused.
+};
+```
+
+The graph submits transfer passes on the transfer queue before the graphics submission.
+The produced resources are declared with `RGUsage::TransferDst`; consuming graphics
+passes declare reads. The compiler emits the release/acquire pair across queue families.
+A deterministic debug mode routes all transfers to the graphics queue to simplify
+validation.
+
+---
+
+### 15.8 Bindless Array as First-Class Graph Resource
+
+The global texture array (descriptor set 1) is currently updated outside the graph via
+`TextureHandleToUpdates`. No formal dependency exists between a graph write to a texture
+and a subsequent bindless read. The graph emits no barrier for this edge.
+
+**Two separable problems:**
+
+**1. Image layout.** A texture written by a graph pass (e.g., a LUT, a render target
+used as a source) must be in `SHADER_READ_ONLY_OPTIMAL` before any pass reads it via
+the bindless array.
+
+```cpp
+// Builder declaration — takes the graph image version (RGImageHandle), not a physical
+// TextureHandle, so the compiler can derive the writer → bindless-reader dependency edge.
+// slot is the bindless array index assigned by the texture's registration.
+// Creates a version edge: the pass producing `image` must complete before this pass.
+// Graph emits the layout transition (e.g., COLOR_ATTACHMENT_WRITE → SHADER_READ).
+// No change to descriptor binding; the pass still reads via set 1 + slot index.
+void ReadBindless(RGImageHandle image, uint32_t slot, RGShaderStages stages);
+```
+
+**2. Descriptor update.** `vkUpdateDescriptorSets` for newly-added bindless entries
+must happen before any draw that reads those slots, but does not require a pipeline
+barrier — it is host-side descriptor state, separate from GPU image-layout barriers.
+The frame graph is the sole owner of this descriptor-update batch: it drains
+`TextureHandleToUpdates` after the frame-slot fence has completed and before any command
+buffer records a bindless reader. `DeviceSwapchain::Present()` must no longer drain or
+write this queue once graph ownership is enabled.
+
+```
+BeginFrame(frame_slot) order:
+  1. Wait/reset the frame-slot fence; the slot's descriptors are no longer in flight.
+  2. Drain TextureHandleToUpdates and call vkUpdateDescriptorSets once for the batch.
+  3. Build/compile/record the graph. Its recorded GPU barriers establish image layouts.
+```
+
+History textures already resident from a prior frame are imported with
+`SHADER_READ_ONLY_OPTIMAL` as their initial layout — no transition, no descriptor
+update. Only newly registered bindless entries require the host update; graph resource
+uses independently determine whether an image barrier is needed.
+
+---
+
+### 15.9 GPU-Side Conditional Rendering
+
+CPU-side pass culling (`SetPassEnabled`, Option B registration) eliminates passes at
+graph-compile time. GPU-side conditional rendering skips GPU commands at execution
+time based on a buffer value written by a prior GPU pass, without a CPU readback stall.
+
+Use cases: occlusion culling (skip draws whose occlusion query = 0), GPU-driven
+visibility (meshlet/cluster culling output gates per-object rendering).
+
+**Extension:** `VK_EXT_conditional_rendering` — optional device feature, queried at
+device init. A pass that requires conditional rendering must provide an explicitly
+declared fallback implementation (for example, an indirect-count or unconditional
+variant) or graph compilation rejects that feature path. The graph must not silently
+omit the wrapper, because that changes the pass's GPU work.
+
+```cpp
+struct ConditionalSpec {
+    VkDeviceSize  Offset     = 0;
+    // Vulkan default (Invert=false): execute commands when value is NON-ZERO.
+    // VK_CONDITIONAL_RENDERING_INVERTED_BIT_EXT (Invert=true): execute when value is ZERO.
+    // Typical GPU occlusion culling: write 1 if visible, 0 if occluded → Invert=false.
+    bool          Invert     = false;
+};
+
+// The exact graph-buffer version establishes SHADER_WRITE → CONDITIONAL_RENDERING_READ.
+// The graph resolves its physical VkBuffer only while recording.
+void UseConditional(RGBufferHandle condition, const ConditionalSpec& spec);
+```
+
+The condition buffer version is written by a compute pass with `WriteBuffer`.
+`UseConditional()` consumes that exact `RGBufferHandle` version and registers the
+conditional-rendering read; callers do not separately declare an ambiguous string-based
+`ReadBuffer`. The graph derives the barrier
+(`SHADER_WRITE → CONDITIONAL_RENDERING_READ_EXT`) and wraps execution:
+
+```cpp
+// Phase 1: wrap Callback->Execute(). Phase 2 graphics recording: wrap the matching
+// ExecuteSecondaryCommandBuffers call in the primary command buffer.
+if (pass.ConditionalSpec.IsValid())
+    vkCmdBeginConditionalRenderingEXT(cmd, &cond_info);
+pass.Callback->Execute(...);
+if (pass.ConditionalSpec.IsValid())
+    vkCmdEndConditionalRenderingEXT(cmd);
+```
+
+---
+
+### 15.10 Readback, Feedback, and Query Pools
+
+**A. Buffer readback — auto-exposure, histogram, statistics**
+
+A render pass writes results to a GPU buffer; the CPU reads them to drive
+per-frame parameters (exposure, LOD bias, effect intensity). The read is deferred until
+the submission timeline containing its copy completes, avoiding a GPU–CPU sync stall;
+`FRAMES_IN_FLIGHT` is only an initial ring-capacity hint, not the completion criterion.
+
+```cpp
+using ReadbackFn = void(*)(const void* data, size_t size, void* ctx);
+
+// Declares a readback sink attached to a GPU buffer.
+// The graph copies gpu_buffer → a ring of host-visible staging buffers (one per frame).
+// callback fires on the render thread when RenderTimelineNextValue for the producing
+// frame has been reached — same deferred mechanism as DeferredFreeQueue.
+RGReadbackHandle DeclareReadback(cstring name, RGBufferHandle gpu_buffer,
+                                  ReadbackFn callback, void* ctx);
+```
+
+The graph adds a transfer pass at the end of the frame that copies `gpu_buffer` into a
+host-visible staging allocation. Each allocation is leased until the exact graphics or
+transfer timeline value that contains its copy has completed; it is not reused merely
+because a fixed number of frames elapsed. A render-thread `ReadbackCompletionQueue`
+polls those values and invokes the callback only after completion. For non-coherent
+memory it calls `vkInvalidateMappedMemoryRanges` before the callback. The staging ring
+is owned by the graph; callers must consume the `const void*` during the callback and
+must not retain it.
+
+**B. Occlusion query pools**
+
+Occlusion queries use `vkCmdBeginQuery`/`vkCmdEndQuery` around draw calls. Results
+must be read back without a CPU stall. The correct non-blocking path uses
+`vkCmdCopyQueryPoolResults` to copy results into a staging buffer, then the same
+`RGReadbackRing` mechanism delivers them to the CPU via callback.
+`vkGetQueryPoolResults` is not used: with `VK_QUERY_RESULT_WAIT_BIT` it blocks the
+render thread; without it it can return `VK_NOT_READY`. Neither form is the deferred
+GPU-copy/readback model.
+
+```cpp
+RGQueryHandle DeclareOcclusionQueryPool(cstring name, uint32_t query_count);
+
+// Pass declares it writes to the pool (draws inside begin/end query).
+// Each frame slot owns a distinct query-pool/range. The graph resets that slot only
+// after its prior timeline value has completed, never while old results are read back.
+void WriteQueryPool(RGQueryHandle pool, uint32_t first_query, uint32_t count);
+
+// After all passes writing to the pool, the graph emits:
+//   vkCmdCopyQueryPoolResults(cmd, pool, 0, query_count,
+//       staging_ring[slot], 0, sizeof(uint64_t),
+//       VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT)
+// For non-coherent host-visible staging memory, before the callback fires:
+//   vkInvalidateMappedMemoryRanges(device, 1, &range)
+// Delivered as a uint64_t[query_count] array through a ReadbackFn callback.
+RGReadbackHandle DeclareQueryReadback(RGQueryHandle pool, ReadbackFn callback, void* ctx);
+```
+
+**C. Timestamp queries — GPU profiling**
+
+Timestamp queries are core Vulkan — no extension is needed. `vkCmdWriteTimestamp2`
+is part of Synchronization2 (`VK_KHR_synchronization2`, promoted to Vulkan 1.3).
+Before using timestamps:
+- Check `VkQueueFamilyProperties::timestampValidBits > 0` for the target queue family.
+- Check `VkPhysicalDeviceLimits::timestampPeriod > 0` — gives nanoseconds per tick.
+- Check `timestampComputeAndGraphics` in `VkPhysicalDeviceLimits` before using
+  timestamps on compute-capable queues.
+
+The graph inserts `vkCmdWriteTimestamp2` before and after each pass when profiling is
+enabled. Results are delivered to the observability layer (§15.6) with the same
+deferred `RGReadbackRing` mechanism and the same `vkCmdCopyQueryPoolResults` path.
+
+---
+
+### 15.11 Material System and Shader Permutation Management
+
+The PSO cache stores and retrieves compiled pipelines keyed by `GraphicsPSOKey`. The
+material system is the layer above it: it defines what permutations exist, resolves
+which one to use for a given draw, and manages pre-warming.
+
+**Material template** — defines the shader base and the set of supported permutations:
+
+```cpp
+enum class MaterialPermutation : uint64_t {
+    None          = 0,
+    AlphaTest     = 1ULL << 0,
+    AlphaBlend    = 1ULL << 1,
+    DoubleSided   = 1ULL << 2,
+    Clearcoat     = 1ULL << 3,
+    SubsurfaceSSS = 1ULL << 4,
+    WithNormalMap = 1ULL << 5,
+    WithEmissive  = 1ULL << 6,
+    // … up to bit 63
+};
+
+struct MaterialTemplate {
+    cstring                  ShaderBaseName;         // "pbr_opaque", "pbr_transparent"
+    MaterialPermutation      SupportedPermutations;  // bitmask of valid flags
+    uint32_t                 PushConstantSize;        // size of per-draw parameter block
+};
+```
+
+**Material instance** — baked combination of active flags and parameter values:
+
+```cpp
+struct MaterialInstance {
+    const MaterialTemplate*  Template;
+    MaterialPermutation      ActivePermutations;
+    // Vulkan guarantees only 128 bytes of push constants (maxPushConstantsSize minimum).
+    // Cap inline params at min(128, Device->Limits.maxPushConstantsSize).
+    // Material data larger than the device limit spills to a per-material UBO or SSBO
+    // bound via the pipeline layout; the push constant carries only an index into it.
+    uint8_t                  Params[128];
+};
+```
+
+**Pass context** — the render pass the material is drawn into changes which shader
+variant is needed (a shadow pass needs only depth, not full PBR):
+
+```cpp
+enum class PassContext : uint8_t {
+    Lit,          // full PBR lighting
+    DepthPrePass, // depth-only, no fragment shader
+    ShadowDepth,  // depth-only, shadow map projection
+    Wireframe,    // override polygon mode
+};
+```
+
+**Variant resolution** — the material system maps template + permutations + context
+→ `ShaderVariantKey`, which feeds into `GraphicsPSOKey::VertexShaderHash` and
+`FragmentShaderHash`:
+
+```cpp
+ShaderVariantKey MaterialSystem::ResolveVariantKey(
+    const MaterialInstance& mat, PassContext ctx)
+{
+    ShaderVariantKey k = {};
+    k.BaseShaderHash     = FNV1a64(mat.Template->ShaderBaseName, strlen(...));
+    k.PermutationBitmask = static_cast<uint64_t>(mat.ActivePermutations);
+    // Shadow and depth-prepass strip fragment permutations not needed for depth:
+    if (ctx == PassContext::ShadowDepth || ctx == PassContext::DepthPrePass)
+        k.PermutationBitmask &= ShadowSafePermutationMask;
+    return k;
+}
+```
+
+**Permutation pre-warming** — called at scene load time to pre-compile variants, with
+a budget to prevent permutation explosion from dominating startup time:
+
+```cpp
+struct PrewarmBudget {
+    uint32_t     MaxPermutations = 256;  // cap total PSO requests per scene load
+    PSOPriority  Priority        = PSOPriority::High;
+};
+
+void MaterialSystem::PrewarmForScene(
+    const Scene& scene,
+    const PassContext* contexts, uint32_t context_count,
+    PSOCache& cache, VulkanDevice* device,
+    const PrewarmBudget& budget = {})
+{
+    // Enumerate unique (material template × active permutations × pass context) tuples.
+    // De-duplicate: the same variant key from multiple instances is one PSO request.
+    // Stop when budget.MaxPermutations is reached; remaining variants compile on demand.
+    // → call cache.RequestAsync(key, layout, compat_pass, budget.Priority, callback)
+}
+```
+
+**Draw sorting** — opaque and transparent objects require separate sort strategies.
+A single universal sort breaks transparency:
+
+```
+Opaque bucket:
+  1. PSO key hash            — minimise vkCmdBindPipeline
+  2. Material instance index — minimise push-constant writes
+  3. Depth front-to-back     — early-z efficiency
+
+Transparent bucket (conventional alpha blending):
+  1. Strict depth back-to-front — correct blending is mandatory
+  2. Stable submission order as the tie-breaker
+  PSO/material reordering is forbidden because it can change blend results.
+  State sorting is permitted only for an explicitly order-independent transparency path.
+```
+
+The two buckets are recorded in separate draw calls (opaque first, then transparent)
+and may be submitted to different passes. The render graph is unaware of draw sorting —
+it provides the pass; the material system provides sorted draw lists per bucket, passed
+to `RecordDraw()` (Phase 2 body-only contract).
+
+---
+
+## 16. Files to Change
+
+### New interfaces
+- `ZEngine/ZEngine/Rendering/Renderers/Base/IInlineComputePass.h` — replaces `IComputeCallbackPass.h`
+- `ZEngine/ZEngine/Rendering/Renderers/Base/IAsyncComputePass.h` — Phase 1 compatibility adapter; `SubmitAsync()` and `GetPassFlags()=NeverCull`, removed after Phase 3 queue-preference migration
+
+### Core graph (`RenderGraph.h/.cpp`)
+- `m_needs_recompile` flag + deferred recompile in `Execute()` (Option A)
+- `SubmitAsync(device, scene)` method
+- Pass culling in `BuildTopology()` + base `GetPassFlags()` / explicit side-effect-sink opt-out
+- Fix `BuildBarriers()`: sorted order, read-read skip, aliasing barrier
+- `Execute()`: stamp pre-compiled barriers, remove framebuffer guard for InlineCompute, add debug labels
+- `RGAccess::StorageWrite` enum entry + `kAccessTable` row (both must be added together)
+- `WriteStorageImage`, `ReadWriteStorageImage`, `WriteSwapchain` builder methods
+- Buffer-resource implementation for `WriteBuffer`/`ReadBuffer`: `BufferHandle`/allocation, buffer state tracking, and `VkBufferMemoryBarrier` derivation
+- `ImportTexture(name, handle, initialLayout)` updated signature
+- Phase 1: strict-compatible image reuse in `RGTransientPool`; Phase 2: allocator-backed true memory aliasing + `needs_alias_barrier`
+- Remove unconditional `cb->ClearColor/ClearDepth` from `Execute()`
+- Expand 16-view and 16-framebuffer stack caps to dynamic arena arrays
+
+### Texture spec
+- `ZEngine/ZEngine/Rendering/Specifications/TextureSpecification.h` — add `ClearColor[4]`, `ClearDepth`, `ClearStencil`
+
+### VulkanDevice
+- `ZEngine/ZEngine/Hardwares/VulkanDevice.h/.cpp` — `PFN_vkCmdBeginDebugUtilsLabelEXT` + `PFN_vkCmdEndDebugUtilsLabelEXT`; load via `vkGetDeviceProcAddr` after `vkCreateDevice`
+
+### Sky system
+- `ZEngine/ZEngine/Rendering/Renderers/Sky/SkyAtmospherePass.h/.cpp` → `IAsyncComputePass`
+- `ZEngine/ZEngine/Rendering/Renderers/Sky/SkyCombinePass.h/.cpp` — new `IGraphicsPass`
+- `ZEngine/ZEngine/Rendering/Renderers/Sky/SkySystem.h/.cpp` — remove `SubmitLUTs()` delegation
+- `ZEngine/ZEngine/Applications/AppRenderPipeline.cpp` — replace `SceneRenderer->SubmitSkyLUTs()` with `SceneRenderer->RenderGraph->SubmitAsync(...)`
+
+### Compute stub passes
+- `ZEngine/ZEngine/Rendering/Renderers/Compute/{Bloom,SSAO,Skinning,FrustumCulling}Pass.h/.cpp` — base class → `IInlineComputePass`
+
+### ZUI (graph integration completed; `WriteSwapchain` migration pending)
+- `ZUIRenderer` has been restructured as `ZUIPass : IRenderGraphCallbackPass` and is registered in `GraphicRenderer`'s main render graph as the last pass. `UseSwapchainAsRenderTarget()` is still called in `ZUIPass::Compile()` on the main graph's `RenderPassBuilder`. `ZUIPass::Execute()` fetches the current swapchain `VkFramebuffer` directly. The private `RenderGraph` factory instance is gone.
+- `ZUIPass::Compile()` must be updated to use the PSO cache 4-step path when `pso-cache-architecture.md` lands.
+
+### Phase 2 — Multi-threaded recording additions
+- `ZEngine/ZEngine/Helpers/ThreadPool.h` — add render-thread-only `SubmitToWorker()` and worker-affine batch helper; `#include <latch>` — **prerequisite, land first**
+- `ZEngine/ZEngine/Hardwares/CommandBufferManager.h/.cpp` — dedicated growable, explicitly-secondary worker buffers (`AcquireWorkerSecondary`); do not reuse alternating primary/secondary `GetCommandBuffer()` slots
+- `ZEngine/ZEngine/Rendering/Renderers/RenderGraph.h/.cpp` — add `m_topology_levels` (allocator-initialized nested arrays), level computation, primary `StampPrePassBarriers`, and `ExecuteRecordedPass` helpers
+- Graphics pass interface/implementations — add body-only `RecordDraw()` and migrate existing graphics callbacks; primary owns `BeginRenderPass`/`EndRenderPass` in Phase 2
+- `ZEngine/ZEngine/Hardwares/VulkanDevice.h/.cpp` — add `CommandBuffer::BeginSecondaryCompute()` overload (secondary cmd buffer without render pass inheritance)
+
+### Transfer, bindless, conditional, readback, and material (§15.7–15.11)
+- `ZEngine/ZEngine/Rendering/Renderers/Base/ITransferPass.h` — new; `RecordTransfer()`; pass is cullable unless it declares an Export/readback sink in `Setup()`
+- `RenderGraphResourceBuilder` — add ticket-based `ImportStreamingTexture`, `ReadBindless`, `UseConditional`, `DeclareReadback`, `DeclareOcclusionQueryPool`, `DeclareQueryReadback`
+- `RenderResourceManager` / async-upload queue — publish `StreamingUploadTicket`s and retain producer release barriers; remove its graphics-side acquire recording when graph ownership is enabled
+- frame-begin path — make the graph the sole `TextureHandleToUpdates` drain and bindless `vkUpdateDescriptorSets` owner; remove Present's competing descriptor-update batch; wrap conditional passes in `vkCmdBeginConditionalRenderingEXT`/End
+- `ZEngine/ZEngine/Rendering/Renderers/Readback/RGReadbackRing.h/.cpp` — new timeline-leased host-visible staging allocations and a render-thread `ReadbackCompletionQueue`; do not use `DeferredFreeQueue` for callbacks
+- query subsystem — per-frame-slot query pools/ranges, timeline retirement, and `vkCmdCopyQueryPoolResults` into the matching readback allocation
+- `ZEngine/ZEngine/Hardwares/VulkanDevice.h/.cpp` — query and enable `VK_EXT_conditional_rendering`; expose `vkCmdBeginConditionalRenderingEXT`/End function pointers
+- `ZEngine/ZEngine/Rendering/Materials/MaterialTemplate.h` — new; `ShaderBaseName`, `SupportedPermutations`, `PushConstantSize`
+- `ZEngine/ZEngine/Rendering/Materials/MaterialInstance.h` — new; `ActivePermutations`, packed `Params`
+- `ZEngine/ZEngine/Rendering/Materials/MaterialSystem.h/.cpp` — new; `ResolveVariantKey`, `PrewarmForScene`, draw-sort key construction
+- `ZEngine/ZEngine/Rendering/Materials/DrawSorter.h/.cpp` — new; opaque PSO/material/front-to-back sorting and strict stable back-to-front conventional-transparency sorting
+
+### Phase 3 — Production graph compiler and backends
+- `ZEngine/ZEngine/Rendering/Renderers/RenderGraph.h/.cpp` — make `RGResourceHandle::Version` authoritative; add `RGUse`, subresource ranges, load/store/resolve declarations, exported-resource sinks, tagged image/buffer physical resources, and `RGQueuePreference`; retire the Phase 1 async bypass
+- `ZEngine/ZEngine/Rendering/Renderers/RenderGraphCompiler.h/.cpp` — new frame-arena compiler: version-edge construction, culling, interval state tracking/coalescing, queue submission plan, barrier batches, and validation/report generation
+- `ZEngine/ZEngine/Rendering/Renderers/RGTransientAllocator.h/.cpp` — new allocator-page lifetime coloring, strict Vulkan memory-requirements checks, true image/buffer aliases, budget statistics, and safe non-aliased fallback
+- `ZEngine/ZEngine/Hardwares/VulkanDevice.h/.cpp` — discover and persist `QueueTopology` (independent graphics/present, optional compute/transfer, queue handles/counts, family-transfer requirements), select feature fallbacks, and enable required Vulkan 1.2/1.3 or KHR capabilities including portability subset where required
+- `ZEngine/ZEngine/Hardwares/DeviceSwapchain.h/.cpp` — validate present support for the selected graphics family against the active platform surface; never infer it from graphics capability alone
+- command-buffer wrappers — expose `vkCmdPipelineBarrier2`, dynamic rendering, rendering inheritance, timestamp queries, and queue-family release/acquire barriers; retain legacy compatibility wrappers only for devices lacking the selected feature path
+- `ZEngine/ZEngine/Rendering/Renderers/RenderGraphVulkanBackend.h/.cpp` — new dynamic-rendering backend plus optional legacy render-pass fusion backend selected by device capability and graph compatibility
+- `ZEngine/tests/Rendering/RenderGraphTest.cpp` — versioning, subresource, image/buffer barrier, queue-transfer, alias-lifetime, culling, and deterministic optimized-vs-baseline coverage across synthetic single-queue, shared-family multi-queue, and separate-family queue topologies
+
+---
+
+## 17. Implementation Order
+
+| Step | Deliverable | Risk |
+|---|---|---|
+| 1 | `IInlineComputePass` + fix `Execute()` framebuffer guard | Low — rename only, one guard change |
+| 2 | Option A runtime recompile (`m_needs_recompile` flag) | Low — fixes Issue #779 |
+| 3 | Fix `BuildBarriers()` sorted order + read-read skip | Medium — correctness critical |
+| 4 | `StorageWrite` enum/table + `WriteStorageImage` builder | Low — additive |
+| 5 | Pass culling in `BuildTopology()` | Medium — affects pass registration |
+| 6 | `IAsyncComputePass` + `SkyAtmospherePass` migration | High — removes bypass code |
+| 7 | GPU debug markers (function pointer loading) | Low — additive |
+| 8 | `ImportTexture(initialLayout)` + per-frame external layout/ownership contract | Medium — correctness contract |
+| 8b | `WriteBuffer`/`ReadBuffer` physical resources and buffer barriers | High — new resource path |
+| 9 | Per-frame stamp of pre-compiled barriers | Medium — replaces runtime rebuild |
+| 10 | Strict-compatible transient image reuse | Medium — pool logic change |
+| 11 | `WriteSwapchain` migration for ZUIPass swapchain declaration | Low — ZUIPass already in graph |
+| 12 | Clear value propagation + remove unconditional ClearColor | Low |
+| — | **PSO cache** (`pso-cache-architecture.md`) | Prerequisite for steps below |
+| 13 | Route all `Compile()` calls through PSO cache 4-step path | Medium — all passes updated |
+| 14 | Null pipeline guard in `Execute()` for Compiling/invalidated PSOs | Low — additive guard |
+| 15 | Option B per-frame `Register()` interface | High — **requires PSO cache** |
+| 16 | Worker-affine secondary recording and body-only graphics callbacks | High — Phase 2; requires the §13 infrastructure |
+| 17 | Versioned resource builder, explicit side-effect sinks, and frame-arena compiler | High — replaces multi-writer heuristic |
+| 18 | Runtime `QueueTopology` and feature-capability resolution, including a single-graphics-queue fallback and explicit separate-present-family policy | High — cross-platform foundation; validate active surface present support |
+| 19 | Tagged buffer resources, subresource interval state tracking, and Synchronization2 barriers | High — synchronization foundation |
+| 20 | Queue submission planner, timeline waits, and queue-family release/acquire transfers | High — consumes `QueueTopology`; validate graphics-only fallback first |
+| 21 | Allocator-page transient aliasing, budgets, and alias diagnostics | High — memory-safety critical |
+| 22 | Dynamic-rendering backend, rendering-compatible PSO keys, and optional render-pass fusion | High — backend split |
+| 23 | Graph validation dumps, timestamps, RenderDoc naming, and deterministic A/B test mode | Medium — required release gate |
+| 24 | Streaming-upload tickets + graph acquire barriers; remove RRM graphics acquires | High — transfers consumer ownership safely |
+| 25 | `ReadBindless` declaration + frame-begin graph-owned bindless descriptor batch | Medium — one descriptor-update owner |
+| 26 | `VK_EXT_conditional_rendering` device query + `UseConditional` pass wrapping | Low — additive wrapping |
+| 27 | `RGReadbackRing` + `DeclareReadback` + deferred callback delivery | High — new buffer lifetime model |
+| 28 | Occlusion query pool resource + `DeclareQueryReadback` | Medium — depends on step 27 |
+| 29 | `ITransferPass` + explicit in-graph copy commands | Medium — depends on queue submission planner (step 20) |
+| 30 | `MaterialTemplate` + `MaterialInstance` + `ResolveVariantKey` | Medium — author-side permutation system |
+| 31 | `MaterialSystem::PrewarmForScene` wired to PSO cache `RequestAsync` | Medium — depends on PSO cache |
+| 32 | `DrawSorter` — opaque PSO/material/front-to-back plus strict transparent back-to-front | Low — additive sort pass |
+
+Steps 1–2 unblock all compute stubs and fix sky mode switching immediately. Steps 3–9 establish the Phase 1 correctness baseline. Steps 10–16 complete the cached, parallel-recording graph. Steps 17–23 complete the production-grade target: cross-platform queue topology, explicit versioning, subresource Synchronization2, multi-queue scheduling, true aliasing, rendering backends, and observability. Steps 24–32 close the remaining production gaps: streaming integration, bindless as a first-class resource, GPU-side conditional rendering, CPU feedback, and the material permutation system.
