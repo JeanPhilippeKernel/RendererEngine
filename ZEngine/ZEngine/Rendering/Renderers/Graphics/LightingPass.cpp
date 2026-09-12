@@ -21,12 +21,11 @@ namespace ZEngine::Rendering::Renderers
         res_builder->WriteColorAttachment(
             RendererResourceName::FrameColorRenderTargetName,
             {
-            // FrameColor is exposed through the editor viewport, so retain sampled
-            // usage even in graph configurations that omit the ZUI consumer.
+            // FrameColor is exposed through the editor viewport even without ZUI.
+            .IsUsageSampled = true,
             .Width          = w,
             .Height         = h,
             .Format         = Specifications::ImageFormat::R8G8B8A8_UNORM,
-            .IsUsageSampled = true,
             .LoadOp         = LoadOperation::CLEAR,
             .ClearColor     = {0.11f, 0.11f, 0.11f, 1.0f}
         });

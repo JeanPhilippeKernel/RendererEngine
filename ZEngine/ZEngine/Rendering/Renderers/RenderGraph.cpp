@@ -1615,7 +1615,7 @@ namespace ZEngine::Rendering::Renderers
             }
             if (!image_barriers.empty() || !buffer_barriers.empty())
             {
-                VkDependencyInfo dependency = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = static_cast<uint32_t>(image_barriers.size()), .pImageMemoryBarriers = image_barriers.data(), .bufferMemoryBarrierCount = static_cast<uint32_t>(buffer_barriers.size()), .pBufferMemoryBarriers = buffer_barriers.data()};
+                VkDependencyInfo dependency = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .bufferMemoryBarrierCount = static_cast<uint32_t>(buffer_barriers.size()), .pBufferMemoryBarriers = buffer_barriers.data(), .imageMemoryBarrierCount = static_cast<uint32_t>(image_barriers.size()), .pImageMemoryBarriers = image_barriers.data()};
                 target->PipelineBarrier2(dependency);
             }
         };
