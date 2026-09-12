@@ -35,7 +35,7 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
-#include <set>
+#include <thread>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::VFS;
@@ -54,68 +54,66 @@ namespace ZEngine::Rendering
 
         m_device   = device;
         m_registry = registry;
+        m_pending_texture_decodes.value.store(0, std::memory_order_relaxed);
+        m_accept_texture_decodes.value.store(true, std::memory_order_release);
 
         InitUploadPool();
         InitGlobalBuffers();
         InitTextureTimelines();
         InitUploadSlabs(static_cast<uint32_t>(Helpers::ThreadPoolHelper::Pool->WorkerCount));
-        Helpers::ThreadPoolHelper::Pool->InitClosureSlab(m_device->Arena, ZKilo(512));
+        m_fallback_upload_slab.Init(m_device->Arena, UPLOAD_SLAB_BYTES);
+        m_texture_task_slab.Init(m_device->Arena, TEXTURE_TASK_SLAB_BYTES);
 
-        registry->SetOnReadyCallback(this, [](void* ctx, const uuids::uuid& uuid, AssetHandle handle) {
-            auto*              rrm = static_cast<RenderResourceManager*>(ctx);
+        registry->SetOnReadyCallback(this, &RenderResourceManager::OnAssetReady);
+        registry->SetOnStaleCallback(this, &RenderResourceManager::OnAssetStale);
+        registry->SetOnRemovedCallback(this, &RenderResourceManager::OnAssetRemoved);
+    }
 
-            const AssetRecord* rec = rrm->m_registry->FindByUUID(uuid);
-            if (!rec || rec->Type != AssetType::MESH)
-                return; // textures are ingested directly by AssetManager::IngestTexture, not via this path
+    void RenderResourceManager::OnAssetReady(void* context, const uuids::uuid& uuid, AssetHandle handle)
+    {
+        auto*              manager = static_cast<RenderResourceManager*>(context);
+        const AssetRecord* record  = manager->m_registry->FindByUUID(uuid);
+        if (!record || record->Type != AssetType::MESH)
+            return;
 
-            // Deduplicate: hold both locks together so two concurrent callbacks
-            // for the same UUID can't both pass the check before either pushes.
-            std::lock_guard map_lock(rrm->m_uuid_map_mutex);
-            std::lock_guard pend_lock(rrm->m_pending_mutex);
-
-            for (uint32_t i = 0; i < rrm->m_uuid_to_buffer_count; ++i)
-                if (rrm->m_uuid_to_buffer[i].UUID == uuid)
-                    return;
-            for (uint32_t i = 0; i < rrm->m_pending_count; ++i)
-                if (rrm->m_pending[i].UUID == uuid)
-                    return;
-
-            if (rrm->m_pending_count >= MAX_PENDING)
-            {
-                ZENGINE_CORE_WARN("[RRM] Pending upload queue full — dropping asset")
+        std::lock_guard map_lock(manager->m_uuid_map_mutex);
+        std::lock_guard pending_lock(manager->m_pending_mutex);
+        for (uint32_t i = 0; i < manager->m_uuid_to_buffer_count; ++i)
+            if (manager->m_uuid_to_buffer[i].UUID == uuid)
                 return;
-            }
-
-            rrm->m_pending[rrm->m_pending_count++] = {handle, uuid};
-        });
-
-        registry->SetOnStaleCallback(this, [](void* ctx, const uuids::uuid& uuid) {
-            auto*           rrm = static_cast<RenderResourceManager*>(ctx);
-
-            // Look up current GPU handle for this UUID and schedule a swap. Mesh/buffer only —
-            // texture hot-reload is triggered via TextureImporter/ImportCoordinator instead.
-            std::lock_guard lock(rrm->m_uuid_map_mutex);
-            for (uint32_t i = 0; i < rrm->m_uuid_to_buffer_count; ++i)
-            {
-                if (rrm->m_uuid_to_buffer[i].UUID == uuid)
-                {
-                    AssetHandle new_asset = 0;
-                    {
-                        const AssetRecord* rec = rrm->m_registry->FindByUUID(uuid);
-                        if (rec)
-                            new_asset = rec->SlotHandle;
-                    }
-                    rrm->ScheduleSwap(rrm->m_uuid_to_buffer[i].Handle, new_asset);
-                    return;
-                }
-            }
-        });
-
-        registry->SetOnRemovedCallback(this, [](void* ctx, const uuids::uuid& uuid, AssetType type) {
-            if (type != AssetType::TEXTURE)
+        for (uint32_t i = 0; i < manager->m_pending_count; ++i)
+            if (manager->m_pending[i].UUID == uuid)
                 return;
-            static_cast<RenderResourceManager*>(ctx)->ReleaseTexture(uuid);
-        });
+
+        if (manager->m_pending_count >= MAX_PENDING)
+        {
+            ZENGINE_CORE_WARN("[RRM] Pending upload queue full — dropping asset")
+            return;
+        }
+        manager->m_pending[manager->m_pending_count++] = {handle, uuid};
+    }
+
+    void RenderResourceManager::OnAssetStale(void* context, const uuids::uuid& uuid)
+    {
+        auto*           manager = static_cast<RenderResourceManager*>(context);
+        std::lock_guard lock(manager->m_uuid_map_mutex);
+        for (uint32_t i = 0; i < manager->m_uuid_to_buffer_count; ++i)
+        {
+            if (manager->m_uuid_to_buffer[i].UUID != uuid)
+                continue;
+
+            AssetHandle new_asset = 0;
+            if (const AssetRecord* record = manager->m_registry->FindByUUID(uuid))
+                new_asset = record->SlotHandle;
+            manager->ScheduleSwap(manager->m_uuid_to_buffer[i].Handle, new_asset);
+            return;
+        }
+    }
+
+    void RenderResourceManager::OnAssetRemoved(void* context, const uuids::uuid& uuid, AssetType type)
+    {
+        if (type == AssetType::TEXTURE)
+            static_cast<RenderResourceManager*>(context)->ReleaseTexture(uuid);
     }
 
     void RenderResourceManager::InitUploadPool()
@@ -145,8 +143,16 @@ namespace ZEngine::Rendering
         if (!m_device)
             return;
 
+        {
+            std::lock_guard lock(m_pending_mutex);
+            m_accept_texture_decodes.value.store(false, std::memory_order_release);
+        }
+        while (m_pending_texture_decodes.value.load(std::memory_order_acquire) > 0)
+            std::this_thread::yield();
+
         m_device->QueueWaitAll();
         ShutdownTextureTimelines();
+        DiscardTextureDeferrals();
 
         // Shut down per-worker upload slabs. Clear the worker init callback first so
         // any worker that wakes after this does not call SetWorkerSlab on a dead slab.
@@ -155,6 +161,8 @@ namespace ZEngine::Rendering
         for (uint32_t i = 0; i < m_upload_slab_count; ++i)
             m_upload_slabs[i].Shutdown();
         m_upload_slab_count = 0;
+        m_fallback_upload_slab.Shutdown();
+        m_texture_task_slab.Shutdown();
 
         // Arena-allocated objects have no automatic destructor — explicit calls are required.
         if (m_upload_cmd_mgr)
@@ -1045,7 +1053,7 @@ namespace ZEngine::Rendering
         m_tex_next_values.init(m_device->Arena, total_pool_count, total_pool_count);
         m_tex_retire_values.init(m_device->Arena, total_pool_count, total_pool_count);
         m_tex_retire_staging.init(m_device->Arena, total_pool_count, total_pool_count);
-        m_tex_deferral_retry.init(m_device->Arena, MAX_DEFERRAL_RETRY);
+        m_tex_deferral_retry.init(m_device->Arena, MAX_TEXTURE_DEFERRALS);
 
         for (uint32_t i = 0; i < total_pool_count; ++i)
         {
@@ -1055,7 +1063,7 @@ namespace ZEngine::Rendering
             m_tex_next_values[i].store(1, std::memory_order_release);
         }
 
-        if (m_device->HasSeperateTransfertQueueFamily)
+        if (m_device->HasSeparateTransferQueue)
         {
             m_tex_transfer_timelines.init(m_device->Arena, total_pool_count, total_pool_count);
             m_tex_transfer_next_values.init(m_device->Arena, total_pool_count, total_pool_count);
@@ -1070,6 +1078,7 @@ namespace ZEngine::Rendering
                 m_tex_transfer_next_values[i].store(1, std::memory_order_release);
             }
         }
+        m_streaming_upload_tickets.init(m_device->Arena, MAX_TEXTURE_DEFERRALS);
     }
 
     void RenderResourceManager::InitUploadSlabs(uint32_t worker_count)
@@ -1082,20 +1091,15 @@ namespace ZEngine::Rendering
         for (uint32_t i = 0; i < worker_count; ++i)
             m_upload_slabs[i].Init(m_device->Arena, UPLOAD_SLAB_BYTES);
 
-        // Register per-worker init callback so each worker sets its thread-local slab pointer.
-        // The callback runs before any tasks on each worker — no submit-vs-init race.
-        struct Ctx
-        {
-            Core::Memory::TLSFSlab* slabs;
-        };
-        auto* ctx  = ZPushStructCtor(m_device->Arena, Ctx);
-        ctx->slabs = m_upload_slabs;
-        Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(
-            [](void* raw, size_t idx) {
-                auto* c = static_cast<Ctx*>(raw);
-                Helpers::SetWorkerSlab(&c->slabs[idx]);
-            },
-            ctx);
+        auto* context  = ZPushStructCtor(m_device->Arena, UploadSlabInitContext);
+        context->Slabs = m_upload_slabs;
+        Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(&RenderResourceManager::BindWorkerUploadSlab, context);
+    }
+
+    void RenderResourceManager::BindWorkerUploadSlab(void* context, size_t worker_index)
+    {
+        UploadSlabInitContext* init = static_cast<UploadSlabInitContext*>(context);
+        Helpers::SetWorkerSlab(&init->Slabs[worker_index]);
     }
 
     void RenderResourceManager::ShutdownTextureTimelines()
@@ -1109,7 +1113,7 @@ namespace ZEngine::Rendering
                 if (sb.Handle != VK_NULL_HANDLE)
                     m_device->GpuMem.FreeBuffer(sb);
 
-                if (m_device->HasSeperateTransfertQueueFamily)
+                if (m_device->HasSeparateTransferQueue)
                 {
                     auto& tsb = m_tex_transfer_staging[p][i];
                     if (tsb.Handle != VK_NULL_HANDLE)
@@ -1122,7 +1126,7 @@ namespace ZEngine::Rendering
             if (p < m_tex_timelines.size() && m_tex_timelines[p])
                 m_tex_timelines[p]->~Semaphore();
 
-            if (m_device->HasSeperateTransfertQueueFamily && p < m_tex_transfer_timelines.size() && m_tex_transfer_timelines[p])
+            if (m_device->HasSeparateTransferQueue && p < m_tex_transfer_timelines.size() && m_tex_transfer_timelines[p])
                 m_tex_transfer_timelines[p]->~Semaphore();
         }
     }
@@ -1134,6 +1138,11 @@ namespace ZEngine::Rendering
 
         if (!handle.Valid() || !data)
             return {};
+        // A texture released from a transfer queue cannot be uploaded again until the
+        // graph has acquired it on its consumer queue. Retrying the deferral keeps the
+        // exclusive-ownership protocol valid on separate-family devices.
+        if (FindStreamingUploadTicket(handle))
+            return {};
 
         uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
 
@@ -1142,7 +1151,7 @@ namespace ZEngine::Rendering
         auto     img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
         auto     buffer_handle  = img_buf->GetHandle();
 
-        if (m_device->HasSeperateTransfertQueueFamily)
+        if (m_device->HasSeparateTransferQueue)
         {
             auto&    transfer_retire = m_tex_transfer_retire[pool_index];
             uint32_t i               = 0;
@@ -1170,29 +1179,27 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily                = m_device->TransferFamilyIndex;
             to_transfer.DestinationQueueFamily           = m_device->TransferFamilyIndex;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout             = to_transfer.NewLayout;
+            img_buf->Layout                                  = to_transfer.NewLayout;
 
-            uint32_t   ring_offset      = 0;
-            BufferView transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, &ring_offset);
-            // Ring chunks retire against RenderTimeline (see VulkanDevice::TickMemory),
-            // not m_tex_transfer_timelines — the frame's own submission is on the same
-            // queue, after this one, so it's a safe (if slightly conservative) proxy for
-            // "the transfer copy has definitely finished reading the ring by then".
-            if (ring_offset != std::numeric_limits<uint32_t>::max())
-                m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
+            // A streamed upload is submitted independently from the render timeline.
+            // Keep its staging allocation off the render-timeline ring and retire it
+            // with the producer timeline below.
+            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, nullptr, false);
 
-            ImageMemoryBarrierSpecification release = {};
-            release.ImageHandle                     = buffer_handle;
-            release.OldLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
-            release.NewLayout                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            release.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
-            release.SourceAccessMask                = VK_ACCESS_TRANSFER_WRITE_BIT;
-            release.DestinationAccessMask           = VK_ACCESS_NONE;
-            release.SourceStageMask                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            release.DestinationStageMask            = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            release.LayerCount                      = texture->Specification.LayerCount;
-            release.SourceQueueFamily               = m_device->TransferFamilyIndex;
-            release.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
+            ImageMemoryBarrierSpecification release          = {};
+            release.ImageHandle                              = buffer_handle;
+            release.OldLayout                                = ImageLayout::TRANSFER_DST_OPTIMAL;
+            release.NewLayout                                = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            release.ImageAspectMask                          = VkImageAspectFlagBits(img_buf_aspect);
+            release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
+            release.DestinationAccessMask                    = VK_ACCESS_NONE;
+            release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            release.DestinationStageMask                     = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            release.LayerCount                               = texture->Specification.LayerCount;
+            const uint32_t producer_family                   = m_device->GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex;
+            const bool     transfers_ownership               = producer_family != m_device->GraphicFamilyIndex;
+            release.SourceQueueFamily                        = transfers_ownership ? producer_family : VK_QUEUE_FAMILY_IGNORED;
+            release.DestinationQueueFamily                   = transfers_ownership ? m_device->GraphicFamilyIndex : VK_QUEUE_FAMILY_IGNORED;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{release});
             img_buf->Layout = release.NewLayout;
             transfer_cmd->End();
@@ -1202,36 +1209,18 @@ namespace ZEngine::Rendering
             if (transfer_staging)
                 m_tex_transfer_staging[pool_index][i] = transfer_staging;
 
-            m_async_uploads.Enqueue({transfer_cmd, m_tex_transfer_timelines[pool_index], nullptr, VK_PIPELINE_STAGE_TRANSFER_BIT, transfer_val, UINT64_MAX});
-
-            uint32_t acquire_slot  = 0;
-            auto&    retire_values = m_tex_retire_values[pool_index];
-            for (; acquire_slot < GEOMETRY_UPLOAD_SLOT; ++acquire_slot)
-                if (retire_values[acquire_slot] == 0)
-                    break;
-            if (acquire_slot >= GEOMETRY_UPLOAD_SLOT)
-            {
-                // Unlike the two early returns above, the transfer-queue copy has already
-                // been recorded and enqueued by this point (img_buf->Layout mutated) — this
-                // call cannot be safely retried from scratch, so it's treated as done rather
-                // than deferred (the texture just stays transfer-owned until a future upload
-                // call for the same handle happens to find a free acquire slot).
-                ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free acquire slot — texture left transfer-owned")
-                return handle;
-            }
-
-            auto                            acquire_cmd  = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, acquire_slot);
-            ImageMemoryBarrierSpecification acquire_spec = release;
-            acquire_spec.SourceAccessMask                = VK_ACCESS_NONE;
-            acquire_spec.DestinationAccessMask           = VK_ACCESS_SHADER_READ_BIT;
-            acquire_spec.SourceQueueFamily               = m_device->TransferFamilyIndex;
-            acquire_spec.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
-            acquire_cmd->TransitionImageLayout(ImageMemoryBarrier{acquire_spec});
-            acquire_cmd->End();
-
-            uint64_t graphics_val       = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            retire_values[acquire_slot] = graphics_val;
-            m_async_uploads.Enqueue({acquire_cmd, m_tex_timelines[pool_index], m_tex_transfer_timelines[pool_index], (VkPipelineStageFlags2) release.DestinationStageMask, graphics_val, transfer_val});
+            m_async_uploads.Enqueue({
+                .Buffer            = transfer_cmd,
+                .Timeline          = m_tex_transfer_timelines[pool_index],
+                .WaitTimeline      = nullptr,
+                .WaitFlag          = VK_PIPELINE_STAGE_2_NONE,
+                .SignalValue       = transfer_val,
+                .WaitValue         = UINT64_MAX,
+                .ExposeToFrameWait = false,
+                .StreamingTicket   = {.Texture = handle, .CompletionTimeline = m_tex_transfer_timelines[pool_index], .CompletionValue = transfer_val, .PostReleaseLayout = Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(release.NewLayout)], .ProducerQueueFamily = producer_family},
+                .OnSubmitted       = &RenderResourceManager::OnStreamingUploadSubmitted,
+                .SubmissionContext = this,
+            });
         }
         else
         {
@@ -1261,14 +1250,11 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
             to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout        = to_transfer.NewLayout;
+            img_buf->Layout                          = to_transfer.NewLayout;
 
-            uint32_t   ring_offset = 0;
-            BufferView staging     = m_device->WriteTextureData(cmd, handle, data, &ring_offset);
-            // See the separate-transfer-queue branch above for why RenderTimelineNextValue
-            // (not signal_value/m_tex_timelines) is the correct retirement marker here.
-            if (ring_offset != std::numeric_limits<uint32_t>::max())
-                m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
+            // See the dedicated-transfer branch above: the upload submission is not
+            // represented by RenderTimeline, so its staging buffer must not use the ring.
+            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data, nullptr, false);
 
             ImageMemoryBarrierSpecification to_final = {};
             to_final.ImageHandle                     = buffer_handle;
@@ -1289,7 +1275,18 @@ namespace ZEngine::Rendering
             retire_values[i]      = signal_value;
             if (staging)
                 m_tex_retire_staging[pool_index][i] = staging;
-            m_async_uploads.Enqueue({cmd, m_tex_timelines[pool_index], nullptr, (VkPipelineStageFlags2) to_final.DestinationStageMask, signal_value, UINT64_MAX});
+            m_async_uploads.Enqueue({
+                .Buffer            = cmd,
+                .Timeline          = m_tex_timelines[pool_index],
+                .WaitTimeline      = nullptr,
+                .WaitFlag          = VK_PIPELINE_STAGE_2_NONE,
+                .SignalValue       = signal_value,
+                .WaitValue         = UINT64_MAX,
+                .ExposeToFrameWait = false,
+                .StreamingTicket   = {.Texture = handle, .CompletionTimeline = m_tex_timelines[pool_index], .CompletionValue = signal_value, .PostReleaseLayout = Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(to_final.NewLayout)], .ProducerQueueFamily = m_device->GraphicFamilyIndex},
+                .OnSubmitted       = &RenderResourceManager::OnStreamingUploadSubmitted,
+                .SubmissionContext = this,
+            });
             img_buf->Layout = to_final.NewLayout;
         }
         return handle;
@@ -1382,39 +1379,108 @@ namespace ZEngine::Rendering
         return handle;
     }
 
-    void RenderResourceManager::EnqueueTextureDeferral(TextureDeferral&& deferral)
+    bool RenderResourceManager::EnqueueTextureDeferral(const TextureDeferral& deferral)
     {
-        m_tex_deferral_queue.Emplace(std::forward<TextureDeferral>(deferral));
+        return m_tex_deferral_queue.push(deferral);
+    }
+
+    bool RenderResourceManager::ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral)
+    {
+        auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels);
+        if (!result.Valid())
+            return false;
+
+        if (deferral.Slab && deferral.Pixels)
+            deferral.Slab->Free(deferral.Pixels);
+        return true;
+    }
+
+    void RenderResourceManager::DiscardTextureDeferrals()
+    {
+        TextureDeferral deferral = {};
+        while (m_tex_deferral_queue.pop(deferral))
+            if (deferral.Slab && deferral.Pixels)
+                deferral.Slab->Free(deferral.Pixels);
+
+        for (TextureDeferral& retry : m_tex_deferral_retry)
+            if (retry.Slab && retry.Pixels)
+                retry.Slab->Free(retry.Pixels);
+        m_tex_deferral_retry.clear();
     }
 
     void RenderResourceManager::CompleteDeferrals(uint8_t frame_index)
     {
-        // Deferrals that found no free upload slot this pass are collected here and
-        // requeued after the loop — retried next frame instead of freeing pixel data
-        // that was never actually copied to the GPU, and instead of spinning in place
-        // waiting for a slot that won't free up within this same call.
-        m_tex_deferral_retry.clear();
-        while (!m_tex_deferral_queue.Empty())
+        // Retain deferrals that could not claim an upload slot. Keeping them in this
+        // render-thread-owned array avoids requeueing into a concurrently produced MPSC
+        // queue, and preserves the pixel allocation until a later frame can upload it.
+        for (size_t i = 0; i < m_tex_deferral_retry.size();)
         {
-            TextureDeferral d = {};
-            m_tex_deferral_queue.Pop(d);
-            auto result = UploadTextureBuffer(frame_index, 0, d.TexHandle, d.Pixels);
-            if (!result.Valid())
+            if (!ProcessTextureDeferral(frame_index, m_tex_deferral_retry[i]))
             {
-                m_tex_deferral_retry.push(std::move(d));
+                ++i;
                 continue;
             }
-            // Free slab-owned pixels after upload. Nullptr = borrowed pointer, skip.
-            if (d.Slab && d.Pixels)
-                d.Slab->Free(d.Pixels);
+            m_tex_deferral_retry.erase(i);
         }
-        for (auto& d : m_tex_deferral_retry)
-            m_tex_deferral_queue.Emplace(std::move(d));
+
+        TextureDeferral deferral = {};
+        while (m_tex_deferral_queue.pop(deferral))
+        {
+            if (!ProcessTextureDeferral(frame_index, deferral))
+                m_tex_deferral_retry.push(deferral);
+        }
     }
 
     void RenderResourceManager::SubmitAsyncUploads()
     {
         m_async_uploads.SubmitAll();
+    }
+
+    const Core::Containers::Array<Hardwares::StreamingUploadTicket>& RenderResourceManager::GetStreamingUploadTickets() const
+    {
+        return m_streaming_upload_tickets;
+    }
+
+    const Hardwares::StreamingUploadTicket* RenderResourceManager::FindStreamingUploadTicket(const Rendering::Textures::TextureHandle& handle) const
+    {
+        for (const auto& ticket : m_streaming_upload_tickets)
+            if (ticket.Texture.Index == handle.Index && ticket.Texture.Generation == handle.Generation)
+                return &ticket;
+        return nullptr;
+    }
+
+    void RenderResourceManager::PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket)
+    {
+        if (!ticket.Texture.Valid() || !ticket.CompletionTimeline || ticket.CompletionValue == 0)
+            return;
+
+        for (auto& pending : m_streaming_upload_tickets)
+        {
+            if (pending.Texture.Index == ticket.Texture.Index && pending.Texture.Generation == ticket.Texture.Generation)
+            {
+                pending = ticket;
+                return;
+            }
+        }
+        m_streaming_upload_tickets.push(ticket);
+    }
+
+    void RenderResourceManager::OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket)
+    {
+        if (context)
+            static_cast<RenderResourceManager*>(context)->PublishStreamingUploadTicket(ticket);
+    }
+
+    void RenderResourceManager::AcknowledgeStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket)
+    {
+        for (uint32_t index = 0; index < m_streaming_upload_tickets.size(); ++index)
+        {
+            const auto& pending = m_streaming_upload_tickets[index];
+            if (pending.Texture.Index != ticket.Texture.Index || pending.Texture.Generation != ticket.Texture.Generation || pending.CompletionTimeline != ticket.CompletionTimeline || pending.CompletionValue != ticket.CompletionValue)
+                continue;
+            m_streaming_upload_tickets.erase(index);
+            return;
+        }
     }
 
     void RenderResourceManager::RetireTextureSlots(uint8_t frame_index, uint8_t thread_index)
@@ -1441,7 +1507,7 @@ namespace ZEngine::Rendering
             }
         }
 
-        if (m_device->HasSeperateTransfertQueueFamily)
+        if (m_device->HasSeparateTransferQueue)
         {
             uint64_t transfer_value = 0;
             vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_transfer_timelines[pool_index]->GetHandle(), &transfer_value);
@@ -1468,6 +1534,7 @@ namespace ZEngine::Rendering
     {
         m_async_uploads.Clear();
         m_device->AsyncGPUOperations.clear();
+        m_streaming_upload_tickets.clear();
     }
 
     void RenderResourceManager::ResetTextureTimelines()
@@ -1486,7 +1553,7 @@ namespace ZEngine::Rendering
                 vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), &gv);
                 m_tex_next_values[pool_index].store(gv + 1, std::memory_order_release);
 
-                if (m_device->HasSeperateTransfertQueueFamily)
+                if (m_device->HasSeparateTransferQueue)
                 {
                     uint64_t tv = 0;
                     vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_transfer_timelines[pool_index]->GetHandle(), &tv);
@@ -1494,6 +1561,7 @@ namespace ZEngine::Rendering
                 }
             }
         }
+        m_streaming_upload_tickets.clear();
     }
 
     Rendering::Textures::TextureHandle RenderResourceManager::IngestTexture(const uuids::uuid& uuid, const char* absolute_path, Rendering::Textures::TextureHandle existing)
@@ -1588,18 +1656,28 @@ namespace ZEngine::Rendering
         using namespace Rendering::Specifications;
 
         std::unique_lock<std::mutex> l(m_pending_mutex);
+        if (!m_accept_texture_decodes.value.load(std::memory_order_acquire) || !filename || filename[0] == '\0')
+            return {};
 
-        auto                         abs_filename = std::filesystem::absolute(filename).string();
-        auto                         file_ext     = std::filesystem::path(abs_filename).extension().string();
+        const size_t filename_length = Helpers::secure_strlen(filename);
+        if (filename_length >= MAX_FILE_PATH_COUNT)
+        {
+            ZENGINE_CORE_ERROR("Texture path exceeds the {} byte engine limit: {}", MAX_FILE_PATH_COUNT - 1, filename)
+            return {};
+        }
+        cstring file_ext = std::strrchr(filename, '.');
+        if (!file_ext)
+            file_ext = "";
+        const bool           is_environment_map = Helpers::secure_strcmp(file_ext, ".zenvmap") == 0;
 
-        TextureSpecification         spec{};
+        TextureSpecification spec{};
 
-        if (file_ext == ".zenvmap")
+        if (is_environment_map)
         {
             Importers::AssetCodec::EnvironmentMapFileHeader env_header{};
-            if (!Importers::AssetCodec::ReadEnvironmentMapFileHeader(abs_filename.c_str(), env_header))
+            if (!Importers::AssetCodec::ReadEnvironmentMapFileHeader(filename, env_header))
             {
-                ZENGINE_CORE_ERROR("Failed to read .zenvmap header: {}", abs_filename)
+                ZENGINE_CORE_ERROR("Failed to read .zenvmap header: {}", filename)
                 return {};
             }
             spec.IsCubemap  = true;
@@ -1611,15 +1689,15 @@ namespace ZEngine::Rendering
         else
         {
             int w, h, ch;
-            if (!stbi_info(abs_filename.c_str(), &w, &h, &ch))
+            if (!stbi_info(filename, &w, &h, &ch))
                 return {};
 
-            const std::set<std::string_view> known_cubemap_ext = {".hdr", ".exr"};
-            spec.Width                                         = static_cast<uint32_t>(w);
-            spec.Height                                        = static_cast<uint32_t>(h);
-            spec.Format                                        = ImageFormat::R8G8B8A8_SRGB;
+            const bool is_equirectangular = Helpers::secure_strcmp(file_ext, ".hdr") == 0 || Helpers::secure_strcmp(file_ext, ".exr") == 0;
+            spec.Width                    = static_cast<uint32_t>(w);
+            spec.Height                   = static_cast<uint32_t>(h);
+            spec.Format                   = ImageFormat::R8G8B8A8_SRGB;
 
-            if (known_cubemap_ext.contains(file_ext))
+            if (is_equirectangular)
             {
                 int face_size   = w / 4;
                 spec.IsCubemap  = true;
@@ -1647,119 +1725,144 @@ namespace ZEngine::Rendering
             tex_handle = m_device->CreateTexture(spec);
         }
 
-        // Capture everything by value for the thread pool lambda.
-        std::string                        captured_filename = abs_filename;
-        std::string                        captured_ext      = file_ext;
-        TextureSpecification               captured_spec     = spec;
-        Rendering::Textures::TextureHandle captured_handle   = tex_handle;
+        auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
+        ZConstruct(task, TextureDecodeTask);
+        task->Owner            = this;
+        task->Specification    = spec;
+        task->Texture          = tex_handle;
+        task->IsEnvironmentMap = is_environment_map;
+        Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
 
-        Helpers::ThreadPoolHelper::Submit([this, captured_filename, captured_ext, captured_spec, captured_handle]() mutable {
-            std::vector<uint8_t> buffer;
+        m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
+        if (!Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+        {
+            CompleteTextureDecodeTask(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+        }
 
-            if (captured_spec.IsCubemap)
+        return tex_handle;
+    }
+
+    void RenderResourceManager::RunTextureDecodeTask(void* context)
+    {
+        TextureDecodeTask*      task     = static_cast<TextureDecodeTask*>(context);
+        RenderResourceManager*  manager  = task->Owner;
+        Core::Memory::TLSFSlab* previous = Helpers::GetWorkerSlab();
+        if (!previous)
+            Helpers::SetWorkerSlab(&manager->m_fallback_upload_slab);
+
+        Core::Memory::TLSFSlab* slab      = Helpers::GetWorkerSlab();
+        uint8_t*                pixels    = nullptr;
+        size_t                  byte_size = 0;
+
+        if (task->Specification.IsCubemap)
+        {
+            if (task->IsEnvironmentMap)
             {
-                if (captured_ext == ".zenvmap")
+                Rendering::Buffers::Bitmap cubemap = {};
+                if (!Importers::AssetCodec::DeserializeEnvironmentMapFile(task->Filename, cubemap))
                 {
-                    Rendering::Buffers::Bitmap cubemap{};
-                    if (!Importers::AssetCodec::DeserializeEnvironmentMapFile(captured_filename.c_str(), cubemap))
-                    {
-                        ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", captured_filename)
-                        return;
-                    }
-                    size_t bytes = cubemap.BufferSize;
-                    buffer.resize(bytes);
-                    Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer, bytes);
+                    ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", task->Filename)
                 }
                 else
                 {
-                    int          w, h, ch;
-                    const float* image_data = stbi_loadf(captured_filename.c_str(), &w, &h, &ch, 4);
-                    if (!image_data)
-                    {
-                        ZENGINE_CORE_ERROR("Failed to load texture: {}", captured_filename) return;
-                    }
-
-                    Core::Memory::TLSFSlab* slab            = Helpers::GetWorkerSlab();
-                    size_t                  float_buf_bytes = 0;
-                    float*                  output_buf      = nullptr;
-                    if (ch == STBI_rgb)
-                    {
-                        size_t total    = (size_t) (w * h);
-                        float_buf_bytes = total * 4 * sizeof(float);
-                        output_buf      = slab ? static_cast<float*>(slab->Alloc(float_buf_bytes)) : new float[total * 4];
-                        stbir_resize_float(image_data, w, h, 0, output_buf, w, h, 0, 4);
-                        for (size_t i = 0; i < total; ++i)
-                            output_buf[i * 4 + 3] = 255.f;
-                    }
-                    else
-                    {
-                        float_buf_bytes = (size_t) (w * h * ch) * sizeof(float);
-                        output_buf      = slab ? static_cast<float*>(slab->Alloc(float_buf_bytes)) : new float[w * h * ch];
-                        Helpers::secure_memcpy(output_buf, float_buf_bytes, image_data, float_buf_bytes);
-                    }
-                    stbi_image_free((void*) image_data);
-
-                    Rendering::Buffers::Bitmap in = Rendering::Buffers::Bitmap::FromData(w, h, 1, 4, Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::Texture2D, output_buf, slab);
-                    if (slab)
-                        slab->Free(output_buf);
-                    else
-                        delete[] output_buf;
-
-                    Rendering::Buffers::Bitmap vertical_cross = Rendering::Buffers::BitmapConvert::EquirectToCross(in, slab);
-                    Rendering::Buffers::Bitmap cubemap        = Rendering::Buffers::BitmapConvert::CrossToCubemap(vertical_cross, slab);
-
-                    size_t                     bytes          = cubemap.BufferSize;
-                    buffer.resize(bytes);
-                    Helpers::secure_memmove(buffer.data(), bytes, cubemap.Buffer, bytes);
+                    byte_size = cubemap.BufferSize;
+                    pixels    = static_cast<uint8_t*>(slab->Alloc(byte_size));
+                    Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
                 }
             }
             else
             {
-                stbi_set_flip_vertically_on_load(1);
-                int      w, h, ch;
-                stbi_uc* image_data = stbi_load(captured_filename.c_str(), &w, &h, &ch, STBI_rgb_alpha);
+                int          width = 0, height = 0, channels = 0;
+                const float* image_data = stbi_loadf(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
                 if (!image_data)
                 {
-                    ZENGINE_CORE_ERROR("Failed to load texture: {}", captured_filename) return;
-                }
-
-                if (ch <= STBI_rgb)
-                {
-                    size_t total = w * h;
-                    buffer.resize(total * 4);
-                    stbir_resize_uint8(image_data, w, h, 0, buffer.data(), w, h, 0, 4);
-                    for (size_t i = 0; i < total; ++i)
-                        buffer[i * 4 + 3] = 255;
+                    ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
                 }
                 else
                 {
-                    size_t bytes = (size_t) (w * h * ch);
-                    buffer.resize(bytes);
-                    Helpers::secure_memmove(buffer.data(), bytes, image_data, bytes);
+                    const size_t total_pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+                    const size_t float_bytes  = total_pixels * STBI_rgb_alpha * sizeof(float);
+                    float*       rgba         = static_cast<float*>(slab->Alloc(float_bytes));
+                    if (channels == STBI_rgb)
+                    {
+                        stbir_resize_float(image_data, width, height, 0, rgba, width, height, 0, STBI_rgb_alpha);
+                        for (size_t i = 0; i < total_pixels; ++i)
+                            rgba[i * STBI_rgb_alpha + 3] = 255.f;
+                    }
+                    else
+                    {
+                        Helpers::secure_memcpy(rgba, float_bytes, image_data, float_bytes);
+                    }
+                    stbi_image_free(const_cast<float*>(image_data));
+
+                    Rendering::Buffers::Bitmap input = Rendering::Buffers::Bitmap::FromData(width, height, 1, STBI_rgb_alpha, Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::Texture2D, rgba, slab);
+                    slab->Free(rgba);
+                    Rendering::Buffers::Bitmap cross   = Rendering::Buffers::BitmapConvert::EquirectToCross(input, slab);
+                    Rendering::Buffers::Bitmap cubemap = Rendering::Buffers::BitmapConvert::CrossToCubemap(cross, slab);
+
+                    byte_size                          = cubemap.BufferSize;
+                    pixels                             = static_cast<uint8_t*>(slab->Alloc(byte_size));
+                    Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
+                }
+            }
+        }
+        else
+        {
+            stbi_set_flip_vertically_on_load_thread(1);
+            int      width = 0, height = 0, channels = 0;
+            stbi_uc* image_data = stbi_load(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
+            if (!image_data)
+            {
+                ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
+            }
+            else
+            {
+                const size_t total_pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+                byte_size                 = total_pixels * STBI_rgb_alpha;
+                pixels                    = static_cast<uint8_t*>(slab->Alloc(byte_size));
+                if (channels <= STBI_rgb)
+                {
+                    stbir_resize_uint8(image_data, width, height, 0, pixels, width, height, 0, STBI_rgb_alpha);
+                    for (size_t i = 0; i < total_pixels; ++i)
+                        pixels[i * STBI_rgb_alpha + 3] = 255;
+                }
+                else
+                {
+                    Helpers::secure_memmove(pixels, byte_size, image_data, byte_size);
                 }
                 stbi_image_free(image_data);
             }
+        }
 
-            // Copy final pixels into a TLSFSlab allocation so the local buffer
-            // vector can be destroyed without freeing the pixel data.
-            Core::Memory::TLSFSlab* slab   = Helpers::GetWorkerSlab();
-            size_t                  bytes  = buffer.size();
-            uint8_t*                pixels = nullptr;
-            if (slab && bytes > 0)
+        if (pixels && byte_size > 0)
+        {
+            TextureDeferral deferral = {};
+            deferral.Pixels          = pixels;
+            deferral.ByteSize        = byte_size;
+            deferral.Slab            = slab;
+            deferral.TexHandle       = task->Texture;
+
+            if (manager->EnqueueTextureDeferral(deferral))
             {
-                pixels = static_cast<uint8_t*>(slab->Alloc(bytes));
-                Helpers::secure_memmove(pixels, bytes, buffer.data(), bytes);
+                manager->m_device->RequestDeferredDescriptorUpdate(task->Texture);
             }
-            TextureDeferral deferral;
-            deferral.Pixels    = pixels;
-            deferral.ByteSize  = bytes;
-            deferral.Slab      = slab;
-            deferral.TexHandle = captured_handle;
-            EnqueueTextureDeferral(std::move(deferral));
-            m_device->RequestDeferredDescriptorUpdate(captured_handle);
-        });
+            else
+            {
+                ZENGINE_CORE_ERROR("[RRM] Texture deferral queue full — dropping decoded texture {}", task->Filename)
+                slab->Free(pixels);
+            }
+        }
 
-        return tex_handle;
+        if (!previous)
+            Helpers::SetWorkerSlab(nullptr);
+        manager->CompleteTextureDecodeTask(task);
+    }
+
+    void RenderResourceManager::CompleteTextureDecodeTask(TextureDecodeTask* task)
+    {
+        m_texture_task_slab.Free(task);
+        m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
     }
 
     Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackTexture()

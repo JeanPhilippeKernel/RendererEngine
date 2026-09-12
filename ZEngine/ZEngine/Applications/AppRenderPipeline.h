@@ -1,7 +1,7 @@
 #pragma once
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
-#include <ZEngine/Rendering/Renderers/ZUIRenderer.h>
+#include <ZEngine/Rendering/Renderers/ZUIPass.h>
 
 namespace ZEngine::UI
 {
@@ -34,7 +34,7 @@ namespace ZEngine::Applications
         ZEngine::UI::ZUIContext*                 ZUICtx                   = nullptr;
         Hardwares::VulkanDevicePtr               Device                   = nullptr;
         Rendering::Renderers::GraphicRendererPtr SceneRenderer            = nullptr;
-        Rendering::Renderers::ZUIRendererPtr     ZUIRenderer              = nullptr;
+        Rendering::Renderers::ZUIPassPtr         ZUIRenderPass            = nullptr;
         Hardwares::CommandBufferPtr              CurrentCmdBuf            = nullptr;
 
         void                                     Initialize(Hardwares::VulkanDevicePtr device);
@@ -45,12 +45,11 @@ namespace ZEngine::Applications
         bool                                     BeginFrame();
         void                                     EndFrame();
 
-        void                                     RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene);
+        void                                     RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay);
 
         void                                     BeginOverlayFrame(float dt = 0.f);
         void                                     EndOverlayFrame();
         void                                     FillOverlayPayload(RenderPayload& payload);
-        void                                     RenderOverlay(const RenderPayload& payload);
     };
     ZDEFINE_PTR(AppRenderPipeline);
 

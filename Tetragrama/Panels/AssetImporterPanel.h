@@ -46,6 +46,22 @@ namespace Tetragrama::Panels
         ZEngine::Importers::FbxImporter*      m_fbx_importer          = nullptr;
         ZEngine::Importers::AssimpImporter*   m_assimp_importer       = nullptr;
 
+        enum class ImporterKind : uint8_t
+        {
+            Gltf,
+            Fbx,
+            Assimp,
+        };
+
+        struct ImportTask
+        {
+            AssetImporterPanel*                                 Panel                           = nullptr;
+            ZEngine::Importers::AssetCodec::ImportConfiguration Configuration                   = {};
+            ImporterKind                                        Kind                            = ImporterKind::Gltf;
+            char                                                SourcePath[MAX_FILE_PATH_COUNT] = {};
+        };
+        ImportTask m_import_task = {};
+
         // State machine (shared across main and background threads)
         enum class ImporterState : uint8_t
         {
@@ -124,6 +140,9 @@ namespace Tetragrama::Panels
         void              PushLog(const char* text, float r, float g, float b);
         /// @brief Record the completed import in the history list.
         void              PushHistory(const char* name, bool ok, const char* msg);
+
+        /// @brief Runs one import on a worker through the allocation-free task API.
+        static void       RunImportTask(void* context);
 
         // Static callbacks for ImportFile (called from background thread)
         /// @brief Callback invoked when the import file step finishes.

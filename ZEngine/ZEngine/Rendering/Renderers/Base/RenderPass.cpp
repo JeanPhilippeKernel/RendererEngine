@@ -1,7 +1,5 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
-#include <fmt/format.h>
-#include <numeric>
 
 using namespace ZEngine::Rendering::Buffers;
 using namespace ZEngine::Rendering::Specifications;
@@ -9,6 +7,81 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
+    namespace
+    {
+        bool IsSameDescriptorBinding(const Specifications::LayoutBindingSpecification& expected, const Specifications::LayoutBindingSpecification& current)
+        {
+            return expected.Set == current.Set && expected.Binding == current.Binding && expected.Count == current.Count && expected.DescriptorTypeValue == current.DescriptorTypeValue && expected.Flags == current.Flags;
+        }
+
+        void StoreDescriptorReplayRecord(Hardwares::VulkanDevice* device, DescriptorReplayRecord* records, uint32_t* record_count, const DescriptorReplayRecord& record)
+        {
+            ZENGINE_VALIDATE_ASSERT(device != nullptr && records != nullptr && record_count != nullptr, "Descriptor replay record storage is invalid")
+            ZENGINE_VALIDATE_ASSERT(record.Binding.Name != nullptr, "Descriptor replay record requires a binding name")
+
+            for (uint32_t index = 0; index < *record_count; ++index)
+            {
+                DescriptorReplayRecord& existing = records[index];
+                if (existing.Kind != record.Kind || existing.FrameIndex != record.FrameIndex || Helpers::secure_strcmp(existing.Name, record.Binding.Name) != 0)
+                    continue;
+
+                const cstring stable_name = existing.Name;
+                existing                  = record;
+                existing.Name             = stable_name;
+                existing.Binding.Name     = stable_name;
+                return;
+            }
+
+            if (*record_count == kMaxDescriptorReplayBindings)
+            {
+                ZENGINE_CORE_WARN("Descriptor replay record capacity reached; this pass will safely skip after shader interface changes")
+                return;
+            }
+
+            const size_t name_length = Helpers::secure_strlen(record.Binding.Name);
+            if (name_length == 0)
+                return;
+            char* stable_name = ZPushString(device->Arena, name_length + 1);
+            Helpers::secure_strcpy(stable_name, name_length + 1, record.Binding.Name);
+
+            DescriptorReplayRecord& destination = records[(*record_count)++];
+            destination                         = record;
+            destination.Name                    = stable_name;
+            destination.Binding.Name            = stable_name;
+        }
+
+        bool HasDescriptorReplayRecord(const DescriptorReplayRecord* records, uint32_t record_count, cstring name)
+        {
+            for (uint32_t index = 0; index < record_count; ++index)
+            {
+                if (Helpers::secure_strcmp(records[index].Name, name) == 0)
+                    return true;
+            }
+            return false;
+        }
+
+        bool AreDescriptorReplayRecordsCompatible(const DescriptorReplayRecord* records, uint32_t record_count, Shaders::Shader* shader)
+        {
+            if (!shader)
+                return false;
+
+            for (uint32_t index = 0; index < record_count; ++index)
+            {
+                const DescriptorReplayRecord& record  = records[index];
+                const auto                    current = shader->GetLayoutBindingSpecification(record.Name);
+                if (current.Set == UINT32_MAX || current.Binding == UINT32_MAX || !IsSameDescriptorBinding(record.Binding, current))
+                    return false;
+            }
+
+            for (const auto& binding : shader->LayoutBindingSpecifications)
+            {
+                if (!HasDescriptorReplayRecord(records, record_count, binding.Name))
+                    return false;
+            }
+            return true;
+        }
+    } // namespace
+
     /*
      * GraphicPass
      */
@@ -28,9 +101,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         if (Specification.SwapchainAsRenderTarget)
         {
-            Specification.PipelineSpecification.Attachment = m_device->SwapchainPtr->SwapchainAttachment;
-            Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
-            Pipeline->Initialize(m_device, std::move(Specification.PipelineSpecification));
+            Attachment = m_device->SwapchainPtr->SwapchainAttachment;
+            Pipeline   = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
+            Pipeline->Initialize(m_device, std::move(Specification.PipelineDescription), Attachment);
         }
         else
         {
@@ -82,13 +155,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            Attachment                                     = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, std::move(attachment_specification));
-            Specification.PipelineSpecification.Attachment = Attachment;
-            Pipeline                                       = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
-            Pipeline->Initialize(m_device, std::move(Specification.PipelineSpecification));
+            Attachment = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, std::move(attachment_specification));
+            Pipeline   = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
+            Pipeline->Initialize(m_device, std::move(Specification.PipelineDescription), Attachment);
 
             UpdateRenderTargets();
-            UpdateInputBinding();
+        }
+
+        if (Pipeline)
+        {
+            Pipeline->ReplayDescriptors       = &GraphicPass::ReplayDescriptorBindings;
+            Pipeline->DescriptorReplayContext = this;
         }
     }
 
@@ -123,19 +200,16 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         if (BoundBindings.size() != layout_binding_specification.size())
         {
-            std::vector<std::string> missing_names;
+            uint32_t missing_count = 0;
             for (const auto& specification : layout_binding_specification)
             {
                 if (!BoundBindings.contains(specification.Name))
                 {
-                    missing_names.emplace_back(specification.Name);
+                    ++missing_count;
+                    ZENGINE_CORE_WARN("Pipeline '{}': unset input '{}'", Specification.PipelineDescription.DebugName, specification.Name)
                 }
             }
-            auto        start        = missing_names.begin();
-            auto        end          = missing_names.end();
-            std::string unset_inputs = std::accumulate(std::next(start), end, *start, [](std::string_view a, std::string_view b) { return fmt::format("{}, {}", a.data(), b.data()); });
-
-            ZENGINE_CORE_WARN("Pipeline '{}': {} unset input(s): {}", Specification.PipelineSpecification.DebugName, missing_names.size(), unset_inputs.c_str());
+            ZENGINE_CORE_WARN("Pipeline '{}': {} unset input(s)", Specification.PipelineDescription.DebugName, missing_count)
 
             verify = false;
         }
@@ -160,29 +234,26 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
-        auto buf_infos   = std::vector<VkDescriptorBufferInfo>(frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
+        const uint32_t frame_index = m_device->SwapchainPtr->CurrentFrame->Index;
+        if (frame_index >= set_array->size())
         {
-            buf_infos[i]  = {.buffer = m_device->FrameHeaps[i].Handle, .offset = 0, .range = range};
-            write_reqs[i] = VkWriteDescriptorSet{
-                .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .pNext            = nullptr,
-                .dstSet           = (*set_array)[i],
-                .dstBinding       = spec.Binding,
-                .dstArrayElement  = 0,
-                .descriptorCount  = 1,
-                .descriptorType   = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                .pImageInfo       = nullptr,
-                .pBufferInfo      = &buf_infos[i],
-                .pTexelBufferView = nullptr,
-            };
+            ZENGINE_CORE_ERROR("SetDynamicUniform: descriptor frame {} not found for key '{}'", frame_index, key_name.data())
+            return;
         }
 
-        vkUpdateDescriptorSets(m_device->LogicalDevice, write_reqs.size(), write_reqs.data(), 0, nullptr);
+        VkDescriptorBufferInfo buffer_info = {.buffer = m_device->FrameHeaps[frame_index].Handle, .offset = 0, .range = range};
+        VkWriteDescriptorSet   write       = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+            .pBufferInfo     = &buffer_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name.data());
+        RecordDescriptorBinding({.Binding = spec, .Range = range, .Kind = DescriptorReplayKind::DynamicUniform});
     }
 
     void GraphicPass::SetStorageBuffer(std::string_view key_name, const Core::Memory::BufferView* buffer)
@@ -208,23 +279,26 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        auto                              frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        VkDescriptorBufferInfo            buf_info    = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
-        std::vector<VkWriteDescriptorSet> write_reqs(frame_count);
-        for (unsigned i = 0; i < frame_count; ++i)
+        const uint32_t frame_index = m_device->SwapchainPtr->CurrentFrame->Index;
+        if (frame_index >= set_array->size())
         {
-            write_reqs[i] = VkWriteDescriptorSet{
-                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet          = (*set_array)[i],
-                .dstBinding      = spec.Binding,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pBufferInfo     = &buf_info,
-            };
+            ZENGINE_CORE_ERROR("SetStorageBuffer: descriptor frame {} not found for key '{}'", frame_index, key_name.data())
+            return;
         }
-        vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
+
+        VkDescriptorBufferInfo buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        VkWriteDescriptorSet   write       = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo     = &buffer_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name.data());
+        RecordDescriptorBinding({.Binding = spec, .Buffer = buffer, .Kind = DescriptorReplayKind::StorageBuffer});
     }
 
     void GraphicPass::SetStorageBufferForFrame(cstring key_name, uint32_t frame_index, const Core::Memory::BufferView* buffer)
@@ -252,16 +326,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         VkDescriptorBufferInfo buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
         VkWriteDescriptorSet   write       = {
-                    .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet          = (*set_array)[frame_index],
-                    .dstBinding      = spec.Binding,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .pBufferInfo     = &buffer_info,
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo     = &buffer_info,
         };
         vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name);
+        RecordDescriptorBinding({.Binding = spec, .Buffer = buffer, .FrameIndex = frame_index, .Kind = DescriptorReplayKind::StorageBuffer});
     }
 
     void GraphicPass::SetTexture(std::string_view key_name, const Textures::TextureHandle& handle)
@@ -281,28 +356,29 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const VkDescriptorType vk_type     = Specifications::DescriptorTypeMap[VALUE_FROM_SPEC_MAP(spec.DescriptorTypeValue)];
-        auto                   frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto                   tex_buf     = m_device->GlobalTextures.Access(handle);
-        auto                   img_buf     = m_device->ImageBufferManager.Access(tex_buf->BufferHandle);
-        auto                   write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
+        const uint32_t frame_index = m_device->SwapchainPtr->CurrentFrame->Index;
+        if (frame_index >= set_array->size())
         {
-            auto& image_info = img_buf->GetDescriptorImageInfo();
-            write_reqs[i]    = VkWriteDescriptorSet{
-                   .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                   .pNext           = nullptr,
-                   .dstSet          = (*set_array)[i],
-                   .dstBinding      = spec.Binding,
-                   .dstArrayElement = 0,
-                   .descriptorCount = 1,
-                   .descriptorType  = vk_type,
-                   .pImageInfo      = &(image_info),
-            };
+            ZENGINE_CORE_ERROR("SetTexture: descriptor frame {} not found for key '{}'", frame_index, key_name.data())
+            return;
         }
-        vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
+
+        const VkDescriptorType       vk_type    = Specifications::DescriptorTypeMap[VALUE_FROM_SPEC_MAP(spec.DescriptorTypeValue)];
+        auto                         tex_buf    = m_device->GlobalTextures.Access(handle);
+        auto                         img_buf    = m_device->ImageBufferManager.Access(tex_buf->BufferHandle);
+        const VkDescriptorImageInfo& image_info = img_buf->GetDescriptorImageInfo();
+        VkWriteDescriptorSet         write      = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = vk_type,
+            .pImageInfo      = &image_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name.data());
+        RecordDescriptorBinding({.Binding = spec, .Texture = handle, .Kind = DescriptorReplayKind::Texture});
     }
 
     void GraphicPass::SetSampler(cstring key_name, const VkDescriptorImageInfo& sampler_info)
@@ -321,24 +397,25 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             ZENGINE_CORE_ERROR("SetSampler: descriptor set {} not found for key '{}'", spec.Set, key_name)
             return;
         }
-        auto frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        auto write_reqs  = std::vector<VkWriteDescriptorSet>(frame_count);
-
-        for (unsigned i = 0; i < frame_count; ++i)
+        const uint32_t frame_index = m_device->SwapchainPtr->CurrentFrame->Index;
+        if (frame_index >= set_array->size())
         {
-            write_reqs[i] = VkWriteDescriptorSet{
-                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .pNext           = nullptr,
-                .dstSet          = (*set_array)[i],
-                .dstBinding      = spec.Binding,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLER,
-                .pImageInfo      = &(sampler_info),
-            };
+            ZENGINE_CORE_ERROR("SetSampler: descriptor frame {} not found for key '{}'", frame_index, key_name)
+            return;
         }
-        vkUpdateDescriptorSets(m_device->LogicalDevice, (uint32_t) write_reqs.size(), write_reqs.data(), 0, nullptr);
+
+        VkWriteDescriptorSet write = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_SAMPLER,
+            .pImageInfo      = &sampler_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name);
+        RecordDescriptorBinding({.Binding = spec, .Sampler = sampler_info, .Kind = DescriptorReplayKind::Sampler});
     }
 
     void GraphicPass::UseTextureArray(std::string_view key_name)
@@ -364,18 +441,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         for (unsigned i = 0; i < frame_count; ++i)
         {
             Hardwares::WriteDescriptorSetRequestKey key = {.Binding = binding_spec.Binding, .DstSet = (*set_array)[i]};
-            m_device->BindlessTextureSlotRequests.insert(key);
+            m_device->AddBindlessTextureSlotRequest(key);
         }
 
         BoundBindings.insert(key_name.data());
-    }
-
-    void GraphicPass::UpdateInputBinding()
-    {
-        for (const auto& [binding_name, texture] : Specification.InputTextures)
-        {
-            SetTexture(binding_name, texture);
-        }
+        RecordDescriptorBinding({.Binding = binding_spec, .Kind = DescriptorReplayKind::TextureArray});
     }
 
     void GraphicPass::UpdateRenderTargets()
@@ -444,12 +514,54 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         auto        binding_spec = shader->GetLayoutBindingSpecification(key.data());
         if ((binding_spec.Set == 0xFFFFFFFF) && (binding_spec.Binding == 0xFFFFFFFF))
         {
-            const auto* pipeline_name = Specification.PipelineSpecification.DebugName;
+            const auto* pipeline_name = Specification.PipelineDescription.DebugName;
             const auto* shader_name   = shader->m_specification.Name;
             ZENGINE_CORE_ERROR("[{}] Shader input not found: '{}' (shader: {})", pipeline_name ? pipeline_name : "?", key.data(), shader_name ? shader_name : "?")
             valid = false;
         }
         return {valid, binding_spec};
+    }
+
+    bool GraphicPass::ReplayDescriptorBindings(void* context)
+    {
+        return static_cast<GraphicPass*>(context)->ReplayDescriptorBindings();
+    }
+
+    bool GraphicPass::ReplayDescriptorBindings()
+    {
+        if (!Pipeline || !AreDescriptorReplayRecordsCompatible(DescriptorReplayRecords, DescriptorReplayRecordCount, Pipeline->Shader))
+        {
+            ZENGINE_CORE_ERROR("Pipeline '{}': shader descriptor interface changed; pass execution is disabled until the pass is rebuilt", Specification.PipelineDescription.DebugName ? Specification.PipelineDescription.DebugName : "?")
+            return false;
+        }
+
+        BoundBindings.clear();
+        for (uint32_t index = 0; index < DescriptorReplayRecordCount; ++index)
+        {
+            const DescriptorReplayRecord& record = DescriptorReplayRecords[index];
+            switch (record.Kind)
+            {
+                case DescriptorReplayKind::DynamicUniform:
+                    SetDynamicUniform(record.Name, record.Range);
+                    break;
+                case DescriptorReplayKind::StorageBuffer:
+                    if (record.FrameIndex == UINT32_MAX)
+                        SetStorageBuffer(record.Name, record.Buffer);
+                    else
+                        SetStorageBufferForFrame(record.Name, record.FrameIndex, record.Buffer);
+                    break;
+                case DescriptorReplayKind::Texture:
+                    SetTexture(record.Name, record.Texture);
+                    break;
+                case DescriptorReplayKind::Sampler:
+                    SetSampler(record.Name, record.Sampler);
+                    break;
+                case DescriptorReplayKind::TextureArray:
+                    UseTextureArray(record.Name);
+                    break;
+            }
+        }
+        return true;
     }
 
     /*
@@ -468,6 +580,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         Pipeline      = ZPushStructCtorArgs(m_device->Arena, Pipelines::ComputePipeline);
         Pipeline->Initialize(m_device, Specification.ComputeShaderName, Specification.ComputePushConstantSize);
+        Pipeline->ReplayDescriptors       = &ComputePass::ReplayDescriptorBindings;
+        Pipeline->DescriptorReplayContext = this;
     }
 
     void ComputePass::Dispose()
@@ -509,25 +623,25 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        const uint32_t                                frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        VkDescriptorBufferInfo                        buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
-        auto                                          scratch     = ZGetScratch(m_device->Arena);
-        Core::Containers::Array<VkWriteDescriptorSet> writes;
-        writes.init(scratch.Arena, frame_count, frame_count);
-        for (uint32_t i = 0; i < frame_count; ++i)
+        const uint32_t frame_index = m_device->SwapchainPtr->CurrentFrame->Index;
+        if (frame_index >= set_array->size())
         {
-            writes[i] = VkWriteDescriptorSet{
-                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet          = (*set_array)[i],
-                .dstBinding      = binding_spec.Binding,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pBufferInfo     = &buffer_info,
-            };
+            ZENGINE_CORE_ERROR("ComputePass::SetStorageBuffer: descriptor frame {} not found for key '{}'", frame_index, key_name)
+            return;
         }
-        vkUpdateDescriptorSets(m_device->LogicalDevice, frame_count, writes.data(), 0, nullptr);
-        ZReleaseScratch(scratch);
+
+        VkDescriptorBufferInfo buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
+        VkWriteDescriptorSet   write       = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = binding_spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo     = &buffer_info,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
+        RecordDescriptorBinding({.Binding = binding_spec, .Buffer = buffer, .Kind = DescriptorReplayKind::StorageBuffer});
     }
 
     void ComputePass::SetStorageBufferForFrame(cstring key_name, uint32_t frame_index, const Core::Memory::BufferView* buffer)
@@ -554,195 +668,52 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
         VkDescriptorBufferInfo buffer_info = {.buffer = buffer->Handle, .offset = 0, .range = VK_WHOLE_SIZE};
         VkWriteDescriptorSet   write       = {
-                    .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet          = (*set_array)[frame_index],
-                    .dstBinding      = binding_spec.Binding,
-                    .dstArrayElement = 0,
-                    .descriptorCount = 1,
-                    .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .pBufferInfo     = &buffer_info,
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = binding_spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo     = &buffer_info,
         };
         vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
+        RecordDescriptorBinding({.Binding = binding_spec, .Buffer = buffer, .FrameIndex = frame_index, .Kind = DescriptorReplayKind::StorageBuffer});
     }
 
-    /*
-     * RenderPassBuilder
-     */
-    void RenderPassBuilder::Initialize(Core::Memory::ArenaAllocator* arena)
+    bool ComputePass::ReplayDescriptorBindings(void* context)
     {
-        Arena = arena;
+        return static_cast<ComputePass*>(context)->ReplayDescriptorBindings();
     }
 
-    RenderPassBuilder& RenderPassBuilder::SetName(std::string_view name)
+    bool ComputePass::ReplayDescriptorBindings()
     {
-        auto buf = ZPushString(Arena, name.size() + 1);
-        Helpers::secure_strcpy(buf, name.size() + 1, name.data());
-        m_spec.DebugName = buf;
-        return *this;
+        if (!Pipeline || !AreDescriptorReplayRecordsCompatible(DescriptorReplayRecords, DescriptorReplayRecordCount, Pipeline->Shader))
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline: shader descriptor interface changed; pass execution is disabled until the pass is rebuilt")
+            return false;
+        }
+
+        for (uint32_t index = 0; index < DescriptorReplayRecordCount; ++index)
+        {
+            const DescriptorReplayRecord& record = DescriptorReplayRecords[index];
+            if (record.Kind != DescriptorReplayKind::StorageBuffer)
+                return false;
+            if (record.FrameIndex == UINT32_MAX)
+                SetStorageBuffer(record.Name, record.Buffer);
+            else
+                SetStorageBufferForFrame(record.Name, record.FrameIndex, record.Buffer);
+        }
+        return true;
     }
 
-    RenderPassBuilder& RenderPassBuilder::SetPipelineName(std::string_view name)
+    void GraphicPass::RecordDescriptorBinding(const DescriptorReplayRecord& record)
     {
-        auto buf = ZPushString(Arena, name.size() + 1);
-        Helpers::secure_strcpy(buf, name.size() + 1, name.data());
-        m_spec.PipelineSpecification.DebugName = buf;
-        return *this;
+        StoreDescriptorReplayRecord(m_device, DescriptorReplayRecords, &DescriptorReplayRecordCount, record);
     }
 
-    RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthTest(bool value)
+    void ComputePass::RecordDescriptorBinding(const DescriptorReplayRecord& record)
     {
-        m_spec.PipelineSpecification.EnableDepthTest = value;
-        return *this;
+        StoreDescriptorReplayRecord(m_device, DescriptorReplayRecords, &DescriptorReplayRecordCount, record);
     }
 
-    RenderPassBuilder& RenderPassBuilder::EnablePipelineDepthWrite(bool value)
-    {
-        m_spec.PipelineSpecification.EnableDepthWrite = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::PipelineDepthCompareOp(uint32_t value)
-    {
-        m_spec.PipelineSpecification.DepthCompareOp = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::EnablePipelineBlending(bool value)
-    {
-        m_spec.PipelineSpecification.EnableBlending = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetShaderOverloadMaxSet(uint32_t count)
-    {
-        m_spec.PipelineSpecification.ShaderSpecificationValue.OverloadMaxSet = count;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetOverloadPoolSize(uint32_t count)
-    {
-        m_spec.PipelineSpecification.ShaderSpecificationValue.OverloadPoolSize = count;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetCullMode(uint32_t mode)
-    {
-        m_spec.PipelineSpecification.CullMode = mode;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetInputBindingCount(uint32_t count)
-    {
-        m_spec.PipelineSpecification.VertexInputBindingSpecifications.init(Arena, count, count);
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetStride(uint32_t input_binding_index, uint32_t value)
-    {
-        m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Stride = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetRate(uint32_t input_binding_index, uint32_t value)
-    {
-        m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Rate = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetInputAttributeCount(uint32_t count)
-    {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications.init(Arena, count, count);
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetLocation(uint32_t input_attribute_index, uint32_t value)
-    {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Location = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index)
-    {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Binding = m_spec.PipelineSpecification.VertexInputBindingSpecifications[input_binding_index].Binding;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value)
-    {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Format = value;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::SetOffset(uint32_t input_attribute_index, uint32_t offset)
-    {
-        m_spec.PipelineSpecification.VertexInputAttributeSpecifications[input_attribute_index].Offset = offset;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::UseShader(std::string_view name)
-    {
-        m_spec.PipelineSpecification.ShaderSpecificationValue.Name = name.data();
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::UseComputeShader(cstring name, uint32_t push_constant_size)
-    {
-        m_spec.Type                    = RenderPassType::COMPUTE;
-        m_spec.ComputeShaderName       = name;
-        m_spec.ComputePushConstantSize = push_constant_size;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target, Specifications::LoadOperation load_op)
-    {
-        if (m_spec.ExternalOutputs.capacity() <= 0)
-            m_spec.ExternalOutputs.init(Arena, 4);
-        if (m_spec.ExternalOutputLoadOps.capacity() <= 0)
-            m_spec.ExternalOutputLoadOps.init(Arena, 4);
-        m_spec.ExternalOutputs.push(target);
-        m_spec.ExternalOutputLoadOps.push(load_op);
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::UseRenderTarget(const Textures::TextureHandle& target)
-    {
-        return UseRenderTarget(target, Specifications::LoadOperation::CLEAR);
-    }
-
-    RenderPassBuilder& RenderPassBuilder::AddRenderTarget(const Specifications::TextureSpecification& target_spec)
-    {
-        if (m_spec.Outputs.capacity() <= 0)
-            m_spec.Outputs.init(Arena, 4);
-        m_spec.Outputs.push(target_spec);
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::AddInputAttachment(const Textures::TextureHandle& input)
-    {
-        if (m_spec.Inputs.capacity() <= 0)
-            m_spec.Inputs.init(Arena, 4);
-        m_spec.Inputs.push(input);
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::AddInputTexture(std::string_view key, const Textures::TextureHandle& input)
-    {
-        if (m_spec.InputTextures.capacity() <= 0)
-            m_spec.InputTextures.init(Arena, 4);
-        m_spec.InputTextures[key.data()] = input;
-        return *this;
-    }
-
-    RenderPassBuilder& RenderPassBuilder::UseSwapchainAsRenderTarget()
-    {
-        m_spec.SwapchainAsRenderTarget = true;
-        return *this;
-    }
-
-    Specifications::RenderPassSpecification RenderPassBuilder::Detach()
-    {
-        RenderPassSpecification spec{};
-        std::swap(spec, m_spec);
-        return spec;
-    }
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

@@ -11,6 +11,8 @@ namespace ZEngine::Rendering::Renderers
         inline constexpr const char* Light          = "LightStorageBuffer";
         inline constexpr const char* CullingInput   = "FrustumCullingInputBuffer";
         inline constexpr const char* CulledIndirect = "FrustumCulledIndirectBuffer";
+        inline constexpr const char* GlobalVertex   = "GlobalVertexStorageBuffer";
+        inline constexpr const char* GlobalIndex    = "GlobalIndexStorageBuffer";
     } // namespace RendererBufferName
 
     struct UBOCameraLayout

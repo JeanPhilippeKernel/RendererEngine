@@ -47,7 +47,7 @@ See also: [Engine Architecture](engine-architecture.md) · [Rendering Domain](re
 │  ZUIContext   ZUIBox   ZUILayout   ZUIInteraction           │
 │  ZUIFont      ZUIDrawList   ZUIInput   ZUIDockspace         │
 ├────────────────────────────────────────────────────────────┤
-│                     ZUIRenderer (Vulkan)                    │
+│                  ZUIPass (render-graph Vulkan pass)          │
 │       PreparePayload → ZUIDrawList → GPU vertex buffer      │
 │       ZUIPass in AppRenderPipeline render graph            │
 └────────────────────────────────────────────────────────────┘
@@ -72,7 +72,7 @@ sequenceDiagram
     Note over CTX: ZUILayoutSolve → ZUIInteractionPass
     MT ->> RT   : FillOverlayPayload → PreparePayload
     Note over RT: DFS box tree walk, emit ZUIDrawList cmds
-    RT ->> RT   : ZUIRenderer::Submit → GPU draw
+    RT ->> RT   : RenderGraph::Execute → ZUIPass::RecordDraw → GPU draw
 ```
 
 Key invariant: **widget functions run during Build**; `ScreenMin/ScreenMax` are only valid after `ZUILayoutSolve`; `HotKey/ActiveKey` are only valid after `ZUIInteractionPass`.
@@ -177,7 +177,7 @@ void ZUIFeedKey        (ZUIContext* ctx, ZUIKey key, bool pressed, bool ctrl, bo
 
 **File:** `ZEngine/ZEngine/UI/ZUIFont.h/.cpp`
 
-`ZUIFontAtlasBake` bakes three font sizes (Small / Body / Header) into a single RGBA texture atlas using FreeType, packs glyph rectangles via `stb_rect_pack`, and uploads to GPU via `RRM::UploadFontAtlas`. The `ZUIContext` holds the atlas handle; `ZUIRenderer` binds it as a texture.
+`ZUIFontAtlasBake` bakes three font sizes (Small / Body / Header) into a single RGBA texture atlas using FreeType, packs glyph rectangles via `stb_rect_pack`, and uploads to GPU via `RRM::UploadFontAtlas`. The `ZUIContext` holds the atlas handle; `ZUIPass` binds it as a texture.
 
 `ZUIMeasureText(font, str, len, out_size)` computes text extents for `ZUISizeKind::Text` layout.
 
@@ -211,19 +211,16 @@ DockTree root
 
 ---
 
-## Renderer
+## Render-graph pass
 
-**File:** `ZEngine/ZEngine/Rendering/Renderers/ZUIRenderer.h/.cpp`
+**File:** `ZEngine/ZEngine/Rendering/Renderers/ZUIPass.h/.cpp`
 
-`ZUIRenderer::PreparePayload(ctx, out, arena)`:
+`ZUIPass::PreparePayload(ctx, out, arena)`:
 1. Resets `ctx->DrawList`
 2. DFS walk of the box tree — emits draw commands for backgrounds, borders, text glyphs, icons, images
 3. Points `out->Vtx/Idx/Cmds` at the draw list (zero-copy view)
 
-`ZUIRenderer::Submit(cmd, payload)`:
-1. Uploads vertex + index data to per-frame GPU buffers
-2. Opens `DrawPass` render pass targeting the swapchain
-3. Per-command: set scissor → push `ZUIDrawPushConstant` (scale/translate/texIdx) → `DrawIndexed`
+`ZUIPass::Register(...)` declares the frame-color read and swapchain write, then uploads vertex and index data to the active frame's GPU buffers. `RecordDraw(...)` runs within the render graph's dynamic-rendering scope and, for each command, sets the scissor, pushes `ZUIDrawPushConstant` (scale/translate/texIdx), and calls `DrawIndexed`.
 
 **Vertex format:** `ZUIDrawVtx` — 20 bytes: `pos.xy` (float), `uv.xy` (float), `col` (RGBA8 packed).
 

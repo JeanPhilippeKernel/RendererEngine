@@ -33,7 +33,10 @@ namespace ZEngine::Hardwares
             // real failure, and the device may already be unsafe to keep calling into.
             if (!m_device->QueueSubmit(job.Buffer, job.Timeline, job.WaitFlag, job.SignalValue, job.WaitValue, job.WaitTimeline))
                 break;
-            m_device->EnqueueDeferredAsyncGPUOperation({job.WaitFlag, job.SignalValue, job.Timeline});
+            if (job.OnSubmitted)
+                job.OnSubmitted(job.SubmissionContext, job.StreamingTicket);
+            if (job.ExposeToFrameWait)
+                m_device->EnqueueDeferredAsyncGPUOperation({job.WaitFlag, job.SignalValue, job.Timeline});
         }
     }
 

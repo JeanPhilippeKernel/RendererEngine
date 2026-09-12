@@ -3,7 +3,7 @@
 
 namespace ZEngine::Rendering::Renderers
 {
-    void FrustumCullingPass::SetupCompute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceBuilderPtr const res_builder)
+    void FrustumCullingPass::RegisterCompute(Hardwares::VulkanDevicePtr const /*device*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder)
     {
         res_builder->ReadBuffer(RendererBufferName::CullingInput, "CullingInputSB");
         res_builder->ReadWriteBuffer(RendererBufferName::CulledIndirect, "CulledIndirectSB");

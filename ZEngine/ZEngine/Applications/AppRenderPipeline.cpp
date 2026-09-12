@@ -8,6 +8,7 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
@@ -61,10 +62,11 @@ namespace ZEngine::Applications
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
         SceneRenderer           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ZUIRenderer             = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
+        ZUIRenderPass           = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIPass);
 
+        ZUIRenderPass->Initialize(Device);
         SceneRenderer->Initialize(Device);
-        ZUIRenderer->Initialize(Device);
+        SceneRenderer->RenderGraph->AddCallbackPass("ZUI Draw Pass", ZUIRenderPass);
 
         // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
         // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
@@ -76,17 +78,19 @@ namespace ZEngine::Applications
             ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
         }
 
-        Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
-        Device->SwapchainPtr->OnSwapchainResizedCtx = this;
+        // The scene graph owns editor-viewport-sized images, while the UI pass
+        // resolves the current swapchain image at record time.  A window/swapchain
+        // recreation must therefore not resize the viewport targets: doing so
+        // replaces their image views with the window extent and races panel-driven
+        // resize requests.  Legacy swapchain framebuffers are recreated by
+        // DeviceSwapchain itself.
+        Device->SwapchainPtr->OnSwapchainResized    = nullptr;
+        Device->SwapchainPtr->OnSwapchainResizedCtx = nullptr;
     }
 
     void AppRenderPipeline::Shutdown()
     {
         SceneRenderer->Deinitialize();
-        if (ZUIRenderer)
-        {
-            ZUIRenderer->Deinitialize();
-        }
         if (ZUICtx)
         {
             ZEngine::UI::ZUIContextDestroy(ZUICtx);
@@ -99,12 +103,16 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
     {
-        if (SceneRenderer && SceneRenderer->RenderGraph)
+        if (w > 0 && h > 0 && SceneRenderer && SceneRenderer->RenderGraph)
             SceneRenderer->RenderGraph->Resize(w, h);
     }
 
     bool AppRenderPipeline::BeginFrame()
     {
+        Device->FlushShaderReloadRequests();
+        if (Device->PipelineStateCache)
+            Device->PipelineStateCache->FlushAsyncPipelineJobs();
+
         auto swapchain = Device->SwapchainPtr;
 
         swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
@@ -138,6 +146,9 @@ namespace ZEngine::Applications
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
 
+        // A frame without UI geometry never enters dynamic rendering. The acquired
+        // image must still be in PRESENT_SRC_KHR before the presentation bridge.
+        CurrentCmdBuf->TransitionSwapchainImageToPresent();
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
@@ -148,7 +159,7 @@ namespace ZEngine::Applications
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
-    void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
+    void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
         auto swpachain    = Device->SwapchainPtr;
         auto frame_index  = swpachain->CurrentFrame->Index;
@@ -274,7 +285,6 @@ namespace ZEngine::Applications
             // Mark global buffers ready so draw guard allows rendering.
             if (!gpu_data->RMMVertexHandle.IsValid() && rrm->GlobalBuffersReady())
                 gpu_data->RMMVertexHandle = {0, 1}; // sentinel — just needs IsValid() == true
-            SceneRenderer->UpdateRMMBindings(gpu_data);
         }
 
         if (Device->RRM)
@@ -285,7 +295,9 @@ namespace ZEngine::Applications
                 rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
         }
 
+        ZUIRenderPass->SetPayload(overlay);
         CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
+        ZUIRenderPass->SetPayload(nullptr);
     }
 
     void AppRenderPipeline::BeginOverlayFrame(float dt)
@@ -355,19 +367,11 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::FillOverlayPayload(RenderPayload& payload)
     {
-        if (ZUIRenderer && ZUICtx && ZUICtx->Root)
+        if (ZUIRenderPass && ZUICtx && ZUICtx->Root)
         {
             uint32_t slot = MailBoxBufferHead.value.load(std::memory_order_relaxed);
             ZUIPayloadArenas[slot].Clear();
-            ZUIRenderer->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
-        }
-    }
-
-    void AppRenderPipeline::RenderOverlay(const RenderPayload& payload)
-    {
-        if (ZUIRenderer)
-        {
-            ZUIRenderer->Submit(CurrentCmdBuf, payload.ZUIOverlay);
+            ZUIRenderPass->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
         }
     }
 

@@ -94,7 +94,7 @@ namespace ZEngine::Serializers
             return m_is_deserializing.load(std::memory_order_acquire);
         }
 
-        virtual void Serialize(ZRawPtr(TSerializerData) const data) = 0;
-        virtual void Deserialize(cstring filename)                  = 0;
+        virtual void Serialize(TSerializerData* const data) = 0;
+        virtual void Deserialize(cstring filename)          = 0;
     };
 } // namespace ZEngine::Serializers

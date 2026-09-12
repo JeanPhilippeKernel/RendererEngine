@@ -66,34 +66,31 @@ namespace ZEngine::Rendering::Renderers
         // which is when RenderGraph stamps its runtime barriers.
         RenderGraph->ImportBuffer(RendererBufferName::CullingInput, &RenderSceneData->CullingInputBuffers[0]);
         RenderGraph->ImportBuffer(RendererBufferName::CulledIndirect, &RenderSceneData->CulledIndirectBuffers[0]);
+        ZENGINE_VALIDATE_ASSERT(Device->RRM != nullptr, "Graphic renderer requires a render resource manager")
+        auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+        RenderGraph->ImportBuffer(RendererBufferName::GlobalVertex, rrm->GetGlobalVertexBuffer());
+        RenderGraph->ImportBuffer(RendererBufferName::GlobalIndex, rrm->GetGlobalIndexBuffer());
 
         RenderGraph->AddCallbackPass("Frustum Culling Pass", frustum_culling_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
-        // Skybox starts disabled; ApplySkyConfig enables it when a scene with an HDRI sky loads.
-        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass, false);
+        RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
-
         RenderGraph->Setup();
         RenderGraph->Compile();
 
-        if (auto* culling_pass = RenderGraph->GetPass("Frustum Culling Pass"); culling_pass && culling_pass->Handle)
-        {
-            auto* compute_pass = static_cast<RenderPasses::ComputePass*>(culling_pass->Handle);
-            for (uint32_t i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
-            {
-                compute_pass->SetStorageBufferForFrame("CullingInputSB", i, &RenderSceneData->CullingInputBuffers[i]);
-                compute_pass->SetStorageBufferForFrame("CulledIndirectSB", i, &RenderSceneData->CulledIndirectBuffers[i]);
-            }
-        }
-
-        // Register FrameColor for bindless access now that the graph has allocated it.
-        Device->TextureHandleToUpdates.Enqueue(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
+        // No viewport texture is published here: before the ZUI pass is attached,
+        // graph culling deliberately leaves FrameColor unallocated. DrawScene()
+        // publishes the first real allocation after an acquired frame compiles it.
     }
 
     void GraphicRenderer::Deinitialize()
     {
+        m_frame_output_sequence.value.fetch_add(1, std::memory_order_acq_rel);
+        m_frame_output_index.value.store(UINT64_MAX, std::memory_order_relaxed);
+        m_frame_output_generation.value.store(0, std::memory_order_relaxed);
+        m_frame_output_sequence.value.fetch_add(1, std::memory_order_release);
         RenderGraph->Dispose();
         if (RenderSceneData)
         {
@@ -106,70 +103,6 @@ namespace ZEngine::Rendering::Renderers
                 Device->GpuMem.FreeBuffer(RenderSceneData->CullingInputBuffers[i]);
                 Device->GpuMem.FreeBuffer(RenderSceneData->CulledIndirectBuffers[i]);
             }
-        }
-    }
-
-    void GraphicRenderer::UpdateRMMBindings(Scenes::SceneDataPtr scene)
-    {
-        if (!scene)
-            return;
-
-        // The buffers are per-frame, so each descriptor-set frame receives its own
-        // physical buffer. The bindings themselves are immutable after setup.
-        if (!m_scene_buffers_bound && scene->TransformBuffers[0].Handle)
-        {
-            auto* depth_pass   = RenderGraph->GetPass("Depth Pre-Pass");
-            auto* gbuffer_pass = RenderGraph->GetPass("G-Buffer Pass");
-            auto* light_pass   = RenderGraph->GetPass("Lighting Pass");
-            for (uint32_t frame_index = 0; frame_index < Device->SwapchainPtr->BufferredFrameCount; ++frame_index)
-            {
-                if (depth_pass && depth_pass->Handle)
-                {
-                    auto* gp = static_cast<RenderPasses::GraphicPass*>(depth_pass->Handle);
-                    gp->SetStorageBufferForFrame("TransformSB", frame_index, &scene->TransformBuffers[frame_index]);
-                    gp->SetStorageBufferForFrame("DrawDataSB", frame_index, &scene->RenderDataBuffers[frame_index]);
-                }
-                if (gbuffer_pass && gbuffer_pass->Handle)
-                {
-                    auto* gp = static_cast<RenderPasses::GraphicPass*>(gbuffer_pass->Handle);
-                    gp->SetStorageBufferForFrame("TransformSB", frame_index, &scene->TransformBuffers[frame_index]);
-                    gp->SetStorageBufferForFrame("DrawDataSB", frame_index, &scene->RenderDataBuffers[frame_index]);
-                    gp->SetStorageBufferForFrame("MatSB", frame_index, &scene->MaterialBuffers[frame_index]);
-                }
-                if (light_pass && light_pass->Handle)
-                    static_cast<RenderPasses::GraphicPass*>(light_pass->Handle)->SetStorageBufferForFrame("LightSB", frame_index, &scene->LightBuffers[frame_index]);
-            }
-            m_scene_buffers_bound = true;
-            ZENGINE_CORE_INFO("[GraphicRenderer] Bound per-frame TransformSB/DrawDataSB/MatSB/LightSB descriptors")
-        }
-
-        if (!Device->RRM)
-            return;
-
-        auto* rrm = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
-
-        // Global vertex + index buffers — bind to both geometry passes once ready.
-        if (!m_global_buffers_bound && rrm->GlobalBuffersReady())
-        {
-            const auto* vtx_buf      = rrm->GetGlobalVertexBuffer();
-            const auto* idx_buf      = rrm->GetGlobalIndexBuffer();
-            auto*       depth_pass   = RenderGraph->GetPass("Depth Pre-Pass");
-            auto*       gbuffer_pass = RenderGraph->GetPass("G-Buffer Pass");
-            if (depth_pass && depth_pass->Handle)
-            {
-                auto* gp = static_cast<RenderPasses::GraphicPass*>(depth_pass->Handle);
-                gp->SetStorageBuffer("VertexSB", vtx_buf);
-                gp->SetStorageBuffer("IndexSB", idx_buf);
-            }
-            if (gbuffer_pass && gbuffer_pass->Handle)
-            {
-                auto* gp = static_cast<RenderPasses::GraphicPass*>(gbuffer_pass->Handle);
-                gp->SetStorageBuffer("VertexSB", vtx_buf);
-                gp->SetStorageBuffer("IndexSB", idx_buf);
-                gp->UseTextureArray("TextureArray");
-            }
-            m_global_buffers_bound = true;
-            ZENGINE_CORE_INFO("[GraphicRenderer] Bound global VertexSB/IndexSB to geometry passes")
         }
     }
 
@@ -196,30 +129,64 @@ namespace ZEngine::Rendering::Renderers
         // Light buffer is uploaded by AppRenderPipeline::RenderScene from scene->PendingLights.
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
-        auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
-        auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
-        RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
+        auto& heap                             = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
+        auto  camera_alloc                     = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
+        RenderSceneData->CameraHeapOffset      = camera_alloc.Offset;
 
-        return RenderGraph->Execute(cb);
+        Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
+        PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
+        return output;
     }
 
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
-        return RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName);
+        for (uint32_t attempt = 0; attempt < 2; ++attempt)
+        {
+            const uint64_t sequence_before = m_frame_output_sequence.value.load(std::memory_order_acquire);
+            if ((sequence_before & 1u) != 0)
+                continue;
+
+            const Textures::TextureHandle output = {
+                .Index      = m_frame_output_index.value.load(std::memory_order_relaxed),
+                .Generation = m_frame_output_generation.value.load(std::memory_order_relaxed),
+            };
+
+            const uint64_t sequence_after = m_frame_output_sequence.value.load(std::memory_order_acquire);
+            if (sequence_before == sequence_after)
+                return output;
+        }
+        return {};
+    }
+
+    void GraphicRenderer::PublishFrameOutput(Textures::TextureHandle output)
+    {
+        if (!output.Valid())
+            return;
+
+        m_frame_output_sequence.value.fetch_add(1, std::memory_order_acq_rel);
+        m_frame_output_index.value.store(output.Index, std::memory_order_relaxed);
+        m_frame_output_generation.value.store(output.Generation, std::memory_order_relaxed);
+        m_frame_output_sequence.value.fetch_add(1, std::memory_order_release);
+        Device->RequestDescriptorUpdate(output);
     }
 
     void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky)
     {
+        auto* pass = RenderGraph->GetPass("Skybox Pass");
+        if (!pass)
+            return;
+        auto* skybox_pass = static_cast<SkyboxPass*>(pass->Callback);
+
         if (!sky.IsHDRI())
         {
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
+            skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
         auto env_path = sky.EnvironmentMap.c_str();
         if (!env_path || env_path[0] == '\0')
         {
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
+            skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
@@ -227,7 +194,7 @@ namespace ZEngine::Rendering::Renderers
         if (!vfs)
         {
             ZENGINE_CORE_ERROR("[Renderer] VFS not available — cannot resolve environment map: {}", env_path)
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
+            skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
@@ -236,19 +203,14 @@ namespace ZEngine::Rendering::Renderers
         if (exists_result.Failed() || !exists_result.Value())
         {
             ZENGINE_CORE_ERROR("[Renderer] Environment map not found in VFS: {}", env_path)
-            RenderGraph->SetPassEnabled("Skybox Pass", false);
+            skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
-        auto* pass = RenderGraph->GetPass("Skybox Pass");
-        if (pass)
+        if (!skybox_pass->ConfigureEnvironmentMap(env_path))
         {
-            if (!static_cast<SkyboxPass*>(pass->Callback)->ConfigureEnvironmentMap(env_path))
-            {
-                RenderGraph->SetPassEnabled("Skybox Pass", false);
-                return;
-            }
-            RenderGraph->SetPassEnabled("Skybox Pass", true);
+            skybox_pass->ConfigureEnvironmentMap(nullptr);
+            return;
         }
     }
 
@@ -257,11 +219,12 @@ namespace ZEngine::Rendering::Renderers
         auto* pass = RenderGraph->GetPass("Grid Pass");
         if (!pass)
             return;
-        RenderGraph->SetPassEnabled("Grid Pass", cfg.Enabled);
+        auto* grid_pass    = static_cast<GridPass*>(pass->Callback);
+        grid_pass->Enabled = cfg.Enabled;
         if (!cfg.Enabled)
             return;
 
-        auto& p        = static_cast<GridPass*>(pass->Callback)->PushData;
+        auto& p        = grid_pass->PushData;
         p.CellSize     = cfg.CellSize;
         p.FadeRadius   = cfg.FadeRadius;
         p.FadeStrength = cfg.FadeStrength;

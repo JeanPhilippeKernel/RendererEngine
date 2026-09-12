@@ -8,20 +8,28 @@ namespace ZEngine::Rendering::Renderers
 {
     struct SkyboxPass : public IRenderGraphCallbackPass
     {
-        // Set before Setup() is called. Empty string = no env map, pass is disabled.
-        cstring      EnvMapPath = nullptr;
+        // Set before Register() is called. Empty string = no env map, pass is absent.
+        cstring                              EnvMapPath = nullptr;
 
-        // The graph runs Setup() once. Scene configuration arriving afterwards
-        // must load its texture explicitly before enabling this optional pass.
-        bool         ConfigureEnvironmentMap(cstring path);
+        // Scene configuration loads the environment texture before the pass enters
+        // a frame graph.
+        bool                                 ConfigureEnvironmentMap(cstring path);
 
-        virtual void Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        virtual void Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
-        virtual void Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
+        /// @brief Builds the static PSO recipe for skybox geometry.
+        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
+        void                                 Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
+        virtual void                         Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                                 RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                                 SupportsSecondaryRecording() const override
+        {
+            return true;
+        }
 
     private:
-        Textures::TextureHandle m_env_map    = {};
-        uint32_t                m_vtx_offset = 0;
-        uint32_t                m_idx_offset = 0;
+        Textures::TextureHandle m_env_map             = {};
+        uint32_t                m_vtx_offset          = 0;
+        uint32_t                m_idx_offset          = 0;
+        bool                    m_geometry_registered = false;
     };
 } // namespace ZEngine::Rendering::Renderers

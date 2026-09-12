@@ -49,7 +49,7 @@ namespace Tetragrama
 
         virtual ~Editor() {}
 
-        ZRawPtr(Layers::ZUILayer) ZUIUILayer                   = nullptr;
+        Layers::ZUILayer*                  ZUIUILayer          = nullptr;
 
         ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend = {};
 

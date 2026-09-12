@@ -1,7 +1,7 @@
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
-#include <ZEngine/Rendering/Renderers/ZUIRenderer.h>
+#include <ZEngine/Rendering/Renderers/ZUIPass.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/UI/ZUIFont.h>
@@ -16,11 +16,14 @@ namespace ZEngine::Rendering::Renderers
 {
     // Initialize / Deinitialize
 
-    void ZUIRenderer::Initialize(Hardwares::VulkanDevicePtr device)
+    void ZUIPass::Initialize(Hardwares::VulkanDevicePtr device)
     {
-        Device      = device;
-        RenderGraph = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
-        RenderGraph->Initialize(Device);
+        if (m_initialized)
+            return;
+
+        Device = device;
+        ZENGINE_VALIDATE_ASSERT(Device != nullptr, "ZUI pass requires a Vulkan device")
+        ZENGINE_VALIDATE_ASSERT(Device->SwapchainPtr->BufferredFrameCount <= FRAMES_IN_FLIGHT, "ZUI buffers must cover every buffered frame")
 
         // Per-frame vertex + index buffers
         // GPU buffer sizes — must match or exceed the draw list's max capacity.
@@ -36,60 +39,97 @@ namespace ZEngine::Rendering::Renderers
             IdxBHandles[i] = Device->GpuMem.AllocateBuffer(sizeof(uint16_t) * kMaxIdx, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, GpuMemoryDomain::HostUniform, "ZUIIndexBuffer");
         }
 
-        // Pipeline: vertex-rate, 3 attributes (pos=R32G32, uv=R32G32, col=R8G8B8A8_UNORM)
-        // Col is packed uint32 RGBA8 — hardware unpacks to vec4 automatically.
-        auto pass_builder = RenderGraph->RenderPassBuilder;
-        pass_builder->SetName("ZUI Draw Pass")
-            .SetPipelineName("ZUI-Draw-Pipeline")
-            .EnablePipelineBlending(true)
-            .SetInputBindingCount(1)
-            .SetStride(0, (uint32_t) sizeof(ZUIDrawVtx))
-            .SetRate(0, VK_VERTEX_INPUT_RATE_VERTEX)
-
-            .SetInputAttributeCount(3)
-            // location 0: position (x, y)
-            .SetLocation(0, 0)
-            .SetBinding(0, 0)
-            .SetFormat(0, ImageFormat::R32G32_SFLOAT)
-            .SetOffset(0, (uint32_t) offsetof(ZUIDrawVtx, x))
-            // location 1: UV (u, v)
-            .SetLocation(1, 1)
-            .SetBinding(1, 0)
-            .SetFormat(1, ImageFormat::R32G32_SFLOAT)
-            .SetOffset(1, (uint32_t) offsetof(ZUIDrawVtx, u))
-            // location 2: color (RGBA8 UNORM packed uint32)
-            .SetLocation(2, 2)
-            .SetBinding(2, 0)
-            .SetFormat(2, ImageFormat::R8G8B8A8_UNORM)
-            .SetOffset(2, (uint32_t) offsetof(ZUIDrawVtx, col))
-
-            .UseShader("zui_draw")
-            .UseSwapchainAsRenderTarget();
-
-        DrawPass = static_cast<RenderPasses::GraphicPass*>(Device->CreateRenderPass(pass_builder->Detach()));
-        DrawPass->UseTextureArray("TextureArray");
-        DrawPass->SetSampler("LinearClampSampler", Device->GlobalLinearClampToEdgeSamplerImageInfo);
-        DrawPass->Verify();
-        DrawPass->Bake();
+        m_initialized = true;
     }
 
-    void ZUIRenderer::Deinitialize()
+    void ZUIPass::Deinitialize(Hardwares::VulkanDevicePtr const /*device*/)
     {
-        RenderGraph->Dispose();
+        ReleaseResources();
+    }
+
+    void ZUIPass::ReleaseResources()
+    {
+        m_payload = nullptr;
         if (DrawPass)
+        {
             DrawPass->Dispose();
+            DrawPass = nullptr;
+        }
+
+        if (!m_initialized)
+            return;
+
         for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
             if (VtxBHandles[i])
                 Device->GpuMem.FreeBuffer(VtxBHandles[i]);
             if (IdxBHandles[i])
                 Device->GpuMem.FreeBuffer(IdxBHandles[i]);
+            VtxBHandles[i] = {};
+            IdxBHandles[i] = {};
         }
+        m_initialized = false;
+    }
+
+    void ZUIPass::SetPayload(const ZUIRenderPayload* payload)
+    {
+        m_payload = payload;
+    }
+
+    bool ZUIPass::Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
+    {
+        ZENGINE_VALIDATE_ASSERT(res_builder != nullptr, "ZUI pass requires a render graph resource builder")
+        res_builder->ReadTexture(RendererResourceName::FrameColorRenderTargetName);
+        res_builder->WriteSwapchain();
+
+        m_vtx_upload = 0;
+        m_idx_upload = 0;
+        if (!m_payload || m_payload->VtxCount == 0 || m_payload->CmdCount == 0)
+            return true;
+
+        auto* rrm = Device->RRM ? reinterpret_cast<RenderResourceManager*>(Device->RRM) : nullptr;
+        if (!rrm)
+            return true;
+
+        static constexpr uint32_t kVtxCap = 65536;
+        static constexpr uint32_t kIdxCap = 131072;
+        m_vtx_upload                      = m_payload->VtxCount > kVtxCap ? kVtxCap : m_payload->VtxCount;
+        m_idx_upload                      = m_payload->IdxCount > kIdxCap ? kIdxCap : m_payload->IdxCount;
+        const uint32_t frame_buffer_index = frame_context.FrameIndex % FRAMES_IN_FLIGHT;
+        rrm->UpdateBuffer(VtxBHandles[frame_buffer_index], m_payload->Vtx, m_vtx_upload * sizeof(ZUIDrawVtx));
+        rrm->UpdateBuffer(IdxBHandles[frame_buffer_index], m_payload->Idx, m_idx_upload * sizeof(uint16_t));
+        return true;
+    }
+
+    Specifications::GraphicsPipelineDesc ZUIPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const
+    {
+        Specifications::GraphicsPipelineDesc desc = {};
+        desc.DebugName                            = "ZUI-Draw-Pipeline";
+        desc.EnableBlending                       = true;
+        desc.ShaderSpecificationValue.Name        = "zui_draw";
+
+        desc.VertexInputBindingSpecifications.init(arena, 1, 1);
+        desc.VertexInputBindingSpecifications[0] = {.Stride = static_cast<uint32_t>(sizeof(ZUIDrawVtx)), .Rate = VK_VERTEX_INPUT_RATE_VERTEX, .Binding = 0};
+        desc.VertexInputAttributeSpecifications.init(arena, 3, 3);
+        desc.VertexInputAttributeSpecifications[0] = {.Location = 0, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, x)), .Format = ImageFormat::R32G32_SFLOAT};
+        desc.VertexInputAttributeSpecifications[1] = {.Location = 1, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, u)), .Format = ImageFormat::R32G32_SFLOAT};
+        desc.VertexInputAttributeSpecifications[2] = {.Location = 2, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, col)), .Format = ImageFormat::R8G8B8A8_UNORM};
+        return desc;
+    }
+
+    void ZUIPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
+    {
+        if (!pass)
+            return;
+
+        DrawPass = static_cast<RenderPasses::GraphicPass*>(pass);
+        DrawPass->UseTextureArray("TextureArray");
+        DrawPass->SetSampler("LinearClampSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
     }
 
     // PreparePayload — walk box tree, emit draw list
 
-    void ZUIRenderer::PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena)
+    void ZUIPass::PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena)
     {
         if (!ctx || !ctx->Root || !out || !payload_arena)
         {
@@ -111,7 +151,7 @@ namespace ZEngine::Rendering::Renderers
         out->Translate[1]        = -1.f;
         out->FramebufferScale    = ctx->UIScale > 0.f ? ctx->UIScale : 1.f;
 
-        uint32_t atlas_idx       = ctx->Atlas ? ctx->Atlas->Handle.Index : 0;
+        uint32_t atlas_idx       = ctx->Atlas ? static_cast<uint32_t>(ctx->Atlas->Handle.Index) : 0;
         float    wu              = ctx->Atlas ? ctx->Atlas->WhiteU : 0.f;
         float    wv              = ctx->Atlas ? ctx->Atlas->WhiteV : 0.f;
 
@@ -731,44 +771,33 @@ namespace ZEngine::Rendering::Renderers
         out->CmdCount = ctx->DrawList.CmdCount;
     }
 
-    // Submit
-
-    void ZUIRenderer::Submit(Hardwares::CommandBuffer* primary_cmd, const ZUIRenderPayload& payload)
+    void ZUIPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (payload.VtxCount == 0 || payload.CmdCount == 0)
-        {
+        if (!m_payload || m_vtx_upload == 0 || m_idx_upload == 0)
             return;
-        }
 
-        auto     swapchain   = Device->SwapchainPtr;
-        auto     frame_index = swapchain->CurrentFrame->Index;
-        auto     current_fb  = swapchain->SwapchainFramebuffers[swapchain->CurrentFrame->ImageIndex];
-        uint32_t fi          = frame_index % FRAMES_IN_FLIGHT;
+        auto  swapchain  = Device->SwapchainPtr;
+        auto  current_fb = swapchain->SwapchainFramebuffers[swapchain->CurrentFrame->ImageIndex];
+        auto* gp         = static_cast<RenderPasses::GraphicPass*>(pass);
+        command_buffer->BeginRenderPass(gp, current_fb, false);
+        RecordDraw(device, res_inspector, scene, pass, nullptr, command_buffer);
+        command_buffer->EndRenderPass();
+    }
 
-        auto*    rrm         = Device->RRM ? reinterpret_cast<RenderResourceManager*>(Device->RRM) : nullptr;
-        if (!rrm)
+    bool ZUIPass::RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const command_buffer)
+    {
+        if (!m_payload || m_vtx_upload == 0 || m_idx_upload == 0)
+            return false;
+
+        const ZUIRenderPayload& payload     = *m_payload;
+        const uint32_t          frame_index = device->SwapchainPtr->CurrentFrame->Index;
+        const uint32_t          fi          = frame_index % FRAMES_IN_FLIGHT;
         {
-            return;
-        }
-
-        // Clamp to GPU buffer capacity (65536 vtx, 131072 idx) — safety net
-        static constexpr uint32_t kVtxCap    = 65536;
-        static constexpr uint32_t kIdxCap    = 131072;
-        uint32_t                  vtx_upload = (payload.VtxCount > kVtxCap) ? kVtxCap : payload.VtxCount;
-        uint32_t                  idx_upload = (payload.IdxCount > kIdxCap) ? kIdxCap : payload.IdxCount;
-
-        rrm->UpdateBuffer(VtxBHandles[fi], payload.Vtx, vtx_upload * sizeof(ZUIDrawVtx));
-        rrm->UpdateBuffer(IdxBHandles[fi], payload.Idx, idx_upload * sizeof(uint16_t));
-
-        primary_cmd->BeginRenderPass(DrawPass, current_fb, true);
-        {
-            auto secondary_cb = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, frame_index, 0, ZUICommandBufferIndex, false);
-            secondary_cb->ResetState();
-            secondary_cb->BeginSecondary(DrawPass, current_fb);
-            secondary_cb->SetViewport(DrawPass->GetRenderAreaWidth(), DrawPass->GetRenderAreaHeight());
-            secondary_cb->BindPipeline(DrawPass->Pipeline);
-            secondary_cb->BindVertexBuffer(VtxBHandles[fi]);
-            secondary_cb->BindIndexBuffer(IdxBHandles[fi], VK_INDEX_TYPE_UINT16);
+            auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
+            command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+            command_buffer->BindPipeline(gp->Pipeline);
+            command_buffer->BindVertexBuffer(VtxBHandles[fi]);
+            command_buffer->BindIndexBuffer(IdxBHandles[fi], VK_INDEX_TYPE_UINT16);
 
             float fs = payload.FramebufferScale;
 
@@ -780,13 +809,13 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
                 // Skip commands that reference indices beyond the clamped upload range
-                if (cmd.IdxOffset + cmd.ElemCount > idx_upload)
+                if (cmd.IdxOffset + cmd.ElemCount > m_idx_upload)
                 {
                     continue;
                 }
 
                 // Logical → physical pixel scissor
-                secondary_cb->SetScissor((uint32_t) (cmd.ClipW * fs), (uint32_t) (cmd.ClipH * fs), (int32_t) (cmd.ClipX * fs), (int32_t) (cmd.ClipY * fs));
+                command_buffer->SetScissor((uint32_t) (cmd.ClipW * fs), (uint32_t) (cmd.ClipH * fs), (int32_t) (cmd.ClipX * fs), (int32_t) (cmd.ClipY * fs));
 
                 ZUIDrawPushConstant pc = {};
                 pc.Scale[0]            = payload.Scale[0];
@@ -796,16 +825,12 @@ namespace ZEngine::Rendering::Renderers
                 pc.TexIdx              = cmd.TexIdx;
                 pc.FbScale             = payload.FramebufferScale;
 
-                secondary_cb->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ZUIDrawPushConstant), &pc);
-                secondary_cb->BindDescriptorSets(frame_index);
-                secondary_cb->DrawIndexed(cmd.ElemCount, 1, cmd.IdxOffset, 0, 0);
+                command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ZUIDrawPushConstant), &pc);
+                command_buffer->BindDescriptorSets(frame_index);
+                command_buffer->DrawIndexed(cmd.ElemCount, 1, cmd.IdxOffset, 0, 0);
             }
-
-            secondary_cb->End();
-            Core::Containers::ArrayView<Hardwares::CommandBuffer> cbs{secondary_cb, 1};
-            primary_cmd->ExecuteSecondaryCommandBuffers(cbs);
         }
-        primary_cmd->EndRenderPass();
+        return true;
     }
 
 } // namespace ZEngine::Rendering::Renderers

@@ -11,8 +11,32 @@
 
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
-    // Base node stored by the render graph. The concrete subtype is determined by
-    // Specification.Type at creation time (VulkanDevice::CreateRenderPass).
+    inline constexpr uint32_t kMaxDescriptorReplayBindings = 64;
+
+    enum class DescriptorReplayKind : uint8_t
+    {
+        DynamicUniform = 0,
+        StorageBuffer,
+        Texture,
+        Sampler,
+        TextureArray,
+    };
+
+    /// @brief One pass-owned descriptor write that can be restored after shader hot reload.
+    struct DescriptorReplayRecord
+    {
+        cstring                                    Name       = nullptr;
+        Specifications::LayoutBindingSpecification Binding    = {};
+        const Core::Memory::BufferView*            Buffer     = nullptr;
+        Textures::TextureHandle                    Texture    = {};
+        VkDescriptorImageInfo                      Sampler    = {};
+        VkDeviceSize                               Range      = 0;
+        uint32_t                                   FrameIndex = UINT32_MAX;
+        DescriptorReplayKind                       Kind       = DescriptorReplayKind::StorageBuffer;
+    };
+
+    /// @brief Backend pass owned by a render-graph persistent-pass slot.
+    /// @details VulkanDevice creates the concrete subtype from Specification.Type.
     struct RenderPass
     {
         RenderPass()                                                                                                                               = default;
@@ -35,13 +59,15 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     public:
         ~GraphicPass();
 
-        uint32_t                           RenderAreaWidth  = 0;
-        uint32_t                           RenderAreaHeight = 0;
+        uint32_t                           RenderAreaWidth                                       = 0;
+        uint32_t                           RenderAreaHeight                                      = 0;
 
-        Core::Containers::HashSet<cstring> BoundBindings    = {};
-        Core::Containers::Array<uint32_t>  RenderTargets    = {};
-        struct Attachment*                 Attachment       = {nullptr};
-        Pipelines::GraphicPipeline*        Pipeline         = {nullptr};
+        Core::Containers::HashSet<cstring> BoundBindings                                         = {};
+        Core::Containers::Array<uint32_t>  RenderTargets                                         = {};
+        DescriptorReplayRecord             DescriptorReplayRecords[kMaxDescriptorReplayBindings] = {};
+        uint32_t                           DescriptorReplayRecordCount                           = 0;
+        struct Attachment*                 Attachment                                            = {nullptr};
+        Pipelines::GraphicPipeline*        Pipeline                                              = {nullptr};
 
         void                               Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
         void                               Dispose() override;
@@ -55,7 +81,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                               SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
         void                               UseTextureArray(std::string_view name);
 
-        void                               UpdateInputBinding();
         struct Attachment*                 GetAttachment() const;
         void                               UpdateRenderTargets();
         uint32_t                           GetRenderAreaWidth() const;
@@ -63,6 +88,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
     private:
         std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
+        static bool                                                 ReplayDescriptorBindings(void* context);
+        bool                                                        ReplayDescriptorBindings();
+        void                                                        RecordDescriptorBinding(const DescriptorReplayRecord& record);
 
     private:
         Hardwares::VulkanDevice* m_device = nullptr;
@@ -74,7 +102,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     public:
         ~ComputePass();
 
-        Pipelines::ComputePipeline* Pipeline = {nullptr};
+        Pipelines::ComputePipeline* Pipeline                                              = {nullptr};
+        DescriptorReplayRecord      DescriptorReplayRecords[kMaxDescriptorReplayBindings] = {};
+        uint32_t                    DescriptorReplayRecordCount                           = 0;
 
         void                        Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
         void                        Dispose() override;
@@ -83,50 +113,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                        SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
 
     private:
+        static bool              ReplayDescriptorBindings(void* context);
+        bool                     ReplayDescriptorBindings();
+        void                     RecordDescriptorBinding(const DescriptorReplayRecord& record);
         Hardwares::VulkanDevice* m_device = nullptr;
     };
     ZDEFINE_PTR(ComputePass);
 
-    struct RenderPassBuilder
-    {
-        Core::Memory::ArenaAllocator*           Arena = nullptr;
-
-        void                                    Initialize(Core::Memory::ArenaAllocator* arena);
-
-        RenderPassBuilder&                      SetName(std::string_view name);
-        RenderPassBuilder&                      SetPipelineName(std::string_view name);
-        RenderPassBuilder&                      EnablePipelineBlending(bool value);
-        RenderPassBuilder&                      EnablePipelineDepthTest(bool value);
-        RenderPassBuilder&                      EnablePipelineDepthWrite(bool value);
-        RenderPassBuilder&                      PipelineDepthCompareOp(uint32_t value);
-        RenderPassBuilder&                      SetShaderOverloadMaxSet(uint32_t count);
-        RenderPassBuilder&                      SetOverloadPoolSize(uint32_t count);
-        RenderPassBuilder&                      SetCullMode(uint32_t);
-
-        RenderPassBuilder&                      SetInputBindingCount(uint32_t count);
-        RenderPassBuilder&                      SetStride(uint32_t input_binding_index, uint32_t value);
-        RenderPassBuilder&                      SetRate(uint32_t input_binding_index, uint32_t value);
-
-        RenderPassBuilder&                      SetInputAttributeCount(uint32_t count);
-        RenderPassBuilder&                      SetLocation(uint32_t input_attribute_index, uint32_t value);
-        RenderPassBuilder&                      SetBinding(uint32_t input_attribute_index, uint32_t input_binding_index);
-        RenderPassBuilder&                      SetFormat(uint32_t input_attribute_index, Specifications::ImageFormat value);
-        RenderPassBuilder&                      SetOffset(uint32_t input_attribute_index, uint32_t offset);
-
-        RenderPassBuilder&                      UseShader(std::string_view name);
-        RenderPassBuilder&                      UseComputeShader(cstring name, uint32_t push_constant_size = 0);
-        RenderPassBuilder&                      UseRenderTarget(const Textures::TextureHandle& target, Specifications::LoadOperation load_op);
-        // Compatibility overload for callers outside the render graph. New graph
-        // declarations always provide their own per-pass load operation.
-        RenderPassBuilder&                      UseRenderTarget(const Textures::TextureHandle& target);
-        RenderPassBuilder&                      AddRenderTarget(const Specifications::TextureSpecification& target_spec);
-        RenderPassBuilder&                      AddInputAttachment(const Textures::TextureHandle& target);
-        RenderPassBuilder&                      AddInputTexture(std::string_view key, const Rendering::Textures::TextureHandle& input);
-        RenderPassBuilder&                      UseSwapchainAsRenderTarget();
-
-        Specifications::RenderPassSpecification Detach();
-
-    private:
-        Specifications::RenderPassSpecification m_spec{};
-    };
 } // namespace ZEngine::Rendering::Renderers::RenderPasses

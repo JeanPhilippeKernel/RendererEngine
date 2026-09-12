@@ -1,10 +1,10 @@
 # PSO Cache Architecture
 
-**Status:** Design — clean migration target.
+**Status:** Implemented migration target; live Vulkan hardware validation remains.
 
 ## Goal
 
-ZEngine currently creates descriptor-set layouts, pipeline layouts, and graphics/compute pipelines per pass. This design makes those objects device-owned, deduplicated, safely retired, and persistently warmed.
+ZEngine creates descriptor-set layouts, pipeline layouts, and graphics/compute pipelines through a device-owned cache. The cache deduplicates those objects, retires them safely, and can persistently warm driver pipeline state.
 
 The cache is an acceleration only: cold, missing, corrupt, evicted, or disabled cache data must render identically to fresh Vulkan pipeline creation.
 
@@ -18,22 +18,53 @@ On hot reload, the invalidation request increments the shader generation and the
 
 All cache mutation, pass publication, hot-reload invalidation, and VulkanDevice::DeferFree calls occur on the render thread. Workers compile immutable pinned jobs and only publish completion records.
 
-## Legacy bridge and dynamic-rendering target
+## Dynamic-rendering backend and legacy fallback
 
-Phase 1 has two render-pass roles.
+Dynamic rendering is the preferred backend whenever the selected Vulkan 1.3 device
+advertises and enables the dynamic-rendering feature. It is a command-recording
+operation: `CommandBuffer::BeginDynamicRendering(const
+VkRenderingInfo&)` and `CommandBuffer::EndDynamicRendering()` own the calls. The
+device owns only feature negotiation and private loaded `vkCmdBeginRendering` /
+`vkCmdEndRendering` entry points. `CommandBuffer::BeginRenderPass()` /
+`EndRenderPass()` are compatibility facades for existing pass callbacks; on a dynamic
+device they assemble `VkRenderingInfo` and call the command-buffer APIs.
 
-- An execution render pass is the per-GraphicPass Attachment used by vkCmdBeginRenderPass. Load/store/layout semantics remain pass-specific.
-- A compatibility render pass is cache-owned and used only by VkGraphicsPipelineCreateInfo::renderPass. Its key contains attachment count, formats, per-attachment samples, and view mask. It is never executed.
+The dynamic graphics PSO chains `VkPipelineRenderingCreateInfo` and has no execution
+`VkRenderPass` or `VkFramebuffer`. Its key includes the canonical color-format tuple,
+depth format, stencil format, sample count, and view mask used by that rendering
+instance. Secondary command buffers chain `VkCommandBufferInheritanceRenderingInfo`
+with the same compatibility tuple.
 
-**Invariant:** vkCmdBeginRenderPass never receives a compatibility-cache handle.
+The legacy backend remains a required capability fallback for a selected device that
+cannot enable dynamic rendering. Only on that backend are there two render-pass roles:
 
-Dynamic rendering is Phase 2. It requires feature query/enablement and validation on every supported runtime. It replaces command-buffer begin/end calls, framebuffer ownership, secondary inheritance including ZUI, and attachment setup together. Then legacy render-pass classes disappear: the PSO supplies VkPipelineRenderingCreateInfo and render execution supplies VkRenderingInfo.
+- An execution render pass is the per-`GraphicPass` `Attachment` passed to
+  `vkCmdBeginRenderPass`. Load/store/layout semantics remain pass-specific.
+- A compatibility render pass is cache-owned and used only by legacy
+  `VkGraphicsPipelineCreateInfo::renderPass`. Its key contains attachment count,
+  formats, per-attachment samples, and view mask. It is never executed.
+
+**Invariant:** `vkCmdBeginRenderPass` never receives a compatibility-cache handle.
+The dynamic path never calls `vkCmdBeginRenderPass`.
+
+Both backends require validation on macOS/MoltenVK, Windows, and Linux. A missing
+dynamic-rendering feature selects the legacy backend; it does not make the device
+unsupported solely for that reason.
+
+## Callback and allocation ABI
+
+Cache visitors, predicates, completion notifications, and worker jobs use C-style
+function pointers with an explicit caller-owned `void*` context. For example,
+`using PSOPipelineReadyFn = void (*)(void* context, VkPipeline pipeline);`. Do not
+add forwarding-reference callback templates or `std::function` to these paths: their
+type erasure can allocate and obscures the lifetime of a cross-thread callback. The
+context must remain valid until cancellation or invocation on the render thread.
 
 ## Canonical keys and collision-safe storage
 
 Keys are fixed-size, zero-initialized engine structures. Use engine-restricted enums and conversion functions that assert on unsupported Vulkan values; never pack raw Vulkan extension enums into narrow fields.
 
-A graphics key contains every non-dynamic creation input: immutable shader content identity and generation, specialization values, pipeline-layout identity, vertex input, topology, rasterization, multisampling, full depth/stencil state, blend/write masks, dynamic-state mask, and rendering/compatibility attachment state. A compute key includes shader identity, specialization, layout, and configured compute creation flags.
+A graphics key contains every non-dynamic creation input: immutable shader content identity and generation, specialization values, pipeline-layout identity, vertex input, topology, rasterization, multisampling, full depth/stencil state, blend/write masks, dynamic-state mask, and rendering/compatibility attachment state. A compute key includes shader identity, specialization, layout, and configured compute creation flags. Each stage canonicalizes specialization input by constant ID (not caller byte offsets), with up to eight values of up to 64 bytes; exceeding that explicit fixed-capacity ABI is a validated request failure.
 
 **Shader generation** is a plain per-module `uint32_t`, owned and mutated only by the render thread. It starts at 0 and increments whenever hot reload replaces the module. Here “atomic” means one ordered engine operation, not a C++ hardware atomic: increment the generation, defer retirement of the old descriptor pool/sets, then invalidate stale PSO entries and jobs. The generation is stored in both the PSO key (as part of shader identity) and each cache entry. A Compiling entry copies the module generation at insertion; publication rejects a result whose stored generation no longer matches and routes its handle to DeferredDestroyPipeline. Workers only consume the copied generation in an immutable compile job.
 
@@ -47,7 +78,7 @@ ZEngine Array and HashSet require init(arena, capacity). Cache entries use fixed
 
 ## Layout caches
 
-Sampler keys include every supported sampler-create input. Descriptor-layout keys include create flags plus sorted bindings: binding, count, descriptor kind, full stage mask, binding flags, and ordered immutable-sampler key identities. Pipeline-layout keys contain ordered cached set-layout identities and every push-constant range. Pipeline-layout identity is part of both PSO keys.
+Sampler keys include every supported sampler-create input. Descriptor-layout keys include create flags plus sorted bindings: binding, count, descriptor kind, full stage mask, binding flags, and an ordered immutable-sampler-list identity. The list cache compares every source handle in full before assigning that identity, so a list hash is never treated as identity. Pipeline-layout keys contain ordered cached set-layout identities and every push-constant range. Pipeline-layout identity is part of both PSO keys.
 
 ## State machine and asynchronous compilation
 
@@ -58,7 +89,11 @@ Absent → Compiling(generation N) → Ready(generation N) → Retiring
 
 The first exact-key request inserts Compiling; matching requests append bounded waiters and do not enqueue a duplicate. A job pins shader module/content generation, pipeline layout, compatibility render pass, and optional derivative parent. Publication accepts a result only if its matching entry remains Compiling for that generation; otherwise it timeline-retires the result.
 
-Workers exclusively check out bounded-pool VkPipelineCache objects. A worker returns its cache only in a completion record. The render thread merges only returned caches, publishes Ready, and invokes waiters after locks are released. Frame hits append to a bounded render-thread access list; FlushAccessedFrames holds the unique lock to update LastUsedFrame.
+Workers exclusively check out bounded-pool `VkPipelineCache` objects. A worker returns
+its cache only in a completion record. The render thread merges only returned caches,
+publishes Ready, and invokes waiters after cache-entry mutation is complete. Because
+the cache is render-thread-owned, each ready hit updates `LastUsedFrame` directly;
+there is no access-list flush or cache mutex.
 
 Every bounded job/completion/waiter/bucket/reverse-index queue defines full/empty state, overflow behavior, producer/consumer count, cancellation, and shutdown. Overflow is synchronous fallback for critical work or a safe skipped non-critical request.
 
@@ -78,21 +113,74 @@ Shutdown order: stop/join workers; drain/discard completions; retire/destroy pip
 
 Disk blobs are optional. Store magic/version, Vulkan pipeline-cache UUID, vendor/device identity, driver version, engine version, platform, blob size, and CRC32. Validate before creating a Vulkan cache; failure creates an empty valid cache.
 
-Use `ZodiacEngine/cache/` as the development default through a configured writable VFS cache mount. Do not assume that a working directory, installed application, CI workspace, or future application bundle is writable. Add the development path to `.gitignore`; if the mount or directory cannot be created, disable disk persistence for that run and continue with an in-memory cache. Stale-temp cleanup, short-write/close failure, and replacement failure are non-fatal. Blob allocation is bounded arena/heap memory, never alloca.
+When a `GameApplication` supplies both a non-empty `WorkingSpacePath` and a VFS
+backend advertising `Write`, `Engine` mounts the dedicated native directory
+`<WorkingSpacePath>/ZodiacEngine/cache` at `/ZodiacEngine/cache`, ahead of the
+engine-assets mount. This is the development default and is ignored by Git. An
+application without an explicitly writable workspace has disk persistence disabled;
+it does not fall back to the current directory, an installed bundle, or a CI
+workspace. Mount/directory creation failure also leaves a valid in-memory cache.
+Stale temporary files, short write/close failure, and replacement failure are
+non-fatal. Blob allocation is bounded arena/heap memory, never `alloca`.
 
 Warmup serializes a resolvable recipe, not hashes alone: shader variant descriptors, specialization data, canonical pipeline state, and layout/attachment descriptions. At boot resolve exact content and skip stale recipes.
 
-## Migration order
+## Material variants and scene prewarming
 
-1. Establish cache ownership and audit typed deferred-free behavior.
-2. Add restricted enums, complete zeroed keys, collision buckets, and tests.
-3. Move set-layout creation into shader reflection; separate shared layouts from per-shader pools/sets.
-4. Add sampler, descriptor-layout, pipeline-layout, and compatibility-render-pass caches.
-5. Route synchronous graphics and compute Bake paths through PSOCache, retaining execution render passes.
-6. Add disk persistence, telemetry, and warmup recipes.
-7. Add render-thread hot reload, timeline retirement, and bounded eviction.
-8. Add the asynchronous state machine only after job/lifetime tests pass.
-9. Migrate graph and graphics execution to dynamic rendering; remove the legacy bridge.
+`MaterialSystem` is the author-side layer above `PSOCache`. A `MaterialTemplate`
+defines a shader base name, its supported feature mask, and its parameter-block size;
+a `MaterialInstance` selects active flags and either owns an inline parameter payload or
+refers to an external UBO/SSBO material-record index. Inline data is bounded by
+`min(128, maxPushConstantsSize)`. A larger template must use the external path rather
+than issuing an invalid push-constant write. The external instance retains its four-byte
+record index in its inline payload and records that smaller push-constant size separately
+from the total external material-data size.
+
+`ResolveVariantKey()` uses a stable FNV-1a hash of the shader base name, intersects the
+instance flags with the template-supported flags, and retains only `AlphaTest` and
+`DoubleSided` for depth-prepass and shadow contexts. Alpha test remains necessary for
+the depth-only fragment discard; double-sidedness remains rasterization state.
+
+At scene load, `PrewarmForMaterials()` deduplicates the exact
+`(MaterialTemplate, ShaderVariantKey)` requests in deterministic input order, then
+applies its bounded `PrewarmBudget` (currently 256 requests, matching the bounded async
+PSO job queue). A variant key alone cannot construct a Vulkan
+graphics PSO because layout, vertex input, fixed state, and rendering compatibility are
+pass-owned. Each `PassContext` therefore registers a C-style recipe provider:
+
+```cpp
+using MaterialGraphicsPrewarmRecipeFn = bool (*)(
+    void* context, const MaterialTemplate&, const ShaderVariantKey&,
+    VkGraphicsPipelineCreateInfo* out_create_info,
+    uint32_t* out_shader_generation);
+```
+
+The provider returns a fully valid, temporary `VkGraphicsPipelineCreateInfo` for its
+context. `MaterialSystem` immediately calls
+`PSOCache::RequestGraphicsPipelineAsync`; the cache canonicalizes the structure before
+the provider returns, so no worker retains caller-owned pointers. Completion remains a
+`PSOPipelineReadyFn` plus caller-owned `void*` context, consistent with the cache ABI.
+
+For draw recording, `DrawSorter` produces separate engine-array-backed lists. Opaque
+draws sort by PSO key hash, material index, then front-to-back view depth. Conventional
+alpha-blended draws sort strictly back-to-front with submission order as the only
+tie-breaker; they never reorder by PSO or material state.
+
+## Implemented migration coverage
+
+The migration is complete in the production paths. The following mapping records the implementation locations rather than leaving the original migration checklist as future work.
+
+| Completed area | Primary implementation |
+|---|---|
+| Cache ownership and typed deferred retirement | `PSOCache`, `VulkanDevice::DeferFree`, and `DeferredFreeQueue` |
+| Canonical fixed-capacity keys and collision buckets | `PSOCache.h/.cpp` and `tests/Rendering/PSOCacheTest.cpp` |
+| Shared descriptor-set layouts with per-shader pools/sets | `Shader::CreateDescriptorSetLayouts` and `Shader::Dispose` |
+| Sampler, layout, and compatibility-render-pass caches | `PSOCache::GetOrCreate*` |
+| Synchronous graphics/compute creation | `PSOCache::GetOrCreateGraphicsPipeline` and `GetOrCreateComputePipeline` |
+| Disk persistence, telemetry, and warmup recipes | `Load/SaveDriverPipelineCache`, `Load/SaveWarmupRecipes`, and `PSOCacheTelemetry` |
+| Hot reload, timeline retirement, and eviction | `InvalidateShaderModules` and `EvictUnusedPipelines` |
+| Bounded asynchronous state machine | `RequestGraphicsPipelineAsync` and `FlushAsyncPipelineJobs` |
+| Dynamic-rendering command-buffer path with legacy fallback | `CommandBuffer`, `PSOCache`, and render-graph graphics execution |
 
 ## Required validation
 
@@ -113,10 +201,17 @@ flowchart TD
     R[Shader reflection] --> SL[DescriptorSetLayoutCache]
     S[SamplerCache] --> SL
     SL --> PL[PipelineLayoutCache]
+    MT[MaterialTemplate + MaterialInstance] --> MV[ResolveVariantKey]
+    MC[PassContext] --> MV
+    MV --> MR[Registered C-style graphics recipe]
     A[Pass pipeline description] --> K[Canonical PSO key]
     PL --> K
-    F[Attachment format/sample description] --> CRP[CompatibilityRenderPassCache]
+    F[Attachment format/sample description] --> R{Dynamic rendering enabled?}
+    R -->|yes| DR[VkPipelineRenderingCreateInfo]
+    R -->|no| CRP[CompatibilityRenderPassCache]
     K --> P[PSOCache bucket lookup]
+    MR --> P
+    DR --> P
     CRP --> P
     P -->|ready| B[Bind cached VkPipeline]
     P -->|miss| C[Compile with checked-out VkPipelineCache]
@@ -126,53 +221,44 @@ flowchart TD
     M --> Disk[Optional CRC-checked disk blob]
 ```
 
-The compatibility render pass is an input to pipeline creation only. The pass's existing
-Attachment remains the execution render pass in Phase 1.
+The compatibility render pass is an input to **legacy** pipeline creation only. On the
+dynamic backend, `VkPipelineRenderingCreateInfo` is the rendering-compatibility input
+and `VkRenderingInfo` is supplied at command recording.
 
 ## Reference pseudocode
 
 ### Collision-safe synchronous lookup
 
 ```cpp
-VkPipeline PSOCache::GetOrCreateGraphics(const GraphicsPSOKey& key,
-                                         VkPipelineLayout layout,
-                                         VkRenderPass compat_pass)
+VkPipeline PSOCache::GetOrCreateGraphicsPipeline(
+    const VkGraphicsPipelineCreateInfo& create_info,
+    uint32_t shader_generation)
 {
+    const PSOGraphicsPipelineKey key = MakeGraphicsPipelineKey(create_info, shader_generation);
     const uint64_t hash = Hash(key);
-    std::unique_lock lock(GraphicsMutex);
-    GraphicsBucket* bucket = Graphics.find(hash);
-    if (GraphicsEntry* hit = FindExact(bucket, key))
+    bool created = false;
+    GraphicsEntry* entry = Graphics.FindOrInsert(hash, key, &created);
+    assert(entry != nullptr); // collision-bucket capacity failure
+    if (!created && entry->State == PSOPipelineState::Ready)
     {
-        // Appends hash to a bounded render-thread-only access list.
-        // FlushAccessedFrames() updates LastUsedFrame in one batched pass per frame.
-        // This path already holds the unique lock; deferral is for batching efficiency,
-        // not because writing LastUsedFrame here would be lock-unsafe.
-        RecordFrameAccess(hash, hit->Generation);
-        return hit->Pipeline;
+        entry->LastUsedFrame = CurrentFrameMarker();
+        return entry->Pipeline;
     }
 
-    GraphicsEntry& entry = AppendBucketEntry(bucket, key); // asserts only on bucket-capacity breach
-    entry.State = PSOState::Compiling;
-    const uint32_t generation = entry.Generation;
-    lock.unlock();
-
-    VkPipeline pipeline = CompileGraphics(key, layout, compat_pass);
-
-    lock.lock();
-    // Never retain `entry` across the unlocked compile: hot reload may discard or compact
-    // its bucket. Re-find by complete identity and generation after reacquiring the lock.
-    GraphicsEntry* current = FindExact(Graphics.find(hash), key);
-    if (current && current->State == PSOState::Compiling && current->Generation == generation)
-    {
-        current->Pipeline = pipeline;
-        current->State = PSOState::Ready;
-        return pipeline;
-    }
-    // Entry was invalidated by hot reload while CompileGraphics ran.
-    // Retire the result and return null; the caller must treat null as "skip draw call".
-    lock.unlock();
-    DeferredDestroyPipeline(pipeline);
-    return VK_NULL_HANDLE;
+    // All state changes run on the render thread. A synchronous Vulkan call cannot
+    // interleave a hot-reload invalidation pass, so entry remains a valid slot here.
+    if (!created && entry->AsyncJobIndex != UINT32_MAX)
+        CancelAsyncPipelineJob(entry->AsyncJobIndex);
+    entry->State = PSOPipelineState::Compiling;
+    entry->Generation = shader_generation;
+    entry->AsyncJobIndex = UINT32_MAX;
+    ZENGINE_VALIDATE_ASSERT(
+        vkCreateGraphicsPipelines(Device, DriverPipelineCache, 1,
+                                   &create_info, nullptr, &entry->Pipeline) == VK_SUCCESS,
+        "Failed to create cached graphics pipeline");
+    entry->State = PSOPipelineState::Ready;
+    entry->LastUsedFrame = CurrentFrameMarker();
+    return entry->Pipeline;
 }
 ```
 
@@ -191,30 +277,31 @@ stateDiagram-v2
 ```
 
 ```cpp
-void PSOCache::PublishCompleted(const CompletedJob& done)
+void PSOCache::PublishAsyncCompletion(const AsyncPipelineCompletion& done)
 {
-    // Called only by the render thread after the worker has relinquished done.DriverCache.
-    // Merge happens before the lock so the driver's micro-code is available to any
-    // subsequent compile on the same frame. Both operations are render-thread-only,
-    // so sequential ordering is guaranteed — no atomicity between them is required.
-    MergeIntoMainDriverCache(done.DriverCache);
-    ReturnDriverCacheToPool(done.DriverCache); // required for both ready and stale results
+    // Called only by the render thread after the worker has relinquished its cache.
+    // Merge and return happen before publication on both ready and stale paths.
+    AsyncPipelineJob& job = AsyncJobs[done.JobIndex];
+    vkMergePipelineCaches(Device, DriverPipelineCache, 1,
+                           &WorkerPipelineCaches[done.WorkerCacheIndex]);
+    ReturnWorkerPipelineCache(done.WorkerCacheIndex);
 
-    std::unique_lock lock(GraphicsMutex);
-    GraphicsEntry* entry = FindExact(Graphics.find(done.Hash), done.Key);
-    if (!entry || entry->State != PSOState::Compiling || entry->Generation != done.Generation)
+    GraphicsEntry* entry = Graphics.Find(job.Hash, job.GraphicsKey);
+    if (job.State != AsyncPipelineJobState::Running || done.Result != VK_SUCCESS ||
+        !entry || entry->State != PSOPipelineState::Compiling ||
+        entry->Generation != job.Generation || entry->AsyncJobIndex != job.Index)
     {
-        lock.unlock();
         DeferredDestroyPipeline(done.Pipeline);
+        job = {};
         return;
     }
     entry->Pipeline = done.Pipeline;
-    entry->State = PSOState::Ready;
-    PSOReadyCallback waiters[kMaxWaiters];
-    uint32_t waiter_count = TakeWaiters(*entry, waiters);
-    lock.unlock();
-    for (uint32_t i = 0; i < waiter_count; ++i)
-        waiters[i].Invoke(done.Pipeline);
+    entry->State = PSOPipelineState::Ready;
+    entry->AsyncJobIndex = UINT32_MAX;
+    QueuePipelineWaiters(*entry, done.Pipeline);
+    job = {};
+    // FlushAsyncPipelineJobs dispatches the queued callbacks after all completion
+    // records have finished mutating cache entries.
 }
 ```
 

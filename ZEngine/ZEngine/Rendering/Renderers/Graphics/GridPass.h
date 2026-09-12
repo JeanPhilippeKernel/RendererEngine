@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
@@ -22,14 +23,24 @@ namespace ZEngine::Rendering::Renderers
 
     struct GridPass : public IRenderGraphCallbackPass
     {
-        GridPushConstantData PushData = {};
+        GridPushConstantData                 PushData = {};
+        bool                                 Enabled  = true;
 
-        virtual void         Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        virtual void         Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass) override;
-        virtual void         Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        /// @brief Builds the static PSO recipe used by the infinite-grid effect.
+        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
+
+        bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
+        void                                 Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
+        void                                 Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                                 RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                                 SupportsSecondaryRecording() const override
+        {
+            return true;
+        }
 
     private:
-        uint32_t m_vtx_offset = 0;
-        uint32_t m_idx_offset = 0;
+        uint32_t m_vtx_offset          = 0;
+        uint32_t m_idx_offset          = 0;
+        bool     m_geometry_registered = false;
     };
 } // namespace ZEngine::Rendering::Renderers

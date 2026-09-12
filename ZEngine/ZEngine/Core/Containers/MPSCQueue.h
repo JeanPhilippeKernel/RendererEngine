@@ -2,7 +2,6 @@
 #include <ZEngine/ZEngineDef.h>
 #include <atomic>
 #include <cstdint>
-#include <new>
 
 namespace ZEngine::Core::Containers
 {
@@ -39,7 +38,6 @@ namespace ZEngine::Core::Containers
         {
             for (uint32_t i = 0; i < N; ++i)
             {
-                new (&m_slots[i]) Slot{};
                 m_slots[i].seq.value.store(i, std::memory_order_relaxed);
             }
             m_write.value.store(0, std::memory_order_relaxed);
@@ -105,7 +103,7 @@ namespace ZEngine::Core::Containers
     private:
         // Slot already carries a PaddedAtomic seq, so alignof(Slot) == CACHE_LINE_SIZE.
         // The array is correctly aligned without an explicit alignas.
-        Slot                   m_slots[N];
+        Slot                   m_slots[N] = {};
 
         // m_write and m_read are on separate cache lines:
         // PaddedAtomic<uint32_t> occupies exactly one cache line, so m_read

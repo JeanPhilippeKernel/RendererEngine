@@ -28,6 +28,7 @@ namespace ZEngine::Rendering
         DESCRIPTORSETLAYOUT,
         DESCRIPTORPOOL,
         DESCRIPTORSET,
+        QUERYPOOL,
         RESOURCE_COUNT
     };
 } // namespace ZEngine::Rendering

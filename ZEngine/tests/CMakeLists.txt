@@ -1,4 +1,4 @@
-file(GLOB TEST_SOURCES
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     Memory/*.cpp
     Containers/*.cpp
     VFS/*.cpp
