@@ -9,35 +9,43 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void GbufferPass::Setup(Hardwares::VulkanDevicePtr const device, cstring name, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector)
+    bool GbufferPass::Register(Hardwares::VulkanDevicePtr const device, cstring /*name*/, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
     {
-        uint32_t w = device->SwapchainPtr->SwapchainImageWidth;
-        uint32_t h = device->SwapchainPtr->SwapchainImageHeight;
+        const uint32_t w = frame_context.RenderWidth != 0 ? frame_context.RenderWidth : device->SwapchainPtr->SwapchainImageWidth;
+        const uint32_t h = frame_context.RenderHeight != 0 ? frame_context.RenderHeight : device->SwapchainPtr->SwapchainImageHeight;
+        res_builder->ReadBuffer(RendererBufferName::GlobalVertex, "VertexSB");
+        res_builder->ReadBuffer(RendererBufferName::GlobalIndex, "IndexSB");
+        res_builder->ReadBuffer(RendererBufferName::Transform, "TransformSB");
+        res_builder->ReadBuffer(RendererBufferName::RenderData, "DrawDataSB");
+        res_builder->ReadBuffer(RendererBufferName::Material, "MatSB");
+        res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
+        res_builder->ReadBindless();
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
         res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
+        return true;
     }
 
-    void GbufferPass::Compile(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPassBuilder* pass_builder, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass** const output_pass)
+    Specifications::GraphicsPipelineDesc GbufferPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
     {
-        CHECK_AND_ESCAPE_NULL(output_pass)
+        Specifications::GraphicsPipelineDesc desc = {};
+        desc.DebugName                            = "GBuffer-Pipeline";
+        desc.EnableDepthTest                      = true;
+        desc.EnableDepthWrite                     = false;
+        desc.ShaderSpecificationValue.Name        = "g_buffer";
+        return desc;
+    }
 
-        if (output_pass && !(*output_pass))
-        {
-            auto pass_spec = pass_builder->SetPipelineName("GBuffer-Pipeline").EnablePipelineDepthTest(true).UseShader("g_buffer").Detach();
-            *output_pass   = device->CreateRenderPass(std::move(pass_spec));
-            (*output_pass)->Bake();
-        }
+    void GbufferPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
+    {
+        if (!scene || !pass)
+            return;
 
-        if (scene)
-        {
-            auto* gp = static_cast<RenderPasses::GraphicPass*>(*output_pass);
-            gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
-            gp->UseTextureArray("TextureArray");
-            gp->SetSampler("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
-            gp->Verify();
-        }
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
+        gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+        gp->UseTextureArray("TextureArray");
+        gp->SetSampler("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
     }
 
     void GbufferPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
@@ -45,15 +53,25 @@ namespace ZEngine::Rendering::Renderers
         CHECK_AND_ESCAPE_NULL(scene)
 
         auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
-        command_buffer->BeginRenderPass(gp, framebuffer->Handle, false);
+        command_buffer->BeginRenderPass(gp, framebuffer ? framebuffer->Handle : VK_NULL_HANDLE, false);
+        RecordDraw(device, res_inspector, scene, pass, framebuffer, command_buffer);
+        command_buffer->EndRenderPass();
+    }
+
+    bool GbufferPass::RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const command_buffer)
+    {
+        if (!scene)
+            return false;
+
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
         if (scene->IndirectCommandCount > 0 && scene->RMMVertexHandle.IsValid())
         {
             command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
             command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
             command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
-            command_buffer->DrawIndirect(device->FrameHeaps[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->IndirectHeapOffset, scene->IndirectCommandCount);
+            command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->IndirectCommandCount);
         }
-        command_buffer->EndRenderPass();
+        return true;
     }
 } // namespace ZEngine::Rendering::Renderers

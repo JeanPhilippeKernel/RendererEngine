@@ -1,5 +1,5 @@
 #pragma once
-#include <ZEngine/Core/Containers/SPSCQueue.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/ZEngineDef.h>
@@ -12,7 +12,7 @@ namespace ZEngine::Helpers
 {
     using TaskFn = void (*)(void* ctx);
 
-    // C-style callable — 16 bytes, zero allocation on the hot path.
+    /// @brief Allocation-free C-style task and its caller-owned context.
     struct Task
     {
         void*    Context = nullptr;
@@ -29,11 +29,9 @@ namespace ZEngine::Helpers
         }
     };
 
-    // Per-worker TLSFSlab pointer — set by RRM at startup via SetWorkerSlab().
-    // Worker tasks call GetWorkerSlab() to obtain their exclusive allocation slab.
-    // nullptr on the main thread and on any thread where SetWorkerSlab was not called.
-    // Thread safety: each worker owns its slab exclusively — no locking required.
-    // Cross-thread Free is a data race — see issue #690.
+    /// @brief Thread-local worker slab set by the resource manager at worker startup.
+    /// @details It is null outside initialized worker threads. A slab is exclusively
+    /// owned by its worker, so cross-thread frees are not permitted.
     inline thread_local Core::Memory::TLSFSlab* t_worker_slab = nullptr;
 
     /// @brief Set the calling thread's worker slab. Call once per worker at task-loop start.
@@ -50,8 +48,7 @@ namespace ZEngine::Helpers
         return t_worker_slab;
     }
 
-    // Called once per worker thread at the start of its task loop.
-    // Signature: fn(ctx, worker_idx)
+    /// @brief C-style initialization callback invoked once per registration on each worker.
     using WorkerInitFn = void (*)(void* ctx, size_t worker_idx);
 
     struct ThreadPool
@@ -81,11 +78,12 @@ namespace ZEngine::Helpers
             Shutdown();
         }
 
-        // Zero-alloc hot path — C-style fn-ptr + context.
-        void Submit(void* ctx, TaskFn fn)
+        /// @brief Submit a C-style task without allocating a closure.
+        /// @return False when the pool is shutting down and the task was not run.
+        bool Submit(void* ctx, TaskFn fn)
         {
-            if (m_cancellation.value.load(std::memory_order_relaxed))
-                return;
+            if (!fn || m_cancellation.value.load(std::memory_order_relaxed))
+                return false;
 
             Task     task{ctx, fn};
             uint32_t start = m_cursor.value.fetch_add(1, std::memory_order_relaxed) % static_cast<uint32_t>(WorkerCount);
@@ -94,83 +92,100 @@ namespace ZEngine::Helpers
                 uint32_t idx = (start + i) % static_cast<uint32_t>(WorkerCount);
                 if (m_workers[idx].queue.push(task))
                 {
-                    m_workers[idx].cv.notify_one();
-                    return;
+                    NotifyWorker(m_workers[idx]);
+                    return true;
                 }
             }
             // All queues full — execute inline as last resort.
             task();
+            return true;
         }
 
-        void InitClosureSlab(Core::Memory::ArenaAllocator* arena, size_t bytes)
+        /// @brief Submits a task to one specific worker without an inline fallback.
+        /// @details Render-graph command recording uses this to preserve command-pool
+        ///          ownership. The render thread is its only caller.
+        /// @return False when the worker is invalid, its queue is full, or shutdown began.
+        bool SubmitToWorker(uint32_t worker_index, void* ctx, TaskFn fn)
         {
-            m_closure_slab.Init(arena, bytes);
+            if (!fn || worker_index >= WorkerCount || m_cancellation.value.load(std::memory_order_relaxed))
+                return false;
+
+            Worker& worker = m_workers[worker_index];
+            if (!worker.queue.push({ctx, fn}))
+                return false;
+            NotifyWorker(worker);
+            return true;
         }
 
-        Core::Memory::TLSFSlab* GetClosureSlab()
-        {
-            return m_closure_slab.Pool ? &m_closure_slab : nullptr;
-        }
-
-        /// @brief Register a per-worker init callback.
-        ///        Each worker runs this at most once, the next time it reaches the top
-        ///        of its loop — whether that's before its first task (registered early)
-        ///        or after being woken by notify_one below (the typical case — RRM
-        ///        initialises after the pool is already running).
-        /// @param fn  Callback — fn(ctx, worker_idx). Must be thread-safe.
-        /// @param ctx Caller context forwarded to fn.
+        /// @brief Registers a per-worker initialization callback.
+        /// @details Each worker invokes `fn(ctx, worker_index)` once for this registration.
         void RegisterWorkerInit(WorkerInitFn fn, void* ctx)
         {
             m_init_ctx.value.store(ctx, std::memory_order_relaxed);
             m_init_fn.value.store(fn, std::memory_order_release); // release: ctx visible after fn
+            m_init_generation.value.fetch_add(1, std::memory_order_release);
             for (size_t i = 0; i < WorkerCount; ++i)
-                m_workers[i].cv.notify_one();
+                NotifyWorker(m_workers[i]);
         }
 
+        /// @brief Stops workers after their current task and waits for their exit.
         void Shutdown()
         {
             m_init_fn.value.store(nullptr, std::memory_order_relaxed);
+            m_init_generation.value.fetch_add(1, std::memory_order_release);
             m_cancellation.value.store(true, std::memory_order_release);
             for (size_t i = 0; i < WorkerCount; ++i)
-                m_workers[i].cv.notify_one();
+                NotifyWorker(m_workers[i]);
             while (m_active_workers.value.load(std::memory_order_acquire) > 0)
                 std::this_thread::yield();
-            m_closure_slab.Shutdown();
         }
 
     private:
         struct Worker
         {
-            Core::Containers::SPSCQueue<Task, MAX_TASKS_PER_WORKER> queue;
+            // Submit() may be called from the main thread or another worker, while
+            // WorkerRun() is this queue's sole consumer.
+            Core::Containers::MPSCQueue<Task, MAX_TASKS_PER_WORKER> queue;
             std::mutex                                              mutex;
             std::condition_variable                                 cv;
         };
 
-        Core::Memory::TLSFSlab     m_closure_slab{};
         Worker                     m_workers[MAX_WORKERS];
         PaddedAtomic<uint32_t>     m_cursor{};
         PaddedAtomic<bool>         m_cancellation{};
-        PaddedAtomic<uint32_t>     m_active_workers{}; // decremented by each worker on exit
-        PaddedAtomic<WorkerInitFn> m_init_fn{};        // per-worker init callback; set by RegisterWorkerInit
-        PaddedAtomic<void*>        m_init_ctx{};       // context passed to m_init_fn
+        PaddedAtomic<uint32_t>     m_active_workers{};  // decremented by each worker on exit
+        PaddedAtomic<WorkerInitFn> m_init_fn{};         // per-worker init callback; set by RegisterWorkerInit
+        PaddedAtomic<void*>        m_init_ctx{};        // context passed to m_init_fn
+        PaddedAtomic<uint32_t>     m_init_generation{}; // changes on every registration, including clear
 
-        void                       WorkerRun(size_t idx)
+        // Serialize a producer's notification with the worker's transition from
+        // checking the queue to waiting. Without this mutex, a task can be
+        // published after the wait predicate observes an empty queue but before
+        // the worker blocks, losing the notification indefinitely.
+        static void                NotifyWorker(Worker& worker)
+        {
+            std::lock_guard<std::mutex> lock(worker.mutex);
+            worker.cv.notify_one();
+        }
+
+        void WorkerRun(size_t idx)
         {
             // Re-checked every time this worker reaches the top of its loop, not just
             // once before entering it — RegisterWorkerInit is normally called after the
             // pool's workers are already running and idle-waiting in cv.wait below;
             // notify_one wakes the wait but does NOT resume execution back at a one-time
             // pre-loop check, so a "run once before the loop" version of this never
-            // actually ran the callback on any real worker. last_init dedupes so a plain
-            // task-arrival wake (no new registration) doesn't re-run the same callback.
-            WorkerInitFn last_init       = nullptr;
-            auto         run_init_if_new = [&] {
-                WorkerInitFn init = m_init_fn.value.load(std::memory_order_acquire);
-                if (init && init != last_init)
-                {
+            // actually ran the callback on any real worker. The registration generation
+            // prevents a plain task-arrival wake from re-running the callback.
+            uint32_t last_init_generation = 0;
+            auto     run_init_if_new      = [&] {
+                uint32_t generation = m_init_generation.value.load(std::memory_order_acquire);
+                if (generation == last_init_generation)
+                    return;
+                WorkerInitFn init = m_init_fn.value.load(std::memory_order_relaxed);
+                if (init)
                     init(m_init_ctx.value.load(std::memory_order_relaxed), idx);
-                    last_init = init;
-                }
+                last_init_generation = generation;
             };
 
             Worker& w = m_workers[idx];
@@ -213,37 +228,18 @@ namespace ZEngine::Helpers
             }
         }
 
-        // Zero-alloc — C-style direct.
-        static void Submit(void* ctx, TaskFn fn)
+        /// @brief Submit a C-style task without allocating a closure.
+        /// @return False when the pool has not been initialized or is shutting down.
+        static bool Submit(void* ctx, TaskFn fn)
         {
-            Pool->Submit(ctx, fn);
+            return Pool && Pool->Submit(ctx, fn);
         }
 
-        template <typename T>
-        static void Submit(T&& f)
+        /// @brief Submits a render-thread task to a specific worker.
+        /// @return False when the pool is unavailable or that worker cannot accept work.
+        static bool SubmitToWorker(uint32_t worker_index, void* ctx, TaskFn fn)
         {
-            using Fn                                           = std::decay_t<T>;
-
-            static constexpr size_t fn_offset                  = (sizeof(Core::Memory::TLSFSlab*) + alignof(Fn) - 1) & ~(alignof(Fn) - 1);
-            static constexpr size_t block_size                 = fn_offset + sizeof(Fn);
-
-            Core::Memory::TLSFSlab* slab                       = Pool ? Pool->GetClosureSlab() : nullptr;
-            uint8_t*                block                      = slab ? static_cast<uint8_t*>(slab->Alloc(block_size)) : static_cast<uint8_t*>(::operator new(block_size));
-
-            *reinterpret_cast<Core::Memory::TLSFSlab**>(block) = slab;
-            new (block + fn_offset) Fn(std::forward<T>(f));
-
-            Pool->Submit(block, [](void* ctx) {
-                uint8_t*                raw  = static_cast<uint8_t*>(ctx);
-                Core::Memory::TLSFSlab* slab = *reinterpret_cast<Core::Memory::TLSFSlab**>(raw);
-                auto*                   fn   = reinterpret_cast<Fn*>(raw + fn_offset);
-                (*fn)();
-                fn->~Fn();
-                if (slab)
-                    slab->Free(raw);
-                else
-                    ::operator delete(raw);
-            });
+            return Pool && Pool->SubmitToWorker(worker_index, ctx, fn);
         }
 
     private:

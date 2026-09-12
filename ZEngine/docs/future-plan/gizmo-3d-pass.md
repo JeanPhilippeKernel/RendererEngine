@@ -1069,7 +1069,7 @@ void GizmoOverlayOriginMarker(ZUIContext* ctx,
 - `BorderColor` = line RGBA, `BorderThickness` = width
 - `ZPx(0) x ZPx(0)` size, `ZUI_FloatX | ZUI_FloatY`
 
-Renderer addition in `ZUIRenderer::PreparePayload` box walk:
+Pass addition in `ZUIPass::PreparePayload` box walk:
 ```cpp
 if (box->Flags & ZUI_DrawLine)
 {
@@ -1162,7 +1162,7 @@ ZEngine/ZEngine/Editor/
 
 ZEngine/ZEngine/UI/
     ├── ZUIBox.h                  — add ZUI_DrawLine = 1<<15 (AA overlay lines)
-    └── ZUIRenderer.cpp           — handle ZUI_DrawLine in PreparePayload box walk
+    └── ZUIPass.cpp               — handle ZUI_DrawLine in PreparePayload box walk
 
 Tetragrama/
 ├── CMakeLists.txt                — add: target_compile_definitions(Tetragrama PRIVATE ZENGINE_EDITOR)
@@ -1250,7 +1250,7 @@ Resources/Shaders/Editor/
 
 ### ZUI_DrawLine + Measurement Overlays (`Tetragrama/Gizmo/GizmoOverlay.h/.cpp`)
 - [ ] `ZUI_DrawLine = 1 << 15` added to `ZUIBoxFlags` in `ZUIBox.h`
-- [ ] Renderer handles `ZUI_DrawLine` in `PreparePayload` box walk (`ZUIRenderer.cpp`)
+- [ ] Pass handles `ZUI_DrawLine` in `PreparePayload` box walk (`ZUIPass.cpp`)
 - [ ] Ruler overlay: yellow line + `"%.2f"` distance label at midpoint
 - [ ] Angle arc: swept polyline + `"%.1f°"` label during active rotate drag
 - [ ] AABB bounds: 12 edges + W×H×D dimension labels on visible faces

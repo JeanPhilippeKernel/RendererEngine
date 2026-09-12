@@ -40,8 +40,10 @@ namespace ZEngine::Hardwares
 
         void                      Enqueue(DeferredFreeEntry entry)
         {
+            const uint32_t next_tail = (Tail + 1) % kCapacity;
+            ZENGINE_VALIDATE_ASSERT(next_tail != Head, "DeferredFreeQueue capacity exceeded")
             Entries[Tail] = entry;
-            Tail          = (Tail + 1) % kCapacity;
+            Tail          = next_tail;
         }
 
         void Drain(Core::Memory::GpuAllocator* alloc, VkDevice device, uint64_t completed_timeline_value)
@@ -64,7 +66,7 @@ namespace ZEngine::Hardwares
                         switch (e.Data.Vk.Type)
                         {
                             case Rendering::DeviceResourceType::SAMPLER:
-                                // vkDestroySampler(device, reinterpret_cast<VkSampler>(e.Data.Vk.Handle), nullptr);
+                                vkDestroySampler(device, reinterpret_cast<VkSampler>(e.Data.Vk.Handle), nullptr);
                                 break;
                             case Rendering::DeviceResourceType::FRAMEBUFFER:
                                 vkDestroyFramebuffer(device, reinterpret_cast<VkFramebuffer>(e.Data.Vk.Handle), nullptr);
@@ -102,6 +104,9 @@ namespace ZEngine::Hardwares
                                 vkFreeDescriptorSets(device, reinterpret_cast<VkDescriptorPool>(e.Data.Vk.Extra), 1, &ds);
                                 break;
                             }
+                            case Rendering::DeviceResourceType::QUERYPOOL:
+                                vkDestroyQueryPool(device, reinterpret_cast<VkQueryPool>(e.Data.Vk.Handle), nullptr);
+                                break;
                             case Rendering::DeviceResourceType::BUFFER:
                             case Rendering::DeviceResourceType::BUFFERMEMORY:
                             case Rendering::DeviceResourceType::IMAGE:

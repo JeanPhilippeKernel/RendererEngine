@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
@@ -8,7 +9,6 @@
 #include <ZEngine/Hardwares/CommandBufferManager.h>
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Helpers/ThreadPool.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/GeometryPool.h>
 #include <ZEngine/Rendering/GeometryStreamingManager.h>
@@ -159,8 +159,9 @@ namespace ZEngine::Rendering
         };
 
         /// @brief Enqueue a texture upload deferral for processing in the next BeginFrame.
-        /// @param deferral Deferral to enqueue; if Slab is non-null, ownership of Pixels is transferred.
-        void                            EnqueueTextureDeferral(TextureDeferral&& deferral);
+        /// @param deferral Deferral to enqueue; if Slab is non-null, ownership of Pixels is transferred on success.
+        /// @return False when the bounded deferral queue is full.
+        bool                                                             EnqueueTextureDeferral(const TextureDeferral& deferral);
 
         /// @brief Drain all pending texture deferrals by dispatching UploadTextureBuffer.
         /// @details Called from AppRenderPipeline::BeginFrame, against the frame that's
@@ -168,27 +169,40 @@ namespace ZEngine::Rendering
         ///          enqueued — decode latency on the thread pool means those can be frames
         ///          apart). Deferrals that find no free upload slot are retried next frame.
         /// @param frame_index Render frame index to upload against.
-        void                            CompleteDeferrals(uint8_t frame_index);
+        void                                                             CompleteDeferrals(uint8_t frame_index);
 
         /// @brief Submit all pending async upload jobs (texture uploads and mesh batch
-        ///        uploads) to the GPU graphics queue.
+        ///        uploads) to their resolved GPU queues.
         /// @details Called from AppRenderPipeline::EndFrame. Processes m_async_uploads.
-        void                            SubmitAsyncUploads();
+        void                                                             SubmitAsyncUploads();
+
+        /// @brief Returns texture uploads that still require graph-side acquisition.
+        /// @details Render-thread only. Tickets are published only after their producer
+        ///          submission succeeds, so a graph never waits on work that was dropped.
+        const Core::Containers::Array<Hardwares::StreamingUploadTicket>& GetStreamingUploadTickets() const;
+
+        /// @brief Finds the outstanding streaming ticket for a texture, if any.
+        const Hardwares::StreamingUploadTicket*                          FindStreamingUploadTicket(const Rendering::Textures::TextureHandle& handle) const;
+
+        /// @brief Marks a graph-acquired texture upload ticket as consumed.
+        /// @details Render-thread only. The ticket is removed after its acquire barrier
+        ///          has been recorded into the consuming graph submission.
+        void                                                             AcknowledgeStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket);
 
         /// @brief Retire command buffers whose timeline fence has been signalled.
         /// @details Frees staging buffers associated with completed texture uploads for the
         ///          given frame/thread pool. Called from AppRenderPipeline::BeginFrame.
         /// @param frame_index  Render frame index.
         /// @param thread_index Thread index within the per-frame pool.
-        void                            RetireTextureSlots(uint8_t frame_index, uint8_t thread_index);
+        void                                                             RetireTextureSlots(uint8_t frame_index, uint8_t thread_index);
 
         /// @brief Cancel all queued async upload jobs without submitting them.
         /// @details Called on swapchain resize or recreate to discard stale uploads.
-        void                            ClearAsyncUploads();
+        void                                                             ClearAsyncUploads();
 
         /// @brief Reset all texture timeline semaphore counters after a swapchain recreate.
         /// @details Re-initialises per-pool signal values and retire arrays to zero.
-        void                            ResetTextureTimelines();
+        void                                                             ResetTextureTimelines();
 
         /// @brief Schedule a hot-reload swap for a mesh buffer.
         /// @details Thread-safe: enqueues onto m_pending_swaps, applied by the next
@@ -200,7 +214,7 @@ namespace ZEngine::Rendering
         ///          global buffer is append-only.
         /// @param old_handle The live BufferHandle to replace.
         /// @param new_asset  AssetHandle for the new version of the mesh.
-        void                            ScheduleSwap(BufferHandle old_handle, Managers::AssetHandle new_asset);
+        void                                                             ScheduleSwap(BufferHandle old_handle, Managers::AssetHandle new_asset);
 
         /// @brief Deferred release of a GPU buffer.
         /// @details For generic device-local buffers (handles returned by UploadBuffer) the
@@ -208,7 +222,7 @@ namespace ZEngine::Rendering
         ///          deferred-free queue. For mesh handles the slot is invalidated only — the
         ///          packed global buffer is append-only and reclaimed on shutdown.
         /// @param handle Handle returned by the mesh upload path or UploadBuffer.
-        void                            Release(BufferHandle handle);
+        void                                                             Release(BufferHandle handle);
 
         /// @brief Look up a generic device-local buffer by handle.
         /// @details Valid only for handles returned by UploadBuffer. Mesh handles must use
@@ -216,13 +230,13 @@ namespace ZEngine::Rendering
         ///          only — do not store it across BeginFrame calls.
         /// @param handle Handle returned by UploadBuffer.
         /// @return Pointer to the BufferView, or nullptr if the handle is invalid or stale.
-        const Core::Memory::BufferView* GetBuffer(BufferHandle handle) const;
+        const Core::Memory::BufferView*                                  GetBuffer(BufferHandle handle) const;
 
         /// @brief Return the shared device-local VkBuffer that holds all uploaded vertex data.
         /// @details All mesh uploads are appended sequentially at the watermark cursor.
         ///          Bound once to the VertexSB descriptor; per-draw vertex offset is in DrawData.
         /// @return Pointer to the global vertex BufferView; always valid after Initialize.
-        const Core::Memory::BufferView* GetGlobalVertexBuffer() const
+        const Core::Memory::BufferView*                                  GetGlobalVertexBuffer() const
         {
             return &m_pool.VertexBuffer;
         }
@@ -417,14 +431,15 @@ namespace ZEngine::Rendering
             BufferHandle Handle;
         };
 
-        static constexpr uint32_t DRAW_VERTEX_BYTES = 8 * sizeof(float); // x y z nx ny nz u v
-        static constexpr uint32_t MAX_BUFFERS       = 4096;
-        static constexpr uint32_t MAX_GENERIC_BUFS  = 4096;
+        static constexpr uint32_t DRAW_VERTEX_BYTES     = 8 * sizeof(float); // x y z nx ny nz u v
+        static constexpr uint32_t MAX_BUFFERS           = 4096;
+        static constexpr uint32_t MAX_GENERIC_BUFS      = 4096;
         // Generation tag: bit 31 = 1 marks a generic-buffer handle so Release() and
         // GetBuffer() can distinguish them from mesh handles (bit 31 = 0).
-        static constexpr uint32_t GBUF_GEN_TAG      = 0x8000'0000u;
-        static constexpr uint32_t MAX_UUID_MAP      = 4096;
-        static constexpr uint32_t MAX_PENDING       = 1024;
+        static constexpr uint32_t GBUF_GEN_TAG          = 0x8000'0000u;
+        static constexpr uint32_t MAX_UUID_MAP          = 4096;
+        static constexpr uint32_t MAX_PENDING           = 1024;
+        static constexpr uint32_t MAX_TEXTURE_DEFERRALS = 8192;
 
         // Per-frame-index batch state: the m_batch_timeline value last signalled for that
         // frame index's batch, and the staging buffers still owned by it. Retired
@@ -438,66 +453,90 @@ namespace ZEngine::Rendering
             Core::Memory::BufferView StagingBuffers[MAX_PENDING * 2] = {};
             uint32_t                 StagingCount                    = 0;
         };
-        static constexpr uint32_t     MAX_DEFERRAL_RETRY   = 8192;
         // Upper bound for texture timeline slot search — keeps textures out of geometry
         // slots and caps the retire loop to the same range.
-        static constexpr uint32_t     GEOMETRY_UPLOAD_SLOT = 15;
+        static constexpr uint32_t     GEOMETRY_UPLOAD_SLOT    = 15;
         // Per-worker TLSF slab size — covers worst-case decode buffer (equirect→cubemap ≈ 96 MB).
-        static constexpr size_t       UPLOAD_SLAB_BYTES    = 128 * 1024 * 1024;
+        static constexpr size_t       UPLOAD_SLAB_BYTES       = 128 * 1024 * 1024;
+        static constexpr size_t       TEXTURE_TASK_SLAB_BYTES = ZMega(2);
         // Written once at Setup time via RegisterBuiltinGeometry; never reset by
         // ResetGeometryBuffers and never touched by the streaming eviction path.
-        static constexpr VkDeviceSize BUILTIN_VTX_CAPACITY = 1 * 1024 * 1024; // 1 MB — ample for all engine builtins
-        static constexpr VkDeviceSize BUILTIN_IDX_CAPACITY = 1 * 1024 * 1024;
+        static constexpr VkDeviceSize BUILTIN_VTX_CAPACITY    = 1 * 1024 * 1024; // 1 MB — ample for all engine builtins
+        static constexpr VkDeviceSize BUILTIN_IDX_CAPACITY    = 1 * 1024 * 1024;
 
         BufferHandle                  DoUploadMesh(Managers::AssetHandle asset, uint32_t frame_index);
+
+        struct TextureDecodeTask
+        {
+            RenderResourceManager*               Owner                         = nullptr;
+            Specifications::TextureSpecification Specification                 = {};
+            Rendering::Textures::TextureHandle   Texture                       = {};
+            bool                                 IsEnvironmentMap              = false;
+            char                                 Filename[MAX_FILE_PATH_COUNT] = {};
+        };
+
+        struct UploadSlabInitContext
+        {
+            Core::Memory::TLSFSlab* Slabs = nullptr;
+        };
 
         /// @brief Append one mesh asset's vertex/index data to the global buffers.
         /// @details Shared by DoUploadMesh (new slot) and FlushPendingSwaps (reuse slot).
         ///          Returns a zero-VtxCount MeshSlot on failure.
-        MeshSlot                      AppendMeshData(Managers::AssetHandle asset, uint32_t frame_index);
+        MeshSlot        AppendMeshData(Managers::AssetHandle asset, uint32_t frame_index);
 
-        void                          AppendToGlobalBuffer(Core::Memory::BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index);
-        void                          FlushPendingUploads(uint32_t frame_index);
+        void            AppendToGlobalBuffer(Core::Memory::BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index);
+        void            FlushPendingUploads(uint32_t frame_index);
 
         /// @brief Drain m_pending_swaps and apply each swap immediately (render thread only).
-        void                          FlushPendingSwaps(uint32_t frame_index);
+        void            FlushPendingSwaps(uint32_t frame_index);
 
         /// @brief Drain m_pending_texture_reloads and reimport each one (render thread only).
-        void                          FlushPendingTextureReloads();
+        void            FlushPendingTextureReloads();
 
         /// @brief Drain m_pending_texture_releases and call Device->DestroyTexture (render thread only).
-        void                          FlushPendingTextureReleases();
+        void            FlushPendingTextureReleases();
+        static void     OnAssetReady(void* context, const uuids::uuid& uuid, Managers::AssetHandle handle);
+        static void     OnAssetStale(void* context, const uuids::uuid& uuid);
+        static void     OnAssetRemoved(void* context, const uuids::uuid& uuid, Managers::AssetType type);
+        static void     RunTextureDecodeTask(void* context);
+        static void     BindWorkerUploadSlab(void* context, size_t worker_index);
+        void            CompleteTextureDecodeTask(TextureDecodeTask* task);
+        bool            ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral);
+        void            DiscardTextureDeferrals();
+        void            PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket);
+        static void     OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket);
 
-        void                          BeginBatchUpload(uint8_t frame_index);
-        void                          EndBatchUpload();
+        void            BeginBatchUpload(uint8_t frame_index);
+        void            EndBatchUpload();
 
         /// @brief Open the batch if not already open this frame. Idempotent — every join
         ///        point (mesh uploads, hot-reload swaps, UpdateBuffer staging, builtin
         ///        registration) calls this before recording so only the first one opens it.
-        void                          EnsureBatchOpen(uint8_t frame_index);
+        void            EnsureBatchOpen(uint8_t frame_index);
 
         /// @brief Free frame-index batch stagings once m_batch_timeline reaches LastSignal.
         ///        Called once per frame from BeginFrame.
-        void                          RetireBatchStagings();
+        void            RetireBatchStagings();
 
-        void                          ResetGeometryBuffersInternal();
+        void            ResetGeometryBuffersInternal();
         /// @brief Re-pack all Resident mesh regions from offset 0, eliminating fragmentation holes.
         /// @details Resets the pool and re-uploads every Resident mesh's CPU asset data into
         ///          fresh batch regions using the existing AppendMeshData path. Slot regions are
         ///          updated in place before RenderScene runs. The batch is submitted by
         ///          EndFrame/SubmitAsyncUploads; Present()'s m_batch_timeline wait ensures the
         ///          render submission sees the new data before drawing.
-        void                          RunCompaction();
-        void                          InitUploadPool();
-        void                          InitGlobalBuffers();
-        void                          InitUploadSlabs(uint32_t worker_count);
-        void                          InitTextureTimelines();
-        void                          ShutdownTextureTimelines();
-        uint32_t                      AllocMeshSlot();
-        uint32_t                      AllocGBufSlot();
+        void            RunCompaction();
+        void            InitUploadPool();
+        void            InitGlobalBuffers();
+        void            InitUploadSlabs(uint32_t worker_count);
+        void            InitTextureTimelines();
+        void            ShutdownTextureTimelines();
+        uint32_t        AllocMeshSlot();
+        uint32_t        AllocGBufSlot();
 
         /// @brief Advance counter and return the next GBUF_GEN_TAG-tagged generation value.
-        static uint32_t               NextGBufGeneration(uint32_t& counter);
+        static uint32_t NextGBufGeneration(uint32_t& counter);
 
         friend class GeometryStreamingManager;
         friend struct ::RRMTestHelper; // test-only — grants slot state access to streaming manager tests
@@ -547,6 +586,12 @@ namespace ZEngine::Rendering
         // one slab exclusively via t_worker_slab (ThreadPool.h).
         Core::Memory::TLSFSlab                                                     m_upload_slabs[Helpers::ThreadPool::MAX_WORKERS] = {};
         uint32_t                                                                   m_upload_slab_count                              = 0;
+        // Used when a bounded thread-pool queue runs a decode inline on a non-worker.
+        // TLSFSlab serialises access, so it is also safe for a temporary worker fallback.
+        Core::Memory::TLSFSlab                                                     m_fallback_upload_slab                           = {};
+        Core::Memory::TLSFSlab                                                     m_texture_task_slab                              = {};
+        PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                        = {};
+        PaddedAtomic<bool>                                                         m_accept_texture_decodes                         = {};
 
         Slot<MeshSlot>                                                             m_mesh_slots[MAX_BUFFERS]                        = {};
         uint32_t                                                                   m_mesh_slot_count                                = 0;
@@ -596,10 +641,13 @@ namespace ZEngine::Rendering
         Core::Containers::Array<Core::Containers::Array<Core::Memory::BufferView>> m_tex_transfer_staging     = {};
         Core::Containers::Array<std::atomic_uint64_t>                              m_tex_next_values          = {};
         Core::Containers::Array<std::atomic_uint64_t>                              m_tex_transfer_next_values = {};
-        Helpers::ThreadSafeQueue<TextureDeferral>                                  m_tex_deferral_queue       = {};
-        // Scratch buffer for deferrals that find no free upload slot — reused every frame
-        // via clear() so retrying the full queue never allocates on the hot path.
+        Core::Containers::MPSCQueue<TextureDeferral, MAX_TEXTURE_DEFERRALS>        m_tex_deferral_queue       = {};
+        // Render-thread-owned deferrals that could not claim an upload slot this frame.
+        // They stay here until a later frame completes the upload.
         Core::Containers::Array<TextureDeferral>                                   m_tex_deferral_retry       = {};
+        // Tickets are render-thread-owned and persist across frame-graph rebuilds until
+        // their consumer acquire barrier has been recorded.
+        Core::Containers::Array<Hardwares::StreamingUploadTicket>                  m_streaming_upload_tickets = {};
         uint32_t                                                                   m_tex_total_cmd_count      = 0;
     };
 

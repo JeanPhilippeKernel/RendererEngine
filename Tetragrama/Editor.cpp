@@ -91,7 +91,7 @@ namespace Tetragrama
         // displays where glfwGetWindowSize returns physical pixel counts (~3024px wide).
         // ImGui approach: fonts are baked at physical pixel density and all draw
         // coordinates are also in physical pixels — the NDC transform handles the rest.
-        if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderer)
+        if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderPass)
         {
             constexpr const char* kFontPath       = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
             constexpr const char* kHeaderFontPath = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";

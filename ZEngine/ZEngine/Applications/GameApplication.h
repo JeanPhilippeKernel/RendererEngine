@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Controllers/ICameraController.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/TimeStep.h>
@@ -20,7 +21,7 @@ namespace ZEngine::Applications
 
     struct ApplicationState
     {
-        Helpers::ThreadSafeQueue<RenderTargetResizeRequest> RenderTargetResizeRequests = {};
+        Core::Containers::MPSCQueue<RenderTargetResizeRequest, 128> RenderTargetResizeRequests = {};
     };
 
     ZDEFINE_PTR(ApplicationState);

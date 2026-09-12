@@ -18,9 +18,13 @@ namespace ZEngine::Rendering::Shaders
          */
         GEOMETRY = 2,
         /**
+         * Compute shader type
+         */
+        COMPUTE  = 3,
+        /**
          * Unknown shader type
          */
-        UNKNOWN  = 3
+        UNKNOWN  = 4
     };
 
     enum class ShaderOperationResult : int

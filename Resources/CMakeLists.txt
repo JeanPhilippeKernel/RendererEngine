@@ -36,6 +36,7 @@ endif()
 
 file (GLOB VertexShaders CONFIGURE_DEPENDS "${ShaderPath}/*.vert")
 file (GLOB FragmentShaders CONFIGURE_DEPENDS "${ShaderPath}/*.frag")
+file (GLOB ComputeShaders CONFIGURE_DEPENDS "${ShaderPath}/*.comp")
 
 foreach(VertexShader ${VertexShaders})
 
@@ -53,6 +54,25 @@ foreach(VertexShader ${VertexShaders})
               COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${VertexShaderOutputPath}" "${VertexShader}"
               COMMAND ${CMAKE_COMMAND} -E copy_if_different "${VertexShaderOutputPath}" "${ShaderBinOutputPath}/${VertexShaderOutputFileName}")
       endif()
+
+endforeach()
+
+foreach(ComputeShader ${ComputeShaders})
+
+    cmake_path(GET ComputeShader STEM shaderfilename)
+    cmake_path(APPEND_STRING shaderfilename "_compute.spv" OUTPUT_VARIABLE ComputeShaderOutputFileName)
+    cmake_path(APPEND ShaderOutputPath ${ComputeShaderOutputFileName} OUTPUT_VARIABLE ComputeShaderOutputPath)
+
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_custom_target("Compile-${shaderfilename}-compute" ALL
+            COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${ComputeShaderOutputPath}" "${ComputeShader}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ComputeShaderOutputPath}" "${ShaderBinOutputPath}/${ComputeShaderOutputFileName}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ComputeShaderOutputPath}" "${ShaderObeliskOutputPath}/${ComputeShaderOutputFileName}")
+    else()
+        add_custom_target("Compile-${shaderfilename}-compute" ALL
+            COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${ComputeShaderOutputPath}" "${ComputeShader}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ComputeShaderOutputPath}" "${ShaderBinOutputPath}/${ComputeShaderOutputFileName}")
+    endif()
 
 endforeach()
 

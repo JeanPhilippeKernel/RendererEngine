@@ -22,7 +22,7 @@ namespace ZEngine::Core::VFS
         m_mount_table.Initialize(m_arena, mount_table_capacity);
     }
 
-    void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry, Importers::ImportCoordinator* coordinator)
+    void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry, Importers::ImportCoordinator* coordinator, FileChangeListener file_change_listener, void* file_change_context)
     {
         if (!m_arena)
         {
@@ -35,12 +35,14 @@ namespace ZEngine::Core::VFS
             return;
         }
 
-        m_directory_cache   = cache;
-        m_scanner           = scanner;
-        m_registry          = registry;
-        m_coordinator       = coordinator;
+        m_directory_cache      = cache;
+        m_scanner              = scanner;
+        m_registry             = registry;
+        m_coordinator          = coordinator;
+        m_file_change_listener = file_change_listener;
+        m_file_change_context  = file_change_context;
 
-        const size_t length = Helpers::secure_strlen(project_root_native);
+        const size_t length    = Helpers::secure_strlen(project_root_native);
         Helpers::secure_strncpy(m_project_root_native, sizeof(m_project_root_native), project_root_native, length < MAX_FILE_PATH_COUNT ? length : MAX_FILE_PATH_COUNT - 1);
 
 #if defined(__APPLE__)
@@ -187,6 +189,9 @@ namespace ZEngine::Core::VFS
                     default:
                         break;
                 }
+
+                if (m_file_change_listener)
+                    m_file_change_listener(m_file_change_context, file_path, ev.Kind);
             }
 
             // Rescan directory

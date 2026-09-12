@@ -70,8 +70,7 @@
 #define MAX_FILE_PATH_COUNT 256
 #define DEFAULT_STR_BUFFER  256
 
-#define ZRawPtr(X)          X*
-#define ZDEFINE_PTR(X)      typedef ZRawPtr(X) X##Ptr
+#define ZDEFINE_PTR(X)      typedef X* X##Ptr
 
 #define CHECK_AND_ESCAPE_NULL(handle) \
     if (!handle)                      \

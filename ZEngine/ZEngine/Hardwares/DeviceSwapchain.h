@@ -23,7 +23,18 @@ namespace ZEngine::Hardwares
     };
 
     // Called synchronously after recreation so render targets resize in the same frame.
-    using SwapchainResizedFn = void (*)(uint32_t width, uint32_t height, void* ctx);
+    using SwapchainResizedFn    = void (*)(uint32_t width, uint32_t height, void* ctx);
+    /// @brief Called after this frame's graphics command buffers have been submitted.
+    /// @param timeline Timeline semaphore signalled by the accepted graphics submission.
+    /// @param timeline_value Exact value signalled by that submission.
+    using RenderWorkSubmittedFn = void (*)(void* ctx, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+
+    /// @brief Render-thread callback associated with one pending graphics submission.
+    struct RenderWorkSubmissionCallback
+    {
+        RenderWorkSubmittedFn Function = nullptr;
+        void*                 Context  = nullptr;
+    };
 
     struct FrameContext
     {
@@ -33,6 +44,13 @@ namespace ZEngine::Hardwares
         Rendering::Primitives::Fence*     Fence      = nullptr;
     };
     ZDEFINE_PTR(FrameContext);
+
+    struct FrameAsyncOperation
+    {
+        VkPipelineStageFlags2             StageFlags  = 0;
+        uint64_t                          SignalValue = 0;
+        Rendering::Primitives::Semaphore* Timeline    = nullptr;
+    };
 
     struct DeviceSwapchain
     {
@@ -59,11 +77,19 @@ namespace ZEngine::Hardwares
         Rendering::Primitives::Semaphore*                          RenderTimeline                 = nullptr;
         Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = nullptr;
         Core::Containers::Array<FrameContext>                      FrameContexts                  = {};
+        Core::Containers::Array<VkImage>                           SwapchainImages                = {};
         Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
         Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
+        Core::Containers::Array<VkImageLayout>                     SwapchainImageLayouts          = {};
         Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
         Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
+        // Render-thread-owned snapshot of asynchronous GPU work relevant to the
+        // current frame. Both graph batches and Present() consume this list.
+        Core::Containers::Array<FrameAsyncOperation>               FrameAsyncOperations           = {};
+        // Render-thread-owned callbacks. A callback is delivered only once
+        // vkQueueSubmit2 has accepted this frame's graphics command buffers.
+        Core::Containers::Array<RenderWorkSubmissionCallback>      RenderWorkSubmittedCallbacks   = {};
 
         // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
         // zero-size surface). Callers must skip all rendering work for that frame.
@@ -78,6 +104,11 @@ namespace ZEngine::Hardwares
         void Dispose();
 
         void AcquireNextImage(uint32_t frame_context_idx);
+        void CollectAsyncGPUOperations();
+        /// @brief Delivers `fn` after this frame's graphics work has been accepted by Vulkan.
+        /// @details The caller owns `context` until delivery or cancellation. Callbacks are
+        /// discarded, without invocation, when the frame cannot be submitted.
+        void EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context);
         void Present();
 
 #if !defined(NDEBUG)
