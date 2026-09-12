@@ -1506,7 +1506,7 @@ namespace ZEngine::Hardwares
     VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count)
     {
         const VkImageSubresourceRange range = {
-            .aspectMask     = image_aspect_flag,
+            .aspectMask     = static_cast<VkImageAspectFlags>(image_aspect_flag),
             .baseMipLevel   = 0,
             .levelCount     = 1,
             .baseArrayLayer = 0,
