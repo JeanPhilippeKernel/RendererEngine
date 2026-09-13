@@ -411,6 +411,10 @@ namespace ZEngine::UI
         bool                      CtrlDown             = false;
         bool                      ShiftDown            = false;
         bool                      AltDown              = false;
+        // Set by text-editing widgets while their field owns FocusKey. This
+        // remains separate from generic keyboard focus used for buttons and
+        // tree rows so editor navigation can stay available after selection.
+        bool                      TextInputActive      = false;
 
         // Tab focus navigation — set by ZUILayer, consumed by ZUIEndFrame
         bool                      TabPressed           = false;
@@ -562,7 +566,7 @@ namespace ZEngine::UI
 
         return {
             .Pointer  = modal_or_popup || other_hot || other_active || other_drag,
-            .Keyboard = modal_or_popup || ctx->FocusKey != 0,
+            .Keyboard = modal_or_popup || ctx->TextInputActive,
         };
     }
 

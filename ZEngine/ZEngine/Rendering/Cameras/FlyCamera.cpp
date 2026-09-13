@@ -31,16 +31,18 @@ namespace ZEngine::Rendering::Cameras
 
     FlyCamera::FlyCamera(float aspectRatio, const CameraSetting& settings)
     {
-        AspectRatio    = aspectRatio;
-        Settings       = settings;
-        Position       = {0.0f, 5.0f, 8.0f};
-        Pitch          = radians(30.0f);
-        m_targetPitch  = Pitch;
-        m_targetPos    = Position;
-        m_animDuration = Settings.FocusDuration;
-        Type           = CameraType::PERSPECTIVE;
-        m_projDirty    = true;
-        m_viewDirty    = true;
+        AspectRatio                      = aspectRatio;
+        Settings                         = settings;
+        Position                         = {0.0f, 5.0f, 8.0f};
+        Pitch                            = radians(30.0f);
+        m_targetPitch                    = Pitch;
+        m_targetPos                      = Position;
+        m_animDuration                   = Settings.FocusDuration;
+        const float minimum_ortho_height = Settings.MinOrbitDistance * 2.0f;
+        m_orthographicHeight             = std::isfinite(Settings.OrthographicHeight) ? std::max(Settings.OrthographicHeight, minimum_ortho_height) : minimum_ortho_height;
+        Type                             = CameraType::PERSPECTIVE;
+        m_projDirty                      = true;
+        m_viewDirty                      = true;
         UpdateMatrices();
     }
 
@@ -107,6 +109,77 @@ namespace ZEngine::Rendering::Cameras
         m_viewDirty       = true;
     }
 
+    void FlyCamera::SetProjectionType(CameraType type)
+    {
+        if (type != CameraType::PERSPECTIVE && type != CameraType::ORTHOGRAPHIC)
+            return;
+        if (Type == type)
+            return;
+
+        // Preserve the apparent vertical scale at the current orbit distance
+        // when entering an orthographic view.
+        if (type == CameraType::ORTHOGRAPHIC)
+        {
+            const float perspective_height = 2.0f * std::max(m_orbitDist, Settings.MinOrbitDistance) * tanf(radians(Settings.FOV) * 0.5f);
+            m_orthographicHeight           = std::max(perspective_height, Settings.MinOrbitDistance * 2.0f);
+        }
+
+        Type        = type;
+        m_projDirty = true;
+    }
+
+    CameraType FlyCamera::GetProjectionType() const
+    {
+        return Type;
+    }
+
+    void FlyCamera::SetAxisView(FlyCameraAxisView view)
+    {
+        float pitch = Pitch;
+        float yaw   = Yaw;
+
+        switch (view)
+        {
+            case FlyCameraAxisView::Front:
+                pitch = 0.0f;
+                yaw   = 0.0f;
+                break;
+            case FlyCameraAxisView::Back:
+                pitch = 0.0f;
+                yaw   = PI<float>;
+                break;
+            case FlyCameraAxisView::Right:
+                pitch = 0.0f;
+                yaw   = HALF_PI<float>;
+                break;
+            case FlyCameraAxisView::Left:
+                pitch = 0.0f;
+                yaw   = -HALF_PI<float>;
+                break;
+            // Stay infinitesimally clear of the Euler singularity.  This
+            // keeps a subsequent mouse-look stable without a visible tilt.
+            case FlyCameraAxisView::Top:
+                pitch = kPitchLimit;
+                yaw   = 0.0f;
+                break;
+            case FlyCameraAxisView::Bottom:
+                pitch = -kPitchLimit;
+                yaw   = 0.0f;
+                break;
+            case FlyCameraAxisView::None:
+                return;
+        }
+
+        Pitch             = pitch;
+        Yaw               = WrapAngle(yaw);
+        m_targetPitch     = Pitch;
+        m_targetYaw       = Yaw;
+        m_targetPos       = Position;
+        m_stateBeforeAnim = FlyCameraState::Free;
+        State             = FlyCameraState::Free;
+        m_viewDirty       = true;
+    }
+
     // OnUpdate — main entry point called once per frame by the controller
 
     void FlyCamera::OnUpdate(float dt)
@@ -132,9 +205,9 @@ namespace ZEngine::Rendering::Cameras
             float pivotDist = m_orbitDist;
             if (Hooks.Raycast)
             {
-                float hit = Hooks.Raycast(Position, GetForward(), m_orbitDist * 2.0f);
-                if (hit < m_orbitDist * 2.0f)
-                    pivotDist = hit;
+                const Scenes::SceneRaycastHit hit = Hooks.Raycast(Hooks.Context, Position, GetForward(), m_orbitDist * 2.0f);
+                if (hit.Hit && std::isfinite(hit.Distance) && hit.Distance > 0.0f)
+                    pivotDist = hit.Distance;
             }
             m_orbitPivot      = Position + GetForward() * pivotDist;
             m_orbitDist       = clamp((Position - m_orbitPivot).magnitude(), Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
@@ -167,28 +240,7 @@ namespace ZEngine::Rendering::Cameras
                 break;
         }
 
-        if (Input.Keys[GLFW_KEY_F])
-        {
-            Vec3f center = {0.0f, 0.0f, 0.0f};
-            float radius = 5.0f;
-            if (Hooks.GetSelectionBounds)
-                std::tie(center, radius) = Hooks.GetSelectionBounds();
-            FocusOn(center, radius);
-            Input.Keys[GLFW_KEY_F] = false;
-        }
-
-        for (int i = 0; i < 9; ++i)
-        {
-            int key = GLFW_KEY_1 + i;
-            if (Input.Keys[key])
-            {
-                if (Input.CtrlDown)
-                    SaveBookmark(i);
-                else
-                    RecallBookmark(i);
-                Input.Keys[key] = false;
-            }
-        }
+        HandleCommands();
 
         if (m_projDirty)
             RecalculateProjection();
@@ -214,9 +266,18 @@ namespace ZEngine::Rendering::Cameras
 
         if (Input.ScrollDelta != 0.0f)
         {
-            Ray   ray    = GetRayFromViewport(Input.MouseViewportX, Input.MouseViewportY);
-            float speed  = std::min(AdaptiveSpeed(), 3.0f);
-            m_targetPos += ray.Direction * Input.ScrollDelta * Settings.ScrollSpeed * speed;
+            if (Type == CameraType::ORTHOGRAPHIC)
+            {
+                const float zoom     = expf(-Input.ScrollDelta * Settings.ScrollSpeed * 0.25f);
+                m_orthographicHeight = clamp(m_orthographicHeight * zoom, Settings.MinOrbitDistance * 2.0f, Settings.MaxOrbitDistance * 2.0f);
+                m_projDirty          = true;
+            }
+            else
+            {
+                Ray   ray    = GetRayFromViewport(Input.MouseViewportX, Input.MouseViewportY);
+                float speed  = std::min(AdaptiveSpeed(), 3.0f);
+                m_targetPos += ray.Direction * Input.ScrollDelta * Settings.ScrollSpeed * speed;
+            }
         }
 
         if ((m_targetPos - Position).magnitude() > 0.00001f)
@@ -237,10 +298,19 @@ namespace ZEngine::Rendering::Cameras
 
         if (Input.ScrollDelta != 0.0f)
         {
-            float dist         = std::max(m_targetOrbitDist * 0.2f, 0.001f);
-            float speed        = std::min(dist * dist, 100.0f);
-            m_targetOrbitDist -= Input.ScrollDelta * speed * Settings.ScrollSpeed;
-            m_targetOrbitDist  = clamp(m_targetOrbitDist, Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
+            if (Type == CameraType::ORTHOGRAPHIC)
+            {
+                const float zoom     = expf(-Input.ScrollDelta * Settings.ScrollSpeed * 0.25f);
+                m_orthographicHeight = clamp(m_orthographicHeight * zoom, Settings.MinOrbitDistance * 2.0f, Settings.MaxOrbitDistance * 2.0f);
+                m_projDirty          = true;
+            }
+            else
+            {
+                float dist         = std::max(m_targetOrbitDist * 0.2f, 0.001f);
+                float speed        = std::min(dist * dist, 100.0f);
+                m_targetOrbitDist -= Input.ScrollDelta * speed * Settings.ScrollSpeed;
+                m_targetOrbitDist  = clamp(m_targetOrbitDist, Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
+            }
         }
 
         m_orbitDist    = lerp(m_orbitDist, m_targetOrbitDist, t);
@@ -256,7 +326,7 @@ namespace ZEngine::Rendering::Cameras
     {
         float focalDist  = (m_stateBeforePan == FlyCameraState::Orbit) ? m_orbitDist : 10.0f;
         float fovRad     = radians(Settings.FOV);
-        float planeH     = 2.0f * tanf(fovRad * 0.5f) * focalDist;
+        float planeH     = Type == CameraType::ORTHOGRAPHIC ? m_orthographicHeight : 2.0f * tanf(fovRad * 0.5f) * focalDist;
         float planeW     = planeH * AspectRatio;
 
         Vec3f right      = {View(0, 0), View(0, 1), View(0, 2)};
@@ -299,6 +369,9 @@ namespace ZEngine::Rendering::Cameras
 
     void FlyCamera::FocusOn(Vec3f center, float radius)
     {
+        if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z) || !std::isfinite(radius) || radius <= 0.0f)
+            return;
+
         float fovRad      = radians(Settings.FOV);
         float distance    = (radius / tanf(fovRad * 0.5f)) * 1.5f;
         distance          = max(distance, Settings.MinOrbitDistance);
@@ -313,6 +386,11 @@ namespace ZEngine::Rendering::Cameras
         m_orbitPivot      = center;
         m_orbitDist       = distance;
         m_targetOrbitDist = distance;
+        if (Type == CameraType::ORTHOGRAPHIC)
+        {
+            m_orthographicHeight = clamp(radius * 3.0f, Settings.MinOrbitDistance * 2.0f, Settings.MaxOrbitDistance * 2.0f);
+            m_projDirty          = true;
+        }
 
         m_animStartPos    = Position;
         m_animEndPos      = endPos;
@@ -369,17 +447,24 @@ namespace ZEngine::Rendering::Cameras
     FlyCamera::Ray FlyCamera::GetRayFromViewport(float viewportX, float viewportY) const
     {
         // NDC in [-1,1]; viewport coords are logical-pixel-relative, Y=0 at top.
-        float ndcX    = (viewportX / m_logicalW) * 2.0f - 1.0f;
-        float ndcY    = 1.0f - (viewportY / m_logicalH) * 2.0f;
+        float ndcX = (viewportX / m_logicalW) * 2.0f - 1.0f;
+        float ndcY = 1.0f - (viewportY / m_logicalH) * 2.0f;
+
+        Vec3f r    = GetRight();
+        Vec3f u    = GetUp();
+        Vec3f f    = GetForward();
+
+        if (Type == CameraType::ORTHOGRAPHIC)
+        {
+            const float half_height = m_orthographicHeight * 0.5f;
+            const float half_width  = half_height * AspectRatio;
+            return {Position + r * (ndcX * half_width) + u * (ndcY * half_height), f};
+        }
 
         float fovRad  = radians(Settings.FOV);
         float tanHalf = tanf(fovRad * 0.5f);
         float vx      = ndcX * AspectRatio * tanHalf;
         float vy      = ndcY * tanHalf;
-
-        Vec3f r       = GetRight();
-        Vec3f u       = GetUp();
-        Vec3f f       = GetForward();
         Vec3f dir     = r * vx + u * vy + f;
 
         float mag     = dir.magnitude();
@@ -414,25 +499,67 @@ namespace ZEngine::Rendering::Cameras
 
     float FlyCamera::AdaptiveSpeed() const
     {
+        const float fallback_speed = clamp(fabsf(Position.y) * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
         if (Hooks.Raycast)
         {
-            float hitFwd  = Hooks.Raycast(Position, GetForward(), Settings.MaxMoveSpeed * 10.0f);
-            float hitDown = Hooks.Raycast(Position, {0.0f, -1.0f, 0.0f}, Settings.MaxMoveSpeed * 10.0f);
-            return clamp(std::min(hitFwd, hitDown) * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
+            const float                   query_distance = Settings.MaxMoveSpeed * 10.0f;
+            const Scenes::SceneRaycastHit forward_hit    = Hooks.Raycast(Hooks.Context, Position, GetForward(), query_distance);
+            const Scenes::SceneRaycastHit down_hit       = Hooks.Raycast(Hooks.Context, Position, {0.0f, -1.0f, 0.0f}, query_distance);
+            float                         closest        = query_distance;
+            bool                          has_hit        = false;
+
+            if (forward_hit.Hit && std::isfinite(forward_hit.Distance) && forward_hit.Distance > 0.0f)
+            {
+                closest = forward_hit.Distance;
+                has_hit = true;
+            }
+            if (down_hit.Hit && std::isfinite(down_hit.Distance) && down_hit.Distance > 0.0f)
+            {
+                closest = has_hit ? std::min(closest, down_hit.Distance) : down_hit.Distance;
+                has_hit = true;
+            }
+            if (has_hit)
+                return clamp(closest * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
         }
-        return clamp(fabsf(Position.y) * 0.5f, Settings.MinMoveSpeed, Settings.MaxMoveSpeed);
+        return fallback_speed;
     }
 
     float FlyCamera::OrbitCollide(float desired) const
     {
         if (Hooks.Raycast)
         {
-            Vec3f fwd = GetForward();
-            float hit = Hooks.Raycast(m_orbitPivot, -fwd, desired);
-            if (hit < desired)
-                return hit * 0.9f;
+            const Vec3f                   fwd = GetForward();
+            const Scenes::SceneRaycastHit hit = Hooks.Raycast(Hooks.Context, m_orbitPivot, -fwd, desired);
+            if (hit.Hit && std::isfinite(hit.Distance) && hit.Distance > 0.0f && hit.Distance < desired)
+                return std::max(hit.Distance * 0.9f, Settings.MinOrbitDistance);
         }
         return desired;
+    }
+
+    void FlyCamera::HandleCommands()
+    {
+        if (Input.ToggleProjectionRequested)
+            SetProjectionType(Type == CameraType::PERSPECTIVE ? CameraType::ORTHOGRAPHIC : CameraType::PERSPECTIVE);
+
+        if (Input.AxisViewRequested != FlyCameraAxisView::None)
+            SetAxisView(Input.AxisViewRequested);
+
+        Vec3f center = {};
+        float radius = 0.0f;
+        if (Input.FrameSelectionRequested && Hooks.GetSelectionBounds && Hooks.GetSelectionBounds(Hooks.Context, center, radius))
+            FocusOn(center, radius);
+        if (Input.FrameAllRequested && Hooks.GetSceneBounds && Hooks.GetSceneBounds(Hooks.Context, center, radius))
+            FocusOn(center, radius);
+
+        if (Input.BookmarkSlotRequested >= 0 && Input.BookmarkSlotRequested < 9)
+        {
+            if (Input.SaveBookmarkRequested)
+                SaveBookmark(Input.BookmarkSlotRequested);
+            else
+                RecallBookmark(Input.BookmarkSlotRequested);
+        }
+
+        Input.ClearCommands();
     }
 
     void FlyCamera::ApplyLookDelta(float speed)
@@ -459,6 +586,19 @@ namespace ZEngine::Rendering::Cameras
 
     void FlyCamera::RecalculateProjection()
     {
+        if (Type == CameraType::ORTHOGRAPHIC)
+        {
+            const float half_height = m_orthographicHeight * 0.5f;
+            const float half_width  = half_height * AspectRatio;
+            const float n           = Settings.NearPlane;
+            const float f           = Settings.FarPlane;
+
+            // Vulkan: Y flipped, depth range [0, 1].
+            Projection              = Mat4f(1.0f / half_width, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f / half_height, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f / (n - f), n / (n - f), 0.0f, 0.0f, 0.0f, 1.0f);
+            m_projDirty             = false;
+            return;
+        }
+
         float fovRad  = radians(Settings.FOV);
         float tanHalf = tanf(fovRad * 0.5f);
         float n       = Settings.NearPlane;

@@ -35,6 +35,9 @@ namespace ZEngine::UI
         ctx->DeltaTime         = dt;
         ctx->Time             += dt;
         ctx->ResizeCursor      = 0;
+        // Rebuilt by text-editing widgets below. The application consumes the
+        // prior frame's value before ZUIBeginFrame runs.
+        ctx->TextInputActive   = false;
         // The application consumes the prior frame's viewport key before this point.
         ctx->ViewportInputKey  = 0;
         ctx->PopupBuildDepth   = 0; // reset render depth; rebuilt during each BuildUI pass

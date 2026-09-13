@@ -435,6 +435,18 @@ namespace ZEngine::Managers
         return index < Meshes.size() ? &Meshes[index] : nullptr;
     }
 
+    bool AssetManager::TryGetMeshBounds(const uuids::uuid& id, Core::Maths::Vec3f& out_center, float& out_radius)
+    {
+        std::lock_guard lock(IngestMutex);
+        auto*           mesh = GetMeshAsset(id);
+        if (!mesh || mesh->BoundsRadius <= 0.0f)
+            return false;
+
+        out_center = mesh->BoundsCenter;
+        out_radius = mesh->BoundsRadius;
+        return true;
+    }
+
     Importers::AssetNodeHierarchy* AssetManager::GetMeshNodeHierarchy(const uuids::uuid& mesh_id)
     {
         if (!s_Instance)

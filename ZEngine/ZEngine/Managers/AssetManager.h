@@ -63,6 +63,9 @@ namespace ZEngine::Managers
         ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
 
         Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
+        /// @brief Copies one loaded mesh's local-space bounds under the ingest lock.
+        /// @details Safe for editor scene queries while an importer may update mesh data.
+        [[nodiscard]] bool                                                                  TryGetMeshBounds(const uuids::uuid& id, Core::Maths::Vec3f& out_center, float& out_radius);
         Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& mesh_id);
         AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
 

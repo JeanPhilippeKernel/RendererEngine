@@ -39,26 +39,38 @@ namespace ZEngine::Controllers
         void                             EnterFly();
         void                             ExitFly();
         void                             ClearKeyboardInput();
-        Input::InputManager*             m_input             = nullptr;
-        CamState                         m_state             = CamState::Idle;
-        bool                             m_input_enabled     = true;
-        bool                             m_pointer_captured  = false;
-        bool                             m_keyboard_captured = false;
-        float                            m_vp[4]             = {}; // viewport rect: x0, y0, x1, y1
-        Rendering::Cameras::FlyCameraPtr m_camera            = nullptr;
+        /// @brief Transfer one-shot editor commands without exposing key bindings to FlyCamera.
+        void                             FeedNavigationCommands(bool enabled);
+        Input::InputManager*             m_input                     = nullptr;
+        CamState                         m_state                     = CamState::Idle;
+        bool                             m_input_enabled             = true;
+        bool                             m_pointer_captured          = false;
+        bool                             m_keyboard_captured         = false;
+        float                            m_vp[4]                     = {}; // viewport rect: x0, y0, x1, y1
+        Rendering::Cameras::FlyCameraPtr m_camera                    = nullptr;
 
-        uint32_t                         m_slot_forward      = 0;
-        uint32_t                         m_slot_right        = 0;
-        uint32_t                         m_slot_up           = 0;
-        uint32_t                         m_slot_scroll       = 0;
-        uint32_t                         m_slot_rmb          = 0;
-        uint32_t                         m_slot_mmb          = 0;
-        uint32_t                         m_slot_lmb          = 0;
-        uint32_t                         m_slot_alt          = 0;
-        uint32_t                         m_slot_shift        = 0;
-        uint32_t                         m_slot_ctrl         = 0;
-        uint32_t                         m_slot_focus        = 0;
-        uint32_t                         m_slot_bookmark[9]  = {};
+        uint32_t                         m_slot_forward              = 0;
+        uint32_t                         m_slot_right                = 0;
+        uint32_t                         m_slot_up                   = 0;
+        uint32_t                         m_slot_scroll               = 0;
+        uint32_t                         m_slot_rmb                  = 0;
+        uint32_t                         m_slot_mmb                  = 0;
+        uint32_t                         m_slot_lmb                  = 0;
+        uint32_t                         m_slot_alt                  = 0;
+        uint32_t                         m_slot_shift                = 0;
+        // Command on macOS, Control on Windows and Linux. This is deliberately
+        // named by purpose rather than by physical key.
+        uint32_t                         m_slot_primary_modifier     = 0;
+        // The modifier used by non-keypad navigation fallbacks. It aliases
+        // Shift on Windows/Linux and is Control on macOS.
+        uint32_t                         m_slot_alternate_modifier   = 0;
+        uint32_t                         m_slot_focus                = 0;
+        uint32_t                         m_slot_frame_all            = 0;
+        uint32_t                         m_slot_projection           = 0;
+        uint32_t                         m_slot_projection_top_row   = 0;
+        uint32_t                         m_slot_axis_view[3]         = {};
+        uint32_t                         m_slot_axis_view_top_row[3] = {};
+        uint32_t                         m_slot_bookmark[9]          = {};
     };
     ZDEFINE_PTR(FlyCameraController);
 } // namespace ZEngine::Controllers

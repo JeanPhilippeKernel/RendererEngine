@@ -33,14 +33,17 @@ TEST(ZUIInputCaptureTest, OtherInteractiveElementsCaptureThePointer)
     EXPECT_TRUE(ZUIGetInputCapture(&ctx).Pointer);
 }
 
-TEST(ZUIInputCaptureTest, TextFocusCapturesOnlyKeyboardInput)
+TEST(ZUIInputCaptureTest, TextInputCapturesOnlyKeyboardInput)
 {
     ZUIContext ctx                = {};
     ctx.FocusKey                  = 7;
 
     const ZUIInputCapture capture = ZUIGetInputCapture(&ctx);
     EXPECT_FALSE(capture.Pointer);
-    EXPECT_TRUE(capture.Keyboard);
+    EXPECT_FALSE(capture.Keyboard);
+
+    ctx.TextInputActive = true;
+    EXPECT_TRUE(ZUIGetInputCapture(&ctx).Keyboard);
 }
 
 TEST(ZUIInputCaptureTest, PopupsAndModalsCaptureBothInputChannels)

@@ -23,6 +23,7 @@ namespace ZEngine::Rendering::Cameras
         float FocusDuration       = 0.25f; // seconds
         float MinOrbitDistance    = 0.5f;
         float MaxOrbitDistance    = 10000.0f;
+        float OrthographicHeight  = 10.0f;
         float FOV                 = 60.0f;
         float NearPlane           = 0.1f;
         float FarPlane            = 10000.0f;
