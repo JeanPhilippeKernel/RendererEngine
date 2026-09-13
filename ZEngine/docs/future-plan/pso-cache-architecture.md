@@ -115,11 +115,12 @@ Disk blobs are optional. Store magic/version, Vulkan pipeline-cache UUID, vendor
 
 When a `GameApplication` supplies both a non-empty `WorkingSpacePath` and a VFS
 backend advertising `Write`, `Engine` mounts the dedicated native directory
-`<WorkingSpacePath>/ZodiacEngine/cache` at `/ZodiacEngine/cache`, ahead of the
-engine-assets mount. This is the development default and is ignored by Git. An
-application without an explicitly writable workspace has disk persistence disabled;
-it does not fall back to the current directory, an installed bundle, or a CI
-workspace. Mount/directory creation failure also leaves a valid in-memory cache.
+`<WorkingSpacePath>/.zodiacengine/cache/pso` at `/cache/pso`. This keeps generated
+project metadata separate from both source assets and packaged engine assets, and
+is ignored by Git. An application without an explicitly writable workspace has
+disk persistence disabled; it does not fall back to the current directory, an
+installed bundle, or a CI workspace. Mount/directory creation failure also leaves
+a valid in-memory cache.
 Stale temporary files, short write/close failure, and replacement failure are
 non-fatal. Blob allocation is bounded arena/heap memory, never `alloca`.
 

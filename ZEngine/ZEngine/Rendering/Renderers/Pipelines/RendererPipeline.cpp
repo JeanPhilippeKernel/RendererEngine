@@ -24,10 +24,26 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     void ComputePipeline::Bake()
     {
-        ZENGINE_VALIDATE_ASSERT(Shader, "ComputePipeline::Bake called with no shader")
-        ZENGINE_VALIDATE_ASSERT(!Shader->ShaderCreateInfos.empty(), "Compute shader has no stage info")
-        ZENGINE_VALIDATE_ASSERT(Shader->ShaderCreateInfos[0].stage == VK_SHADER_STAGE_COMPUTE_BIT, "Shader stage is not VK_SHADER_STAGE_COMPUTE_BIT")
-        ZENGINE_VALIDATE_ASSERT(Device->PipelineStateCache != nullptr, "Compute pipeline requires the PSO cache")
+        if (!Shader)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline cannot bake because its shader is unavailable")
+            return;
+        }
+        if (Shader->ShaderCreateInfos.empty())
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader has no compute stage", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            return;
+        }
+        if (Shader->ShaderCreateInfos[0].stage != VK_SHADER_STAGE_COMPUTE_BIT)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader stage is not compute", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            return;
+        }
+        if (!Device || !Device->PipelineStateCache)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because the PSO cache is unavailable", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            return;
+        }
         if (Handle != VK_NULL_HANDLE)
             Device->PipelineStateCache->UnpinPipeline(Handle);
 

@@ -34,8 +34,9 @@ namespace ZEngine
         // (priority 0) takes precedence for any overlapping paths.
         Core::VFS::VFSDiskBackend         EngineAssetsBackend             = {};
 
-        // Writable project-owned backend mounted specifically at /ZodiacEngine/cache.
-        // It is distinct from packaged engine assets, which may be read-only.
+        // Writable project-owned backend mounted specifically at /cache/pso.
+        // It resolves to <WorkingSpacePath>/.zodiacengine/cache/pso and is distinct
+        // from packaged engine assets, which may be read-only.
         Core::VFS::VFSDiskBackend         PipelineCacheBackend            = {};
 
         // Project-wide directory listing cache and async tree walker — populates

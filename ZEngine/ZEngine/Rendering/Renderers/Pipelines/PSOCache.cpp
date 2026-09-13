@@ -23,15 +23,15 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         constexpr uint32_t           kPersistentCacheVersion            = 1;
         constexpr uint32_t           kPersistentCacheHeaderBytes        = 64;
         constexpr uint64_t           kMaxPersistentCacheBytes           = 32ULL * 1024ULL * 1024ULL;
-        constexpr cstring            kPersistentCacheDirectory          = "/ZodiacEngine/cache";
-        constexpr cstring            kPersistentCacheFile               = "/ZodiacEngine/cache/vulkan-pipeline-cache.bin";
-        constexpr cstring            kPersistentCacheTempFile           = "/ZodiacEngine/cache/vulkan-pipeline-cache.tmp";
+        constexpr cstring            kPersistentCacheDirectory          = "/cache/pso";
+        constexpr cstring            kPersistentCacheFile               = "/cache/pso/vulkan-pipeline-cache.bin";
+        constexpr cstring            kPersistentCacheTempFile           = "/cache/pso/vulkan-pipeline-cache.tmp";
         constexpr uint32_t           kPersistentCacheEngineVersion      = ZENGINE_PIPELINE_CACHE_ENGINE_VERSION;
         constexpr uint32_t           kWarmupRecipeMagic                 = 0x5257505A; // ZPWR
         constexpr uint32_t           kWarmupRecipeVersion               = 3;
         constexpr uint32_t           kWarmupRecipeHeaderBytes           = 64;
-        constexpr cstring            kWarmupRecipeFile                  = "/ZodiacEngine/cache/vulkan-pipeline-warmup.bin";
-        constexpr cstring            kWarmupRecipeTempFile              = "/ZodiacEngine/cache/vulkan-pipeline-warmup.tmp";
+        constexpr cstring            kWarmupRecipeFile                  = "/cache/pso/vulkan-pipeline-warmup.bin";
+        constexpr cstring            kWarmupRecipeTempFile              = "/cache/pso/vulkan-pipeline-warmup.tmp";
 
         static_assert(std::is_trivially_copyable_v<PSOWarmupRecipe>);
 

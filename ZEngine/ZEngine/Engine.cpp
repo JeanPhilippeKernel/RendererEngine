@@ -90,10 +90,10 @@ namespace ZEngine
             }
 
             const bool has_writable_workspace = app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0' && app->VFSBackend && Core::VFS::HasCap(app->VFSBackend->Capabilities(), Core::VFS::VFSBackendCaps::Write);
-            const auto cache_mount_path       = Core::VFS::VFSPath::Parse("/ZodiacEngine/cache");
+            const auto cache_mount_path       = Core::VFS::VFSPath::Parse("/cache/pso");
             if (has_writable_workspace && cache_mount_path.Succeeded())
             {
-                const std::filesystem::path cache_directory  = std::filesystem::path(app->WorkingSpacePath) / "ZodiacEngine" / "cache";
+                const std::filesystem::path cache_directory  = std::filesystem::path(app->WorkingSpacePath) / ".zodiacengine" / "cache" / "pso";
                 const std::string           native_cache_dir = cache_directory.string();
                 g_engine_ctx->PipelineCacheBackend.Initialize(native_cache_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
                 if (vfs_ctx->Mount(&g_engine_ctx->PipelineCacheBackend, cache_mount_path.Value(), 1).Succeeded() && vfs_ctx->CreateDir(cache_mount_path.Value()).Succeeded())
