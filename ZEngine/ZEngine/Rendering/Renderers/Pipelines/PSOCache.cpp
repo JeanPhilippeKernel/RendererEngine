@@ -945,6 +945,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (key.Shader.Generation != invalidation.Generation)
             return false;
 
+        // A live pass may still submit a pinned pipeline.
+        if (entry.PinCount != 0)
+            return false;
+
         for (uint32_t module_index = 0; module_index < invalidation.ModuleCount; ++module_index)
         {
             if (key.Shader.ModuleIdentity != reinterpret_cast<uintptr_t>(invalidation.ShaderModules[module_index]))
@@ -964,6 +968,9 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     bool PSOCache::RemoveInvalidatedGraphicsPipeline(void* context, const PSOGraphicsPipelineKey& key, GraphicsPipelineEntry& entry)
     {
         const ShaderInvalidationContext& invalidation = *static_cast<const ShaderInvalidationContext*>(context);
+        if (entry.PinCount != 0)
+            return false;
+
         for (uint32_t stage_index = 0; stage_index < key.ShaderStageCount; ++stage_index)
         {
             const PSOGraphicsShaderStageKey& stage = key.ShaderStages[stage_index];

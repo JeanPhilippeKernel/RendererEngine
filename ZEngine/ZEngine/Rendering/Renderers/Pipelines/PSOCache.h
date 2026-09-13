@@ -22,6 +22,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
+    struct PSOCacheTestAccess;
+
     /// @brief Engine-supported descriptor kinds used in canonical layout keys.
     enum class PSODescriptorKind : uint8_t
     {
@@ -738,6 +740,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         PSOGraphicsPipelineKey        MakeGraphicsPipelineKey(const VkGraphicsPipelineCreateInfo& create_info, uint32_t shader_generation) const;
 
     private:
+        friend struct PSOCacheTestAccess;
+
         struct DescriptorSetLayoutEntry
         {
             VkDescriptorSetLayout Handle   = VK_NULL_HANDLE;

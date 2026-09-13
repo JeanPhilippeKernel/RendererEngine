@@ -5,6 +5,58 @@
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Rendering::Renderers::Pipelines;
 
+namespace ZEngine::Rendering::Renderers::Pipelines
+{
+    struct PSOCacheTestAccess
+    {
+        static bool RetainsPinnedInvalidatedComputePipeline()
+        {
+            const VkShaderModule module   = reinterpret_cast<VkShaderModule>(uintptr_t(1));
+            const VkPipeline     pipeline = reinterpret_cast<VkPipeline>(uintptr_t(2));
+            PSOComputePipelineKey key     = {};
+            key.Shader.ModuleIdentity     = reinterpret_cast<uintptr_t>(module);
+            key.Shader.Generation         = 7;
+
+            PSOCache::ComputePipelineEntry entry = {};
+            entry.Handle                         = pipeline;
+            entry.PinCount                       = 1;
+            entry.State                          = PSOPipelineState::Ready;
+
+            PSOCache::ShaderInvalidationContext invalidation = {};
+            invalidation.ShaderModules                        = &module;
+            invalidation.ModuleCount                           = 1;
+            invalidation.Generation                            = 7;
+            const bool removed = PSOCache::RemoveInvalidatedComputePipeline(&invalidation, key, entry);
+
+            return !removed && entry.Handle == pipeline && entry.PinCount == 1;
+        }
+
+        static bool RetainsPinnedInvalidatedGraphicsPipeline()
+        {
+            const VkShaderModule  module   = reinterpret_cast<VkShaderModule>(uintptr_t(3));
+            const VkPipeline      pipeline = reinterpret_cast<VkPipeline>(uintptr_t(4));
+            PSOGraphicsPipelineKey key     = {};
+            key.ShaderStageCount           = 1;
+            key.ShaderStages[0].ModuleIdentity = reinterpret_cast<uintptr_t>(module);
+            key.ShaderStages[0].Generation     = 11;
+            key.ShaderStages[0].Stage          = VK_SHADER_STAGE_VERTEX_BIT;
+
+            PSOCache::GraphicsPipelineEntry entry = {};
+            entry.Handle                          = pipeline;
+            entry.PinCount                        = 1;
+            entry.State                           = PSOPipelineState::Ready;
+
+            PSOCache::ShaderInvalidationContext invalidation = {};
+            invalidation.ShaderModules                        = &module;
+            invalidation.ModuleCount                           = 1;
+            invalidation.Generation                            = 11;
+            const bool removed = PSOCache::RemoveInvalidatedGraphicsPipeline(&invalidation, key, entry);
+
+            return !removed && entry.Handle == pipeline && entry.PinCount == 1;
+        }
+    };
+} // namespace ZEngine::Rendering::Renderers::Pipelines
+
 namespace
 {
     bool RemoveMatchingKey(void* context, const uint32_t& key, uint32_t&)
@@ -34,6 +86,16 @@ namespace
         }
     };
 } // namespace
+
+TEST(PSOCacheInvalidationTest, RetainsPinnedComputePipeline)
+{
+    EXPECT_TRUE(PSOCacheTestAccess::RetainsPinnedInvalidatedComputePipeline());
+}
+
+TEST(PSOCacheInvalidationTest, RetainsPinnedGraphicsPipeline)
+{
+    EXPECT_TRUE(PSOCacheTestAccess::RetainsPinnedInvalidatedGraphicsPipeline());
+}
 
 TEST(PSOCacheCollisionBucketsTest, KeepsDistinctKeysInTheSameHashBucket)
 {
