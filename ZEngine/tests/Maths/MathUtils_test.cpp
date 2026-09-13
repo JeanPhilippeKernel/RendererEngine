@@ -8,20 +8,20 @@ TEST(MathUtilsTest, TrigonometricFunctionsAreContinuousAcrossZero)
 {
     constexpr float epsilon = 0.001f;
 
-    EXPECT_NEAR(sin(-epsilon), std::sin(-epsilon), 1e-6f);
-    EXPECT_NEAR(sin(epsilon), std::sin(epsilon), 1e-6f);
-    EXPECT_NEAR(cos(-epsilon), std::cos(-epsilon), 1e-6f);
-    EXPECT_NEAR(cos(epsilon), std::cos(epsilon), 1e-6f);
+    EXPECT_NEAR(ZEngine::Core::Maths::sin(-epsilon), std::sin(-epsilon), 1e-6f);
+    EXPECT_NEAR(ZEngine::Core::Maths::sin(epsilon), std::sin(epsilon), 1e-6f);
+    EXPECT_NEAR(ZEngine::Core::Maths::cos(-epsilon), std::cos(-epsilon), 1e-6f);
+    EXPECT_NEAR(ZEngine::Core::Maths::cos(epsilon), std::cos(epsilon), 1e-6f);
 }
 
 TEST(MathUtilsTest, SineHasTheCorrectSignInEveryQuadrant)
 {
     constexpr float eighth_turn = PI<float> * 0.25f;
 
-    EXPECT_GT(sin(eighth_turn), 0.0f);
-    EXPECT_GT(sin(PI<float> - eighth_turn), 0.0f);
-    EXPECT_LT(sin(-eighth_turn), 0.0f);
-    EXPECT_LT(sin(-PI<float> + eighth_turn), 0.0f);
+    EXPECT_GT(ZEngine::Core::Maths::sin(eighth_turn), 0.0f);
+    EXPECT_GT(ZEngine::Core::Maths::sin(PI<float> - eighth_turn), 0.0f);
+    EXPECT_LT(ZEngine::Core::Maths::sin(-eighth_turn), 0.0f);
+    EXPECT_LT(ZEngine::Core::Maths::sin(-PI<float> + eighth_turn), 0.0f);
 }
 
 TEST(MathUtilsTest, TrigonometricFunctionsRemainContinuousAcrossFullTurns)
@@ -31,7 +31,7 @@ TEST(MathUtilsTest, TrigonometricFunctionsRemainContinuousAcrossFullTurns)
 
     for (const float angle : around_full_turn)
     {
-        EXPECT_NEAR(sin(angle), std::sin(angle), 1e-5f);
-        EXPECT_NEAR(cos(angle), std::cos(angle), 1e-5f);
+        EXPECT_NEAR(ZEngine::Core::Maths::sin(angle), std::sin(angle), 1e-5f);
+        EXPECT_NEAR(ZEngine::Core::Maths::cos(angle), std::cos(angle), 1e-5f);
     }
 }
