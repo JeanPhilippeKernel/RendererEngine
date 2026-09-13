@@ -314,6 +314,10 @@ namespace ZEngine::Windows
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
+            auto* engine_context = Engine::GetContext();
+            if (engine_context && engine_context->InputManager)
+                engine_context->InputManager->AccumulateCursorPosition(xpos, ypos);
+
             double xoffset = (xpos - lastX);
             double yoffset = (ypos - lastY);
             lastX          = xpos;

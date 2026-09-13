@@ -83,18 +83,15 @@ namespace ZEngine::Core::Maths
     template <typename T>
     T sin(T x)
     {
-        x      -= TWO_PI<T> * floor(x / TWO_PI<T>);
-
-        T sign  = T(1);
+        // Preserve the signed principal angle before the polynomial evaluation.
+        x -= TWO_PI<T> * floor((x + PI<T>) / TWO_PI<T>);
         if (x > HALF_PI<T>)
         {
-            x    = PI<T> - x;
-            sign = -1;
+            x = PI<T> - x;
         }
         else if (x < -HALF_PI<T>)
         {
-            x    = -PI<T> - x;
-            sign = -1;
+            x = -PI<T> - x;
         }
 
         T       x2 = x * x;
@@ -106,7 +103,7 @@ namespace ZEngine::Core::Maths
         T       t1 = c2 + c3 * x2;
         T       t2 = c1 + t1 * x2;
 
-        return sign * x * (1 + t2 * x2);
+        return x * (1 + t2 * x2);
     }
 
     template <typename T>

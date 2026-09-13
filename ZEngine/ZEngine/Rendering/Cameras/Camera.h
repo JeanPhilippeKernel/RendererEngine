@@ -29,6 +29,18 @@ namespace ZEngine::Rendering::Cameras
         float SmoothingFactor     = 12.0f; // higher = snappier
     };
 
+    /// @brief Immutable camera state consumed by one render payload.
+    ///
+    /// The editor camera is updated on the main thread while rendering happens
+    /// asynchronously. Render code must consume this value, never a mutable
+    /// Camera instance owned by the main thread.
+    struct CameraFrameData
+    {
+        ZEngine::Core::Maths::Mat4f View       = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Mat4f Projection = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Vec3f Position   = {};
+    };
+
     struct Camera
     {
         Camera()                                                    = default;
@@ -61,6 +73,12 @@ namespace ZEngine::Rendering::Cameras
         virtual ZEngine::Core::Maths::Mat4f GetViewProjection() const
         {
             return Projection * View;
+        }
+
+        /// @brief Capture the state that will be consumed by a render payload.
+        virtual CameraFrameData CaptureFrameData()
+        {
+            return {.View = View, .Projection = Projection, .Position = GetPosition()};
         }
 
         virtual ZEngine::Core::Maths::Vec3f GetPosition() const = 0;

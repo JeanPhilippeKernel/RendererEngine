@@ -51,6 +51,12 @@ namespace ZEngine::Rendering::Cameras
         return fromEulerAngles(-Pitch, -Yaw, 0.0f);
     }
 
+    CameraFrameData FlyCamera::CaptureFrameData()
+    {
+        UpdateMatrices();
+        return Camera::CaptureFrameData();
+    }
+
     Vec3f FlyCamera::GetPosition() const
     {
         return Position;
@@ -75,10 +81,17 @@ namespace ZEngine::Rendering::Cameras
 
     void FlyCamera::SetViewportSize(float logicalW, float logicalH)
     {
+        if (!std::isfinite(logicalW) || !std::isfinite(logicalH) || logicalW <= 0.0f || logicalH <= 0.0f)
+            return;
+
+        if (m_logicalW == logicalW && m_logicalH == logicalH)
+            return;
+
         m_logicalW  = logicalW;
         m_logicalH  = logicalH;
         AspectRatio = logicalW / logicalH;
         m_projDirty = true;
+        RecalculateProjection();
     }
 
     void FlyCamera::SetPosition(Vec3f position)
@@ -193,12 +206,10 @@ namespace ZEngine::Rendering::Cameras
 
         if (Input.RightDown)
         {
-            float speed    = AdaptiveSpeed() * (Input.ShiftDown ? Settings.FastSpeedMultiplier : 1.0f);
-            m_targetPos   += KeyboardMoveDir() * speed * dt;
+            float speed  = AdaptiveSpeed() * (Input.ShiftDown ? Settings.FastSpeedMultiplier : 1.0f);
+            m_targetPos += KeyboardMoveDir() * speed * dt;
 
-            float yawSign  = GetUp().y < 0.0f ? -1.0f : 1.0f;
-            m_targetYaw    = WrapAngle(m_targetYaw - yawSign * (Input.MouseDeltaX / m_logicalW) * PI<float> * Settings.RotationSpeed);
-            m_targetPitch  = clamp(m_targetPitch - (Input.MouseDeltaY / m_logicalH) * PI<float> * Settings.RotationSpeed, -kPitchLimit, kPitchLimit);
+            ApplyLookDelta(Settings.RotationSpeed);
         }
 
         if (Input.ScrollDelta != 0.0f)
@@ -213,15 +224,6 @@ namespace ZEngine::Rendering::Cameras
             Position    = lerp(Position, m_targetPos, t);
             m_viewDirty = true;
         }
-
-        float newPitch = clamp(lerp(Pitch, m_targetPitch, t), -kPitchLimit, kPitchLimit);
-        float newYaw   = LerpAngleRad(Yaw, m_targetYaw, t);
-        if (newPitch != Pitch || newYaw != Yaw)
-        {
-            Pitch       = newPitch;
-            Yaw         = newYaw;
-            m_viewDirty = true;
-        }
     }
 
     void FlyCamera::UpdateOrbit(float dt)
@@ -230,9 +232,7 @@ namespace ZEngine::Rendering::Cameras
 
         if (Input.AltDown && (Input.LeftDown || Input.RightDown))
         {
-            float yawSign = GetUp().y < 0.0f ? -1.0f : 1.0f;
-            m_targetYaw   = WrapAngle(m_targetYaw - yawSign * (Input.MouseDeltaX / m_logicalW) * PI<float> * Settings.OrbitSpeed);
-            m_targetPitch = clamp(m_targetPitch - (Input.MouseDeltaY / m_logicalH) * PI<float> * Settings.OrbitSpeed, -kPitchLimit, kPitchLimit);
+            ApplyLookDelta(Settings.OrbitSpeed);
         }
 
         if (Input.ScrollDelta != 0.0f)
@@ -243,8 +243,6 @@ namespace ZEngine::Rendering::Cameras
             m_targetOrbitDist  = clamp(m_targetOrbitDist, Settings.MinOrbitDistance, Settings.MaxOrbitDistance);
         }
 
-        Pitch          = clamp(lerp(Pitch, m_targetPitch, t), -kPitchLimit, kPitchLimit);
-        Yaw            = LerpAngleRad(Yaw, m_targetYaw, t);
         m_orbitDist    = lerp(m_orbitDist, m_targetOrbitDist, t);
 
         Vec3f fwd      = GetForward();
@@ -437,6 +435,19 @@ namespace ZEngine::Rendering::Cameras
         return desired;
     }
 
+    void FlyCamera::ApplyLookDelta(float speed)
+    {
+        if (Input.MouseDeltaX == 0.0f && Input.MouseDeltaY == 0.0f)
+            return;
+
+        const float yaw_sign = GetUp().y < 0.0f ? -1.0f : 1.0f;
+        Yaw                  = WrapAngle(Yaw - yaw_sign * (Input.MouseDeltaX / m_logicalW) * PI<float> * speed);
+        Pitch                = clamp(Pitch - (Input.MouseDeltaY / m_logicalH) * PI<float> * speed, -kPitchLimit, kPitchLimit);
+        m_targetYaw          = Yaw;
+        m_targetPitch        = Pitch;
+        m_viewDirty          = true;
+    }
+
     void FlyCamera::RecalculateView()
     {
         Vec3f f     = GetForward();
@@ -459,7 +470,6 @@ namespace ZEngine::Rendering::Cameras
         m_projDirty   = false;
     }
 
-    // Thin compatibility shim used by RecalculateView/Projection path.
     void FlyCamera::UpdateMatrices()
     {
         if (m_projDirty)

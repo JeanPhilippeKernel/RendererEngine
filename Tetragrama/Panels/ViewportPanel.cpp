@@ -153,7 +153,11 @@ namespace Tetragrama::Panels
         // Feed the viewport rect to the camera controller every frame so it can
         // self-gate on cursor position without depending on the ZUI hit-test chain.
         if (app->CameraController)
+        {
             app->CameraController->SetViewportRect(rect[0], rect[1], rect[2], rect[3]);
+            if (sw > 0.0f && sh > 0.0f)
+                app->CameraController->SetViewport(sw, sh);
+        }
 
         // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).
         ctx->ViewportHovered = (img_sig.Flags & ZUI_SignalHovered) != 0;

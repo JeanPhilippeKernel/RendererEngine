@@ -46,6 +46,7 @@ namespace ZEngine::Rendering::Cameras
         };
         Ray                            GetRayFromViewport(float viewportX, float viewportY) const;
 
+        CameraFrameData                CaptureFrameData() override;
         virtual Core::Maths::Vec3f     GetPosition() const override;
         virtual Core::Maths::Vec3f     GetForward() const override;
         virtual Core::Maths::Vec3f     GetUp() const override;
@@ -57,6 +58,7 @@ namespace ZEngine::Rendering::Cameras
         void               UpdateOrbit(float dt);
         void               UpdatePan(float dt);
         void               UpdateAnimation(float dt);
+        void               ApplyLookDelta(float speed);
         void               RecalculateView();
         void               RecalculateProjection();
         Core::Maths::Vec3f KeyboardMoveDir() const;

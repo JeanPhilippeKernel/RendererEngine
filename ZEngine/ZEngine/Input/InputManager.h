@@ -29,6 +29,12 @@ namespace ZEngine::Input
         // Called from GameWindow's scroll callback trampoline.
         void                    AccumulateScroll(double yoffset);
 
+        /// @brief Accumulate a cursor callback until the next Poll().
+        void                    AccumulateCursorPosition(double xpos, double ypos);
+
+        /// @brief Discard movement caused by a cursor-mode transition.
+        void                    ResetMouseDelta();
+
         // Query — valid after Poll returns.
         const InputButtonState& GetButton(uint32_t slot) const;
         float                   GetAxis(uint32_t slot) const;
@@ -55,6 +61,7 @@ namespace ZEngine::Input
         Core::Maths::Vec2f            m_mouse_pos                 = {};
         Core::Maths::Vec2f            m_last_mouse_pos            = {};
         Core::Maths::Vec2f            m_mouse_delta               = {};
+        Core::Maths::Vec2f            m_pending_mouse_delta       = {};
 
         double                        m_scroll_accum              = 0.0;
         float                         m_scroll_delta              = 0.0f;
@@ -62,7 +69,8 @@ namespace ZEngine::Input
         // Per-slot scroll scale (non-zero only for slots bound with BindScrollAxis).
         float                         m_scroll_scale[kMaxActions] = {};
 
-        bool                          m_first_poll                = true;
+        // Cursor capture may synthesize a position update when modes change.
+        bool                          m_rebase_mouse_position     = true;
     };
 
 } // namespace ZEngine::Input

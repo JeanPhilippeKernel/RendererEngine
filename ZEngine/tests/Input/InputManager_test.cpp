@@ -114,6 +114,20 @@ TEST_F(InputManagerTest, DefaultMouseDelta_IsZero)
     EXPECT_FLOAT_EQ(delta.y, 0.0f);
 }
 
+TEST_F(InputManagerTest, CursorCallbacksTrackTheLatestPosition)
+{
+    input.AccumulateCursorPosition(120.0, 80.0);
+    auto position = input.GetMousePosition();
+    EXPECT_FLOAT_EQ(position.x, 120.0f);
+    EXPECT_FLOAT_EQ(position.y, 80.0f);
+
+    input.ResetMouseDelta();
+    input.AccumulateCursorPosition(300.0, 200.0);
+    position = input.GetMousePosition();
+    EXPECT_FLOAT_EQ(position.x, 300.0f);
+    EXPECT_FLOAT_EQ(position.y, 200.0f);
+}
+
 TEST_F(InputManagerTest, DefaultScrollDelta_IsZero)
 {
     EXPECT_FLOAT_EQ(input.GetScrollDelta(), 0.0f);

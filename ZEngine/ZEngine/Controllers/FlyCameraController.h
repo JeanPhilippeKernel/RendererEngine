@@ -37,7 +37,6 @@ namespace ZEngine::Controllers
 
         void                             EnterFly();
         void                             ExitFly();
-
         Input::InputManager*             m_input            = nullptr;
         CamState                         m_state            = CamState::Idle;
         float                            m_vp[4]            = {}; // viewport rect: x0, y0, x1, y1

@@ -72,7 +72,10 @@ namespace ZEngine::Controllers
         {
             auto* glfw = static_cast<GLFWwindow*>(m_window->GetNativeWindow());
             glfwSetInputMode(glfw, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            if (glfwRawMouseMotionSupported())
+                glfwSetInputMode(glfw, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
         }
+        m_input->ResetMouseDelta();
     }
 
     void FlyCameraController::ExitFly()
@@ -81,14 +84,16 @@ namespace ZEngine::Controllers
         if (m_window)
         {
             auto* glfw = static_cast<GLFWwindow*>(m_window->GetNativeWindow());
+            if (glfwRawMouseMotionSupported())
+                glfwSetInputMode(glfw, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
             glfwSetInputMode(glfw, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
+        m_input->ResetMouseDelta();
     }
 
     void FlyCameraController::Update(Core::TimeStep dt)
     {
         // HOT PATH — runs every frame, no heap allocation allowed.
-
         // Compute hover from raw cursor position vs stored viewport rect.
         // This bypasses the ZUI hit-test chain entirely — no ViewportHovered dependency.
         auto pos     = m_input->GetMousePosition();
@@ -120,10 +125,10 @@ namespace ZEngine::Controllers
         }
         else
         {
-            auto& inp          = m_camera->Input;
+            auto&      inp     = m_camera->Input;
 
             // Scroll, pan, orbit — always active when hovered or flying
-            auto  delta        = m_input->GetMouseDelta();
+            const auto delta   = m_input->GetMouseDelta();
             inp.MouseDeltaX    = delta.x;
             inp.MouseDeltaY    = delta.y;
             inp.ScrollDelta    = m_input->GetAxis(m_slot_scroll);

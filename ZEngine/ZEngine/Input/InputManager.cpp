@@ -23,13 +23,17 @@ namespace ZEngine::Input
         m_arena        = arena;
         m_max_actions  = max_actions;
         m_action_count = 0;
-        m_first_poll   = true;
 
         m_actions      = ZPushArray(arena, InputAction, max_actions);
         memset(m_actions, 0, sizeof(InputAction) * max_actions);
         memset(m_scroll_scale, 0, sizeof(m_scroll_scale));
-        m_current = {};
-        m_prev    = {};
+        m_current               = {};
+        m_prev                  = {};
+        m_mouse_pos             = {};
+        m_last_mouse_pos        = {};
+        m_mouse_delta           = {};
+        m_pending_mouse_delta   = {};
+        m_rebase_mouse_position = true;
     }
 
     void InputManager::Dispose()
@@ -93,6 +97,30 @@ namespace ZEngine::Input
         m_scroll_accum += yoffset;
     }
 
+    void InputManager::AccumulateCursorPosition(double xpos, double ypos)
+    {
+        const Core::Maths::Vec2f position = {(float) xpos, (float) ypos};
+        if (m_rebase_mouse_position)
+        {
+            m_last_mouse_pos        = position;
+            m_mouse_pos             = position;
+            m_rebase_mouse_position = false;
+            return;
+        }
+
+        m_pending_mouse_delta.x += position.x - m_last_mouse_pos.x;
+        m_pending_mouse_delta.y += position.y - m_last_mouse_pos.y;
+        m_last_mouse_pos         = position;
+        m_mouse_pos              = position;
+    }
+
+    void InputManager::ResetMouseDelta()
+    {
+        m_mouse_delta           = {};
+        m_pending_mouse_delta   = {};
+        m_rebase_mouse_position = true;
+    }
+
     void InputManager::Poll(GLFWwindow* window)
     {
         ZENGINE_VALIDATE_ASSERT(window, "InputManager::Poll: window must not be null")
@@ -103,24 +131,27 @@ namespace ZEngine::Input
         m_current.FrameNumber = m_prev.FrameNumber + 1;
         m_current.ActionCount = m_action_count;
 
-        // Mouse position and delta.
+        // Cursor position supports hover/UI hit-testing. Relative look motion
+        // comes exclusively from callbacks accumulated since the prior Poll;
+        // querying the latest position here can otherwise collapse multiple
+        // platform events into an uneven camera delta.
         double mx = 0.0, my = 0.0;
         glfwGetCursorPos(window, &mx, &my);
         Core::Maths::Vec2f new_pos = {(float) mx, (float) my};
 
-        if (m_first_poll)
+        if (m_rebase_mouse_position)
         {
-            m_last_mouse_pos = new_pos;
-            m_first_poll     = false;
+            m_last_mouse_pos        = new_pos;
+            m_rebase_mouse_position = false;
         }
 
-        m_mouse_delta    = {new_pos.x - m_last_mouse_pos.x, new_pos.y - m_last_mouse_pos.y};
-        m_last_mouse_pos = new_pos;
-        m_mouse_pos      = new_pos;
+        m_mouse_pos           = new_pos;
+        m_mouse_delta         = m_pending_mouse_delta;
+        m_pending_mouse_delta = {};
 
         // Drain scroll accumulator, clamped to ±1 to prevent trackpad momentum spikes.
-        m_scroll_delta   = (float) std::clamp(m_scroll_accum, -1.0, 1.0);
-        m_scroll_accum   = 0.0;
+        m_scroll_delta        = (float) std::clamp(m_scroll_accum, -1.0, 1.0);
+        m_scroll_accum        = 0.0;
 
         // Evaluate each action.
         for (uint32_t i = 0; i < m_action_count; ++i)

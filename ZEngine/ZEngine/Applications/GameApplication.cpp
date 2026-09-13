@@ -79,26 +79,24 @@ namespace ZEngine::Applications
         OnEvent(e);
     }
 
-    void GameApplication::PrepareScene(RenderPayload& payload)
+    void GameApplication::PrepareScene(RenderFrameState& state)
     {
-        RenderTargetResizeRequest request            = {};
-        bool                      has_resize_request = false;
+        RenderTargetResizeRequest request = {};
         // Panel layout can emit several intermediate extents while a dock or
         // window is dragged. Only the final extent is useful: each request
         // rebuilds viewport images after waiting for the device to become idle.
         while (State->RenderTargetResizeRequests.pop(request))
         {
-            has_resize_request = true;
-        }
-        if (has_resize_request)
-        {
-            payload.ResizeRenderTarget.value.store(true, std::memory_order_release);
-            payload.RenderTargetW = request.Width;
-            payload.RenderTargetH = request.Height;
+            m_render_target_width  = request.Width;
+            m_render_target_height = request.Height;
+            ++m_render_target_resize_sequence;
         }
 
-        payload.Scene  = CurrentScene;
-        payload.Camera = CameraController->GetCamera();
+        state.Scene          = CurrentScene;
+        state.Camera         = CameraController->GetCamera()->CaptureFrameData();
+        state.RenderTargetW  = m_render_target_width;
+        state.RenderTargetH  = m_render_target_height;
+        state.ResizeSequence = m_render_target_resize_sequence;
     }
 
     void GameApplication::Shutdown()

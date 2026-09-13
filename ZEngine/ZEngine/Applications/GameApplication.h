@@ -46,7 +46,7 @@ namespace ZEngine::Applications
         void                              Update(Core::TimeStep dt);
         virtual void                      ProcessEvent(Core::CoreEvent&);
         void                              Run();
-        void                              PrepareScene(RenderPayload&);
+        void                              PrepareScene(RenderFrameState&);
         void                              Shutdown();
 
         virtual void                      OverrideWindowConfiguration() = 0;
@@ -63,6 +63,11 @@ namespace ZEngine::Applications
 
         virtual void                      OnClosing()                   = 0;
         virtual void                      OnClosed()                    = 0;
+
+    private:
+        uint32_t m_render_target_width           = 0;
+        uint32_t m_render_target_height          = 0;
+        uint64_t m_render_target_resize_sequence = 0;
     };
     ZDEFINE_PTR(GameApplication);
 
