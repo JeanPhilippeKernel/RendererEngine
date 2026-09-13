@@ -15,6 +15,13 @@ using ZEngine::Core::VFS::VFSPath;
 
 namespace Tetragrama
 {
+    EditorScene::~EditorScene()
+    {
+        // InstanceArena is carved from LocalArena. Tear it down while its
+        // parent is still alive; base-class destruction happens afterwards.
+        InstanceArena.Shutdown();
+    }
+
     void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name)
     {
         // 200 MB carved directly from MainArena — not part of UIContext budget.
@@ -74,6 +81,25 @@ namespace Tetragrama
             mc.RenderInstanceId     = render_id;
             actor->AddComponent<MeshComponent>(mc);
         }
+    }
+
+    bool EditorScene::InitializeDeserialized(size_t page_size)
+    {
+        // This allocation belongs to the deserialized scene, not to the
+        // serializer's worker scratch arena. It therefore remains valid after
+        // the worker returns and after the next serializer job rewinds scratch.
+        LocalArena.Initialize(ZMega(200), page_size);
+        if (!LocalArena.m_memory)
+            return false;
+
+        LocalArena.CreateSubArena(ZMega(4), &InstanceArena);
+        if (!InstanceArena.m_memory)
+            return false;
+
+        AssetFiles.init(&LocalArena, 500);
+        HashToAssetFile.init(&LocalArena, 500);
+        Instances.init(&InstanceArena, 64);
+        return true;
     }
 
     bool EditorScene::HasPendingChange() const

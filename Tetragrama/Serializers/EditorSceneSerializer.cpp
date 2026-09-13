@@ -182,13 +182,11 @@ namespace Tetragrama::Serializers
         std::unique_lock l(m_mutex);
         Arena.Clear();
 
-        EditorScene scene = {};
-
         if (!scene_filename || scene_filename[0] == '\0')
         {
             if (m_deserialize_complete_callback)
             {
-                m_deserialize_complete_callback(Context, std::move(scene));
+                m_deserialize_complete_callback(Context, std::make_unique<EditorScene>());
             }
 
             m_is_deserializing.store(false, std::memory_order_release);
@@ -216,7 +214,7 @@ namespace Tetragrama::Serializers
         ReadBinary(in_stream, scene_magic);
         ReadBinary(in_stream, scene_version);
 
-        if (scene_magic != ZESCENE_MAGIC && scene_version != SCENE_FILE_VERSION)
+        if (scene_magic != ZESCENE_MAGIC || scene_version != SCENE_FILE_VERSION)
         {
             in_stream.close();
             if (m_error_callback)
@@ -227,35 +225,42 @@ namespace Tetragrama::Serializers
             return;
         }
 
+        auto scene = std::make_unique<EditorScene>();
+        if (!scene->InitializeDeserialized(Arena.m_mem_page_size))
+        {
+            if (m_error_callback)
+                m_error_callback(Context, "Error: unable to allocate persistent scene storage.");
+            m_is_deserializing.store(false, std::memory_order_release);
+            return;
+        }
+
         REPORT_LOG(Context, "Extracting scene asset files...")
 
         size_t asset_file_count;
         ReadBinary(in_stream, asset_file_count);
-        scene.AssetFiles.init(&Arena, asset_file_count);
+        scene->AssetFiles.reserve(asset_file_count);
+        if (asset_file_count > 0)
+            scene->HashToAssetFile.reserve(asset_file_count * 2);
 
-        for (int i = 0; i < asset_file_count; ++i)
+        for (size_t i = 0; i < asset_file_count; ++i)
         {
-            auto& file = scene.AssetFiles.push_use({});
+            auto& file = scene->AssetFiles.push_use({});
             ReadBinary(in_stream, file.Type);
             ReadBinary(in_stream, file.Hash);
-            ReadBinaryString(&Arena, in_stream, file.Path);
-            ReadBinaryString(&Arena, in_stream, file.RootPath);
+            ReadBinaryString(&scene->LocalArena, in_stream, file.Path);
+            ReadBinaryString(&scene->LocalArena, in_stream, file.RootPath);
+            scene->HashToAssetFile.insert(file.Hash, static_cast<uint32_t>(i));
         }
 
         REPORT_LOG(Context, "Extracting scene name...")
 
-        char buf[DEFAULT_STR_BUFFER] = {0};
-        ReadBinaryCString(&Arena, in_stream, buf);
-        scene.Name                            = buf;
+        String scene_name = {};
+        ReadBinaryCString(&scene->LocalArena, in_stream, scene_name);
+        scene->Name = scene_name.c_str();
 
         // Sky configuration
-        char sky_mode_buf[DEFAULT_STR_BUFFER] = {0};
-        char sky_env_buf[DEFAULT_STR_BUFFER]  = {0};
-        ReadBinaryCString(&Arena, in_stream, sky_mode_buf);
-        ReadBinaryCString(&Arena, in_stream, sky_env_buf);
-        scene.Sky.Mode.init(&Arena, sky_mode_buf);
-        if (sky_env_buf[0] != '\0')
-            scene.Sky.EnvironmentMap.init(&Arena, sky_env_buf);
+        ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.Mode);
+        ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.EnvironmentMap);
 
         REPORT_LOG(Context, "Extracting mesh instances...")
 
@@ -263,9 +268,7 @@ namespace Tetragrama::Serializers
         ReadBinary(in_stream, instance_count);
         if (instance_count > 0)
         {
-            // Initialize instance storage in the serializer's scratch arena.
-            Arena.CreateSubArena(ZMega(4), &scene.InstanceArena);
-            scene.Instances.init(&scene.InstanceArena, instance_count);
+            scene->Instances.reserve(instance_count);
             for (uint32_t i = 0; i < instance_count; ++i)
             {
                 uuids::uuid                 uuid;
@@ -275,8 +278,8 @@ namespace Tetragrama::Serializers
                 ReadBinary(in_stream, transform);
                 ReadBinary(in_stream, name);
 
-                uint32_t id = scene.AddMeshInstance(uuid, name);
-                scene.SetInstanceTransform(id, transform);
+                uint32_t id = scene->AddMeshInstance(uuid, name);
+                scene->SetInstanceTransform(id, transform);
             }
         }
 

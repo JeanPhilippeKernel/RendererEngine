@@ -3,6 +3,7 @@
 #include <ZEngine/ZEngineDef.h>
 #include <atomic>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -28,7 +29,8 @@ namespace ZEngine::Serializers
     struct Serializer
     {
         typedef void (*on_serializer_complete_fn)(void* const);
-        typedef void (*on_serializer_deserialize_complete_fn)(void* const, TSerializerData&& data);
+        /// @brief Transfers ownership of a completed deserialization result to the callback.
+        typedef void (*on_serializer_deserialize_complete_fn)(void* const, std::unique_ptr<TSerializerData>&& data);
         typedef void (*on_serializer_progress_fn)(void* const, float progress);
         typedef void (*on_serializer_error_fn)(void* const, std::string_view error_message);
         typedef void (*on_serializer_log_fn)(void* const, std::string_view log_message);
@@ -46,11 +48,13 @@ namespace ZEngine::Serializers
 
         virtual ~Serializer()                         = default;
 
+        /// @brief Reusable worker-local scratch storage.
         ZEngine::Core::Memory::ArenaAllocator Arena   = {};
         void*                                 Context = nullptr;
 
         void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
         {
+            ZENGINE_VALIDATE_ASSERT(arena != nullptr, "Serializer::Initialize: arena must not be null")
             arena->CreateSubArena(ZMega(150), &Arena);
         }
 

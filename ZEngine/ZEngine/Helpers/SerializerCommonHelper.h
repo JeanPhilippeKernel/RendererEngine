@@ -84,28 +84,52 @@ namespace ZEngine::Helpers
         in.read(reinterpret_cast<char*>(&value), sizeof(T));
     }
 
-    static void ReadBinaryString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str)
-    {
-        size_t size                    = 0;
-        char   buf[DEFAULT_STR_BUFFER] = {0};
-        in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
-
-        if (size > 0)
-        {
-            in.read(buf, size + 1);
-            str.init(arena, buf);
-        }
-    }
-
-    static void ReadBinaryCString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, char* str)
+    static bool ReadBinaryString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str)
     {
         size_t size = 0;
         in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
 
-        if (size > 0)
+        if (!in.good())
+            return false;
+
+        if (size == 0)
         {
-            in.read(str, size);
+            str.init(arena, "");
+            return true;
         }
+
+        str.init(arena, size + 1);
+        in.read(str.data(), size + 1);
+        if (!in.good())
+            return false;
+
+        str.m_size       = size;
+        str.data()[size] = '\0';
+        return true;
+    }
+
+    static bool ReadBinaryCString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str)
+    {
+        size_t size = 0;
+        in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
+
+        if (!in.good())
+            return false;
+
+        if (size == 0)
+        {
+            str.init(arena, "");
+            return true;
+        }
+
+        str.init(arena, size + 1);
+        in.read(str.data(), size);
+        if (!in.good())
+            return false;
+
+        str.m_size       = size;
+        str.data()[size] = '\0';
+        return true;
     }
 
     template <typename T>

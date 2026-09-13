@@ -30,7 +30,11 @@ namespace Tetragrama
 
         ZEngine::Core::Memory::ArenaAllocator                           LocalArena          = {};
 
+        ~EditorScene();
+
         void                                                            Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "");
+        /// @brief Initializes persistent scene storage without creating default editor content.
+        bool                                                            InitializeDeserialized(size_t page_size);
 
         bool                                                            HasPendingChange() const;
         void                                                            PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
