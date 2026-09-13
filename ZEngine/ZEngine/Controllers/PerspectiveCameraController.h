@@ -49,12 +49,12 @@ namespace ZEngine::Controllers
         bool OnMouseButtonWheelMoved(Windows::Events::MouseButtonWheelEvent&) override;
 
     protected:
-        float                m_camera_fov                                   = 90.0f;
-        float                m_camera_near                                  = 0.1f;
-        float                m_camera_far                                   = 1000.0f;
-        bool                 m_process_event                                = true;
-        Core::Maths::Vec3f   m_camera_target                                = {0.0f, 0.0f, 0.0f};
-        std::recursive_mutex m_event_mutex                                  = {};
-        ZRawPtr(Rendering::Cameras::PerspectiveCamera) m_perspective_camera = nullptr;
+        float                                  m_camera_fov         = 90.0f;
+        float                                  m_camera_near        = 0.1f;
+        float                                  m_camera_far         = 1000.0f;
+        bool                                   m_process_event      = true;
+        Core::Maths::Vec3f                     m_camera_target      = {0.0f, 0.0f, 0.0f};
+        std::recursive_mutex                   m_event_mutex        = {};
+        Rendering::Cameras::PerspectiveCamera* m_perspective_camera = nullptr;
     };
 } // namespace ZEngine::Controllers

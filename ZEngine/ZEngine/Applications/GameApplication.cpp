@@ -81,8 +81,16 @@ namespace ZEngine::Applications
 
     void GameApplication::PrepareScene(RenderPayload& payload)
     {
-        RenderTargetResizeRequest request = {};
-        if (State->RenderTargetResizeRequests.Pop(request))
+        RenderTargetResizeRequest request            = {};
+        bool                      has_resize_request = false;
+        // Panel layout can emit several intermediate extents while a dock or
+        // window is dragged. Only the final extent is useful: each request
+        // rebuilds viewport images after waiting for the device to become idle.
+        while (State->RenderTargetResizeRequests.pop(request))
+        {
+            has_resize_request = true;
+        }
+        if (has_resize_request)
         {
             payload.ResizeRenderTarget.value.store(true, std::memory_order_release);
             payload.RenderTargetW = request.Width;

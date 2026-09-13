@@ -8,6 +8,15 @@
 
 namespace ZEngine::ECS
 {
+    void WorldTick::RunWaveTask(void* context)
+    {
+        WaveTask* task = static_cast<WaveTask*>(context);
+        task->Fn(*task->ScenePtr, task->DeltaTime, *task->Staging);
+
+        if (task->Remaining->fetch_sub(1, std::memory_order_acq_rel) == 1)
+            task->CompletionCV->notify_one();
+    }
+
     void WorldTick::Initialize(Core::Memory::ArenaAllocator* arena)
     {
         m_arena = arena;
@@ -221,26 +230,21 @@ namespace ZEngine::ECS
             std::atomic<uint32_t>   remaining{static_cast<uint32_t>(wave.size())};
             std::mutex              mtx;
             std::condition_variable cv;
+            WaveTask                tasks[MAX_SYSTEMS] = {};
 
             for (size_t i = 0; i < wave.size(); ++i)
             {
-                uint32_t       node_idx = wave[i];
-                SystemFn       fn       = m_nodes[node_idx].Fn;
-                WorldCommands* staging  = &m_staging[node_idx];
+                uint32_t  node_idx = wave[i];
+                WaveTask& task     = tasks[i];
+                task.ScenePtr      = &scene;
+                task.DeltaTime     = dt;
+                task.Fn            = m_nodes[node_idx].Fn;
+                task.Staging       = &m_staging[node_idx];
+                task.Remaining     = &remaining;
+                task.CompletionCV  = &cv;
 
-                ZEngine::Helpers::ThreadPoolHelper::Submit([&scene, dt, fn, staging, &remaining, &cv]() {
-                    struct Guard
-                    {
-                        std::atomic<uint32_t>&   r;
-                        std::condition_variable& cv;
-                        ~Guard()
-                        {
-                            if (r.fetch_sub(1, std::memory_order_acq_rel) == 1)
-                                cv.notify_one();
-                        }
-                    } guard{remaining, cv};
-                    fn(scene, dt, *staging);
-                });
+                if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&task, &WorldTick::RunWaveTask))
+                    RunWaveTask(&task);
             }
 
             // Phase 1: spin-yield — stays in user space for fast waves.

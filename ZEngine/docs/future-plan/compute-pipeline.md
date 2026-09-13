@@ -375,7 +375,7 @@ auto spec = builder
 
 ---
 
-## 6. IComputeCallbackPass
+## 6. IInlineComputePass
 
 `IRenderGraphCallbackPass` has three methods: `Setup`, `Compile`, and `Execute`. A concrete
 pass must implement all three. For compute passes the `Compile` step is always the same:
@@ -385,18 +385,18 @@ construct a `COMPUTE` `RenderPassSpecification` via `ComputePassBuilder`, create
 Repeating this boilerplate in every compute pass implementation introduces a class of bug
 where a pass forgets to bind the pipeline or binds it with the wrong bind point.
 
-`IComputeCallbackPass` is a convenience base class that handles `Compile` and the pipeline
+`IInlineComputePass` is a convenience base class that handles `Compile` and the pipeline
 bind inside `Execute`, leaving only `SetupCompute` and `ExecuteCompute` for subclasses.
 
 ```cpp
-// ZEngine/Rendering/Renderers/RenderPasses/IComputeCallbackPass.h
+// ZEngine/Rendering/Renderers/Base/IInlineComputePass.h
 #pragma once
 #include <ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h>
 #include <ZEngine/Rendering/RenderGraph/IRenderGraphCallbackPass.h>
 
-namespace ZEngine::Rendering::Renderers::RenderPasses
+namespace ZEngine::Rendering::Renderers
 {
-    struct IComputeCallbackPass : public IRenderGraphCallbackPass
+    struct IInlineComputePass : public IRenderGraphCallbackPass
     {
         // Setup() delegates to SetupCompute() so the subclass sees only
         // RGBuilder — it never needs to touch RGInspector during setup.
@@ -446,10 +446,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 }
 ```
 
-**IComputeCallbackPass::Compile implementation:**
+**IInlineComputePass::Compile implementation:**
 
 ```cpp
-void IComputeCallbackPass::Compile(
+void IInlineComputePass::Compile(
     Hardwares::VulkanDevicePtr  device,
     Scenes::SceneDataPtr        /*scene*/,
     RenderPassBuilder*          /*unused*/,
@@ -470,10 +470,10 @@ void IComputeCallbackPass::Compile(
 }
 ```
 
-**IComputeCallbackPass::Execute implementation:**
+**IInlineComputePass::Execute implementation:**
 
 ```cpp
-void IComputeCallbackPass::Execute(
+void IInlineComputePass::Execute(
     Hardwares::VulkanDevicePtr  device,
     RGInspector*                inspector,
     Scenes::SceneDataPtr        scene,
@@ -514,7 +514,7 @@ for the output, which maps to `VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT` and
 section 6.2.
 
 ```cpp
-struct SSAOComputePass final : public IComputeCallbackPass
+struct SSAOComputePass final : public IInlineComputePass
 {
     RGResourceHandle m_depth_handle     = {};
     RGResourceHandle m_normals_handle   = {};
@@ -546,7 +546,7 @@ struct SSAOComputePass final : public IComputeCallbackPass
         Hardwares::VulkanDevicePtr  device,
         RGInspector*                inspector,
         Scenes::SceneDataPtr        /*scene*/,
-        VkPipeline                  /*pipeline — already bound by IComputeCallbackPass*/,
+        VkPipeline                  /*pipeline — already bound by IInlineComputePass*/,
         VkPipelineLayout            layout,
         Hardwares::CommandBufferPtr cb) override
     {
@@ -615,7 +615,7 @@ as non-zero. This pass is the first stage of the bloom chain described in
 `post-processing.md`.
 
 ```cpp
-struct BloomThresholdComputePass final : public IComputeCallbackPass
+struct BloomThresholdComputePass final : public IInlineComputePass
 {
     RGResourceHandle m_hdr_handle       = {};
     RGResourceHandle m_threshold_handle = {};
@@ -712,7 +712,7 @@ This pass is the compute component of the GPU-driven rendering path described in
 `next-year-plans/culling-system.md`.
 
 ```cpp
-struct DrawCullPass final : public IComputeCallbackPass
+struct DrawCullPass final : public IInlineComputePass
 {
     RGResourceHandle m_scene_bounds_handle   = {};
     RGResourceHandle m_indirect_buffer_handle = {};
@@ -898,7 +898,7 @@ for (auto& pass : Passes)
 
 `pass.Framebuffer` is null for every `COMPUTE` pass after `Compile()`. The `Execute` loop
 in section 6.4 of `render-graph-redesign.md` passes it directly to `Callback->Execute`; the
-`IComputeCallbackPass::Execute` override receives a null framebuffer and is defined not to
+`IInlineComputePass::Execute` override receives a null framebuffer and is defined not to
 call `BeginRenderPass`. Any compute pass that attempts to call `BeginRenderPass` with a null
 framebuffer will produce a validation error and an assertion failure in `BeginRenderPass`.
 
@@ -932,8 +932,8 @@ others are modifications to existing files.
 - [ ] `ZEngine/Hardwares/VulkanDevice.cpp` — add `CommandBuffer::Dispatch` implementation calling `vkCmdDispatch`
 - [ ] `ZEngine/Rendering/Renderers/RenderPasses/RenderPass.h` — add `ComputePipeline* ComputePipeline = nullptr` field; add `ComputePassBuilder` struct
 - [ ] `ZEngine/Rendering/Renderers/RenderPasses/RenderPass.cpp` — update `RenderPass::Initialize` and `RenderPass::Bake` with COMPUTE branch; add `ComputePassBuilder` method implementations
-- [ ] `ZEngine/Rendering/Renderers/RenderPasses/IComputeCallbackPass.h` — create new file; declare `IComputeCallbackPass`
-- [ ] `ZEngine/Rendering/Renderers/RenderPasses/IComputeCallbackPass.cpp` — create new file; implement `Compile` and `Execute` overrides
+- [ ] `ZEngine/Rendering/Renderers/Base/IInlineComputePass.h` — create new file; declare `IInlineComputePass`
+- [ ] `ZEngine/Rendering/Renderers/Base/IInlineComputePass.cpp` — create new file; implement `Compile` and `Execute` overrides
 - [ ] `ZEngine/Rendering/RenderGraph/RenderGraph.cpp` — add COMPUTE skip guard in the framebuffer creation loop and the resize loop
 - [ ] `ZEngine/Rendering/Renderers/GraphicRenderer.cpp` — add SSAO, bloom threshold, and draw cull pass instances to `RegisterPasses`
 

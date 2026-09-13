@@ -8,6 +8,7 @@
 #include <uuid.h>
 #include <cstring>
 #include <optional>
+#include <thread>
 
 namespace ZEngine::Core::VFS
 {
@@ -95,6 +96,8 @@ namespace ZEngine::Core::VFS
             m_slot_arenas[i].Initialize(SlotArenaReserve, page_source->m_mem_page_size);
             m_slot_in_use[i].value.store(false, std::memory_order_relaxed);
         }
+        for (uint32_t i = 0; i < MaxScanTasks; ++i)
+            m_task_in_use[i].value.store(false, std::memory_order_relaxed);
         m_arenas_ready = true;
     }
 
@@ -117,6 +120,58 @@ namespace ZEngine::Core::VFS
         m_slot_in_use[slot].value.store(false, std::memory_order_release);
     }
 
+    bool VFSScanner::TryAcquireTask(uint32_t& out_slot)
+    {
+        for (uint32_t i = 0; i < MaxScanTasks; ++i)
+        {
+            bool available = false;
+            if (m_task_in_use[i].value.compare_exchange_strong(available, true, std::memory_order_acq_rel))
+            {
+                out_slot = i;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void VFSScanner::ReleaseTask(uint32_t slot)
+    {
+        ZENGINE_VALIDATE_ASSERT(slot < MaxScanTasks, "VFSScanner::ReleaseTask: invalid task slot")
+        m_task_in_use[slot].value.store(false, std::memory_order_release);
+    }
+
+    void VFSScanner::RunScanTask(void* context)
+    {
+        ScanTask*   task    = static_cast<ScanTask*>(context);
+        VFSScanner* scanner = task->Scanner;
+
+        scanner->ScanDirectory(task->Context, task->Directory);
+        scanner->ReleaseTask(task->Slot);
+        scanner->OnTaskComplete(scanner->m_cancel_requested.value.load(std::memory_order_relaxed));
+    }
+
+    bool VFSScanner::TrySubmitDirectory(ScanContext ctx, VFSPath dir)
+    {
+        uint32_t slot = 0;
+        if (!TryAcquireTask(slot))
+            return false;
+
+        ScanTask& task = m_tasks[slot];
+        task.Scanner   = this;
+        task.Context   = ctx;
+        task.Directory = dir;
+        task.Slot      = slot;
+
+        m_pending_tasks.value.fetch_add(1, std::memory_order_relaxed);
+        if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&task, &VFSScanner::RunScanTask))
+        {
+            m_pending_tasks.value.fetch_sub(1, std::memory_order_relaxed);
+            ReleaseTask(slot);
+            return false;
+        }
+        return true;
+    }
+
     void VFSScanner::Scan(IVFSContext* context, VFSPath root, VFSDirectoryCache* cache)
     {
         ZENGINE_VALIDATE_ASSERT(m_arenas_ready, "VFSScanner::Initialize must be called before Scan")
@@ -134,16 +189,19 @@ namespace ZEngine::Core::VFS
         m_metas_created.value.store(0, std::memory_order_relaxed);
         m_metas_updated.value.store(0, std::memory_order_relaxed);
         m_metas_up_to_date.value.store(0, std::memory_order_relaxed);
-        m_pending_tasks.value.store(1, std::memory_order_relaxed);
+        m_pending_tasks.value.store(0, std::memory_order_relaxed);
         m_is_scanning.value.store(true, std::memory_order_release);
         m_scan_start = std::chrono::steady_clock::now();
 
         ScanContext ctx{context, root, cache};
-
-        ZEngine::Helpers::ThreadPoolHelper::Submit([this, ctx, root] {
+        if (!TrySubmitDirectory(ctx, root))
+        {
+            // All task contexts are occupied. Running this branch inline keeps the
+            // scanner bounded without blocking a worker that could drain queued work.
+            m_pending_tasks.value.store(1, std::memory_order_relaxed);
             ScanDirectory(ctx, root);
             OnTaskComplete(m_cancel_requested.value.load(std::memory_order_relaxed));
-        });
+        }
     }
 
     void VFSScanner::ScanDirectory(ScanContext ctx, VFSPath dir)
@@ -170,12 +228,9 @@ namespace ZEngine::Core::VFS
             if (entries[i].IsDirectory)
             {
                 m_dirs_found.value.fetch_add(1, std::memory_order_relaxed);
-                m_pending_tasks.value.fetch_add(1, std::memory_order_relaxed);
                 VFSPath sub = entries[i].Path;
-                ZEngine::Helpers::ThreadPoolHelper::Submit([this, ctx, sub] {
+                if (!TrySubmitDirectory(ctx, sub))
                     ScanDirectory(ctx, sub);
-                    OnTaskComplete(m_cancel_requested.value.load(std::memory_order_relaxed));
-                });
             }
             else
             {

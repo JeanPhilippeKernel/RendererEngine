@@ -1,7 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
-#include <ZEngine/Rendering/Buffers/Framebuffer.h>
-#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
+#include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/Rendering/Specifications/ShaderSpecification.h>
 
 namespace ZEngine::Rendering::Specifications
@@ -21,7 +20,10 @@ namespace ZEngine::Rendering::Specifications
         ImageFormat Format   = ImageFormat::UNDEFINED;
     };
 
-    struct GraphicRendererPipelineSpecification
+    /// @brief Static, cacheable graphics pipeline state.
+    /// @details The render graph supplies attachment compatibility. Per-frame
+    /// viewport state, descriptors, and uniforms do not belong in this description.
+    struct GraphicsPipelineDesc
     {
         bool                                                       EnableBlending                     = false;
         bool                                                       EnableDepthTest                    = false;
@@ -31,8 +33,6 @@ namespace ZEngine::Rendering::Specifications
         uint32_t                                                   DepthCompareOp                     = VK_COMPARE_OP_LESS_OR_EQUAL;
         uint32_t                                                   CullMode                           = 0;
         ShaderSpecification                                        ShaderSpecificationValue           = {};
-        Rendering::Buffers::FramebufferVNext*                      TargetFrameBuffer                  = {};
-        Renderers::RenderPasses::Attachment*                       Attachment                         = {};
         Core::Containers::Array<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
         Core::Containers::Array<VertexInputAttributeSpecification> VertexInputAttributeSpecifications = {};
     };

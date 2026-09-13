@@ -1,374 +1,168 @@
-# Rendering Flow — Engine + Editor (Post-Rearchitecture)
+# Rendering Flow — Engine + Editor
 
-**Relates to:** `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`
-**Scope:** Full per-frame rendering pipeline from user interaction to GPU submission, covering both the runtime engine and the Tetragrama editor.
-
----
-
-## 1. Two-Thread Architecture
-
-The engine splits work across two threads. This is fixed — not configurable.
-
-```
-+------------------------------------------------------+
-|                    MAIN THREAD                        |
-|                                                       |
-|  PollEvent  ->  Update  ->  OnRenderUI  ->  PrepareScene |
-|                             (ImGui)      (payload)    |
-|                                              |        |
-|                               MailBoxBuffer.store()   |
-+------------------------------------------------------+
-                                      |
-                              double-buffer handoff
-                                      |
-+------------------------------------------------------+
-|                   RENDER THREAD                       |
-|                                                       |
-|  BeginFrame  ->  RenderScene  ->  RenderOverlay  ->  EndFrame |
-|  (acquire)     (3D scene)       (ImGui)           (submit+present) |
-+------------------------------------------------------+
-```
-
-The two threads never share a mutex on the hot path. The handoff is a single atomic
-store/load on `MailBoxBufferHead`. The main thread builds ImGui draw lists and scene
-payload; the render thread consumes them and touches Vulkan exclusively.
+**Relates to:** `render-graph-redesign.md`, `pso-cache-architecture.md`, `gpu-allocator-rearchitecture.md`
+**Scope:** The current frame path from editor input to presentation. This document describes the implemented ZUI and render-graph path; it is not the retired ImGui design.
 
 ---
 
-## 2. Per-Frame Lifecycle — Step by Step
+## 1. Thread ownership and the mailbox
 
-Frame index `fi` = `SwapchainPtr->CurrentFrame->Index` (0, 1, or 2 in a triple-buffered setup).
-
-### MAIN THREAD
+The engine has a main thread and a render thread. During runtime, Vulkan command recording, queue submission, and presentation run on the render thread; startup resource creation completes before that split. The main thread owns events, simulation, editor logic, and ZUI tree construction.
 
 ```
-[1] PollEvent()
-    GLFW events -> window resize flag, input state
-
-[2] g_app->Update(dt)
-    Editor::OnUpdate()
-      UILayer->Update(dt)
-        HierarchyViewUIComponent::Update()
-          Pop PendingOnLoadHierarchies
-          CreateOrGetMeshAllocation()     <- memcpy vertices/indices into CPU arrays
-          MeshAllocationDirty[0,1,2] = true
-          TransformBufferDirty[0,1,2] = true
-        other panels (InspectorView, etc.) -- pure CPU
-
-[3] pipeline->BeginOverlayFrame()
-    ImGui_ImplGlfw_NewFrame()
-    ImGui::NewFrame()
-    ImGuizmo::BeginFrame()
-
-[4] g_app->OnRenderUI()
-    Editor::OnRenderUI()
-      UILayer->Render()
-        DockspaceUIComponent::Render()    <- docking layout, menu bar
-        SceneViewportUIComponent::Render()
-          ImGui::Image(FrameColorRenderTarget.Index, ...)  <- bindless handle
-          ImGuizmo::Manipulate() -> mutates GlobalTransforms[selected]
-          [BUG] TransformBufferDirty NOT set here (known TODO)
-        HierarchyViewUIComponent::Render()  <- scene tree, selection
-        InspectorViewUIComponent::Render()  <- property editor (no GPU)
-
-[5] pipeline->EndOverlayFrame()
-    ImGui::Render()           <- finalises draw lists
-    FillOverlayPayload()      <- copies ImDrawData ptr into payload struct
-
-[6] g_app->PrepareScene(payload)
-    sets payload.Scene = current_scene, payload.Camera = editor_camera
-
-[7] MailBoxBufferHead.store(next_slot)    <- render thread sees new frame payload
+MAIN THREAD                                      RENDER THREAD
+-----------                                      -------------
+Poll window and input                            consume next mailbox slot
+tick world, imports, schedulers                  apply viewport resize, if any
+update application and camera                    BeginFrame: acquire + upload/retirement work
+build ZUI tree                                   RenderScene
+prepare immutable ZUI payload                    RenderGraph::Execute
+prepare scene/camera/resize payload              EndFrame: submit + present
+publish mailbox slot  ------------------------>  retire mailbox slot
 ```
 
-### RENDER THREAD
+`AppRenderPipeline` owns three `RenderPayload` slots. The producer publishes the next slot with a release store on `MailBoxBufferHead`; the render thread consumes it with an acquire load and advances `MailBoxBufferTail` only after the frame is finished. If the mailbox is full, the main loop yields to the frame cap instead of overwriting a payload that the render thread may still read.
 
-```
-[1] BeginFrame()
-    swapchain->AcquireNextImage(mailbox_head)
-      vkAcquireNextImageKHR
-      Device->TickMemory()                  <- NEW (post-rearchitecture)
-        vkGetSemaphoreCounterValue(RenderTimeline)
-        PendingFree.Drain(completed)        <- free GPU resources GPU is done with
-        GpuMem.Ring.Drain(completed)        <- reclaim staging ring chunks
-        GpuMem.SampleBudgets()              <- per-heap pressure check
-        FrameHeaps[fi].Reset()              <- bump pointer = 0, O(1)
-    CommandBufferMgr->ResetPool(fi, thread)
-    RRM->CompleteDeferrals()
-    GetCommandBuffer(GRAPHIC, fi, thread)
-    CurrentCmdBuf->Begin()
+The payload contains:
 
-[2] RenderScene(payload)
+- the render-scene and camera pointers;
+- one coalesced viewport render-target extent;
+- a mailbox-slot-arena-backed `ZUIRenderPayload` (vertices, indices, commands, scale, and framebuffer scale).
 
-    [RESIZE CHECK]  if RenderTargetResizeRequests not empty:
-      RenderGraph->Resize()
-        Device->DeferFree({old FrameColorRT, old FrameDepthRT})
-        // vmaDestroyImage is called by DeferredFreeQueue::Drain once the timeline
-        // confirms the GPU is done with those images — the caller only enqueues.
-        GpuMem.AllocateImage(new size, RenderTarget)
-        Device->TextureHandleToUpdates.Push(new_handle)
-        Rebuild all VkFramebuffer objects
-
-    [MESH DIRTY]  if MeshAllocationDirty[fi]:
-      vtx_buffer_set->At(fi).Write(fi, 0, scene->Vertices)
-        RRM->UploadBuffer()
-          vmaGetAllocationMemoryProperties -> HOST_VISIBLE?
-          YES: vmaCopyMemoryToAllocation + vmaFlushAllocation (if !coherent)
-          NO:  GpuMem.Ring.Allocate() -> vkCmdCopyBuffer -> Ring.Submit(signal_val)
-      idx_buffer_set->At(fi).Write(...)       <- same path
-      rd_buffer_set->At(fi).Write(...)        <- SubMeshAllocations
-      indirect_buffer_set->At(fi).Write(...)  <- VkDrawIndirectCommands
-      [POST-REARCHITECTURE: all 4 writes push into FrameHeaps[fi] instead]
-
-    [TRANSFORM DIRTY]  if TransformBufferDirty[fi]:
-      transform_buffer_set->At(fi).Write(fi, 0, scene->GlobalTransforms)
-      [POST-REARCHITECTURE: heap.Push(GlobalTransforms, ...)]
-
-    GraphicRenderer::DrawScene(fi, thread, cmd, camera)
-      camera_buf->Write(fi, thread, &UBOCameraLayout)    <- view/proj/pos
-      material_buf->Write(fi, thread, GPUMeshMaterials)  <- full material array
-      RenderGraph->Execute(cmd)
-
-        // UploadPass has been removed. SkyboxPass and GridPass now bind the
-        // global vertex/index buffers registered via RRM::RegisterBuiltinGeometry;
-        // no per-pass VB/IB writes are needed.
-
-        // Passes below reflect the current live implementation.
-        // Shadow, post-process, and gizmo passes are added by their
-        // respective future-plan docs and are not listed here.
-
-        [DepthPrePass]
-          TransitionImageLayout(FrameDepthRT -> DEPTH_STENCIL_ATTACHMENT)
-          BeginRenderPass(DepthOnlyFramebuffer)
-          BindPipeline(depth_prepass_pipeline)
-          BindDescriptorSets(fi)  <- UBCamera, VertexSB, IndexSB, TransformSB, DrawDataSB
-          DrawIndirect(indirect_buffer, 0, draw_count)
-          EndRenderPass
-
-        [BasePass]  (deferred lighting / fullscreen triangle)
-          TransitionImageLayout(FrameColorRT -> COLOR_ATTACHMENT)
-          BeginRenderPass(OffscreenFramebuffer)
-          BindPipeline(base_pipeline)
-          BindDescriptorSets(fi)  <- all SBs + MatSB + TextureArray (bindless) + EnvMap
-          Draw(3, 1, 0, 0)        <- fullscreen triangle
-          EndRenderPass
-
-        [SkyboxPass]
-          BindVertexBuffer / BindIndexBuffer (global VB/IB via RRM::RegisterBuiltinGeometry; cube geometry, 36 indices)
-          BindDescriptorSets(fi)
-          DrawIndexed(36, 1, 0, 0, 0)
-
-        [GridPass]
-          BindVertexBuffer / BindIndexBuffer (global VB/IB via RRM::RegisterBuiltinGeometry; quad geometry, 6 indices)
-          PushConstants(grid_params)
-          DrawIndexed(6, 1, 0, 0, 0)
-
-[3] RenderOverlay(payload)   <- ImGui on swapchain framebuffer
-    TransitionImageLayout(SwapchainImage -> COLOR_ATTACHMENT)
-    BeginRenderPass(SwapchainFramebuffer[image_index], UIPass)
-    Write per-frame ImGui geometry:
-      imgui_vtx_buf->Write(fi, 0, ImDrawData->Vertices)  <- VkBuffer in HOST_VISIBLE
-      imgui_idx_buf->Write(fi, 0, ImDrawData->Indices)
-    Secondary command buffer per ImGui viewport:
-      BindPipeline(imgui_pipeline)
-      BindVertexBuffer(imgui_vtx_buf)
-      BindIndexBuffer(imgui_idx_buf)
-      BindDescriptorSets(fi)   <- bindless TextureArray (ImGui font + scene textures)
-      for each ImDrawCmd:
-        SetScissor(clip_rect)
-        PushConstants(scale, translate, texture_id)
-        DrawIndexed(elem_count, 1, idx_offset, vtx_offset, 0)
-    EndRenderPass
-
-[4] EndFrame()
-    RRM->SubmitTextureJobs()       <- flush timeline semaphore job queue
-    CommandBufferMgr->EndEnqueuedBuffers()
-    SwapchainPtr->Present()
-      3-submit timeline pattern (acquire bridge -> render -> present bridge)
-      vkQueuePresentKHR
-      IdleFrameCount++ (if no work submitted)
-```
+The ZUI payload arena is selected by mailbox slot, so its storage stays valid until the render thread has consumed that slot. The UI tree itself is built and discarded only on the main thread.
 
 ---
 
-## 3. GPU Memory Timeline — One Frame
+## 2. Main-thread frame
 
-```
-CPU                                          GPU
-----------------------------------------------------------------------
-AcquireNextImage
-  vkGetSemaphoreCounterValue(timeline N-2)
-  PendingFree.Drain()      ----free N-2 resources---->  (already idle)
-  Ring.Drain()             ----reclaim N-2 chunks---->
-  FrameHeaps[fi].Reset()
+For every non-minimized window frame, `Engine::MainThreadRun()` performs the following work.
 
-  [HOST_VISIBLE buffers]
-  vmaCopyMemoryToAllocation ----write-------------->  (not started)
-  vmaFlushAllocation
+1. Poll window events, tick the VFS watcher, run fixed world steps, progress imports, and drain main-thread callbacks.
+2. Call `GameApplication::Update(dt)`. It polls input, calls the application update, then updates the camera controller.
+3. When overlay rendering is enabled, call `AppRenderPipeline::BeginOverlayFrame(dt)`, `GameApplication::OnRenderUI()`, and `EndOverlayFrame()`.
+4. `BeginOverlayFrame()` updates the ZUI context with the logical GLFW window size and the physical/logical framebuffer scale. That keeps GLFW cursor coordinates, ZUI layout, and high-DPI scissor conversion in the same coordinate system.
+5. Tetragrama builds the editor through `ZUILayer`: `ZUIPanelManagerComponent`, the dockspace shell, status bar, and panels such as `ViewportPanel`. This replaces the old ImGui component hierarchy.
+6. `FillOverlayPayload()` walks the completed ZUI box tree and writes its draw list into the arena assigned to the mailbox slot.
+7. The ECS scene is synchronized into the render scene. `GameApplication::PrepareScene()` drains all pending viewport-resize requests and keeps only the last requested extent, then attaches the current scene and camera.
+8. Publish the mailbox slot.
 
-  [DEVICE_LOCAL buffers]
-  Ring.Allocate(chunk)
-  memcpy -> ring mapped ptr
-  vkCmdCopyBuffer (staged)  ----will copy---------->  (queued)
-
-  vkCmdDrawIndirect         ----draw-------------->   (queued after copy)
-  vkCmdDraw (fullscreen tri) ---draw-------------->   (queued)
-  ...
-
-EndFrame
-  vkQueueSubmit (signal N)                             <- GPU starts
-                                       ...executing...
-                            <---signal N signalled---  GPU done with frame N
-```
-
-Frame `fi` resources are safe to destroy when `timeline_completed >= N` (the signal value
-recorded when they were enqueued in `DeferFree`).
+`ViewportPanel` reads `GraphicRenderer::GetFrameOutput()` and emits an image box using its bindless texture index. The handle is published by the render thread after a real graph execution, using an index/generation pair guarded by a sequence counter. There is intentionally no output handle during renderer initialization: before ZUI declares its read of `FrameColor`, graph culling may legitimately leave that transient resource unallocated.
 
 ---
 
-## 4. Editor User Actions — GPU Impact Map
+## 3. Render-thread frame
 
-| User Action | CPU Side | GPU Side | Frames Until Visible |
-|---|---|---|---|
-| Open `.zemesh` file | `secure_memcpy` vertices/indices into `EditorScene::Vertices`, set `MeshAllocationDirty[0,1,2]` | All 3 frame buffer sets re-written on their respective frames | 1-3 frames (each frame slot catches up) |
-| Move object (ImGuizmo) | Mutates `GlobalTransforms[node]` in place | Nothing -- `TransformBufferDirty` NOT set (known bug) | Never (until another dirty event fires) |
-| Select object | Sets `SelectedSceneNode` | Nothing | Immediate (CPU-only highlight) |
-| Resize viewport | Pushes `RenderTargetResizeRequest` | `vmaDestroyImage` + `GpuMem.AllocateImage` for color+depth RT, rebuild framebuffers, update bindless descriptor slot | 1 frame |
-| Change material property | Inspector writes to `EditorScene::Materials` CPU array | `MaterialBufferHandle->Write()` fires next frame (storage buffer re-upload) | 1 frame |
-| Add/remove light | Updates CPU light array | `LightBufferHandle->Write()` next frame | 1 frame |
-| Camera move (WASD/mouse) | `FlyCamera` updates `ViewMatrix`, `ProjectionMatrix` | `UBOCameraLayout` written into `camera_buffer->At(fi)` each frame (always dirty) | 0 -- same frame |
+The render thread waits for a published payload. Its frame lifecycle is:
+
+```
+if payload contains a resize:
+    AppRenderPipeline::ResizeRenderTarget()
+
+BeginFrame()
+    flush shader reload and asynchronous pipeline creation
+    acquire a swapchain image
+    RenderResourceManager::BeginFrame(frame index)
+    collect swapchain async operations and texture releases
+    reset command pools and retire completed texture-upload slots
+    complete texture deferrals
+    begin the application-owned primary graphics command buffer
+
+RenderScene(camera, scene, zui payload)
+    rebuild per-frame scene input and upload it
+    set ZUIPass payload
+    GraphicRenderer::DrawScene()
+        RenderGraph::Execute()
+    clear ZUIPass payload
+
+EndFrame()
+    finish deferred resource-manager batch work
+    transition an otherwise-unused acquired image back to present, if necessary
+    enqueue/end command buffers
+    present the swapchain image
+    submit deferred asynchronous uploads
+```
+
+An invalid acquired frame skips `RenderScene()` but still runs `EndFrame()` so the swapchain lifecycle remains balanced.
+
+### Per-frame scene input
+
+`AppRenderPipeline::RenderScene()` snapshots render-scene instances, resolves resident mesh allocations, calculates world-space bounds, extracts the camera frustum, and fills per-frame arrays for transforms, sub-mesh draw data, and frustum-culling input. Non-resident mesh handles are requested for streaming and are omitted until available.
+
+The pipeline uploads those arrays along with the light array. `GraphicRenderer::DrawScene()` uploads materials and pushes `UBOCameraLayout` into the active frame heap, retaining the resulting dynamic-uniform offset in `SceneData`. The compute culling pass writes the indirect-draw buffer consumed by the depth pre-pass and G-buffer pass.
 
 ---
 
-## 5. RRM Upload Path (Current Implementation)
+## 4. Default render graph
 
-`RenderResourceManager (RRM)` now owns all uploads — buffer and texture alike. `AsyncResourceLoader` has been fully replaced by RRM.
+`GraphicRenderer` installs the persistent callback passes below. Each `RenderGraph::Execute()` registers the frame's virtual resources, validates declarations, culls dead work, builds a topological and queue schedule, allocates/reuses transient resources, derives synchronization2 barriers, compiles/binds passes, and records/submits the graph batches. Recordable dependency levels can use worker secondary command buffers; the final graphics batch remains available to the application primary buffer.
 
-### Buffer domains
-
-| Buffer | Domain | Write path | Stall |
-|---|---|---|---|
-| Vertex (geometry) | DeviceGeometry | Ring staging + dedicated cmd + vkWaitForFences | Once when MeshAllocationDirty |
-| Index (geometry) | DeviceGeometry | Ring staging + dedicated cmd + vkWaitForFences | Once when MeshAllocationDirty |
-| Transform | HostUniform | vmaCopyMemoryToAllocation | Zero (HOST_VISIBLE) |
-| RenderData (sub-mesh) | HostUniform | vmaCopyMemoryToAllocation | Zero |
-| Material | HostUniform | vmaCopyMemoryToAllocation | Zero |
-| ImGui VB/IB | HostUniform | vmaCopyMemoryToAllocation | Zero |
-
-### MeshAllocationDirty collapse
-
-`MeshAllocationDirty[3]` collapsed to a single `atomic_bool`. Because geometry uses one DEVICE_LOCAL buffer shared by all frames, there is no per-frame triple copy — when the flag is set and cleared, all frames see the same buffer.
-
-### RRM dedicated command pool
-
-```
-RRM::Initialize()
-  vkCreateCommandPool(GRAPHIC, RESET_COMMAND_BUFFER_BIT) -> m_upload_pool
-  vkAllocateCommandBuffers(m_upload_pool, 1)             -> m_upload_cmd
-  vkCreateFence()                                        -> m_upload_fence
-```
-
-`UpdateBuffer(dst, data, byte_size, offset)`:
-- HOST_VISIBLE dst: `vmaCopyMemoryToAllocation` + optional flush, return immediately
-- DEVICE_LOCAL dst: `GpuMem.Ring.Allocate` -> `vkCmdCopyBuffer` -> `vkQueueSubmit` -> `vkWaitForFences`
-
-No per-pool slot tracking. No `RetireValues` array. No `AsyncTimelineJobQueue` for buffer uploads.
-
-### Frame boundary placement
-
-```
-AppRenderPipeline::BeginFrame()
-  swapchain->AcquireNextImage()       <- frame_index valid after this
-  RRM::BeginFrame(fi)                 <- flush pending asset uploads
-  CommandBufferMgr::ResetPool(fi)
-  RRM::CompleteDeferrals()
-
-AppRenderPipeline::EndFrame()
-  RRM::SubmitTextureJobs()   <- texture uploads only
-  Present()
-  RRM::EndFrame(fi)                   <- drain aged swap entries
-
----
-
-## 6. Known Gaps and Bugs in Current Flow
-
-| Type | Location | Issue |
+| Pass | Main inputs | Main result |
 |---|---|---|
-| BUG | `HierarchyViewUIComponent.cpp` | ImGuizmo manipulate mutates `GlobalTransforms` but does NOT set `TransformBufferDirty`. Transform change never reaches GPU. |
-| GAP | `RenderScene()` | No LRU eviction path when `GpuMem.AllocateBuffer` returns null (pool full). Engine would assert rather than gracefully degrade. |
-| GAP | `SceneViewportUIComponent.cpp` | Viewport resize request is not rate-limited. Rapid window dragging fires one `RenderGraph::Resize()` per render frame during the drag. |
-| GAP | `RRM::UpdateBuffer` | vkWaitForFences on DEVICE_LOCAL uploads stalls the render thread. For mesh data written at load time this is acceptable; for streaming it is not. Needs async transfer queue path. |
-| GAP | Multi-instance drag-drop | Re-dropping an already-loaded mesh is a no-op. Multi-instance support requires calling `SetState(Loaded)` on the existing hierarchy UUID to re-fire the hierarchy callback without re-importing. Deferred to scene-instancing milestone. |
+| Frustum Culling | culling input and indirect buffer | culled indirect commands |
+| Depth Pre-Pass | global geometry, transforms, draw data, culled indirect commands | `FrameDepth` |
+| G-Buffer | global geometry, transforms, draw data, materials, bindless textures, depth | albedo/AO, normal/roughness, metallic/emissive |
+| Lighting | G-buffer textures, depth, lights, camera | sampled-capable `FrameColor` |
+| Skybox | optional environment map, depth, `FrameColor` | `FrameColor` loaded and extended |
+| Grid | depth and `FrameColor` | `FrameColor` loaded and extended |
+| ZUI Draw | `FrameColor`, ZUI geometry, bindless texture array | acquired swapchain image |
+
+Skybox and grid registration is conditional on their configuration. The ZUI pass declares both its `FrameColor` read and its swapchain write, making it the graph's presentation side effect and retaining the scene-color producer. When no ZUI draw geometry exists, its execution is empty; `EndFrame()` still ensures the acquired image is ready for presentation.
+
+The graph owns resource state transitions and inter-pass synchronization. Individual callback passes own their draw body and use the resolved framebuffer/resource bindings supplied by the graph. `FrameColor` is recreated at the editor viewport extent, not the window/swapchain extent, and is sampled by ZUI through the global bindless texture array.
 
 ---
 
-## 7. Multi-Threaded Rendering Extension (Design)
+## 5. Viewport resize and output publication
 
-The current architecture uses two threads (main + render). Extending to N render workers requires these changes:
-
-### Command buffer recording
-Each worker thread gets its own `CommandBuffer` from `CommandBufferMgr->GetCommandBuffer(GRAPHIC, fi, thread_idx, 0)`. Secondary command buffers are recorded in parallel then submitted as a batch on the primary.
-
-### RRM per-thread upload pools
-`m_upload_cmd` and `m_upload_fence` become arrays indexed by `thread_idx`:
-```cpp
-VkCommandPool   m_upload_pool[MAX_RENDER_THREADS];
-VkCommandBuffer m_upload_cmd[MAX_RENDER_THREADS];
-VkFence         m_upload_fence[MAX_RENDER_THREADS];
 ```
-No mutex needed — each thread owns its slot.
+ViewportPanel layout changes
+    -> push requested viewport extent into ApplicationState queue
+    -> PrepareScene drains queue and retains final extent
+    -> payload crosses the mailbox
+    -> render thread calls RenderGraph::Resize(width, height)
+    -> next graph execution allocates/binds resized transient targets
+    -> GraphicRenderer publishes the allocated FrameColor handle
+    -> following ZUI build consumes that handle as its image texture
+```
 
-### GpuAllocator::Ring
-`Ring.Allocate` is already thread-safe (spinlock on `WritePos`). Multiple worker threads can push staging data simultaneously.
+Requests are coalesced before they cross the mailbox, so intermediate panel extents from a dock/window drag do not produce a separate resize call. `RenderGraph::Resize()` is intentionally a slow path: it waits for the Vulkan device to be idle before replacing image/framebuffer backing and schedules old Vulkan objects for deferred destruction in valid lifetime order. A window/swapchain recreation does not force the viewport targets to the window extent; the panel controls the viewport extent.
 
-### Descriptor set binding
-Descriptor sets are immutable after `vkUpdateDescriptorSets`. Workers bind them read-only — no synchronization needed.
-
-### TransformBufferDirty
-Transforms are HOST_VISIBLE; the main thread writes them via `vmaCopyMemoryToAllocation` before the render thread starts. A `std::atomic_thread_fence(release)` on the main thread + `acquire` on the render thread ensures visibility — no GPU sync needed.
+`GraphicRenderer` publishes only valid physical `FrameColor` handles after `RenderGraph::Execute()`. It then queues the bindless descriptor update. This ordering matters: a UI image must never use the old setup-time handle for a graph resource that was culled or recreated.
 
 ---
 
-## 8. Full Dependency Graph — Frame N
+## 6. Resource upload and retirement
+
+`RenderResourceManager` owns buffer, texture, geometry-streaming, and descriptor-update work.
+
+| Resource class | Current path |
+|---|---|
+| Host-visible per-frame buffers (transforms, draw data, lights, materials, ZUI vertices/indices) | `vmaCopyMemoryToAllocation`, plus a flush when memory is not coherent |
+| Device-local buffer with available ring space | copy through the mapped staging ring, record/submit a graphics copy, then retire the ring chunk against the render timeline |
+| Device-local buffer when the ring cannot serve it | create a staging buffer and join the resource manager's deferred batch |
+| Texture uploads | deferral/streaming work completed at frame boundaries and submitted through the asynchronous upload queues |
+| Texture descriptors | queued by producers and flushed after graph registration, before commands consume bindless textures |
+
+`BeginFrame()` advances streaming, compaction, pending mesh swaps, and texture reload/release work. `CompleteDeferrals()` processes texture data that could not claim an upload slot earlier. `EndFrame()` finishes a deferred batch, and `SubmitAsyncUploads()` submits the resulting asynchronous upload operations after presentation has prepared the frame's waits.
+
+---
+
+## 7. Current constraints
+
+- A render-target resize calls `vkDeviceWaitIdle`; it is correct and coalesced, but intentionally not a hitch-free resize path.
+- The mapped-ring device-local `UpdateBuffer()` path performs a fence-synchronized graphics copy. It is appropriate for the current loading/update cadence but should not be mistaken for a fully asynchronous high-frequency streaming path.
+- ZUI has fixed per-frame GPU capacities (65,536 vertices and 131,072 indices). Excess draw data is clipped for that frame rather than growing GPU buffers while rendering.
+- The viewport texture reaches the UI through the main/render mailbox, so a newly allocated or resized viewport becomes visible after the next payload cycle. This is normal frame pipelining, not a stale-handle path.
+
+---
+
+## 8. Dependency sketch
 
 ```
-MAIN THREAD                         RENDER THREAD
-------------------                  -----------------------------------------
-PollEvent
-  |
-Update(dt)
-  |- ImGuizmo -> GlobalTransforms
-  `- MeshAllocationDirty = true
-                                    AcquireNextImage(N)
-  BeginOverlayFrame                   TickMemory()
-  OnRenderUI -> ImDrawData               PendingFree.Drain(completed N-2)
-  EndOverlayFrame                        Ring.Drain(completed N-2)
-  PrepareScene -> payload                FrameHeaps[fi].Reset()
-  MailBox.store(N)  ------------->    CommandPool reset
-                                      CompleteDeferrals
-                                      cmd->Begin()
-
-                                      RenderScene(payload)
-                                        dirty uploads -> heap.Push or Ring
-                                        heap.Flush()
-                                        GraphicRenderer::DrawScene()
-                                          camera_buf write
-                                          material_buf write
-                                          RenderGraph::Execute()
-                                            DepthPrePass
-                                            BasePass
-                                            SkyboxPass
-                                            GridPass
-
-                                      RenderOverlay(payload)
-                                        imgui vtx/idx write
-                                        secondary CB
-                                        DrawIndexed x N
-
-                                      EndFrame()
-                                        SubmitAsyncJobs()
-                                        EndEnqueuedBuffers()
-                                        Present()
-                                          vkQueueSubmit -> signal timeline N
-                                          vkQueuePresentKHR
+main-thread ZUI build --payload--> ZUI Draw Pass --swapchain write--> present
+                                  ^
+                                  | sampled FrameColor
+Frustum Culling --> Depth --> G-Buffer --> Lighting --> [Skybox] --> [Grid]
 ```
+
+The graph supplies the actual scheduling, resource lifetimes, aliases, barriers, and queue waits; the sketch only expresses the default data flow.

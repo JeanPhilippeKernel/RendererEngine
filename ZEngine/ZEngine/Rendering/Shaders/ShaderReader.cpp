@@ -19,20 +19,21 @@ namespace ZEngine::Rendering::Shaders
         }
     }
 
-    std::vector<uint32_t> ShaderReader::ReadAsBinary(std::string_view filename)
+    Core::Containers::Array<uint32_t> ShaderReader::ReadAsBinary(Core::Memory::ArenaAllocator* arena, cstring filename)
     {
+        ZENGINE_VALIDATE_ASSERT(arena, "ShaderReader::ReadAsBinary requires an arena")
         auto* vfs      = Engine::GetContext()->VFS;
-        auto  path_res = Core::VFS::VFSPath::Parse(filename.data());
+        auto  path_res = Core::VFS::VFSPath::Parse(filename);
         if (path_res.Failed())
         {
-            ZENGINE_CORE_ERROR("====== Shader file : {} — invalid VFS path ======", filename.data())
+            ZENGINE_CORE_ERROR("====== Shader file : {} — invalid VFS path ======", filename)
             ZENGINE_EXIT_FAILURE()
         }
 
         auto file_res = vfs->Open(path_res.Value(), Core::VFS::VFSOpenFlags::Read);
         if (file_res.Failed())
         {
-            ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename.data())
+            ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename)
             ZENGINE_EXIT_FAILURE()
         }
 
@@ -41,12 +42,15 @@ namespace ZEngine::Rendering::Shaders
         if (size_res.Failed())
         {
             vfs->Close(file);
-            ZENGINE_CORE_ERROR("====== Shader file : {} cannot get size ======", filename.data())
+            ZENGINE_CORE_ERROR("====== Shader file : {} cannot get size ======", filename)
             ZENGINE_EXIT_FAILURE()
         }
 
-        const uint64_t                       byte_size = size_res.Value();
-        std::vector<uint32_t>                buffer(byte_size / 4);
+        const uint64_t byte_size = size_res.Value();
+        ZENGINE_VALIDATE_ASSERT(byte_size > 0 && byte_size % sizeof(uint32_t) == 0, "Shader binary must contain a non-empty number of 32-bit words")
+
+        Core::Containers::Array<uint32_t> buffer;
+        buffer.init(arena, static_cast<size_t>(byte_size / sizeof(uint32_t)), static_cast<size_t>(byte_size / sizeof(uint32_t)));
         Core::Containers::ArrayView<uint8_t> view{reinterpret_cast<uint8_t*>(buffer.data()), byte_size};
         file->ReadAll(view);
         vfs->Close(file);
@@ -61,6 +65,8 @@ namespace ZEngine::Rendering::Shaders
             return ShaderType::FRAGMENT;
         if (path.extension() == ".geom")
             return ShaderType::GEOMETRY;
+        if (path.extension() == ".comp")
+            return ShaderType::COMPUTE;
         return ShaderType::UNKNOWN;
     }
 

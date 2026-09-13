@@ -20,6 +20,8 @@ namespace ZEngine::Importers
         m_total.value.store(0, std::memory_order_relaxed);
         m_completed.value.store(0, std::memory_order_relaxed);
         m_failed.value.store(0, std::memory_order_relaxed);
+        for (uint32_t i = 0; i < MAX_IN_FLIGHT_JOBS; ++i)
+            m_task_in_use[i].value.store(false, std::memory_order_relaxed);
     }
 
     void ImportCoordinator::RegisterImporter(IAssetImporter* importer)
@@ -112,6 +114,55 @@ namespace ZEngine::Importers
         out_ext[copy] = '\0';
     }
 
+    bool ImportCoordinator::TryAcquireTask(uint32_t& out_slot)
+    {
+        for (uint32_t i = 0; i < MAX_IN_FLIGHT_JOBS; ++i)
+        {
+            bool available = false;
+            if (m_task_in_use[i].value.compare_exchange_strong(available, true, std::memory_order_acq_rel))
+            {
+                out_slot = i;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void ImportCoordinator::ReleaseTask(uint32_t slot)
+    {
+        ZENGINE_VALIDATE_ASSERT(slot < MAX_IN_FLIGHT_JOBS, "ImportCoordinator::ReleaseTask: invalid task slot")
+        m_task_in_use[slot].value.store(false, std::memory_order_release);
+    }
+
+    void ImportCoordinator::RunImportTask(void* context)
+    {
+        ImportTask*        task        = static_cast<ImportTask*>(context);
+        ImportCoordinator* coordinator = task->Owner;
+        ImportJob&         job         = task->Job;
+
+        auto               result      = task->Importer->Import(*coordinator->m_vfs_ctx, job.Path, job.Meta);
+
+        if (result.Succeeded())
+        {
+            ZENGINE_CORE_INFO("[ImportCoordinator] Imported '{}'", job.Path.CStr())
+            if (coordinator->m_registry)
+                coordinator->m_registry->SetState(job.Meta.AssetUUID, Core::VFS::AssetState::Loaded);
+            job.Callback.Invoke(true);
+            coordinator->m_completed.value.fetch_add(1, std::memory_order_relaxed);
+        }
+        else
+        {
+            std::snprintf(job.DiagnosticMessage, sizeof(job.DiagnosticMessage), "Import failed");
+            ZENGINE_CORE_ERROR("[ImportCoordinator] Failed to import '{}' — {}", job.Path.CStr(), job.DiagnosticMessage)
+            if (coordinator->m_registry)
+                coordinator->m_registry->SetState(job.Meta.AssetUUID, Core::VFS::AssetState::Failed);
+            job.Callback.Invoke(false);
+            coordinator->m_failed.value.fetch_add(1, std::memory_order_relaxed);
+        }
+        coordinator->m_total.value.fetch_sub(1, std::memory_order_relaxed);
+        coordinator->ReleaseTask(task->Slot);
+    }
+
     void ImportCoordinator::Tick()
     {
         if (!m_vfs_ctx)
@@ -165,29 +216,26 @@ namespace ZEngine::Importers
             if (m_registry)
                 m_registry->SetState(job.Meta.AssetUUID, Core::VFS::AssetState::Importing);
 
-            // Dispatch to thread pool
-            Helpers::ThreadPoolHelper::Submit([this, job, importer]() mutable {
-                auto result = importer->Import(*m_vfs_ctx, job.Path, job.Meta);
+            uint32_t task_slot = 0;
+            if (!TryAcquireTask(task_slot))
+            {
+                // Preserve the job and apply backpressure instead of allocating an
+                // unbounded closure while existing imports are still in flight.
+                m_queue.Enqueue(job);
+                break;
+            }
 
-                if (result.Succeeded())
-                {
-                    ZENGINE_CORE_INFO("[ImportCoordinator] Imported '{}'", job.Path.CStr())
-                    if (m_registry)
-                        m_registry->SetState(job.Meta.AssetUUID, Core::VFS::AssetState::Loaded);
-                    job.Callback.Invoke(true);
-                    m_completed.value.fetch_add(1, std::memory_order_relaxed);
-                }
-                else
-                {
-                    std::snprintf(const_cast<char*>(job.DiagnosticMessage), sizeof(job.DiagnosticMessage), "Import failed");
-                    ZENGINE_CORE_ERROR("[ImportCoordinator] Failed to import '{}' — {}", job.Path.CStr(), job.DiagnosticMessage)
-                    if (m_registry)
-                        m_registry->SetState(job.Meta.AssetUUID, Core::VFS::AssetState::Failed);
-                    job.Callback.Invoke(false);
-                    m_failed.value.fetch_add(1, std::memory_order_relaxed);
-                }
-                m_total.value.fetch_sub(1, std::memory_order_relaxed);
-            });
+            ImportTask& task = m_tasks[task_slot];
+            task.Owner       = this;
+            task.Job         = job;
+            task.Importer    = importer;
+            task.Slot        = task_slot;
+            if (!Helpers::ThreadPoolHelper::Submit(&task, &ImportCoordinator::RunImportTask))
+            {
+                ReleaseTask(task_slot);
+                m_queue.Enqueue(job);
+                break;
+            }
         }
     }
 

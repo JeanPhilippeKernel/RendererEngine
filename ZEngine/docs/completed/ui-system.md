@@ -15,7 +15,7 @@ The system follows the RAD Debugger UI architecture (Ryan Fleury) adapted to ZEn
 Key design choices made during implementation that diverged from the original plan:
 
 - **Input**: feed-based model (`ZUIFeedMousePos`, `ZUIFeedKey`, etc.) rather than a snapshot `InputFrame`. The `ZUILayer` translates engine events to feed calls directly.
-- **Renderer**: `ZUIDrawList` (CPU-side draw list mirroring ImDrawList) consumed by `ZUIRenderer` (standalone Vulkan pass), rather than writing geometry directly into an ImGui draw list.
+- **Render-graph pass**: `ZUIDrawList` (CPU-side draw list mirroring ImDrawList) is consumed by `ZUIPass`, rather than writing geometry directly into an ImGui draw list.
 - **Layout**: 2-pass solver (post-order intrinsic sizes, pre-order extrinsic + positions) rather than the planned 5-phase pass. Simpler and sufficient for current needs.
 - **Docking**: a full panel docking system (`ZUIDockspace`, `ZUIDockSerial`) was built on top of the base layer — not in the original spec.
 
@@ -40,9 +40,9 @@ Key design choices made during implementation that diverged from the original pl
 | Dockspace | `ZUIDockspace.h/.cpp` (432 lines) | Panel docking — split, merge, pane sash resize |
 | Dock serial | `ZUIDockSerial.h/.cpp` (502 lines) | Serialize and restore dock layout across sessions |
 
-### Renderer — `ZEngine/ZEngine/Rendering/Renderers/ZUIRenderer`
+### Render-graph pass — `ZEngine/ZEngine/Rendering/Renderers/ZUIPass`
 
-Standalone Vulkan pass registered in `AppRenderPipeline`:
+Callback pass registered in `AppRenderPipeline`'s main render graph:
 - `ZUICtx` and `ZUIRenderPayload` on `AppRenderPipeline`
 - Shaders: `Resources/Shaders/zui_draw.vert` + `zui_draw.frag` (compiled SPV in `Cache/`)
 - Vertex layout: `ZUIDrawVtx` (20 bytes — pos xy, uv, RGBA8 col)
@@ -150,14 +150,14 @@ ZEngine/ZEngine/UI/
 ├── ZUIInteraction.h/.cpp    Hit-test, hot/active routing, ZUISignal
 ├── ZUIFont.h/.cpp           Font atlas baking (FreeType rasterization + stb_rect_pack layout)
 ├── ZUILayout.h/.cpp         2-pass constraint solver
-├── ZUIDrawList.h/.cpp       CPU-side draw list → ZUIRenderer
+├── ZUIDrawList.h/.cpp       CPU-side draw list → ZUIPass
 ├── ZUIWidgets.h/.cpp        Full widget library
 ├── ZUIPanel.h/.cpp          Panel management, section drag-to-reorder
 ├── ZUIDockspace.h/.cpp      Panel docking
 └── ZUIDockSerial.h/.cpp     Dock layout persistence
 
 ZEngine/ZEngine/Rendering/Renderers/
-└── ZUIRenderer.h/.cpp       Vulkan pass consuming ZUIDrawList output
+└── ZUIPass.h/.cpp           Vulkan pass consuming ZUIDrawList output
 
 Resources/Shaders/
 ├── zui_draw.vert            Screen-space vertex transform

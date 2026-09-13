@@ -8,6 +8,7 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
@@ -45,17 +46,6 @@ namespace
         out[5] = normalize(sub(row(3), row(2))); // far
     }
 
-    bool SphereInFrustum(const FrustumPlane planes[6], Vec3f center, float radius)
-    {
-        for (int i = 0; i < 6; ++i)
-        {
-            float d = planes[i].x * center.x + planes[i].y * center.y + planes[i].z * center.z + planes[i].w;
-            if (d < -radius)
-                return false;
-        }
-        return true;
-    }
-
     float MaxColumnScale(const Mat4f& m)
     {
         float s0 = Vec3f(m(0, 0), m(1, 0), m(2, 0)).magnitude();
@@ -72,10 +62,11 @@ namespace ZEngine::Applications
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
         SceneRenderer           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ZUIRenderer             = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIRenderer);
+        ZUIRenderPass           = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIPass);
 
+        ZUIRenderPass->Initialize(Device);
         SceneRenderer->Initialize(Device);
-        ZUIRenderer->Initialize(Device);
+        SceneRenderer->RenderGraph->AddCallbackPass("ZUI Draw Pass", ZUIRenderPass);
 
         // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
         // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
@@ -87,17 +78,19 @@ namespace ZEngine::Applications
             ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
         }
 
-        Device->SwapchainPtr->OnSwapchainResized    = [](uint32_t w, uint32_t h, void* ctx) { static_cast<AppRenderPipeline*>(ctx)->ResizeRenderTarget(w, h); };
-        Device->SwapchainPtr->OnSwapchainResizedCtx = this;
+        // The scene graph owns editor-viewport-sized images, while the UI pass
+        // resolves the current swapchain image at record time.  A window/swapchain
+        // recreation must therefore not resize the viewport targets: doing so
+        // replaces their image views with the window extent and races panel-driven
+        // resize requests.  Legacy swapchain framebuffers are recreated by
+        // DeviceSwapchain itself.
+        Device->SwapchainPtr->OnSwapchainResized    = nullptr;
+        Device->SwapchainPtr->OnSwapchainResizedCtx = nullptr;
     }
 
     void AppRenderPipeline::Shutdown()
     {
         SceneRenderer->Deinitialize();
-        if (ZUIRenderer)
-        {
-            ZUIRenderer->Deinitialize();
-        }
         if (ZUICtx)
         {
             ZEngine::UI::ZUIContextDestroy(ZUICtx);
@@ -110,18 +103,24 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
     {
-        if (SceneRenderer && SceneRenderer->RenderGraph)
+        if (w > 0 && h > 0 && SceneRenderer && SceneRenderer->RenderGraph)
             SceneRenderer->RenderGraph->Resize(w, h);
     }
 
     bool AppRenderPipeline::BeginFrame()
     {
+        Device->FlushShaderReloadRequests();
+        if (Device->PipelineStateCache)
+            Device->PipelineStateCache->FlushAsyncPipelineJobs();
+
         auto swapchain = Device->SwapchainPtr;
 
         swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
 
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
+        swapchain->FrameAsyncOperations.clear();
+        swapchain->CollectAsyncGPUOperations();
         Managers::AssetManager::FlushTextureReleases();
 
         for (uint8_t thread_idx = 0; thread_idx < Device->CommandBufferMgr->TotalThreadCount; ++thread_idx)
@@ -147,6 +146,9 @@ namespace ZEngine::Applications
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
 
+        // A frame without UI geometry never enters dynamic rendering. The acquired
+        // image must still be in PRESENT_SRC_KHR before the presentation bridge.
+        CurrentCmdBuf->TransitionSwapchainImageToPresent();
         Device->CommandBufferMgr->EnqueueBuffer(CurrentCmdBuf);
         Device->CommandBufferMgr->EndEnqueuedBuffers();
 
@@ -157,7 +159,7 @@ namespace ZEngine::Applications
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
-    void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene)
+    void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
         auto swpachain    = Device->SwapchainPtr;
         auto frame_index  = swpachain->CurrentFrame->Index;
@@ -191,11 +193,11 @@ namespace ZEngine::Applications
             FrustumPlane planes[6];
             ExtractFrustumPlanes(vp, planes);
 
-            Core::Containers::Array<Rendering::Meshes::SubMeshAllocation> allocs;
-            Core::Containers::Array<VkDrawIndirectCommand>                draws;
-            Core::Containers::Array<Core::Maths::Mat4f>                   transforms;
+            Core::Containers::Array<Rendering::Meshes::SubMeshAllocation>   allocs;
+            Core::Containers::Array<Rendering::Scenes::FrustumCullingInput> culling_inputs;
+            Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
             allocs.init(scratch.Arena, instances.size() * 4);
-            draws.init(scratch.Arena, instances.size() * 4);
+            culling_inputs.init(scratch.Arena, instances.size() * 4);
             transforms.init(scratch.Arena, instances.size());
 
             for (uint32_t inst_i = 0; inst_i < instances.size(); ++inst_i)
@@ -224,14 +226,15 @@ namespace ZEngine::Applications
                 if (!mesh)
                     continue;
 
-                // Frustum cull — sphere test in world space.
+                // Build a world-space sphere for the GPU culling pass. A mesh with
+                // no authored bound is deliberately retained as always visible.
+                Vec4f world_bounds(0.f, 0.f, 0.f, -1.f);
                 if (mesh->BoundsRadius > 0.f)
                 {
                     const Vec3f& c = mesh->BoundsCenter;
                     Vec3f        worldCenter(inst.Transform(0, 0) * c.x + inst.Transform(0, 1) * c.y + inst.Transform(0, 2) * c.z + inst.Transform(0, 3), inst.Transform(1, 0) * c.x + inst.Transform(1, 1) * c.y + inst.Transform(1, 2) * c.z + inst.Transform(1, 3), inst.Transform(2, 0) * c.x + inst.Transform(2, 1) * c.y + inst.Transform(2, 2) * c.z + inst.Transform(2, 3));
                     float        worldRadius = mesh->BoundsRadius * MaxColumnScale(inst.Transform);
-                    if (!SphereInFrustum(planes, worldCenter, worldRadius))
-                        continue;
+                    world_bounds             = Vec4f(worldCenter, worldRadius);
                 }
 
                 transforms.push(inst.Transform);
@@ -253,29 +256,26 @@ namespace ZEngine::Applications
                     alloc.TransformId                             = transform_idx;
                     alloc.MaterialId                              = mat_idx;
                     allocs.push(alloc);
-                    draws.push({.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx});
+                    VkDrawIndirectCommand draw = {.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx};
+                    culling_inputs.push({.WorldBounds = world_bounds, .Command = draw});
                 }
             }
 
-            if (rrm && gpu->TransformBuffer.Handle && transforms.size() > 0)
-                rrm->UpdateBuffer(gpu->TransformBuffer, transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
-            if (rrm && gpu->RenderDataBuffer.Handle && allocs.size() > 0)
-                rrm->UpdateBuffer(gpu->RenderDataBuffer, allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
-
-            gpu->IndirectCommandCount = static_cast<uint32_t>(draws.size());
+            gpu->IndirectCommandCount = static_cast<uint32_t>(culling_inputs.size());
             ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
-            for (uint32_t dc = 0; dc < gpu->IndirectCommandCount; ++dc)
-                gpu->CachedDrawCmds[dc] = draws[dc];
+
+            if (rrm && gpu->TransformBuffers[frame_index].Handle && transforms.size() > 0)
+                rrm->UpdateBuffer(gpu->TransformBuffers[frame_index], transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
+            if (rrm && gpu->RenderDataBuffers[frame_index].Handle && allocs.size() > 0)
+                rrm->UpdateBuffer(gpu->RenderDataBuffers[frame_index], allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
+            if (rrm && gpu->CullingInputBuffers[frame_index].Handle && culling_inputs.size() > 0)
+                rrm->UpdateBuffer(gpu->CullingInputBuffers[frame_index], culling_inputs.data(), culling_inputs.size() * sizeof(Rendering::Scenes::FrustumCullingInput));
+
+            for (uint32_t i = 0; i < 6; ++i)
+                gpu->CullingPushConstants.FrustumPlanes[i] = Vec4f(planes[i].x, planes[i].y, planes[i].z, planes[i].w);
+            gpu->CullingPushConstants.DrawCount = gpu->IndirectCommandCount;
 
             ZReleaseScratch(scratch);
-        }
-
-        // Always push draw commands to the heap this frame (heap resets every frame).
-        if (gpu->IndirectCommandCount > 0)
-        {
-            auto& heap              = Device->FrameHeaps[frame_index];
-            auto  indirect_alloc    = heap.Push(gpu->CachedDrawCmds, gpu->IndirectCommandCount * sizeof(VkDrawIndirectCommand), sizeof(VkDrawIndirectCommand));
-            gpu->IndirectHeapOffset = indirect_alloc.Offset;
         }
 
         if (Device->RRM)
@@ -285,18 +285,19 @@ namespace ZEngine::Applications
             // Mark global buffers ready so draw guard allows rendering.
             if (!gpu_data->RMMVertexHandle.IsValid() && rrm->GlobalBuffersReady())
                 gpu_data->RMMVertexHandle = {0, 1}; // sentinel — just needs IsValid() == true
-            SceneRenderer->UpdateRMMBindings(gpu_data);
         }
 
         if (Device->RRM)
         {
             auto* rrm     = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
             auto* gpu_buf = SceneRenderer->RenderSceneData;
-            if (gpu_buf->LightBuffer.Handle)
-                rrm->UpdateBuffer(gpu_buf->LightBuffer, &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
+            if (gpu_buf->LightBuffers[frame_index].Handle)
+                rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
         }
 
-        SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
+        ZUIRenderPass->SetPayload(overlay);
+        CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
+        ZUIRenderPass->SetPayload(nullptr);
     }
 
     void AppRenderPipeline::BeginOverlayFrame(float dt)
@@ -366,19 +367,11 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::FillOverlayPayload(RenderPayload& payload)
     {
-        if (ZUIRenderer && ZUICtx && ZUICtx->Root)
+        if (ZUIRenderPass && ZUICtx && ZUICtx->Root)
         {
             uint32_t slot = MailBoxBufferHead.value.load(std::memory_order_relaxed);
             ZUIPayloadArenas[slot].Clear();
-            ZUIRenderer->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
-        }
-    }
-
-    void AppRenderPipeline::RenderOverlay(const RenderPayload& payload)
-    {
-        if (ZUIRenderer)
-        {
-            ZUIRenderer->Submit(CurrentCmdBuf, payload.ZUIOverlay);
+            ZUIRenderPass->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
         }
     }
 

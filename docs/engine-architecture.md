@@ -89,7 +89,7 @@ loop (until s_close_requested):
        BeginOverlayFrame → ZUIBeginFrame(ctx, dt)
        OnRenderUI() → ZUILayer::Render() — build ZUI box tree
        EndOverlayFrame → ZUIEndFrame (ZUILayoutSolve + ZUIInteractionPass)
-       FillOverlayPayload → ZUIRenderer::PreparePayload (DFS → draw list)
+       FillOverlayPayload → ZUIPass::PreparePayload (DFS → draw list)
        SyncECSToRenderScene(alpha) + PrepareScene
        MailBoxBufferHead.store(next, release)
 
@@ -129,15 +129,13 @@ loop (until s_request_terminate):
        GridPass      → DrawIndexed    (builtin quad + push constants)
        GbufferPass   → DrawIndirect   (all scene meshes, full G-buffer)
        LightingPass  → Draw(3)        (full-screen deferred lighting triangle)
+       ZUIPass       → DrawIndexed    (overlay, targets swapchain)
 
-  6. ZUIRenderer::Submit              Upload ZUIDrawVtx/Idx, scissor/tex batches,
-                                      DrawIndexed via ZUIPass (targets swapchain)
+  6. Swapchain::Present               Submit + present, advance timeline semaphore
 
-  7. Swapchain::Present               Submit + present, advance timeline semaphore
+  7. RRM::EndFrame(frame_index)       Drain DeferredFreeQueue for this slot
 
-  8. RRM::EndFrame(frame_index)       Drain DeferredFreeQueue for this slot
-
-  9. render_timer.End()               Sample wall-clock delta (includes vsync wait)
+  8. render_timer.End()               Sample wall-clock delta (includes vsync wait)
      g_engine_ctx→SmoothedDeltaTime = render_timer.SmoothedDelta()
                                        Written here so FPS display reflects true GPU rate
 ```
@@ -530,7 +528,7 @@ flowchart TD
     ECS["ECS::ActorManager::Shutdown\nECS::Scene::Shutdown"]
     RRM["RRM::Shutdown\nQueueWaitAll · destroy upload pools · free global buffers"]
     AM["AssetManager::Shutdown"]
-    ARP["AppRenderPipeline::Shutdown\nRenderGraph::Dispose (pipelines, framebuffers)\nZUIRenderer::Deinitialize"]
+    ARP["AppRenderPipeline::Shutdown\nRenderGraph::Dispose (pipelines, framebuffers, callback passes)"]
     VFS["VFS::Shutdown"]
     DEV1["VulkanDevice::Deinitialize\nQueueWaitAll · first PendingFree drain\nSwapchainPtr→Dispose · CommandBufferMgr::Deinit\nsecond PendingFree drain"]
     WIN["Window::Deinitialize"]

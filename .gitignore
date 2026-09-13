@@ -45,6 +45,9 @@ _deps/
 # Shader cache file folder
 Resources/Shaders/Cache
 
+# Runtime Vulkan driver pipeline cache
+ZodiacEngine/cache/
+
 # Tools folder
 __tools/
 

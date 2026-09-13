@@ -20,7 +20,11 @@ namespace ZEngine::Core::Memory
         RenderTarget   = 2, // DEVICE_LOCAL - RT, depth, shadow maps
         HostUniform    = 3, // BAR window - uniforms, frenquently updated data
         HostStaging    = 4, // HOST_VISIBLE | HOST_COHERENT - Staging buffers for uploading data to the GPU
-        Count          = 5
+        // HOST_VISIBLE read-mostly allocations used by deferred GPU-to-CPU readback.
+        // This is intentionally distinct from HostStaging: VMA's host-access hint is
+        // directional and readback memory is consumed by the CPU after GPU writes it.
+        HostReadback   = 5,
+        Count          = 6
     };
 
     enum BufferType : uint8_t
@@ -35,12 +39,16 @@ namespace ZEngine::Core::Memory
 
     struct BufferView
     {
-        const char*     DebugName  = nullptr;
-        uint8_t         FrameIndex = std::numeric_limits<uint8_t>::max();
-        BufferType      Type       = BufferType::UNKNOWN;
-        GpuMemoryDomain Domain     = GpuMemoryDomain::DeviceGeometry;
-        VkBuffer        Handle     = VK_NULL_HANDLE;
-        VmaAllocation   Allocation = nullptr;
+        const char*        DebugName      = nullptr;
+        uint8_t            FrameIndex     = std::numeric_limits<uint8_t>::max();
+        BufferType         Type           = BufferType::UNKNOWN;
+        GpuMemoryDomain    Domain         = GpuMemoryDomain::DeviceGeometry;
+        VkBuffer           Handle         = VK_NULL_HANDLE;
+        VmaAllocation      Allocation     = nullptr;
+        VkDeviceSize       Size           = 0;
+        VkBufferUsageFlags Usage          = 0;
+        void*              MappedData     = nullptr;
+        bool               OwnsAllocation = true;
         // clang-format off
         operator bool() const
         {
@@ -51,13 +59,14 @@ namespace ZEngine::Core::Memory
 
     struct BufferImage
     {
-        const char*     DebugName  = nullptr;
-        uint8_t         FrameIndex = std::numeric_limits<uint8_t>::max();
-        GpuMemoryDomain Domain     = GpuMemoryDomain::DeviceTexture;
-        VkImage         Handle     = VK_NULL_HANDLE;
-        VkImageView     ViewHandle = VK_NULL_HANDLE;
-        VkSampler       Sampler    = VK_NULL_HANDLE;
-        VmaAllocation   Allocation = nullptr;
+        const char*     DebugName      = nullptr;
+        uint8_t         FrameIndex     = std::numeric_limits<uint8_t>::max();
+        GpuMemoryDomain Domain         = GpuMemoryDomain::DeviceTexture;
+        VkImage         Handle         = VK_NULL_HANDLE;
+        VkImageView     ViewHandle     = VK_NULL_HANDLE;
+        VkSampler       Sampler        = VK_NULL_HANDLE;
+        VmaAllocation   Allocation     = nullptr;
+        bool            OwnsAllocation = true;
         // clang-format off
         operator bool() const
         {
@@ -68,14 +77,15 @@ namespace ZEngine::Core::Memory
 
     struct StagingRingBuffer
     {
-        static constexpr uint64_t kCapacity  = StagingBytes;
-        static constexpr uint64_t kMaxChunks = 256;
+        static constexpr uint64_t kCapacity             = StagingBytes;
+        static constexpr uint64_t kMaxChunks            = 256;
+        static constexpr uint64_t kPendingTimelineValue = std::numeric_limits<uint64_t>::max();
 
         struct Chunk
         {
             uint32_t Offset        = 0;
             uint32_t Size          = 0;
-            uint64_t TimelineValue = std::numeric_limits<uint64_t>::max(); // Timeline semaphore completion value when this chunk is safe to reuse
+            uint64_t TimelineValue = kPendingTimelineValue; // Timeline semaphore completion value when this chunk is safe to reuse
         };
 
         const char*   DebugName          = "ZStagingBuffer";
@@ -87,20 +97,25 @@ namespace ZEngine::Core::Memory
         Chunk         Chunks[kMaxChunks] = {};
         uint32_t      ChunkHead          = 0;
         uint32_t      ChunkTail          = 0;
+        uint32_t      ChunkCount         = 0;
 
         void          Initialize(VmaAllocator alloc, VmaPool pool);
         void          Shutdown(VmaAllocator alloc);
 
         // Returns mapped pointer + VkBuffer byte offset. Returns nullptr when the ring is
-        // full � caller falls back to a one-shot staging buffer for oversized transfers.
+        // full or all retirement records are in flight; callers then fall back to a
+        // one-shot staging buffer.
         // alignment has possible value as follow:
         void*         Allocate(uint32_t size, uint32_t alignment, uint32_t* out_vk_offset);
 
-        // Record a submitted chunk so Drain() can release it.
+        // Assign the completion timeline to the reservation returned by Allocate().
         void          Submit(uint32_t vk_offset, uint32_t size, uint64_t timeline_value);
 
         // Advance ReadPos past all chunks whose TimelineValue <= completed. O(drained_count).
         void          Drain(uint64_t completed_value);
+
+    private:
+        bool ReserveChunk(uint32_t vk_offset, uint32_t size);
     };
 
     struct GpuAllocator
@@ -116,12 +131,21 @@ namespace ZEngine::Core::Memory
         void              Shutdown();
 
         BufferView        AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name = nullptr);
+        /// @brief Creates a distinct buffer object backed by an existing allocation.
+        BufferView        AllocateAliasingBuffer(const BufferView& backing, VkDeviceSize size, VkBufferUsageFlags usage, const char* debug_name = nullptr);
         BufferImage       AllocateImage(VkImageCreateInfo& image_info, GpuMemoryDomain domain, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name = nullptr);
+        /// @brief Creates a distinct image object backed by an existing allocation.
+        BufferImage       AllocateAliasingImage(const BufferImage& backing, const VkImageCreateInfo& image_info, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name = nullptr);
         void              FreeBuffer(BufferView& buffer);
         void              FreeImage(BufferImage& image, VkDevice device = VK_NULL_HANDLE);
 
         void              SampleBudgets();
         float             HeapPressure(uint32_t heap_index) const;
+        /// @brief Returns the byte range reserved for one owning VMA allocation.
+        VkDeviceSize      GetAllocationSize(VmaAllocation allocation) const;
+        /// @brief Makes GPU writes visible to the CPU for a host-visible VMA allocation.
+        /// @return True when the allocation was invalidated successfully.
+        bool              InvalidateAllocation(VmaAllocation allocation, VkDeviceSize offset, VkDeviceSize size) const;
     };
 
 } // namespace ZEngine::Core::Memory

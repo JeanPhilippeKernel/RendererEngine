@@ -18,6 +18,7 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Windows/GameWindow.h>
 #include <nlohmann/json.hpp>
 #include <chrono>
@@ -87,6 +88,26 @@ namespace ZEngine
                 auto res = vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
                 (void) res;
             }
+
+            const bool has_writable_workspace = app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0' && app->VFSBackend && Core::VFS::HasCap(app->VFSBackend->Capabilities(), Core::VFS::VFSBackendCaps::Write);
+            const auto cache_mount_path       = Core::VFS::VFSPath::Parse("/ZodiacEngine/cache");
+            if (has_writable_workspace && cache_mount_path.Succeeded())
+            {
+                const std::filesystem::path cache_directory  = std::filesystem::path(app->WorkingSpacePath) / "ZodiacEngine" / "cache";
+                const std::string           native_cache_dir = cache_directory.string();
+                g_engine_ctx->PipelineCacheBackend.Initialize(native_cache_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
+                if (vfs_ctx->Mount(&g_engine_ctx->PipelineCacheBackend, cache_mount_path.Value(), 1).Succeeded() && vfs_ctx->CreateDir(cache_mount_path.Value()).Succeeded())
+                    g_engine_ctx->PipelineCachePersistenceEnabled = true;
+            }
+
+            if (!g_engine_ctx->PipelineCachePersistenceEnabled)
+                ZENGINE_CORE_WARN("PSO disk cache is disabled because no writable project VFS cache mount is configured")
+
+            if (g_engine_ctx->PipelineCachePersistenceEnabled && g_engine_ctx->Device->PipelineStateCache)
+            {
+                g_engine_ctx->Device->PipelineStateCache->LoadDriverPipelineCache(*vfs_ctx);
+                g_engine_ctx->Device->PipelineStateCache->LoadWarmupRecipes(*vfs_ctx);
+            }
         }
 
         memory->CreateBudgetedArena(memory->Budget.AssetManager, &g_engine_ctx->AssetArena);
@@ -148,7 +169,7 @@ namespace ZEngine
             g_engine_ctx->VFSScanner.Initialize(&g_engine_ctx->AssetArena);
             g_engine_ctx->VFSScanner.SetAssetRegistry(Managers::AssetManager::Instance()->Registry);
 
-            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, &g_engine_ctx->VFSDirectoryCache, &g_engine_ctx->VFSScanner, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator);
+            static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->InitWatcher(app->WorkingSpacePath, &g_engine_ctx->VFSDirectoryCache, &g_engine_ctx->VFSScanner, Managers::AssetManager::Instance()->Registry, g_engine_ctx->ImportCoordinator, &Engine::OnWatchedFileChanged, g_engine_ctx);
         }
 
         glfwSetScrollCallback(static_cast<GLFWwindow*>(window->GetNativeWindow()), [](GLFWwindow*, double, double yoffset) {
@@ -196,6 +217,12 @@ namespace ZEngine
         // Step 12 — close VFS file handles
         if (g_engine_ctx->VFS)
         {
+            if (g_engine_ctx->PipelineCachePersistenceEnabled && g_engine_ctx->Device && g_engine_ctx->Device->PipelineStateCache)
+            {
+                g_engine_ctx->Device->PipelineStateCache->SaveWarmupRecipes(*g_engine_ctx->VFS);
+                g_engine_ctx->Device->PipelineStateCache->SaveDriverPipelineCache(*g_engine_ctx->VFS);
+                g_engine_ctx->Device->PipelineStateCache->LogTelemetry();
+            }
             g_engine_ctx->VFS->Shutdown();
         }
 
@@ -403,9 +430,8 @@ namespace ZEngine
             const bool frame_valid = pipeline->BeginFrame();
             if (frame_valid)
             {
-                pipeline->RenderScene(r_payload.Camera, r_payload.Scene);
-                if (r_payload.RenderUIOverlay.value.load(std::memory_order_acquire))
-                    pipeline->RenderOverlay(r_payload);
+                const auto* overlay = r_payload.RenderUIOverlay.value.load(std::memory_order_acquire) ? &r_payload.ZUIOverlay : nullptr;
+                pipeline->RenderScene(r_payload.Camera, r_payload.Scene, overlay);
             }
             pipeline->EndFrame();
 
@@ -419,6 +445,20 @@ namespace ZEngine
 
             pipeline->MailBoxBufferTail.value.store(next, std::memory_order_release);
         }
+    }
+
+    void Engine::OnWatchedFileChanged(void* context, const Core::VFS::VFSPath& path, Core::VFS::WatchEventKind kind)
+    {
+        if (kind != Core::VFS::WatchEventKind::Modified)
+            return;
+
+        const Core::VFS::VFSPathComponent extension = path.Extension();
+        if (!extension.Data || extension.Length != 4 || extension.Data[0] != '.' || extension.Data[1] != 's' || extension.Data[2] != 'p' || extension.Data[3] != 'v')
+            return;
+
+        EngineContext* engine_context = static_cast<EngineContext*>(context);
+        if (engine_context && engine_context->Device)
+            engine_context->Device->RequestShaderReload(path.CStr());
     }
 
     void Engine::Run()

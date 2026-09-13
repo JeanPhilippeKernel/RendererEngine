@@ -22,9 +22,10 @@ namespace ZEngine::Importers
     class ImportCoordinator
     {
     public:
-        static constexpr uint32_t MAX_IMPORTERS     = 16;
-        static constexpr uint32_t JOBS_PER_TICK     = 4;
-        static constexpr uint32_t MAX_REQUEUE_COUNT = 3;
+        static constexpr uint32_t MAX_IMPORTERS      = 16;
+        static constexpr uint32_t JOBS_PER_TICK      = 4;
+        static constexpr uint32_t MAX_REQUEUE_COUNT  = 3;
+        static constexpr uint32_t MAX_IN_FLIGHT_JOBS = 64;
 
         void                      Initialize(Core::Memory::ArenaAllocator* arena, Core::VFS::IVFSContext* vfs_ctx, Core::VFS::AssetRegistry* registry);
 
@@ -53,6 +54,14 @@ namespace ZEngine::Importers
         }
 
     private:
+        struct ImportTask
+        {
+            ImportCoordinator* Owner    = nullptr;
+            ImportJob          Job      = {};
+            IAssetImporter*    Importer = nullptr;
+            uint32_t           Slot     = 0;
+        };
+
         Core::Containers::Array<IAssetImporter*> m_importers;
         ImportQueue                              m_queue;
         Core::VFS::IVFSContext*                  m_vfs_ctx  = nullptr;
@@ -62,9 +71,14 @@ namespace ZEngine::Importers
         PaddedAtomic<uint32_t>                   m_total{};
         PaddedAtomic<uint32_t>                   m_completed{};
         PaddedAtomic<uint32_t>                   m_failed{};
+        ImportTask                               m_tasks[MAX_IN_FLIGHT_JOBS]       = {};
+        PaddedAtomic<bool>                       m_task_in_use[MAX_IN_FLIGHT_JOBS] = {};
 
         IAssetImporter*                          Route(const char* ext) const;
         bool                                     DependenciesSatisfied(const Core::VFS::VFSPath& path) const;
+        bool                                     TryAcquireTask(uint32_t& out_slot);
+        void                                     ReleaseTask(uint32_t slot);
+        static void                              RunImportTask(void* context);
         static void                              ExtractExtension(const Core::VFS::VFSPath& path, char out_ext[16]);
     };
 } // namespace ZEngine::Importers

@@ -2,7 +2,6 @@
 #include <ZEngine/ZEngineDef.h>
 #include <atomic>
 #include <cstdint>
-#include <new>
 
 namespace ZEngine::Core::Containers
 {
@@ -18,8 +17,6 @@ namespace ZEngine::Core::Containers
 
         SPSCQueue()
         {
-            for (uint32_t i = 0; i < N; ++i)
-                new (&m_buffer[i]) T{};
             m_head.value.store(0, std::memory_order_relaxed);
             m_tail.value.store(0, std::memory_order_relaxed);
         }
@@ -55,7 +52,7 @@ namespace ZEngine::Core::Containers
     private:
         PaddedAtomic<uint32_t> m_head{};
         PaddedAtomic<uint32_t> m_tail{};
-        T                      m_buffer[N];
+        T                      m_buffer[N] = {};
     };
 
 } // namespace ZEngine::Core::Containers

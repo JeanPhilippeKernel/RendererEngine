@@ -537,12 +537,19 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
+#if defined(_WIN32)
+        if (!MoveFileExA(native_src, native_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            return VFSResult<void>::Fail(VFSError::IOError);
+        }
+#else
         std::error_code ec;
         std::filesystem::rename(native_src, native_dst, ec);
         if (ec)
         {
             return VFSResult<void>::Fail(VFSError::IOError);
         }
+#endif
         return VFSResult<void>::Ok();
     }
 

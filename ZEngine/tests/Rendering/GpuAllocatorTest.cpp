@@ -3,6 +3,7 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerConfiguration.h>
 #include <gtest/gtest.h>
+#include <array>
 #include <filesystem>
 
 using namespace ZEngine::Core::Memory;
@@ -87,6 +88,49 @@ namespace
         }
     };
 } // namespace
+
+TEST(StagingRingBufferTest, RefusesAllocationWhenAllRetirementRecordsAreReserved)
+{
+    StagingRingBuffer                                  ring    = {};
+    std::array<uint8_t, StagingRingBuffer::kMaxChunks> backing = {};
+    ring.MappedPtr                                             = backing.data();
+
+    for (uint32_t i = 0; i < StagingRingBuffer::kMaxChunks; ++i)
+    {
+        uint32_t offset = UINT32_MAX;
+        ASSERT_NE(ring.Allocate(1, 1, &offset), nullptr);
+        EXPECT_EQ(offset, i);
+    }
+
+    EXPECT_EQ(ring.ChunkCount, StagingRingBuffer::kMaxChunks);
+    uint32_t overflow_offset = UINT32_MAX;
+    EXPECT_EQ(ring.Allocate(1, 1, &overflow_offset), nullptr);
+    EXPECT_EQ(ring.ChunkCount, StagingRingBuffer::kMaxChunks);
+
+    for (uint32_t i = 0; i < StagingRingBuffer::kMaxChunks; ++i)
+        ring.Submit(i, 1, i + 1);
+    ring.Drain(StagingRingBuffer::kMaxChunks);
+
+    EXPECT_EQ(ring.ChunkCount, 0u);
+    EXPECT_EQ(ring.ChunkHead, ring.ChunkTail);
+}
+
+TEST(StagingRingBufferTest, DoesNotRetireAnUnsubmittedReservation)
+{
+    StagingRingBuffer      ring    = {};
+    std::array<uint8_t, 1> backing = {};
+    ring.MappedPtr                 = backing.data();
+
+    uint32_t offset                = UINT32_MAX;
+    ASSERT_NE(ring.Allocate(1, 1, &offset), nullptr);
+    ring.Drain(UINT64_MAX);
+    EXPECT_EQ(ring.ChunkCount, 1u);
+    EXPECT_EQ(ring.ChunkHead, 0u);
+
+    ring.Submit(offset, 1, 1);
+    ring.Drain(1);
+    EXPECT_EQ(ring.ChunkCount, 0u);
+}
 
 // SetUpTestSuite/TearDownTestSuite (once for the whole suite) rather than per-test
 // SetUp/TearDown — cheaper, and avoids creating/destroying a real VkInstance+VkDevice

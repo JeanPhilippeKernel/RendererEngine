@@ -166,7 +166,7 @@ namespace ZEngine::UI
             auto* rrm  = static_cast<RenderResourceManager*>(device->RRM);
             gpu_handle = rrm->UploadFontAtlas(rgba, kAtlasW, kAtlasH);
         }
-        device->TextureHandleToUpdates.Enqueue(gpu_handle);
+        device->RequestDescriptorUpdate(gpu_handle);
 
         // 6. Build ZUIFontAtlas
         ZUIFontAtlas* atlas = ZPushStruct(persistent_arena, ZUIFontAtlas);

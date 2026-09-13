@@ -3,6 +3,7 @@
 #include <ZEngine/Rendering/GeometryStreamingManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <gtest/gtest.h>
+#include <memory>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Rendering;
@@ -56,11 +57,12 @@ namespace
 
     struct StreamingFixture
     {
-        ArenaAllocator           arena{};
-        RenderResourceManager    rrm{};
-        GeometryStreamingManager mgr{};
+        ArenaAllocator                         arena{};
+        std::unique_ptr<RenderResourceManager> rrm_storage{};
+        RenderResourceManager&                 rrm;
+        GeometryStreamingManager               mgr{};
 
-        StreamingFixture()
+        StreamingFixture() : rrm_storage(std::make_unique<RenderResourceManager>()), rrm(*rrm_storage)
         {
             arena.Initialize(ARENA_SIZE, {});
             RRMTestHelper::SetupPool(rrm, &arena, 4096, 4096, 256);
@@ -70,6 +72,7 @@ namespace
         ~StreamingFixture()
         {
             mgr.Deinitialize();
+            rrm_storage.reset();
             arena.Shutdown();
         }
     };

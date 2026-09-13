@@ -4,6 +4,8 @@
 #include <ZEngine/ECS/ArchetypeMask.h>
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ECS/WorldCommands.h>
+#include <atomic>
+#include <condition_variable>
 
 namespace ZEngine::ECS
 {
@@ -64,6 +66,16 @@ namespace ZEngine::ECS
             Core::Containers::Array<uint32_t> Successors;
         };
 
+        struct WaveTask
+        {
+            Scene*                   ScenePtr     = nullptr;
+            float                    DeltaTime    = 0.f;
+            SystemFn                 Fn           = nullptr;
+            WorldCommands*           Staging      = nullptr;
+            std::atomic<uint32_t>*   Remaining    = nullptr;
+            std::condition_variable* CompletionCV = nullptr;
+        };
+
         Core::Containers::Array<SystemNode>                        m_nodes;
         Core::Containers::Array<Core::Containers::Array<uint32_t>> m_waves;
         Core::Containers::Array<uint32_t>                          m_order_edges_from;
@@ -77,6 +89,7 @@ namespace ZEngine::ECS
 
         bool                                                       HasConflict(const SystemNode& a, const SystemNode& b) const;
         bool                                                       HasOrderEdge(uint32_t a, uint32_t b) const;
+        static void                                                RunWaveTask(void* context);
         void                                                       BuildEdges();
         void                                                       TopologicalSort();
     };

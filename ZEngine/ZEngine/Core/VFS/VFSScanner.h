@@ -33,8 +33,9 @@ namespace ZEngine::Core::VFS
 
     struct VFSScanner
     {
-        static constexpr int    MaxConcurrentDirLists = 4;
-        static constexpr size_t SlotArenaReserve      = ZMega(128);
+        static constexpr int      MaxConcurrentDirLists = 4;
+        static constexpr size_t   SlotArenaReserve      = ZMega(128);
+        static constexpr uint32_t MaxScanTasks          = 1024;
 
         VFSScanner();
         ~VFSScanner();
@@ -60,13 +61,25 @@ namespace ZEngine::Core::VFS
             VFSDirectoryCache* Cache   = nullptr;
         };
 
-        void  ScanDirectory(ScanContext ctx, VFSPath dir);
-        void  OnTaskComplete(bool cancelled);
+        struct ScanTask
+        {
+            VFSScanner* Scanner   = nullptr;
+            ScanContext Context   = {};
+            VFSPath     Directory = {};
+            uint32_t    Slot      = 0;
+        };
 
-        int   AcquireSlot();
-        void  ReleaseSlot(int slot);
+        void        ScanDirectory(ScanContext ctx, VFSPath dir);
+        bool        TrySubmitDirectory(ScanContext ctx, VFSPath dir);
+        bool        TryAcquireTask(uint32_t& out_slot);
+        void        ReleaseTask(uint32_t slot);
+        void        OnTaskComplete(bool cancelled);
+        static void RunScanTask(void* context);
 
-        void* m_complete_callback_ctx                 = nullptr;
+        int         AcquireSlot();
+        void        ReleaseSlot(int slot);
+
+        void*       m_complete_callback_ctx           = nullptr;
         void (*m_complete_callback)(void*, ScanStats) = nullptr;
 
         PaddedAtomic<bool>                             m_is_scanning{};
@@ -83,8 +96,10 @@ namespace ZEngine::Core::VFS
 
         Core::Memory::ArenaAllocator                   m_slot_arenas[MaxConcurrentDirLists];
         PaddedAtomic<bool>                             m_slot_in_use[MaxConcurrentDirLists];
-        bool                                           m_arenas_ready = false;
-        ZEngine::Core::VFS::AssetRegistry*             m_registry     = nullptr;
+        ScanTask                                       m_tasks[MaxScanTasks]       = {};
+        PaddedAtomic<bool>                             m_task_in_use[MaxScanTasks] = {};
+        bool                                           m_arenas_ready              = false;
+        ZEngine::Core::VFS::AssetRegistry*             m_registry                  = nullptr;
     };
 
 } // namespace ZEngine::Core::VFS

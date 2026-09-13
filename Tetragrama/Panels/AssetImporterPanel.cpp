@@ -643,21 +643,52 @@ namespace Tetragrama::Panels
         m_state.value.store(ImporterState::Importing, std::memory_order_release);
         m_progress.value.store(0.f, std::memory_order_relaxed);
 
-        auto        cfg_copy = *config;
-        auto        ext      = vfs_value.Extension();
-        std::string src_str(m_path_buf);
+        m_import_task               = {};
+        m_import_task.Panel         = this;
+        m_import_task.Configuration = *config;
+        secure_strncpy(m_import_task.SourcePath, sizeof(m_import_task.SourcePath), m_path_buf, secure_strlen(m_path_buf));
+
+        const auto ext = vfs_value.Extension();
 
         if (secure_strcmp(ext.Data, ".glb") == 0 || secure_strcmp(ext.Data, ".gltf") == 0)
         {
-            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src_str, cfg_copy, arena = &m_local_arena]() mutable { m_gltf_importer->ImportFile(src_str.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
+            m_import_task.Kind = ImporterKind::Gltf;
         }
         else if (secure_strcmp(ext.Data, ".fbx") == 0)
         {
-            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src_str, cfg_copy, arena = &m_local_arena]() mutable { m_fbx_importer->ImportFile(src_str.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
+            m_import_task.Kind = ImporterKind::Fbx;
         }
         else
         {
-            ZEngine::Helpers::ThreadPoolHelper::Submit([this, src_str, cfg_copy, arena = &m_local_arena]() mutable { m_assimp_importer->ImportFile(src_str.c_str(), cfg_copy, arena, this, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog); });
+            m_import_task.Kind = ImporterKind::Assimp;
+        }
+
+        if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&m_import_task, &AssetImporterPanel::RunImportTask))
+        {
+            m_state.value.store(ImporterState::Options, std::memory_order_release);
+            PushLog("Import task rejected because the thread pool is shutting down", kRed[0], kRed[1], kRed[2]);
+        }
+    }
+
+    void AssetImporterPanel::RunImportTask(void* context)
+    {
+        auto* task  = static_cast<ImportTask*>(context);
+        auto* panel = task->Panel;
+        if (!panel)
+            return;
+
+        const auto& config = task->Configuration;
+        switch (task->Kind)
+        {
+            case ImporterKind::Gltf:
+                panel->m_gltf_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, panel, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                break;
+            case ImporterKind::Fbx:
+                panel->m_fbx_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, panel, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                break;
+            case ImporterKind::Assimp:
+                panel->m_assimp_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, panel, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                break;
         }
     }
 

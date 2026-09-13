@@ -27,6 +27,8 @@ namespace ZEngine::Core::VFS
 {
     struct VFSScanner;
 
+    using FileChangeListener = void (*)(void* context, const VFSPath& path, WatchEventKind kind);
+
     struct VFSContext : IVFSContext
     {
         void                                                    Initialize(Memory::ArenaAllocator* arena, size_t mount_table_capacity = 16);
@@ -36,7 +38,7 @@ namespace ZEngine::Core::VFS
         // When a file is modified: registry->OnAssetModified + coordinator->Enqueue(Immediate)
         // When a file is deleted:  registry->OnAssetDeleted
         // When a file is renamed:  registry->OnAssetRenamed
-        void                                                    InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry = nullptr, Importers::ImportCoordinator* coordinator = nullptr);
+        void                                                    InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry = nullptr, Importers::ImportCoordinator* coordinator = nullptr, FileChangeListener file_change_listener = nullptr, void* file_change_context = nullptr);
 
         // Scan the whole project into the registry/directory cache. Call once, after the
         // project's own backend is mounted — InitWatcher's file watcher only reacts to
@@ -74,6 +76,8 @@ namespace ZEngine::Core::VFS
         VFSScanner*                            m_scanner                                  = nullptr;
         AssetRegistry*                         m_registry                                 = nullptr;
         Importers::ImportCoordinator*          m_coordinator                              = nullptr;
+        FileChangeListener                     m_file_change_listener                     = nullptr;
+        void*                                  m_file_change_context                      = nullptr;
         char                                   m_project_root_native[MAX_FILE_PATH_COUNT] = {};
     };
 

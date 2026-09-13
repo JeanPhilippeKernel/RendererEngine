@@ -78,26 +78,52 @@ namespace ZEngine::Rendering::Scenes
         uint32_t            _pad[2]              = {};
     };
 
+    // std430-compatible input record for GPU frustum culling. The compute shader
+    // copies Command verbatim and changes instanceCount for culled entries only.
+    struct FrustumCullingInput
+    {
+        Core::Maths::Vec4f    WorldBounds = {}; // xyz = world-space sphere center, w <= 0 means always visible
+        VkDrawIndirectCommand Command     = {};
+    };
+
+    // Explicit tail padding makes this exactly match the GLSL push-constant block.
+    struct FrustumCullingPushConstants
+    {
+        Core::Maths::Vec4f FrustumPlanes[6] = {};
+        uint32_t           DrawCount        = 0;
+        uint32_t           Padding[3]       = {};
+    };
+
+    static_assert(sizeof(FrustumCullingInput) == 32, "FrustumCullingInput must match its std430 GLSL representation");
+    static_assert(sizeof(FrustumCullingPushConstants) == 112, "FrustumCullingPushConstants must match its GLSL representation");
+
     struct SceneData
     {
+        static constexpr uint32_t   MAX_FRAMES_IN_FLIGHT                        = 3;
+        static constexpr uint32_t   MAX_DRAW_COMMANDS                           = 8192;
+
         // Camera UBO — migrated to PerFrameUploadHeap; offset updated each frame in DrawScene
-        uint32_t                  CameraHeapOffset                  = 0;
+        uint32_t                    CameraHeapOffset                            = 0;
 
-        // Indirect draw commands — migrated to PerFrameUploadHeap each frame.
-        // The heap is reset every frame so we cache the commands here and re-push every frame.
-        uint32_t                  IndirectHeapOffset                = 0;
-        uint32_t                  IndirectCommandCount              = 0;
-        static constexpr uint32_t MAX_DRAW_COMMANDS                 = 8192;
-        VkDrawIndirectCommand     CachedDrawCmds[MAX_DRAW_COMMANDS] = {};
+        // CPU-built draw candidates. The compute pass writes a matching indirect
+        // array with instanceCount = 0 for frustum-culled candidates.
+        uint32_t                    IndirectCommandCount                        = 0;
+        FrustumCullingPushConstants CullingPushConstants                        = {};
 
-        // RMM-owned HOST_VISIBLE buffers — written via RRM::UpdateBuffer every frame.
-        Core::Memory::BufferView  TransformBuffer                   = {};
-        Core::Memory::BufferView  MaterialBuffer                    = {};
-        Core::Memory::BufferView  RenderDataBuffer                  = {};
-        Core::Memory::BufferView  LightBuffer                       = {};
+        // Per-frame buffers prevent CPU uploads for frame N + 1 from racing GPU
+        // reads issued for an earlier in-flight frame.
+        Core::Memory::BufferView    TransformBuffers[MAX_FRAMES_IN_FLIGHT]      = {};
+        Core::Memory::BufferView    MaterialBuffers[MAX_FRAMES_IN_FLIGHT]       = {};
+        Core::Memory::BufferView    RenderDataBuffers[MAX_FRAMES_IN_FLIGHT]     = {};
+        Core::Memory::BufferView    LightBuffers[MAX_FRAMES_IN_FLIGHT]          = {};
+
+        // Per-frame ownership prevents frame N + 1 compute from overwriting the
+        // commands still consumed by graphics for frame N.
+        Core::Memory::BufferView    CullingInputBuffers[MAX_FRAMES_IN_FLIGHT]   = {};
+        Core::Memory::BufferView    CulledIndirectBuffers[MAX_FRAMES_IN_FLIGHT] = {};
 
         // RRM vertex buffer handle — index buffer is paired via RRM::GetIndexBuffer(RMMVertexHandle).
-        Rendering::BufferHandle   RMMVertexHandle                   = {};
+        Rendering::BufferHandle     RMMVertexHandle                             = {};
     };
     ZDEFINE_PTR(SceneData);
 
