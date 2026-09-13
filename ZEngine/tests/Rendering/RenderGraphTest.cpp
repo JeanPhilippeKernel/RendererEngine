@@ -6,6 +6,7 @@
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
 #include <gtest/gtest.h>
 #include <cstring>
+#include <memory>
 
 using namespace ZEngine;
 using namespace ZEngine::Core::Memory;
@@ -524,13 +525,13 @@ TEST(RenderGraphDeclarationTest, ConditionalReadUsesExactVersionAndExplicitFallb
     graph.Passes.push(MakePass(&arena, "ConditionalConsumer"));
     graph.Passes.push(MakePass(&arena, "FallbackConsumer"));
 
-    Hardwares::VulkanDevice device     = {};
-    graph.Device                       = &device;
+    auto device                        = std::make_unique<Hardwares::VulkanDevice>();
+    graph.Device                       = device.get();
     RenderGraphResourceBuilder builder = {};
     builder.Initialize(&graph);
 
-    device.PhysicalDeviceSupportConditionalRendering = true;
-    builder.CurrentPass                              = 1;
+    device->PhysicalDeviceSupportConditionalRendering = true;
+    builder.CurrentPass                               = 1;
     builder.UseConditional({0, 1});
 
     ASSERT_TRUE(graph.Passes[1].Conditional.Enabled);
@@ -543,8 +544,8 @@ TEST(RenderGraphDeclarationTest, ConditionalReadUsesExactVersionAndExplicitFallb
     EXPECT_EQ(state.Stage, VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT);
     EXPECT_EQ(state.Access, VK_ACCESS_2_CONDITIONAL_RENDERING_READ_BIT_EXT);
 
-    device.PhysicalDeviceSupportConditionalRendering = false;
-    builder.CurrentPass                              = 2;
+    device->PhysicalDeviceSupportConditionalRendering = false;
+    builder.CurrentPass                               = 2;
     builder.UseConditional({0, 1}, {.Fallback = RGConditionalFallback::Unconditional});
     EXPECT_TRUE(graph.Passes[2].Conditional.Enabled);
     EXPECT_TRUE(graph.Passes[2].Conditional.UsesFallback);
