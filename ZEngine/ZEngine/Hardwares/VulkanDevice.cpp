@@ -1996,11 +1996,17 @@ namespace ZEngine::Hardwares
         layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     }
 
-    void CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const render_pass, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer)
+    bool CommandBuffer::BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const render_pass, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
         ZENGINE_VALIDATE_ASSERT(BufferType == CommandBufferType::Primary, "command buffer must be Primary Buffer Type")
         ZENGINE_VALIDATE_ASSERT(render_pass != nullptr, "Render pass can't be null")
+
+        if (!Device->PhysicalDeviceSupportDynamicRendering && framebuffer == VK_NULL_HANDLE)
+        {
+            ZENGINE_CORE_ERROR("[Vulkan] Refusing to begin legacy render pass '{}' with a null framebuffer", render_pass ? render_pass->Specification.DebugName : "?")
+            return false;
+        }
 
         const auto&         render_pass_spec = render_pass->Specification;
         const uint32_t      width            = render_pass->GetRenderAreaWidth();
@@ -2117,7 +2123,7 @@ namespace ZEngine::Hardwares
             BeginDynamicRendering(rendering_info);
             m_dynamic_swapchain_rendering = uses_swapchain;
             ZReleaseScratch(scratch);
-            return;
+            return true;
         }
 
         auto                scratch          = ZGetScratch(&LocalArena);
@@ -2169,6 +2175,7 @@ namespace ZEngine::Hardwares
         m_in_render_pass = true;
 
         ZReleaseScratch(scratch);
+        return true;
     }
 
     void CommandBuffer::EndRenderPass()

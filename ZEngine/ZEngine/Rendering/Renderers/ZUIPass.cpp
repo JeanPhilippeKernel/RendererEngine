@@ -776,10 +776,14 @@ namespace ZEngine::Rendering::Renderers
         if (!m_payload || m_vtx_upload == 0 || m_idx_upload == 0)
             return;
 
-        auto  swapchain  = Device->SwapchainPtr;
+        auto* swapchain = Device->SwapchainPtr;
+        if (!swapchain || !swapchain->CurrentFrame || swapchain->CurrentFrame->ImageIndex >= swapchain->SwapchainFramebuffers.size())
+            return;
+
         auto  current_fb = swapchain->SwapchainFramebuffers[swapchain->CurrentFrame->ImageIndex];
         auto* gp         = static_cast<RenderPasses::GraphicPass*>(pass);
-        command_buffer->BeginRenderPass(gp, current_fb, false);
+        if (!command_buffer->BeginRenderPass(gp, current_fb, false))
+            return;
         RecordDraw(device, res_inspector, scene, pass, nullptr, command_buffer);
         command_buffer->EndRenderPass();
     }

@@ -1917,9 +1917,12 @@ namespace ZEngine::Rendering::Renderers
                     }
                     else if (secondary_was_assigned && pass.Secondary && pass.SecondaryRecorded)
                     {
-                        target->BeginRenderPass(static_cast<RenderPasses::GraphicPass*>(pass.Handle), framebuffer, true);
-                        target->ExecuteSecondaryCommandBuffer(pass.Secondary);
-                        target->EndRenderPass();
+                        if (target->BeginRenderPass(static_cast<RenderPasses::GraphicPass*>(pass.Handle), framebuffer, true))
+                        {
+                            target->ExecuteSecondaryCommandBuffer(pass.Secondary);
+                            target->EndRenderPass();
+                            query_writer_executed = true;
+                        }
                     }
                     else if (!secondary_was_assigned)
                     {

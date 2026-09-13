@@ -196,7 +196,9 @@ namespace ZEngine::Hardwares
         void                              TransitionSwapchainImageToColorAttachment();
         /// @brief Transitions the acquired swapchain image to the presentation layout.
         void                              TransitionSwapchainImageToPresent();
-        void                              BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
+        /// @brief Begins a legacy render pass or a dynamic-rendering instance.
+        /// @return False when legacy rendering has no valid framebuffer.
+        bool                              BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
         void                              EndRenderPass();
         void                              BindDescriptorSets(uint32_t frame_index = 0, const uint32_t* dynamic_offsets = nullptr, uint32_t dynamic_offset_count = 0);
         void                              BindDescriptorSet(const VkDescriptorSet& descriptor);

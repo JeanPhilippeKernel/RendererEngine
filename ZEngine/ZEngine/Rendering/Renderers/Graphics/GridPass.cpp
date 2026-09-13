@@ -64,9 +64,12 @@ namespace ZEngine::Rendering::Renderers
     {
         if (!Enabled)
             return;
+        if (!framebuffer || framebuffer->Handle == VK_NULL_HANDLE)
+            return;
 
         auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
-        command_buffer->BeginRenderPass(gp, framebuffer ? framebuffer->Handle : VK_NULL_HANDLE, false);
+        if (!command_buffer->BeginRenderPass(gp, framebuffer->Handle, false))
+            return;
         RecordDraw(device, res_inspector, scene, pass, framebuffer, command_buffer);
         command_buffer->EndRenderPass();
     }
