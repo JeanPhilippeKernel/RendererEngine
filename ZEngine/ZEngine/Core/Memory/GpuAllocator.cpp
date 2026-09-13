@@ -458,6 +458,8 @@ namespace ZEngine::Core::Memory
             // no need to force an unnecessary wrap attempt.
             if ((offset + size) <= static_cast<uint32_t>(kCapacity))
             {
+                if (!ReserveChunk(offset, size))
+                    return nullptr;
                 *out_vk_offset = offset;
                 WritePos       = offset + size;
                 return reinterpret_cast<uint8_t*>(MappedPtr) + offset;
@@ -466,6 +468,8 @@ namespace ZEngine::Core::Memory
             // this causes a buffer wrapping
             if (size < ReadPos)
             {
+                if (!ReserveChunk(0, size))
+                    return nullptr;
                 *out_vk_offset = 0;
                 WritePos       = size;
                 return MappedPtr;
@@ -476,6 +480,8 @@ namespace ZEngine::Core::Memory
         {
             if ((offset + size) < ReadPos)
             {
+                if (!ReserveChunk(offset, size))
+                    return nullptr;
                 *out_vk_offset = offset;
                 WritePos       = offset + size;
                 return reinterpret_cast<uint8_t*>(MappedPtr) + offset;
@@ -484,18 +490,41 @@ namespace ZEngine::Core::Memory
         }
     }
 
+    bool StagingRingBuffer::ReserveChunk(uint32_t vk_offset, uint32_t size)
+    {
+        if (ChunkCount == kMaxChunks)
+            return false;
+
+        Chunks[ChunkTail] = {vk_offset, size, kPendingTimelineValue};
+        ChunkTail         = (ChunkTail + 1) % kMaxChunks;
+        ++ChunkCount;
+        return true;
+    }
+
     void StagingRingBuffer::Submit(uint32_t vk_offset, uint32_t size, uint64_t timeline_value)
     {
-        Chunks[ChunkTail] = {vk_offset, size, timeline_value};
-        ChunkTail         = (ChunkTail + 1) % kMaxChunks;
+        ZENGINE_VALIDATE_ASSERT(timeline_value != kPendingTimelineValue, "StagingRingBuffer::Submit: pending sentinel is not a valid completion value")
+        for (uint32_t offset = 0; offset < ChunkCount; ++offset)
+        {
+            Chunk& chunk = Chunks[(ChunkHead + offset) % kMaxChunks];
+            if (chunk.Offset == vk_offset && chunk.Size == size && chunk.TimelineValue == kPendingTimelineValue)
+            {
+                chunk.TimelineValue = timeline_value;
+                return;
+            }
+        }
+
+        ZENGINE_VALIDATE_ASSERT(false, "StagingRingBuffer::Submit: no matching outstanding reservation")
     }
 
     void StagingRingBuffer::Drain(uint64_t completed_value)
     {
-        while (ChunkHead != ChunkTail && Chunks[ChunkHead].TimelineValue <= completed_value)
+        while (ChunkCount > 0 && Chunks[ChunkHead].TimelineValue != kPendingTimelineValue && Chunks[ChunkHead].TimelineValue <= completed_value)
         {
-            ReadPos   = Chunks[ChunkHead].Offset + Chunks[ChunkHead].Size;
-            ChunkHead = (ChunkHead + 1) % kMaxChunks;
+            ReadPos           = Chunks[ChunkHead].Offset + Chunks[ChunkHead].Size;
+            Chunks[ChunkHead] = {};
+            ChunkHead         = (ChunkHead + 1) % kMaxChunks;
+            --ChunkCount;
         }
     }
 

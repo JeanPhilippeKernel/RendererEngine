@@ -77,14 +77,15 @@ namespace ZEngine::Core::Memory
 
     struct StagingRingBuffer
     {
-        static constexpr uint64_t kCapacity  = StagingBytes;
-        static constexpr uint64_t kMaxChunks = 256;
+        static constexpr uint64_t kCapacity             = StagingBytes;
+        static constexpr uint64_t kMaxChunks            = 256;
+        static constexpr uint64_t kPendingTimelineValue = std::numeric_limits<uint64_t>::max();
 
         struct Chunk
         {
             uint32_t Offset        = 0;
             uint32_t Size          = 0;
-            uint64_t TimelineValue = std::numeric_limits<uint64_t>::max(); // Timeline semaphore completion value when this chunk is safe to reuse
+            uint64_t TimelineValue = kPendingTimelineValue; // Timeline semaphore completion value when this chunk is safe to reuse
         };
 
         const char*   DebugName          = "ZStagingBuffer";
@@ -96,20 +97,25 @@ namespace ZEngine::Core::Memory
         Chunk         Chunks[kMaxChunks] = {};
         uint32_t      ChunkHead          = 0;
         uint32_t      ChunkTail          = 0;
+        uint32_t      ChunkCount         = 0;
 
         void          Initialize(VmaAllocator alloc, VmaPool pool);
         void          Shutdown(VmaAllocator alloc);
 
         // Returns mapped pointer + VkBuffer byte offset. Returns nullptr when the ring is
-        // full � caller falls back to a one-shot staging buffer for oversized transfers.
+        // full or all retirement records are in flight; callers then fall back to a
+        // one-shot staging buffer.
         // alignment has possible value as follow:
         void*         Allocate(uint32_t size, uint32_t alignment, uint32_t* out_vk_offset);
 
-        // Record a submitted chunk so Drain() can release it.
+        // Assign the completion timeline to the reservation returned by Allocate().
         void          Submit(uint32_t vk_offset, uint32_t size, uint64_t timeline_value);
 
         // Advance ReadPos past all chunks whose TimelineValue <= completed. O(drained_count).
         void          Drain(uint64_t completed_value);
+
+    private:
+        bool ReserveChunk(uint32_t vk_offset, uint32_t size);
     };
 
     struct GpuAllocator
