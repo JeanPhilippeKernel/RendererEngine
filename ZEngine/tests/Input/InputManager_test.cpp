@@ -128,6 +128,19 @@ TEST_F(InputManagerTest, CursorCallbacksTrackTheLatestPosition)
     EXPECT_FLOAT_EQ(position.y, 200.0f);
 }
 
+TEST_F(InputManagerTest, FocusLossClearsSampledInputAndBlocksPolling)
+{
+    input.AccumulateCursorPosition(120.0, 80.0);
+    input.SetWindowFocused(false);
+
+    EXPECT_FALSE(input.IsWindowFocused());
+    EXPECT_FLOAT_EQ(input.GetMouseDelta().x, 0.0f);
+    EXPECT_FLOAT_EQ(input.GetMouseDelta().y, 0.0f);
+
+    input.SetWindowFocused(true);
+    EXPECT_TRUE(input.IsWindowFocused());
+}
+
 TEST_F(InputManagerTest, DefaultScrollDelta_IsZero)
 {
     EXPECT_FLOAT_EQ(input.GetScrollDelta(), 0.0f);

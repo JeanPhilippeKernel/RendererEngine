@@ -34,6 +34,7 @@ namespace ZEngine::Input
         m_mouse_delta           = {};
         m_pending_mouse_delta   = {};
         m_rebase_mouse_position = true;
+        m_window_focused        = true;
     }
 
     void InputManager::Dispose()
@@ -121,6 +122,27 @@ namespace ZEngine::Input
         m_rebase_mouse_position = true;
     }
 
+    void InputManager::SetWindowFocused(bool focused)
+    {
+        if (m_window_focused == focused)
+            return;
+
+        const uint64_t frame_number = m_current.FrameNumber;
+        m_window_focused            = focused;
+        m_current                   = {};
+        m_prev                      = {};
+        m_current.FrameNumber       = frame_number;
+        m_current.ActionCount       = m_action_count;
+        m_scroll_accum              = 0.0;
+        m_scroll_delta              = 0.0f;
+        ResetMouseDelta();
+    }
+
+    bool InputManager::IsWindowFocused() const
+    {
+        return m_window_focused;
+    }
+
     void InputManager::Poll(GLFWwindow* window)
     {
         ZENGINE_VALIDATE_ASSERT(window, "InputManager::Poll: window must not be null")
@@ -130,6 +152,13 @@ namespace ZEngine::Input
         m_current             = {};
         m_current.FrameNumber = m_prev.FrameNumber + 1;
         m_current.ActionCount = m_action_count;
+
+        if (!m_window_focused)
+        {
+            m_scroll_accum = 0.0;
+            m_scroll_delta = 0.0f;
+            return;
+        }
 
         // Cursor position supports hover/UI hit-testing. Relative look motion
         // comes exclusively from callbacks accumulated since the prior Poll;

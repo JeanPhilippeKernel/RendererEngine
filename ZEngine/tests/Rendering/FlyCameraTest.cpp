@@ -84,3 +84,17 @@ TEST(FlyCameraTest, YawIsContinuousAcrossZero)
     EXPECT_NEAR(left_of_zero.x, -right_of_zero.x, 1e-6f);
     EXPECT_NEAR(left_of_zero.z, right_of_zero.z, 1e-6f);
 }
+
+TEST(FlyCameraTest, OrbitExitsWhenAltIsReleasedWhileLeftMouseIsHeld)
+{
+    FlyCamera camera(16.0f / 9.0f, {});
+    camera.Input.AltDown  = true;
+    camera.Input.LeftDown = true;
+    camera.OnUpdate(1.0f / 60.0f);
+    ASSERT_EQ(camera.State, FlyCameraState::Orbit);
+
+    camera.Input.AltDown  = false;
+    camera.Input.LeftDown = true;
+    camera.OnUpdate(1.0f / 60.0f);
+    EXPECT_EQ(camera.State, FlyCameraState::Free);
+}

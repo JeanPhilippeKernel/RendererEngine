@@ -27,8 +27,12 @@ namespace ZEngine::Controllers
         /// @param x1 Right edge in logical pixels.
         /// @param y1 Bottom edge in logical pixels.
         virtual void                          SetViewportRect(float x0, float y0, float x1, float y1) = 0;
-        virtual void                          ResumeEventProcessing()                                 = 0;
-        virtual void                          PauseEventProcessing()                                  = 0;
+        /// @brief Inform the controller that the UI owns one or both input channels.
+        /// @param pointer_captured True while a non-viewport UI control owns pointer input.
+        /// @param keyboard_captured True while a UI control, popup, or modal owns keyboard input.
+        virtual void                          SetInputCapture(bool pointer_captured, bool keyboard_captured) {}
+        virtual void                          ResumeEventProcessing() = 0;
+        virtual void                          PauseEventProcessing()  = 0;
 
         CameraControllerType                  GetControllerType() const
         {

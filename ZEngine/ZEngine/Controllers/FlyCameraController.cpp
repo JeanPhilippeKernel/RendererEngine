@@ -8,9 +8,12 @@ namespace ZEngine::Controllers
 {
     void FlyCameraController::Initialize(InputManager* input_manager, Core::Memory::ArenaAllocator* /*arena*/)
     {
-        m_input        = input_manager;
+        m_input             = input_manager;
+        m_input_enabled     = true;
+        m_pointer_captured  = false;
+        m_keyboard_captured = false;
 
-        m_slot_forward = m_input->RegisterAction("CameraForward", InputActionType::Axis1D);
+        m_slot_forward      = m_input->RegisterAction("CameraForward", InputActionType::Axis1D);
         m_input->BindKey(m_slot_forward, GLFW_KEY_W, 1.0f);
         m_input->BindKey(m_slot_forward, GLFW_KEY_S, -1.0f);
 
@@ -75,7 +78,8 @@ namespace ZEngine::Controllers
             if (glfwRawMouseMotionSupported())
                 glfwSetInputMode(glfw, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
         }
-        m_input->ResetMouseDelta();
+        if (m_input)
+            m_input->ResetMouseDelta();
     }
 
     void FlyCameraController::ExitFly()
@@ -88,11 +92,47 @@ namespace ZEngine::Controllers
                 glfwSetInputMode(glfw, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
             glfwSetInputMode(glfw, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
-        m_input->ResetMouseDelta();
+        if (m_input)
+            m_input->ResetMouseDelta();
+    }
+
+    void FlyCameraController::ClearKeyboardInput()
+    {
+        if (!m_camera)
+            return;
+
+        auto& input            = m_camera->Input;
+        input.RightDown        = false;
+        input.ShiftDown        = false;
+        input.CtrlDown         = false;
+        input.Keys[GLFW_KEY_W] = false;
+        input.Keys[GLFW_KEY_S] = false;
+        input.Keys[GLFW_KEY_D] = false;
+        input.Keys[GLFW_KEY_A] = false;
+        input.Keys[GLFW_KEY_E] = false;
+        input.Keys[GLFW_KEY_Q] = false;
+        input.Keys[GLFW_KEY_F] = false;
+        for (int i = 0; i < 9; ++i)
+            input.Keys[GLFW_KEY_1 + i] = false;
     }
 
     void FlyCameraController::Update(Core::TimeStep dt)
     {
+        if (!m_input || !m_camera)
+            return;
+
+        if (!m_input_enabled || !m_input->IsWindowFocused() || m_pointer_captured)
+        {
+            if (m_state == CamState::Fly)
+                ExitFly();
+            m_state = CamState::Idle;
+            m_camera->Input.Reset();
+            // Discard all movement collected while another UI element owns the pointer.
+            m_input->ResetMouseDelta();
+            m_camera->OnUpdate(dt.GetSecond());
+            return;
+        }
+
         // HOT PATH — runs every frame, no heap allocation allowed.
         // Compute hover from raw cursor position vs stored viewport rect.
         // This bypasses the ZUI hit-test chain entirely — no ViewportHovered dependency.
@@ -110,11 +150,11 @@ namespace ZEngine::Controllers
             case CamState::Hover:
                 if (!hovered)
                     m_state = CamState::Idle;
-                else if (rmb)
+                else if (rmb && !m_keyboard_captured)
                     EnterFly();
                 break;
             case CamState::Fly:
-                if (!rmb)
+                if (!rmb || m_keyboard_captured)
                     ExitFly();
                 break;
         }
@@ -156,11 +196,27 @@ namespace ZEngine::Controllers
             }
             else
             {
-                inp.RightDown = false;
+                ClearKeyboardInput();
             }
         }
 
         m_camera->OnUpdate(dt.GetSecond());
+    }
+
+    void FlyCameraController::SetInputCapture(bool pointer_captured, bool keyboard_captured)
+    {
+        const bool capture_changed = m_pointer_captured != pointer_captured || m_keyboard_captured != keyboard_captured;
+        m_pointer_captured         = pointer_captured;
+        m_keyboard_captured        = keyboard_captured;
+
+        if (!capture_changed || !m_camera || (!pointer_captured && !keyboard_captured))
+            return;
+
+        if (m_state == CamState::Fly)
+            ExitFly();
+        m_camera->Input.Reset();
+        if (pointer_captured && m_input)
+            m_input->ResetMouseDelta();
     }
 
     bool FlyCameraController::OnEvent(Core::CoreEvent&)
@@ -206,17 +262,19 @@ namespace ZEngine::Controllers
 
     void FlyCameraController::ResumeEventProcessing()
     {
-        // No-op — the controller self-gates based on viewport rect.
-        // Kept for interface compatibility; callers can still call it safely.
+        m_input_enabled = true;
+        if (m_input)
+            m_input->ResetMouseDelta();
     }
 
     void FlyCameraController::PauseEventProcessing()
     {
-        // Force-exit fly mode (e.g. app loses focus, window closes).
+        m_input_enabled = false;
         if (m_state == CamState::Fly)
             ExitFly();
         m_state = CamState::Idle;
-        m_camera->Input.Reset();
+        if (m_camera)
+            m_camera->Input.Reset();
     }
 
 } // namespace ZEngine::Controllers

@@ -35,6 +35,13 @@ namespace ZEngine::Input
         /// @brief Discard movement caused by a cursor-mode transition.
         void                    ResetMouseDelta();
 
+        /// @brief Set whether the native window may provide interactive input.
+        /// @details Focus loss clears all sampled state so controls cannot latch while
+        ///          the application is in the background.
+        void                    SetWindowFocused(bool focused);
+        /// @brief Return whether the native window currently accepts interactive input.
+        bool                    IsWindowFocused() const;
+
         // Query — valid after Poll returns.
         const InputButtonState& GetButton(uint32_t slot) const;
         float                   GetAxis(uint32_t slot) const;
@@ -71,6 +78,7 @@ namespace ZEngine::Input
 
         // Cursor capture may synthesize a position update when modes change.
         bool                          m_rebase_mouse_position     = true;
+        bool                          m_window_focused            = true;
     };
 
 } // namespace ZEngine::Input

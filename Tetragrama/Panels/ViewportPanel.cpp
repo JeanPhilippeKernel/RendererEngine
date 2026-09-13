@@ -146,8 +146,9 @@ namespace Tetragrama::Panels
         img->Size[1]      = ZFill();
         img->TextureIndex = m_scene_texture.Valid() ? (uint32_t) m_scene_texture.Index : 0xFFFFFFFFu;
         ZUIBoxSetColor(img, 1.f, 1.f, 1.f, m_scene_texture.Valid() ? 1.f : 0.f);
+        ctx->ViewportInputKey = img->Key;
 
-        ZUISignal img_sig = ZUISignalFromBox(ctx, img);
+        ZUISignal img_sig     = ZUISignalFromBox(ctx, img);
         ZUIPopBox(ctx);
 
         // Feed the viewport rect to the camera controller every frame so it can

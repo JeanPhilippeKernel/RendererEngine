@@ -22,6 +22,7 @@ namespace ZEngine::Controllers
         void                          SetViewportOrigin(float x, float y) override;
         /// @brief Update the viewport screen rect used for self-contained hover detection.
         void                          SetViewportRect(float x0, float y0, float x1, float y1) override;
+        void                          SetInputCapture(bool pointer_captured, bool keyboard_captured) override;
         /// @brief Reset to Idle and unlock cursor — call when the app loses focus.
         void                          ResumeEventProcessing() override;
         void                          PauseEventProcessing() override;
@@ -37,23 +38,27 @@ namespace ZEngine::Controllers
 
         void                             EnterFly();
         void                             ExitFly();
-        Input::InputManager*             m_input            = nullptr;
-        CamState                         m_state            = CamState::Idle;
-        float                            m_vp[4]            = {}; // viewport rect: x0, y0, x1, y1
-        Rendering::Cameras::FlyCameraPtr m_camera           = nullptr;
+        void                             ClearKeyboardInput();
+        Input::InputManager*             m_input             = nullptr;
+        CamState                         m_state             = CamState::Idle;
+        bool                             m_input_enabled     = true;
+        bool                             m_pointer_captured  = false;
+        bool                             m_keyboard_captured = false;
+        float                            m_vp[4]             = {}; // viewport rect: x0, y0, x1, y1
+        Rendering::Cameras::FlyCameraPtr m_camera            = nullptr;
 
-        uint32_t                         m_slot_forward     = 0;
-        uint32_t                         m_slot_right       = 0;
-        uint32_t                         m_slot_up          = 0;
-        uint32_t                         m_slot_scroll      = 0;
-        uint32_t                         m_slot_rmb         = 0;
-        uint32_t                         m_slot_mmb         = 0;
-        uint32_t                         m_slot_lmb         = 0;
-        uint32_t                         m_slot_alt         = 0;
-        uint32_t                         m_slot_shift       = 0;
-        uint32_t                         m_slot_ctrl        = 0;
-        uint32_t                         m_slot_focus       = 0;
-        uint32_t                         m_slot_bookmark[9] = {};
+        uint32_t                         m_slot_forward      = 0;
+        uint32_t                         m_slot_right        = 0;
+        uint32_t                         m_slot_up           = 0;
+        uint32_t                         m_slot_scroll       = 0;
+        uint32_t                         m_slot_rmb          = 0;
+        uint32_t                         m_slot_mmb          = 0;
+        uint32_t                         m_slot_lmb          = 0;
+        uint32_t                         m_slot_alt          = 0;
+        uint32_t                         m_slot_shift        = 0;
+        uint32_t                         m_slot_ctrl         = 0;
+        uint32_t                         m_slot_focus        = 0;
+        uint32_t                         m_slot_bookmark[9]  = {};
     };
     ZDEFINE_PTR(FlyCameraController);
 } // namespace ZEngine::Controllers

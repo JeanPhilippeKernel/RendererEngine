@@ -143,7 +143,7 @@ namespace ZEngine::Rendering::Cameras
         }
 
         // Orbit exit (Alt released, or no buttons held).
-        if (!Input.AltDown && State == FlyCameraState::Orbit && !Input.LeftDown)
+        if (State == FlyCameraState::Orbit && (!Input.AltDown || (!Input.LeftDown && !Input.RightDown)))
         {
             m_targetPos   = Position;
             m_targetPitch = Pitch;

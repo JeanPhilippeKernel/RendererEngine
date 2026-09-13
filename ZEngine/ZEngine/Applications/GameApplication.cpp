@@ -101,6 +101,8 @@ namespace ZEngine::Applications
 
     void GameApplication::Shutdown()
     {
+        if (CameraController)
+            CameraController->PauseEventProcessing();
         Engine::Dispose();
     }
 } // namespace ZEngine::Applications

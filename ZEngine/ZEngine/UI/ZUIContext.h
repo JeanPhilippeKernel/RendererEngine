@@ -7,6 +7,12 @@
 
 namespace ZEngine::UI
 {
+    /// @brief UI input ownership consumed by application-level input clients.
+    struct ZUIInputCapture
+    {
+        bool Pointer  = false;
+        bool Keyboard = false;
+    };
 
     /// @brief Single source of truth for all UI colors.
     ///
@@ -395,9 +401,10 @@ namespace ZEngine::UI
         bool                      DragDropFired        = false;
         uint64_t                  DragTargetKey        = 0;
 
-        // set by ZUISceneViewportComponent each BuildUI frame; read by Editor::ProcessEvent
-        // to gate camera-controller mouse routing
+        // Written by ViewportPanel each UI frame; consumed by the next application update
+        // to identify the scene viewport's pointer target.
         bool                      ViewportHovered      = false;
+        uint64_t                  ViewportInputKey     = 0;
         int                       ResizeCursor         = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
 
         // Modifier key state — written by ZUILayer::OnKeyPressed/Released
@@ -539,6 +546,25 @@ namespace ZEngine::UI
     };
 
     ZDEFINE_PTR(ZUIContext);
+
+    /// @brief Return whether the previous UI frame owns pointer or keyboard input.
+    /// @details The viewport's scene image is deliberately excluded from pointer capture so
+    ///          editor-camera pan and orbit remain available over it.
+    inline ZUIInputCapture ZUIGetInputCapture(const ZUIContext* ctx)
+    {
+        if (!ctx)
+            return {};
+
+        const bool modal_or_popup = ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0;
+        const bool other_hot      = ctx->HotKey != 0 && ctx->HotKey != ctx->ViewportInputKey;
+        const bool other_active   = ctx->ActiveKey != 0 && ctx->ActiveKey != ctx->ViewportInputKey;
+        const bool other_drag     = ctx->DragSourceKey != 0 && ctx->DragSourceKey != ctx->ViewportInputKey;
+
+        return {
+            .Pointer  = modal_or_popup || other_hot || other_active || other_drag,
+            .Keyboard = modal_or_popup || ctx->FocusKey != 0,
+        };
+    }
 
     // Lifecycle
 
