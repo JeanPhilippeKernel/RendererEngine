@@ -5,6 +5,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/ZEngineDef.h>
 #include <iostream>
+#include <limits>
 #include <type_traits>
 
 namespace ZEngine::Helpers
@@ -79,17 +80,18 @@ namespace ZEngine::Helpers
     }
 
     template <typename T>
-    static void ReadBinary(std::istream& in, T& value)
+    static bool ReadBinary(std::istream& in, T& value)
     {
         in.read(reinterpret_cast<char*>(&value), sizeof(T));
+        return in.good();
     }
 
-    static bool ReadBinaryString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str)
+    static bool ReadBinaryString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str, size_t max_size = std::numeric_limits<size_t>::max() - 1)
     {
         size_t size = 0;
         in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
 
-        if (!in.good())
+        if (!in.good() || size > max_size)
             return false;
 
         if (size == 0)
@@ -108,12 +110,12 @@ namespace ZEngine::Helpers
         return true;
     }
 
-    static bool ReadBinaryCString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str)
+    static bool ReadBinaryCString(ZEngine::Core::Memory::ArenaAllocator* arena, std::istream& in, ZEngine::Core::Containers::String& str, size_t max_size = std::numeric_limits<size_t>::max() - 1)
     {
         size_t size = 0;
         in.read(reinterpret_cast<char*>(&size), sizeof(size_t));
 
-        if (!in.good())
+        if (!in.good() || size > max_size)
             return false;
 
         if (size == 0)

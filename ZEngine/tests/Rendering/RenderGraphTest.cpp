@@ -67,6 +67,36 @@ namespace
         void ExecuteCompute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
     };
 
+    struct FailedRegistrationPass final : IRenderGraphCallbackPass
+    {
+        RGResourceHandle Produced = {};
+
+        bool             Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const builder, RenderGraphResourceInspectorPtr /*inspector*/) override
+        {
+            Produced = builder->WriteBuffer("SharedBuffer", 64);
+            builder->Export(Produced);
+            return false;
+        }
+
+        void Execute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceInspectorPtr /*inspector*/, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderPasses::RenderPass* const /*pass*/, Rendering::Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
+    };
+
+    struct ValidRegistrationPass final : IRenderGraphCallbackPass
+    {
+        RGResourceHandle Produced = {};
+        RGResourceHandle Consumed = {};
+
+        bool             Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const builder, RenderGraphResourceInspectorPtr /*inspector*/) override
+        {
+            Produced = builder->WriteBuffer("SharedBuffer", 64);
+            Consumed = builder->ReadBuffer(Produced);
+            builder->Export(Produced);
+            return true;
+        }
+
+        void Execute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceInspectorPtr /*inspector*/, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderPasses::RenderPass* const /*pass*/, Rendering::Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
+    };
+
     void TestReadbackCallback(const void* /*data*/, size_t /*size*/, void* /*context*/) {}
 } // namespace
 
@@ -435,13 +465,37 @@ TEST(RenderGraphSynchronizationTest, IndirectReadUsesDrawIndirectAccess)
     EXPECT_EQ(state.Layout, VK_IMAGE_LAYOUT_UNDEFINED);
 }
 
-TEST(RenderGraphSynchronizationTest, StorageWriteUsesGeneralWriteOnlyState)
+TEST(RenderGraphSynchronizationTest, ShaderReadUsesPassPipelineStages)
 {
-    const RGResourceState state = GetRGAccessState(RGAccess::StorageWrite);
+    const RGResourceState graphics_state = GetRGAccessState(RGAccess::ShaderRead, ZEngine::Rendering::Specifications::RenderPassType::GRAPHIC);
+    const RGResourceState compute_state  = GetRGAccessState(RGAccess::ShaderRead, ZEngine::Rendering::Specifications::RenderPassType::COMPUTE);
 
-    EXPECT_EQ(state.Stage, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
-    EXPECT_EQ(state.Access, VK_ACCESS_2_SHADER_WRITE_BIT);
-    EXPECT_EQ(state.Layout, VK_IMAGE_LAYOUT_GENERAL);
+    EXPECT_EQ(graphics_state.Stage, VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+    EXPECT_EQ(compute_state.Stage, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+    EXPECT_EQ(graphics_state.Access, VK_ACCESS_2_SHADER_READ_BIT);
+    EXPECT_EQ(graphics_state.Layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
+TEST(RenderGraphSynchronizationTest, ShaderReadWriteUsesPassPipelineStages)
+{
+    const RGResourceState graphics_state = GetRGAccessState(RGAccess::ShaderReadWrite, ZEngine::Rendering::Specifications::RenderPassType::GRAPHIC);
+    const RGResourceState compute_state  = GetRGAccessState(RGAccess::ShaderReadWrite, ZEngine::Rendering::Specifications::RenderPassType::COMPUTE);
+
+    EXPECT_EQ(graphics_state.Stage, VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+    EXPECT_EQ(compute_state.Stage, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+    EXPECT_EQ(graphics_state.Access, VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT);
+    EXPECT_EQ(graphics_state.Layout, VK_IMAGE_LAYOUT_GENERAL);
+}
+
+TEST(RenderGraphSynchronizationTest, StorageWriteUsesPassPipelineStages)
+{
+    const RGResourceState graphics_state = GetRGAccessState(RGAccess::StorageWrite, ZEngine::Rendering::Specifications::RenderPassType::GRAPHIC);
+    const RGResourceState compute_state  = GetRGAccessState(RGAccess::StorageWrite, ZEngine::Rendering::Specifications::RenderPassType::COMPUTE);
+
+    EXPECT_EQ(graphics_state.Stage, VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+    EXPECT_EQ(compute_state.Stage, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+    EXPECT_EQ(graphics_state.Access, VK_ACCESS_2_SHADER_WRITE_BIT);
+    EXPECT_EQ(graphics_state.Layout, VK_IMAGE_LAYOUT_GENERAL);
 }
 
 TEST(RenderGraphSynchronizationTest, ColorAttachmentLoadUsesReadWriteState)
@@ -723,6 +777,51 @@ TEST(RenderGraphDeclarationValidationTest, RejectsEnabledConsumerOfDisabledProdu
     RGDeclarationValidationResult result;
     EXPECT_FALSE(ValidatePassDeclarations(&arena, passes, resources, &result));
     EXPECT_EQ(result.Error, RGDeclarationError::MissingProducer);
+    manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, FailedRegistrationRollsBackResourceVersions)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto& arena       = manager.MainArena;
+
+    auto  device      = std::make_unique<Hardwares::VulkanDevice>();
+    device->Arena     = &arena;
+    RenderGraph graph = {};
+    graph.Device      = device.get();
+    graph.FrameArena.Initialize(ZMega(1), arena.m_mem_page_size);
+    graph.PersistentPasses.init(&arena, 2);
+    graph.ImportedResources.init(&arena, 1);
+    graph.ImportedResourceIndex.init(&arena, 2);
+    graph.QueryPools.init(&arena, 1);
+    graph.QueryPoolIndex.init(&arena, 2);
+
+    RenderGraphResourceBuilder   builder   = {};
+    RenderGraphResourceInspector inspector = {};
+    builder.Initialize(&graph);
+    inspector.Initialize(&graph);
+    graph.ResourceBuilder         = &builder;
+    graph.ResourceInspector       = &inspector;
+
+    FailedRegistrationPass failed = {};
+    ValidRegistrationPass  valid  = {};
+    graph.AddCallbackPass("Failed", &failed);
+    graph.AddCallbackPass("Valid", &valid);
+    graph.Register();
+
+    ASSERT_EQ(graph.Resources.size(), 1u);
+    EXPECT_EQ(graph.Resources[0].LatestVersion, 1u);
+    ASSERT_EQ(graph.Resources[0].Versions.size(), 2u);
+    EXPECT_FALSE(graph.Passes[0].Enabled);
+    EXPECT_TRUE(graph.Passes[0].Reads.empty());
+    EXPECT_TRUE(graph.Passes[0].Writes.empty());
+    EXPECT_TRUE(graph.Passes[1].Enabled);
+    EXPECT_EQ(valid.Produced.Version, 1u);
+    EXPECT_EQ(valid.Consumed.Version, 1u);
+    EXPECT_TRUE(ValidatePassDeclarations(&arena, graph.Passes, graph.Resources));
+
+    graph.FrameArena.Shutdown();
     manager.Shutdown();
 }
 

@@ -12,8 +12,8 @@ namespace ZEngine::Helpers
         Core::Memory::MemoryManager manager = {};
         manager.Initialize(ZMega(2), {});
 
-        const std::string text(DEFAULT_STR_BUFFER * 4, 'x');
-        std::stringstream  stream(std::ios::in | std::ios::out | std::ios::binary);
+        const std::string        text(DEFAULT_STR_BUFFER * 4, 'x');
+        std::stringstream        stream(std::ios::in | std::ios::out | std::ios::binary);
 
         Core::Containers::String input = {};
         input.init(&manager.MainArena, text.c_str());
@@ -32,7 +32,7 @@ namespace ZEngine::Helpers
         manager.Initialize(ZMega(2), {});
 
         const std::string text(DEFAULT_STR_BUFFER * 4, 'y');
-        std::stringstream  stream(std::ios::in | std::ios::out | std::ios::binary);
+        std::stringstream stream(std::ios::in | std::ios::out | std::ios::binary);
 
         WriteBinaryString(stream, text.c_str());
         stream.seekg(0);

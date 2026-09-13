@@ -4,7 +4,6 @@
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
 #include <algorithm>
 #include <cstdio>
-#include <latch>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Helpers;
@@ -23,6 +22,201 @@ namespace ZEngine::Rendering::Renderers
 
     namespace
     {
+        // Register() callbacks may decline a pass after making declarations. Keep a
+        // snapshot of every declaration-owned mutation so a declined callback is
+        // indistinguishable from one that was never registered.
+        struct RGResourceRegistrationState
+        {
+            cstring                              Name               = nullptr;
+            RGResourceKind                       Kind               = RGResourceKind::Attachment;
+            bool                                 External           = false;
+            Textures::TextureHandle              TextureHandle      = {};
+            const Core::Memory::BufferView*      Buffer             = nullptr;
+            VkDeviceSize                         BufferSize         = 0;
+            VkBufferUsageFlags                   BufferUsage        = 0;
+            RGResourceState                      InitialState       = {};
+            RGResourceState                      CurrentState       = {};
+            RGResourceState                      RuntimeState       = {};
+            uint32_t                             LatestVersion      = 0;
+            uint32_t                             VersionOffset      = 0;
+            uint32_t                             VersionCount       = 0;
+            uint32_t                             CompileStateOffset = 0;
+            uint32_t                             CompileStateCount  = 0;
+            uint32_t                             RuntimeStateOffset = 0;
+            uint32_t                             RuntimeStateCount  = 0;
+            bool                                 HasStreamingTicket = false;
+            Hardwares::StreamingUploadTicket     StreamingTicket    = {};
+            uint32_t                             FirstPassIndex     = UINT32_MAX;
+            uint32_t                             LastPassIndex      = 0;
+            bool                                 Transient          = true;
+            Specifications::TextureSpecification Spec               = {};
+        };
+
+        struct RGRegistrationSnapshot
+        {
+            uint32_t                                             ResourceCount          = 0;
+            uint32_t                                             ExportedResourceCount  = 0;
+            uint32_t                                             ReadbackRequestCount   = 0;
+            uint32_t                                             QueryReadbackCount     = 0;
+            uint32_t                                             ImportedResourceCount  = 0;
+            uint32_t                                             QueryPoolCount         = 0;
+            Core::Containers::Array<RGResourceRegistrationState> ResourceStates         = {};
+            Core::Containers::Array<RGResourceVersion>           ResourceVersions       = {};
+            Core::Containers::Array<RGSubresourceState>          CompileStates          = {};
+            Core::Containers::Array<RGSubresourceState>          RuntimeStates          = {};
+            Core::Containers::Array<RGImportedResource>          ImportedResourceStates = {};
+        };
+
+        void CaptureRegistrationSnapshot(RenderGraph& graph, RGRegistrationSnapshot* snapshot)
+        {
+            snapshot->ResourceCount         = static_cast<uint32_t>(graph.Resources.size());
+            snapshot->ExportedResourceCount = static_cast<uint32_t>(graph.ExportedResources.size());
+            snapshot->ReadbackRequestCount  = static_cast<uint32_t>(graph.ReadbackRequests.size());
+            snapshot->QueryReadbackCount    = static_cast<uint32_t>(graph.QueryReadbackRequests.size());
+            snapshot->ImportedResourceCount = static_cast<uint32_t>(graph.ImportedResources.size());
+            snapshot->QueryPoolCount        = static_cast<uint32_t>(graph.QueryPools.size());
+
+            uint32_t version_count          = 0;
+            uint32_t compile_state_count    = 0;
+            uint32_t runtime_state_count    = 0;
+            for (const RGResource& resource : graph.Resources)
+            {
+                version_count       += static_cast<uint32_t>(resource.Versions.size());
+                compile_state_count += static_cast<uint32_t>(resource.CompileSubresourceStates.size());
+                runtime_state_count += static_cast<uint32_t>(resource.RuntimeSubresourceStates.size());
+            }
+
+            snapshot->ResourceStates.init(&graph.FrameArena, graph.Resources.size());
+            snapshot->ResourceVersions.init(&graph.FrameArena, version_count);
+            snapshot->CompileStates.init(&graph.FrameArena, compile_state_count);
+            snapshot->RuntimeStates.init(&graph.FrameArena, runtime_state_count);
+            snapshot->ImportedResourceStates.init(&graph.FrameArena, graph.ImportedResources.size());
+
+            for (const RGResource& resource : graph.Resources)
+            {
+                RGResourceRegistrationState state = {};
+                state.Name                        = resource.Name;
+                state.Kind                        = resource.Kind;
+                state.External                    = resource.External;
+                state.TextureHandle               = resource.TextureHandle;
+                state.Buffer                      = resource.Buffer;
+                state.BufferSize                  = resource.BufferSize;
+                state.BufferUsage                 = resource.BufferUsage;
+                state.InitialState                = resource.InitialState;
+                state.CurrentState                = resource.CurrentState;
+                state.RuntimeState                = resource.RuntimeState;
+                state.LatestVersion               = resource.LatestVersion;
+                state.VersionOffset               = static_cast<uint32_t>(snapshot->ResourceVersions.size());
+                state.VersionCount                = static_cast<uint32_t>(resource.Versions.size());
+                state.CompileStateOffset          = static_cast<uint32_t>(snapshot->CompileStates.size());
+                state.CompileStateCount           = static_cast<uint32_t>(resource.CompileSubresourceStates.size());
+                state.RuntimeStateOffset          = static_cast<uint32_t>(snapshot->RuntimeStates.size());
+                state.RuntimeStateCount           = static_cast<uint32_t>(resource.RuntimeSubresourceStates.size());
+                state.HasStreamingTicket          = resource.HasStreamingTicket;
+                state.StreamingTicket             = resource.StreamingTicket;
+                state.FirstPassIndex              = resource.FirstPassIndex;
+                state.LastPassIndex               = resource.LastPassIndex;
+                state.Transient                   = resource.Transient;
+                state.Spec                        = resource.Spec;
+                snapshot->ResourceStates.push(state);
+
+                for (const RGResourceVersion& version : resource.Versions)
+                    snapshot->ResourceVersions.push(version);
+                for (const RGSubresourceState& subresource_state : resource.CompileSubresourceStates)
+                    snapshot->CompileStates.push(subresource_state);
+                for (const RGSubresourceState& subresource_state : resource.RuntimeSubresourceStates)
+                    snapshot->RuntimeStates.push(subresource_state);
+            }
+
+            for (const RGImportedResource& resource : graph.ImportedResources)
+                snapshot->ImportedResourceStates.push(resource);
+        }
+
+        void RestoreResourceRegistrationState(RGResource* resource, const RGResourceRegistrationState& state, const RGRegistrationSnapshot& snapshot)
+        {
+            resource->Name               = state.Name;
+            resource->Kind               = state.Kind;
+            resource->External           = state.External;
+            resource->TextureHandle      = state.TextureHandle;
+            resource->Buffer             = state.Buffer;
+            resource->BufferSize         = state.BufferSize;
+            resource->BufferUsage        = state.BufferUsage;
+            resource->InitialState       = state.InitialState;
+            resource->CurrentState       = state.CurrentState;
+            resource->RuntimeState       = state.RuntimeState;
+            resource->LatestVersion      = state.LatestVersion;
+            resource->HasStreamingTicket = state.HasStreamingTicket;
+            resource->StreamingTicket    = state.StreamingTicket;
+            resource->FirstPassIndex     = state.FirstPassIndex;
+            resource->LastPassIndex      = state.LastPassIndex;
+            resource->Transient          = state.Transient;
+            resource->Spec               = state.Spec;
+
+            resource->Versions.clear();
+            for (uint32_t index = 0; index < state.VersionCount; ++index)
+                resource->Versions.push(snapshot.ResourceVersions[state.VersionOffset + index]);
+            resource->CompileSubresourceStates.clear();
+            for (uint32_t index = 0; index < state.CompileStateCount; ++index)
+                resource->CompileSubresourceStates.push(snapshot.CompileStates[state.CompileStateOffset + index]);
+            resource->RuntimeSubresourceStates.clear();
+            for (uint32_t index = 0; index < state.RuntimeStateCount; ++index)
+                resource->RuntimeSubresourceStates.push(snapshot.RuntimeStates[state.RuntimeStateOffset + index]);
+        }
+
+        void RollbackFailedPassRegistration(RenderGraph& graph, RGPass& pass, const RGRegistrationSnapshot& snapshot)
+        {
+            for (uint32_t index = 0; index < snapshot.ResourceCount; ++index)
+                RestoreResourceRegistrationState(&graph.Resources[index], snapshot.ResourceStates[index], snapshot);
+            while (graph.Resources.size() > snapshot.ResourceCount)
+                graph.Resources.pop();
+
+            graph.ResourceIndex.clear();
+            for (uint32_t index = 0; index < graph.Resources.size(); ++index)
+                graph.ResourceIndex[graph.Resources[index].Name] = index;
+
+            while (graph.ExportedResources.size() > snapshot.ExportedResourceCount)
+                graph.ExportedResources.pop();
+            while (graph.ReadbackRequests.size() > snapshot.ReadbackRequestCount)
+                graph.ReadbackRequests.pop();
+            while (graph.QueryReadbackRequests.size() > snapshot.QueryReadbackCount)
+                graph.QueryReadbackRequests.pop();
+
+            for (uint32_t index = 0; index < snapshot.ImportedResourceCount; ++index)
+                graph.ImportedResources[index] = snapshot.ImportedResourceStates[index];
+            while (graph.ImportedResources.size() > snapshot.ImportedResourceCount)
+                graph.ImportedResources.pop();
+            graph.ImportedResourceIndex.clear();
+            for (uint32_t index = 0; index < graph.ImportedResources.size(); ++index)
+                graph.ImportedResourceIndex[graph.ImportedResources[index].Name] = index;
+
+            while (graph.QueryPools.size() > snapshot.QueryPoolCount)
+            {
+                RGQueryPoolStorage& storage = graph.QueryPools.back();
+                for (VkQueryPool& frame_pool : storage.FramePools)
+                {
+                    if (graph.Device && graph.Device->LogicalDevice != VK_NULL_HANDLE && frame_pool != VK_NULL_HANDLE)
+                        vkDestroyQueryPool(graph.Device->LogicalDevice, frame_pool, nullptr);
+                    frame_pool = VK_NULL_HANDLE;
+                }
+                storage.FramePools.clear();
+                graph.QueryPools.pop();
+            }
+            graph.QueryPoolIndex.clear();
+            for (uint32_t index = 0; index < graph.QueryPools.size(); ++index)
+                graph.QueryPoolIndex[graph.QueryPools[index].Name] = index;
+
+            pass.Reads.clear();
+            pass.Writes.clear();
+            pass.QueryWrites.clear();
+            pass.QueryResets.clear();
+            pass.BarrierPlans.clear();
+            pass.BufferBarrierPlans.clear();
+            pass.AliasingBarrierPlans.clear();
+            pass.StreamingAcquirePlans.clear();
+            pass.ReadsBindless = false;
+            pass.Conditional   = {};
+        }
+
         void InitializeResourceVersions(RGResource& resource, Core::Memory::ArenaAllocator* arena)
         {
             if (resource.Versions.data())
@@ -127,11 +321,11 @@ namespace ZEngine::Rendering::Renderers
 
         struct RenderGraphSecondaryRecordTask
         {
-            RenderGraph*           Graph      = nullptr;
-            const RGTopologyLevel* Level      = nullptr;
-            uint32_t               Worker     = UINT32_MAX;
-            uint8_t                FrameIndex = 0;
-            std::latch*            Completion = nullptr;
+            RenderGraph*            Graph      = nullptr;
+            const RGTopologyLevel*  Level      = nullptr;
+            uint32_t                Worker     = UINT32_MAX;
+            uint8_t                 FrameIndex = 0;
+            PaddedAtomic<uint32_t>* Completion = nullptr;
         };
 
         void RecordGraphSecondary(RenderGraph* graph, RGPass& pass, uint8_t frame_index)
@@ -172,7 +366,7 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
             if (task.Completion)
-                task.Completion->count_down();
+                task.Completion->value.fetch_sub(1, std::memory_order_release);
         }
 
         void AppendUnsigned(Core::Containers::String& output, uint64_t value)
@@ -406,6 +600,11 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
+    // Generic image declarations do not carry a per-pass shader-stage mask.
+    // Cover every shader domain the renderer supports without serializing
+    // unrelated fixed-function stages.
+    static constexpr VkPipelineStageFlags2 kGenericShaderStages = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+
     // kAccessTable — stage + access + layout for every RGAccess value.
     static constexpr struct
     {
@@ -426,9 +625,9 @@ namespace ZEngine::Rendering::Renderers
         // must therefore include the late depth/stencil attachment write.
         {VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,  VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL},
         // ShaderRead
-        {                                                   VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,                                                                    VK_ACCESS_2_SHADER_READ_BIT,         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {                                                                      kGenericShaderStages,                                                                    VK_ACCESS_2_SHADER_READ_BIT,         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         // ShaderReadWrite
-        {                                                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,                                     VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,                          VK_IMAGE_LAYOUT_GENERAL},
+        {                                                                      kGenericShaderStages,                                     VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,                          VK_IMAGE_LAYOUT_GENERAL},
         // TransferRead
         {                                                          VK_PIPELINE_STAGE_2_TRANSFER_BIT,                                                                  VK_ACCESS_2_TRANSFER_READ_BIT,             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL},
         // TransferWrite
@@ -446,7 +645,7 @@ namespace ZEngine::Rendering::Renderers
         // ConditionalRead
         {                                         VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT,                                                 VK_ACCESS_2_CONDITIONAL_RENDERING_READ_BIT_EXT,                        VK_IMAGE_LAYOUT_UNDEFINED},
         // StorageWrite
-        {                                                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,                                                                   VK_ACCESS_2_SHADER_WRITE_BIT,                          VK_IMAGE_LAYOUT_GENERAL},
+        {                                                                      kGenericShaderStages,                                                                   VK_ACCESS_2_SHADER_WRITE_BIT,                          VK_IMAGE_LAYOUT_GENERAL},
     };
 
     RGResourceState GetRGAccessState(RGAccess access)
@@ -457,6 +656,26 @@ namespace ZEngine::Rendering::Renderers
 
         const auto& access_info = kAccessTable[index];
         return {access_info.Stage, access_info.Access, access_info.Layout};
+    }
+
+    RGResourceState GetRGAccessState(RGAccess access, Specifications::RenderPassType pipeline_type)
+    {
+        RGResourceState state = GetRGAccessState(access);
+        if (access != RGAccess::ShaderRead && access != RGAccess::ShaderReadWrite && access != RGAccess::StorageWrite)
+            return state;
+
+        switch (pipeline_type)
+        {
+            case Specifications::RenderPassType::GRAPHIC:
+                state.Stage = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+                break;
+            case Specifications::RenderPassType::COMPUTE:
+                state.Stage = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                break;
+            case Specifications::RenderPassType::TRANSFER:
+                break;
+        }
+        return state;
     }
 
     static VkPipelineStageFlags2 GetBindlessShaderStages(RGShaderStages stages)
@@ -477,9 +696,16 @@ namespace ZEngine::Rendering::Renderers
         return result;
     }
 
-    static RGResourceState GetPassResourceState(const RGPassResource& resource)
+    static RGResourceState GetPassResourceState(const RGPass& pass, const RGPassResource& resource)
     {
-        return resource.HasStateOverride ? resource.StateOverride : GetRGAccessState(resource.Access);
+        if (resource.HasStateOverride)
+            return resource.StateOverride;
+
+        if (pass.Callback)
+            return GetRGAccessState(resource.Access, pass.Callback->GetPipelineType());
+        if (pass.Handle)
+            return GetRGAccessState(resource.Access, pass.Handle->Specification.Type);
+        return GetRGAccessState(resource.Access);
     }
 
     static VkImage GetVkImage(Hardwares::VulkanDevice* device, Textures::TextureHandle handle)
@@ -1263,7 +1489,13 @@ namespace ZEngine::Rendering::Renderers
             PassIndex[pass.Name]         = i;
             ResourceBuilder->CurrentPass = i;
             if (pass.Callback)
+            {
+                RGRegistrationSnapshot snapshot = {};
+                CaptureRegistrationSnapshot(*this, &snapshot);
                 pass.Enabled = pass.Callback->Register(Device, pass.Name, resolved_context, ResourceBuilder, ResourceInspector);
+                if (!pass.Enabled)
+                    RollbackFailedPassRegistration(*this, pass, snapshot);
+            }
         }
         ResourceBuilder->CurrentPass = UINT32_MAX;
         AddReadbackPasses();
@@ -1484,7 +1716,10 @@ namespace ZEngine::Rendering::Renderers
                 if (task_count == 0)
                     continue;
 
-                std::latch                     completion(task_count);
+                // The countdown is frame-scratch owned. The render thread waits
+                // for every submitted worker before this scratch scope ends.
+                auto* completion = ZPushStructCtor(scratch.Arena, PaddedAtomic<uint32_t>);
+                completion->value.store(task_count, std::memory_order_relaxed);
                 RenderGraphSecondaryRecordTask tasks[Helpers::ThreadPool::MAX_WORKERS]                   = {};
                 bool                           record_on_render_thread[Helpers::ThreadPool::MAX_WORKERS] = {};
                 uint32_t                       task_index                                                = 0;
@@ -1498,17 +1733,19 @@ namespace ZEngine::Rendering::Renderers
                     task.Level      = &level;
                     task.Worker     = worker;
                     task.FrameIndex = frame_index;
-                    task.Completion = &completion;
+                    task.Completion = completion;
                     if (!Helpers::ThreadPoolHelper::SubmitToWorker(worker, &task, &RecordGraphSecondaryWorkerBatch))
                     {
                         // SubmitToWorker never executes inline. Once the jobs
                         // already accepted for this level finish, this worker's
                         // otherwise-exclusive pool can be recorded safely here.
                         record_on_render_thread[worker] = true;
-                        completion.count_down();
+                        completion->value.fetch_sub(1, std::memory_order_release);
                     }
                 }
-                completion.wait();
+                while (completion->value.load(std::memory_order_acquire) != 0)
+                {
+                }
 
                 for (uint32_t worker = 0; worker < worker_count; ++worker)
                 {
@@ -3349,7 +3586,7 @@ namespace ZEngine::Rendering::Renderers
                 if (!pr.Handle.Valid() || pr.Access == RGAccess::None)
                     return;
                 RGResource&           res = Resources[pr.Handle.Index];
-                const RGResourceState dst = GetPassResourceState(pr);
+                const RGResourceState dst = GetPassResourceState(pass, pr);
 
                 // The acquired image is frame-local and CommandBuffer performs
                 // its PRESENT_SRC_KHR <-> COLOR_ATTACHMENT_OPTIMAL transitions.
@@ -4049,7 +4286,7 @@ namespace ZEngine::Rendering::Renderers
                     if (use.Handle.Index != preferred_resource && (!resource.HasStreamingTicket || !matches_ticket(resource.StreamingTicket, ticket)))
                         continue;
                     resource_index    = use.Handle.Index;
-                    destination_state = GetPassResourceState(use);
+                    destination_state = GetPassResourceState(pass, use);
                     break;
                 }
                 if (resource_index == UINT32_MAX)
@@ -4062,12 +4299,12 @@ namespace ZEngine::Rendering::Renderers
                         if (use.Handle.Index != preferred_resource && (!resource.HasStreamingTicket || !matches_ticket(resource.StreamingTicket, ticket)))
                             continue;
                         resource_index    = use.Handle.Index;
-                        destination_state = GetPassResourceState(use);
+                        destination_state = GetPassResourceState(pass, use);
                         break;
                     }
                 }
                 if (resource_index == UINT32_MAX && pass.ReadsBindless)
-                    destination_state = GetRGAccessState(RGAccess::ShaderRead);
+                    destination_state = GetRGAccessState(RGAccess::ShaderRead, pass.Callback ? pass.Callback->GetPipelineType() : Specifications::RenderPassType::GRAPHIC);
                 else if (resource_index == UINT32_MAX)
                     continue;
 

@@ -140,7 +140,7 @@ namespace ZEngine::Rendering::Renderers
 
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
     {
-        for (uint32_t attempt = 0; attempt < 2; ++attempt)
+        while (true)
         {
             const uint64_t sequence_before = m_frame_output_sequence.value.load(std::memory_order_acquire);
             if ((sequence_before & 1u) != 0)
@@ -155,7 +155,6 @@ namespace ZEngine::Rendering::Renderers
             if (sequence_before == sequence_after)
                 return output;
         }
-        return {};
     }
 
     void GraphicRenderer::PublishFrameOutput(Textures::TextureHandle output)

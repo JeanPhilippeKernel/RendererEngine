@@ -32,21 +32,21 @@ namespace Tetragrama
 
         ~EditorScene();
 
-        void                                                            Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "");
+        void                      Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "");
         /// @brief Initializes persistent scene storage without creating default editor content.
-        bool                                                            InitializeDeserialized(size_t page_size);
+        bool                      InitializeDeserialized(size_t page_size);
 
-        bool                                                            HasPendingChange() const;
-        void                                                            PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
-        void                                                            MarkDirty(bool value);
-        bool                                                            IsDirty();
-        void                                                            Reset();
-        void                                                            ExtractAsync(const EditorScene& scene);
+        bool                      HasPendingChange() const;
+        void                      PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
+        void                      MarkDirty(bool value);
+        bool                      IsDirty();
+        void                      Reset();
+        void                      ExtractAsync(const EditorScene& scene);
 
         // Create a fully wired Actor: registers with RenderScene and adds
         // NameComponent + TransformComponent + MeshComponent in one call.
         // Returns the ActorHandle (invalid if ActorManager is not live).
-        ZEngine::ECS::ActorHandle                                       SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name);
+        ZEngine::ECS::ActorHandle SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name);
     };
     ZDEFINE_PTR(EditorScene);
 

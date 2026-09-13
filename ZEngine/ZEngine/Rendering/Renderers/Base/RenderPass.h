@@ -109,6 +109,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void                        Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
         void                        Dispose() override;
         void                        Bake() override;
+        bool                        Verify() override;
         void                        SetStorageBuffer(cstring name, const Core::Memory::BufferView* buffer);
         void                        SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
 

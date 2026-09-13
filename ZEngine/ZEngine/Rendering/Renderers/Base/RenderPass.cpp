@@ -596,6 +596,11 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             Pipeline->Bake();
     }
 
+    bool ComputePass::Verify()
+    {
+        return Pipeline && Pipeline->EnsureCurrent();
+    }
+
     void ComputePass::SetStorageBuffer(cstring key_name, const Core::Memory::BufferView* buffer)
     {
         if (!Pipeline || !Pipeline->Shader || !buffer || !buffer->Handle)

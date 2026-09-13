@@ -593,7 +593,19 @@ namespace ZEngine::UI
 
         if (is_central)
         {
-            // Pure passthrough — multi-tab gets minimal tab bar, single gets nothing
+            // Central panels have no visual chrome, but still need a container
+            // constrained to their dock rect. Without it, ZFill() content becomes
+            // a child of the full editor background while the viewport render target
+            // is sized to this dock rect, permanently mismatching their aspects.
+            char central_key[40];
+            snprintf(central_key, sizeof(central_key), "##central_%llx", (unsigned long long) p->DockKey);
+            ZUIBox* central       = ZUIBeginColumn(ctx, central_key, ZPx(rect[2] - rect[0]), ZPx(rect[3] - rect[1]));
+            central->Flags        = central->Flags | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
+            central->FloatPos[0]  = rect[0];
+            central->FloatPos[1]  = rect[1];
+            central->EdgeSoftness = 0.f;
+
+            // Pure passthrough — multi-tab gets a minimal tab bar, single gets none.
             if (p->ViewCount > 1)
             {
                 float tab_rect[4] = {rect[0], rect[1], rect[2], rect[1] + header_h};
@@ -613,6 +625,7 @@ namespace ZEngine::UI
                     view->BuildContent(ctx, rect);
                 }
             }
+            ZUIEndColumn(ctx);
             return;
         }
 

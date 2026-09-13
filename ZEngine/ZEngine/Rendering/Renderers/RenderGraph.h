@@ -199,6 +199,11 @@ namespace ZEngine::Rendering::Renderers
 
     /// @brief Returns the Vulkan synchronization state for a resource access.
     RGResourceState GetRGAccessState(RGAccess access);
+    /// @brief Returns a synchronization state scoped to the pass pipeline domain.
+    /// @details Shader accesses use only graphics or compute stages when that
+    /// pipeline domain is known. The single-argument overload remains a
+    /// conservative fallback for declarations outside a callback pass.
+    RGResourceState GetRGAccessState(RGAccess access, Specifications::RenderPassType pipeline_type);
 
     /// @brief Compile-time metadata for one immutable logical resource version.
     struct RGResourceVersion

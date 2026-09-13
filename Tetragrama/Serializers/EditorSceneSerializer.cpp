@@ -55,12 +55,11 @@ namespace Tetragrama::Serializers
         std::ofstream out(full_scenename, std::ios::binary | std::ios::trunc | std::ios::out);
         if (!out.is_open())
         {
-            out.close();
-
             if (m_error_callback)
-            {
                 m_error_callback(Context, "Error: Unable to open file for writing.");
-            }
+            m_pending_serialize_scene = nullptr;
+            m_is_serializing.store(false, std::memory_order_release);
+            return;
         }
 
         out.seekp(std::ios::beg);
@@ -205,23 +204,39 @@ namespace Tetragrama::Serializers
             return;
         }
 
+        in_stream.seekg(0, std::ios::end);
+        const std::streamoff file_size = in_stream.tellg();
         in_stream.seekg(std::ios::beg);
-
-        REPORT_LOG(Context, "Reading checksum information...")
-
-        uint32_t scene_magic;
-        uint32_t scene_version;
-        ReadBinary(in_stream, scene_magic);
-        ReadBinary(in_stream, scene_version);
-
-        if (scene_magic != ZESCENE_MAGIC || scene_version != SCENE_FILE_VERSION)
+        if (file_size < 0 || !in_stream.good())
         {
             in_stream.close();
             if (m_error_callback)
-            {
-                m_error_callback(Context, "Error: Invalid scene file, unknown format");
-            }
+                m_error_callback(Context, "Error: Invalid scene file.");
             m_is_deserializing.store(false, std::memory_order_release);
+            return;
+        }
+
+        const auto reject_file = [&](cstring message) {
+            in_stream.close();
+            if (m_error_callback)
+                m_error_callback(Context, message);
+            m_is_deserializing.store(false, std::memory_order_release);
+        };
+        constexpr size_t kMaxSceneStringLength = MAX_FILE_PATH_COUNT - 1;
+
+        REPORT_LOG(Context, "Reading checksum information...")
+
+        uint32_t scene_magic   = 0;
+        uint32_t scene_version = 0;
+        if (!ReadBinary(in_stream, scene_magic) || !ReadBinary(in_stream, scene_version))
+        {
+            reject_file("Error: Invalid or truncated scene file.");
+            return;
+        }
+
+        if (scene_magic != ZESCENE_MAGIC || scene_version != SCENE_FILE_VERSION)
+        {
+            reject_file("Error: Invalid scene file, unknown format");
             return;
         }
 
@@ -236,36 +251,55 @@ namespace Tetragrama::Serializers
 
         REPORT_LOG(Context, "Extracting scene asset files...")
 
-        size_t asset_file_count;
-        ReadBinary(in_stream, asset_file_count);
+        size_t           asset_file_count        = 0;
+        constexpr size_t kMinimumAssetRecordSize = sizeof(ZEngine::Importers::AssetFileType) + sizeof(uint64_t) + (2 * sizeof(size_t));
+        if (!ReadBinary(in_stream, asset_file_count) || asset_file_count > static_cast<size_t>(file_size) / kMinimumAssetRecordSize)
+        {
+            reject_file("Error: Invalid or truncated scene file.");
+            return;
+        }
         scene->AssetFiles.reserve(asset_file_count);
         if (asset_file_count > 0)
             scene->HashToAssetFile.reserve(asset_file_count * 2);
 
         for (size_t i = 0; i < asset_file_count; ++i)
         {
-            auto& file = scene->AssetFiles.push_use({});
-            ReadBinary(in_stream, file.Type);
-            ReadBinary(in_stream, file.Hash);
-            ReadBinaryString(&scene->LocalArena, in_stream, file.Path);
-            ReadBinaryString(&scene->LocalArena, in_stream, file.RootPath);
+            EditorAssetSceneFiles file = {};
+            if (!ReadBinary(in_stream, file.Type) || !ReadBinary(in_stream, file.Hash) || !ReadBinaryString(&scene->LocalArena, in_stream, file.Path, kMaxSceneStringLength) || !ReadBinaryString(&scene->LocalArena, in_stream, file.RootPath, kMaxSceneStringLength) || file.Type > ZEngine::Importers::AssetFileType::ENVIRONMENT_MAP)
+            {
+                reject_file("Error: Invalid or truncated scene file.");
+                return;
+            }
             scene->HashToAssetFile.insert(file.Hash, static_cast<uint32_t>(i));
+            scene->AssetFiles.push(std::move(file));
         }
 
         REPORT_LOG(Context, "Extracting scene name...")
 
         String scene_name = {};
-        ReadBinaryCString(&scene->LocalArena, in_stream, scene_name);
+        if (!ReadBinaryCString(&scene->LocalArena, in_stream, scene_name, kMaxSceneStringLength))
+        {
+            reject_file("Error: Invalid or truncated scene file.");
+            return;
+        }
         scene->Name = scene_name.c_str();
 
         // Sky configuration
-        ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.Mode);
-        ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.EnvironmentMap);
+        if (!ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.Mode, kMaxSceneStringLength) || !ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.EnvironmentMap, kMaxSceneStringLength))
+        {
+            reject_file("Error: Invalid or truncated scene file.");
+            return;
+        }
 
         REPORT_LOG(Context, "Extracting mesh instances...")
 
-        uint32_t instance_count = 0;
-        ReadBinary(in_stream, instance_count);
+        uint32_t         instance_count          = 0;
+        constexpr size_t kSerializedInstanceSize = sizeof(uuids::uuid) + sizeof(ZEngine::Core::Maths::Mat4f) + sizeof(char[128]);
+        if (!ReadBinary(in_stream, instance_count) || instance_count > static_cast<size_t>(file_size) / kSerializedInstanceSize)
+        {
+            reject_file("Error: Invalid or truncated scene file.");
+            return;
+        }
         if (instance_count > 0)
         {
             scene->Instances.reserve(instance_count);
@@ -274,9 +308,11 @@ namespace Tetragrama::Serializers
                 uuids::uuid                 uuid;
                 ZEngine::Core::Maths::Mat4f transform;
                 char                        name[128] = {};
-                ReadBinary(in_stream, uuid);
-                ReadBinary(in_stream, transform);
-                ReadBinary(in_stream, name);
+                if (!ReadBinary(in_stream, uuid) || !ReadBinary(in_stream, transform) || !ReadBinary(in_stream, name))
+                {
+                    reject_file("Error: Invalid or truncated scene file.");
+                    return;
+                }
 
                 uint32_t id = scene->AddMeshInstance(uuid, name);
                 scene->SetInstanceTransform(id, transform);

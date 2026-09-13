@@ -434,6 +434,7 @@ namespace ZEngine::Core::VFS
 
     void VFSContext::Shutdown()
     {
+        ShutdownWatcher();
         m_mount_table.Clear();
         m_arena = nullptr;
     }
