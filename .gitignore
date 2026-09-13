@@ -45,7 +45,9 @@ _deps/
 # Shader cache file folder
 Resources/Shaders/Cache
 
-# Runtime Vulkan driver pipeline cache
+# Runtime Vulkan driver pipeline cache and warmup recipes
+.zodiacengine/cache/
+# Legacy location retained to avoid surfacing caches written by older builds.
 ZodiacEngine/cache/
 
 # Tools folder
