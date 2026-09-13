@@ -29,6 +29,19 @@ namespace ZEngine::Input
         // Called from GameWindow's scroll callback trampoline.
         void                    AccumulateScroll(double yoffset);
 
+        /// @brief Accumulate a cursor callback until the next Poll().
+        void                    AccumulateCursorPosition(double xpos, double ypos);
+
+        /// @brief Discard movement caused by a cursor-mode transition.
+        void                    ResetMouseDelta();
+
+        /// @brief Set whether the native window may provide interactive input.
+        /// @details Focus loss clears all sampled state so controls cannot latch while
+        ///          the application is in the background.
+        void                    SetWindowFocused(bool focused);
+        /// @brief Return whether the native window currently accepts interactive input.
+        bool                    IsWindowFocused() const;
+
         // Query — valid after Poll returns.
         const InputButtonState& GetButton(uint32_t slot) const;
         float                   GetAxis(uint32_t slot) const;
@@ -55,6 +68,7 @@ namespace ZEngine::Input
         Core::Maths::Vec2f            m_mouse_pos                 = {};
         Core::Maths::Vec2f            m_last_mouse_pos            = {};
         Core::Maths::Vec2f            m_mouse_delta               = {};
+        Core::Maths::Vec2f            m_pending_mouse_delta       = {};
 
         double                        m_scroll_accum              = 0.0;
         float                         m_scroll_delta              = 0.0f;
@@ -62,7 +76,9 @@ namespace ZEngine::Input
         // Per-slot scroll scale (non-zero only for slots bound with BindScrollAxis).
         float                         m_scroll_scale[kMaxActions] = {};
 
-        bool                          m_first_poll                = true;
+        // Cursor capture may synthesize a position update when modes change.
+        bool                          m_rebase_mouse_position     = true;
+        bool                          m_window_focused            = true;
     };
 
 } // namespace ZEngine::Input

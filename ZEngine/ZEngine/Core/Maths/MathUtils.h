@@ -1,4 +1,6 @@
 #pragma once
+#include <cmath>
+
 namespace ZEngine::Core::Maths
 {
     template <typename T>
@@ -83,36 +85,13 @@ namespace ZEngine::Core::Maths
     template <typename T>
     T sin(T x)
     {
-        x      -= TWO_PI<T> * floor(x / TWO_PI<T>);
-
-        T sign  = T(1);
-        if (x > HALF_PI<T>)
-        {
-            x    = PI<T> - x;
-            sign = -1;
-        }
-        else if (x < -HALF_PI<T>)
-        {
-            x    = -PI<T> - x;
-            sign = -1;
-        }
-
-        T       x2 = x * x;
-
-        const T c1 = T(-0.16666667);
-        const T c2 = T(0.0083333310);
-        const T c3 = T(-0.00019840874);
-
-        T       t1 = c2 + c3 * x2;
-        T       t2 = c1 + t1 * x2;
-
-        return sign * x * (1 + t2 * x2);
+        return std::sin(x);
     }
 
     template <typename T>
     T cos(T x)
     {
-        return sin<T>(HALF_PI<T> - x);
+        return std::cos(x);
     }
 
     template <typename T>

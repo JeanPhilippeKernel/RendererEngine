@@ -60,7 +60,6 @@ namespace Tetragrama
         virtual void                       OnUpdate(float dt) override;
         virtual void                       OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        // Gates camera-controller routing on viewport hover (Gap 3)
         void                               ProcessEvent(ZEngine::Core::CoreEvent&) override;
 
         virtual void                       OnPreRender() override;

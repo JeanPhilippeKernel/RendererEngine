@@ -1143,6 +1143,7 @@ namespace ZEngine::UI
         bool focused = (ctx->FocusKey == field->Key);
         if (focused)
         {
+            ctx->TextInputActive       = true;
             // Append digits from text input
             static char     s_ibuf[32] = {};
             static uint64_t s_last_key = 0;
@@ -1235,6 +1236,8 @@ namespace ZEngine::UI
 
         // The text as a label for now (full editing in a later pass)
         bool focused = (ctx->FocusKey == frame->Key);
+        if (focused)
+            ctx->TextInputActive = true;
         char disp[1024];
         if (focused)
             snprintf(disp, sizeof(disp), "%s|", buf);
@@ -2350,16 +2353,19 @@ namespace ZEngine::UI
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         SetBdrArr(field, ctx->Theme.InputBorder);
-        field->BorderThickness           = 1.f;
+        field->BorderThickness         = 1.f;
 
         // Persistent state: UserData >= 0 → text-edit mode (cursor pos); -1 → drag mode
-        ZUIPersistentState* ps           = ZUIStateGetOrInsert(&ctx->StateStore, key_hash);
-        bool                is_focused   = (ctx->FocusKey == key_hash);
-        bool                text_mode    = is_focused && ps && (ps->UserData >= 0.f);
+        ZUIPersistentState* ps         = ZUIStateGetOrInsert(&ctx->StateStore, key_hash);
+        bool                is_focused = (ctx->FocusKey == key_hash);
+        bool                text_mode  = is_focused && ps && (ps->UserData >= 0.f);
+
+        if (text_mode)
+            ctx->TextInputActive = true;
 
         // Static edit buffer — shared, switched on focus change like ZUIInputInt
-        static char         s_df_buf[64] = {};
-        static uint64_t     s_df_key     = 0;
+        static char     s_df_buf[64] = {};
+        static uint64_t s_df_key     = 0;
 
         if (text_mode)
         {
@@ -2496,14 +2502,17 @@ namespace ZEngine::UI
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
         SetBdrArr(field, ctx->Theme.InputBorder);
-        field->BorderThickness           = 1.f;
+        field->BorderThickness         = 1.f;
 
-        ZUIPersistentState* ps           = ZUIStateGetOrInsert(&ctx->StateStore, key_hash);
-        bool                is_focused   = (ctx->FocusKey == key_hash);
-        bool                text_mode    = is_focused && ps && (ps->UserData >= 0.f);
+        ZUIPersistentState* ps         = ZUIStateGetOrInsert(&ctx->StateStore, key_hash);
+        bool                is_focused = (ctx->FocusKey == key_hash);
+        bool                text_mode  = is_focused && ps && (ps->UserData >= 0.f);
 
-        static char         s_di_buf[32] = {};
-        static uint64_t     s_di_key     = 0;
+        if (text_mode)
+            ctx->TextInputActive = true;
+
+        static char     s_di_buf[32] = {};
+        static uint64_t s_di_key     = 0;
 
         if (text_mode)
         {
@@ -2671,12 +2680,14 @@ namespace ZEngine::UI
         uint64_t hash    = ZUIHashStr(key, (uint32_t) strlen(key));
         auto*    state   = ZUIStateGetOrInsert(&ctx->StateStore, hash);
         bool     editing = state && state->UserData > 0.5f;
+        if (editing)
+            ctx->TextInputActive = true;
 
         // Backing char buffer lives in persistent state via a side-channel.
         // We use a static per-hash char buffer keyed approach: store the float
         // as text in a small arena-free static buf of 32 chars.
         // For simplicity we re-format from *value every non-editing frame.
-        char     display[32];
+        char display[32];
         if (!editing)
             snprintf(display, sizeof(display), "%.4f", (double) *value);
 
@@ -2832,14 +2843,17 @@ namespace ZEngine::UI
         ZUIBoxSetCornerRadius(field, ctx->Style.FrameRounding);
         SetBgArr(field, ctx->Theme.InputBg);
         SetTextColor(field, ctx->Theme.TextDefault);
-        field->BorderThickness         = 1.f;
-        field->EdgeSoftness            = 0.5f;
+        field->BorderThickness = 1.f;
+        field->EdgeSoftness    = 0.5f;
 
-        bool                is_focused = (ctx->FocusKey == field->Key);
-        bool                changed    = false;
+        bool is_focused        = (ctx->FocusKey == field->Key);
+        bool changed           = false;
 
-        ZUIPersistentState* ps         = ZUIStateGetOrInsert(&ctx->StateStore, field->Key);
-        ZUIFont*            font       = ctx->GetFont(ZUIFontSize::Body);
+        if (is_focused)
+            ctx->TextInputActive = true;
+
+        ZUIPersistentState* ps   = ZUIStateGetOrInsert(&ctx->StateStore, field->Key);
+        ZUIFont*            font = ctx->GetFont(ZUIFontSize::Body);
 
         if (!is_focused)
         {
@@ -4064,11 +4078,14 @@ namespace ZEngine::UI
         }
 
         // Text field (no border — border is on the outer row)
-        uint32_t            klen           = (uint32_t) strlen(key);
-        uint32_t            field_key_hash = ZUIHashStr(key, klen);
-        bool                is_focused     = (ctx->FocusKey == field_key_hash);
+        uint32_t klen           = (uint32_t) strlen(key);
+        uint32_t field_key_hash = ZUIHashStr(key, klen);
+        bool     is_focused     = (ctx->FocusKey == field_key_hash);
 
-        ZUIPersistentState* ps             = ZUIStateGetOrInsert(&ctx->StateStore, field_key_hash);
+        if (is_focused)
+            ctx->TextInputActive = true;
+
+        ZUIPersistentState* ps = ZUIStateGetOrInsert(&ctx->StateStore, field_key_hash);
 
         // Build display string — cursor position from persistent state
         char                display[512];

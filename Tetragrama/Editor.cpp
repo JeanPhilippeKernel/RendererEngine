@@ -152,32 +152,27 @@ namespace Tetragrama
             ZUIUILayer->OnEvent(e);
         }
 
-        // Gate camera-controller mouse routing on viewport focus (Gap 3)
-        bool is_mouse_event  = (e.GetType() == ZEngine::Core::EventType::MouseButtonPressed || e.GetType() == ZEngine::Core::EventType::MouseButtonReleased || e.GetType() == ZEngine::Core::EventType::MouseMoved || e.GetType() == ZEngine::Core::EventType::MouseWheel);
-
-        bool viewport_active = RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUICtx->ViewportHovered;
-
-        if (CameraController && (!is_mouse_event || viewport_active))
-        {
-            CameraController->OnEvent(e);
-        }
-
         OnEvent(e);
     }
 
     void Editor::OnUpdate(float dt)
     {
-        CHECK_AND_ESCAPE_NULL(ZUIUILayer)
+        if (CameraController)
+        {
+            ZEngine::UI::ZUIInputCapture capture = {};
+            if (RenderPipeline && RenderPipeline->ZUICtx)
+                capture = ZEngine::UI::ZUIGetInputCapture(RenderPipeline->ZUICtx);
+            CameraController->SetInputCapture(capture.Pointer, capture.Keyboard);
+        }
 
-        // Camera controller is self-gating — it reads cursor position vs viewport rect
-        // set each frame by ViewportPanel::BuildContent. No external activation needed.
-        ZUIUILayer->Update(dt);
+        if (ZUIUILayer)
+            ZUIUILayer->Update(dt);
     }
 
     void Editor::OnEvent(Core::CoreEvent& /*e*/)
     {
-        // Event routing is handled in ProcessEvent (which also gates camera input
-        // on viewport focus). Nothing extra needed here.
+        // Window and UI events are handled in ProcessEvent. Camera state is sampled
+        // from InputManager during the application update.
     }
 
     void Editor::OnPreRender() {}

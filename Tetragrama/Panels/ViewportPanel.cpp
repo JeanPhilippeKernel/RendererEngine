@@ -146,14 +146,19 @@ namespace Tetragrama::Panels
         img->Size[1]      = ZFill();
         img->TextureIndex = m_scene_texture.Valid() ? (uint32_t) m_scene_texture.Index : 0xFFFFFFFFu;
         ZUIBoxSetColor(img, 1.f, 1.f, 1.f, m_scene_texture.Valid() ? 1.f : 0.f);
+        ctx->ViewportInputKey = img->Key;
 
-        ZUISignal img_sig = ZUISignalFromBox(ctx, img);
+        ZUISignal img_sig     = ZUISignalFromBox(ctx, img);
         ZUIPopBox(ctx);
 
         // Feed the viewport rect to the camera controller every frame so it can
         // self-gate on cursor position without depending on the ZUI hit-test chain.
         if (app->CameraController)
+        {
             app->CameraController->SetViewportRect(rect[0], rect[1], rect[2], rect[3]);
+            if (sw > 0.0f && sh > 0.0f)
+                app->CameraController->SetViewport(sw, sh);
+        }
 
         // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).
         ctx->ViewportHovered = (img_sig.Flags & ZUI_SignalHovered) != 0;

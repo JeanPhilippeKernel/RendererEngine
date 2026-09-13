@@ -21,6 +21,7 @@
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Windows/GameWindow.h>
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -323,32 +324,23 @@ namespace ZEngine
             // Application update (non-ECS game logic)
             g_engine_ctx->App->Update(raw_dt);
 
-            // Render payload
-            auto     pipeline = g_engine_ctx->App->RenderPipeline;
-            uint32_t head     = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
-            uint32_t next     = (head + 1) % pipeline->MaxMailBoxBufferCount;
-            uint32_t tail     = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
+            auto pipeline = g_engine_ctx->App->RenderPipeline;
 
-            if (next == tail)
-            {
-                // Mailbox full — render thread hasn't consumed the previous payload yet.
-                // Cap here too so the main loop doesn't spin at 100k+ Hz: without it
-                // raw_dt stays near-zero, ZUI is starved (BeginOverlayFrame is skipped),
-                // and a full CPU core is burned for no throughput gain.
-                frame_cap.WaitForFrameBudget();
-                continue;
-            }
-
-            auto& r_payload = pipeline->RenderPayloads[head];
-            r_payload.RenderUIOverlay.value.store(false, std::memory_order_release);
-
+            // UI is presentation-paced and double-buffered independently from
+            // camera state. It may retain its previous frame without delaying
+            // input, simulation, or the state read by the render thread.
             if (g_engine_ctx->App->EnableRenderOverlay)
             {
-                pipeline->BeginOverlayFrame(raw_dt);
-                g_engine_ctx->App->OnRenderUI();
-                pipeline->EndOverlayFrame();
-                r_payload.RenderUIOverlay.value.store(true, std::memory_order_release);
-                pipeline->FillOverlayPayload(r_payload);
+                uint32_t                      overlay_slot = 0;
+                Applications::OverlayPayload* overlay      = nullptr;
+                if (pipeline->BeginOverlayWrite(overlay, overlay_slot))
+                {
+                    pipeline->BeginOverlayFrame(raw_dt);
+                    g_engine_ctx->App->OnRenderUI();
+                    pipeline->EndOverlayFrame();
+                    pipeline->FillOverlayPayload(*overlay, overlay_slot);
+                    pipeline->PublishOverlay(overlay_slot);
+                }
             }
 
             if (g_engine_ctx->Scene && g_engine_ctx->App->CurrentScene)
@@ -358,9 +350,10 @@ namespace ZEngine
                 ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_engine_ctx->App->CurrentScene);
             }
 
-            g_engine_ctx->App->PrepareScene(r_payload);
-
-            pipeline->MailBoxBufferHead.value.store(next, std::memory_order_release);
+            Applications::RenderFrameState state = {};
+            g_engine_ctx->App->PrepareScene(state);
+            state.RenderOverlay = g_engine_ctx->App->EnableRenderOverlay;
+            pipeline->PublishFrameState(state);
 
             //  Frame rate cap — applied unconditionally.
             //  Vsync throttles the GPU present in the render thread; the main loop
@@ -389,6 +382,12 @@ namespace ZEngine
 
         kern_return_t kr   = thread_policy_set(thread_port, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t) &policy, THREAD_TIME_CONSTRAINT_POLICY_COUNT);
 #endif
+        uint32_t                       retained_overlay_slot   = Applications::AppRenderPipeline::MaxOverlayBufferCount;
+        Applications::OverlayPayload*  retained_overlay        = nullptr;
+        Applications::RenderFrameState retained_frame_state    = {};
+        bool                           has_frame_state         = false;
+        uint64_t                       applied_resize_sequence = 0;
+
         while (true)
         {
             if (g_engine_ctx->RequestTerminate.value.load(std::memory_order_acquire))
@@ -408,30 +407,34 @@ namespace ZEngine
                 continue;
             }
 
-            uint32_t tail = pipeline->MailBoxBufferTail.value.load(std::memory_order_acquire);
-            uint32_t head = pipeline->MailBoxBufferHead.value.load(std::memory_order_acquire);
-
-            // Buffer empty
-            if (tail == head)
+            Applications::RenderFrameState next_frame_state = {};
+            if (pipeline->TryReadFrameState(next_frame_state))
+            {
+                retained_frame_state = next_frame_state;
+                has_frame_state      = true;
+            }
+            if (!has_frame_state)
             {
                 std::this_thread::sleep_for(std::chrono::microseconds(50));
                 continue;
             }
 
-            pipeline->CurrentMailBoxBufferHead     = tail;
-            Applications::RenderPayload& r_payload = pipeline->RenderPayloads[tail];
+            uint32_t                              next_overlay_slot = 0;
+            Applications::OverlayPayload*         next_overlay      = nullptr;
+            const bool                            has_next_overlay  = pipeline->BeginOverlayRead(next_overlay, next_overlay_slot);
+            const Applications::RenderFrameState& state             = retained_frame_state;
 
-            if (r_payload.ResizeRenderTarget.value.load(std::memory_order_acquire))
+            if (state.ResizeSequence != applied_resize_sequence && state.RenderTargetW > 0 && state.RenderTargetH > 0)
             {
-                pipeline->ResizeRenderTarget(r_payload.RenderTargetW, r_payload.RenderTargetH);
-                r_payload.ResizeRenderTarget.value.store(false, std::memory_order_release);
+                pipeline->ResizeRenderTarget(state.RenderTargetW, state.RenderTargetH);
+                applied_resize_sequence = state.ResizeSequence;
             }
 
             const bool frame_valid = pipeline->BeginFrame();
-            if (frame_valid)
+            if (frame_valid && state.Scene)
             {
-                const auto* overlay = r_payload.RenderUIOverlay.value.load(std::memory_order_acquire) ? &r_payload.ZUIOverlay : nullptr;
-                pipeline->RenderScene(r_payload.Camera, r_payload.Scene, overlay);
+                const auto* overlay = state.RenderOverlay ? (has_next_overlay ? &next_overlay->ZUIOverlay : (retained_overlay ? &retained_overlay->ZUIOverlay : nullptr)) : nullptr;
+                pipeline->RenderScene(state.Camera, state.Scene, overlay);
             }
             pipeline->EndFrame();
 
@@ -441,10 +444,21 @@ namespace ZEngine
             if (g_engine_ctx)
                 g_engine_ctx->SmoothedDeltaTime = render_timer.SmoothedDelta();
 
-            uint32_t next = (tail + 1) % pipeline->MaxMailBoxBufferCount;
+            if (has_next_overlay)
+            {
+                if (retained_overlay)
+                    pipeline->EndOverlayRead(retained_overlay_slot);
+                retained_overlay_slot = next_overlay_slot;
+                retained_overlay      = next_overlay;
+            }
+            pipeline->NotifyOverlayFrameComplete();
 
-            pipeline->MailBoxBufferTail.value.store(next, std::memory_order_release);
+            const uint32_t buffered_frame_count = pipeline->Device->SwapchainPtr->BufferredFrameCount;
+            pipeline->CurrentFrameContextIndex  = buffered_frame_count > 0 ? (pipeline->CurrentFrameContextIndex + 1) % buffered_frame_count : 0;
         }
+
+        if (retained_overlay)
+            g_engine_ctx->App->RenderPipeline->EndOverlayRead(retained_overlay_slot);
     }
 
     void Engine::OnWatchedFileChanged(void* context, const Core::VFS::VFSPath& path, Core::VFS::WatchEventKind kind)

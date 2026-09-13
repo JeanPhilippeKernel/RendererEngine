@@ -48,6 +48,7 @@ namespace ZEngine::Windows
         static void  __OnGlfwWindowResized(GLFWwindow*, int width, int height);
         static void  __OnGlfwWindowMaximized(GLFWwindow*, int maximized);
         static void  __OnGlfwWindowMinimized(GLFWwindow*, int minimized);
+        static void  __OnGlfwWindowFocus(GLFWwindow*, int focused);
 
         static void  __OnGlfwMouseButtonRaised(GLFWwindow*, int button, int action, int mods);
         static void  __OnGlfwMouseScrollRaised(GLFWwindow*, double xoffset, double yoffset);

@@ -12,6 +12,7 @@
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <limits>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -68,12 +69,27 @@ namespace ZEngine::Applications
         SceneRenderer->Initialize(Device);
         SceneRenderer->RenderGraph->AddCallbackPass("ZUI Draw Pass", ZUIRenderPass);
 
+        m_next_frame_state_sequence = 1;
+        m_next_overlay_sequence     = 1;
+        OverlayBuildAvailable.value.store(true, std::memory_order_relaxed);
+        for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
+        {
+            FrameStates[slot] = {};
+            FrameStateSlots[slot].value.store(static_cast<uint32_t>(PayloadSlotState::Free), std::memory_order_relaxed);
+            FrameStateSequences[slot].value.store(0, std::memory_order_relaxed);
+        }
+        for (uint32_t slot = 0; slot < MaxOverlayBufferCount; ++slot)
+        {
+            OverlayPayloads[slot] = {};
+            OverlayPayloadStates[slot].value.store(static_cast<uint32_t>(PayloadSlotState::Free), std::memory_order_relaxed);
+        }
+
         // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
         // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
         auto* ui_arena = &Engine::GetContext()->UIContextArena;
         ZUICtx         = ZPushStructCtor(ui_arena, ZEngine::UI::ZUIContext);
         ZEngine::UI::ZUIContextInit(ZUICtx, ui_arena, ZMega(32), ZMega(1), 8192, 8192);
-        for (int i = 0; i < 3; ++i)
+        for (uint32_t i = 0; i < MaxOverlayBufferCount; ++i)
         {
             ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
         }
@@ -95,7 +111,7 @@ namespace ZEngine::Applications
         {
             ZEngine::UI::ZUIContextDestroy(ZUICtx);
         }
-        for (int i = 0; i < 3; ++i)
+        for (uint32_t i = 0; i < MaxOverlayBufferCount; ++i)
         {
             ZUIPayloadArenas[i].Shutdown();
         }
@@ -115,7 +131,7 @@ namespace ZEngine::Applications
 
         auto swapchain = Device->SwapchainPtr;
 
-        swapchain->AcquireNextImage(CurrentMailBoxBufferHead);
+        swapchain->AcquireNextImage(CurrentFrameContextIndex);
 
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
@@ -159,7 +175,7 @@ namespace ZEngine::Applications
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
-    void AppRenderPipeline::RenderScene(Rendering::Cameras::CameraPtr camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay)
+    void AppRenderPipeline::RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
         auto swpachain    = Device->SwapchainPtr;
         auto frame_index  = swpachain->CurrentFrame->Index;
@@ -189,7 +205,7 @@ namespace ZEngine::Applications
             scene->GetInstancesSnapshot(scratch.Arena, instances);
 
             // Extract camera frustum once for this frame.
-            Mat4f        vp = camera->GetProjection() * camera->GetView();
+            Mat4f        vp = camera.Projection * camera.View;
             FrustumPlane planes[6];
             ExtractFrustumPlanes(vp, planes);
 
@@ -365,14 +381,205 @@ namespace ZEngine::Applications
         }
     }
 
-    void AppRenderPipeline::FillOverlayPayload(RenderPayload& payload)
+    void AppRenderPipeline::FillOverlayPayload(OverlayPayload& payload, uint32_t payload_slot)
     {
+        ZENGINE_VALIDATE_ASSERT(payload_slot < MaxOverlayBufferCount, "AppRenderPipeline::FillOverlayPayload: invalid payload slot")
+
+        payload.ZUIOverlay = {};
         if (ZUIRenderPass && ZUICtx && ZUICtx->Root)
         {
-            uint32_t slot = MailBoxBufferHead.value.load(std::memory_order_relaxed);
-            ZUIPayloadArenas[slot].Clear();
-            ZUIRenderPass->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[slot]);
+            ZUIPayloadArenas[payload_slot].Clear();
+            ZUIRenderPass->PreparePayload(ZUICtx, &payload.ZUIOverlay, &ZUIPayloadArenas[payload_slot]);
         }
+    }
+
+    void AppRenderPipeline::PublishFrameState(const RenderFrameState& state)
+    {
+        constexpr uint32_t free_state      = static_cast<uint32_t>(PayloadSlotState::Free);
+        constexpr uint32_t ready_state     = static_cast<uint32_t>(PayloadSlotState::Ready);
+        constexpr uint32_t writing_state   = static_cast<uint32_t>(PayloadSlotState::Writing);
+
+        // Prefer a free slot, then replace the oldest unread state.
+        uint32_t           selected_slot   = MaxFrameStateBufferCount;
+        uint64_t           oldest_sequence = std::numeric_limits<uint64_t>::max();
+        for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
+        {
+            uint32_t expected = free_state;
+            if (FrameStateSlots[slot].value.compare_exchange_strong(expected, writing_state, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                selected_slot = slot;
+                break;
+            }
+
+            const uint64_t sequence = FrameStateSequences[slot].value.load(std::memory_order_acquire);
+            if (expected == ready_state && sequence < oldest_sequence)
+            {
+                oldest_sequence = sequence;
+                selected_slot   = slot;
+            }
+        }
+
+        if (selected_slot == MaxFrameStateBufferCount)
+            return;
+
+        uint32_t expected = ready_state;
+        if (FrameStateSlots[selected_slot].value.load(std::memory_order_acquire) != writing_state && !FrameStateSlots[selected_slot].value.compare_exchange_strong(expected, writing_state, std::memory_order_acq_rel, std::memory_order_acquire))
+            return;
+
+        FrameStates[selected_slot] = state;
+        FrameStateSequences[selected_slot].value.store(m_next_frame_state_sequence++, std::memory_order_relaxed);
+        FrameStateSlots[selected_slot].value.store(ready_state, std::memory_order_release);
+    }
+
+    bool AppRenderPipeline::TryReadFrameState(RenderFrameState& state)
+    {
+        constexpr uint32_t free_state    = static_cast<uint32_t>(PayloadSlotState::Free);
+        constexpr uint32_t ready_state   = static_cast<uint32_t>(PayloadSlotState::Ready);
+        constexpr uint32_t reading_state = static_cast<uint32_t>(PayloadSlotState::Reading);
+
+        for (;;)
+        {
+            uint32_t newest_slot     = MaxFrameStateBufferCount;
+            uint64_t newest_sequence = 0;
+            for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
+            {
+                if (FrameStateSlots[slot].value.load(std::memory_order_acquire) == ready_state)
+                {
+                    const uint64_t sequence = FrameStateSequences[slot].value.load(std::memory_order_relaxed);
+                    if (sequence > newest_sequence)
+                    {
+                        newest_slot     = slot;
+                        newest_sequence = sequence;
+                    }
+                }
+            }
+
+            if (newest_slot == MaxFrameStateBufferCount)
+                return false;
+
+            uint32_t expected = ready_state;
+            if (!FrameStateSlots[newest_slot].value.compare_exchange_strong(expected, reading_state, std::memory_order_acq_rel, std::memory_order_acquire))
+                continue;
+
+            state = FrameStates[newest_slot];
+
+            // Older ready states cannot be observed again, so recycle them.
+            for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
+            {
+                if (slot == newest_slot)
+                    continue;
+                expected = ready_state;
+                FrameStateSlots[slot].value.compare_exchange_strong(expected, free_state, std::memory_order_acq_rel, std::memory_order_acquire);
+            }
+
+            FrameStateSlots[newest_slot].value.store(free_state, std::memory_order_release);
+            return true;
+        }
+    }
+
+    bool AppRenderPipeline::BeginOverlayWrite(OverlayPayload*& payload, uint32_t& payload_slot)
+    {
+        constexpr uint32_t free_state     = static_cast<uint32_t>(PayloadSlotState::Free);
+        constexpr uint32_t write_state    = static_cast<uint32_t>(PayloadSlotState::Writing);
+
+        // The render thread releases one token after each completed frame. This
+        // keeps costly UI generation presentation-paced while retaining a
+        // dedicated latest-state mailbox for input and camera updates.
+        bool               expected_token = true;
+        if (!OverlayBuildAvailable.value.compare_exchange_strong(expected_token, false, std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            payload      = nullptr;
+            payload_slot = 0;
+            return false;
+        }
+
+        for (uint32_t slot = 0; slot < MaxOverlayBufferCount; ++slot)
+        {
+            uint32_t expected = free_state;
+            if (OverlayPayloadStates[slot].value.compare_exchange_strong(expected, write_state, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                payload      = &OverlayPayloads[slot];
+                payload_slot = slot;
+                return true;
+            }
+        }
+
+        // A token with no free slot is transient (for example while a frame is
+        // handing an overlay over). Return it rather than suppressing the next
+        // eligible UI build.
+        OverlayBuildAvailable.value.store(true, std::memory_order_release);
+        payload      = nullptr;
+        payload_slot = 0;
+        return false;
+    }
+
+    void AppRenderPipeline::PublishOverlay(uint32_t payload_slot)
+    {
+        ZENGINE_VALIDATE_ASSERT(payload_slot < MaxOverlayBufferCount, "AppRenderPipeline::PublishOverlay: invalid payload slot")
+        ZENGINE_VALIDATE_ASSERT(OverlayPayloadStates[payload_slot].value.load(std::memory_order_relaxed) == static_cast<uint32_t>(PayloadSlotState::Writing), "AppRenderPipeline::PublishOverlay: slot is not being written")
+
+        OverlayPayloads[payload_slot].Sequence = m_next_overlay_sequence++;
+        OverlayPayloadStates[payload_slot].value.store(static_cast<uint32_t>(PayloadSlotState::Ready), std::memory_order_release);
+    }
+
+    bool AppRenderPipeline::BeginOverlayRead(OverlayPayload*& payload, uint32_t& payload_slot)
+    {
+        constexpr uint32_t ready_state = static_cast<uint32_t>(PayloadSlotState::Ready);
+        constexpr uint32_t read_state  = static_cast<uint32_t>(PayloadSlotState::Reading);
+        constexpr uint32_t free_state  = static_cast<uint32_t>(PayloadSlotState::Free);
+
+        // Select the latest payload and recycle older unread payloads.
+        for (;;)
+        {
+            uint32_t newest_slot     = MaxOverlayBufferCount;
+            uint64_t newest_sequence = 0;
+            for (uint32_t slot = 0; slot < MaxOverlayBufferCount; ++slot)
+            {
+                if (OverlayPayloadStates[slot].value.load(std::memory_order_acquire) == ready_state && OverlayPayloads[slot].Sequence > newest_sequence)
+                {
+                    newest_slot     = slot;
+                    newest_sequence = OverlayPayloads[slot].Sequence;
+                }
+            }
+
+            if (newest_slot == MaxOverlayBufferCount)
+            {
+                payload      = nullptr;
+                payload_slot = 0;
+                return false;
+            }
+
+            uint32_t expected = ready_state;
+            if (OverlayPayloadStates[newest_slot].value.compare_exchange_strong(expected, read_state, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                // The selected slot is now immutable. Any older ready overlay
+                // can be safely recycled; its arena is never cleared until a
+                // later writer claims that slot.
+                for (uint32_t slot = 0; slot < MaxOverlayBufferCount; ++slot)
+                {
+                    if (slot == newest_slot)
+                        continue;
+                    expected = ready_state;
+                    OverlayPayloadStates[slot].value.compare_exchange_strong(expected, free_state, std::memory_order_acq_rel, std::memory_order_acquire);
+                }
+
+                payload      = &OverlayPayloads[newest_slot];
+                payload_slot = newest_slot;
+                return true;
+            }
+        }
+    }
+
+    void AppRenderPipeline::EndOverlayRead(uint32_t payload_slot)
+    {
+        ZENGINE_VALIDATE_ASSERT(payload_slot < MaxOverlayBufferCount, "AppRenderPipeline::EndOverlayRead: invalid payload slot")
+        ZENGINE_VALIDATE_ASSERT(OverlayPayloadStates[payload_slot].value.load(std::memory_order_relaxed) == static_cast<uint32_t>(PayloadSlotState::Reading), "AppRenderPipeline::EndOverlayRead: slot is not being read")
+        OverlayPayloadStates[payload_slot].value.store(static_cast<uint32_t>(PayloadSlotState::Free), std::memory_order_release);
+    }
+
+    void AppRenderPipeline::NotifyOverlayFrameComplete()
+    {
+        OverlayBuildAvailable.value.store(true, std::memory_order_release);
     }
 
     void AppRenderPipeline::EndOverlayFrame()

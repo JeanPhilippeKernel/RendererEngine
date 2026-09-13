@@ -1,9 +1,77 @@
 #include <Tetragrama/Controllers/EditorCameraController.h>
+#include <Tetragrama/EditorScene.h>
 #include <ZEngine/Core/Maths/MathUtils.h>
-#include <ZEngine/Rendering/Scenes/RenderScene.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Rendering/Scenes/SceneRayQuery.h>
 
 using namespace ZEngine::Rendering::Cameras;
 using namespace ZEngine::Core::Maths;
+
+namespace
+{
+    ZEngine::Rendering::Scenes::SceneRaycastHit RaycastEditorScene(void* context, Vec3f origin, Vec3f direction, float max_distance)
+    {
+        ZEngine::Rendering::Scenes::SceneRaycastHit miss = {};
+        miss.Distance                                    = max_distance;
+
+        auto* app                                        = static_cast<ZEngine::Applications::GameApplication*>(context);
+        if (!app || !app->CurrentScene)
+            return miss;
+
+        return ZEngine::Rendering::Scenes::RaycastSceneBounds(*app->CurrentScene, origin, direction, max_distance);
+    }
+
+    bool GetEditorSelectionBounds(void* context, Vec3f& out_center, float& out_radius)
+    {
+        using namespace ZEngine::Rendering::Scenes;
+
+        auto* app = static_cast<ZEngine::Applications::GameApplication*>(context);
+        if (!app || !app->CurrentScene)
+            return false;
+
+        auto* scene = static_cast<Tetragrama::EditorScene*>(app->CurrentScene);
+        if (!scene || !scene->SelectedActorHandle.Valid())
+            return false;
+
+        auto* engine = ZEngine::Engine::GetContext();
+        if (!engine || !engine->ActorManager)
+            return false;
+
+        auto* actor = engine->ActorManager->Access(scene->SelectedActorHandle);
+        if (!actor)
+            return false;
+
+        const auto* mesh = actor->GetComponent<ZEngine::ECS::Components::MeshComponent>();
+        if (!mesh || mesh->RenderInstanceId == UINT32_MAX)
+            return false;
+
+        SceneRaycastBounds bounds = {};
+        if (!TryGetSceneInstanceBounds(*scene, mesh->RenderInstanceId, bounds))
+            return false;
+
+        out_center = bounds.Center;
+        out_radius = bounds.Radius;
+        return true;
+    }
+
+    bool GetEditorSceneBounds(void* context, Vec3f& out_center, float& out_radius)
+    {
+        using namespace ZEngine::Rendering::Scenes;
+
+        auto* app = static_cast<ZEngine::Applications::GameApplication*>(context);
+        if (!app || !app->CurrentScene)
+            return false;
+
+        SceneRaycastBounds bounds = {};
+        if (!TryGetSceneBounds(*app->CurrentScene, bounds))
+            return false;
+
+        out_center = bounds.Center;
+        out_radius = bounds.Radius;
+        return true;
+    }
+} // namespace
 
 namespace Tetragrama::Controllers
 {
@@ -35,44 +103,10 @@ namespace Tetragrama::Controllers
         m_camera                     = ZPushStructCtorArgs(arena, FlyCamera, logicalW / logicalH, settings);
         m_camera->SetViewportSize(logicalW, logicalH);
 
-        m_camera->Hooks.Raycast            = [](Vec3f, Vec3f, float maxDist) { return maxDist; };
-
-        m_camera->Hooks.GetSelectionBounds = [app]() -> std::pair<Vec3f, float> {
-            using namespace ZEngine::Rendering::Scenes;
-            static const std::pair<Vec3f, float> kFallback = {
-                Vec3f{0.0f, 0.0f, 0.0f},
-                5.0f
-            };
-
-            if (!app || !app->CurrentScene)
-                return kFallback;
-
-            auto*   scene  = app->CurrentScene;
-            int32_t sel_id = scene->SelectedInstanceId.value.load(std::memory_order_acquire);
-            if (sel_id <= 0)
-                return kFallback;
-
-            // Seqlock read — abort if writer is active; this is best-effort for a focus op.
-            uint64_t seq1 = scene->m_seq.value.load(std::memory_order_acquire);
-            if (seq1 & 1)
-                return kFallback;
-
-            for (uint32_t i = 0; i < scene->Instances.size(); ++i)
-            {
-                if ((int32_t) scene->Instances[i].Id == sel_id)
-                {
-                    const auto& t      = scene->Instances[i].Transform;
-                    Vec3f       center = {t[3][0], t[3][1], t[3][2]};
-
-                    uint64_t    seq2   = scene->m_seq.value.load(std::memory_order_acquire);
-                    if (seq1 != seq2)
-                        return kFallback;
-
-                    return {center, 2.0f};
-                }
-            }
-            return kFallback;
-        };
+        m_camera->Hooks.Context            = app;
+        m_camera->Hooks.Raycast            = &RaycastEditorScene;
+        m_camera->Hooks.GetSelectionBounds = &GetEditorSelectionBounds;
+        m_camera->Hooks.GetSceneBounds     = &GetEditorSceneBounds;
 
         FlyCameraController::Initialize(input_manager, arena);
     }

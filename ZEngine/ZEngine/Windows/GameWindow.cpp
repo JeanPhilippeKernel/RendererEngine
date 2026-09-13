@@ -185,6 +185,7 @@ namespace ZEngine::Windows
         glfwSetWindowSizeCallback(m_native_window, GameWindow::__OnGlfwWindowResized);
         glfwSetWindowMaximizeCallback(m_native_window, GameWindow::__OnGlfwWindowMaximized);
         glfwSetWindowIconifyCallback(m_native_window, GameWindow::__OnGlfwWindowMinimized);
+        glfwSetWindowFocusCallback(m_native_window, GameWindow::__OnGlfwWindowFocus);
 
         glfwSetMouseButtonCallback(m_native_window, GameWindow::__OnGlfwMouseButtonRaised);
         glfwSetScrollCallback(m_native_window, GameWindow::__OnGlfwMouseScrollRaised);
@@ -272,6 +273,9 @@ namespace ZEngine::Windows
         {
             if (minimized == GLFW_TRUE)
             {
+                auto* engine_context = Engine::GetContext();
+                if (engine_context && engine_context->InputManager)
+                    engine_context->InputManager->SetWindowFocused(false);
                 WindowMinimizedEvent e;
                 property->CallbackFn(e);
                 return;
@@ -279,6 +283,14 @@ namespace ZEngine::Windows
             WindowRestoredEvent e;
             property->CallbackFn(e);
         }
+    }
+
+    void GameWindow::__OnGlfwWindowFocus(GLFWwindow* window, int focused)
+    {
+        (void) window;
+        auto* engine_context = Engine::GetContext();
+        if (engine_context && engine_context->InputManager)
+            engine_context->InputManager->SetWindowFocused(focused == GLFW_TRUE);
     }
 
     void GameWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
@@ -314,6 +326,10 @@ namespace ZEngine::Windows
         WindowProperty* property = reinterpret_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
         if (property)
         {
+            auto* engine_context = Engine::GetContext();
+            if (engine_context && engine_context->InputManager)
+                engine_context->InputManager->AccumulateCursorPosition(xpos, ypos);
+
             double xoffset = (xpos - lastX);
             double yoffset = (ypos - lastY);
             lastX          = xpos;

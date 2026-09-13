@@ -106,7 +106,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    Hardwares::CommandBuffer* GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera)
+    Hardwares::CommandBuffer* GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera)
     {
         ZENGINE_VALIDATE_ASSERT(frame_index < Scenes::SceneData::MAX_FRAMES_IN_FLIGHT, "Invalid scene-buffer frame index")
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Transform, &RenderSceneData->TransformBuffers[frame_index]), "Transform buffer is not imported into the render graph")
@@ -117,8 +117,8 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::CulledIndirect, &RenderSceneData->CulledIndirectBuffers[frame_index]), "Culled indirect buffer is not imported into the render graph")
 
         auto asset_manager   = Managers::AssetManager::Instance();
-        auto view_proj       = camera->GetProjection() * camera->GetView();
-        auto ubo_camera_data = UBOCameraLayout{.View = camera->GetView(), .Projection = camera->GetProjection(), .Position = Vec4f(camera->GetPosition(), 1.0f), .InvViewProj = view_proj.Inverse()};
+        auto view_proj       = camera.Projection * camera.View;
+        auto ubo_camera_data = UBOCameraLayout{.View = camera.View, .Projection = camera.Projection, .Position = Vec4f(camera.Position, 1.0f), .InvViewProj = view_proj.Inverse()};
 
         if (Device->RRM && RenderSceneData->MaterialBuffers[frame_index].Handle)
         {
@@ -162,10 +162,21 @@ namespace ZEngine::Rendering::Renderers
         if (!output.Valid())
             return;
 
+        const uint64_t previous_index      = m_frame_output_index.value.load(std::memory_order_relaxed);
+        const uint64_t previous_generation = m_frame_output_generation.value.load(std::memory_order_relaxed);
+        if (previous_index == output.Index && previous_generation == output.Generation)
+            return;
+
         m_frame_output_sequence.value.fetch_add(1, std::memory_order_acq_rel);
         m_frame_output_index.value.store(output.Index, std::memory_order_relaxed);
         m_frame_output_generation.value.store(output.Generation, std::memory_order_relaxed);
         m_frame_output_sequence.value.fetch_add(1, std::memory_order_release);
+
+        // A descriptor write is required when this slot first becomes the
+        // viewport output. Rewriting the same slot every frame can modify a
+        // descriptor set still in use by the previous GPU submission.
+        // RenderGraph::Resize queues its own write after reconstructing the
+        // backing image while the handle remains stable.
         Device->RequestDescriptorUpdate(output);
     }
 

@@ -12,7 +12,7 @@ namespace ZEngine::Rendering::Renderers
 
         void                      Initialize(Hardwares::VulkanDevicePtr device) override;
         void                      Deinitialize() override;
-        Hardwares::CommandBuffer* DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, Cameras::CameraPtr const camera);
+        Hardwares::CommandBuffer* DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera);
         void                      ApplySkyConfig(const Scenes::SkyConfig& sky);
         void                      ApplyGridConfig(const Scenes::GridConfig& cfg);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
