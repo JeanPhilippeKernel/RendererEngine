@@ -2965,8 +2965,10 @@ namespace ZEngine::Hardwares
             return {};
         }
 
-        auto     resource    = GlobalTextures.Access(handle);
-        auto     image_buf   = ImageBufferManager.Access(resource->BufferHandle);
+        auto*    resource    = GlobalTextures.Access(handle);
+        auto*    image_buf   = resource ? ImageBufferManager.Access(resource->BufferHandle) : nullptr;
+        if (!resource || !image_buf)
+            return {};
 
         const VkDeviceSize upload_size = data_size == 0 ? resource->BufferSize : data_size;
         if (upload_size == 0 || upload_size > resource->BufferSize)

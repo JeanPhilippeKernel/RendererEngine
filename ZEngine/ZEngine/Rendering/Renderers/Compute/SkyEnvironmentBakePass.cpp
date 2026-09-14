@@ -135,11 +135,31 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->PipelineBarrier2(dependency);
         }
 
-        bool IsActive(const Scenes::SkyEnvironment* environment, Scenes::SkyEnvironmentBakeStage stage)
-        {
-            return environment && environment->CanRecordGpuBakeStage() && environment->GetActiveBakeStage() == stage && environment->GetActiveBakeSource().Valid();
-        }
     } // namespace
+
+    RGPassFlags SkyEnvironmentBakePass::GetPassFlags() const
+    {
+        return RGPassFlags::NeverCull;
+    }
+
+    Rendering::QueueType SkyEnvironmentBakePass::GetRequestedQueue() const
+    {
+        // Publication is synchronized through the render timeline. Keeping the
+        // bake on this queue makes that ordering explicit on every topology.
+        return Rendering::QueueType::GRAPHIC_QUEUE;
+    }
+
+    void SkyEnvironmentBakePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
+    {
+        m_compute_pass = pass ? static_cast<RenderPasses::ComputePass*>(pass) : nullptr;
+        if (m_compute_pass && device)
+            m_compute_pass->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
+    }
+
+    bool SkyEnvironmentBakePass::IsActive(Scenes::SkyEnvironmentBakeStage stage) const
+    {
+        return m_environment && m_environment->CanRecordGpuBakeStage() && m_environment->GetActiveBakeStage() == stage && m_environment->GetActiveBakeSource().Valid();
+    }
 
     cstring SkyEnvironmentMipGenerationPass::GetShaderName() const
     {
@@ -153,20 +173,7 @@ namespace ZEngine::Rendering::Renderers
 
     bool SkyEnvironmentMipGenerationPass::ShouldRegisterCompute() const
     {
-        return IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::SourceMipChain);
-    }
-
-    RGPassFlags SkyEnvironmentMipGenerationPass::GetPassFlags() const
-    {
-        return RGPassFlags::NeverCull;
-    }
-
-    Rendering::QueueType SkyEnvironmentMipGenerationPass::GetRequestedQueue() const
-    {
-        // The published snapshot is synchronized by the render timeline. Keeping
-        // these compute commands on the graphics queue makes that publication
-        // ordering explicit on devices with a separate compute family.
-        return Rendering::QueueType::GRAPHIC_QUEUE;
+        return IsActive(Scenes::SkyEnvironmentBakeStage::SourceMipChain);
     }
 
     void SkyEnvironmentMipGenerationPass::RegisterCompute(Hardwares::VulkanDevicePtr const device, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder)
@@ -180,18 +187,17 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadWriteStorageImage(kSourceRadianceName, "Destination");
     }
 
-    void SkyEnvironmentMipGenerationPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
+    void SkyEnvironmentMipGenerationPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass)
     {
-        m_compute_pass = pass ? static_cast<RenderPasses::ComputePass*>(pass) : nullptr;
+        SkyEnvironmentBakePass::Prepare(device, scene, res_inspector, pass);
         if (!m_compute_pass || !m_environment)
             return;
         m_compute_pass->SetTexture("SourceRadiance", m_environment->GetActiveBakeSource(), VK_IMAGE_LAYOUT_GENERAL);
-        m_compute_pass->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
     }
 
     void SkyEnvironmentMipGenerationPass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::SourceMipChain) || !m_compute_pass)
+        if (!IsActive(Scenes::SkyEnvironmentBakeStage::SourceMipChain) || !m_compute_pass)
             return;
 
         const Textures::TextureHandle source    = m_environment->GetActiveBakeSource();
@@ -226,17 +232,7 @@ namespace ZEngine::Rendering::Renderers
 
     bool SkyEnvironmentDiffuseIrradiancePass::ShouldRegisterCompute() const
     {
-        return IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance) && m_environment->GetActiveBakeLighting().DiffuseIrradiance.Valid();
-    }
-
-    RGPassFlags SkyEnvironmentDiffuseIrradiancePass::GetPassFlags() const
-    {
-        return RGPassFlags::NeverCull;
-    }
-
-    Rendering::QueueType SkyEnvironmentDiffuseIrradiancePass::GetRequestedQueue() const
-    {
-        return Rendering::QueueType::GRAPHIC_QUEUE;
+        return IsActive(Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance) && m_environment->GetActiveBakeLighting().DiffuseIrradiance.Valid();
     }
 
     void SkyEnvironmentDiffuseIrradiancePass::RegisterCompute(Hardwares::VulkanDevicePtr const /*device*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder)
@@ -248,16 +244,9 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadWriteStorageImage(kDiffuseIrradianceName, "Destination");
     }
 
-    void SkyEnvironmentDiffuseIrradiancePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
-    {
-        m_compute_pass = pass ? static_cast<RenderPasses::ComputePass*>(pass) : nullptr;
-        if (m_compute_pass)
-            m_compute_pass->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
-    }
-
     void SkyEnvironmentDiffuseIrradiancePass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance) || !m_compute_pass)
+        if (!IsActive(Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance) || !m_compute_pass)
             return;
 
         const EnvironmentLightingBakeSettings& bake_settings = m_environment->GetActiveBakeLighting().BakeSettings;
@@ -288,17 +277,7 @@ namespace ZEngine::Rendering::Renderers
 
     bool SkyEnvironmentSpecularPrefilterPass::ShouldRegisterCompute() const
     {
-        return IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::SpecularEnvironment) && m_environment->GetActiveBakeLighting().SpecularEnvironment.Valid();
-    }
-
-    RGPassFlags SkyEnvironmentSpecularPrefilterPass::GetPassFlags() const
-    {
-        return RGPassFlags::NeverCull;
-    }
-
-    Rendering::QueueType SkyEnvironmentSpecularPrefilterPass::GetRequestedQueue() const
-    {
-        return Rendering::QueueType::GRAPHIC_QUEUE;
+        return IsActive(Scenes::SkyEnvironmentBakeStage::SpecularEnvironment) && m_environment->GetActiveBakeLighting().SpecularEnvironment.Valid();
     }
 
     void SkyEnvironmentSpecularPrefilterPass::RegisterCompute(Hardwares::VulkanDevicePtr const /*device*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder)
@@ -310,16 +289,9 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadWriteStorageImage(kSpecularEnvironmentName, "Destination");
     }
 
-    void SkyEnvironmentSpecularPrefilterPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
-    {
-        m_compute_pass = pass ? static_cast<RenderPasses::ComputePass*>(pass) : nullptr;
-        if (m_compute_pass)
-            m_compute_pass->SetSampler("LinearClampToEdgeSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
-    }
-
     void SkyEnvironmentSpecularPrefilterPass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::SpecularEnvironment) || !m_compute_pass)
+        if (!IsActive(Scenes::SkyEnvironmentBakeStage::SpecularEnvironment) || !m_compute_pass)
             return;
 
         const EnvironmentLightingBakeSettings& bake_settings   = m_environment->GetActiveBakeLighting().BakeSettings;

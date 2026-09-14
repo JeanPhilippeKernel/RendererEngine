@@ -30,26 +30,20 @@ namespace ZEngine::Rendering::Scenes
     {
         Textures::TextureHandle      SourceRadiance = {};
         EnvironmentLightingResources Lighting       = {};
-
-        [[nodiscard]] bool           Valid() const
-        {
-            return SourceRadiance.Valid() && Lighting.Valid();
-        }
     };
 
     /// @brief Immutable GPU-resource snapshot selected by one rendered frame.
     struct SkyEnvironmentSnapshot
     {
-        SkyConfig                       Config          = {};
-        Textures::TextureHandle         SourceRadiance  = {};
-        EnvironmentLightingResources    Lighting        = {};
-        EnvironmentLightingBakeSettings BakeSettings    = {};
-        uint64_t                        Revision        = 0;
-        uint64_t                        LastUseTimeline = 0;
-        uint32_t                        PinCount        = 0;
-        SkyEnvironmentState             State           = SkyEnvironmentState::Fallback;
-        bool                            IsFallback      = false;
-        bool                            Retired         = false;
+        SkyConfig                    Config          = {};
+        Textures::TextureHandle      SourceRadiance  = {};
+        EnvironmentLightingResources Lighting        = {};
+        uint64_t                     Revision        = 0;
+        uint64_t                     LastUseTimeline = 0;
+        uint32_t                     PinCount        = 0;
+        SkyEnvironmentState          State           = SkyEnvironmentState::Fallback;
+        bool                         IsFallback      = false;
+        bool                         Retired         = false;
     };
 
     /// @brief Immutable bake input claimed by the render thread.
@@ -116,8 +110,6 @@ namespace ZEngine::Rendering::Scenes
         /// @brief Releases the earliest frame pin when the frame was never submitted.
         void                                              ReleaseCancelledFrame();
 
-        /// @brief Returns one snapshot whose replacement is no longer referenced by the GPU.
-        bool                                              TakeRetiredSnapshot(uint64_t completed_timeline_value, Textures::TextureHandle& out_source_radiance);
         /// @brief Returns all owned textures from one GPU-idle retired revision.
         bool                                              TakeRetiredSnapshot(uint64_t completed_timeline_value, SkyEnvironmentResources& out_resources);
         /// @brief Marks all non-fallback snapshots collectible after the device has gone idle.

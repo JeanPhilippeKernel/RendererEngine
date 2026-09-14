@@ -8,7 +8,6 @@ namespace ZEngine::Rendering::Scenes
         m_bake_settings               = bake_settings.IsValid() ? bake_settings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
         m_snapshots[0].SourceRadiance = fallback_source;
         m_snapshots[0].Lighting       = fallback_lighting;
-        m_snapshots[0].BakeSettings   = m_bake_settings;
         m_snapshots[0].State          = SkyEnvironmentState::Fallback;
         m_snapshots[0].IsFallback     = true;
         m_fallback_lighting           = fallback_lighting;
@@ -203,7 +202,6 @@ namespace ZEngine::Rendering::Scenes
         published.Config                  = m_presentation_config;
         published.SourceRadiance          = completed_source;
         published.Lighting                = completed_lighting;
-        published.BakeSettings            = completed_lighting.BakeSettings;
         published.Revision                = revision;
         published.State                   = SkyEnvironmentState::Ready;
         m_published_slot                  = static_cast<uint32_t>(new_slot);
@@ -235,15 +233,6 @@ namespace ZEngine::Rendering::Scenes
     void SkyEnvironment::ReleaseCancelledFrame()
     {
         ReleaseNextFramePin(0);
-    }
-
-    bool SkyEnvironment::TakeRetiredSnapshot(uint64_t completed_timeline_value, Textures::TextureHandle& out_source_radiance)
-    {
-        SkyEnvironmentResources resources = {};
-        if (!TakeRetiredSnapshot(completed_timeline_value, resources))
-            return false;
-        out_source_radiance = resources.SourceRadiance;
-        return out_source_radiance.Valid();
     }
 
     bool SkyEnvironment::TakeRetiredSnapshot(uint64_t completed_timeline_value, SkyEnvironmentResources& out_resources)

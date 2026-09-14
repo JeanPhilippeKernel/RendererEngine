@@ -230,12 +230,12 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForItsSubmittedFrameTimeline)
     ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
     ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
 
-    Textures::TextureHandle retired = {};
+    SkyEnvironmentResources retired = {};
     EXPECT_FALSE(environment.TakeRetiredSnapshot(0, retired));
     environment.ReleaseSubmittedFrame(9);
     EXPECT_FALSE(environment.TakeRetiredSnapshot(8, retired));
     ASSERT_TRUE(environment.TakeRetiredSnapshot(9, retired));
-    EXPECT_EQ(retired.Index, 2u);
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
 }
 
 TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForEverySubmittedFrameConsumer)
@@ -257,13 +257,13 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForEverySubmittedFrameConsumer)
     ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
     ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
 
-    Textures::TextureHandle retired = {};
+    SkyEnvironmentResources retired = {};
     environment.ReleaseSubmittedFrame(7);
     EXPECT_FALSE(environment.TakeRetiredSnapshot(7, retired));
     environment.ReleaseSubmittedFrame(8);
     EXPECT_FALSE(environment.TakeRetiredSnapshot(7, retired));
     ASSERT_TRUE(environment.TakeRetiredSnapshot(8, retired));
-    EXPECT_EQ(retired.Index, 2u);
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
 }
 
 TEST(SkyEnvironmentTest, CancelledFrameDoesNotLeaveAReplacementPinned)
@@ -284,9 +284,9 @@ TEST(SkyEnvironmentTest, CancelledFrameDoesNotLeaveAReplacementPinned)
     ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
     environment.ReleaseCancelledFrame();
 
-    Textures::TextureHandle retired = {};
+    SkyEnvironmentResources retired = {};
     ASSERT_TRUE(environment.TakeRetiredSnapshot(0, retired));
-    EXPECT_EQ(retired.Index, 2u);
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
 }
 
 TEST(SkyEnvironmentTest, GpuBakeStagesAdvanceOnlyAfterTheirSubmittedTimelineCompletes)

@@ -252,11 +252,11 @@ namespace ZEngine::Rendering::Renderers
         if (!m_sky_environment.TakeBakeRequest(request))
             return;
 
-        // HDRI source preparation is asynchronous. Per-scene diffuse and
-        // specular convolution remain on the engine-global fallback until #805.
+        // HDRI preparation is asynchronous. The last published snapshot remains
+        // bound until all three IBL bake stages have completed.
         if (!request.Config.IsHDRI() || request.Config.EnvironmentMap.is_nil())
         {
-            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: {} source baking is not implemented yet", request.Revision, request.Config.IsHDRI() ? "an HDRI without an asset" : "analytic")
+            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: {} sky configuration has no HDRI asset", request.Revision, request.Config.IsHDRI() ? "the selected" : "the analytic")
             m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }

@@ -44,12 +44,6 @@ namespace ZEngine::Rendering::Renderers
             return true;
         }
 
-        /// @brief Refreshes descriptors that vary within one compute callback execution.
-        virtual bool PrepareComputeDescriptors(Hardwares::VulkanDevicePtr const /*device*/, RenderPasses::ComputePass* const /*pass*/)
-        {
-            return true;
-        }
-
         /// @brief Returns the byte size of the pass push-constant block.
         virtual uint32_t GetPushConstantSize() const
         {
