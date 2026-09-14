@@ -260,14 +260,15 @@ namespace ZEngine::Rendering::Renderers
         if (!IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance) || !m_compute_pass)
             return;
 
-        const Textures::TextureHandle output     = m_environment->GetActiveBakeLighting().DiffuseIrradiance;
-        const uint32_t                resolution = GetResolution(device, output);
+        const EnvironmentLightingBakeSettings& bake_settings = m_environment->GetActiveBakeLighting().BakeSettings;
+        const Textures::TextureHandle          output        = m_environment->GetActiveBakeLighting().DiffuseIrradiance;
+        const uint32_t                         resolution    = GetResolution(device, output);
         if (resolution == 0)
             return;
 
         m_compute_pass->SetStorageImage("Destination", output, MakeColorRange(0, 1));
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
-        const DiffuseIrradiancePushConstants push = {.Resolution = resolution, .SampleCount = 32};
+        const DiffuseIrradiancePushConstants push = {.Resolution = resolution, .SampleCount = bake_settings.DiffuseSampleCount};
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         command_buffer->Dispatch((resolution + kLocalSize - 1) / kLocalSize, (resolution + kLocalSize - 1) / kLocalSize, 6);
         MakeShaderReadable(device, command_buffer, output);
@@ -321,11 +322,12 @@ namespace ZEngine::Rendering::Renderers
         if (!IsActive(m_environment, Scenes::SkyEnvironmentBakeStage::SpecularEnvironment) || !m_compute_pass)
             return;
 
-        const Textures::TextureHandle source          = m_environment->GetActiveBakeSource();
-        const Textures::TextureHandle output          = m_environment->GetActiveBakeLighting().SpecularEnvironment;
-        const uint32_t                mip_count       = GetMipCount(device, output);
-        const uint32_t                base_resolution = GetResolution(device, output);
-        const uint32_t                source_mips     = GetMipCount(device, source);
+        const EnvironmentLightingBakeSettings& bake_settings   = m_environment->GetActiveBakeLighting().BakeSettings;
+        const Textures::TextureHandle          source          = m_environment->GetActiveBakeSource();
+        const Textures::TextureHandle          output          = m_environment->GetActiveBakeLighting().SpecularEnvironment;
+        const uint32_t                         mip_count       = GetMipCount(device, output);
+        const uint32_t                         base_resolution = GetResolution(device, output);
+        const uint32_t                         source_mips     = GetMipCount(device, source);
         if (mip_count == 0 || base_resolution == 0 || source_mips == 0)
             return;
 
@@ -337,7 +339,7 @@ namespace ZEngine::Rendering::Renderers
             const SpecularPrefilterPushConstants push = {
                 .Resolution     = resolution,
                 .MipLevel       = mip,
-                .SampleCount    = 128,
+                .SampleCount    = bake_settings.SpecularSampleCount,
                 .SourceMipCount = source_mips,
                 .Roughness      = mip_count > 1 ? static_cast<float>(mip) / static_cast<float>(mip_count - 1) : 0.0f,
             };

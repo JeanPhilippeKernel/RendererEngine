@@ -2,11 +2,13 @@
 
 namespace ZEngine::Rendering::Scenes
 {
-    void SkyEnvironment::Initialize(Textures::TextureHandle fallback_source, const EnvironmentLightingResources& fallback_lighting)
+    void SkyEnvironment::Initialize(Textures::TextureHandle fallback_source, const EnvironmentLightingResources& fallback_lighting, const EnvironmentLightingBakeSettings& bake_settings)
     {
         *this                         = {};
+        m_bake_settings               = bake_settings.IsValid() ? bake_settings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
         m_snapshots[0].SourceRadiance = fallback_source;
         m_snapshots[0].Lighting       = fallback_lighting;
+        m_snapshots[0].BakeSettings   = m_bake_settings;
         m_snapshots[0].State          = SkyEnvironmentState::Fallback;
         m_snapshots[0].IsFallback     = true;
         m_fallback_lighting           = fallback_lighting;
@@ -15,18 +17,19 @@ namespace ZEngine::Rendering::Scenes
         m_state                       = SkyEnvironmentState::Fallback;
     }
 
-    bool SkyEnvironment::SubmitConfig(const SkyConfig& config, uint64_t revision)
+    bool SkyEnvironment::SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings)
     {
         if (revision == 0 || revision <= m_latest_revision)
             return false;
 
-        SkyConfig sanitized = config;
+        SkyConfig                             sanitized              = config;
+        const EnvironmentLightingBakeSettings resolved_bake_settings = bake_settings.IsValid() ? bake_settings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
         sanitized.Sanitize();
 
         m_presentation_config = sanitized;
         m_latest_revision     = revision;
 
-        if (HasEquivalentBakeInputs(m_bake_config, sanitized))
+        if (HasEquivalentBakeInputs(m_bake_config, sanitized) && m_bake_settings.Matches(resolved_bake_settings))
         {
             // The source radiance remains valid. Keep editor-facing presentation
             // changes (tint, intensity, and yaw) off the bake path.
@@ -35,7 +38,10 @@ namespace ZEngine::Rendering::Scenes
                 m_pending_request.Config   = sanitized;
                 m_pending_request.Revision = revision;
             }
-            if (m_has_active_bake)
+            // A pending quality change leaves the active bake on its original
+            // immutable budget. It must finish as stale rather than being
+            // relabelled as the newer quality revision.
+            if (m_has_active_bake && m_active_bake.BakeSettings.Matches(resolved_bake_settings))
             {
                 m_active_bake.Config   = sanitized;
                 m_active_bake.Revision = revision;
@@ -44,11 +50,13 @@ namespace ZEngine::Rendering::Scenes
             return true;
         }
 
-        m_bake_config              = sanitized;
-        m_pending_request.Config   = sanitized;
-        m_pending_request.Revision = revision;
-        m_latest_bake_revision     = revision;
-        m_has_pending_request      = true;
+        m_bake_config                  = sanitized;
+        m_bake_settings                = resolved_bake_settings;
+        m_pending_request.Config       = sanitized;
+        m_pending_request.BakeSettings = resolved_bake_settings;
+        m_pending_request.Revision     = revision;
+        m_latest_bake_revision         = revision;
+        m_has_pending_request          = true;
         return true;
     }
 
@@ -82,7 +90,7 @@ namespace ZEngine::Rendering::Scenes
 
     bool SkyEnvironment::AttachBakeLighting(uint64_t revision, const EnvironmentLightingResources& lighting)
     {
-        if (!m_has_active_bake || m_active_bake.Revision != revision || !lighting.Valid())
+        if (!m_has_active_bake || m_active_bake.Revision != revision || !lighting.Valid() || !lighting.BakeSettings.Matches(m_active_bake.BakeSettings))
             return false;
 
         m_active_bake_lighting = lighting;
@@ -195,6 +203,7 @@ namespace ZEngine::Rendering::Scenes
         published.Config                  = m_presentation_config;
         published.SourceRadiance          = completed_source;
         published.Lighting                = completed_lighting;
+        published.BakeSettings            = completed_lighting.BakeSettings;
         published.Revision                = revision;
         published.State                   = SkyEnvironmentState::Ready;
         m_published_slot                  = static_cast<uint32_t>(new_slot);

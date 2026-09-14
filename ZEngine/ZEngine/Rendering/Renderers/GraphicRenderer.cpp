@@ -20,6 +20,20 @@ using namespace ZEngine::Core::Maths;
 
 namespace ZEngine::Rendering::Renderers
 {
+    namespace
+    {
+        uint32_t GetFullMipCount(uint32_t resolution)
+        {
+            uint32_t mip_count = 1;
+            while (resolution > 1)
+            {
+                resolution >>= 1;
+                ++mip_count;
+            }
+            return mip_count;
+        }
+    } // namespace
+
     GraphicRenderer::GraphicRenderer() {}
     GraphicRenderer::~GraphicRenderer() {}
 
@@ -73,7 +87,7 @@ namespace ZEngine::Rendering::Renderers
         const auto  fallback_lighting    = rrm->GetOrCreateFallbackEnvironmentLighting();
         ZENGINE_VALIDATE_ASSERT(fallback_environment.Valid(), "Sky environment fallback source creation failed")
         ZENGINE_VALIDATE_ASSERT(fallback_lighting.Valid(), "Sky environment fallback lighting creation failed")
-        m_sky_environment.Initialize(fallback_environment, fallback_lighting);
+        m_sky_environment.Initialize(fallback_environment, fallback_lighting, Device->EnvironmentLightingBakeSettings);
         m_lighting_pass               = lighting_pass;
         m_skybox_pass                 = skybox_pass;
         m_sky_mip_generation_pass     = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentMipGenerationPass, &m_sky_environment);
@@ -208,7 +222,8 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky, uint64_t revision)
     {
-        if (m_sky_environment.SubmitConfig(sky, revision))
+        const EnvironmentLightingBakeSettings bake_settings = Device ? Device->EnvironmentLightingBakeSettings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
+        if (m_sky_environment.SubmitConfig(sky, revision, bake_settings))
             StartPendingSkyBake();
         PollSkyBake();
     }
@@ -321,7 +336,7 @@ namespace ZEngine::Rendering::Renderers
             if (completed_upload_value < ticket->CompletionValue)
                 return;
 
-            EnvironmentLightingResources lighting = CreateSkyLightingResources();
+            EnvironmentLightingResources lighting = CreateSkyLightingResources(bake->BakeSettings);
             if (!lighting.Valid() || !m_sky_environment.AttachBakeLighting(revision, lighting) || !m_sky_environment.BeginGpuBake(revision))
             {
                 const Scenes::SkyEnvironmentBakeResult result = m_sky_environment.CompleteBake(revision, source_radiance, false);
@@ -419,9 +434,9 @@ namespace ZEngine::Rendering::Renderers
         DiscardSkyTexture(resources.Lighting.SpecularEnvironment);
     }
 
-    EnvironmentLightingResources GraphicRenderer::CreateSkyLightingResources()
+    EnvironmentLightingResources GraphicRenderer::CreateSkyLightingResources(const EnvironmentLightingBakeSettings& bake_settings)
     {
-        if (!Device || !Device->RRM)
+        if (!Device || !Device->RRM || !bake_settings.IsValid())
             return {};
 
         auto* const rrm      = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
@@ -434,23 +449,24 @@ namespace ZEngine::Rendering::Renderers
         diffuse_spec.IsUsageStorage            = true;
         diffuse_spec.IsUsageTransfert          = false;
         diffuse_spec.IsCubemap                 = true;
-        diffuse_spec.Width                     = 32;
-        diffuse_spec.Height                    = 32;
+        diffuse_spec.Width                     = bake_settings.DiffuseResolution;
+        diffuse_spec.Height                    = bake_settings.DiffuseResolution;
         diffuse_spec.LayerCount                = 6;
         diffuse_spec.MipLevelCount             = 1;
         diffuse_spec.BytePerPixel              = sizeof(uint16_t) * 4;
         diffuse_spec.Format                    = ImageFormat::R16G16B16A16_SFLOAT;
 
         TextureSpecification specular_spec     = diffuse_spec;
-        specular_spec.Width                    = 128;
-        specular_spec.Height                   = 128;
-        specular_spec.MipLevelCount            = 8;
+        specular_spec.Width                    = bake_settings.SpecularResolution;
+        specular_spec.Height                   = bake_settings.SpecularResolution;
+        specular_spec.MipLevelCount            = GetFullMipCount(bake_settings.SpecularResolution);
 
         EnvironmentLightingResources resources = {};
         resources.DiffuseIrradiance            = Device->CreateTexture(diffuse_spec, "SkyDiffuseIrradiance");
         resources.SpecularEnvironment          = Device->CreateTexture(specular_spec, "SkySpecularEnvironment");
         resources.BrdfIntegrationLut           = fallback.BrdfIntegrationLut;
         resources.BrdfIntegrationKey           = fallback.BrdfIntegrationKey;
+        resources.BakeSettings                 = bake_settings;
         resources.SpecularMipCount             = specular_spec.MipLevelCount;
         if (!resources.DiffuseIrradiance.Valid() || !resources.SpecularEnvironment.Valid())
         {

@@ -11,12 +11,13 @@ namespace
         return {.Index = index, .Generation = 1};
     }
 
-    EnvironmentLightingResources Lighting(uint64_t first_index)
+    EnvironmentLightingResources Lighting(uint64_t first_index, const EnvironmentLightingBakeSettings& bake_settings = ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard))
     {
         return {
             .DiffuseIrradiance   = Texture(first_index),
             .SpecularEnvironment = Texture(first_index + 1),
             .BrdfIntegrationLut  = Texture(first_index + 2),
+            .BakeSettings        = bake_settings,
         };
     }
 
@@ -96,6 +97,35 @@ TEST(SkyEnvironmentTest, PresentationOnlyChangesDoNotScheduleAnotherBake)
     EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentIntensity, 2.0f);
     EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentTint[0], 0.5f);
     EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentYawRadians, 1.0f);
+}
+
+TEST(SkyEnvironmentTest, QualityChangeDiscardsThePreviousRevisionAndSchedulesNewResources)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    const EnvironmentLightingBakeSettings low      = ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Low);
+    const EnvironmentLightingBakeSettings standard = ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
+    ASSERT_FALSE(low.Matches(standard));
+    ASSERT_EQ(low.DiffuseSampleCount, 16u);
+    ASSERT_EQ(standard.SpecularSampleCount, 128u);
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, low));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(request.BakeSettings.Matches(low));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(20, low)));
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, standard));
+    SkyConfig presentation            = HDRIConfig();
+    presentation.EnvironmentIntensity = 2.0f;
+    ASSERT_TRUE(environment.SubmitConfig(presentation, 3, standard));
+    EXPECT_EQ(environment.CompleteBake(1, Texture(2), true, Lighting(20, low)), SkyEnvironmentBakeResult::Discarded);
+
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_EQ(request.Revision, 3u);
+    EXPECT_TRUE(request.BakeSettings.Matches(standard));
 }
 
 TEST(SkyEnvironmentTest, PresentationChangesKeepAnInFlightBakeCurrent)

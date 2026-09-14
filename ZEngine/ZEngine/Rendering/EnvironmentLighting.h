@@ -4,6 +4,50 @@
 
 namespace ZEngine::Rendering
 {
+    /// @brief Selects the fixed resource and sampling budget for environment IBL.
+    /// @details This is renderer/project policy, not serialized artistic scene data.
+    enum class EnvironmentLightingQualityTier : uint8_t
+    {
+        Low = 0,
+        Standard,
+        High,
+    };
+
+    /// @brief Fully resolved, immutable resource budget for one environment bake.
+    struct EnvironmentLightingBakeSettings
+    {
+        EnvironmentLightingQualityTier Tier                = EnvironmentLightingQualityTier::Standard;
+        uint32_t                       DiffuseResolution   = 32;
+        uint32_t                       DiffuseSampleCount  = 32;
+        uint32_t                       SpecularResolution  = 128;
+        uint32_t                       SpecularSampleCount = 128;
+
+        [[nodiscard]] constexpr bool   Matches(const EnvironmentLightingBakeSettings& other) const
+        {
+            return Tier == other.Tier && DiffuseResolution == other.DiffuseResolution && DiffuseSampleCount == other.DiffuseSampleCount && SpecularResolution == other.SpecularResolution && SpecularSampleCount == other.SpecularSampleCount;
+        }
+
+        [[nodiscard]] constexpr bool IsValid() const
+        {
+            return DiffuseResolution > 0 && DiffuseSampleCount > 0 && SpecularResolution > 0 && SpecularSampleCount > 0;
+        }
+    };
+
+    /// @brief Resolves the project-selected quality tier into immutable bake settings.
+    [[nodiscard]] constexpr EnvironmentLightingBakeSettings ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier tier)
+    {
+        switch (tier)
+        {
+            case EnvironmentLightingQualityTier::Low:
+                return {EnvironmentLightingQualityTier::Low, 16, 16, 64, 64};
+            case EnvironmentLightingQualityTier::High:
+                return {EnvironmentLightingQualityTier::High, 64, 64, 256, 256};
+            case EnvironmentLightingQualityTier::Standard:
+            default:
+                return {EnvironmentLightingQualityTier::Standard, 32, 32, 128, 128};
+        }
+    }
+
     /// @brief Versioned recipe used to create the engine-global BRDF integration LUT.
     struct BrdfIntegrationLutKey
     {
@@ -22,15 +66,16 @@ namespace ZEngine::Rendering
     ///          scene snapshots only borrow these handles until per-scene IBL baking lands.
     struct EnvironmentLightingResources
     {
-        Textures::TextureHandle DiffuseIrradiance   = {};
-        Textures::TextureHandle SpecularEnvironment = {};
-        Textures::TextureHandle BrdfIntegrationLut  = {};
-        BrdfIntegrationLutKey   BrdfIntegrationKey  = {};
-        uint32_t                SpecularMipCount    = 1;
+        Textures::TextureHandle         DiffuseIrradiance   = {};
+        Textures::TextureHandle         SpecularEnvironment = {};
+        Textures::TextureHandle         BrdfIntegrationLut  = {};
+        BrdfIntegrationLutKey           BrdfIntegrationKey  = {};
+        EnvironmentLightingBakeSettings BakeSettings        = {};
+        uint32_t                        SpecularMipCount    = 1;
 
-        [[nodiscard]] bool      Valid() const
+        [[nodiscard]] bool              Valid() const
         {
-            return DiffuseIrradiance.Valid() && SpecularEnvironment.Valid() && BrdfIntegrationLut.Valid() && SpecularMipCount > 0;
+            return DiffuseIrradiance.Valid() && SpecularEnvironment.Valid() && BrdfIntegrationLut.Valid() && BakeSettings.IsValid() && SpecularMipCount > 0;
         }
     };
 

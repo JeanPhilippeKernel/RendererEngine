@@ -38,7 +38,7 @@ namespace ZEngine::Rendering::Renderers
         void                                 CollectRetiredSkySnapshots();
         void                                 DiscardSkyTexture(Textures::TextureHandle texture);
         void                                 DiscardSkyResources(const Scenes::SkyEnvironmentResources& resources);
-        EnvironmentLightingResources         CreateSkyLightingResources();
+        EnvironmentLightingResources         CreateSkyLightingResources(const EnvironmentLightingBakeSettings& bake_settings);
         static void                          OnSkyFrameSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
         static void                          OnSkyFrameCancelled(void* context);
         static void                          OnSkyBakeStageSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
