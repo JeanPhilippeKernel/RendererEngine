@@ -187,37 +187,41 @@ namespace ZEngine::Rendering::Renderers
             return;
         auto* skybox_pass = static_cast<SkyboxPass*>(pass->Callback);
 
-        if (!sky.IsHDRI())
+        // The legacy SkyboxPass only presents HDRI sources. The new scene
+        // contract carries a stable source UUID, never the native/cache path
+        // that this pass ultimately needs to load.
+        if (!sky.IsValid() || !sky.IsHDRI() || sky.EnvironmentMap.is_nil())
         {
             skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
-        auto env_path = sky.EnvironmentMap.c_str();
-        if (!env_path || env_path[0] == '\0')
+        auto* asset_manager = ZEngine::Managers::AssetManager::Instance();
+        if (!asset_manager || !asset_manager->Registry)
         {
+            ZENGINE_CORE_ERROR("[Renderer] Asset registry is not available — disabling legacy skybox pass")
             skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
-        auto* vfs = ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr;
-        if (!vfs)
+        const auto* environment = asset_manager->Registry->FindByUUID(sky.EnvironmentMap);
+        if (!environment)
         {
-            ZENGINE_CORE_ERROR("[Renderer] VFS not available — cannot resolve environment map: {}", env_path)
+            ZENGINE_CORE_ERROR("[Renderer] HDRI asset is not registered — disabling legacy skybox pass")
             skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
-        auto path_result   = ZEngine::Core::VFS::VFSPath::FromNative(env_path);
-        auto exists_result = path_result.Succeeded() ? vfs->Exists(path_result.Value()) : ZEngine::Core::VFS::VFSResult<bool>::Fail(ZEngine::Core::VFS::VFSError::InvalidPath);
-        if (exists_result.Failed() || !exists_result.Value())
+        char native_path[MAX_FILE_PATH_COUNT] = {};
+        environment->Path.ResolveNative(asset_manager->CurrentWorkingSpacePath, native_path, sizeof(native_path));
+        if (native_path[0] == '\0')
         {
-            ZENGINE_CORE_ERROR("[Renderer] Environment map not found in VFS: {}", env_path)
+            ZENGINE_CORE_ERROR("[Renderer] HDRI asset has no resolvable source path — disabling legacy skybox pass")
             skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;
         }
 
-        if (!skybox_pass->ConfigureEnvironmentMap(env_path))
+        if (!skybox_pass->ConfigureEnvironmentMap(native_path))
         {
             skybox_pass->ConfigureEnvironmentMap(nullptr);
             return;

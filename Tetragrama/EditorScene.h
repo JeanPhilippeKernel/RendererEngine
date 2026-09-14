@@ -32,7 +32,7 @@ namespace Tetragrama
 
         ~EditorScene();
 
-        void                      Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "");
+        void                      Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "", const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
         /// @brief Initializes persistent scene storage without creating default editor content.
         bool                      InitializeDeserialized(size_t page_size);
 
@@ -40,8 +40,13 @@ namespace Tetragrama
         void                      PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
         void                      MarkDirty(bool value);
         bool                      IsDirty();
-        void                      Reset();
+        void                      Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
         void                      ExtractAsync(const EditorScene& scene);
+
+        /// @brief Assigns a directional actor as the sky's optional sun source.
+        /// @return False when @p handle is stale or does not name a directional light.
+        bool                      SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle);
+        void                      ClearPrimaryCelestialLight();
 
         // Create a fully wired Actor: registers with RenderScene and adds
         // NameComponent + TransformComponent + MeshComponent in one call.

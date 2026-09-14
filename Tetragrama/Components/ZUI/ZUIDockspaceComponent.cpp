@@ -3,9 +3,14 @@
 #include <Tetragrama/EditorScene.h>
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
+#include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
@@ -99,7 +104,7 @@ namespace Tetragrama::Components
                         if (app && app->CurrentScene && eng_ctx && eng_ctx->ActorManager)
                         {
                             eng_ctx->ActorManager->DestroyAll();
-                            reinterpret_cast<EditorScenePtr>(app->CurrentScene)->Reset();
+                            reinterpret_cast<EditorScenePtr>(app->CurrentScene)->Reset(app->Configuration->DefaultSky);
                         }
                     });
                 }
@@ -194,7 +199,7 @@ namespace Tetragrama::Components
             // "Settings" menu
             if (ZUIBeginMenu(ctx, "Settings"))
             {
-                if (ZUIMenuItemEx(ctx, "Engine", nullptr, m_settings_open))
+                if (ZUIMenuItemEx(ctx, "Scene Settings", nullptr, m_settings_open))
                 {
                     m_settings_open = !m_settings_open;
                     if (m_settings_open)
@@ -216,7 +221,7 @@ namespace Tetragrama::Components
             ZUIEndMenuBar(ctx);
         }
 
-        // Engine Settings window
+        // Scene Settings window
         if (m_settings_open)
         {
             static constexpr float kSideW          = 140.f;
@@ -235,6 +240,12 @@ namespace Tetragrama::Components
                 stg_scene->GridDirty[0].value.store(true, std::memory_order_release);
                 stg_scene->GridDirty[1].value.store(true, std::memory_order_release);
                 stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
+            };
+            auto mark_sky_dirty = [stg_scene]() {
+                if (!stg_scene)
+                    return;
+                stg_scene->MarkSkyDirty();
+                stg_scene->MarkDirty(true);
             };
 
             // Lazy center on first open
@@ -294,7 +305,7 @@ namespace Tetragrama::Components
                 ZUIBox* ttl       = ZUIPushBox(ctx, "##stg_ttl", 9, ZUI_DrawText);
                 ttl->Size[0]      = ZFill();
                 ttl->Size[1]      = ZFill();
-                ttl->Label        = ZUIPushStr(&ctx->FrameArena, "Engine Settings", 15);
+                ttl->Label        = ZUIPushStr(&ctx->FrameArena, "Scene Settings", 14);
                 ttl->TextAlign    = ZUITextAlign::Left;
                 ttl->TextColor[0] = ctx->Theme.TextDefault[0];
                 ttl->TextColor[1] = ctx->Theme.TextDefault[1];
@@ -355,10 +366,10 @@ namespace Tetragrama::Components
             side->EdgeSoftness = 0.f;
             ZUISpacer(ctx, 10.f);
             {
-                static const char*    kPages[4]   = {"Grid", "Renderer", "Theme", "Layout"};
-                static const char*    kNavKeys[4] = {"##nav_0", "##nav_1", "##nav_2", "##nav_3"};
-                static const uint32_t kNKLen[4]   = {7, 7, 7, 7};
-                for (int pi = 0; pi < 4; ++pi)
+                static const char*    kPages[5]   = {"Grid", "Sky", "Renderer", "Theme", "Layout"};
+                static const char*    kNavKeys[5] = {"##nav_0", "##nav_1", "##nav_2", "##nav_3", "##nav_4"};
+                static const uint32_t kNKLen[5]   = {7, 7, 7, 7, 7};
+                for (int pi = 0; pi < 5; ++pi)
                 {
                     bool     act   = (m_settings_page == pi);
                     uint32_t pln   = (uint32_t) strlen(kPages[pi]);
@@ -409,6 +420,7 @@ namespace Tetragrama::Components
             cnt->EdgeSoftness = 0.f;
             cnt->Padding[2]   = 14.f; // right margin
             ZUISpacer(ctx, 14.f);
+            ZUIBeginScrollRegion(ctx, "##stg_scroll", ZFill(), ZFill());
 
             if (m_settings_page == 0 && stg_scene) // Grid
             {
@@ -535,13 +547,217 @@ namespace Tetragrama::Components
                 color_row("##sg_cz_r", "##sg_cz_l", "##sg_cz_c", "Z Axis", cfg.ColorZAxis);
                 ZUISpacer(ctx, 14.f); // bottom padding
             }
-            else if (m_settings_page == 1) // Renderer
+            else if (m_settings_page == 1 && stg_scene) // Sky
+            {
+                auto& cfg        = stg_scene->Sky;
+                auto  scalar_row = [&](const char* row_key, const char* label, const char* control_key, float* value, float minimum, float maximum) {
+                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sky_scalar_label", ZPx(170.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    const bool changed = ZUISliderFloat(ctx, control_key, value, minimum, maximum);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    return changed;
+                };
+                auto color_row = [&](const char* row_key, const char* label, const char* control_key, float value[4]) {
+                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sky_color_label", ZPx(170.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    const bool changed = ZUIColorEdit4(ctx, control_key, value);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    return changed;
+                };
+
+                ZUISeparatorText(ctx, "Environment / Basic");
+                static constexpr const char* kModeNames[] = {"Atmosphere", "HDRI", "Sky Sphere"};
+                const uint32_t               mode_index   = static_cast<uint32_t>(cfg.Mode);
+                ZUIBeginRow(ctx, "##sky_mode_r", ZFill(), ZPx(fh + 6.f));
+                ZUISpacer(ctx, 14.f);
+                ZUIBeginColumn(ctx, "##sky_mode_l", ZPx(170.f), ZFill());
+                ZUILabel(ctx, "Mode", ctx->Theme.TextDefault);
+                ZUIEndColumn(ctx);
+                if (ZUIBeginCombo(ctx, "##sky_mode", kModeNames[mode_index], ZFill()))
+                {
+                    for (uint32_t i = 0; i < 3; ++i)
+                    {
+                        if (ZUIComboItem(ctx, kModeNames[i], i == mode_index))
+                        {
+                            cfg.Mode = static_cast<ZEngine::Rendering::Scenes::SkyMode>(i);
+                            mark_sky_dirty();
+                        }
+                    }
+                    ZUIEndCombo(ctx);
+                }
+                ZUIEndRow(ctx);
+                ZUISpacer(ctx, 5.f);
+
+                if (cfg.IsHDRI())
+                {
+                    auto* asset_manager = ZEngine::Managers::AssetManager::Instance();
+                    auto* registry      = asset_manager ? asset_manager->Registry : nullptr;
+                    char  preview[160]  = "No HDRI asset (fallback environment)";
+                    if (registry && !cfg.EnvironmentMap.is_nil())
+                    {
+                        if (const auto* selected = registry->FindByUUID(cfg.EnvironmentMap))
+                            std::snprintf(preview, sizeof(preview), "%s", selected->Name);
+                        else
+                            std::snprintf(preview, sizeof(preview), "Missing HDRI asset (fallback environment)");
+                    }
+
+                    ZUIBeginRow(ctx, "##sky_hdri_r", ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sky_hdri_l", ZPx(170.f), ZFill());
+                    ZUILabel(ctx, "HDRI Asset", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    if (ZUIBeginCombo(ctx, "##sky_hdri", preview, ZFill()))
+                    {
+                        if (ZUIComboItem(ctx, "None (fallback environment)", cfg.EnvironmentMap.is_nil()))
+                        {
+                            cfg.EnvironmentMap = {};
+                            mark_sky_dirty();
+                        }
+                        if (registry)
+                        {
+                            ZEngine::Core::VFS::AssetRegistry::QueryFilter filter = {};
+                            filter.Ext                                            = ".hdr";
+                            auto candidates                                       = registry->Query(filter, &ctx->FrameArena);
+                            for (uint32_t i = 0; i < candidates.Count; ++i)
+                            {
+                                const auto* candidate = registry->Access(candidates.Handles[i]);
+                                if (candidate && ZUIComboItem(ctx, candidate->Name, candidate->UUID == cfg.EnvironmentMap))
+                                {
+                                    cfg.EnvironmentMap = candidate->UUID;
+                                    mark_sky_dirty();
+                                }
+                            }
+                        }
+                        ZUIEndCombo(ctx);
+                    }
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                }
+
+                if (scalar_row("##sky_intensity_r", "Environment Intensity", "##sky_intensity", &cfg.EnvironmentIntensity, 0.0f, 32.0f))
+                    mark_sky_dirty();
+                if (color_row("##sky_tint_r", "Environment Tint", "##sky_tint", cfg.EnvironmentTint))
+                    mark_sky_dirty();
+                if (scalar_row("##sky_yaw_r", "Environment Yaw (rad)", "##sky_yaw", &cfg.EnvironmentYawRadians, -3.14159265f, 3.14159265f))
+                    mark_sky_dirty();
+
+                ZUIBeginRow(ctx, "##sky_light_r", ZFill(), ZPx(fh + 6.f));
+                ZUISpacer(ctx, 14.f);
+                ZUIBeginColumn(ctx, "##sky_light_l", ZPx(170.f), ZFill());
+                ZUILabel(ctx, "Primary Celestial Light", ctx->Theme.TextDefault);
+                ZUIEndColumn(ctx);
+                auto* engine_context     = ZEngine::Engine::GetContext();
+                auto* actor_manager      = engine_context ? engine_context->ActorManager : nullptr;
+                char  light_preview[160] = "Select a directional light";
+                if (actor_manager && !cfg.PrimaryCelestialLight.is_nil())
+                {
+                    bool primary_light_resolved = false;
+                    actor_manager->ForEach([&](ZEngine::ECS::ActorHandle, ZEngine::ECS::Actor* actor) {
+                        const auto* light = actor->GetComponent<ZEngine::ECS::Components::LightComponent>();
+                        const auto* uuid  = actor->GetComponent<ZEngine::ECS::Components::UUIDComponent>();
+                        if (!light || light->LightType != ZEngine::ECS::Components::LightComponent::Type::Directional || !uuid || uuid->Value != cfg.PrimaryCelestialLight)
+                            return;
+
+                        const auto* name = actor->GetComponent<ZEngine::ECS::Components::NameComponent>();
+                        std::snprintf(light_preview, sizeof(light_preview), "%s", name && name->Value[0] ? name->Value : "Directional Light");
+                        primary_light_resolved = true;
+                    });
+                    if (!primary_light_resolved)
+                        std::snprintf(light_preview, sizeof(light_preview), "Missing directional light");
+                }
+                if (actor_manager && ZUIBeginCombo(ctx, "##sky_light", light_preview, ZFill()))
+                {
+                    if (ZUIComboItem(ctx, "None##sky_light_none", cfg.PrimaryCelestialLight.is_nil()))
+                        stg_scene->ClearPrimaryCelestialLight();
+
+                    actor_manager->ForEach([&](ZEngine::ECS::ActorHandle handle, ZEngine::ECS::Actor* actor) {
+                        const auto* light = actor->GetComponent<ZEngine::ECS::Components::LightComponent>();
+                        if (!light || light->LightType != ZEngine::ECS::Components::LightComponent::Type::Directional)
+                            return;
+
+                        const auto* name = actor->GetComponent<ZEngine::ECS::Components::NameComponent>();
+                        const auto* uuid = actor->GetComponent<ZEngine::ECS::Components::UUIDComponent>();
+                        char        item_label[196];
+                        std::snprintf(item_label, sizeof(item_label), "%s##sky_light_%llu_%llu", name && name->Value[0] ? name->Value : "Directional Light", (unsigned long long) handle.Index, (unsigned long long) handle.Generation);
+                        if (ZUIComboItem(ctx, item_label, uuid && uuid->Value == cfg.PrimaryCelestialLight))
+                            stg_scene->SetPrimaryCelestialLight(handle);
+                    });
+                    ZUIEndCombo(ctx);
+                }
+                else if (!actor_manager)
+                {
+                    ZUILabel(ctx, "No actor manager", ctx->Theme.TextDim);
+                }
+                ZUIEndRow(ctx);
+                ZUISpacer(ctx, 5.f);
+
+                if (cfg.IsSkySphere())
+                {
+                    ZUISeparatorText(ctx, "Sky Sphere / Advanced");
+                    if (color_row("##sky_sphere_horizon_r", "Horizon Color", "##sky_sphere_horizon", cfg.Sphere.HorizonColor))
+                        mark_sky_dirty();
+                    if (color_row("##sky_sphere_zenith_r", "Zenith Color", "##sky_sphere_zenith", cfg.Sphere.ZenithColor))
+                        mark_sky_dirty();
+                    if (color_row("##sky_sphere_ground_r", "Ground Color", "##sky_sphere_ground", cfg.Sphere.GroundColor))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_sphere_radius_r", "Sun Disc Radius (rad)", "##sky_sphere_radius", &cfg.Sphere.SunDiscAngularRadiusRadians, 0.0f, 0.1f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_sphere_intensity_r", "Sun Disc Intensity", "##sky_sphere_intensity", &cfg.Sphere.SunDiscIntensity, 0.0f, 64.0f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_sphere_sharpness_r", "Horizon Sharpness", "##sky_sphere_sharpness", &cfg.Sphere.HorizonSharpness, 0.05f, 16.0f))
+                        mark_sky_dirty();
+                    const bool previous_show_sun = cfg.Sphere.ShowSunDisc;
+                    ZUICheckbox(ctx, "Show Sun Disc##sky_sphere_sun", &cfg.Sphere.ShowSunDisc);
+                    if (cfg.Sphere.ShowSunDisc != previous_show_sun)
+                        mark_sky_dirty();
+                }
+                else if (cfg.IsAtmosphere())
+                {
+                    ZUISeparatorText(ctx, "Atmosphere / Advanced");
+                    if (scalar_row("##sky_atm_world_scale_r", "World Units per Metre", "##sky_atm_world_scale", &cfg.Atmosphere.WorldUnitsPerMeter, 0.001f, 1000.0f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_atm_planet_radius_r", "Planet Radius (km)", "##sky_atm_planet_radius", &cfg.Atmosphere.PlanetRadiusKilometers, 1.0f, 100000.0f))
+                        mark_sky_dirty();
+                    const float minimum_atmosphere_radius = cfg.Atmosphere.PlanetRadiusKilometers + 0.1f;
+                    if (scalar_row("##sky_atm_radius_r", "Atmosphere Radius (km)", "##sky_atm_radius", &cfg.Atmosphere.AtmosphereRadiusKilometers, minimum_atmosphere_radius, 100100.0f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_atm_rayleigh_height_r", "Rayleigh Height (km)", "##sky_atm_rayleigh_height", &cfg.Atmosphere.RayleighScaleHeightKilometers, 0.01f, 100.0f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_atm_mie_height_r", "Mie Height (km)", "##sky_atm_mie_height", &cfg.Atmosphere.MieScaleHeightKilometers, 0.01f, 100.0f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_atm_mie_g_r", "Mie Anisotropy", "##sky_atm_mie_g", &cfg.Atmosphere.MieAnisotropy, -0.998f, 0.998f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_atm_sun_radius_r", "Sun Angular Radius (rad)", "##sky_atm_sun_radius", &cfg.Atmosphere.SunAngularRadiusRadians, 0.0f, 0.1f))
+                        mark_sky_dirty();
+                    if (scalar_row("##sky_atm_sun_lux_r", "Sun Illuminance (lux)", "##sky_atm_sun_lux", &cfg.Atmosphere.SunIlluminanceLux, 0.0f, 200000.0f))
+                        mark_sky_dirty();
+                }
+
+                ZUISeparatorText(ctx, "Diagnostics");
+                if (cfg.IsHDRI() && cfg.EnvironmentMap.is_nil())
+                    ZUILabel(ctx, "No HDRI asset is assigned. The runtime will select its safe environment state.", ctx->Theme.TextDim);
+                else if (cfg.IsHDRI())
+                    ZUILabel(ctx, "HDRI is referenced by stable asset UUID; generated cache paths are not scene data.", ctx->Theme.TextDim);
+                else
+                    ZUILabel(ctx, "Runtime bake state and per-viewport previews are intentionally not scene data.", ctx->Theme.TextDim);
+                if (cfg.PrimaryCelestialLight.is_nil())
+                    ZUILabel(ctx, "No primary celestial light is assigned; the sky has no direct sun source.", ctx->Theme.TextDim);
+            }
+            else if (m_settings_page == 2) // Renderer
             {
                 ZUISpacer(ctx, 12.f);
                 ZUISpacer(ctx, 14.f);
                 ZUILabel(ctx, "No renderer settings yet.", ctx->Theme.TextDim);
             }
-            else if (m_settings_page == 2) // Theme
+            else if (m_settings_page == 3) // Theme
             {
                 ZUISpacer(ctx, 14.f);
                 ZUISpacer(ctx, 10.f);
@@ -578,7 +794,7 @@ namespace Tetragrama::Components
                 }
                 ZUIEndRow(ctx);
             }
-            else if (m_settings_page == 3 && ShellPanelManager) // Layout
+            else if (m_settings_page == 4 && ShellPanelManager) // Layout
             {
                 static const char* kPanelNames[5] = {"Hierarchy", "Console", "Inspector", "Viewport", "Profiler"};
                 static const char* kRowKeys[5]    = {"##lp_r0", "##lp_r1", "##lp_r2", "##lp_r3", "##lp_r4"};
@@ -611,6 +827,7 @@ namespace Tetragrama::Components
                 ZUIEndRow(ctx);
             }
 
+            ZUIEndScrollRegion(ctx);
             ZUIEndColumn(ctx); // content
             ZUIEndRow(ctx);    // body
 

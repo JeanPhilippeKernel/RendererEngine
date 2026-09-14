@@ -44,6 +44,20 @@ These extensions consume the same immutable snapshot, RenderView, graph-declarat
 
 Sky configuration is owned by the scene or render world. A project may supply defaults, but it must not be the sole owner: different scenes can legitimately use different skies. The serialized scene representation is versioned and contains a stable environment asset reference, never a raw retained character pointer or an absolute working-space path.
 
+Project defaults are a template for a newly created scene only. The editor accepts the following optional `project.json` section; an existing scene always retains the `SkyConfig` stored in its scene file:
+
+~~~json
+"skyDefaults": {
+  "mode": "atmosphere",
+  "environmentMap": "optional-asset-uuid",
+  "environmentIntensity": 1.0,
+  "environmentTint": [1.0, 1.0, 1.0, 1.0],
+  "environmentYawRadians": 0.0
+}
+~~~
+
+The nested atmosphere and SkySphere settings begin with the engine's validated defaults. A project must not store generated environment-cache paths, live Vulkan data, or editor viewport preview state in this section.
+
 Sky serialization is not yet stable, so this change intentionally breaks the current string-based schema. Existing sky fields are not migrated. Scenes authored before this schema either receive the new default SkyConfig on load or must be resaved by the editor, according to the scene-version policy selected for the implementation.
 
 The exact engine type follows the asset-manager API, but the conceptual configuration is:

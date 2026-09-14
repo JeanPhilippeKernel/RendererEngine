@@ -8,6 +8,7 @@
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Scenes/SkyConfigSerialization.h>
 #include <fmt/format.h>
 #include <filesystem>
 #include <fstream>
@@ -130,9 +131,7 @@ namespace Tetragrama::Serializers
 
         WriteBinaryString(out, scene->Name);
 
-        // Sky configuration
-        WriteBinaryString(out, scene->Sky.Mode.empty() ? "atmosphere" : scene->Sky.Mode.c_str());
-        WriteBinaryString(out, scene->Sky.EnvironmentMap.empty() ? "" : scene->Sky.EnvironmentMap.c_str());
+        ZEngine::Rendering::Scenes::Serialization::WriteSkyConfig(out, scene->Sky);
 
         // Serialize mesh instances (seqlock snapshot).
         {
@@ -284,8 +283,7 @@ namespace Tetragrama::Serializers
         }
         scene->Name = scene_name.c_str();
 
-        // Sky configuration
-        if (!ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.Mode, kMaxSceneStringLength) || !ReadBinaryCString(&scene->LocalArena, in_stream, scene->Sky.EnvironmentMap, kMaxSceneStringLength))
+        if (!ZEngine::Rendering::Scenes::Serialization::ReadSkyConfig(in_stream, scene->Sky))
         {
             reject_file("Error: Invalid or truncated scene file.");
             return;

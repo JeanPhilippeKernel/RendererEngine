@@ -39,27 +39,22 @@ namespace ZEngine::UI
 
             if (under_cursor)
             {
-                // When a modal is active, only boxes INSIDE the modal panel receive hover.
-                // When a popup is open, only boxes INSIDE a popup receive hover.
-                // Both checks mirror ImGui's modal/popup input-blocking behaviour.
-                bool can_hover = true;
-
-                if (ctx->ModalBox)
+                // Popups are portaled to the root so they render over their owner.
+                // A popup opened from a modal therefore is not a descendant of the
+                // modal box, but it is still modal input and must remain interactive.
+                // Determine both memberships before applying the modal/popup gates.
+                bool inside_modal = false;
+                bool inside_popup = false;
+                for (ZUIBox* p = box; p && (!inside_modal || !inside_popup); p = p->Parent)
                 {
-                    can_hover = false;
-                    for (ZUIBox* p = box; p && !can_hover; p = p->Parent)
-                        if (p == ctx->ModalBox)
-                            can_hover = true;
+                    if (p == ctx->ModalBox)
+                        inside_modal = true;
+                    for (uint32_t pi = 0; pi < ctx->PopupStackSize && !inside_popup; ++pi)
+                        if (p == ctx->PopupStack[pi].Box)
+                            inside_popup = true;
                 }
 
-                if (can_hover && ctx->PopupStackSize > 0)
-                {
-                    can_hover = false;
-                    for (ZUIBox* p = box; p && !can_hover; p = p->Parent)
-                        for (uint32_t pi = 0; pi < ctx->PopupStackSize && !can_hover; pi++)
-                            if (p == ctx->PopupStack[pi].Box)
-                                can_hover = true;
-                }
+                bool can_hover = (!ctx->ModalBox || inside_modal || inside_popup) && (!ctx->PopupStackSize || inside_popup);
 
                 if (can_hover)
                 {

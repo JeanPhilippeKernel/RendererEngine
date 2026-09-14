@@ -16,29 +16,31 @@ namespace Tetragrama
 
     struct EditorConfiguration
     {
-        ZEngine::Core::Containers::String WorkingSpacePath         = {};
-        ZEngine::Core::Containers::String ScenePath                = {};
+        ZEngine::Core::Containers::String     WorkingSpacePath         = {};
+        ZEngine::Core::Containers::String     ScenePath                = {};
         // Asset import directories (all under Assets/)
-        ZEngine::Core::Containers::String TexturePath              = {};
-        ZEngine::Core::Containers::String SoundPath                = {};
-        ZEngine::Core::Containers::String MeshPath                 = {};
-        ZEngine::Core::Containers::String MaterialPath             = {};
-        ZEngine::Core::Containers::String SpritePath               = {};
-        ZEngine::Core::Containers::String EnvironmentMapImportPath = {};
-        ZEngine::Core::Containers::String ProjectName              = {};
-        ZEngine::Core::Containers::String ActiveSceneName          = {};
-        bool                              DarkTheme                = true;
-        int                               GizmoOperation           = -1;
-        bool                              ShowContentBrowser       = true;
-        bool                              FocusContentBrowser      = false;
-        bool                              ShowConsole              = false;
-        bool                              FocusConsole             = false;
-        bool                              ShowImporter             = false;
-        bool                              FocusImporter            = false;
-        char                              PendingImportPath[1024]  = {};
-        char                              PendingImportName[256]   = {};
+        ZEngine::Core::Containers::String     TexturePath              = {};
+        ZEngine::Core::Containers::String     SoundPath                = {};
+        ZEngine::Core::Containers::String     MeshPath                 = {};
+        ZEngine::Core::Containers::String     MaterialPath             = {};
+        ZEngine::Core::Containers::String     SpritePath               = {};
+        ZEngine::Core::Containers::String     EnvironmentMapImportPath = {};
+        // New scenes begin with this template, then own and serialize their copy.
+        ZEngine::Rendering::Scenes::SkyConfig DefaultSky               = {};
+        ZEngine::Core::Containers::String     ProjectName              = {};
+        ZEngine::Core::Containers::String     ActiveSceneName          = {};
+        bool                                  DarkTheme                = true;
+        int                                   GizmoOperation           = -1;
+        bool                                  ShowContentBrowser       = true;
+        bool                                  FocusContentBrowser      = false;
+        bool                                  ShowConsole              = false;
+        bool                                  FocusConsole             = false;
+        bool                                  ShowImporter             = false;
+        bool                                  FocusImporter            = false;
+        char                                  PendingImportPath[1024]  = {};
+        char                                  PendingImportName[256]   = {};
 
-        void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
+        void                                  ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };
     ZDEFINE_PTR(EditorConfiguration);
 

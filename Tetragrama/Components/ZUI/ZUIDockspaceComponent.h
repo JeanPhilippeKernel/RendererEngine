@@ -45,10 +45,10 @@ namespace Tetragrama::Components
     private:
         ZEngine::UI::ZUIDockTree* m_dock_tree            = nullptr;
 
-        // Engine Settings window
+        // Scene Settings window
         bool                      m_settings_open        = false;
         bool                      m_settings_just_opened = false; // skip click-outside on the opening frame
-        int                       m_settings_page        = 0;     // 0=Grid, 1=Renderer, 2=Theme
+        int                       m_settings_page        = 0;     // 0=Grid, 1=Sky, 2=Renderer, 3=Theme, 4=Layout
         float                     m_modal_x              = -1.f;  // -1 = not yet positioned (centers on first open)
         float                     m_modal_y              = -1.f;
         float                     m_modal_w              = 600.f;

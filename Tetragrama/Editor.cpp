@@ -82,7 +82,7 @@ namespace Tetragrama
         sbar->Initialize(ZUIUILayer, "StatusBar");
         ZUIUILayer->AddComponent(sbar);
         editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
-        editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str());
+        editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str(), Configuration->DefaultSky);
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
@@ -280,6 +280,53 @@ namespace Tetragrama
         MaterialPath.init(arena, asset_path("materialDir", nullptr, nullptr, "/Assets/Materials").c_str());
         SpritePath.init(arena, asset_path("spriteDir", nullptr, nullptr, "/Assets/Sprites").c_str());
         EnvironmentMapImportPath.init(arena, asset_path("environmentMapDir", nullptr, nullptr, "/Assets/EnvironmentMaps").c_str());
+
+        // Project sky data is a template for newly created scenes. It never
+        // replaces the SkyConfig serialized by an existing scene.
+        const nlohmann::json* sky_defaults = nullptr;
+        if (config.contains("skyDefaults") && config["skyDefaults"].is_object())
+            sky_defaults = &config["skyDefaults"];
+        else if (config.contains("sky") && config["sky"].is_object())
+            sky_defaults = &config["sky"]; // compatibility with the initial project template
+
+        if (sky_defaults)
+        {
+            const auto& sky = *sky_defaults;
+            if (sky.contains("mode") && sky["mode"].is_string())
+            {
+                const std::string mode = sky["mode"].get<std::string>();
+                if (mode == "hdri")
+                    DefaultSky.Mode = ZEngine::Rendering::Scenes::SkyMode::HDRI;
+                else if (mode == "skySphere")
+                    DefaultSky.Mode = ZEngine::Rendering::Scenes::SkyMode::SkySphere;
+            }
+            if (sky.contains("environmentMap") && sky["environmentMap"].is_string())
+            {
+                auto environment_uuid = uuids::uuid::from_string(sky["environmentMap"].get<std::string>());
+                if (environment_uuid.has_value())
+                    DefaultSky.EnvironmentMap = environment_uuid.value();
+            }
+            if (sky.contains("environmentIntensity") && sky["environmentIntensity"].is_number())
+                DefaultSky.EnvironmentIntensity = sky["environmentIntensity"].get<float>();
+            if (sky.contains("environmentYawRadians") && sky["environmentYawRadians"].is_number())
+                DefaultSky.EnvironmentYawRadians = sky["environmentYawRadians"].get<float>();
+            if (sky.contains("environmentTint") && sky["environmentTint"].is_array() && sky["environmentTint"].size() == 4)
+            {
+                bool valid_tint = true;
+                for (uint32_t i = 0; i < 4; ++i)
+                {
+                    if (!sky["environmentTint"][i].is_number())
+                    {
+                        valid_tint = false;
+                        break;
+                    }
+                }
+                if (valid_tint)
+                    for (uint32_t i = 0; i < 4; ++i)
+                        DefaultSky.EnvironmentTint[i] = sky["environmentTint"][i].get<float>();
+            }
+        }
+        DefaultSky.Sanitize();
 
         /*
          * Retreiving the Active Scene
