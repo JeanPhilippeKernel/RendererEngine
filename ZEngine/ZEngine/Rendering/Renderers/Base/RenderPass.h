@@ -26,15 +26,16 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     /// @brief One pass-owned descriptor write that can be restored after shader hot reload.
     struct DescriptorReplayRecord
     {
-        cstring                                    Name       = nullptr;
-        Specifications::LayoutBindingSpecification Binding    = {};
-        const Core::Memory::BufferView*            Buffer     = nullptr;
-        Textures::TextureHandle                    Texture    = {};
-        VkDescriptorImageInfo                      Sampler    = {};
-        VkImageSubresourceRange                    ImageRange = {};
-        VkDeviceSize                               Range      = 0;
-        uint32_t                                   FrameIndex = UINT32_MAX;
-        DescriptorReplayKind                       Kind       = DescriptorReplayKind::StorageBuffer;
+        cstring                                    Name        = nullptr;
+        Specifications::LayoutBindingSpecification Binding     = {};
+        const Core::Memory::BufferView*            Buffer      = nullptr;
+        Textures::TextureHandle                    Texture     = {};
+        VkDescriptorImageInfo                      Sampler     = {};
+        VkImageSubresourceRange                    ImageRange  = {};
+        VkImageLayout                              ImageLayout = VK_IMAGE_LAYOUT_MAX_ENUM;
+        VkDeviceSize                               Range       = 0;
+        uint32_t                                   FrameIndex  = UINT32_MAX;
+        DescriptorReplayKind                       Kind        = DescriptorReplayKind::StorageBuffer;
     };
 
     /// @brief Backend pass owned by a render-graph persistent-pass slot.
@@ -65,7 +66,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void SetStorageBuffer(cstring name, const Core::Memory::BufferView* buffer);
         void SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
         void SetDynamicUniform(cstring name, VkDeviceSize range);
-        void SetTexture(cstring name, const Textures::TextureHandle& texture);
+        void SetTexture(cstring name, const Textures::TextureHandle& texture, VkImageLayout image_layout = VK_IMAGE_LAYOUT_MAX_ENUM);
         void SetStorageImage(cstring name, const Textures::TextureHandle& texture, const VkImageSubresourceRange& range = {});
         void SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
         void UseTextureArray(cstring name);

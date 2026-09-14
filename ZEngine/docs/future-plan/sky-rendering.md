@@ -426,6 +426,14 @@ Sky quality is renderer/platform policy rather than serialized artistic scene da
 
 A quality change creates a new environment revision and follows the same next-snapshot publication path as an asset change. It never resizes a published cubemap or changes the number of descriptors in place. The editor may preview a lower tier while authoring, but bake completion, memory use, and diagnostics always report the selected tier explicitly.
 
+The HDRI IBL implementation reads the project-level `rendering.environment_lighting_quality` key. It accepts `low`, `standard` (the default), and `high`; scene files do not serialize the value. The initial budgets are:
+
+| Tier | Diffuse cube | Diffuse samples | Specular cube | Specular samples |
+|---|---:|---:|---:|---:|
+| Low | 16 per face | 16 | 64 per face, full mip chain | 64 |
+| Standard | 32 per face | 32 | 128 per face, full mip chain | 128 |
+| High | 64 per face | 64 | 256 per face, full mip chain | 256 |
+
 ---
 
 ## 10. HDR, formats, and memory budget

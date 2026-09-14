@@ -32,11 +32,17 @@ namespace ZEngine::Rendering::Renderers
         }
 
         /// @brief Declares this frame's graph resources.
-        virtual void     RegisterCompute(Hardwares::VulkanDevicePtr const device, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder)                                                                                       = 0;
+        virtual void    RegisterCompute(Hardwares::VulkanDevicePtr const device, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder)                                                                                       = 0;
         /// @brief Records this pass's compute dispatch commands.
-        virtual void     ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr scene, VkPipeline pipeline, VkPipelineLayout layout, Hardwares::CommandBufferPtr const command_buffer) = 0;
+        virtual void    ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr scene, VkPipeline pipeline, VkPipelineLayout layout, Hardwares::CommandBufferPtr const command_buffer) = 0;
         /// @brief Returns the compute shader asset name.
-        virtual cstring  GetShaderName() const                                                                                                                                                                                                                         = 0;
+        virtual cstring GetShaderName() const                                                                                                                                                                                                                         = 0;
+
+        /// @brief Allows an optional compute callback to omit itself before making declarations.
+        virtual bool    ShouldRegisterCompute() const
+        {
+            return true;
+        }
 
         /// @brief Returns the byte size of the pass push-constant block.
         virtual uint32_t GetPushConstantSize() const

@@ -18,6 +18,7 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Windows/GameWindow.h>
 #include <nlohmann/json.hpp>
@@ -54,6 +55,34 @@ namespace ZEngine
         if (!mem.contains("geometry_streaming_mb"))
             return 0;
         return static_cast<VkDeviceSize>(mem["geometry_streaming_mb"].get<uint32_t>()) << 20;
+    }
+
+    // Read rendering.environment_lighting_quality from a project.json file.
+    // Missing, malformed, or unrecognized values retain the documented Standard tier.
+    static Rendering::EnvironmentLightingBakeSettings ReadEnvironmentLightingQuality(const char* config_file)
+    {
+        const auto fallback = Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::Standard);
+        if (!config_file || config_file[0] == '\0')
+            return fallback;
+
+        std::ifstream file(config_file);
+        if (!file.is_open())
+            return fallback;
+
+        const auto json = nlohmann::json::parse(file, nullptr, /*exceptions=*/false);
+        if (json.is_discarded() || !json.contains("rendering") || !json["rendering"].is_object())
+            return fallback;
+
+        const auto& rendering = json["rendering"];
+        if (!rendering.contains("environment_lighting_quality") || !rendering["environment_lighting_quality"].is_string())
+            return fallback;
+
+        const std::string quality = rendering["environment_lighting_quality"].get<std::string>();
+        if (quality == "low")
+            return Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::Low);
+        if (quality == "high")
+            return Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::High);
+        return fallback;
     }
 
     void Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
@@ -153,10 +182,11 @@ namespace ZEngine
         // Geometry streaming budget — auto-detected from device VRAM, overridable via
         // project.json "memory.geometry_streaming_mb". Must be set before RRM::Initialize
         // since InitGlobalBuffers reads it during VkBuffer allocation.
-        g_engine_ctx->Device->GeometryStreamingBudget = ReadGeometryBudgetOverride(app->ConfigFile);
+        g_engine_ctx->Device->GeometryStreamingBudget         = ReadGeometryBudgetOverride(app->ConfigFile);
+        g_engine_ctx->Device->EnvironmentLightingBakeSettings = ReadEnvironmentLightingQuality(app->ConfigFile);
 
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
-        g_engine_ctx->RenderResourceManager           = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
+        g_engine_ctx->RenderResourceManager                   = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
         g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry);
         g_engine_ctx->Device->RRM = g_engine_ctx->RenderResourceManager;
 

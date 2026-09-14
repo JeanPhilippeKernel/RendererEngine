@@ -15,6 +15,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 #include <ZEngine/Core/Containers/SPSCQueue.h>
 #include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
+#include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/RenderHandle.h>
 #include <ZEngine/Hardwares/CommandBufferManager.h>
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
@@ -330,6 +331,8 @@ namespace ZEngine::Hardwares
         ///        Set by Engine::Initialize from project.json memory.geometry_streaming_mb
         ///        before RenderResourceManager::Initialize runs.
         VkDeviceSize                                                                                                                 GeometryStreamingBudget                                                     = 0;
+        /// @brief Project-selected IBL budget copied into each new SkyEnvironment revision.
+        Rendering::EnvironmentLightingBakeSettings                                                                                   EnvironmentLightingBakeSettings                                             = {};
         VkInstance                                                                                                                   Instance                                                                    = VK_NULL_HANDLE;
         VkSurfaceKHR                                                                                                                 Surface                                                                     = VK_NULL_HANDLE;
         VkSurfaceFormatKHR                                                                                                           SurfaceFormat                                                               = {};
@@ -463,7 +466,7 @@ namespace ZEngine::Hardwares
         ///        to reclaim and a later allocation can overwrite it before the GPU reads it.
         /// @param use_staging_ring Set false for independently submitted work whose
         ///        completion is not represented by RenderTimeline.
-        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true);
+        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true, VkDeviceSize data_size = 0);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
 

@@ -10,6 +10,7 @@
 #include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/GeometryPool.h>
 #include <ZEngine/Rendering/GeometryStreamingManager.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
@@ -132,7 +133,7 @@ namespace ZEngine::Rendering
         /// @param handle       Pre-allocated TextureHandle whose VkImage will receive the data.
         /// @param data         RGBA pixel data; must remain valid until SubmitAsyncUploads runs.
         /// @return The same handle on success; invalid handle if no free upload slot.
-        Rendering::Textures::TextureHandle  UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
+        Rendering::Textures::TextureHandle  UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size = 0);
 
         // Upload the ZUI font atlas synchronously using m_upload_cmd_mgr/m_sync_upload_fence.
         // Blocks until the GPU copy is complete so the texture is ready before the first
@@ -156,6 +157,8 @@ namespace ZEngine::Rendering
         Rendering::Textures::TextureHandle  GetOrCreateFallbackTexture();
         /// @brief Return the synchronous, neutral cubemap used while a scene environment is unavailable.
         Rendering::Textures::TextureHandle  GetOrCreateFallbackCubemap();
+        /// @brief Returns the engine-global fallback IBL textures and versioned BRDF integration LUT.
+        EnvironmentLightingResources        GetOrCreateFallbackEnvironmentLighting();
 
         /// @brief Returns the latest decode outcome for a tracked texture.
         TextureDecodeState                  GetTextureDecodeState(const Rendering::Textures::TextureHandle& handle);
@@ -520,63 +523,64 @@ namespace ZEngine::Rendering
         /// @brief Append one mesh asset's vertex/index data to the global buffers.
         /// @details Shared by DoUploadMesh (new slot) and FlushPendingSwaps (reuse slot).
         ///          Returns a zero-VtxCount MeshSlot on failure.
-        MeshSlot        AppendMeshData(Managers::AssetHandle asset, uint32_t frame_index);
+        MeshSlot                AppendMeshData(Managers::AssetHandle asset, uint32_t frame_index);
 
-        void            AppendToGlobalBuffer(Core::Memory::BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index);
-        void            FlushPendingUploads(uint32_t frame_index);
+        void                    AppendToGlobalBuffer(Core::Memory::BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index);
+        void                    FlushPendingUploads(uint32_t frame_index);
 
         /// @brief Drain m_pending_swaps and apply each swap immediately (render thread only).
-        void            FlushPendingSwaps(uint32_t frame_index);
+        void                    FlushPendingSwaps(uint32_t frame_index);
 
         /// @brief Drain m_pending_texture_reloads and reimport each one (render thread only).
-        void            FlushPendingTextureReloads();
+        void                    FlushPendingTextureReloads();
 
         /// @brief Drain m_pending_texture_releases and call Device->DestroyTexture (render thread only).
-        void            FlushPendingTextureReleases();
-        static void     OnAssetReady(void* context, const uuids::uuid& uuid, Managers::AssetHandle handle);
-        static void     OnAssetStale(void* context, const uuids::uuid& uuid);
-        static void     OnAssetRemoved(void* context, const uuids::uuid& uuid, Managers::AssetType type);
-        static void     RunTextureDecodeTask(void* context);
-        static void     BindWorkerUploadSlab(void* context, size_t worker_index);
-        void            CompleteTextureDecodeTask(TextureDecodeTask* task);
-        bool            TrackTextureDecode(const Rendering::Textures::TextureHandle& handle);
-        void            PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success);
-        void            DrainTextureDecodeCompletions();
-        bool            ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral);
-        void            DiscardTextureDeferrals();
-        void            PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket);
-        static void     OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket);
+        void                    FlushPendingTextureReleases();
+        static void             OnAssetReady(void* context, const uuids::uuid& uuid, Managers::AssetHandle handle);
+        static void             OnAssetStale(void* context, const uuids::uuid& uuid);
+        static void             OnAssetRemoved(void* context, const uuids::uuid& uuid, Managers::AssetType type);
+        static void             RunTextureDecodeTask(void* context);
+        static void             BindWorkerUploadSlab(void* context, size_t worker_index);
+        void                    CompleteTextureDecodeTask(TextureDecodeTask* task);
+        bool                    TrackTextureDecode(const Rendering::Textures::TextureHandle& handle);
+        void                    PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success);
+        void                    DrainTextureDecodeCompletions();
+        bool                    ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral);
+        void                    DiscardTextureDeferrals();
+        void                    PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket);
+        static void             OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket);
 
-        void            BeginBatchUpload(uint8_t frame_index);
-        void            EndBatchUpload();
+        void                    BeginBatchUpload(uint8_t frame_index);
+        void                    EndBatchUpload();
 
         /// @brief Open the batch if not already open this frame. Idempotent — every join
         ///        point (mesh uploads, hot-reload swaps, UpdateBuffer staging, builtin
         ///        registration) calls this before recording so only the first one opens it.
-        void            EnsureBatchOpen(uint8_t frame_index);
+        void                    EnsureBatchOpen(uint8_t frame_index);
 
         /// @brief Free frame-index batch stagings once m_batch_timeline reaches LastSignal.
         ///        Called once per frame from BeginFrame.
-        void            RetireBatchStagings();
+        void                    RetireBatchStagings();
 
-        void            ResetGeometryBuffersInternal();
+        void                    ResetGeometryBuffersInternal();
         /// @brief Re-pack all Resident mesh regions from offset 0, eliminating fragmentation holes.
         /// @details Resets the pool and re-uploads every Resident mesh's CPU asset data into
         ///          fresh batch regions using the existing AppendMeshData path. Slot regions are
         ///          updated in place before RenderScene runs. The batch is submitted by
         ///          EndFrame/SubmitAsyncUploads; Present()'s m_batch_timeline wait ensures the
         ///          render submission sees the new data before drawing.
-        void            RunCompaction();
-        void            InitUploadPool();
-        void            InitGlobalBuffers();
-        void            InitUploadSlabs(uint32_t worker_count);
-        void            InitTextureTimelines();
-        void            ShutdownTextureTimelines();
-        uint32_t        AllocMeshSlot();
-        uint32_t        AllocGBufSlot();
+        void                    RunCompaction();
+        void                    InitUploadPool();
+        void                    InitGlobalBuffers();
+        void                    InitUploadSlabs(uint32_t worker_count);
+        void                    InitTextureTimelines();
+        void                    ShutdownTextureTimelines();
+        Textures::TextureHandle CreateSynchronousTexture(const Specifications::TextureSpecification& specification, const void* pixels, cstring debug_name);
+        uint32_t                AllocMeshSlot();
+        uint32_t                AllocGBufSlot();
 
         /// @brief Advance counter and return the next GBUF_GEN_TAG-tagged generation value.
-        static uint32_t NextGBufGeneration(uint32_t& counter);
+        static uint32_t         NextGBufGeneration(uint32_t& counter);
 
         friend class GeometryStreamingManager;
         friend struct ::RRMTestHelper; // test-only — grants slot state access to streaming manager tests
@@ -635,6 +639,7 @@ namespace ZEngine::Rendering
 
         TextureDecodeTracker                                                       m_texture_decode_tracker                         = {};
         Rendering::Textures::TextureHandle                                         m_fallback_cubemap                               = {};
+        EnvironmentLightingResources                                               m_fallback_environment_lighting                  = {};
 
         Slot<MeshSlot>                                                             m_mesh_slots[MAX_BUFFERS]                        = {};
         uint32_t                                                                   m_mesh_slot_count                                = 0;

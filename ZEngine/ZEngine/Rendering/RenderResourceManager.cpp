@@ -32,6 +32,8 @@
 #include <ZEngine/ZEngineDef.h>
 #include <stb/deprecated/stb_image_resize.h>
 #include <stb/stb_image_write.h>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <limits>
@@ -46,6 +48,111 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering
 {
+    namespace
+    {
+        constexpr uint32_t kBrdfLutResolution  = 512;
+        constexpr uint32_t kBrdfLutSampleCount = 64;
+
+        uint16_t           FloatToHalf(float value)
+        {
+            uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
+
+            const uint16_t sign     = static_cast<uint16_t>((bits >> 16) & 0x8000u);
+            const int32_t  exponent = static_cast<int32_t>((bits >> 23) & 0xFFu) - 127 + 15;
+            uint32_t       mantissa = bits & 0x007F'FFFFu;
+            if (exponent <= 0)
+            {
+                if (exponent < -10)
+                    return sign;
+
+                mantissa             |= 0x0080'0000u;
+                const uint32_t shift  = static_cast<uint32_t>(14 - exponent);
+                return static_cast<uint16_t>(sign | ((mantissa + (1u << (shift - 1))) >> shift));
+            }
+            if (exponent >= 31)
+                return static_cast<uint16_t>(sign | 0x7C00u);
+
+            return static_cast<uint16_t>(sign | (static_cast<uint32_t>(exponent) << 10) | ((mantissa + 0x0000'1000u) >> 13));
+        }
+
+        float RadicalInverseVdC(uint32_t bits)
+        {
+            bits = (bits << 16u) | (bits >> 16u);
+            bits = ((bits & 0x5555'5555u) << 1u) | ((bits & 0xAAAA'AAAAu) >> 1u);
+            bits = ((bits & 0x3333'3333u) << 2u) | ((bits & 0xCCCC'CCCCu) >> 2u);
+            bits = ((bits & 0x0F0F'0F0Fu) << 4u) | ((bits & 0xF0F0'F0F0u) >> 4u);
+            bits = ((bits & 0x00FF'00FFu) << 8u) | ((bits & 0xFF00'FF00u) >> 8u);
+            return static_cast<float>(bits) * 2.3283064365386963e-10f;
+        }
+
+        float GeometrySchlickGGX(float ndot, float roughness)
+        {
+            const float roughness_plus_one = roughness + 1.0f;
+            const float k                  = (roughness_plus_one * roughness_plus_one) * 0.125f;
+            return ndot / (ndot * (1.0f - k) + k);
+        }
+
+        void IntegrateBrdf(float ndot_view, float roughness, uint32_t sample_count, float& out_scale, float& out_bias)
+        {
+            constexpr float pi     = 3.14159265358979323846f;
+            const float     view_x = std::sqrt(std::max(0.0f, 1.0f - ndot_view * ndot_view));
+            float           scale  = 0.0f;
+            float           bias   = 0.0f;
+
+            for (uint32_t index = 0; index < sample_count; ++index)
+            {
+                const float xi_x       = static_cast<float>(index) / static_cast<float>(sample_count);
+                const float xi_y       = RadicalInverseVdC(index);
+                const float roughness2 = roughness * roughness;
+                const float phi        = 2.0f * pi * xi_x;
+                const float cos_theta  = std::sqrt((1.0f - xi_y) / (1.0f + (roughness2 * roughness2 - 1.0f) * xi_y));
+                const float sin_theta  = std::sqrt(std::max(0.0f, 1.0f - cos_theta * cos_theta));
+                const float half_x     = std::cos(phi) * sin_theta;
+                const float half_y     = std::sin(phi) * sin_theta;
+                const float half_z     = cos_theta;
+                const float vdot_half  = std::max(0.0f, view_x * half_x + ndot_view * half_z);
+                const float light_x    = 2.0f * vdot_half * half_x - view_x;
+                const float light_y    = 2.0f * vdot_half * half_y;
+                const float light_z    = 2.0f * vdot_half * half_z - ndot_view;
+                const float ndot_light = std::max(0.0f, light_z);
+                const float ndot_half  = std::max(0.0f, half_z);
+                if (ndot_light <= 0.0f || ndot_half <= 0.0f)
+                    continue;
+
+                const float geometry    = GeometrySchlickGGX(ndot_view, roughness) * GeometrySchlickGGX(ndot_light, roughness);
+                const float visibility  = (geometry * vdot_half) / std::max(1.0e-5f, ndot_half * ndot_view);
+                const float fresnel     = std::pow(1.0f - vdot_half, 5.0f);
+                scale                  += (1.0f - fresnel) * visibility;
+                bias                   += fresnel * visibility;
+            }
+
+            const float inverse_sample_count = 1.0f / static_cast<float>(sample_count);
+            out_scale                        = scale * inverse_sample_count;
+            out_bias                         = bias * inverse_sample_count;
+        }
+
+        void GenerateBrdfIntegrationLut(uint16_t* pixels, uint32_t resolution, uint32_t sample_count)
+        {
+            for (uint32_t y = 0; y < resolution; ++y)
+            {
+                const float roughness = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
+                for (uint32_t x = 0; x < resolution; ++x)
+                {
+                    const float ndot_view = (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution);
+                    float       scale     = 0.0f;
+                    float       bias      = 0.0f;
+                    IntegrateBrdf(ndot_view, roughness, sample_count, scale, bias);
+
+                    const uint32_t pixel = (y * resolution + x) * 4;
+                    pixels[pixel]        = FloatToHalf(scale);
+                    pixels[pixel + 1]    = FloatToHalf(bias);
+                    pixels[pixel + 2]    = 0;
+                    pixels[pixel + 3]    = FloatToHalf(1.0f);
+                }
+            }
+        }
+    } // namespace
 
     void RenderResourceManager::Initialize(VulkanDevice* device, Core::VFS::AssetRegistry* registry)
     {
@@ -56,7 +163,8 @@ namespace ZEngine::Rendering
         m_registry = registry;
         m_pending_texture_decodes.value.store(0, std::memory_order_relaxed);
         m_accept_texture_decodes.value.store(true, std::memory_order_release);
-        m_fallback_cubemap = {};
+        m_fallback_cubemap              = {};
+        m_fallback_environment_lighting = {};
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
             tracked = {};
         m_texture_decode_tracker.Completions.clear();
@@ -1135,7 +1243,7 @@ namespace ZEngine::Rendering
         }
     }
 
-    Rendering::Textures::TextureHandle RenderResourceManager::UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data)
+    Rendering::Textures::TextureHandle RenderResourceManager::UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size)
     {
         using namespace Rendering::Specifications;
         using namespace Rendering::Primitives;
@@ -1148,12 +1256,19 @@ namespace ZEngine::Rendering
         if (FindStreamingUploadTicket(handle))
             return {};
 
-        uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+        uint32_t pool_index = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
 
-        auto     texture        = m_device->GlobalTextures.Access(handle);
-        auto     img_buf        = m_device->ImageBufferManager.Access(texture->BufferHandle);
-        auto     img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        auto     buffer_handle  = img_buf->GetHandle();
+        auto     texture    = m_device->GlobalTextures.Access(handle);
+        if (!texture)
+            return {};
+        const VkDeviceSize upload_size = data_size == 0 ? texture->BufferSize : static_cast<VkDeviceSize>(data_size);
+        if (upload_size == 0 || upload_size > texture->BufferSize)
+            return {};
+        auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
+        if (!img_buf)
+            return {};
+        auto img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        auto buffer_handle  = img_buf->GetHandle();
 
         if (m_device->HasSeparateTransferQueue)
         {
@@ -1188,7 +1303,7 @@ namespace ZEngine::Rendering
             // A streamed upload is submitted independently from the render timeline.
             // Keep its staging allocation off the render-timeline ring and retire it
             // with the producer timeline below.
-            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, nullptr, false);
+            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, nullptr, false, upload_size);
 
             ImageMemoryBarrierSpecification release          = {};
             release.ImageHandle                              = buffer_handle;
@@ -1258,7 +1373,7 @@ namespace ZEngine::Rendering
 
             // See the dedicated-transfer branch above: the upload submission is not
             // represented by RenderTimeline, so its staging buffer must not use the ring.
-            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data, nullptr, false);
+            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data, nullptr, false, upload_size);
 
             ImageMemoryBarrierSpecification to_final = {};
             to_final.ImageHandle                     = buffer_handle;
@@ -1389,7 +1504,7 @@ namespace ZEngine::Rendering
 
     bool RenderResourceManager::ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral)
     {
-        auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels);
+        auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels, deferral.ByteSize);
         if (!result.Valid())
             return false;
 
@@ -1711,6 +1826,18 @@ namespace ZEngine::Rendering
             }
         }
 
+        if (spec.IsCubemap)
+        {
+            const uint32_t largest_dimension = std::max(spec.Width, spec.Height);
+            uint32_t       mip_count         = 1;
+            for (uint32_t dimension = largest_dimension; dimension > 1; dimension >>= 1)
+                ++mip_count;
+            spec.MipLevelCount  = mip_count;
+            // HDRI mip generation is recorded as a graph compute stage before
+            // the cubemap is sampled by the IBL convolution passes.
+            spec.IsUsageStorage = true;
+        }
+
         spec.BytePerPixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
         Rendering::Textures::TextureHandle tex_handle;
@@ -1719,7 +1846,7 @@ namespace ZEngine::Rendering
             // Reimport — reconstruct in place only if dimensions/format actually changed;
             // same handle, same bindless index either way.
             auto* texture = m_device->GlobalTextures.Access(existing);
-            if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format))
+            if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format || texture->Specification.MipLevelCount != spec.MipLevelCount))
                 m_device->ReconstructTexture(existing, spec);
             tex_handle = existing;
         }
@@ -1988,35 +2115,23 @@ namespace ZEngine::Rendering
         return result;
     }
 
-    Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackCubemap()
+    Textures::TextureHandle RenderResourceManager::CreateSynchronousTexture(const Specifications::TextureSpecification& specification, const void* pixels, cstring debug_name)
     {
         using namespace Rendering::Specifications;
         using namespace Rendering::Primitives;
 
-        if (m_fallback_cubemap.Valid())
-            return m_fallback_cubemap;
-        if (!m_device || !m_upload_cmd_mgr || !m_sync_upload_fence)
+        if (!m_device || !m_upload_cmd_mgr || !m_sync_upload_fence || !pixels)
             return {};
 
-        // A dim neutral-blue source keeps the viewport visibly usable while an
-        // HDRI or future atmosphere bake is pending. It is a real cubemap, so
-        // samplerCube descriptors are always valid on the first frame.
-        constexpr uint8_t fallback_pixels[6 * 4] = {
-            35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255,
-        };
-
-        TextureSpecification spec = {};
-        spec.IsCubemap            = true;
-        spec.LayerCount           = 6;
-        spec.Width                = 1;
-        spec.Height               = 1;
-        spec.Format               = ImageFormat::R8G8B8A8_UNORM;
-
-        const auto  handle        = m_device->CreateTexture(spec, "SkyEnvironmentFallback");
-        auto* const texture       = m_device->GlobalTextures.Access(handle);
-        auto* const image         = texture ? m_device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
-        if (!texture || !image)
+        const auto  handle  = m_device->CreateTexture(specification, debug_name);
+        auto* const texture = m_device->GlobalTextures.Access(handle);
+        auto* const image   = texture ? m_device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+        if (!texture || !image || image->GetHandle() == VK_NULL_HANDLE)
+        {
+            if (handle.Valid())
+                m_device->DestroyTexture(handle);
             return {};
+        }
 
         ImageMemoryBarrierSpecification to_transfer = {};
         to_transfer.ImageHandle                     = image->GetHandle();
@@ -2027,7 +2142,7 @@ namespace ZEngine::Rendering
         to_transfer.DestinationAccessMask           = VK_ACCESS_TRANSFER_WRITE_BIT;
         to_transfer.SourceStageMask                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         to_transfer.DestinationStageMask            = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        to_transfer.LayerCount                      = 6;
+        to_transfer.LayerCount                      = specification.LayerCount;
         to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
         to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
 
@@ -2040,7 +2155,7 @@ namespace ZEngine::Rendering
         to_read.DestinationAccessMask               = VK_ACCESS_SHADER_READ_BIT;
         to_read.SourceStageMask                     = VK_PIPELINE_STAGE_TRANSFER_BIT;
         to_read.DestinationStageMask                = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        to_read.LayerCount                          = 6;
+        to_read.LayerCount                          = specification.LayerCount;
         to_read.SourceQueueFamily                   = m_device->GraphicFamilyIndex;
         to_read.DestinationQueueFamily              = m_device->GraphicFamilyIndex;
 
@@ -2051,9 +2166,11 @@ namespace ZEngine::Rendering
         vkResetCommandBuffer(command_buffer->GetHandle(), 0);
         command_buffer->Begin();
         command_buffer->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-        image->Layout          = to_transfer.NewLayout;
-        uint32_t   ring_offset = 0;
-        BufferView staging     = m_device->WriteTextureData(command_buffer, handle, fallback_pixels, &ring_offset);
+        image->Layout      = to_transfer.NewLayout;
+        // This upload is synchronously fenced and does not signal RenderTimeline.
+        // Keep its staging allocation independent from the render-frame ring so its
+        // reuse cannot depend on an unrelated future frame submission.
+        BufferView staging = m_device->WriteTextureData(command_buffer, handle, pixels, nullptr, false);
         command_buffer->TransitionImageLayout(ImageMemoryBarrier{to_read});
         image->Layout = to_read.NewLayout;
         command_buffer->End();
@@ -2065,24 +2182,118 @@ namespace ZEngine::Rendering
         submit.pCommandBuffers    = &raw;
         if (vkQueueSubmit(queue, 1, &submit, m_sync_upload_fence->GetHandle()) != VK_SUCCESS)
         {
+            if (staging)
+                m_device->GpuMem.FreeBuffer(staging);
             m_device->DestroyTexture(handle);
             return {};
         }
         m_sync_upload_fence->Wait(UINT64_MAX);
         command_buffer->ResetState();
 
-        if (ring_offset != std::numeric_limits<uint32_t>::max())
-            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
         if (staging)
+            m_device->GpuMem.FreeBuffer(staging);
+
+        return handle;
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackCubemap()
+    {
+        using namespace Rendering::Specifications;
+
+        if (m_fallback_cubemap.Valid())
+            return m_fallback_cubemap;
+
+        // A dim neutral-blue source keeps the viewport visibly usable while an
+        // HDRI or future atmosphere bake is pending. It is a real cubemap, so
+        // samplerCube descriptors are always valid on the first frame.
+        constexpr uint8_t fallback_pixels[6 * 4] = {
+            35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255,
+        };
+
+        TextureSpecification specification = {};
+        specification.IsCubemap            = true;
+        specification.LayerCount           = 6;
+        specification.Width                = 1;
+        specification.Height               = 1;
+        specification.Format               = ImageFormat::R8G8B8A8_UNORM;
+
+        m_fallback_cubemap                 = CreateSynchronousTexture(specification, fallback_pixels, "SkyEnvironmentFallback");
+        return m_fallback_cubemap;
+    }
+
+    EnvironmentLightingResources RenderResourceManager::GetOrCreateFallbackEnvironmentLighting()
+    {
+        using namespace Rendering::Specifications;
+
+        if (m_fallback_environment_lighting.Valid())
+            return m_fallback_environment_lighting;
+
+        constexpr BrdfIntegrationLutKey lut_key = {
+            .ShaderVersion = 1,
+            .Resolution    = kBrdfLutResolution,
+            .SampleCount   = kBrdfLutSampleCount,
+        };
+        const uint16_t neutral_radiance    = FloatToHalf(0.03f);
+        const uint16_t opaque_alpha        = FloatToHalf(1.0f);
+        uint16_t       neutral_cube[6 * 4] = {};
+        for (uint32_t face = 0; face < 6; ++face)
         {
-            DeferredFreeEntry entry = {};
-            entry.EntryKind         = DeferredFreeEntry::Kind::Buffer;
-            entry.Data.Buffer       = staging;
-            m_device->DeferFree(entry);
+            const uint32_t pixel    = face * 4;
+            neutral_cube[pixel]     = neutral_radiance;
+            neutral_cube[pixel + 1] = neutral_radiance;
+            neutral_cube[pixel + 2] = neutral_radiance;
+            neutral_cube[pixel + 3] = opaque_alpha;
         }
 
-        m_fallback_cubemap = handle;
-        return m_fallback_cubemap;
+        TextureSpecification cube_spec         = {};
+        cube_spec.IsCubemap                    = true;
+        cube_spec.LayerCount                   = 6;
+        cube_spec.Width                        = 1;
+        cube_spec.Height                       = 1;
+        cube_spec.BytePerPixel                 = sizeof(uint16_t) * 4;
+        cube_spec.Format                       = ImageFormat::R16G16B16A16_SFLOAT;
+
+        EnvironmentLightingResources resources = {};
+        resources.DiffuseIrradiance            = CreateSynchronousTexture(cube_spec, neutral_cube, "FallbackDiffuseIrradiance");
+        resources.SpecularEnvironment          = CreateSynchronousTexture(cube_spec, neutral_cube, "FallbackSpecularEnvironment");
+        if (!resources.DiffuseIrradiance.Valid() || !resources.SpecularEnvironment.Valid())
+        {
+            if (resources.DiffuseIrradiance.Valid())
+                m_device->DestroyTexture(resources.DiffuseIrradiance);
+            if (resources.SpecularEnvironment.Valid())
+                m_device->DestroyTexture(resources.SpecularEnvironment);
+            return {};
+        }
+
+        const size_t pixel_count = static_cast<size_t>(lut_key.Resolution) * lut_key.Resolution * 4;
+        auto* const  lut_pixels  = static_cast<uint16_t*>(m_fallback_upload_slab.Alloc(pixel_count * sizeof(uint16_t)));
+        if (!lut_pixels)
+        {
+            m_device->DestroyTexture(resources.DiffuseIrradiance);
+            m_device->DestroyTexture(resources.SpecularEnvironment);
+            return {};
+        }
+        GenerateBrdfIntegrationLut(lut_pixels, lut_key.Resolution, lut_key.SampleCount);
+
+        TextureSpecification lut_spec = {};
+        lut_spec.Width                = lut_key.Resolution;
+        lut_spec.Height               = lut_key.Resolution;
+        lut_spec.BytePerPixel         = sizeof(uint16_t) * 4;
+        lut_spec.Format               = ImageFormat::R16G16B16A16_SFLOAT;
+        resources.BrdfIntegrationLut  = CreateSynchronousTexture(lut_spec, lut_pixels, "BrdfIntegrationLut");
+        m_fallback_upload_slab.Free(lut_pixels);
+
+        if (!resources.BrdfIntegrationLut.Valid())
+        {
+            m_device->DestroyTexture(resources.DiffuseIrradiance);
+            m_device->DestroyTexture(resources.SpecularEnvironment);
+            return {};
+        }
+
+        resources.BrdfIntegrationKey    = lut_key;
+        resources.SpecularMipCount      = 1;
+        m_fallback_environment_lighting = resources;
+        return m_fallback_environment_lighting;
     }
 
 } // namespace ZEngine::Rendering

@@ -363,7 +363,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RecordDescriptorBinding({.Binding = spec, .Buffer = buffer, .FrameIndex = frame_index, .Kind = DescriptorReplayKind::StorageBuffer});
     }
 
-    void DescriptorBoundPass::SetTexture(cstring key_name, const Textures::TextureHandle& handle)
+    void DescriptorBoundPass::SetTexture(cstring key_name, const Textures::TextureHandle& handle, VkImageLayout image_layout)
     {
         auto validity_output = ValidateInput(key_name);
         if (!validity_output.first)
@@ -404,8 +404,10 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             ZENGINE_CORE_ERROR("SetTexture: texture for key '{}' is not resident", key_name)
             return;
         }
-        const VkDescriptorImageInfo& image_info = img_buf->GetDescriptorImageInfo();
-        VkWriteDescriptorSet         write      = {
+        VkDescriptorImageInfo image_info = img_buf->GetDescriptorImageInfo();
+        if (image_layout != VK_IMAGE_LAYOUT_MAX_ENUM)
+            image_info.imageLayout = image_layout;
+        VkWriteDescriptorSet write = {
             .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet          = (*set_array)[frame_index],
             .dstBinding      = spec.Binding,
@@ -416,7 +418,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         };
         vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name);
-        RecordDescriptorBinding({.Binding = spec, .Texture = handle, .Kind = DescriptorReplayKind::Texture});
+        RecordDescriptorBinding({.Binding = spec, .Texture = handle, .ImageLayout = image_layout, .Kind = DescriptorReplayKind::Texture});
     }
 
     void DescriptorBoundPass::SetStorageImage(cstring key_name, const Textures::TextureHandle& handle, const VkImageSubresourceRange& requested_range)
@@ -683,7 +685,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                         SetStorageBufferForFrame(record.Name, record.FrameIndex, record.Buffer);
                     break;
                 case DescriptorReplayKind::Texture:
-                    SetTexture(record.Name, record.Texture);
+                    SetTexture(record.Name, record.Texture, record.ImageLayout);
                     break;
                 case DescriptorReplayKind::StorageImage:
                     SetStorageImage(record.Name, record.Texture, record.ImageRange);

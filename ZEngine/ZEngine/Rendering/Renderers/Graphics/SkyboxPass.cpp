@@ -1,4 +1,5 @@
 #include <ZEngine/Engine.h>
+#include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
@@ -9,9 +10,10 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
-    void SkyboxPass::SetEnvironmentMap(Textures::TextureHandle environment_map)
+    void SkyboxPass::SetEnvironment(Textures::TextureHandle environment_map, const Rendering::Scenes::SkyConfig& config)
     {
-        m_env_map = environment_map;
+        m_env_map    = environment_map;
+        m_sky_config = config;
     }
 
     bool SkyboxPass::Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
@@ -80,6 +82,11 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
+        EnvironmentLightingPushConstants environment = {};
+        for (uint32_t index = 0; index < 3; ++index)
+            environment.TintIntensity[index] = m_sky_config.EnvironmentTint[index] * m_sky_config.EnvironmentIntensity;
+        environment.YawRadians = m_sky_config.EnvironmentYawRadians;
+        command_buffer->PushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(environment), &environment);
         command_buffer->Draw(3, 1, 0, 0);
         return true;
     }
