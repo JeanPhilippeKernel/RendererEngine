@@ -3,11 +3,13 @@
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/BuiltinMeshes.h>
+#include <random>
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::ECS::Components;
 using namespace ZEngine::Managers;
@@ -15,6 +17,17 @@ using ZEngine::Core::VFS::VFSPath;
 
 namespace Tetragrama
 {
+    namespace
+    {
+        uuids::uuid GenerateEntityUUID()
+        {
+            std::random_device           random_device;
+            std::mt19937                 generator(random_device());
+            uuids::uuid_random_generator uuid_generator(generator);
+            return uuid_generator();
+        }
+    } // namespace
+
     EditorScene::~EditorScene()
     {
         // InstanceArena is carved from LocalArena. Tear it down while its
@@ -22,7 +35,7 @@ namespace Tetragrama
         InstanceArena.Shutdown();
     }
 
-    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name)
+    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name, const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
     {
         // 200 MB carved directly from MainArena — not part of UIContext budget.
         // Covers: AssetFiles list (500 entries), scene graph data, seqlock instance buffers,
@@ -31,7 +44,8 @@ namespace Tetragrama
         arena->CreateSubArena(ZMega(200), &LocalArena);
 
         Name = name;
-        Sky.Mode.init(&LocalArena, "atmosphere");
+        Sky  = sky_defaults;
+        Sky.Sanitize();
 
         AssetFiles.init(&LocalArena, 500);
         HashToAssetFile.init(&LocalArena, 500);
@@ -75,12 +89,20 @@ namespace Tetragrama
             lc.Color[2]       = 1.f;
             actor->AddComponent<LightComponent>(lc);
 
+            UUIDComponent uc = {};
+            uc.Value         = GenerateEntityUUID();
+            actor->AddComponent<UUIDComponent>(uc);
+            if (Sky.PrimaryCelestialLight.is_nil())
+                Sky.PrimaryCelestialLight = uc.Value;
+
             uint32_t      render_id = AddMeshInstance(light_uuid, default_light_name);
             MeshComponent mc        = {};
             mc.MeshUUID             = light_uuid;
             mc.RenderInstanceId     = render_id;
             actor->AddComponent<MeshComponent>(mc);
         }
+
+        MarkSkyDirty();
     }
 
     bool EditorScene::InitializeDeserialized(size_t page_size)
@@ -144,7 +166,7 @@ namespace Tetragrama
         return Dirty.value.load(std::memory_order_acquire);
     }
 
-    void EditorScene::Reset()
+    void EditorScene::Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
     {
         AssetFiles.clear();
         HashToAssetFile.clear();
@@ -155,7 +177,52 @@ namespace Tetragrama
         SeqEndWrite();
         MarkInstancesDirty();
 
+        Sky = sky_defaults;
+        Sky.Sanitize();
+        MarkSkyDirty();
+
         Dirty.value.store(false, std::memory_order_release);
+    }
+
+    bool EditorScene::SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle)
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager)
+            return false;
+
+        ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        if (!actor)
+            return false;
+
+        const LightComponent* light = actor->GetComponent<LightComponent>();
+        if (!light || light->LightType != LightComponent::Type::Directional)
+            return false;
+
+        UUIDComponent* identity = actor->GetComponent<UUIDComponent>();
+        if (!identity)
+        {
+            UUIDComponent created = {};
+            created.Value         = GenerateEntityUUID();
+            actor->AddComponent<UUIDComponent>(created);
+            identity = actor->GetComponent<UUIDComponent>();
+        }
+        if (!identity || identity->Value.is_nil())
+            return false;
+
+        Sky.PrimaryCelestialLight = identity->Value;
+        MarkSkyDirty();
+        MarkDirty(true);
+        return true;
+    }
+
+    void EditorScene::ClearPrimaryCelestialLight()
+    {
+        if (Sky.PrimaryCelestialLight.is_nil())
+            return;
+
+        Sky.PrimaryCelestialLight = {};
+        MarkSkyDirty();
+        MarkDirty(true);
     }
 
     void EditorScene::ExtractAsync(const EditorScene& scene)
