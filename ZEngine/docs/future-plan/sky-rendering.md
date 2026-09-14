@@ -343,7 +343,7 @@ At the initial 32 x 32 x 32 aerial resolution, an 8 x 8 x 4 kernel dispatches 4 
 
 Sun changes invalidate the source-radiance cubemap and its IBL output. Static transmittance and multiscattering LUTs need not be regenerated for a direction-only sun change. A continuously animated day/night cycle uses a quality budget or progressive bake policy so it cannot hitch the editor.
 
-The atmosphere UBO is std140-aligned and checked with size and offset assertions on the C++ side, plus reflection validation in the shader build. It includes only canonical-unit values, camera-relative planet coordinates, and the resolved primary celestial-light direction. Wavelength-independent Mie scattering and absorption authoring values are scalar, but are packed into their RGB UBO fields as Vec4f(x, x, x, 0).
+The atmosphere UBO is std140-aligned and checked with size and offset assertions on the C++ side, plus reflection validation in the shader build. It includes only canonical-unit values, camera-relative planet coordinates, and the resolved primary celestial-light direction. `SunIlluminanceLux` remains a photometric authored value; the renderer maps 6 klux to one scene-radiance unit before baking, so the default 120-klux clear-sky noon sun maps to 20 units. This unit bridge is shared by atmosphere source capture and IBL, while display exposure remains a per-view post-processing control. Wavelength-independent Mie scattering and absorption authoring values are scalar, but are packed into their RGB UBO fields as Vec4f(x, x, x, 0).
 
 ### 7.1 Numerical and payload contract
 
@@ -469,7 +469,7 @@ The allocator budget reserves the update peak, not only steady state: current sn
 
 ### 10.1 Colour, exposure, and output
 
-All sky, LUT, and IBL images use linear scene colour. The renderer selects a floating-point HDR composition format, applies optional pre-exposure consistently to direct and environment lighting, then runs bloom and exposure metering before tone mapping and output-gamut conversion.
+All sky, LUT, and IBL images use linear scene colour. The renderer composes lighting and sky into an RGBA16F scene-colour target, then converts it to the display-compatible RenderView texture through a single ACES-fitted tone-mapping pass. Editor UI is composited afterward in display space. Optional pre-exposure is applied consistently to direct and environment lighting; bloom and automatic exposure metering remain follow-up work before tone mapping and output-gamut conversion.
 
 Exposure metering defines how the bright sun disc and HDRI highlights influence the histogram, and it resets or smoothly adapts on a sky revision according to the camera-cut policy. Reference tests use fixed exposure. This prevents apparent lighting discontinuities from being hidden by unstable automatic exposure.
 

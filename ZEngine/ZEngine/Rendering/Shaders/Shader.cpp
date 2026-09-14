@@ -7,6 +7,7 @@
 #include <ZEngine/Rendering/Shaders/ShaderReader.h>
 #include <spirv_cross.hpp>
 #include <vulkan/vulkan.h>
+#include <algorithm>
 
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Helpers;
@@ -180,18 +181,15 @@ namespace ZEngine::Rendering::Shaders
                     uint32_t struct_total_size = 0;
                     for (uint32_t i = 0; i < type.member_types.size(); ++i)
                     {
-                        uint32_t memberSize  = spirv_compiler->get_declared_struct_member_size(type, i);
-                        struct_total_size   += memberSize;
+                        const uint32_t member_offset = spirv_compiler->type_struct_member_offset(type, i);
+                        const uint32_t member_size   = static_cast<uint32_t>(spirv_compiler->get_declared_struct_member_size(type, i));
+                        struct_total_size            = std::max(struct_total_size, member_offset + member_size);
                     }
 
                     auto name_c_size = (pushConstant_resource.name.size() + 1u);
                     auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                     Helpers::secure_strcpy(name_c_str, name_c_size, pushConstant_resource.name.c_str());
                     PushConstantSpecifications.push(PushConstantSpecification{.Name = name_c_str, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::VERTEX});
-                    /*
-                     * We update the offset for next iteration
-                     */
-                    struct_offset = struct_total_size;
                 }
             }
         }
@@ -260,18 +258,15 @@ namespace ZEngine::Rendering::Shaders
                     uint32_t struct_total_size = 0;
                     for (uint32_t i = 0; i < type.member_types.size(); ++i)
                     {
-                        uint32_t memberSize  = spirv_compiler->get_declared_struct_member_size(type, i);
-                        struct_total_size   += memberSize;
+                        const uint32_t member_offset = spirv_compiler->type_struct_member_offset(type, i);
+                        const uint32_t member_size   = static_cast<uint32_t>(spirv_compiler->get_declared_struct_member_size(type, i));
+                        struct_total_size            = std::max(struct_total_size, member_offset + member_size);
                     }
                     auto name_c_size = (pushConstant_resource.name.size() + 1u);
                     auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                     Helpers::secure_strcpy(name_c_str, name_c_size, pushConstant_resource.name.c_str());
 
                     PushConstantSpecifications.push(PushConstantSpecification{.Name = name_c_str, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::FRAGMENT});
-                    /*
-                     * We update the offset for next iteration
-                     */
-                    struct_offset = struct_total_size;
                 }
             }
 
@@ -512,7 +507,11 @@ namespace ZEngine::Rendering::Shaders
 
                 uint32_t struct_total_size = 0;
                 for (uint32_t i = 0; i < type.member_types.size(); ++i)
-                    struct_total_size += spirv_compiler->get_declared_struct_member_size(type, i);
+                {
+                    const uint32_t member_offset = spirv_compiler->type_struct_member_offset(type, i);
+                    const uint32_t member_size   = static_cast<uint32_t>(spirv_compiler->get_declared_struct_member_size(type, i));
+                    struct_total_size            = std::max(struct_total_size, member_offset + member_size);
+                }
 
                 auto name_c_size = push_constant_resource.name.size() + 1u;
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);

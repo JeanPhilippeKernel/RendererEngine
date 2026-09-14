@@ -1,0 +1,64 @@
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba16f) uniform writeonly image2D Destination;
+
+layout(push_constant) uniform AtmosphereStaticPushConstants
+{
+    vec4 RadiiAndScaleHeights;
+    vec4 RayleighScattering;
+    vec4 MieAndOzone;
+    vec4 OzoneAbsorption;
+}
+Push;
+
+const float PI                = 3.14159265358979323846;
+const uint  INTEGRATION_STEPS = 24u;
+
+float       distance_to_atmosphere(vec3 position, vec3 direction, float atmosphere_radius)
+{
+    const float b    = dot(position, direction);
+    const float c    = dot(position, position) - atmosphere_radius * atmosphere_radius;
+    const float disc = max(b * b - c, 0.0);
+    return max(-b + sqrt(disc), 0.0);
+}
+
+float ozone_density(float height, float center, float thickness)
+{
+    return max(1.0 - abs(height - center) / max(thickness, 1.0e-3), 0.0);
+}
+
+void main()
+{
+    const uvec2 pixel  = gl_GlobalInvocationID.xy;
+    const ivec2 extent = imageSize(Destination);
+    if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y))
+        return;
+
+    const float planet_radius     = Push.RadiiAndScaleHeights.x;
+    const float atmosphere_radius = Push.RadiiAndScaleHeights.y;
+    const float rayleigh_height   = max(Push.RadiiAndScaleHeights.z, 1.0e-3);
+    const float mie_height        = max(Push.RadiiAndScaleHeights.w, 1.0e-3);
+    const vec2  uv                = (vec2(pixel) + vec2(0.5)) / vec2(extent);
+    const float altitude          = mix(0.0, atmosphere_radius - planet_radius, uv.y);
+    const float mu                = clamp(uv.x * 2.0 - 1.0, -1.0, 1.0);
+    const vec3  position          = vec3(0.0, planet_radius + altitude, 0.0);
+    const vec3  direction         = vec3(sqrt(max(1.0 - mu * mu, 0.0)), mu, 0.0);
+    const float distance          = distance_to_atmosphere(position, direction, atmosphere_radius);
+    const float step_length       = distance / float(INTEGRATION_STEPS);
+
+    vec3        optical_depth     = vec3(0.0);
+    for (uint step = 0u; step < INTEGRATION_STEPS; ++step)
+    {
+        const float sample_distance  = (float(step) + 0.5) * step_length;
+        const float sample_height    = max(length(position + direction * sample_distance) - planet_radius, 0.0);
+        const float rayleigh         = exp(-sample_height / rayleigh_height);
+        const float mie              = exp(-sample_height / mie_height);
+        const float ozone            = ozone_density(sample_height, Push.MieAndOzone.z, Push.MieAndOzone.w);
+        optical_depth               += (Push.RayleighScattering.rgb * rayleigh + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie + Push.OzoneAbsorption.rgb * ozone) * step_length;
+    }
+
+    const vec3 transmittance = exp(clamp(-optical_depth, vec3(-50.0), vec3(0.0)));
+    imageStore(Destination, ivec2(pixel), vec4(transmittance, 1.0));
+}

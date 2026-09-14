@@ -1,0 +1,33 @@
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform texture2D Transmittance;
+layout(set = 0, binding = 1) uniform sampler LinearClampToEdgeSampler;
+layout(set = 0, binding = 2, rgba16f) uniform writeonly image2D Destination;
+
+layout(push_constant) uniform AtmosphereStaticPushConstants
+{
+    vec4 RadiiAndScaleHeights;
+    vec4 RayleighScattering;
+    vec4 MieAndOzone;
+    vec4 OzoneAbsorption;
+}
+Push;
+
+void main()
+{
+    const uvec2 pixel  = gl_GlobalInvocationID.xy;
+    const ivec2 extent = imageSize(Destination);
+    if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y))
+        return;
+
+    const vec2  uv            = (vec2(pixel) + vec2(0.5)) / vec2(extent);
+    const vec3  transmittance = texture(sampler2D(Transmittance, LinearClampToEdgeSampler), uv).rgb;
+    const float altitude      = uv.y * max(Push.RadiiAndScaleHeights.y - Push.RadiiAndScaleHeights.x, 0.0);
+    const float rayleigh      = exp(-altitude / max(Push.RadiiAndScaleHeights.z, 1.0e-3));
+    const float mie           = exp(-altitude / max(Push.RadiiAndScaleHeights.w, 1.0e-3));
+    const vec3  scattering    = Push.RayleighScattering.rgb * rayleigh + vec3(Push.MieAndOzone.x) * mie;
+    const vec3  multi         = scattering * (1.0 - transmittance) / max(vec3(1.0) - 0.35 * scattering, vec3(1.0e-3));
+    imageStore(Destination, ivec2(pixel), vec4(max(multi, vec3(0.0)), 1.0));
+}

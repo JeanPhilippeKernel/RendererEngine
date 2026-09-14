@@ -14,6 +14,33 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return expected.Set == current.Set && expected.Binding == current.Binding && expected.Count == current.Count && expected.DescriptorTypeValue == current.DescriptorTypeValue && expected.Flags == current.Flags;
         }
 
+        bool ResolveStorageImageInfo(Hardwares::ImageBuffer* image, const VkImageSubresourceRange& requested_range, VkDescriptorImageInfo* out_info, VkImageSubresourceRange* out_range)
+        {
+            if (!image || !out_info || !out_range)
+                return false;
+
+            VkImageSubresourceRange image_range = requested_range;
+            if (image_range.aspectMask == 0)
+                image_range.aspectMask = image->Specification.ImageAspectFlag;
+            if (image_range.levelCount == 0)
+                image_range.levelCount = image->Specification.MipLevelCount;
+            if (image_range.layerCount == 0)
+                image_range.layerCount = image->Specification.LayerCount;
+
+            VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
+            if (image->Specification.BufferUsageType == ImageBufferUsageType::SINGLE_3D_IMAGE)
+                view_type = VK_IMAGE_VIEW_TYPE_3D;
+            else if (image->Specification.BufferUsageType == ImageBufferUsageType::CUBEMAP || image_range.layerCount > 1)
+                view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+
+            *out_info             = image->GetDescriptorImageInfo();
+            out_info->sampler     = VK_NULL_HANDLE;
+            out_info->imageView   = image->GetImageViewHandle(view_type, image_range);
+            out_info->imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            *out_range            = image_range;
+            return out_info->imageView != VK_NULL_HANDLE;
+        }
+
         void StoreDescriptorReplayRecord(Hardwares::VulkanDevice* device, DescriptorReplayRecord* records, uint32_t* record_count, const DescriptorReplayRecord& record)
         {
             ZENGINE_VALIDATE_ASSERT(device != nullptr && records != nullptr && record_count != nullptr, "Descriptor replay record storage is invalid")
@@ -22,7 +49,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             for (uint32_t index = 0; index < *record_count; ++index)
             {
                 DescriptorReplayRecord& existing = records[index];
-                if (existing.Kind != record.Kind || existing.FrameIndex != record.FrameIndex || Helpers::secure_strcmp(existing.Name, record.Binding.Name) != 0)
+                if (existing.Kind != record.Kind || existing.FrameIndex != record.FrameIndex || existing.ArrayElement != record.ArrayElement || Helpers::secure_strcmp(existing.Name, record.Binding.Name) != 0)
                     continue;
 
                 const cstring stable_name = existing.Name;
@@ -421,16 +448,16 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         RecordDescriptorBinding({.Binding = spec, .Texture = handle, .ImageLayout = image_layout, .Kind = DescriptorReplayKind::Texture});
     }
 
-    void DescriptorBoundPass::SetStorageImage(cstring key_name, const Textures::TextureHandle& handle, const VkImageSubresourceRange& requested_range)
+    void DescriptorBoundPass::SetStorageImage(cstring key_name, const Textures::TextureHandle& handle, const VkImageSubresourceRange& requested_range, uint32_t array_element)
     {
         auto validity_output = ValidateInput(key_name);
         if (!validity_output.first)
             return;
 
         const auto& spec = validity_output.second;
-        if (spec.DescriptorTypeValue != DescriptorType::STORAGE_IMAGE)
+        if (spec.DescriptorTypeValue != DescriptorType::STORAGE_IMAGE || array_element >= spec.Count)
         {
-            ZENGINE_CORE_ERROR("SetStorageImage: shader input '{}' is not a storage image", key_name)
+            ZENGINE_CORE_ERROR("SetStorageImage: invalid storage image binding for '{}'", key_name)
             return;
         }
 
@@ -462,25 +489,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             return;
         }
 
-        VkImageSubresourceRange image_range = requested_range;
-        if (image_range.aspectMask == 0)
-            image_range.aspectMask = img_buf->Specification.ImageAspectFlag;
-        if (image_range.levelCount == 0)
-            image_range.levelCount = img_buf->Specification.MipLevelCount;
-        if (image_range.layerCount == 0)
-            image_range.layerCount = img_buf->Specification.LayerCount;
-
-        VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
-        if (img_buf->Specification.BufferUsageType == ImageBufferUsageType::SINGLE_3D_IMAGE)
-            view_type = VK_IMAGE_VIEW_TYPE_3D;
-        else if (img_buf->Specification.BufferUsageType == ImageBufferUsageType::CUBEMAP || image_range.layerCount > 1)
-            view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-
-        VkDescriptorImageInfo image_info = img_buf->GetDescriptorImageInfo();
-        image_info.sampler               = VK_NULL_HANDLE;
-        image_info.imageView             = img_buf->GetImageViewHandle(view_type, image_range);
-        image_info.imageLayout           = VK_IMAGE_LAYOUT_GENERAL;
-        if (image_info.imageView == VK_NULL_HANDLE)
+        VkDescriptorImageInfo   image_info  = {};
+        VkImageSubresourceRange image_range = {};
+        if (!ResolveStorageImageInfo(img_buf, requested_range, &image_info, &image_range))
         {
             ZENGINE_CORE_ERROR("SetStorageImage: unable to create storage view for key '{}'", key_name)
             return;
@@ -489,14 +500,81 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet          = (*set_array)[frame_index],
             .dstBinding      = spec.Binding,
-            .dstArrayElement = 0,
+            .dstArrayElement = array_element,
             .descriptorCount = 1,
             .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
             .pImageInfo      = &image_info,
         };
         vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
         BoundBindings.insert(key_name);
-        RecordDescriptorBinding({.Binding = spec, .Texture = handle, .ImageRange = image_range, .Kind = DescriptorReplayKind::StorageImage});
+        RecordDescriptorBinding({.Binding = spec, .Texture = handle, .ImageRange = image_range, .ArrayElement = array_element, .Kind = DescriptorReplayKind::StorageImage});
+    }
+
+    void DescriptorBoundPass::SetStorageImageArray(cstring key_name, const Textures::TextureHandle& handle, const VkImageSubresourceRange* ranges, uint32_t range_count)
+    {
+        auto validity_output = ValidateInput(key_name);
+        if (!validity_output.first || !ranges || range_count == 0)
+            return;
+
+        const auto& spec = validity_output.second;
+        if (spec.DescriptorTypeValue != DescriptorType::STORAGE_IMAGE || range_count != spec.Count || range_count > kMaxDescriptorReplayBindings)
+        {
+            ZENGINE_CORE_ERROR("SetStorageImageArray: invalid storage-image array binding for '{}'", key_name)
+            return;
+        }
+
+        auto* pipeline = GetPipeline();
+        auto* shader   = pipeline ? pipeline->Shader : nullptr;
+        if (!shader)
+            return;
+        const auto* set_array = shader->DescriptorSetMap.find(spec.Set);
+        if (!set_array)
+            set_array = m_device->ShaderReservedDescriptorSetMap.find(spec.Set);
+        if (!set_array)
+        {
+            ZENGINE_CORE_ERROR("SetStorageImageArray: descriptor set {} not found for key '{}'", spec.Set, key_name)
+            return;
+        }
+
+        const uint32_t frame_index = m_device->SwapchainPtr->CurrentFrame->Index;
+        if (frame_index >= set_array->size())
+        {
+            ZENGINE_CORE_ERROR("SetStorageImageArray: descriptor frame {} not found for key '{}'", frame_index, key_name)
+            return;
+        }
+
+        auto* tex_buf = m_device->GlobalTextures.Access(handle);
+        auto* img_buf = tex_buf ? m_device->ImageBufferManager.Access(tex_buf->BufferHandle) : nullptr;
+        if (!img_buf)
+        {
+            ZENGINE_CORE_ERROR("SetStorageImageArray: texture for key '{}' is not resident", key_name)
+            return;
+        }
+
+        VkDescriptorImageInfo   image_infos[kMaxDescriptorReplayBindings]  = {};
+        VkImageSubresourceRange image_ranges[kMaxDescriptorReplayBindings] = {};
+        for (uint32_t index = 0; index < range_count; ++index)
+        {
+            if (!ResolveStorageImageInfo(img_buf, ranges[index], &image_infos[index], &image_ranges[index]))
+            {
+                ZENGINE_CORE_ERROR("SetStorageImageArray: unable to create storage view for key '{}'", key_name)
+                return;
+            }
+        }
+
+        const VkWriteDescriptorSet write = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = (*set_array)[frame_index],
+            .dstBinding      = spec.Binding,
+            .dstArrayElement = 0,
+            .descriptorCount = range_count,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .pImageInfo      = image_infos,
+        };
+        vkUpdateDescriptorSets(m_device->LogicalDevice, 1, &write, 0, nullptr);
+        BoundBindings.insert(key_name);
+        for (uint32_t index = 0; index < range_count; ++index)
+            RecordDescriptorBinding({.Binding = spec, .Texture = handle, .ImageRange = image_ranges[index], .ArrayElement = index, .Kind = DescriptorReplayKind::StorageImage});
     }
 
     void DescriptorBoundPass::SetSampler(cstring key_name, const VkDescriptorImageInfo& sampler_info)
@@ -688,7 +766,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     SetTexture(record.Name, record.Texture, record.ImageLayout);
                     break;
                 case DescriptorReplayKind::StorageImage:
-                    SetStorageImage(record.Name, record.Texture, record.ImageRange);
+                    SetStorageImage(record.Name, record.Texture, record.ImageRange, record.ArrayElement);
                     break;
                 case DescriptorReplayKind::Sampler:
                     SetSampler(record.Name, record.Sampler);

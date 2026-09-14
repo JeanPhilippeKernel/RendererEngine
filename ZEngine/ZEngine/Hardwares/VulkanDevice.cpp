@@ -61,9 +61,13 @@ namespace ZEngine::Hardwares
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT_S8_UINT);
         DefaultDepthFormats.push(VK_FORMAT_D24_UNORM_S8_UINT);
 
-        ShaderManager.Initialize(arena, 300);
+        constexpr uint32_t kMaxShaderCount = 300;
+        ShaderManager.Initialize(arena, kMaxShaderCount);
 
-        ShaderCaches.init(arena, 10);
+        // ShaderCaches has one entry for every live ShaderManager slot. Size it
+        // for twice that capacity so shader warmup and runtime passes remain
+        // below the map's fixed load-factor limit without arena rehashing.
+        ShaderCaches.init(arena, kMaxShaderCount * 2u);
         m_queue_map.init(arena, 4);
 
         m_layer.QueryInstanceLayerProperties(arena);

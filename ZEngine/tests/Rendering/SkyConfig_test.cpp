@@ -19,6 +19,14 @@ TEST(SkyConfigTest, DefaultConfigurationIsAtmosphereAndHasNoRuntimeReferences)
     EXPECT_FLOAT_EQ(config.EnvironmentIntensity, 1.0f);
 }
 
+TEST(SkyConfigTest, AtmosphereIlluminanceUsesTheDocumentedSceneRadianceScale)
+{
+    EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(0.0f), 0.0f);
+    EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(ReferenceSunIlluminanceLux), 1.0f);
+    EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(ReferenceSunIlluminanceLux * 0.5f), 0.5f);
+    EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(StandardNoonSunIlluminanceLux), 20.0f);
+}
+
 TEST(SkyConfigTest, MissingOptionalReferencesRemainAValidFallbackConfiguration)
 {
     SkyConfig config = {};

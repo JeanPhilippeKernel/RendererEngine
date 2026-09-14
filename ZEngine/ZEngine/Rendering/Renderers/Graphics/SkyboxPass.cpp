@@ -29,7 +29,7 @@ namespace ZEngine::Rendering::Renderers
         else
             res_builder->ReadTexture(res_builder->ImportTexture("SkyboxEnvironmentMap", m_env_map, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
+        res_builder->UpdateColorAttachment(RendererResourceName::FrameHdrColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
         return true;
     }
 

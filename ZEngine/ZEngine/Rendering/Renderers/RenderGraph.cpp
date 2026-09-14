@@ -1570,16 +1570,17 @@ namespace ZEngine::Rendering::Renderers
                 pass.Handle->Bake();
             }
 
+            // Pipeline hot-reload/replay can allocate from Device->Arena and
+            // update descriptor sets. Resolve it before callbacks prepare this
+            // frame's descriptors, then before any worker records the pass.
+            EnsurePassPipelineOnRenderThread(pass);
+
             SynchronizeCompiledPassResources(pass);
 
             pass.Callback->Prepare(Device, SceneData, ResourceInspector, pass.Handle);
             if (pass.Persistent)
                 pass.Persistent->Handle = pass.Handle;
 
-            // Pipeline hot-reload/replay can allocate from Device->Arena and
-            // update descriptor sets. Complete it on the render thread before
-            // any worker records this pass into a secondary command buffer.
-            EnsurePassPipelineOnRenderThread(pass);
             BindDeclaredResources(pass);
             if (IsGraphicPass(pass))
                 static_cast<RenderPasses::GraphicPass*>(pass.Handle)->Verify();
@@ -2832,14 +2833,10 @@ namespace ZEngine::Rendering::Renderers
                 case RGAccess::StorageWrite:
                 case RGAccess::ShaderReadWrite:
                 {
-                    const VkImageSubresourceRange range = {
-                        .aspectMask     = use.Range.AspectMask,
-                        .baseMipLevel   = use.Range.BaseMipLevel,
-                        .levelCount     = use.Range.LevelCount,
-                        .baseArrayLayer = use.Range.BaseArrayLayer,
-                        .layerCount     = use.Range.LayerCount,
-                    };
-                    descriptor_pass->SetStorageImage(use.BindingKey, resource.TextureHandle, range);
+                    RGSubresourceRange resolved_range = {};
+                    if (!ResolveSubresourceRange(resource, use.Range, Device, &resolved_range))
+                        return;
+                    descriptor_pass->SetStorageImage(use.BindingKey, resource.TextureHandle, ToVkSubresourceRange(resolved_range));
                     break;
                 }
                 default:

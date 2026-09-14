@@ -4,7 +4,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform textureCube SourceRadiance;
 layout(set = 0, binding = 1) uniform sampler LinearClampToEdgeSampler;
-layout(set = 0, binding = 2, rgba16f) uniform writeonly image2DArray Destination;
+layout(set = 0, binding = 2, rgba16f) uniform writeonly image2DArray Destinations[16];
 
 layout(push_constant) uniform SpecularPrefilterPushConstants
 {
@@ -103,5 +103,5 @@ void main()
     }
 
     filtered /= max(weight, 1e-5);
-    imageStore(Destination, ivec3(pixel, face), vec4(filtered, 1.0));
+    imageStore(Destinations[Push.MipLevel], ivec3(pixel, face), vec4(filtered, 1.0));
 }

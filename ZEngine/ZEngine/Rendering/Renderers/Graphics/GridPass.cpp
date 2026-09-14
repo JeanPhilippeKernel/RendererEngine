@@ -47,7 +47,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
+        res_builder->UpdateColorAttachment(RendererResourceName::FrameHdrColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
         return true;
     }
 
