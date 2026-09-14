@@ -68,6 +68,15 @@ namespace ZEngine::Rendering
             Evicting,     ///< Marked for eviction; replacement upload may be in flight.
         };
 
+        /// @brief Decode state exposed to render-thread clients that own a streamed texture's lifecycle.
+        enum class TextureDecodeState : uint8_t
+        {
+            Pending = 0,
+            Succeeded,
+            Failed,
+            Untracked,
+        };
+
         /// @brief Initialize the RRM and bind it to a VulkanDevice and AssetRegistry.
         /// @details Registers OnAssetReady and OnAssetStale callbacks on the registry,
         ///          allocates the dedicated upload command pool and fence, and creates
@@ -139,11 +148,19 @@ namespace ZEngine::Rendering
         ///          index captured here would be stale by the time the upload runs.
         /// @param filename     Absolute path to the image file on disk.
         /// @param existing     Handle to reconstruct in place; invalid to allocate a new one.
+        /// @param track_decode When true, retain the decode result for the render-thread caller.
         /// @return A valid TextureHandle that will become readable once the upload drains.
-        Rendering::Textures::TextureHandle  SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing = {});
+        Rendering::Textures::TextureHandle  SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing = {}, bool track_decode = false);
 
         /// @brief Return the (255, 20, 147) fallback TextureHandle for missing textures, creating it on first call.
         Rendering::Textures::TextureHandle  GetOrCreateFallbackTexture();
+        /// @brief Return the synchronous, neutral cubemap used while a scene environment is unavailable.
+        Rendering::Textures::TextureHandle  GetOrCreateFallbackCubemap();
+
+        /// @brief Returns the latest decode outcome for a tracked texture.
+        TextureDecodeState                  GetTextureDecodeState(const Rendering::Textures::TextureHandle& handle);
+        /// @brief Stop observing one asynchronous decode after it has been consumed or discarded.
+        void                                ForgetTextureDecode(const Rendering::Textures::TextureHandle& handle);
 
         /// @brief Payload for a deferred texture upload.
         ///
@@ -472,7 +489,27 @@ namespace ZEngine::Rendering
             Specifications::TextureSpecification Specification                 = {};
             Rendering::Textures::TextureHandle   Texture                       = {};
             bool                                 IsEnvironmentMap              = false;
+            bool                                 TrackCompletion               = false;
             char                                 Filename[MAX_FILE_PATH_COUNT] = {};
+        };
+
+        struct TextureDecodeCompletion
+        {
+            Rendering::Textures::TextureHandle Texture = {};
+            bool                               Success = false;
+        };
+
+        struct TrackedTextureDecode
+        {
+            Rendering::Textures::TextureHandle Texture = {};
+            TextureDecodeState                 State   = TextureDecodeState::Untracked;
+        };
+
+        struct TextureDecodeTracker
+        {
+            static constexpr uint32_t                                                   MaxTracked          = 64;
+            TrackedTextureDecode                                                        Entries[MaxTracked] = {};
+            Core::Containers::MPSCQueue<TextureDecodeCompletion, MAX_TEXTURE_DEFERRALS> Completions         = {};
         };
 
         struct UploadSlabInitContext
@@ -502,6 +539,9 @@ namespace ZEngine::Rendering
         static void     RunTextureDecodeTask(void* context);
         static void     BindWorkerUploadSlab(void* context, size_t worker_index);
         void            CompleteTextureDecodeTask(TextureDecodeTask* task);
+        bool            TrackTextureDecode(const Rendering::Textures::TextureHandle& handle);
+        void            PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success);
+        void            DrainTextureDecodeCompletions();
         bool            ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral);
         void            DiscardTextureDeferrals();
         void            PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket);
@@ -592,6 +632,9 @@ namespace ZEngine::Rendering
         Core::Memory::TLSFSlab                                                     m_texture_task_slab                              = {};
         PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                        = {};
         PaddedAtomic<bool>                                                         m_accept_texture_decodes                         = {};
+
+        TextureDecodeTracker                                                       m_texture_decode_tracker                         = {};
+        Rendering::Textures::TextureHandle                                         m_fallback_cubemap                               = {};
 
         Slot<MeshSlot>                                                             m_mesh_slots[MAX_BUFFERS]                        = {};
         uint32_t                                                                   m_mesh_slot_count                                = 0;

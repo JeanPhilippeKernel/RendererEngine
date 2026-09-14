@@ -8,15 +8,11 @@ namespace ZEngine::Rendering::Renderers
 {
     struct SkyboxPass : public IRenderGraphCallbackPass
     {
-        // Set before Register() is called. Empty string = no env map, pass is absent.
-        cstring                              EnvMapPath = nullptr;
-
-        // Scene configuration loads the environment texture before the pass enters
-        // a frame graph.
-        bool                                 ConfigureEnvironmentMap(cstring path);
+        /// @brief Selects the render-thread-published environment snapshot for this frame.
+        void                                 SetEnvironmentMap(Textures::TextureHandle environment_map);
 
         bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        /// @brief Builds the static PSO recipe for skybox geometry.
+        /// @brief Builds the static PSO recipe for the full-screen sky draw.
         Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
         void                                 Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
         virtual void                         Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
@@ -27,9 +23,6 @@ namespace ZEngine::Rendering::Renderers
         }
 
     private:
-        Textures::TextureHandle m_env_map             = {};
-        uint32_t                m_vtx_offset          = 0;
-        uint32_t                m_idx_offset          = 0;
-        bool                    m_geometry_registered = false;
+        Textures::TextureHandle m_env_map = {};
     };
 } // namespace ZEngine::Rendering::Renderers

@@ -242,7 +242,10 @@ namespace ZEngine::Rendering::Scenes
         PaddedAtomic<uint64_t>                m_seq              = {};
         PaddedAtomic<int32_t>                 SelectedInstanceId = {};
         PaddedAtomic<bool>                    InstancesDirty[3]  = {};
-        PaddedAtomic<bool>                    SkyDirty[3]        = {};
+        // Incremented by the main/editor thread after changing Sky. The copied
+        // config and this revision travel together through RenderFrameState, so
+        // the render thread never reads mutable scene-owned sky data directly.
+        PaddedAtomic<uint64_t>                SkyRevision        = {.value = 1};
         PaddedAtomic<bool>                    GridDirty[3]       = {};
 
         uint32_t                              AddMeshInstance(const uuids::uuid& uuid, const char* name);

@@ -67,7 +67,13 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ImportBuffer(RendererBufferName::CullingInput, &RenderSceneData->CullingInputBuffers[0]);
         RenderGraph->ImportBuffer(RendererBufferName::CulledIndirect, &RenderSceneData->CulledIndirectBuffers[0]);
         ZENGINE_VALIDATE_ASSERT(Device->RRM != nullptr, "Graphic renderer requires a render resource manager")
-        auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+        auto*      rrm                  = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+        const auto fallback_environment = rrm->GetOrCreateFallbackCubemap();
+        if (!fallback_environment.Valid())
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Failed to create the fallback cubemap; sky rendering is disabled")
+        m_sky_environment.Initialize(fallback_environment);
+        m_skybox_pass = skybox_pass;
+        m_skybox_pass->SetEnvironmentMap(fallback_environment);
         RenderGraph->ImportBuffer(RendererBufferName::GlobalVertex, rrm->GetGlobalVertexBuffer());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalIndex, rrm->GetGlobalIndexBuffer());
 
@@ -91,6 +97,14 @@ namespace ZEngine::Rendering::Renderers
         m_frame_output_index.value.store(UINT64_MAX, std::memory_order_relaxed);
         m_frame_output_generation.value.store(0, std::memory_order_relaxed);
         m_frame_output_sequence.value.fetch_add(1, std::memory_order_release);
+        const Textures::TextureHandle active_bake_texture = m_sky_environment.Shutdown();
+        if (active_bake_texture.Valid())
+            Device->DestroyTexture(active_bake_texture);
+        Textures::TextureHandle retired_sky_texture = {};
+        while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_texture))
+            Device->DestroyTexture(retired_sky_texture);
+        m_skybox_pass = nullptr;
+
         RenderGraph->Dispose();
         if (RenderSceneData)
         {
@@ -180,35 +194,57 @@ namespace ZEngine::Rendering::Renderers
         Device->RequestDescriptorUpdate(output);
     }
 
-    void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky)
+    void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky, uint64_t revision)
     {
-        auto* pass = RenderGraph->GetPass("Skybox Pass");
-        if (!pass)
-            return;
-        auto* skybox_pass = static_cast<SkyboxPass*>(pass->Callback);
+        if (m_sky_environment.SubmitConfig(sky, revision))
+            StartPendingSkyBake();
+        PollSkyBake();
+    }
 
-        // The legacy SkyboxPass only presents HDRI sources. The new scene
-        // contract carries a stable source UUID, never the native/cache path
-        // that this pass ultimately needs to load.
-        if (!sky.IsValid() || !sky.IsHDRI() || sky.EnvironmentMap.is_nil())
+    void GraphicRenderer::BeginSkyFrame()
+    {
+        PollSkyBake();
+        StartPendingSkyBake();
+        CollectRetiredSkySnapshots();
+
+        const Scenes::SkyEnvironmentSnapshot* snapshot = m_sky_environment.AcquireForFrame();
+        if (!snapshot || !m_skybox_pass)
+            return;
+
+        m_skybox_pass->SetEnvironmentMap(snapshot->SourceRadiance);
+        Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
+    }
+
+    void GraphicRenderer::StartPendingSkyBake()
+    {
+        Scenes::SkyEnvironmentBakeRequest request = {};
+        if (!m_sky_environment.TakeBakeRequest(request))
+            return;
+
+        // The first production sky pass only prepares HDRI source radiance.
+        // Analytic atmosphere and SkySphere are intentionally kept on the valid
+        // neutral fallback until their graph bake producers land in #802.
+        if (!request.Config.IsHDRI() || request.Config.EnvironmentMap.is_nil())
         {
-            skybox_pass->ConfigureEnvironmentMap(nullptr);
+            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: {} source baking is not implemented yet", request.Revision, request.Config.IsHDRI() ? "an HDRI without an asset" : "analytic")
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
 
-        auto* asset_manager = ZEngine::Managers::AssetManager::Instance();
-        if (!asset_manager || !asset_manager->Registry)
+        auto* const asset_manager = ZEngine::Managers::AssetManager::Instance();
+        auto* const rrm           = Device && Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+        if (!asset_manager || !asset_manager->Registry || !rrm)
         {
-            ZENGINE_CORE_ERROR("[Renderer] Asset registry is not available — disabling legacy skybox pass")
-            skybox_pass->ConfigureEnvironmentMap(nullptr);
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: asset services are unavailable", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
 
-        const auto* environment = asset_manager->Registry->FindByUUID(sky.EnvironmentMap);
+        const auto* const environment = asset_manager->Registry->FindByUUID(request.Config.EnvironmentMap);
         if (!environment)
         {
-            ZENGINE_CORE_ERROR("[Renderer] HDRI asset is not registered — disabling legacy skybox pass")
-            skybox_pass->ConfigureEnvironmentMap(nullptr);
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI asset is not registered", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
 
@@ -216,16 +252,116 @@ namespace ZEngine::Rendering::Renderers
         environment->Path.ResolveNative(asset_manager->CurrentWorkingSpacePath, native_path, sizeof(native_path));
         if (native_path[0] == '\0')
         {
-            ZENGINE_CORE_ERROR("[Renderer] HDRI asset has no resolvable source path — disabling legacy skybox pass")
-            skybox_pass->ConfigureEnvironmentMap(nullptr);
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI path cannot be resolved", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
 
-        if (!skybox_pass->ConfigureEnvironmentMap(native_path))
+        const Textures::TextureHandle source_radiance = rrm->SubmitTextureFile(native_path, {}, true);
+        if (!source_radiance.Valid() || !m_sky_environment.AttachBakeResource(request.Revision, source_radiance))
         {
-            skybox_pass->ConfigureEnvironmentMap(nullptr);
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI decode could not be scheduled", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, source_radiance, false);
             return;
         }
+
+        ZENGINE_CORE_INFO("[SkyEnvironment] Baking HDRI revision {}", request.Revision)
+    }
+
+    void GraphicRenderer::PollSkyBake()
+    {
+        const Scenes::SkyEnvironmentBakeRequest* const bake            = m_sky_environment.GetActiveBake();
+        const Textures::TextureHandle                  source_radiance = m_sky_environment.GetActiveBakeSource();
+        if (!bake || !source_radiance.Valid() || !Device || !Device->RRM)
+            return;
+
+        auto* const                                                rrm          = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+        const Rendering::RenderResourceManager::TextureDecodeState decode_state = rrm->GetTextureDecodeState(source_radiance);
+        if (decode_state == Rendering::RenderResourceManager::TextureDecodeState::Pending)
+            return;
+
+        const uint64_t revision = bake->Revision;
+        if (decode_state != Rendering::RenderResourceManager::TextureDecodeState::Succeeded)
+        {
+            rrm->ForgetTextureDecode(source_radiance);
+            m_sky_environment.CompleteBake(revision, source_radiance, false);
+            Device->DestroyTexture(source_radiance);
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} failed to decode; retaining the previous ready environment or fallback", revision)
+            StartPendingSkyBake();
+            return;
+        }
+
+        const Hardwares::StreamingUploadTicket* const ticket = rrm->FindStreamingUploadTicket(source_radiance);
+        if (!ticket || !ticket->CompletionTimeline)
+            return;
+
+        uint64_t completed_value = 0;
+        vkGetSemaphoreCounterValue(Device->LogicalDevice, ticket->CompletionTimeline->GetHandle(), &completed_value);
+        if (completed_value < ticket->CompletionValue)
+            return;
+
+        const Hardwares::StreamingUploadTicket completed_ticket = *ticket;
+        rrm->ForgetTextureDecode(source_radiance);
+        const Scenes::SkyEnvironmentBakeResult result = m_sky_environment.CompleteBake(revision, source_radiance, true);
+        if (result == Scenes::SkyEnvironmentBakeResult::Published)
+        {
+            ZENGINE_CORE_INFO("[SkyEnvironment] Published HDRI revision {}", revision)
+        }
+        else
+        {
+            // This source was never imported into a graph pass. Its upload is
+            // complete, so it can be discarded without invalidating a frame.
+            rrm->AcknowledgeStreamingUploadTicket(completed_ticket);
+            Device->DestroyTexture(source_radiance);
+            if (result == Scenes::SkyEnvironmentBakeResult::Discarded)
+                ZENGINE_CORE_INFO("[SkyEnvironment] Discarded stale HDRI revision {}", revision)
+            else
+                ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} could not publish; retaining the previous ready environment or fallback", revision)
+        }
+        StartPendingSkyBake();
+    }
+
+    void GraphicRenderer::CollectRetiredSkySnapshots()
+    {
+        if (!Device || !Device->SwapchainPtr || !Device->SwapchainPtr->RenderTimeline)
+            return;
+
+        uint64_t completed_timeline_value = 0;
+        vkGetSemaphoreCounterValue(Device->LogicalDevice, Device->SwapchainPtr->RenderTimeline->GetHandle(), &completed_timeline_value);
+
+        Textures::TextureHandle retired_source = {};
+        while (m_sky_environment.TakeRetiredSnapshot(completed_timeline_value, retired_source))
+            DiscardSkyTexture(retired_source);
+    }
+
+    void GraphicRenderer::DiscardSkyTexture(Textures::TextureHandle texture)
+    {
+        if (!texture.Valid() || !Device)
+            return;
+
+        // A stale or retired source is never imported again. If it completed a
+        // streamed upload without becoming the published snapshot, consume its
+        // ticket before scheduling normal timeline-gated destruction.
+        if (Device->RRM)
+        {
+            auto* const rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+            if (const Hardwares::StreamingUploadTicket* ticket = rrm->FindStreamingUploadTicket(texture))
+                rrm->AcknowledgeStreamingUploadTicket(*ticket);
+            rrm->ForgetTextureDecode(texture);
+        }
+        Device->DestroyTexture(texture);
+    }
+
+    void GraphicRenderer::OnSkyFrameSubmitted(void* context, Rendering::Primitives::Semaphore* /*timeline*/, uint64_t timeline_value)
+    {
+        if (context)
+            static_cast<GraphicRenderer*>(context)->m_sky_environment.ReleaseSubmittedFrame(timeline_value);
+    }
+
+    void GraphicRenderer::OnSkyFrameCancelled(void* context)
+    {
+        if (context)
+            static_cast<GraphicRenderer*>(context)->m_sky_environment.ReleaseCancelledFrame();
     }
 
     void GraphicRenderer::ApplyGridConfig(const Scenes::GridConfig& cfg)

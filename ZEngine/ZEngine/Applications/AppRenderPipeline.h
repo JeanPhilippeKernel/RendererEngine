@@ -24,6 +24,10 @@ namespace ZEngine::Applications
     {
         Rendering::Cameras::CameraFrameData Camera         = {};
         Rendering::Scenes::RenderScenePtr   Scene          = nullptr;
+        // Immutable authoring copy paired with the scene revision. The render
+        // thread must consume this instead of reading Scene->Sky directly.
+        Rendering::Scenes::SkyConfig        Sky            = {};
+        uint64_t                            SkyRevision    = 0;
         uint32_t                            RenderTargetW  = 0;
         uint32_t                            RenderTargetH  = 0;
         uint64_t                            ResizeSequence = 0;
@@ -65,7 +69,7 @@ namespace ZEngine::Applications
         bool                                     BeginFrame();
         void                                     EndFrame();
 
-        void                                     RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay);
+        void                                     RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, uint64_t sky_revision, const Rendering::Renderers::ZUIRenderPayload* overlay);
 
         void                                     BeginOverlayFrame(float dt = 0.f);
         void                                     EndOverlayFrame();

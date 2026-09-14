@@ -406,7 +406,12 @@ namespace ZEngine::Hardwares
     void DeviceSwapchain::Present()
     {
 
-        auto discard_submission_callbacks = [this]() { RenderWorkSubmittedCallbacks.clear(); };
+        auto discard_submission_callbacks = [this]() {
+            for (const RenderWorkSubmissionCallback& callback : RenderWorkSubmittedCallbacks)
+                if (callback.Cancel)
+                    callback.Cancel(callback.Context);
+            RenderWorkSubmittedCallbacks.clear();
+        };
 
         if (Recreation == RecreationState::FrameAborted)
         {
@@ -646,9 +651,9 @@ namespace ZEngine::Hardwares
         }
     }
 
-    void DeviceSwapchain::EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context)
+    void DeviceSwapchain::EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context, RenderWorkCancelledFn cancel_fn)
     {
         if (fn)
-            RenderWorkSubmittedCallbacks.push({.Function = fn, .Context = context});
+            RenderWorkSubmittedCallbacks.push({.Function = fn, .Cancel = cancel_fn, .Context = context});
     }
 } // namespace ZEngine::Hardwares

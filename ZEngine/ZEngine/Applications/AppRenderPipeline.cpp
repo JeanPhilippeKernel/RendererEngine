@@ -175,16 +175,13 @@ namespace ZEngine::Applications
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
-    void AppRenderPipeline::RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Renderers::ZUIRenderPayload* overlay)
+    void AppRenderPipeline::RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, uint64_t sky_revision, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
         auto swpachain    = Device->SwapchainPtr;
         auto frame_index  = swpachain->CurrentFrame->Index;
         auto thread_index = RenderMainThreadIndex;
 
-        if (scene->SkyDirty[frame_index].value.exchange(false, std::memory_order_acquire))
-        {
-            SceneRenderer->ApplySkyConfig(scene->Sky);
-        }
+        SceneRenderer->ApplySkyConfig(sky, sky_revision);
 
         if (scene->GridDirty[frame_index].value.exchange(false, std::memory_order_acquire))
         {
@@ -312,6 +309,7 @@ namespace ZEngine::Applications
         }
 
         ZUIRenderPass->SetPayload(overlay);
+        SceneRenderer->BeginSkyFrame();
         CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
         ZUIRenderPass->SetPayload(nullptr);
     }

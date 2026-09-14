@@ -7,18 +7,22 @@ TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapsh
 {
     AppRenderPipeline pipeline{};
 
-    RenderFrameState  first = {};
-    first.Camera.Position.x = 1.0f;
-    first.ResizeSequence    = 1;
-    first.RenderTargetW     = 1280;
-    first.RenderTargetH     = 720;
+    RenderFrameState  first        = {};
+    first.Camera.Position.x        = 1.0f;
+    first.ResizeSequence           = 1;
+    first.RenderTargetW            = 1280;
+    first.RenderTargetH            = 720;
+    first.SkyRevision              = 4;
+    first.Sky.EnvironmentIntensity = 1.0f;
     pipeline.PublishFrameState(first);
 
-    RenderFrameState latest  = first;
-    latest.Camera.Position.x = 3.0f;
-    latest.ResizeSequence    = 2;
-    latest.RenderTargetW     = 1920;
-    latest.RenderTargetH     = 1080;
+    RenderFrameState latest         = first;
+    latest.Camera.Position.x        = 3.0f;
+    latest.ResizeSequence           = 2;
+    latest.RenderTargetW            = 1920;
+    latest.RenderTargetH            = 1080;
+    latest.SkyRevision              = 5;
+    latest.Sky.EnvironmentIntensity = 2.0f;
     pipeline.PublishFrameState(latest);
 
     RenderFrameState read = {};
@@ -27,6 +31,8 @@ TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapsh
     EXPECT_EQ(read.ResizeSequence, 2u);
     EXPECT_EQ(read.RenderTargetW, 1920u);
     EXPECT_EQ(read.RenderTargetH, 1080u);
+    EXPECT_EQ(read.SkyRevision, 5u);
+    EXPECT_FLOAT_EQ(read.Sky.EnvironmentIntensity, 2.0f);
 }
 
 TEST(AppRenderPipelineMailboxTest, OverlayBuildIsPacedAndCanReplaceRetainedOverlay)

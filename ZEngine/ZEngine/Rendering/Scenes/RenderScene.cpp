@@ -98,8 +98,7 @@ namespace ZEngine::Rendering::Scenes
 
     void RenderScene::MarkSkyDirty()
     {
-        for (auto& flag : SkyDirty)
-            flag.value.store(true, std::memory_order_release);
+        SkyRevision.value.fetch_add(1, std::memory_order_release);
     }
 
     void RenderScene::GetInstancesSnapshot(Core::Memory::ArenaAllocator* scratch, Core::Containers::Array<MeshInstance>& out) const
