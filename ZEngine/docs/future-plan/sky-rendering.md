@@ -2,7 +2,7 @@
 
 **Relates to:** render-graph integration, render-graph redesign, GPU allocator rearchitecture, per-frame upload heap
 **Replaces:** the legacy SkyboxPass after feature parity is validated
-**Status:** Production design, pending implementation
+**Status:** Production design; renderer foundations in progress
 **Scope:** scene-owned sky configuration, HDRI and analytic-sky presentation, atmosphere rendering, and the environment lighting resources consumed by the renderer.
 
 ---
@@ -260,7 +260,7 @@ The PSO cache owns pipeline creation and invalidation. SkyEnvironment owns textu
 
 Shader hot reload validates the reflected interface before descriptor replay. If the interface no longer matches the callback's required logical bindings, the pass is rebuilt or safely omitted while the fallback sky remains usable. A failed pipeline bake or missing descriptor is surfaced through diagnostics; it must not leave command recording in a silent no-op state.
 
-The current ComputePass binding surface is buffer-only. Before any sky compute stage is implemented, rendering needs a shared graphics/compute descriptor binder that supports dynamic uniform buffers, sampled images, samplers, storage images, and storage buffers; records those bindings for shader-interface replay; and validates a complete descriptor set before dispatch. RenderGraph resource synchronization must route declared image bindings through this generic binder rather than only through GraphicPass texture helpers.
+The renderer foundation provides one graphics/compute descriptor binder for dynamic uniform buffers, sampled images, samplers, storage images, and storage buffers. It records bindings for shader-interface replay and requires complete descriptor bindings before dispatch. RenderGraph routes declared sampled and storage-image resources through this generic binder. Sky passes remain responsible for declaring their exact bindings and subresource ranges; this support alone does not schedule, allocate, or bake sky resources.
 
 ### 5.2 Code boundaries and allocation policy
 
@@ -426,7 +426,7 @@ Device startup validates all required image usage combinations. In particular:
 - maximum 2D/3D/cubemap dimensions, array layers, storage-image descriptor counts, and push-constant limits are checked against the selected quality tier.
 - unsupported optional modes remain unavailable with a readable reason; the fallback sky remains available.
 
-TextureSpecification and the render graph must first support a true depth extent, 3D image type/view creation, and 3D resource compatibility. A 32 x 32 x 32 LUT cannot be represented as a 2D texture with a layer count.
+TextureSpecification and the render graph support a true depth extent, 3D image type/view creation, and 3D resource compatibility. A 32 x 32 x 32 LUT is a volume texture, not a 2D texture with a layer count. The sky implementation still performs the capability checks above before it enables atmosphere mode.
 
 All values below use binary units and exclude transient command/descriptors:
 
@@ -502,7 +502,7 @@ Unsupported tiers are not release failures when capability detection clearly dis
 
 | Step | Deliverable | Depends on |
 |---:|---|---|
-| 0 | HDR scene-colour pipeline, post-processing ordering, 3D texture/render-graph support, graphics/compute image-descriptor binder, reserved-set validation, format-capability service | Renderer foundations |
+| 0 | HDR scene-colour pipeline, post-processing ordering, 3D texture/render-graph support, graphics/compute image-descriptor binder, reserved-set validation, format-capability service | Renderer foundations (3D resource and descriptor-binder support in progress) |
 | 1 | Breaking SkyConfig schema, stable asset reference, project defaults, engine fallback environment | Asset and scene systems |
 | 2 | Persistent SkyEnvironment snapshots, timeline-safe publish/retirement, graph-import contract, diagnostic state | Step 1 |
 | 3 | Engine-global BRDF LUT and fallback IBL; LightingPass descriptor integration | Step 2 |

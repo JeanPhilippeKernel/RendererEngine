@@ -789,7 +789,7 @@ namespace ZEngine::Rendering::Renderers
         RGResourceHandle                        SetImportedResource(const RGImportedResource& resource);
         Specifications::RenderPassSpecification BuildRenderPassSpecification(const RGPass& pass) const;
         void                                    SynchronizeCompiledPassResources(RGPass& pass);
-        void                                    BindDeclaredBufferResources(RGPass& pass);
+        void                                    BindDeclaredResources(RGPass& pass);
         void                                    BuildLifetimes();
         void                                    AllocateTransientResources();
         void                                    BuildAliasingBarriers();

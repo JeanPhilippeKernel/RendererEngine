@@ -1409,7 +1409,7 @@ namespace ZEngine::Hardwares
         return dst_pipeline_stage;
     }
 
-    BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, uint32_t mip_level_count, VkImageCreateFlags image_create_flag_bit, cstring debug_name)
+    BufferImage VulkanDevice::CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, uint32_t mip_level_count, VkImageCreateFlags image_create_flag_bit, cstring debug_name, uint32_t depth)
     {
         VkImageCreateInfo image_create_info            = {};
         image_create_info.sType                        = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1417,7 +1417,7 @@ namespace ZEngine::Hardwares
         image_create_info.imageType                    = image_type;
         image_create_info.extent.width                 = width;
         image_create_info.extent.height                = height;
-        image_create_info.extent.depth                 = 1;
+        image_create_info.extent.depth                 = depth;
         image_create_info.mipLevels                    = mip_level_count;
         image_create_info.arrayLayers                  = layer_count;
         image_create_info.format                       = image_format;
@@ -1440,7 +1440,7 @@ namespace ZEngine::Hardwares
         return buffer_image;
     }
 
-    BufferImage VulkanDevice::CreateAliasingImage(const BufferImage& backing, uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, uint32_t mip_level_count, VkImageCreateFlags image_create_flag_bit, cstring debug_name)
+    BufferImage VulkanDevice::CreateAliasingImage(const BufferImage& backing, uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, uint32_t mip_level_count, VkImageCreateFlags image_create_flag_bit, cstring debug_name, uint32_t depth)
     {
         VkImageCreateInfo image_create_info = {};
         image_create_info.sType             = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1448,7 +1448,7 @@ namespace ZEngine::Hardwares
         image_create_info.imageType         = image_type;
         image_create_info.extent.width      = width;
         image_create_info.extent.height     = height;
-        image_create_info.extent.depth      = 1;
+        image_create_info.extent.depth      = depth;
         image_create_info.mipLevels         = mip_level_count;
         image_create_info.arrayLayers       = layer_count;
         image_create_info.format            = image_format;
@@ -2440,7 +2440,7 @@ namespace ZEngine::Hardwares
         vkCmdCopyBuffer(m_command_buffer, source, destination, 1, &region);
     }
 
-    void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset)
+    void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset, uint32_t depth)
     {
         ZENGINE_VALIDATE_ASSERT(m_command_buffer != nullptr, "Command buffer can't be null")
 
@@ -2453,7 +2453,7 @@ namespace ZEngine::Hardwares
         buffer_image_copy.imageSubresource.baseArrayLayer = 0;
         buffer_image_copy.imageSubresource.layerCount     = layer_count;
         buffer_image_copy.imageOffset                     = {0, 0, 0};
-        buffer_image_copy.imageExtent                     = {width, height, 1};
+        buffer_image_copy.imageExtent                     = {width, height, depth};
 
         vkCmdCopyBufferToImage(m_command_buffer, source.Handle, destination.Handle, new_layout, 1, &buffer_image_copy);
     }
@@ -2557,10 +2557,18 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
 
+        VkImageType                     image_type        = VK_IMAGE_TYPE_2D;
         Specifications::ImageViewType   image_view_type   = Specifications::ImageViewType::TYPE_2D;
         Specifications::ImageCreateFlag image_create_flag = Specifications::ImageCreateFlag::NONE;
 
-        if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
+        if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE)
+        {
+            ZENGINE_VALIDATE_ASSERT(Specification.Depth > 0, "3D image depth must be greater than zero")
+            ZENGINE_VALIDATE_ASSERT(Specification.LayerCount == 1, "3D images cannot use array layers")
+            image_type      = VK_IMAGE_TYPE_3D;
+            image_view_type = Specifications::ImageViewType::TYPE_3D;
+        }
+        else if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
         {
             image_view_type   = Specifications::ImageViewType::TYPE_CUBE;
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
@@ -2569,7 +2577,7 @@ namespace ZEngine::Hardwares
         VkImageCreateFlags image_create_flags = Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)];
         if (Specification.IsAliasable)
             image_create_flags |= VK_IMAGE_CREATE_ALIAS_BIT;
-        m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specification.MipLevelCount, image_create_flags, DebugName);
+        m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, image_type, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specification.MipLevelCount, image_create_flags, DebugName, Specification.Depth);
     }
 
     void ImageBuffer::ConstructAliasing(Hardwares::VulkanDevice* device, const BufferImage& backing)
@@ -2583,9 +2591,17 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
 
+        VkImageType                     image_type        = VK_IMAGE_TYPE_2D;
         Specifications::ImageViewType   image_view_type   = Specifications::ImageViewType::TYPE_2D;
         Specifications::ImageCreateFlag image_create_flag = Specifications::ImageCreateFlag::NONE;
-        if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
+        if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE)
+        {
+            ZENGINE_VALIDATE_ASSERT(Specification.Depth > 0, "3D image depth must be greater than zero")
+            ZENGINE_VALIDATE_ASSERT(Specification.LayerCount == 1, "3D images cannot use array layers")
+            image_type      = VK_IMAGE_TYPE_3D;
+            image_view_type = Specifications::ImageViewType::TYPE_3D;
+        }
+        else if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP)
         {
             image_view_type   = Specifications::ImageViewType::TYPE_CUBE;
             image_create_flag = Specifications::ImageCreateFlag::CUBE_COMPATIBLE_BIT;
@@ -2594,7 +2610,7 @@ namespace ZEngine::Hardwares
         VkImageCreateFlags image_create_flags = Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)];
         if (Specification.IsAliasable)
             image_create_flags |= VK_IMAGE_CREATE_ALIAS_BIT;
-        m_buffer_image = Device->CreateAliasingImage(backing, Specification.Width, Specification.Height, VK_IMAGE_TYPE_2D, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specification.MipLevelCount, image_create_flags, DebugName);
+        m_buffer_image = Device->CreateAliasingImage(backing, Specification.Width, Specification.Height, image_type, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specification.MipLevelCount, image_create_flags, DebugName, Specification.Depth);
     }
 
     ImageBuffer::~ImageBuffer()
@@ -2694,6 +2710,10 @@ namespace ZEngine::Hardwares
     // ImageBuffer's Specification from a TextureSpecification. Does not call Construct().
     static void PopulateTextureResource(const Rendering::Specifications::TextureSpecification& spec, Rendering::Textures::Texture* resource, ImageBuffer* buffer_res, VulkanDevice* device)
     {
+        ZENGINE_VALIDATE_ASSERT(!spec.Is3D || !spec.IsCubemap, "A texture cannot be both a cubemap and a 3D image")
+        ZENGINE_VALIDATE_ASSERT(!spec.Is3D || spec.LayerCount == 1, "3D textures cannot use array layers")
+        ZENGINE_VALIDATE_ASSERT(spec.Depth > 0, "Texture depth must be greater than zero")
+
         resource->Specification         = spec;
         resource->Width                 = spec.Width;
         resource->Height                = spec.Height;
@@ -2703,7 +2723,8 @@ namespace ZEngine::Hardwares
         {
             const uint32_t mip_width  = std::max(1u, spec.Width >> mip);
             const uint32_t mip_height = std::max(1u, spec.Height >> mip);
-            resource->BufferSize += static_cast<VkDeviceSize>(mip_width) * mip_height * spec.BytePerPixel * spec.LayerCount;
+            const uint32_t mip_depth  = spec.Is3D ? std::max(1u, spec.Depth >> mip) : 1u;
+            resource->BufferSize += static_cast<VkDeviceSize>(mip_width) * mip_height * mip_depth * spec.BytePerPixel * spec.LayerCount;
         }
         resource->IsDepthTexture        = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE);
 
@@ -2712,11 +2733,11 @@ namespace ZEngine::Hardwares
         uint32_t transfert_src_bit      = spec.IsUsageTransferSource ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0;
         uint32_t sampled_bit            = spec.IsUsageSampled ? VK_IMAGE_USAGE_SAMPLED_BIT : 0;
         uint32_t image_aspect           = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        uint32_t image_usage_attachment = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        uint32_t image_usage_attachment = spec.Is3D ? 0 : (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
         VkFormat image_format            = (spec.Format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? device->FindDepthFormat() : Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
-        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .ImageViewTypeValue = spec.IsCubemap ? Specifications::ImageViewType::TYPE_CUBE : Specifications::ImageViewType::TYPE_2D, .BufferUsageType = spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .MipLevelCount = spec.MipLevelCount, .LayerCount = spec.LayerCount};
+        buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .Depth = spec.Depth, .ImageViewTypeValue = spec.Is3D ? Specifications::ImageViewType::TYPE_3D : spec.IsCubemap ? Specifications::ImageViewType::TYPE_CUBE : Specifications::ImageViewType::TYPE_2D, .BufferUsageType = spec.Is3D ? Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE : spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .MipLevelCount = spec.MipLevelCount, .LayerCount = spec.LayerCount};
         buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_dst_bit | transfert_src_bit | sampled_bit | storage_bit);
         buffer_res->Specification.IsAliasable = spec.IsAliasable;
     }
@@ -2956,7 +2977,7 @@ namespace ZEngine::Hardwares
             BufferView ring_view = {};
             ring_view.Handle     = GpuMem.Ring.Buffer;
             ring_view.Allocation = GpuMem.Ring.Allocation;
-            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)], ring_offset);
+            command_buf->CopyBufferToImage(ring_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)], ring_offset, resource->Specification.Depth);
             // Ring owns lifetime, caller must not free — but must call GpuMem.Ring.Submit
             // once it knows the timeline value this copy will signal (see out_ring_offset).
             if (out_ring_offset)
@@ -2966,7 +2987,7 @@ namespace ZEngine::Hardwares
 
         BufferView staging_view = CreateBuffer(resource->BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, Core::Memory::GpuMemoryDomain::HostStaging, "WriteTextureData_staging");
         MapAndCopyToMemory(staging_view, resource->BufferSize, data);
-        command_buf->CopyBufferToImage(staging_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)]);
+        command_buf->CopyBufferToImage(staging_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)], 0, resource->Specification.Depth);
         return staging_view;
     }
 

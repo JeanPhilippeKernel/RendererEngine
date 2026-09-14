@@ -100,6 +100,51 @@ namespace
     void TestReadbackCallback(const void* /*data*/, size_t /*size*/, void* /*context*/) {}
 } // namespace
 
+TEST(TextureSpecificationTest, DefaultsDescribeAnEmpty2DTexture)
+{
+    ZEngine::Rendering::Specifications::TextureSpecification specification;
+
+    EXPECT_TRUE(specification.IsUsageSampled);
+    EXPECT_FALSE(specification.IsUsageStorage);
+    EXPECT_TRUE(specification.IsUsageTransfert);
+    EXPECT_FALSE(specification.IsUsageTransferSource);
+    EXPECT_FALSE(specification.IsAliasable);
+    EXPECT_FALSE(specification.IsCubemap);
+    EXPECT_FALSE(specification.Is3D);
+    EXPECT_EQ(specification.Width, 0U);
+    EXPECT_EQ(specification.Height, 0U);
+    EXPECT_EQ(specification.Depth, 1U);
+    EXPECT_EQ(specification.BytePerPixel, 4U);
+    EXPECT_EQ(specification.MipLevelCount, 1U);
+    EXPECT_EQ(specification.LayerCount, 1U);
+    EXPECT_EQ(specification.Format, ZEngine::Rendering::Specifications::ImageFormat::UNDEFINED);
+    EXPECT_EQ(specification.LoadOp, ZEngine::Rendering::Specifications::LoadOperation::CLEAR);
+    EXPECT_FLOAT_EQ(specification.ClearColor[0], 0.0f);
+    EXPECT_FLOAT_EQ(specification.ClearColor[1], 0.0f);
+    EXPECT_FLOAT_EQ(specification.ClearColor[2], 0.0f);
+    EXPECT_FLOAT_EQ(specification.ClearColor[3], 0.0f);
+    EXPECT_FLOAT_EQ(specification.ClearDepth, 1.0f);
+    EXPECT_EQ(specification.ClearStencil, 0U);
+}
+
+TEST(ImageBufferSpecificationTest, DefaultsDescribeAnEmpty2DColorImage)
+{
+    ZEngine::Rendering::Specifications::ImageBufferSpecification specification;
+
+    EXPECT_EQ(specification.Width, 0U);
+    EXPECT_EQ(specification.Height, 0U);
+    EXPECT_EQ(specification.Depth, 1U);
+    EXPECT_EQ(specification.ImageViewTypeValue, ZEngine::Rendering::Specifications::ImageViewType::TYPE_2D);
+    EXPECT_EQ(specification.BufferUsageType, ZEngine::Rendering::Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE);
+    EXPECT_EQ(specification.ImageFormat, VK_FORMAT_UNDEFINED);
+    EXPECT_EQ(specification.ImageUsage, 0U);
+    EXPECT_EQ(specification.ImageAspectFlag, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(specification.MipLevelCount, 1U);
+    EXPECT_EQ(specification.LayerCount, 1U);
+    EXPECT_EQ(specification.ImageCreateFlagValue, ZEngine::Rendering::Specifications::ImageCreateFlag::NONE);
+    EXPECT_FALSE(specification.IsAliasable);
+}
+
 TEST(RenderGraphTransientPoolTest, RequiresUsageSupersetForAliasing)
 {
     MemoryManager manager{};
@@ -123,7 +168,36 @@ TEST(RenderGraphTransientPoolTest, RequiresUsageSupersetForAliasing)
     transfer_source.IsUsageTransferSource = true;
     EXPECT_FALSE(pool.TryAlias(transfer_source, 1).Valid());
 
+    auto volume  = base;
+    volume.Is3D  = true;
+    volume.Depth = 32;
+    EXPECT_FALSE(pool.TryAlias(volume, 1).Valid());
+
     EXPECT_TRUE(pool.TryAlias(base, 1).Valid());
+    manager.Shutdown();
+}
+
+TEST(RenderGraphTransientPoolTest, RequiresIdenticalVolumeDepthForAliasing)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto&           arena = manager.MainArena;
+
+    RGTransientPool pool;
+    pool.Initialize(&arena);
+
+    ZEngine::Rendering::Specifications::TextureSpecification volume{};
+    volume.Is3D   = true;
+    volume.Width  = 32;
+    volume.Height = 32;
+    volume.Depth  = 32;
+    volume.Format = ZEngine::Rendering::Specifications::ImageFormat::R16G16B16A16_SFLOAT;
+    pool.Register({1, 0}, volume, 0);
+
+    auto different_depth  = volume;
+    different_depth.Depth = 16;
+    EXPECT_FALSE(pool.TryAlias(different_depth, 1).Valid());
+    EXPECT_TRUE(pool.TryAlias(volume, 1).Valid());
     manager.Shutdown();
 }
 
