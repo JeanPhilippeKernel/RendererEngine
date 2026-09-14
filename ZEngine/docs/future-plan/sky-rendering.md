@@ -1,473 +1,517 @@
-# Sky Rendering Systems
+# Sky Rendering System
 
-**Relates to:** `render-graph-integration.md`, `render-graph-redesign.md`, `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`
-**Replaces:** `SkyboxPass` (currently in `RendererPasses.h`)
-**Status:** Design
-**Scope:** Four sky rendering backends and the `SkySystem` coordinator that activates exactly one backend per scene.
+**Relates to:** render-graph integration, render-graph redesign, GPU allocator rearchitecture, per-frame upload heap
+**Replaces:** the legacy SkyboxPass after feature parity is validated
+**Status:** Production design, pending implementation
+**Scope:** scene-owned sky configuration, HDRI and analytic-sky presentation, atmosphere rendering, and the environment lighting resources consumed by the renderer.
 
 ---
 
-## 1. Motivation and Scope
+## 1. Goals and boundaries
 
-The current `SkyboxPass` samples a `textureCube` bound to `set 0 binding 1`. It requires that the application always load a cube-map texture and provides no path for procedural atmospheres, image-based lighting capture, or lightweight gradient skies. Replacing it with a choice of four backends covers the full range of project needs from a simple editor background to a physically-based outdoor sky with aerial perspective.
+The sky system has two distinct responsibilities:
 
-| System | Mode value | Use case |
+1. Present background radiance and atmospheric effects for a particular render view.
+2. Produce stable image-based-lighting (IBL) inputs for the scene.
+
+They share inputs, but they do not have the same lifetime or update frequency. Keeping them separate is essential for multiple viewports, asynchronous baking, and a renderer that never binds invalid textures.
+
+| Visual mode | Background source | Environment lighting |
 |---|---|---|
-| `SkyAtmospherePass` | `SkyMode::Atmosphere` | Full physically-based outdoor sky |
-| `SkyLightPass` | `SkyMode::Atmosphere` (auxiliary) | IBL capture from the active sky |
-| `HDRIBackdropPass` | `SkyMode::HDRI` | Artist-supplied equirectangular HDR image |
-| `SkySpherePass` | `SkyMode::SkySphere` | Lightweight gradient or texture-based sky |
+| Atmosphere | Analytic atmosphere | Captured sky-radiance cubemap, then baked IBL |
+| HDRI | Cooked HDR cubemap | The same cooked cubemap, then baked IBL |
+| SkySphere | Analytic gradient and optional sun disc | Engine-provided neutral fallback environment |
 
-`SkyLightPass` is not a standalone mode — it always runs alongside `SkyAtmospherePass` or `HDRIBackdropPass` to provide the diffuse irradiance and specular pre-filtered environment map consumed by the deferred lighting pass. The existing `SkyboxPass` struct, its vertex and fragment shaders (`skybox.vert`, `skybox.frag`), and the cube-map sampler binding at `set 0 binding 1` are removed once all four backends are validated.
+SkySphere intentionally does not generate a physically accurate environment capture. It must nevertheless leave lighting with valid fallback descriptors. No mode may produce an unbound descriptor, a null texture, or a black editor viewport solely because an asset is loading or failed.
+
+Version 1 covers the three modes above, a robust IBL lifecycle, and correct HDR composition. Volumetric clouds, weather, stars, moon phases, local reflection probes, sky blending, and atmosphere volume shadows are follow-up features. The design leaves extension points for them without making them prerequisites.
+
+### 1.1 Post-version-1 extension points
+
+Version 1 deliberately has one global environment per scene. Future work may add:
+
+- separate background, diffuse-IBL, specular-IBL, reflection-capture, and ray-visibility controls;
+- cross-fading between two ready snapshots for HDRI changes, weather, or time-of-day transitions, with an explicit doubled-memory budget;
+- local reflection probes, environment volumes, and baked indirect-lighting integration for interiors;
+- clouds, fog volumes, precipitation, stars, moon, and planet/terrain shadows layered into both presentation and relevant lighting captures;
+- stereo/XR multiview and high-resolution offline/cinematic capture policies.
+
+These extensions consume the same immutable snapshot, RenderView, graph-declaration, and timeline-retirement contracts defined below. They must not introduce special global state or bypass the environment lifetime model.
 
 ---
 
-## 2. SkyMode Enum and SkyConfig
+## 2. Ownership, configuration, and units
 
-```cpp
-// ZEngine/Rendering/Sky/SkyConfig.h
+Sky configuration is owned by the scene or render world. A project may supply defaults, but it must not be the sole owner: different scenes can legitimately use different skies. The serialized scene representation is versioned and contains a stable environment asset reference, never a raw retained character pointer or an absolute working-space path.
+
+Sky serialization is not yet stable, so this change intentionally breaks the current string-based schema. Existing sky fields are not migrated. Scenes authored before this schema either receive the new default SkyConfig on load or must be resaved by the editor, according to the scene-version policy selected for the implementation.
+
+The exact engine type follows the asset-manager API, but the conceptual configuration is:
+
+~~~cpp
 enum class SkyMode : uint8_t
 {
-    Atmosphere = 0,  // SkyAtmospherePass + SkyLightPass
-    HDRI       = 1,  // HDRIBackdropPass  + SkyLightPass
-    SkySphere  = 2,  // SkySpherePass only; no IBL capture
+    Atmosphere,
+    HDRI,
+    SkySphere,
 };
 
 struct SkyConfig
 {
-    SkyMode Mode = SkyMode::Atmosphere;
+    SkyMode        Mode = SkyMode::Atmosphere;
+    AssetReference EnvironmentMap = {}; // Stable asset UUID/handle, not cstring.
 
-    // SkyAtmospherePass params
-    Core::Maths::Vec4f RayleighScattering    = { 5.802e-6f, 13.558e-6f, 33.100e-6f, 0.0f };
-    float              RayleighScaleHeight    = 8000.0f;
-    float              MieScattering          = 3.996e-6f;
-    float              MieAbsorption          = 4.400e-6f;
-    float              MieScaleHeight         = 1200.0f;
-    float              MieAnisotropy          = 0.8f;
-    float              OzoneLayerCentre       = 25000.0f;
-    float              OzoneLayerWidth        = 15000.0f;
-    Core::Maths::Vec4f OzoneAbsorption        = { 0.650e-6f, 1.881e-6f, 0.085e-6f, 0.0f };
-    float              PlanetRadiusKm         = 6360.0f;
-    float              AtmosphereRadiusKm     = 6420.0f;
-    float              SunAngularRadiusDeg    = 0.5334f;
-    float              SunIlluminanceScale    = 10.0f;
+    // Shared artistic controls. These affect the visual and IBL source consistently.
+    float          EnvironmentIntensity = 1.0f;
+    Vec4f          EnvironmentTint = {1.0f, 1.0f, 1.0f, 1.0f};
+    float          EnvironmentYawRadians = 0.0f;
+    EntityId       PrimaryCelestialLight = {}; // Optional; invalid means no direct sun.
 
-    // HDRIBackdropPass params
-    cstring            EnvironmentMapPath     = nullptr;  // VFS path to .hdr / .exr asset
-    float              HDRIExposure           = 1.0f;
-    Core::Maths::Vec4f HDRITint               = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-    // SkySpherePass params
-    Core::Maths::Vec4f HorizonColor           = { 0.53f, 0.81f, 0.98f, 1.0f };
-    Core::Maths::Vec4f ZenithColor            = { 0.10f, 0.31f, 0.72f, 1.0f };
-    Core::Maths::Vec4f GroundColor            = { 0.30f, 0.27f, 0.24f, 1.0f };
-    float              SunDiscSize            = 0.005f;
-    float              SunDiscIntensity       = 5.0f;
-    float              HorizonSharpness       = 8.0f;
-    bool               ShowSunDisc            = true;
+    AtmosphereSettings Atmosphere = {};
+    SkySphereSettings  Sphere = {};
 };
-```
+~~~
 
-project.json extension:
+The sky system distinguishes two change domains:
 
-```json
+- The environment bake key contains source content, atmosphere physical parameters, resolved sun state, shader version, and quality tier. A change creates a new SkyEnvironment revision.
+- The presentation state contains dynamic values that can be applied at sampling time, such as HDRI yaw, a linear intensity multiplier, tint, and SkySphere colours. It combines SkyConfig with RenderView camera/post-processing inputs and is refreshed per frame without rebuilding cubemaps.
+
+HDRI yaw transforms the lookup direction for both background and IBL sampling; tint and intensity multiply both paths in linear colour. These operations are rotationally/equivariantly valid and do not require a rebake. Display exposure remains a camera/post-processing control. Asset completion and hot reload increment the bake key only when the completed asset is still the requested asset. This makes stale asynchronous completions harmless.
+
+### 2.1 Configuration validity and migration
+
+SkyConfig is data, not a live GPU resource. Game/editor code submits an immutable copy to the renderer; the renderer validates it before it becomes an environment revision.
+
+- All numeric values must be finite. Radii and scale heights are positive, atmosphere radius exceeds planet radius, scattering/absorption values are non-negative, and anisotropy is constrained away from its singular limits.
+- A missing primary celestial light is a documented no-sun state: there is no sun disc or direct-sun contribution. It does not select an arbitrary scene light.
+- An unknown mode, an unresolved asset reference, an invalid HDR image, or an unsupported device feature selects the safe fallback environment and produces one actionable diagnostic.
+- Repeated edits within a frame coalesce to the newest revision. Undo/redo uses the same revision path and does not mutate an already-published GPU snapshot.
+
+Newly saved scenes write only the typed mode and stable asset reference. Generated cooked-cache paths are never serialized as scene identity.
+
+### 2.2 Coordinate convention
+
+Atmosphere shaders use kilometres internally. Scattering coefficients are uploaded in inverse kilometres; authoring data expressed in inverse metres is converted once during upload. Planet radii, scale heights, ozone-layer values, and camera altitude use kilometres.
+
+The scene supplies:
+
+- a planet centre in world space;
+- the scene world-unit-to-metre scale;
+- a camera position relative to that centre, converted to kilometres with a numerically stable large-world/floating-origin path.
+
+The public contract also defines coordinate handedness, cubemap face orientation, the sign of the light direction, and whether a directional light points toward or away from its source. The same primary celestial light drives the sun disc, atmosphere, direct lighting, and sun shadows. Selecting the first active directional light is not deterministic enough for this role. Solar angular radius and illuminance use documented physical units; any artistic multiplier is named and applied consistently to background radiance and environment lighting.
+
+---
+
+## 3. Resource model and lifetime
+
+The implementation separates persistent environment resources from transient per-view resources.
+
+~~~text
+Scene SkyConfig
+       |
+       v
+SkyEnvironment revision
+       |---- persistent atmosphere LUTs
+       |---- persistent source-radiance cubemap
+       |---- persistent irradiance + specular IBL cubemaps
+       |
+       +---- SkyEnvironmentSnapshot (fallback | baking | ready | failed)
+
+RenderView
+       |---- transient sky-view LUT
+       |---- transient aerial-perspective LUT
+       +---- final sky composition
+~~~
+
+### 3.1 SkyEnvironment
+
+A SkyEnvironment belongs to one scene/render world. It owns the persistent source radiance, static atmosphere LUTs where applicable, and a published IBL snapshot. The BRDF integration LUT is engine-global, keyed by shader and quality version, because it is independent of the scene sky.
+
+Environment baking writes a next snapshot. The renderer continues reading the previous ready snapshot, or the engine fallback snapshot, until the next one is complete. Publication happens only after the GPU work has completed according to its timeline value. Replaced snapshots remain pinned until all submitted users have retired; only then can their textures be freed.
+
+The state machine is:
+
+~~~text
+fallback -> baking(revision N) -> ready(revision N)
+                       |
+                       +--> failed(revision N), keep previous ready or fallback
+~~~
+
+A boolean dirty flag is not sufficient: it can lose a newer revision while an older bake is in flight.
+
+### 3.2 SkyViewResources
+
+Sky-view and aerial-perspective LUTs are per RenderView because camera altitude, near/far range, and projection differ between the editor, game view, scene capture, reflection capture, and multiple viewports. They are transient graph resources and are recreated or resized with the render view, not with the swapchain globally.
+
+Static transmittance and multiscattering LUTs may be shared by views using the same environment revision. They must not be overwritten while a prior frame still samples them.
+
+### 3.3 Frame and thread ownership
+
+Only the render thread creates, updates, publishes, pins, or retires SkyEnvironment GPU resources. Editor/game threads send immutable configuration revisions through the renderer mailbox. Import workers may decode and cook assets, but completion is returned as a revision-tagged message; a worker never writes Vulkan descriptors or environment state directly.
+
+At frame start, the renderer acquires one ready snapshot and pins it for that frame. Every lighting and sky pass in that frame binds that same snapshot. The pin is released only after the frame submission receives its timeline value. This prevents mixed old/new IBL bindings within one frame and prevents a hot-reloaded resource from being freed while a command buffer still references it.
+
+Descriptor writes are scoped to a reusable frame slot only after that slot's prior submission has retired. Publishing a new snapshot updates future frame slots; it never overwrites descriptors still visible to an in-flight command buffer.
+
+An obsolete bake that has not been submitted may be cancelled. A submitted obsolete bake is allowed to finish, but its result is discarded unless its revision is still current. The bake scheduler has a bounded queue and a configurable time budget; it never accumulates one expensive full bake for every slider edit.
+
+Shutdown first unregisters asset-completion listeners and stops accepting bake work. It then retires pinned snapshots through the normal device-timeline path before the device allocator is destroyed. Worker completion messages received during shutdown are discarded without dereferencing scene or renderer state.
+
+---
+
+## 4. Render-graph contract
+
+The render graph owns frame-pass instantiation, resource versions, barriers, and scheduling. SkySystem owns configuration, environment revisions, and GPU-resource snapshots. It does not mutate graph internals and does not call Compile during a frame.
+
+All sky callbacks are registered as persistent callbacks at renderer initialization. On each graph frame, their Register method either declares the exact resources it uses or returns false to omit itself. Mode switching is therefore a normal per-frame declaration change, not a graph rebuild driven by registration order.
+
+Persistent environment textures are imported into the graph with their established layout. A bake callback declares writes to the next snapshot; lighting declares reads from the exact published snapshot. The graph is responsible for the resulting image layout transitions, queue ownership transfers, and synchronization. A callback having no framebuffer attachment does not exempt it from resource declarations.
+
+EnvironmentBake is a logical subgraph, not one opaque callback containing every dispatch. Each producer/consumer boundary is a graph pass: static atmosphere LUT generation, atmosphere source-radiance capture, HDRI source preparation when needed, BRDF generation, diffuse convolution, and specular prefilter. Sky-view generation, aerial in-scattering, aerial transmittance, and final composition are likewise separate passes. This lets the graph derive barriers between stages; only dispatches with no graph-visible dependency remain within one callback.
+
+The last writer exports each next-snapshot resource in its intended read layout. Publication records that layout with the snapshot, so the next frame imports a known state rather than guessing from the previous mode. A streamed HDR source is imported through the graph's streaming-acquire path before a source-preparation or IBL pass reads it; the bake scheduler never bypasses the upload ownership transfer.
+
+Environment-bake passes request asynchronous compute only when the graph can schedule it safely for the device queue topology. On a device without useful asynchronous compute, they run in graphics-queue order with identical resource declarations and correctness. Timestamps are reported only where the device exposes a comparable clock domain.
+
+### 4.1 Frame topology
+
+The logical frame flow is:
+
+~~~text
+Depth / G-buffer
+        |
+        +--> optional EnvironmentBake subgraph -> next persistent snapshot
+        |
+published IBL snapshot --> Deferred Lighting -> HDR opaque scene
+                                           |
+per-view sky LUTs --------------------------+
+                                           v
+                           Sky composite -> HDR scene with atmosphere
+                                           |
+                           Forward transparencies and overlays
+                                           |
+                           Exposure / bloom / tone mapping
+~~~
+
+An environment bake may overlap the frame, but lighting reads only a completed snapshot. The initial frame reads an engine fallback snapshot rather than stalling.
+
+For atmosphere mode, the bake path has a required producer chain:
+
+~~~text
+transmittance + multiscattering LUTs
+                 -> atmosphere source-radiance cubemap
+                 -> irradiance and specular prefilter
+                 -> published IBL snapshot
+~~~
+
+A sky-view LUT is camera dependent and is not an IBL source. IBL always reads the explicitly produced source-radiance cubemap.
+
+### 4.2 Composition contract
+
+Sky composition consumes the depth result and opaque HDR scene colour. For a geometry pixel at camera distance d:
+
+~~~text
+outRadiance = opaqueRadiance * transmittance(d) + inScatteredRadiance(d)
+~~~
+
+For a background pixel, it writes sky radiance directly. The pass defines the depth-clear test for both standard and reverse-Z, reconstructs position/distance using the active projection convention, and keeps sun/background visibility correctly occluded by geometry.
+
+Composition writes a distinct HDR resource version, for example HDRSceneComposited. It must not sample and render to the same HDR image unless an explicitly supported attachment-feedback-loop design is adopted. A separate output is the portable baseline.
+
+If opaque rendering uses multisampled depth, composition reads the resolved depth that matches the opaque HDR scene. HDR scene alpha has one renderer-wide meaning and is never repurposed to store atmospheric transmittance.
+
+Forward transparent materials render after the background is present. They use the same atmospheric transmittance/in-scattering convention when atmospheric perspective is enabled; otherwise transparent objects would remain visually detached from the opaque scene.
+
+### 4.3 Render-view sizing and temporal stability
+
+The render-view extent, not the swapchain extent, sizes per-view sky resources. A zero-width or zero-height view declares no sky work and preserves the last valid viewport output. A viewport resize invalidates only that RenderView's transient LUTs and composition target; it never invalidates the shared source cubemap or IBL snapshot.
+
+Fixed-resolution LUT quality tiers are permitted, but their sampling transform must be derived from the current view projection and aspect ratio. The final composite always matches the active render-view extent. If a future quality tier uses temporal accumulation, it defines a stable sampling sequence, reprojection validity, camera-cut reset, dynamic-resolution reset, and deterministic test mode. Temporal history is never reused across different views or sky revisions.
+
+When temporal anti-aliasing is enabled, the sky integration supplies an explicit infinite-depth/background classification and a rotational motion-vector or reactive-mask policy. It prevents camera jitter, a newly visible sun disc, and HDRI rotation from producing ghost trails.
+
+---
+
+## 5. Descriptor and pipeline contract
+
+Descriptor layouts are pipeline-owned and shader-reflection validated. This document defines stable logical resource names and types, not contradictory independent set-number tables. The shader source, reflection data, and C++ binding code for each pipeline must agree exactly.
+
+The engine already reserves descriptor set 1 for the bindless texture array and global samplers. Sky-specific UBO, sampled-image, sampler, and storage-image declarations must not redefine that set or its bindings. Dedicated sky descriptor sets are allocated after every engine-reserved set, and reflection validation rejects a collision before a pipeline can bake.
+
+| Logical group | Required resources | Lifetime |
+|---|---|---|
+| PerView | Camera UBO / dynamic offset | Per RenderView, per frame |
+| AtmosphereParameters | Atmosphere UBO / dynamic offset | Per environment revision or frame |
+| SkyInputs | Transmittance, multiscatter, sky-view, aerial LUTs, or source cubemap | Imported/transient as declared |
+| SkyStorage | Storage views for the exact LUT/cubemap mip and layer being written | Bake or per-view compute |
+| LightingIBL | Diffuse irradiance, specular environment, BRDF LUT | Published snapshot |
+
+Every pipeline has a single reflected layout. No shader may reuse one binding for incompatible descriptor types within that layout. Required bindings are verified before commands are recorded; an invalid binding must produce a clear validation/error path, not a silent no-op.
+
+Cubemaps are sampled through cube views. Compute writes use a compatible 2D-array storage view for the selected faces and mip level, then the result is sampled through the cube view. Layer and mip subresource ranges are declared explicitly to the graph.
+
+### 5.1 PSO and binding lifetime
+
+Each sky graphics or compute pipeline is a normal renderer PSO. Its immutable key contains the shader identity/interface, attachment formats, sample count, raster/depth/blend state, and static specialization values. It does not contain a SkyConfig revision, a texture handle, a dynamic UBO offset, a viewport extent, or a per-frame resource.
+
+The PSO cache owns pipeline creation and invalidation. SkyEnvironment owns textures and data snapshots. Render-graph callbacks declare resource use and bind the chosen snapshot in Prepare. This separation avoids per-frame PSO creation while allowing any environment revision to reuse the same compatible pipeline.
+
+Shader hot reload validates the reflected interface before descriptor replay. If the interface no longer matches the callback's required logical bindings, the pass is rebuilt or safely omitted while the fallback sky remains usable. A failed pipeline bake or missing descriptor is surfaced through diagnostics; it must not leave command recording in a silent no-op state.
+
+The current ComputePass binding surface is buffer-only. Before any sky compute stage is implemented, rendering needs a shared graphics/compute descriptor binder that supports dynamic uniform buffers, sampled images, samplers, storage images, and storage buffers; records those bindings for shader-interface replay; and validates a complete descriptor set before dispatch. RenderGraph resource synchronization must route declared image bindings through this generic binder rather than only through GraphicPass texture helpers.
+
+### 5.2 Code boundaries and allocation policy
+
+SkySystem is a scene-environment coordinator. SkyEnvironment owns persistent resource snapshots and revision state. Individual graph callbacks own only pass declaration, descriptor preparation, and command recording. RenderGraph remains generic: it knows imported resources, transient resources, subresource ranges, and synchronization, but contains no sky-specific state or scheduling rules.
+
+EnvironmentMapImporter owns source validation and cooked-artifact creation. The asset manager owns source identity and hot-reload notifications. GraphicRenderer selects a snapshot at frame start but does not decode assets or own the environment-resource lifetime.
+
+Persistent texture allocations occur only for fallback initialization, a new environment revision, or a selected quality tier. Per-frame work uses the graph frame arena and existing per-frame descriptor storage; it must not introduce a general heap allocation in view updates, command recording, or descriptor binding.
+
+The initial component boundary is:
+
+~~~text
+SkySystem / SkyEnvironment             configuration, revisions, snapshots
+AtmosphereStaticLutPass                transmittance and multiscattering
+SkySourceRadiancePass                  atmosphere capture or prepared HDRI source
+EnvironmentIBLBakePass                 BRDF, diffuse irradiance, specular prefilter
+SkyViewLutPass / AerialPerspectivePass per-RenderView lookup textures
+SkyCompositePass                       depth-aware HDR scene composition
+SkySpherePass                          analytic background mode
+EnvironmentMapImporter                 cooked source artifact
+~~~
+
+---
+
+## 6. SkySphere presentation
+
+SkySphere is a fullscreen background pass. It reconstructs a view ray using the active projection convention, ignores camera translation, and writes linear scene radiance. The gradient uses the ray elevation; its optional sun disc uses a dot-product threshold against the primary celestial direction rather than an expensive inverse cosine.
+
+The push-constant block contains four Vec4 values and four scalar values, for exactly 80 bytes. It has no trailing pad:
+
+~~~cpp
+struct SkySpherePush
 {
-    "sky": {
-        "mode": "atmosphere",
-        "environmentMap": "$(workingSpace)/Assets/HDRI/outdoor_noon.hdr"
-    }
-}
-```
-
-When `mode` is `"atmosphere"` or `"skySphere"`, the `environmentMap` field is not required. When `mode` is `"hdri"`, a missing `environmentMap` causes `HDRIBackdropPass` to render solid black until an asset is assigned at runtime.
-
----
-
-## 3. SkyAtmospherePass
-
-### 3.1 Theory
-
-Based on Bruneton 2017 and Hillaire 2020. Uses four pre-computed lookup tables rebuilt only when atmosphere parameters change. Per-frame cost is two full-screen triangle dispatches: one for the sky-view LUT and one to composite aerial perspective over scene geometry.
-
-Scattering model: Rayleigh from air molecules (wavelength-dependent, isotropic phase function), Mie from aerosols (Henyey-Greenstein, asymmetry `g`), ozone absorption (Gaussian layer at 25 km). Sun direction derived from the scene's first active directional light.
-
-### 3.2 LUT inventory
-
-| LUT | Dimensions | Format | Rebuilt when | GpuMemoryDomain |
-|---|---|---|---|---|
-| Transmittance LUT | 256x64 | `R11G11B10_UFLOAT` | Atmosphere params change | `DeviceTexture` |
-| Multiscattering LUT | 32x32 | `RGBA16F` | Atmosphere params change | `DeviceTexture` |
-| Sky-view LUT | 192x108 | `RGBA16F` | Every frame | `RenderTarget` |
-| Aerial perspective LUT | 32x32x32 | `RGBA16F` | Every frame | `RenderTarget` |
-
-Transmittance and multiscattering LUTs are persistent — allocated once via `GpuAllocator::AllocateImage(DeviceTexture)`, uploaded via the staging ring when parameters change. Sky-view and aerial perspective are transient render targets declared as RenderGraph resources.
-
-### 3.3 Atmosphere UBO
-
-```cpp
-// sizeof(SkyAtmosphereUBO) == 160 bytes, std140-compatible
-// Pushed into PerFrameUploadHeap each frame via:
-//   heap.Push(&atmo_ubo, sizeof(SkyAtmosphereUBO), device->MinUniformBufferOffsetAlignment())
-struct SkyAtmosphereUBO
-{
-    Core::Maths::Vec4f RayleighScattering;     //   0
-    Core::Maths::Vec4f MieScattering;          //  16
-    Core::Maths::Vec4f MieAbsorption;          //  32
-    Core::Maths::Vec4f OzoneAbsorption;        //  48
-    float              PlanetRadius;           //  64
-    float              AtmosphereRadius;       //  68
-    float              RayleighScaleHeight;    //  72
-    float              MieScaleHeight;         //  76
-    float              MieAnisotropy;          //  80
-    float              OzoneLayerCentre;       //  84
-    float              OzoneLayerWidth;        //  88
-    float              SunIlluminanceScale;    //  92
-    Core::Maths::Vec4f SunDirection;           //  96
-    float              SunAngularRadius;       // 112
-    float              _pad[3];                // 116
-    Core::Maths::Vec4f CameraPositionKm;       // 128
-    float              _pad2[4];               // 144
-};
-// static_assert(sizeof(SkyAtmosphereUBO) == 160);
-```
-
-### 3.4 GLSL binding layout
-
-```glsl
-// set 0 binding 0 — camera UBO (dynamic offset, shared with all passes)
-// set 0 binding 1 — SkyAtmosphereUBO (dynamic offset, PerFrameUploadHeap)
-
-// LUT samplers (sky-view and combine passes)
-layout(set = 1, binding = 0) uniform sampler2D  u_transmittance_lut;
-layout(set = 1, binding = 1) uniform sampler2D  u_multiscatter_lut;
-layout(set = 1, binding = 2) uniform sampler2D  u_skyview_lut;
-layout(set = 1, binding = 3) uniform sampler3D  u_aerial_perspective_lut;
-
-// LUT generation outputs (compute passes — storage images)
-layout(set = 1, binding = 0, r11f_g11f_b10f) uniform writeonly image2D  o_transmittance;
-layout(set = 1, binding = 0, rgba16f)          uniform writeonly image2D  o_multiscatter;
-layout(set = 1, binding = 0, rgba16f)          uniform writeonly image2D  o_skyview;
-layout(set = 1, binding = 0, rgba16f)          uniform writeonly image3D  o_aerial_persp;
-```
-
-Shader files:
-- `sky_transmittance.comp` — local_size 8x8x1, 256x64 output, optical depth integration
-- `sky_multiscatter.comp` — local_size 1x1x64, 32x32 output, first N scattering orders
-- `sky_skyview.comp` — local_size 8x8x1, 192x108, non-linear lat-lon parameterisation (Hillaire 2020)
-- `sky_aerial_perspective.comp` — local_size 8x8x1, 32x32x32, froxel in-scatter integration
-- `sky_combine.frag` — composite sky over geometry; aerial perspective for scene pixels, sky-view for background pixels
-
-### 3.5 Render graph integration
-
-```
-Setup():
-    declare transient RenderTargets: "sky_view_lut" (192x108 RGBA16F),
-                                     "aerial_persp" (32x32x32 RGBA16F)
-    inputs:  hdr_depth (for aerial perspective compositing)
-    outputs: hdr_lit (sky written on top), sky_view_lut, aerial_persp
-
-Execute():
-    1. if LUTsDirty:
-           dispatch transmittance compute (32x8 groups)
-           barrier: compute SHADER_WRITE -> SHADER_READ
-           dispatch multiscatter compute
-           barrier: compute SHADER_WRITE -> SHADER_READ
-           LUTsDirty = false
-    2. dispatch sky-view LUT compute (24x14 groups)
-    3. dispatch aerial perspective LUT compute (4x4x8 groups)
-    4. sky combine fullscreen draw(3,1,0,0) onto hdr_lit
-```
-
-### 3.6 Memory budget
-
-| Resource | Format | Size | Domain |
-|---|---|---|---|
-| Transmittance LUT | R11G11B10_UFLOAT | 256x64 = 64 KB | `DeviceTexture` |
-| Multiscattering LUT | RGBA16F | 32x32 = 8 KB | `DeviceTexture` |
-| Sky-view LUT | RGBA16F | 192x108 = 162 KB | `RenderTarget` |
-| Aerial perspective LUT | RGBA16F | 32x32x32 = 256 KB | `RenderTarget` |
-| SkyAtmosphereUBO in heap | — | 160 B per frame-in-flight | `HostUniform` |
-| **Total** | | **~490 KB** | |
-
----
-
-## 4. SkyLightPass
-
-### 4.1 Purpose
-
-Captures sky radiance into three IBL resources for the deferred lighting pass:
-- Diffuse irradiance cubemap — 32x32 per face, `RGBA16F`, 6 faces
-- Specular pre-filtered env map — 128x128 base, 5 mip levels, `RGBA16F`, 6 faces
-- BRDF integration LUT — 512x512, `RG16F` (split-sum `A` and `B` terms)
-
-The BRDF LUT depends only on roughness and view angle. It is computed once at startup and never rebuilt. The diffuse and specular cubemaps are rebuilt on scene open, `SkyMode` change, and when `SkyAtmospherePass::MarkLUTsDirty()` is called.
-
-### 4.2 Capture trigger
-
-`SkySystem::m_ibl_dirty` is set in:
-- `SkySystem::Initialize()` — always capture on first frame
-- `SkySystem::SetConfig(cfg)` when mode changes
-- `SkyAtmospherePass::MarkLUTsDirty()` — atmosphere params changed
-- `HDRIBackdropPass::OnHDRIReady()` — new HDRI loaded
-
-`SkyLightPass::Execute()` exits early if `!SkySystem::IsIBLDirty()`.
-
-### 4.3 GLSL shader layout
-
-```glsl
-// Source sky input (cubemap from atmosphere or HDRI conversion)
-layout(set = 0, binding = 0) uniform samplerCube u_sky_cubemap;
-
-// IBL output storage images
-layout(set = 0, binding = 1, rgba16f) uniform writeonly imageCube o_irradiance;
-layout(set = 0, binding = 2, rgba16f) uniform writeonly imageCube o_prefiltered_mip;
-
-// Push constants
-layout(push_constant) uniform IBLPush {
-    uint  FaceIndex;
-    uint  MipLevel;
-    float Roughness;
-    uint  SampleCount;  // 1024 for prefiltered mip0, 64 for irradiance
-} pc;
-```
-
-Shader files:
-- `sky_brdf_lut.comp` — split-sum GGX A/B, 512x512 RG16F, local_size 8x8x1, run once at startup
-- `sky_irradiance.comp` — cosine-weighted hemisphere integral, 64 samples, local_size 8x8x6, 32x32 cubemap output
-- `sky_prefilter.comp` — GGX NDF importance sampling, 1024 samples at mip0, local_size 8x8x1
-
-### 4.4 Integration with LightingPass
-
-`SkyLightPass` exposes three getters. `LightingPass::Compile` calls them and binds to set 4:
-
-```glsl
-layout(set = 4, binding = 0) uniform samplerCube u_diffuse_irradiance;
-layout(set = 4, binding = 1) uniform samplerCube u_specular_env_map;
-layout(set = 4, binding = 2) uniform sampler2D   u_brdf_lut;
-```
-
-### 4.5 Memory budget
-
-| Resource | Format | Size | Domain |
-|---|---|---|---|
-| Diffuse irradiance cubemap | RGBA16F | 32x32x6 = 48 KB | `DeviceTexture` |
-| Specular env map cubemap | RGBA16F | 128x128x6 + 4 mips ≈ 1 MB | `DeviceTexture` |
-| BRDF integration LUT | RG16F | 512x512 = 512 KB | `DeviceTexture` |
-| **Total** | | **~1.5 MB** | |
-
----
-
-## 5. HDRIBackdropPass
-
-### 5.1 Pipeline
-
-1. User places an `.hdr` or `.exr` in their project assets
-2. Editor import pipeline (via `IAssetImporter`) converts to internal format and stores in `{project}/Assets/HDRI/`
-3. `project.json` references the asset: `"sky": { "mode": "hdri", "environmentMap": "$(workingSpace)/Assets/HDRI/noon.hdr" }`
-4. At scene load, `SkySystem::SetConfig` requests async load via the asset pipeline
-5. On completion, `HDRIBackdropPass::OnHDRIReady(equirect_handle)` fires from the render thread
-6. Next `Execute()` dispatches the equirect-to-cubemap compute
-7. Every subsequent frame: fullscreen triangle backdrop draw only
-
-When `EnvironmentMapPath` is null or asset fails to load: renders solid black background. No crash, no error log spam — only a single `ZENGINE_CORE_WARN` on first miss.
-
-### 5.2 GLSL shader layout
-
-**Equirect-to-cubemap compute** (`hdri_equirect_to_cube.comp`, local_size 8x8x6, dispatch 64x64x1 groups for 512x512 faces):
-
-```glsl
-layout(set = 0, binding = 0) uniform sampler2D   u_equirect;
-layout(set = 0, binding = 1, rgba16f) uniform writeonly imageCube o_cubemap;
-layout(push_constant) uniform EquirectPush { uint FaceSize; } pc;
-// Converts cube face texel to direction, then maps to equirectangular UV via atan2/asin.
-```
-
-**Backdrop fullscreen** (`hdri_backdrop.frag`):
-
-```glsl
-layout(set = 0, binding = 0) uniform samplerCube u_hdri_cubemap;
-// Camera UBO at set 0 binding 1 (dynamic offset)
-layout(push_constant) uniform BackdropPush { float exposure; float tint[3]; } pc;
-// Reconstructs world-space ray via inverse(mat4(mat3(View))) * inv_proj * clip.
-// Samples cubemap along ray. Applies exposure and tint.
-```
-
-### 5.3 Memory budget
-
-| Resource | Format | Size | Domain |
-|---|---|---|---|
-| Equirect source 4K | RGBA32F | 4096x2048 = 128 MB | `DeviceTexture` |
-| Equirect source 2K | RGBA32F | 2048x1024 = 32 MB | `DeviceTexture` |
-| Converted cubemap | RGBA16F | 512x512x6 = 6 MB | `DeviceTexture` |
-
-Recommendation: import pipeline should offer optional downscale to 2K on import to reduce VRAM cost from 128 MB to 32 MB. If `GpuAllocator::HeapPressure` exceeds `WarnPressure (0.90)`, the import pipeline should trigger downscale automatically.
-
----
-
-## 6. SkySpherePass
-
-A lightweight fallback — fullscreen triangle with analytical gradient sky, optional sun disc, no LUTs, no cubemap. All parameters pass via push constants (80 bytes).
-
-```cpp
-struct SkySpherePush  // 80 bytes, within 128-byte guaranteed minimum
-{
-    float HorizonColor[4];
-    float ZenithColor[4];
-    float GroundColor[4];
-    float SunDirection[4];  // w unused
-    float SunDiscSize;
+    Vec4f HorizonColor;
+    Vec4f ZenithColor;
+    Vec4f GroundColor;
+    Vec4f SunDirection;
+    float SunDiscAngularRadiusRadians;
     float SunDiscIntensity;
     float HorizonSharpness;
-    float ShowSunDisc;      // float bool
-    float _pad;
+    float ShowSunDisc;
 };
-```
+static_assert(sizeof(SkySpherePush) == 80);
+~~~
 
-**sky_sphere.frag** — trilinear gradient above/below horizon, Henyey-Greenstein-like sun disc via `acos(dot(dir, sun_dir)) < SunDiscSize`. Zero auxiliary GPU resources.
-
----
-
-## 7. SkySystem
-
-Coordinator. Owns all four pass instances. Activates exactly one backend per frame. Drives `SkyLightPass` when mode is `Atmosphere` or `HDRI`.
-
-```cpp
-struct SkySystem
-{
-    void Initialize(VulkanDevice*, RenderGraph*, ArenaAllocator*);
-    void Update(const SkyConfig& cfg);      // call each frame from render thread
-    void RegisterPasses(RenderGraph*);
-    void Dispose();
-
-    bool IsIBLDirty()   const;
-    void ConsumeIBLDirty();
-    void MarkIBLDirty();
-
-    SkyLightPass* GetSkyLightPass();
-    SkyMode       GetActiveMode() const;
-
-private:
-    SkyConfig         m_config;
-    SkyMode           m_active_mode = SkyMode::Atmosphere;
-    bool              m_ibl_dirty   = true;
-    bool              m_mode_changed = false;
-
-    SkyAtmospherePass m_atmosphere_pass;
-    SkyLightPass      m_sky_light_pass;
-    HDRIBackdropPass  m_hdri_pass;
-    SkySpherePass     m_skysphere_pass;
-};
-```
-
-`RegisterPasses` is called from `GraphicRenderer::RegisterPasses` in place of the old `SkyboxPass` registration:
-
-```cpp
-// Mode = Atmosphere or HDRI: register SkyLightPass first (IBL needed before LightingPass)
-graph->AddCallbackPass("SkyLightPass", &m_sky_light_pass, mode != SkySphere);
-
-switch (mode) {
-    case Atmosphere: graph->AddCallbackPass("SkyAtmospherePass", &m_atmosphere_pass, true); break;
-    case HDRI:       graph->AddCallbackPass("HDRIBackdropPass",  &m_hdri_pass,        true); break;
-    case SkySphere:  graph->AddCallbackPass("SkySpherePass",     &m_skysphere_pass,   true); break;
-}
-graph->NodeMap["SkyboxPass"].Enabled = false;  // disable legacy pass
-```
-
-Mode changes at runtime require `RenderGraph::Compile()` — `SkySystem::Update` sets `m_mode_changed`; `GraphicRenderer::DrawScene` detects it and calls `m_render_graph->Compile()` before the next `Execute()`.
-
-Sun direction is derived from the scene's first active directional light each frame in `SkySystem::Update`. Falls back to `normalize(1,1,0)` if no directional light exists.
+The implementation also checks the device push-constant limit during capability initialization. SkySphere presentation does not alter the fallback IBL snapshot used by lighting.
 
 ---
 
-## 8. Render Graph Pass Order
+## 7. Atmosphere rendering
 
-```
-[DepthPrePass]         -> hdr_depth
-[GeometryPass]         -> hdr_gbuffer
-[SkyLightPass]         (conditional; rebuilds IBL cubemaps if dirty)
-[LightingPass]         -> hdr_lit   (reads gbuffer + IBL from SkyLightPass)
-[SkyAtmospherePass]    (or HDRIBackdropPass, or SkySpherePass)
-    reads hdr_depth    (sky/geometry compositing)
-    writes hdr_lit     (additive sky luminance)
-[BloomThresholdPass]   -> bloom_threshold
-[ToneMappingPass]      -> ldr_color
-```
+The atmosphere implementation follows the Bruneton/Hillaire family of techniques, but its numerical and renderer contracts are explicit.
 
-`SkyLightPass` declares no RenderGraph attachments (its IBL cubemaps are persistent externals). Its graph registration ensures `Setup` and `Execute` are called in the correct frame slot before `LightingPass` consumes the IBL handles.
+| Resource | Resolution | Preferred format | Update cadence | Ownership |
+|---|---:|---|---|---|
+| Transmittance | 256 x 64 | R11G11B10_UFLOAT when storage-supported; otherwise RGBA16F | Atmosphere revision | SkyEnvironment |
+| Multiscattering | 32 x 32 | RGBA16F | Atmosphere revision | SkyEnvironment |
+| Source-radiance cubemap | Quality tier, initially 512 per face | RGBA16F | Atmosphere or sun revision | SkyEnvironment |
+| Sky-view LUT | Quality tier, initially 192 x 108 | RGBA16F | Per RenderView | Transient graph resource |
+| Aerial in-scattering | Quality tier, initially 32 x 32 x 32 | RGBA16F | Per RenderView | Transient graph resource |
+| Aerial transmittance | Quality tier, initially 32 x 32 x 32 | RGBA16F | Per RenderView | Transient graph resource |
 
----
+All generated LUTs are GPU-written storage images. They are not uploaded through the staging ring; staging is reserved for external asset data. The graph declares storage writes and sampled reads so the required barriers are generated rather than hand-maintained inside unrelated passes.
 
-## 9. Descriptor Set Assignment
+At the initial 32 x 32 x 32 aerial resolution, an 8 x 8 x 4 kernel dispatches 4 x 4 x 8 workgroups. Implementations derive those counts with ceiling division from the selected quality tier rather than relying on hard-coded dimensions.
 
-| Set | Binding | Purpose |
-|---|---|---|
-| 0 | 0 | Camera UBO (UNIFORM_BUFFER_DYNAMIC, PerFrameUploadHeap) |
-| 0 | 1..N | Pass-specific LUT samplers / cubemaps |
-| 1 | 0 | `SkyAtmosphereUBO` (UNIFORM_BUFFER_DYNAMIC, PerFrameUploadHeap) |
-| 2 | 0-3 | IBL outputs for LightingPass (diffuse irradiance, specular env map, BRDF LUT) |
+Sun changes invalidate the source-radiance cubemap and its IBL output. Static transmittance and multiscattering LUTs need not be regenerated for a direction-only sun change. A continuously animated day/night cycle uses a quality budget or progressive bake policy so it cannot hitch the editor.
 
-Sky passes do not use the global bindless texture array. LUTs and cubemaps are explicit combined image samplers.
+The atmosphere UBO is std140-aligned and checked with size and offset assertions on the C++ side, plus reflection validation in the shader build. It includes only canonical-unit values, camera-relative planet coordinates, and the resolved primary celestial-light direction. Wavelength-independent Mie scattering and absorption authoring values are scalar, but are packed into their RGB UBO fields as Vec4f(x, x, x, 0).
 
----
+### 7.1 Numerical and payload contract
 
-## 10. File Layout
+The two aerial textures have an explicit payload: aerial in-scattering stores scene-linear RGB radiance and aerial transmittance stores RGB transmission. Alpha is unused or reserved with a documented value; it never ambiguously represents both radiance and coloured transmission. The initial two-texture representation costs little memory and avoids a colour-shifting scalar-alpha approximation. Any later packed representation requires matching HDR reference images before it replaces this baseline.
 
-```
-ZEngine/Rendering/Sky/
-├── SkyConfig.h
-├── SkySystem.h / .cpp
-├── SkyAtmospherePass.h / .cpp
-├── SkyAtmosphereUBO.h
-├── SkyLightPass.h / .cpp
-├── HDRIBackdropPass.h / .cpp
-└── SkySpherePass.h / .cpp
+All atmosphere shader paths handle zero-length rays, horizon tangents, cameras below the ground radius, cameras above the atmosphere radius, and sun directions below the horizon without generating NaN or infinity. Inputs are validated on the CPU, but shaders still guard divisions, square roots, phase-function denominators, and exponential ranges. Sun angular radius is converted to radians before upload.
 
-Resources/Shaders/Sky/
-├── sky_transmittance.comp
-├── sky_multiscatter.comp
-├── sky_skyview.comp
-├── sky_aerial_perspective.comp
-├── sky_combine.vert / .frag
-├── sky_irradiance.comp
-├── sky_prefilter.comp
-├── sky_brdf_lut.comp
-├── hdri_equirect_to_cube.comp
-├── hdri_backdrop.vert / .frag
-├── sky_sphere.vert / .frag
-```
+The captured source-radiance cubemap has a complete mip chain. Prefiltering selects source LOD from sample solid angle/PDF and source texel solid angle, avoiding rough-surface aliasing and fireflies. If hardware cannot linearly filter or generate the required HDR mip chain, the capability service chooses a shader downsample path or disables the affected quality tier.
+
+LUT samplers use normalized coordinates, linear filtering, and clamp-to-edge addressing. Cubemap samplers use the engine's canonical face orientation, clamp-to-edge addressing, and linear mip filtering. None of the radiance, transmittance, or IBL resources use an sRGB image view.
 
 ---
 
-## 11. Implementation Order
+## 8. HDRI asset path
 
-| Step | Deliverable | Depends on | Risk |
-|---|---|---|---|
-| 1 | `SkyConfig.h`, `SkyMode` enum | Nothing | None |
-| 2 | `SkySpherePass` + `sky_sphere.frag` | Step 1 | Low — no LUTs, push constants only |
-| 3 | `SkySystem` skeleton (mode switch, pass registration) | Steps 1-2 | Low |
-| 4 | `SkyAtmospherePass` — transmittance + multiscatter LUT compute | Step 3, compute pipeline | Medium |
-| 5 | `SkyAtmospherePass` — sky-view + aerial perspective per-frame LUTs | Step 4; requires `TextureSpecification.Depth` for 3D textures | Medium |
-| 6 | `SkyAtmospherePass` — sky combine fullscreen graphics pass | Step 5 | Low |
-| 7 | `SkyLightPass` — BRDF LUT (once at startup) | Step 4 | Low |
-| 8 | `SkyLightPass` — irradiance + specular prefilter | Steps 6-7 | Medium |
-| 9 | `SkyLightPass` integration with `LightingPass` set 4 | Step 8 | Medium |
-| 10 | `HDRIBackdropPass` — equirect-to-cube compute | Steps 3, 8; `.hdr` importer | High |
-| 11 | `HDRIBackdropPass` — backdrop fullscreen pass | Step 10 | Low |
-| 12 | `HDRIBackdropPass` IBL source for `SkyLightPass` | Steps 9, 11 | Low |
-| 13 | `SkySystem::Update` with mode change + dirty tracking | Steps 3-12 | Medium |
-| 14 | Remove `SkyboxPass`, `skybox.vert/frag`, cube-map binding | All steps | Low |
+HDRI import uses the existing environment-map asset pipeline:
 
-Note: Step 5 requires `TextureSpecification` to support a `Depth` field and a `Type3D` image view type for the 32x32x32 aerial perspective LUT. This must be added before Step 5 can proceed.
+~~~text
+authored .hdr
+     -> importer
+     -> cooked project cache artifact (.zenvmap or its successor)
+     -> AssetReference in scene
+     -> asynchronous texture upload
+     -> SkyEnvironment source-radiance cubemap
+~~~
+
+Version 1 supports HDR input and extends the current importer that cooks it into a cubemap cache artifact. It must not also introduce a second runtime raw-equirectangular conversion pipeline. A future GPU-based cooker can replace the conversion implementation behind the same asset contract.
+
+EXR is not exposed as supported input until an EXR-capable decoder is integrated and covered by import tests. The current stb_image-based loader must not advertise EXR merely because the importer extension filter accepts it; it should reject unsupported input at import time with a useful error.
+
+Cooked metadata includes source hash, import quality tier, cubemap orientation, colour interpretation, exposure calibration, face size, mip availability, and importer version. The runtime can then invalidate only stale cooked data.
+
+Raw RGBA32F equirectangular images are not retained in resident VRAM merely for backdrop rendering. The cooked cubemap uses half precision or a platform-appropriate HDR compression/streaming format, includes required mips, and is streamed according to an explicit project quality setting. Heap pressure may request eviction or a lower already-cooked tier; it must not silently downscale authored assets at runtime.
+
+Cooked environment artifacts are derived cache data, not source content-browser items. The source asset remains the user-visible item and is the only identity serialized by the scene. Cache eviction or regeneration therefore never changes content-browser structure or source-control state.
+
+If an HDRI is pending or fails, the system retains the last ready snapshot or uses the engine fallback environment and visibly reports the failure once in editor diagnostics. It does not replace the viewport with a solid black backdrop.
+
+HDRI rotation/orientation, tint, and lighting intensity are common source-radiance inputs. Display exposure is a camera/post-processing control and must not accidentally make background brightness diverge from lighting brightness.
+
+### 8.1 Import validation and colour contract
+
+The importer validates an equirectangular 2:1 source aspect ratio, finite pixel values, supported dimensions, and a bounded decoded working set before allocating conversion buffers. HDR source pixels are interpreted as linear scene radiance, never as sRGB. Invalid NaN/infinite values fail import; negative radiance values are rejected or clamped according to a documented import policy with a diagnostic.
+
+The cooker writes atomically and preserves the prior valid artifact if recooking fails. It generates or records a complete mip chain, validates the six-face orientation with a canonical direction test, and stores the source/import hash used for stale-artifact detection. The runtime uses only completed artifacts and never samples a partially written cache file.
 
 ---
 
-## 12. Memory Budget Impact
+## 9. Image-based lighting
 
-| Mode | Resources | Total bytes | Domain |
-|---|---|---|---|
-| `Atmosphere` | 4 LUTs + 3 IBL textures | ~1.8 MB | DeviceTexture + RenderTarget |
-| `HDRI` (2K source) | Equirect + cubemap + 3 IBL | ~39 MB | DeviceTexture |
-| `HDRI` (4K source) | Equirect + cubemap + 3 IBL | ~135 MB | DeviceTexture |
-| `SkySphere` | None | 0 | — |
+Each published SkyEnvironment snapshot contains:
 
-For `Atmosphere` mode the budget impact is negligible. For `HDRI` mode with a 4K source, 135 MB is significant against the 512 MB `DeviceTexture` pool — the import pipeline should offer or auto-apply a 2K downscale option when heap pressure exceeds `WarnPressure (0.90)`.
+| Resource | Initial quality | Format | Notes |
+|---|---:|---|---|
+| Diffuse irradiance cubemap | 32 per face | RGBA16F | Cosine-convolved source radiance |
+| Specular environment cubemap | 128 per face, full mip chain | RGBA16F | GGX-prefiltered; roughness-to-LOD convention is documented |
+| BRDF integration LUT | 512 x 512 | RG16F | Engine-global; versioned by shader and quality |
+
+The specular map has a full mip chain through 1 x 1. Roughness 0 and 1 map to documented LOD limits, and all cubemap filtering follows the same face orientation and seam policy as source capture.
+
+IBL rebuild triggers are:
+
+- a completed HDRI asset revision;
+- entering HDRI or atmosphere mode without a matching ready snapshot;
+- an atmosphere physical-parameter change;
+- a resolved primary-sun change that changes atmosphere source radiance;
+- a deliberate IBL quality-tier or shader-version change.
+
+Camera movement, SkySphere-only changes, HDRI rotation, linear tint, linear intensity, and display exposure do not invalidate shared IBL. The source, diffuse, and specular maps are baked through configurable sample-count tiers with GPU timestamps. Expensive prefilter work may be progressive or amortized, but partial results are never published as a supposedly complete snapshot.
+
+### 9.1 Lighting convention
+
+Source radiance and IBL are stored in absolute linear scene units. If the renderer uses pre-exposure, the per-frame lighting and sky-composition shaders apply the same exposure transform at use time; an exposure change never forces an IBL rebake. Diffuse irradiance, specular radiance, the BRDF LUT, normal orientation, roughness-to-LOD mapping, and ambient/specular occlusion use one documented deferred-lighting convention.
+
+The fallback snapshot contains valid diffuse, specular, and BRDF textures with deterministic neutral values. It is created before the first scene can render and remains available during device-supported mode changes, asset failures, shader rebuilds, and memory-pressure eviction. A fallback is a valid lighting state, not a null-handle special case.
+
+### 9.2 Quality policy
+
+Sky quality is renderer/platform policy rather than serialized artistic scene data. A tier specifies source-cubemap face resolution and mip policy, sky-view and aerial resolutions, IBL sample budgets, and optional format fallback. The active tier is part of the environment resource key.
+
+A quality change creates a new environment revision and follows the same next-snapshot publication path as an asset change. It never resizes a published cubemap or changes the number of descriptors in place. The editor may preview a lower tier while authoring, but bake completion, memory use, and diagnostics always report the selected tier explicitly.
+
+---
+
+## 10. HDR, formats, and memory budget
+
+The renderer must provide a floating-point linear scene-colour target before this system is enabled. Lighting, sky composition, bloom, and exposure operate in linear HDR; tone mapping and output-gamut conversion occur later. An R8G8B8A8_UNORM intermediate cannot preserve physically based sky radiance.
+
+Device startup validates all required image usage combinations. In particular:
+
+- R11G11B10_UFLOAT is used for a storage LUT only if the device reports the required storage-image and sampled-image features; otherwise use RGBA16F.
+- 3D RGBA16F storage images, sampled images, and the required image views are checked before atmosphere mode is exposed.
+- cubemap/array image views, mip and layer transitions, and storage writes are capability-tested.
+- maximum 2D/3D/cubemap dimensions, array layers, storage-image descriptor counts, and push-constant limits are checked against the selected quality tier.
+- unsupported optional modes remain unavailable with a readable reason; the fallback sky remains available.
+
+TextureSpecification and the render graph must first support a true depth extent, 3D image type/view creation, and 3D resource compatibility. A 32 x 32 x 32 LUT cannot be represented as a 2D texture with a layer count.
+
+All values below use binary units and exclude transient command/descriptors:
+
+| Resource | Allocation | Memory |
+|---|---|---:|
+| Transmittance + multiscattering | 256 x 64 packed + 32 x 32 RGBA16F | about 72 KiB |
+| One 192 x 108 sky-view + two 32 cubed aerial LUTs | RGBA16F | about 674 KiB per RenderView |
+| 512 cubemap source radiance, base level | 6 faces RGBA16F | 12 MiB |
+| The same source with a complete mip chain | RGBA16F | about 16 MiB |
+| Diffuse + full-chain 128 specular IBL | RGBA16F | about 1.05 MiB per SkyEnvironment |
+| 512 x 512 BRDF LUT | RG16F | 1 MiB engine-global |
+
+Version 1 uses the complete source mip chain: an atmosphere environment is therefore about 17.1 MiB plus 674 KiB per view; with the shared BRDF LUT initialized, the first such environment is about 18.8 MiB. A 512 cubemap is 12 MiB at its base level and about 16 MiB with its full chain; the BRDF LUT is 1 MiB, not 512 KiB.
+
+HDRI memory depends on the selected cooked cubemap quality tier. The old 32 MiB/128 MiB raw 2K/4K equirectangular estimates are useful import-memory warnings, but are not the desired steady-state resident runtime budget.
+
+The allocator budget reserves the update peak, not only steady state: current snapshot, next bake snapshot, all in-flight pinned snapshots, the global fallback, and all active RenderView resources. The bake is deferred or cancelled before this reservation would exceed its configured environment budget. It never evicts the snapshot currently selected by a frame.
+
+### 10.1 Colour, exposure, and output
+
+All sky, LUT, and IBL images use linear scene colour. The renderer selects a floating-point HDR composition format, applies optional pre-exposure consistently to direct and environment lighting, then runs bloom and exposure metering before tone mapping and output-gamut conversion.
+
+Exposure metering defines how the bright sun disc and HDRI highlights influence the histogram, and it resets or smoothly adapts on a sky revision according to the camera-cut policy. Reference tests use fixed exposure. This prevents apparent lighting discontinuities from being hidden by unstable automatic exposure.
+
+The editor viewport and ordinary window presentation consume the post-tone-mapped, display-compatible RenderView output. They do not sample the raw/pre-exposed HDR composition texture. HDR screenshots or offline capture request an explicitly named linear HDR export; UI composition must neither tone-map the image again nor apply a second sRGB conversion.
+
+---
+
+## 11. Diagnostics and validation
+
+The editor exposes a sky diagnostic panel and render-graph debug names for:
+
+- active mode, requested and published environment revisions, and bake state;
+- asset-load error and fallback reason;
+- source cubemap, each atmosphere LUT, irradiance, specular mips, and BRDF LUT;
+- GPU duration and sample tier for each bake stage;
+- per-view LUT resolution and transient-memory cost;
+- active format fallbacks and capability failures.
+
+Automated validation includes:
+
+- shader reflection, descriptor-layout, UBO-size, and subresource-range checks;
+- graphics and compute descriptor-binding/replay tests for every sky resource kind;
+- render-graph declaration tests for exact environment versions, read/write dependencies, and imported-resource barriers;
+- image/reference tests for noon, sunset, night, no celestial light, camera altitude changes, and reverse-Z;
+- HDRI orientation, rotation, failed-load, hot-reload, and stale-completion tests;
+- multi-viewport/editor/game/capture tests with distinct camera positions;
+- resize and dynamic-resolution tests;
+- in-flight rebake, resource retirement, low-memory fallback, and device-capability fallback tests;
+- IBL roughness/LOD and cubemap-seam tests.
+
+The visual test suite uses deterministic scene data, fixed exposure, and tolerance-based HDR image comparison.
+
+---
+
+## 12. Production release gates
+
+The feature is ready for a supported quality tier only when all of the following are true:
+
+- validation layers and the graph declaration validator report no descriptor, layout, subresource, lifetime, or synchronization errors;
+- the fallback environment renders valid background and IBL on the first frame, while an HDRI loads, after load failure, and during a shader-interface rebuild;
+- each supported platform/device tier passes the HDR reference suite, including resize, multiple views, reverse-Z, and hot-reload cases;
+- peak memory for active, baking, fallback, and in-flight snapshots remains inside the configured environment budget;
+- CPU frame allocation, descriptor binding, and command recording remain allocation-free outside the graph frame arena;
+- bake timing stays within the selected tier budget, and cancelled/stale work cannot cause editor hitches or publish stale lighting;
+- a graphics debugger capture verifies the source-cubemap to IBL dependency chain and the final HDR composition.
+
+Unsupported tiers are not release failures when capability detection clearly disables them and the fallback sky remains correct.
+
+---
+
+## 13. Delivery order
+
+| Step | Deliverable | Depends on |
+|---:|---|---|
+| 0 | HDR scene-colour pipeline, post-processing ordering, 3D texture/render-graph support, graphics/compute image-descriptor binder, reserved-set validation, format-capability service | Renderer foundations |
+| 1 | Breaking SkyConfig schema, stable asset reference, project defaults, engine fallback environment | Asset and scene systems |
+| 2 | Persistent SkyEnvironment snapshots, timeline-safe publish/retirement, graph-import contract, diagnostic state | Step 1 |
+| 3 | Engine-global BRDF LUT and fallback IBL; LightingPass descriptor integration | Step 2 |
+| 4 | SkySphere visual pass and correct background composition | Steps 0-3 |
+| 5 | HDRI cooked-asset route, quality tiers, source cubemap, asynchronous rebuild | Steps 1-4 |
+| 6 | HDRI irradiance/specular bake, timestamps, quality policy, hot reload | Step 5 |
+| 7 | Static atmosphere LUTs and atmosphere source-radiance cubemap | Steps 0-3 |
+| 8 | Per-view sky/aerial LUTs and opaque/transparent atmospheric composition | Step 7 |
+| 9 | Atmosphere IBL baking, dynamic celestial-light budget, full validation matrix | Steps 6-8 |
+| 10 | Remove SkyboxPass only after visual, graph, and fallback parity is proven | All prior steps |
+
+This order ships a useful, safe HDRI/SkySphere baseline before the more expensive atmosphere system, while preserving one resource and lifetime model for all modes.
