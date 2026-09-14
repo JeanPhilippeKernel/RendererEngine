@@ -2,12 +2,15 @@
 
 namespace ZEngine::Rendering::Scenes
 {
-    void SkyEnvironment::Initialize(Textures::TextureHandle fallback_source)
+    void SkyEnvironment::Initialize(Textures::TextureHandle fallback_source, const EnvironmentLightingResources& fallback_lighting)
     {
         *this                         = {};
         m_snapshots[0].SourceRadiance = fallback_source;
+        m_snapshots[0].Lighting       = fallback_lighting;
         m_snapshots[0].State          = SkyEnvironmentState::Fallback;
         m_snapshots[0].IsFallback     = true;
+        m_fallback_lighting           = fallback_lighting;
+        m_bake_config                 = {};
         m_published_slot              = 0;
         m_state                       = SkyEnvironmentState::Fallback;
     }
@@ -17,10 +20,34 @@ namespace ZEngine::Rendering::Scenes
         if (revision == 0 || revision <= m_latest_revision)
             return false;
 
-        m_pending_request.Config = config;
-        m_pending_request.Config.Sanitize();
+        SkyConfig sanitized = config;
+        sanitized.Sanitize();
+
+        m_presentation_config = sanitized;
+        m_latest_revision     = revision;
+
+        if (HasEquivalentBakeInputs(m_bake_config, sanitized))
+        {
+            // The source radiance remains valid. Keep editor-facing presentation
+            // changes (tint, intensity, and yaw) off the bake path.
+            if (m_has_pending_request)
+            {
+                m_pending_request.Config   = sanitized;
+                m_pending_request.Revision = revision;
+            }
+            if (m_has_active_bake)
+            {
+                m_active_bake.Config   = sanitized;
+                m_active_bake.Revision = revision;
+            }
+            m_latest_bake_revision = revision;
+            return true;
+        }
+
+        m_bake_config              = sanitized;
+        m_pending_request.Config   = sanitized;
         m_pending_request.Revision = revision;
-        m_latest_revision          = revision;
+        m_latest_bake_revision     = revision;
         m_has_pending_request      = true;
         return true;
     }
@@ -53,13 +80,12 @@ namespace ZEngine::Rendering::Scenes
         if (!m_has_active_bake || m_active_bake.Revision != revision)
             return SkyEnvironmentBakeResult::Ignored;
 
-        const SkyEnvironmentBakeRequest completed_request = m_active_bake;
-        const Textures::TextureHandle   completed_source  = source_radiance.Valid() ? source_radiance : m_active_bake_source;
-        m_active_bake                                     = {};
-        m_active_bake_source                              = {};
-        m_has_active_bake                                 = false;
+        const Textures::TextureHandle completed_source = source_radiance.Valid() ? source_radiance : m_active_bake_source;
+        m_active_bake                                  = {};
+        m_active_bake_source                           = {};
+        m_has_active_bake                              = false;
 
-        if (revision != m_latest_revision)
+        if (revision != m_latest_bake_revision)
             return SkyEnvironmentBakeResult::Discarded;
 
         if (!success || !completed_source.Valid())
@@ -81,8 +107,9 @@ namespace ZEngine::Rendering::Scenes
 
         SkyEnvironmentSnapshot& published = m_snapshots[new_slot];
         published                         = {};
-        published.Config                  = completed_request.Config;
+        published.Config                  = m_presentation_config;
         published.SourceRadiance          = completed_source;
+        published.Lighting                = m_fallback_lighting;
         published.Revision                = revision;
         published.State                   = SkyEnvironmentState::Ready;
         m_published_slot                  = static_cast<uint32_t>(new_slot);
@@ -165,6 +192,11 @@ namespace ZEngine::Rendering::Scenes
         return m_published_slot < MaxSnapshots ? &m_snapshots[m_published_slot] : nullptr;
     }
 
+    const SkyConfig& SkyEnvironment::GetPresentationConfig() const
+    {
+        return m_presentation_config;
+    }
+
     SkyEnvironmentState SkyEnvironment::GetState() const
     {
         return m_state;
@@ -173,6 +205,17 @@ namespace ZEngine::Rendering::Scenes
     uint64_t SkyEnvironment::GetLatestRevision() const
     {
         return m_latest_revision;
+    }
+
+    bool SkyEnvironment::HasEquivalentBakeInputs(const SkyConfig& left, const SkyConfig& right)
+    {
+        const auto                equal3 = [](const float (&first)[3], const float (&second)[3]) { return first[0] == second[0] && first[1] == second[1] && first[2] == second[2]; };
+
+        const AtmosphereSettings& first  = left.Atmosphere;
+        const AtmosphereSettings& second = right.Atmosphere;
+        return left.Mode == right.Mode && left.EnvironmentMap == right.EnvironmentMap && left.PrimaryCelestialLight == right.PrimaryCelestialLight && equal3(first.PlanetCenterWorld, second.PlanetCenterWorld) && first.WorldUnitsPerMeter == second.WorldUnitsPerMeter && first.PlanetRadiusKilometers == second.PlanetRadiusKilometers && first.AtmosphereRadiusKilometers == second.AtmosphereRadiusKilometers && equal3(first.RayleighScatteringPerKilometer, second.RayleighScatteringPerKilometer) &&
+               first.RayleighScaleHeightKilometers == second.RayleighScaleHeightKilometers && first.MieScatteringPerKilometer == second.MieScatteringPerKilometer && first.MieAbsorptionPerKilometer == second.MieAbsorptionPerKilometer && first.MieScaleHeightKilometers == second.MieScaleHeightKilometers && first.MieAnisotropy == second.MieAnisotropy && equal3(first.OzoneAbsorptionPerKilometer, second.OzoneAbsorptionPerKilometer) && first.OzoneCenterKilometers == second.OzoneCenterKilometers && first.OzoneThicknessKilometers == second.OzoneThicknessKilometers &&
+               first.SunAngularRadiusRadians == second.SunAngularRadiusRadians && first.SunIlluminanceLux == second.SunIlluminanceLux;
     }
 
     void SkyEnvironment::ReleaseNextFramePin(uint64_t timeline_value)

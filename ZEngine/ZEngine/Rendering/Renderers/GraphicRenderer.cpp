@@ -67,13 +67,16 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->ImportBuffer(RendererBufferName::CullingInput, &RenderSceneData->CullingInputBuffers[0]);
         RenderGraph->ImportBuffer(RendererBufferName::CulledIndirect, &RenderSceneData->CulledIndirectBuffers[0]);
         ZENGINE_VALIDATE_ASSERT(Device->RRM != nullptr, "Graphic renderer requires a render resource manager")
-        auto*      rrm                  = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
-        const auto fallback_environment = rrm->GetOrCreateFallbackCubemap();
-        if (!fallback_environment.Valid())
-            ZENGINE_CORE_ERROR("[SkyEnvironment] Failed to create the fallback cubemap; sky rendering is disabled")
-        m_sky_environment.Initialize(fallback_environment);
-        m_skybox_pass = skybox_pass;
-        m_skybox_pass->SetEnvironmentMap(fallback_environment);
+        auto* const rrm                  = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+        const auto  fallback_environment = rrm->GetOrCreateFallbackCubemap();
+        const auto  fallback_lighting    = rrm->GetOrCreateFallbackEnvironmentLighting();
+        ZENGINE_VALIDATE_ASSERT(fallback_environment.Valid(), "Sky environment fallback source creation failed")
+        ZENGINE_VALIDATE_ASSERT(fallback_lighting.Valid(), "Sky environment fallback lighting creation failed")
+        m_sky_environment.Initialize(fallback_environment, fallback_lighting);
+        m_lighting_pass = lighting_pass;
+        m_skybox_pass   = skybox_pass;
+        m_lighting_pass->SetEnvironmentLighting(fallback_lighting, m_sky_environment.GetPresentationConfig());
+        m_skybox_pass->SetEnvironment(fallback_environment, m_sky_environment.GetPresentationConfig());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalVertex, rrm->GetGlobalVertexBuffer());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalIndex, rrm->GetGlobalIndexBuffer());
 
@@ -103,7 +106,8 @@ namespace ZEngine::Rendering::Renderers
         Textures::TextureHandle retired_sky_texture = {};
         while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_texture))
             Device->DestroyTexture(retired_sky_texture);
-        m_skybox_pass = nullptr;
+        m_lighting_pass = nullptr;
+        m_skybox_pass   = nullptr;
 
         RenderGraph->Dispose();
         if (RenderSceneData)
@@ -208,10 +212,12 @@ namespace ZEngine::Rendering::Renderers
         CollectRetiredSkySnapshots();
 
         const Scenes::SkyEnvironmentSnapshot* snapshot = m_sky_environment.AcquireForFrame();
-        if (!snapshot || !m_skybox_pass)
+        if (!snapshot || !m_lighting_pass || !m_skybox_pass)
             return;
 
-        m_skybox_pass->SetEnvironmentMap(snapshot->SourceRadiance);
+        const Scenes::SkyConfig& presentation = m_sky_environment.GetPresentationConfig();
+        m_lighting_pass->SetEnvironmentLighting(snapshot->Lighting, presentation);
+        m_skybox_pass->SetEnvironment(snapshot->SourceRadiance, presentation);
         Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
     }
 
@@ -221,9 +227,8 @@ namespace ZEngine::Rendering::Renderers
         if (!m_sky_environment.TakeBakeRequest(request))
             return;
 
-        // The first production sky pass only prepares HDRI source radiance.
-        // Analytic atmosphere and SkySphere are intentionally kept on the valid
-        // neutral fallback until their graph bake producers land in #802.
+        // HDRI source preparation is asynchronous. Per-scene diffuse and
+        // specular convolution remain on the engine-global fallback until #805.
         if (!request.Config.IsHDRI() || request.Config.EnvironmentMap.is_nil())
         {
             ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: {} source baking is not implemented yet", request.Revision, request.Config.IsHDRI() ? "an HDRI without an asset" : "analytic")

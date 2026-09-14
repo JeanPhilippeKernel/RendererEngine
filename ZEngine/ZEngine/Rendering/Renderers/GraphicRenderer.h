@@ -6,8 +6,9 @@
 
 namespace ZEngine::Rendering::Renderers
 {
+    struct LightingPass;
     struct SkyboxPass;
-}
+} // namespace ZEngine::Rendering::Renderers
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -44,6 +45,7 @@ namespace ZEngine::Rendering::Renderers
         PaddedAtomic<uint64_t> m_frame_output_index      = {.value = UINT64_MAX};
         PaddedAtomic<uint64_t> m_frame_output_generation = {};
         Scenes::SkyEnvironment m_sky_environment         = {};
+        LightingPass*          m_lighting_pass           = nullptr;
         SkyboxPass*            m_skybox_pass             = nullptr;
     };
     ZDEFINE_PTR(GraphicRenderer);

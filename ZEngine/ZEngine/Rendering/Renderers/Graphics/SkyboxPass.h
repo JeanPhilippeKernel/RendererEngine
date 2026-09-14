@@ -9,7 +9,7 @@ namespace ZEngine::Rendering::Renderers
     struct SkyboxPass : public IRenderGraphCallbackPass
     {
         /// @brief Selects the render-thread-published environment snapshot for this frame.
-        void                                 SetEnvironmentMap(Textures::TextureHandle environment_map);
+        void                                 SetEnvironment(Textures::TextureHandle environment_map, const Rendering::Scenes::SkyConfig& config);
 
         bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
         /// @brief Builds the static PSO recipe for the full-screen sky draw.
@@ -23,6 +23,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
     private:
-        Textures::TextureHandle m_env_map = {};
+        Textures::TextureHandle      m_env_map    = {};
+        Rendering::Scenes::SkyConfig m_sky_config = {};
     };
 } // namespace ZEngine::Rendering::Renderers

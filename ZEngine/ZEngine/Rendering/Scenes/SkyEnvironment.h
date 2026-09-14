@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <cstdint>
@@ -17,14 +18,15 @@ namespace ZEngine::Rendering::Scenes
     /// @brief Immutable GPU-resource snapshot selected by one rendered frame.
     struct SkyEnvironmentSnapshot
     {
-        SkyConfig               Config          = {};
-        Textures::TextureHandle SourceRadiance  = {};
-        uint64_t                Revision        = 0;
-        uint64_t                LastUseTimeline = 0;
-        uint32_t                PinCount        = 0;
-        SkyEnvironmentState     State           = SkyEnvironmentState::Fallback;
-        bool                    IsFallback      = false;
-        bool                    Retired         = false;
+        SkyConfig                    Config          = {};
+        Textures::TextureHandle      SourceRadiance  = {};
+        EnvironmentLightingResources Lighting        = {};
+        uint64_t                     Revision        = 0;
+        uint64_t                     LastUseTimeline = 0;
+        uint32_t                     PinCount        = 0;
+        SkyEnvironmentState          State           = SkyEnvironmentState::Fallback;
+        bool                         IsFallback      = false;
+        bool                         Retired         = false;
     };
 
     /// @brief Immutable bake input claimed by the render thread.
@@ -54,8 +56,8 @@ namespace ZEngine::Rendering::Scenes
         static constexpr uint32_t                      MaxSnapshots        = 8;
         static constexpr uint32_t                      MaxPendingFramePins = 16;
 
-        /// @brief Establishes the engine-provided cubemap fallback.
-        void                                           Initialize(Textures::TextureHandle fallback_source);
+        /// @brief Establishes the engine-provided source and lighting fallbacks.
+        void                                           Initialize(Textures::TextureHandle fallback_source, const EnvironmentLightingResources& fallback_lighting = {});
 
         /// @brief Coalesces an immutable config revision while preserving its identity.
         /// @return False if the revision is stale or already observed.
@@ -86,24 +88,31 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] const SkyEnvironmentBakeRequest* GetActiveBake() const;
         [[nodiscard]] Textures::TextureHandle          GetActiveBakeSource() const;
         [[nodiscard]] const SkyEnvironmentSnapshot*    GetPublishedSnapshot() const;
+        /// @brief Returns the latest presentation state without mutating a published resource snapshot.
+        [[nodiscard]] const SkyConfig&                 GetPresentationConfig() const;
         [[nodiscard]] SkyEnvironmentState              GetState() const;
         [[nodiscard]] uint64_t                         GetLatestRevision() const;
 
     private:
-        void                      ReleaseNextFramePin(uint64_t timeline_value);
-        int32_t                   FindFreeSnapshotSlot() const;
+        [[nodiscard]] static bool    HasEquivalentBakeInputs(const SkyConfig& left, const SkyConfig& right);
+        void                         ReleaseNextFramePin(uint64_t timeline_value);
+        int32_t                      FindFreeSnapshotSlot() const;
 
-        SkyEnvironmentSnapshot    m_snapshots[MaxSnapshots]              = {};
-        SkyEnvironmentBakeRequest m_pending_request                      = {};
-        SkyEnvironmentBakeRequest m_active_bake                          = {};
-        Textures::TextureHandle   m_active_bake_source                   = {};
-        uint16_t                  m_frame_pin_slots[MaxPendingFramePins] = {};
-        uint32_t                  m_published_slot                       = 0;
-        uint32_t                  m_frame_pin_head                       = 0;
-        uint32_t                  m_frame_pin_count                      = 0;
-        uint64_t                  m_latest_revision                      = 0;
-        bool                      m_has_pending_request                  = false;
-        bool                      m_has_active_bake                      = false;
-        SkyEnvironmentState       m_state                                = SkyEnvironmentState::Fallback;
+        SkyEnvironmentSnapshot       m_snapshots[MaxSnapshots]              = {};
+        SkyEnvironmentBakeRequest    m_pending_request                      = {};
+        SkyEnvironmentBakeRequest    m_active_bake                          = {};
+        Textures::TextureHandle      m_active_bake_source                   = {};
+        EnvironmentLightingResources m_fallback_lighting                    = {};
+        SkyConfig                    m_presentation_config                  = {};
+        SkyConfig                    m_bake_config                          = {};
+        uint16_t                     m_frame_pin_slots[MaxPendingFramePins] = {};
+        uint32_t                     m_published_slot                       = 0;
+        uint32_t                     m_frame_pin_head                       = 0;
+        uint32_t                     m_frame_pin_count                      = 0;
+        uint64_t                     m_latest_revision                      = 0;
+        uint64_t                     m_latest_bake_revision                 = 0;
+        bool                         m_has_pending_request                  = false;
+        bool                         m_has_active_bake                      = false;
+        SkyEnvironmentState          m_state                                = SkyEnvironmentState::Fallback;
     };
 } // namespace ZEngine::Rendering::Scenes

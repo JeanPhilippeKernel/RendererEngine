@@ -14,6 +14,19 @@ layout(set = 2, binding = 1) uniform texture2D GBufferNormalRoughness;
 layout(set = 2, binding = 2) uniform texture2D GBufferMetallicEmissive;
 layout(set = 2, binding = 3) uniform texture2D GBufferDepth;
 layout(set = 2, binding = 5) uniform sampler GBufferSampler;
+layout(set = 2, binding = 6) uniform textureCube DiffuseIrradiance;
+layout(set = 2, binding = 7) uniform textureCube SpecularEnvironment;
+layout(set = 2, binding = 8) uniform texture2D BrdfIntegrationLut;
+layout(set = 2, binding = 9) uniform sampler EnvironmentSampler;
+
+layout(push_constant) uniform EnvironmentLightingPushConstants
+{
+    vec4  TintIntensity;
+    float YawRadians;
+    float SpecularMaxLod;
+    vec2  Padding;
+}
+Environment;
 
 struct GpuDirectionalLight
 {
@@ -82,6 +95,13 @@ vec3 fresnel_schlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+vec3 rotate_environment_direction(vec3 direction)
+{
+    float cosine = cos(Environment.YawRadians);
+    float sine   = sin(Environment.YawRadians);
+    return vec3(cosine * direction.x + sine * direction.z, direction.y, -sine * direction.x + cosine * direction.z);
+}
+
 vec3 pbr_directional(GpuDirectionalLight light, vec3 N, vec3 V, vec3 albedo, float roughness, float metallic)
 {
     vec3  F0       = mix(vec3(0.04), albedo, metallic);
@@ -135,10 +155,20 @@ void main()
     for (uint i = 0; i < LightBuffer.PointCount; ++i)
         Lo += pbr_point(LightBuffer.PointLights[i], WorldPos, N, V, albedo, roughness, metallic);
 
-    vec3 ambient = vec3(0.03) * albedo * ao;
-    vec3 color   = ambient + Lo + albedo * emissive;
+    vec3  F0                = mix(vec3(0.04), albedo, metallic);
+    float ndot_view         = max(dot(N, V), 0.0);
+    vec3  F                 = fresnel_schlick(ndot_view, F0);
+    vec3  diffuse_direction = rotate_environment_direction(N);
+    vec3  reflect_direction = rotate_environment_direction(reflect(-V, N));
+    vec3  irradiance        = texture(samplerCube(DiffuseIrradiance, EnvironmentSampler), diffuse_direction).rgb;
+    vec3  prefiltered       = textureLod(samplerCube(SpecularEnvironment, EnvironmentSampler), reflect_direction, roughness * Environment.SpecularMaxLod).rgb;
+    vec2  brdf              = texture(sampler2D(BrdfIntegrationLut, EnvironmentSampler), vec2(ndot_view, roughness)).rg;
+    vec3  diffuse           = (1.0 - F) * (1.0 - metallic) * albedo * irradiance;
+    vec3  specular          = prefiltered * (F * brdf.x + brdf.y);
+    vec3  ambient           = (diffuse + specular) * Environment.TintIntensity.rgb * ao;
+    vec3  color             = ambient + Lo + albedo * emissive;
 
-    color        = color / (color + vec3(1.0));
-    color        = pow(color, vec3(1.0 / 2.2));
-    OutColor     = vec4(color, 1.0);
+    color                   = color / (color + vec3(1.0));
+    color                   = pow(color, vec3(1.0 / 2.2));
+    OutColor                = vec4(color, 1.0);
 }

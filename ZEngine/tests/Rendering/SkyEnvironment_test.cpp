@@ -10,18 +10,42 @@ namespace
     {
         return {.Index = index, .Generation = 1};
     }
+
+    EnvironmentLightingResources Lighting(uint64_t first_index)
+    {
+        return {
+            .DiffuseIrradiance   = Texture(first_index),
+            .SpecularEnvironment = Texture(first_index + 1),
+            .BrdfIntegrationLut  = Texture(first_index + 2),
+        };
+    }
+
+    SkyConfig HDRIConfig()
+    {
+        SkyConfig config = {};
+        config.Mode      = SkyMode::HDRI;
+        return config;
+    }
+
+    SkyConfig SkySphereConfig()
+    {
+        SkyConfig config = {};
+        config.Mode      = SkyMode::SkySphere;
+        return config;
+    }
 } // namespace
 
 TEST(SkyEnvironmentTest, FirstFramePinsTheValidFallbackSnapshot)
 {
     SkyEnvironment environment = {};
-    environment.Initialize(Texture(1));
+    environment.Initialize(Texture(1), Lighting(10));
 
     const SkyEnvironmentSnapshot* snapshot = environment.AcquireForFrame();
     ASSERT_NE(snapshot, nullptr);
     EXPECT_TRUE(snapshot->IsFallback);
     EXPECT_EQ(snapshot->State, SkyEnvironmentState::Fallback);
     EXPECT_EQ(snapshot->SourceRadiance.Index, 1u);
+    EXPECT_TRUE(snapshot->Lighting.Valid());
     EXPECT_EQ(snapshot->PinCount, 1u);
 
     environment.ReleaseSubmittedFrame(7);
@@ -34,7 +58,7 @@ TEST(SkyEnvironmentTest, RapidEditsCoalesceToTheNewestRevision)
     SkyEnvironment environment = {};
     environment.Initialize(Texture(1));
 
-    SkyConfig first             = {};
+    SkyConfig first             = HDRIConfig();
     first.EnvironmentIntensity  = 1.0f;
     SkyConfig latest            = first;
     latest.EnvironmentIntensity = 3.0f;
@@ -50,18 +74,60 @@ TEST(SkyEnvironmentTest, RapidEditsCoalesceToTheNewestRevision)
     EXPECT_FALSE(environment.TakeBakeRequest(request));
 }
 
+TEST(SkyEnvironmentTest, PresentationOnlyChangesDoNotScheduleAnotherBake)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
+
+    SkyConfig presentation             = HDRIConfig();
+    presentation.EnvironmentIntensity  = 2.0f;
+    presentation.EnvironmentTint[0]    = 0.5f;
+    presentation.EnvironmentYawRadians = 1.0f;
+    ASSERT_TRUE(environment.SubmitConfig(presentation, 2));
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Revision, 1u);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->SourceRadiance.Index, 2u);
+    EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentIntensity, 2.0f);
+    EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentTint[0], 0.5f);
+    EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentYawRadians, 1.0f);
+}
+
+TEST(SkyEnvironmentTest, PresentationChangesKeepAnInFlightBakeCurrent)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+
+    SkyConfig presentation            = HDRIConfig();
+    presentation.EnvironmentIntensity = 2.0f;
+    ASSERT_TRUE(environment.SubmitConfig(presentation, 2));
+    EXPECT_EQ(environment.CompleteBake(2, Texture(2), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Revision, 2u);
+    EXPECT_FLOAT_EQ(environment.GetPublishedSnapshot()->Config.EnvironmentIntensity, 2.0f);
+}
+
 TEST(SkyEnvironmentTest, StaleCompletionIsDiscardedAndDoesNotReplaceFallback)
 {
     SkyEnvironment environment = {};
     environment.Initialize(Texture(1));
 
-    SkyConfig config = {};
+    SkyConfig config = HDRIConfig();
     ASSERT_TRUE(environment.SubmitConfig(config, 1));
     SkyEnvironmentBakeRequest request = {};
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
 
-    config.EnvironmentIntensity = 2.0f;
+    config = SkySphereConfig();
     ASSERT_TRUE(environment.SubmitConfig(config, 2));
     EXPECT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Discarded);
     ASSERT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
@@ -79,7 +145,7 @@ TEST(SkyEnvironmentTest, FailedBakeRetainsVisibleFallback)
     SkyEnvironment environment = {};
     environment.Initialize(Texture(1));
 
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 1));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
     SkyEnvironmentBakeRequest request = {};
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Failed);
@@ -97,13 +163,12 @@ TEST(SkyEnvironmentTest, FailedReplacementRetainsPreviouslyReadyEnvironment)
     environment.Initialize(Texture(1));
 
     SkyEnvironmentBakeRequest request = {};
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 1));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
     ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
 
-    SkyConfig replacement            = {};
-    replacement.EnvironmentIntensity = 2.0f;
+    SkyConfig replacement = SkySphereConfig();
     ASSERT_TRUE(environment.SubmitConfig(replacement, 2));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     EXPECT_EQ(environment.CompleteBake(2, {}, false), SkyEnvironmentBakeResult::Failed);
@@ -121,7 +186,7 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForItsSubmittedFrameTimeline)
     environment.Initialize(Texture(1));
 
     SkyEnvironmentBakeRequest request = {};
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 1));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
     ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
@@ -130,7 +195,7 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForItsSubmittedFrameTimeline)
     ASSERT_NE(first, nullptr);
     EXPECT_EQ(first->SourceRadiance.Index, 2u);
 
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 2));
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
     ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
@@ -149,7 +214,7 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForEverySubmittedFrameConsumer)
     environment.Initialize(Texture(1));
 
     SkyEnvironmentBakeRequest request = {};
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 1));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
     ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
@@ -157,7 +222,7 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForEverySubmittedFrameConsumer)
     ASSERT_NE(environment.AcquireForFrame(), nullptr);
     ASSERT_NE(environment.AcquireForFrame(), nullptr);
 
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 2));
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
     ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
@@ -177,13 +242,13 @@ TEST(SkyEnvironmentTest, CancelledFrameDoesNotLeaveAReplacementPinned)
     environment.Initialize(Texture(1));
 
     SkyEnvironmentBakeRequest request = {};
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 1));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
     ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
     ASSERT_NE(environment.AcquireForFrame(), nullptr);
 
-    ASSERT_TRUE(environment.SubmitConfig(SkyConfig{}, 2));
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
     ASSERT_TRUE(environment.TakeBakeRequest(request));
     ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
     ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
