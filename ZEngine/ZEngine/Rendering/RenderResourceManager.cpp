@@ -1304,7 +1304,6 @@ namespace ZEngine::Rendering
         spec.Width                                    = width;
         spec.Height                                   = height;
         spec.Format                                   = ImageFormat::R8G8B8A8_UNORM;
-        spec.PerformTransition                        = false;
 
         auto                            handle        = m_device->CreateTexture(spec);
         auto                            texture       = m_device->GlobalTextures.Access(handle);

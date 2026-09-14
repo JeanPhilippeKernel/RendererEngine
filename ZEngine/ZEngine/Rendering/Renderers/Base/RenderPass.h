@@ -18,6 +18,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         DynamicUniform = 0,
         StorageBuffer,
         Texture,
+        StorageImage,
         Sampler,
         TextureArray,
     };
@@ -30,6 +31,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         const Core::Memory::BufferView*            Buffer     = nullptr;
         Textures::TextureHandle                    Texture    = {};
         VkDescriptorImageInfo                      Sampler    = {};
+        VkImageSubresourceRange                    ImageRange = {};
         VkDeviceSize                               Range      = 0;
         uint32_t                                   FrameIndex = UINT32_MAX;
         DescriptorReplayKind                       Kind       = DescriptorReplayKind::StorageBuffer;
@@ -54,70 +56,84 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     };
     ZDEFINE_PTR(RenderPass);
 
-    struct GraphicPass : RenderPass
+    /// @brief Shared descriptor binding and hot-reload state for Vulkan-backed passes.
+    /// @details Keeps graphics and compute descriptor writes identical and allocation-free
+    /// after pass construction. Derived passes provide their concrete pipeline only.
+    struct DescriptorBoundPass : RenderPass
+    {
+    public:
+        void SetStorageBuffer(cstring name, const Core::Memory::BufferView* buffer);
+        void SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
+        void SetDynamicUniform(cstring name, VkDeviceSize range);
+        void SetTexture(cstring name, const Textures::TextureHandle& texture);
+        void SetStorageImage(cstring name, const Textures::TextureHandle& texture, const VkImageSubresourceRange& range = {});
+        void SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
+        void UseTextureArray(cstring name);
+
+    protected:
+        void                               InitializeDescriptorBindings(Hardwares::VulkanDevice* device);
+        bool                               VerifyDescriptorBindings();
+
+        static bool                        ReplayDescriptorBindings(void* context);
+
+        Core::Containers::HashSet<cstring> BoundBindings                                         = {};
+        DescriptorReplayRecord             DescriptorReplayRecords[kMaxDescriptorReplayBindings] = {};
+        uint32_t                           DescriptorReplayRecordCount                           = 0;
+        Hardwares::VulkanDevice*           m_device                                              = nullptr;
+
+    private:
+        virtual Pipelines::IPipeline*                               GetPipeline() const = 0;
+        std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(cstring key);
+        bool                                                        ReplayDescriptorBindings();
+        void                                                        RecordDescriptorBinding(const DescriptorReplayRecord& record);
+    };
+
+    struct GraphicPass : DescriptorBoundPass
     {
     public:
         ~GraphicPass();
 
-        uint32_t                           RenderAreaWidth                                       = 0;
-        uint32_t                           RenderAreaHeight                                      = 0;
+        uint32_t                          RenderAreaWidth  = 0;
+        uint32_t                          RenderAreaHeight = 0;
 
-        Core::Containers::HashSet<cstring> BoundBindings                                         = {};
-        Core::Containers::Array<uint32_t>  RenderTargets                                         = {};
-        DescriptorReplayRecord             DescriptorReplayRecords[kMaxDescriptorReplayBindings] = {};
-        uint32_t                           DescriptorReplayRecordCount                           = 0;
-        struct Attachment*                 Attachment                                            = {nullptr};
-        Pipelines::GraphicPipeline*        Pipeline                                              = {nullptr};
+        Core::Containers::Array<uint32_t> RenderTargets    = {};
+        struct Attachment*                Attachment       = {nullptr};
+        Pipelines::GraphicPipeline*       Pipeline         = {nullptr};
 
-        void                               Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
-        void                               Dispose() override;
-        void                               Bake() override;
-        bool                               Verify() override;
+        void                              Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
+        void                              Dispose() override;
+        void                              Bake() override;
+        bool                              Verify() override;
 
-        void                               SetStorageBuffer(std::string_view name, const Core::Memory::BufferView* buffer);
-        void                               SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
-        void                               SetDynamicUniform(std::string_view name, VkDeviceSize range);
-        void                               SetTexture(std::string_view name, const Textures::TextureHandle& texture);
-        void                               SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
-        void                               UseTextureArray(std::string_view name);
-
-        struct Attachment*                 GetAttachment() const;
-        void                               UpdateRenderTargets();
-        uint32_t                           GetRenderAreaWidth() const;
-        uint32_t                           GetRenderAreaHeight() const;
+        struct Attachment*                GetAttachment() const;
+        void                              UpdateRenderTargets();
+        uint32_t                          GetRenderAreaWidth() const;
+        uint32_t                          GetRenderAreaHeight() const;
 
     private:
-        std::pair<bool, Specifications::LayoutBindingSpecification> ValidateInput(std::string_view key);
-        static bool                                                 ReplayDescriptorBindings(void* context);
-        bool                                                        ReplayDescriptorBindings();
-        void                                                        RecordDescriptorBinding(const DescriptorReplayRecord& record);
-
-    private:
-        Hardwares::VulkanDevice* m_device = nullptr;
+        Pipelines::IPipeline* GetPipeline() const override
+        {
+            return Pipeline;
+        }
     };
     ZDEFINE_PTR(GraphicPass);
 
-    struct ComputePass : RenderPass
+    struct ComputePass : DescriptorBoundPass
     {
     public:
         ~ComputePass();
 
-        Pipelines::ComputePipeline* Pipeline                                              = {nullptr};
-        DescriptorReplayRecord      DescriptorReplayRecords[kMaxDescriptorReplayBindings] = {};
-        uint32_t                    DescriptorReplayRecordCount                           = 0;
-
+        Pipelines::ComputePipeline* Pipeline = {nullptr};
         void                        Initialize(Hardwares::VulkanDevice* device, Specifications::RenderPassSpecification specification) override;
         void                        Dispose() override;
         void                        Bake() override;
         bool                        Verify() override;
-        void                        SetStorageBuffer(cstring name, const Core::Memory::BufferView* buffer);
-        void                        SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
 
     private:
-        static bool              ReplayDescriptorBindings(void* context);
-        bool                     ReplayDescriptorBindings();
-        void                     RecordDescriptorBinding(const DescriptorReplayRecord& record);
-        Hardwares::VulkanDevice* m_device = nullptr;
+        Pipelines::IPipeline* GetPipeline() const override
+        {
+            return Pipeline;
+        }
     };
     ZDEFINE_PTR(ComputePass);
 

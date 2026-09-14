@@ -420,23 +420,54 @@ namespace ZEngine::Rendering::Shaders
 
             auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(compute_shader_binary_code.data(), compute_shader_binary_code.size());
             auto compute_resources               = spirv_compiler->get_shader_resources();
+
+            auto reflect_reserved_binding        = [&](uint32_t set, uint32_t binding, DescriptorType descriptor_type) {
+                if (!m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
+                    return false;
+
+                const auto&                       reserved_bindings = m_device->ShaderReservedLayoutBindingSpecificationMap.at(set);
+                const LayoutBindingSpecification* reserved          = nullptr;
+                for (const auto& candidate : reserved_bindings)
+                {
+                    if (candidate.Binding == binding)
+                    {
+                        reserved = &candidate;
+                        break;
+                    }
+                }
+
+                ZENGINE_VALIDATE_ASSERT(reserved != nullptr, "Compute shader declares an undeclared binding in a reserved descriptor set")
+                ZENGINE_VALIDATE_ASSERT(reserved->DescriptorTypeValue == descriptor_type, "Compute shader descriptor type conflicts with a reserved descriptor set binding")
+                ZENGINE_VALIDATE_ASSERT(reserved->Flags == ShaderStageFlags::COMPUTE, "Compute shader declares a binding unavailable to the compute stage")
+
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 2);
+                LayoutBindingSpecificationMap[set].push(*reserved);
+                return true;
+            };
+
             for (const auto& UB_resource : compute_resources.uniform_buffers)
             {
-                uint32_t set     = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationDescriptorSet);
-                uint32_t binding = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationBinding);
+                uint32_t       set     = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationDescriptorSet);
+                uint32_t       binding = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationBinding);
+                DescriptorType ub_type = (set == 0 && binding == 0) ? DescriptorType::UNIFORM_BUFFER_DYNAMIC : DescriptorType::UNIFORM_BUFFER;
+                if (reflect_reserved_binding(set, binding, ub_type))
+                    continue;
                 if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
                     LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
 
                 auto name_c_size = UB_resource.name.size() + 1u;
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                 Helpers::secure_strcpy(name_c_str, name_c_size, UB_resource.name.c_str());
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::COMPUTE});
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = ub_type, .Flags = ShaderStageFlags::COMPUTE});
             }
 
             for (const auto& SB_resource : compute_resources.storage_buffers)
             {
                 uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
                 uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
+                if (reflect_reserved_binding(set, binding, DescriptorType::STORAGE_BUFFER))
+                    continue;
                 if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
                     LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
 
@@ -445,6 +476,33 @@ namespace ZEngine::Rendering::Shaders
                 Helpers::secure_strcpy(name_c_str, name_c_size, SB_resource.name.c_str());
                 LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::COMPUTE});
             }
+
+            auto reflect_image_binding = [&](const spirv_cross::Resource& resource, DescriptorType descriptor_type) {
+                const uint32_t set     = spirv_compiler->get_decoration(resource.id, spv::DecorationDescriptorSet);
+                const uint32_t binding = spirv_compiler->get_decoration(resource.id, spv::DecorationBinding);
+
+                if (reflect_reserved_binding(set, binding, descriptor_type))
+                    return;
+
+                const auto&    type  = spirv_compiler->get_type(resource.type_id);
+                const uint32_t count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
+
+                const size_t name_c_size = resource.name.size() + 1u;
+                char*        name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, resource.name.c_str());
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = descriptor_type, .Flags = ShaderStageFlags::COMPUTE});
+            };
+
+            for (const auto& resource : compute_resources.sampled_images)
+                reflect_image_binding(resource, DescriptorType::COMBINED_IMAGE_SAMPLER);
+            for (const auto& resource : compute_resources.separate_images)
+                reflect_image_binding(resource, DescriptorType::SAMPLED_IMAGE);
+            for (const auto& resource : compute_resources.separate_samplers)
+                reflect_image_binding(resource, DescriptorType::SAMPLER);
+            for (const auto& resource : compute_resources.storage_images)
+                reflect_image_binding(resource, DescriptorType::STORAGE_IMAGE);
 
             for (const auto& push_constant_resource : compute_resources.push_constant_buffers)
             {

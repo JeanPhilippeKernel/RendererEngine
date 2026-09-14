@@ -233,7 +233,7 @@ namespace ZEngine::Hardwares
         /// @details The caller declares transfer synchronization through the render graph;
         /// this wrapper intentionally records only vkCmdCopyBuffer.
         void                              CopyBuffer(VkBuffer source, VkBuffer destination, VkDeviceSize size, VkDeviceSize source_offset = 0, VkDeviceSize destination_offset = 0);
-        void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset = 0);
+        void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset = 0, uint32_t depth = 1);
         void                              BindVertexBuffer(const Core::Memory::BufferView& buffer);
         void                              BindIndexBuffer(const Core::Memory::BufferView& buffer, VkIndexType type);
         void                              SetScissor(uint32_t w, uint32_t h, int32_t x = 0, int32_t y = 0);
@@ -411,47 +411,47 @@ namespace ZEngine::Hardwares
         uint32_t                                                                                                                     MinUniformBufferOffsetAlignment() const;
         uint32_t                                                                                                                     MinStorageBufferOffsetAlignment() const;
         VkPipelineStageFlags                                                                                                         CopyBuffer(CommandBuffer* const command_buffer, const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
-        BufferImage                                 CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, uint32_t mip_level_count = 1U, VkImageCreateFlags image_create_flag_bit = 0, cstring debug_name = nullptr);
+        BufferImage   CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, uint32_t mip_level_count = 1U, VkImageCreateFlags image_create_flag_bit = 0, cstring debug_name = nullptr, uint32_t depth = 1U);
         /// @brief Creates a distinct image object backed by an existing image allocation.
-        BufferImage                                 CreateAliasingImage(const BufferImage& backing, uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, uint32_t mip_level_count = 1U, VkImageCreateFlags image_create_flag_bit = 0, cstring debug_name = nullptr);
-        VkFormat                                    FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
-        VkFormat                                    FindDepthFormat();
-        VkImageView                                 CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
+        BufferImage   CreateAliasingImage(const BufferImage& backing, uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, uint32_t mip_level_count = 1U, VkImageCreateFlags image_create_flag_bit = 0, cstring debug_name = nullptr, uint32_t depth = 1U);
+        VkFormat      FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        VkFormat      FindDepthFormat();
+        VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
         /// @brief Creates an image view covering the supplied exact subresource range.
-        VkImageView                                 CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range);
-        VkFramebuffer                               CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
+        VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range);
+        VkFramebuffer CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
 
-        Helpers::Handle<Rendering::Shaders::Shader> CompileShader(Rendering::Specifications::ShaderSpecification& spec);
+        Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);
 
         /// @brief Queues a shader-file reload request from any producer thread.
-        void                                        RequestShaderReload(cstring shader_path);
+        void                                            RequestShaderReload(cstring shader_path);
 
         /// @brief Reloads queued shaders on the render thread before command recording.
-        void                                        FlushShaderReloadRequests();
+        void                                            FlushShaderReloadRequests();
 
         /// @brief Reloads a cached shader and invalidates pipelines compiled from its old generation.
-        bool                                        ReloadShader(cstring shader_name);
+        bool                                            ReloadShader(cstring shader_name);
 
         /// @brief Creates a texture and assigns the optional allocator debug name.
-        Rendering::Textures::TextureHandle          CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr);
+        Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr);
         /// @brief Creates a texture object aliased to the backing allocation of `source`.
-        Rendering::Textures::TextureHandle          CreateAliasingTexture(const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source, cstring debug_name = nullptr);
+        Rendering::Textures::TextureHandle              CreateAliasingTexture(const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source, cstring debug_name = nullptr);
 
         /// @brief In-place resize/format change: same handle, same slot, same bindless index.
         /// @return false if handle is not live.
-        bool                                        ReconstructTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec);
+        bool                                            ReconstructTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec);
         /// @brief Reconstructs an aliased texture object against a reconstructed backing texture.
-        bool                                        ReconstructAliasingTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source);
+        bool                                            ReconstructAliasingTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source);
 
         /// @brief Dirty this handle's bindless descriptor for the next graph frame to refresh.
-        void                                        RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
-        void                                        RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+        void                                            RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+        void                                            RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
         /// @brief Applies queued bindless descriptor writes before render-graph recording.
         /// @details Render-thread only. DeviceSwapchain::Present never writes descriptors.
-        void                                        FlushBindlessTextureUpdates();
+        void                                            FlushBindlessTextureUpdates();
 
         /// @brief Timeline-gated disposal. Render-thread only.
-        void                                        DestroyTexture(const Rendering::Textures::TextureHandle& handle);
+        void                                            DestroyTexture(const Rendering::Textures::TextureHandle& handle);
 
         /// @brief Copies data into the texture's backing image via the ring buffer when it
         ///        fits, else a one-shot staging buffer (returned so the caller can free it
@@ -463,7 +463,7 @@ namespace ZEngine::Hardwares
         ///        to reclaim and a later allocation can overwrite it before the GPU reads it.
         /// @param use_staging_ring Set false for independently submitted work whose
         ///        completion is not represented by RenderTimeline.
-        BufferView                                  WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true);
+        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
 

@@ -864,6 +864,11 @@ namespace ZEngine::Rendering::Renderers
         auto* image_buffer = graph->Device->ImageBufferManager.Access(texture->BufferHandle);
         if (!image_buffer)
             return false;
+        // This renderer does not enable VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT
+        // for volume images. A 3D LUT consequently has no framebuffer-compatible
+        // view and must remain a sampled/storage resource.
+        if (image_buffer->Specification.BufferUsageType == Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE)
+            return false;
 
         const VkImageSubresourceRange vk_range  = ToVkSubresourceRange(range);
         const VkImageViewType         view_type = range.LayerCount == 1 ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D_ARRAY;
@@ -1021,7 +1026,7 @@ namespace ZEngine::Rendering::Renderers
 
     static bool HasCompatibleImageLayout(const Specifications::TextureSpecification& left, const Specifications::TextureSpecification& right)
     {
-        return left.Format == right.Format && left.Width == right.Width && left.Height == right.Height && left.MipLevelCount == right.MipLevelCount && left.LayerCount == right.LayerCount && left.IsCubemap == right.IsCubemap;
+        return left.Format == right.Format && left.Width == right.Width && left.Height == right.Height && left.Depth == right.Depth && left.MipLevelCount == right.MipLevelCount && left.LayerCount == right.LayerCount && left.IsCubemap == right.IsCubemap && left.Is3D == right.Is3D;
     }
 
     static bool HasImageUsageSuperset(const Specifications::TextureSpecification& allocation, const Specifications::TextureSpecification& request)
@@ -1575,7 +1580,7 @@ namespace ZEngine::Rendering::Renderers
             // update descriptor sets. Complete it on the render thread before
             // any worker records this pass into a secondary command buffer.
             EnsurePassPipelineOnRenderThread(pass);
-            BindDeclaredBufferResources(pass);
+            BindDeclaredResources(pass);
             if (IsGraphicPass(pass))
                 static_cast<RenderPasses::GraphicPass*>(pass.Handle)->Verify();
         }
@@ -2351,19 +2356,7 @@ namespace ZEngine::Rendering::Renderers
         AllocateFramebuffers();
 
         for (auto& pass : Passes)
-        {
-            if (!pass.Handle || pass.Handle->Specification.Type == Specifications::RenderPassType::COMPUTE)
-                continue;
-            auto* gp = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
-            for (const auto& r : pass.Reads)
-            {
-                if (!r.Handle.Valid() || !r.BindingKey)
-                    continue;
-                const auto& res = Resources[r.Handle.Index];
-                if (res.TextureHandle.Valid())
-                    gp->SetTexture(r.BindingKey, res.TextureHandle);
-            }
-        }
+            BindDeclaredResources(pass);
     }
 
     void RenderGraph::Dispose()
@@ -2805,13 +2798,13 @@ namespace ZEngine::Rendering::Renderers
         graphic_pass->UpdateRenderTargets();
     }
 
-    void RenderGraph::BindDeclaredBufferResources(RGPass& pass)
+    void RenderGraph::BindDeclaredResources(RGPass& pass)
     {
         if (!Device || !Device->SwapchainPtr || !Device->SwapchainPtr->CurrentFrame || !pass.Handle)
             return;
 
-        const uint32_t frame_index = Device->SwapchainPtr->CurrentFrame->Index;
-        auto           bind_use    = [&](const RGPassResource& use) {
+        const uint32_t frame_index     = Device->SwapchainPtr->CurrentFrame->Index;
+        auto           bind_buffer_use = [&](const RGPassResource& use) {
             if (!use.BindingKey || !use.Handle.Valid() || use.Handle.Index >= Resources.size())
                 return;
 
@@ -2819,23 +2812,51 @@ namespace ZEngine::Rendering::Renderers
             if (resource.Kind != RGResourceKind::Buffer || !resource.Buffer || resource.Buffer->Handle == VK_NULL_HANDLE)
                 return;
 
-            switch (pass.Handle->Specification.Type)
+            static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle)->SetStorageBufferForFrame(use.BindingKey, frame_index, resource.Buffer);
+        };
+
+        auto bind_texture_use = [&](const RGPassResource& use) {
+            if (!use.BindingKey || !use.Handle.Valid() || use.Handle.Index >= Resources.size())
+                return;
+
+            const RGResource& resource = Resources[use.Handle.Index];
+            if (resource.Kind != RGResourceKind::Texture || !resource.TextureHandle.Valid())
+                return;
+
+            auto* descriptor_pass = static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle);
+            switch (use.Access)
             {
-                case Specifications::RenderPassType::GRAPHIC:
-                    static_cast<RenderPasses::GraphicPass*>(pass.Handle)->SetStorageBufferForFrame(use.BindingKey, frame_index, resource.Buffer);
+                case RGAccess::ShaderRead:
+                    descriptor_pass->SetTexture(use.BindingKey, resource.TextureHandle);
                     break;
-                case Specifications::RenderPassType::COMPUTE:
-                    static_cast<RenderPasses::ComputePass*>(pass.Handle)->SetStorageBufferForFrame(use.BindingKey, frame_index, resource.Buffer);
+                case RGAccess::StorageWrite:
+                case RGAccess::ShaderReadWrite:
+                {
+                    const VkImageSubresourceRange range = {
+                        .aspectMask     = use.Range.AspectMask,
+                        .baseMipLevel   = use.Range.BaseMipLevel,
+                        .levelCount     = use.Range.LevelCount,
+                        .baseArrayLayer = use.Range.BaseArrayLayer,
+                        .layerCount     = use.Range.LayerCount,
+                    };
+                    descriptor_pass->SetStorageImage(use.BindingKey, resource.TextureHandle, range);
                     break;
+                }
                 default:
                     break;
             }
         };
 
         for (const RGPassResource& read : pass.Reads)
-            bind_use(read);
+        {
+            bind_buffer_use(read);
+            bind_texture_use(read);
+        }
         for (const RGPassResource& write : pass.Writes)
-            bind_use(write);
+        {
+            bind_buffer_use(write);
+            bind_texture_use(write);
+        }
     }
 
     bool RenderGraph::ValidateDeclarations()
