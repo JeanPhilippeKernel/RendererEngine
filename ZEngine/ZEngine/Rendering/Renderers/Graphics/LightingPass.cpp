@@ -31,15 +31,9 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadTexture(res_builder->ImportTexture("SpecularEnvironment", m_environment_lighting.SpecularEnvironment, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
         res_builder->ReadTexture(res_builder->ImportTexture("BrdfIntegrationLut", m_environment_lighting.BrdfIntegrationLut, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
         res_builder->WriteColorAttachment(
-            RendererResourceName::FrameColorRenderTargetName,
+            RendererResourceName::FrameHdrColorRenderTargetName,
             {
-            // FrameColor is exposed through the editor viewport even without ZUI.
-            .IsUsageSampled = true,
-            .Width          = w,
-            .Height         = h,
-            .Format         = Specifications::ImageFormat::R8G8B8A8_UNORM,
-            .LoadOp         = LoadOperation::CLEAR,
-            .ClearColor     = {0.11f, 0.11f, 0.11f, 1.0f}
+            .IsUsageSampled = true, .Width = w, .Height = h, .BytePerPixel = sizeof(uint16_t) * 4, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT, .LoadOp = LoadOperation::CLEAR, .ClearColor = {0.11f, 0.11f, 0.11f, 1.0f}
         });
 
         return true;

@@ -16,20 +16,21 @@ namespace ZEngine::Rendering
     /// @brief Fully resolved, immutable resource budget for one environment bake.
     struct EnvironmentLightingBakeSettings
     {
-        EnvironmentLightingQualityTier Tier                = EnvironmentLightingQualityTier::Standard;
-        uint32_t                       DiffuseResolution   = 32;
-        uint32_t                       DiffuseSampleCount  = 32;
-        uint32_t                       SpecularResolution  = 128;
-        uint32_t                       SpecularSampleCount = 128;
+        EnvironmentLightingQualityTier Tier                     = EnvironmentLightingQualityTier::Standard;
+        uint32_t                       SourceRadianceResolution = 512;
+        uint32_t                       DiffuseResolution        = 32;
+        uint32_t                       DiffuseSampleCount       = 32;
+        uint32_t                       SpecularResolution       = 128;
+        uint32_t                       SpecularSampleCount      = 128;
 
         [[nodiscard]] constexpr bool   Matches(const EnvironmentLightingBakeSettings& other) const
         {
-            return Tier == other.Tier && DiffuseResolution == other.DiffuseResolution && DiffuseSampleCount == other.DiffuseSampleCount && SpecularResolution == other.SpecularResolution && SpecularSampleCount == other.SpecularSampleCount;
+            return Tier == other.Tier && SourceRadianceResolution == other.SourceRadianceResolution && DiffuseResolution == other.DiffuseResolution && DiffuseSampleCount == other.DiffuseSampleCount && SpecularResolution == other.SpecularResolution && SpecularSampleCount == other.SpecularSampleCount;
         }
 
         [[nodiscard]] constexpr bool IsValid() const
         {
-            return DiffuseResolution > 0 && DiffuseSampleCount > 0 && SpecularResolution > 0 && SpecularSampleCount > 0;
+            return SourceRadianceResolution > 0 && DiffuseResolution > 0 && DiffuseSampleCount > 0 && SpecularResolution > 0 && SpecularSampleCount > 0;
         }
     };
 
@@ -39,12 +40,12 @@ namespace ZEngine::Rendering
         switch (tier)
         {
             case EnvironmentLightingQualityTier::Low:
-                return {EnvironmentLightingQualityTier::Low, 16, 16, 64, 64};
+                return {EnvironmentLightingQualityTier::Low, 128, 16, 16, 64, 64};
             case EnvironmentLightingQualityTier::High:
-                return {EnvironmentLightingQualityTier::High, 64, 64, 256, 256};
+                return {EnvironmentLightingQualityTier::High, 1024, 64, 64, 256, 256};
             case EnvironmentLightingQualityTier::Standard:
             default:
-                return {EnvironmentLightingQualityTier::Standard, 32, 32, 128, 128};
+                return {EnvironmentLightingQualityTier::Standard, 512, 32, 32, 128, 128};
         }
     }
 

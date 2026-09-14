@@ -19,15 +19,31 @@ namespace ZEngine::Rendering::Scenes
     enum class SkyEnvironmentBakeStage : uint8_t
     {
         AwaitingSource = 0,
+        AtmosphereTransmittance,
+        AtmosphereMultiscattering,
+        AtmosphereSourceRadiance,
         SourceMipChain,
         DiffuseIrradiance,
         SpecularEnvironment,
         ReadyToPublish,
     };
 
+    /// @brief Persistent static lookup tables generated for one atmosphere revision.
+    struct AtmosphereStaticResources
+    {
+        Textures::TextureHandle Transmittance   = {};
+        Textures::TextureHandle Multiscattering = {};
+
+        [[nodiscard]] bool      Valid() const
+        {
+            return Transmittance.Valid() && Multiscattering.Valid();
+        }
+    };
+
     /// @brief The resources that are owned as one immutable environment revision.
     struct SkyEnvironmentResources
     {
+        AtmosphereStaticResources    Atmosphere     = {};
         Textures::TextureHandle      SourceRadiance = {};
         EnvironmentLightingResources Lighting       = {};
     };
@@ -36,6 +52,7 @@ namespace ZEngine::Rendering::Scenes
     struct SkyEnvironmentSnapshot
     {
         SkyConfig                    Config          = {};
+        AtmosphereStaticResources    Atmosphere      = {};
         Textures::TextureHandle      SourceRadiance  = {};
         EnvironmentLightingResources Lighting        = {};
         uint64_t                     Revision        = 0;
@@ -49,9 +66,12 @@ namespace ZEngine::Rendering::Scenes
     /// @brief Immutable bake input claimed by the render thread.
     struct SkyEnvironmentBakeRequest
     {
-        SkyConfig                       Config       = {};
-        EnvironmentLightingBakeSettings BakeSettings = {};
-        uint64_t                        Revision     = 0;
+        SkyConfig                       Config          = {};
+        SkyCelestialLight               CelestialLight  = {};
+        EnvironmentLightingBakeSettings BakeSettings    = {};
+        uint64_t                        Revision        = 0;
+        /// @brief True only when this request has every valid input needed to bake.
+        bool                            BakeInputsValid = true;
     };
 
     /// @brief Result of a revision-tagged environment bake completion.
@@ -79,13 +99,15 @@ namespace ZEngine::Rendering::Scenes
 
         /// @brief Coalesces an immutable config revision while preserving its identity.
         /// @return False if the revision is stale or already observed.
-        bool                                              SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings = {});
+        bool                                              SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings = {}, const SkyCelestialLight& celestial_light = {});
 
         /// @brief Claims the newest revision when no other bake is in flight.
         bool                                              TakeBakeRequest(SkyEnvironmentBakeRequest& out_request);
 
         /// @brief Associates a render-thread-created source texture with the active bake.
         bool                                              AttachBakeResource(uint64_t revision, Textures::TextureHandle source_radiance);
+        /// @brief Associates static atmosphere LUTs with the active atmosphere bake.
+        bool                                              AttachBakeAtmosphere(uint64_t revision, const AtmosphereStaticResources& atmosphere, bool owns_resources = true);
         /// @brief Associates newly allocated, unpublished IBL textures with the active bake.
         bool                                              AttachBakeLighting(uint64_t revision, const EnvironmentLightingResources& lighting);
         /// @brief Begins staged GPU IBL generation after the source upload is complete.
@@ -101,7 +123,7 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] bool                                IsGpuBakeReadyToPublish() const;
 
         /// @brief Completes a bake, publishing it only if its revision is still current.
-        SkyEnvironmentBakeResult                          CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success, const EnvironmentLightingResources& lighting = {});
+        SkyEnvironmentBakeResult                          CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success, const EnvironmentLightingResources& lighting = {}, const AtmosphereStaticResources& atmosphere = {});
 
         /// @brief Pins the single snapshot that every sky consumer must use this frame.
         const SkyEnvironmentSnapshot*                     AcquireForFrame();
@@ -118,6 +140,10 @@ namespace ZEngine::Rendering::Scenes
 
         [[nodiscard]] const SkyEnvironmentBakeRequest*    GetActiveBake() const;
         [[nodiscard]] Textures::TextureHandle             GetActiveBakeSource() const;
+        [[nodiscard]] const AtmosphereStaticResources&    GetActiveBakeAtmosphere() const;
+        [[nodiscard]] bool                                ActiveBakeOwnsAtmosphere() const;
+        /// @brief Returns compatible static LUTs from the published atmosphere revision, if any.
+        [[nodiscard]] const AtmosphereStaticResources*    FindReusableAtmosphere(const SkyConfig& config) const;
         [[nodiscard]] const EnvironmentLightingResources& GetActiveBakeLighting() const;
         [[nodiscard]] SkyEnvironmentBakeStage             GetActiveBakeStage() const;
         [[nodiscard]] const SkyEnvironmentSnapshot*       GetPublishedSnapshot() const;
@@ -127,19 +153,23 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] uint64_t                            GetLatestRevision() const;
 
     private:
-        [[nodiscard]] static bool       HasEquivalentBakeInputs(const SkyConfig& left, const SkyConfig& right);
+        [[nodiscard]] static bool       HasEquivalentAtmosphereStaticInputs(const SkyConfig& left, const SkyConfig& right);
+        [[nodiscard]] static bool       HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, const SkyConfig& right, const SkyCelestialLight& right_celestial_light);
+        [[nodiscard]] bool              IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const;
         void                            ReleaseNextFramePin(uint64_t timeline_value);
         int32_t                         FindFreeSnapshotSlot() const;
 
         SkyEnvironmentSnapshot          m_snapshots[MaxSnapshots]              = {};
         SkyEnvironmentBakeRequest       m_pending_request                      = {};
         SkyEnvironmentBakeRequest       m_active_bake                          = {};
+        AtmosphereStaticResources       m_active_bake_atmosphere               = {};
         Textures::TextureHandle         m_active_bake_source                   = {};
         EnvironmentLightingResources    m_active_bake_lighting                 = {};
         EnvironmentLightingResources    m_fallback_lighting                    = {};
         EnvironmentLightingBakeSettings m_bake_settings                        = {};
         SkyConfig                       m_presentation_config                  = {};
         SkyConfig                       m_bake_config                          = {};
+        SkyCelestialLight               m_bake_celestial_light                 = {};
         uint16_t                        m_frame_pin_slots[MaxPendingFramePins] = {};
         uint32_t                        m_published_slot                       = 0;
         uint32_t                        m_frame_pin_head                       = 0;
@@ -150,6 +180,8 @@ namespace ZEngine::Rendering::Scenes
         SkyEnvironmentBakeStage         m_active_bake_stage                    = SkyEnvironmentBakeStage::AwaitingSource;
         bool                            m_has_pending_request                  = false;
         bool                            m_has_active_bake                      = false;
+        bool                            m_active_bake_owns_atmosphere          = false;
+        bool                            m_bake_inputs_valid                    = false;
         bool                            m_active_stage_submitted               = false;
         bool                            m_active_stage_recorded                = false;
         SkyEnvironmentState             m_state                                = SkyEnvironmentState::Fallback;

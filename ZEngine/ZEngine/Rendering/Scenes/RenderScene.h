@@ -17,6 +17,20 @@ namespace ZEngine::Rendering
 
 namespace ZEngine::Rendering::Scenes
 {
+    /// @brief Direct-normal illuminance of the default clear-sky noon sun.
+    inline constexpr float        StandardNoonSunIlluminanceLux = 120000.0f;
+
+    /// @brief Illuminance represented by one scene-linear radiance unit.
+    /// @details This calibrated unit bridge is used only by analytic
+    /// atmosphere source capture and its IBL. It is not a display-exposure
+    /// control: the default noon sun consequently maps to 20 scene units.
+    inline constexpr float        ReferenceSunIlluminanceLux    = 6000.0f;
+
+    [[nodiscard]] constexpr float ConvertSunIlluminanceToSceneRadiance(float illuminance_lux)
+    {
+        return illuminance_lux / ReferenceSunIlluminanceLux;
+    }
+
     struct GridConfig
     {
         float CellSize      = 0.025f;
@@ -60,7 +74,10 @@ namespace ZEngine::Rendering::Scenes
         float OzoneCenterKilometers             = 25.0f;
         float OzoneThicknessKilometers          = 15.0f;
         float SunAngularRadiusRadians           = 0.00465f;
-        float SunIlluminanceLux                 = 120000.0f;
+        /// @brief Direct-normal solar illuminance in lux.
+        /// @details It is converted to scene-linear radiance at the renderer
+        /// boundary; display exposure remains a per-view concern.
+        float SunIlluminanceLux                 = StandardNoonSunIlluminanceLux;
     };
 
     /// @brief Artistic inputs for the analytic SkySphere presentation mode.
@@ -73,6 +90,29 @@ namespace ZEngine::Rendering::Scenes
         float SunDiscIntensity            = 1.0f;
         float HorizonSharpness            = 1.0f;
         bool  ShowSunDisc                 = true;
+    };
+
+    /// @brief Main-thread-resolved directional-light input for atmosphere baking.
+    /// @details DirectionToLight points from the scene toward the celestial source.
+    ///          It is runtime state and is deliberately not serialized with SkyConfig.
+    struct SkyCelestialLight
+    {
+        float              DirectionToLight[3] = {0.0f, 1.0f, 0.0f};
+        bool               IsAvailable         = false;
+
+        [[nodiscard]] bool Matches(const SkyCelestialLight& other) const
+        {
+            return IsAvailable == other.IsAvailable && DirectionToLight[0] == other.DirectionToLight[0] && DirectionToLight[1] == other.DirectionToLight[1] && DirectionToLight[2] == other.DirectionToLight[2];
+        }
+
+        [[nodiscard]] bool IsValid() const
+        {
+            if (!IsAvailable)
+                return true;
+
+            const float length_squared = DirectionToLight[0] * DirectionToLight[0] + DirectionToLight[1] * DirectionToLight[1] + DirectionToLight[2] * DirectionToLight[2];
+            return std::isfinite(length_squared) && length_squared > 1.0e-8f;
+        }
     };
 
     /// @brief Scene-owned, serializable sky authoring data.
@@ -236,6 +276,8 @@ namespace ZEngine::Rendering::Scenes
         uint32_t                              NextInstanceId     = 1;
 
         SkyConfig                             Sky                = {};
+        /// @brief Resolved from Sky.PrimaryCelestialLight by LightSyncSystem.
+        SkyCelestialLight                     CelestialLight     = {};
         GridConfig                            Grid               = {};
         LightArrayUBO                         PendingLights      = {};
 

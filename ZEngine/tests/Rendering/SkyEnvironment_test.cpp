@@ -34,6 +34,14 @@ namespace
         config.Mode      = SkyMode::SkySphere;
         return config;
     }
+
+    AtmosphereStaticResources Atmosphere(uint64_t first_index)
+    {
+        return {
+            .Transmittance   = Texture(first_index),
+            .Multiscattering = Texture(first_index + 1),
+        };
+    }
 } // namespace
 
 TEST(SkyEnvironmentTest, FirstFramePinsTheValidFallbackSnapshot)
@@ -322,6 +330,154 @@ TEST(SkyEnvironmentTest, GpuBakeStagesAdvanceOnlyAfterTheirSubmittedTimelineComp
     ASSERT_EQ(environment.CompleteBake(1, Texture(2), true, Lighting(20)), SkyEnvironmentBakeResult::Published);
     EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.DiffuseIrradiance.Index, 20u);
     EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.SpecularEnvironment.Index, 21u);
+}
+
+TEST(SkyEnvironmentTest, AtmosphereBakeIncludesStaticLutsBeforeSourceRadiance)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyCelestialLight sun = {};
+    sun.IsAvailable       = true;
+    ASSERT_TRUE(environment.SubmitConfig({}, 1, {}, sun));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(request.BakeInputsValid);
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(1, Atmosphere(20)));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(30)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(40)));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+
+    constexpr SkyEnvironmentBakeStage stages[] = {
+        SkyEnvironmentBakeStage::AtmosphereTransmittance,
+        SkyEnvironmentBakeStage::AtmosphereMultiscattering,
+        SkyEnvironmentBakeStage::AtmosphereSourceRadiance,
+        SkyEnvironmentBakeStage::SourceMipChain,
+        SkyEnvironmentBakeStage::DiffuseIrradiance,
+        SkyEnvironmentBakeStage::SpecularEnvironment,
+    };
+    for (uint64_t index = 0; index < sizeof(stages) / sizeof(stages[0]); ++index)
+    {
+        const SkyEnvironmentBakeStage stage = stages[index];
+        ASSERT_EQ(environment.GetActiveBakeStage(), stage);
+        ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage));
+        ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, index + 1));
+        ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(index + 1));
+    }
+
+    ASSERT_TRUE(environment.IsGpuBakeReadyToPublish());
+    ASSERT_EQ(environment.CompleteBake(1, Texture(30), true, Lighting(40), Atmosphere(20)), SkyEnvironmentBakeResult::Published);
+    ASSERT_NE(environment.GetPublishedSnapshot(), nullptr);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Atmosphere.Transmittance.Index, 20u);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Atmosphere.Multiscattering.Index, 21u);
+}
+
+TEST(SkyEnvironmentTest, InvalidInputsAreMarkedForFallbackInsteadOfRebakingDefaults)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyConfig invalid                             = {};
+    invalid.Atmosphere.AtmosphereRadiusKilometers = invalid.Atmosphere.PlanetRadiusKilometers;
+    ASSERT_TRUE(environment.SubmitConfig(invalid, 1));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_FALSE(request.BakeInputsValid);
+    EXPECT_TRUE(request.Config.IsValid());
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Failed);
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+}
+
+TEST(SkyEnvironmentTest, AtmosphereWithoutSelectedSunKeepsTheFallbackSnapshot)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    ASSERT_TRUE(environment.SubmitConfig({}, 1));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_FALSE(request.BakeInputsValid);
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Failed);
+    ASSERT_NE(environment.GetPublishedSnapshot(), nullptr);
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+}
+
+TEST(SkyEnvironmentTest, AtmosphereSourceBakeIgnoresScenePlacementInputs)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyCelestialLight sun = {};
+    sun.IsAvailable       = true;
+    ASSERT_TRUE(environment.SubmitConfig({}, 1, {}, sun));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+
+    SkyConfig moved                       = {};
+    moved.Atmosphere.PlanetCenterWorld[0] = 250000.0f;
+    moved.Atmosphere.PlanetCenterWorld[1] = -1000.0f;
+    moved.Atmosphere.WorldUnitsPerMeter   = 100.0f;
+    ASSERT_TRUE(environment.SubmitConfig(moved, 2, {}, sun));
+
+    ASSERT_NE(environment.GetActiveBake(), nullptr);
+    EXPECT_EQ(environment.GetActiveBake()->Revision, 2u);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+}
+
+TEST(SkyEnvironmentTest, DirectionOnlyAtmosphereUpdateReusesStaticLutsUntilTheLastReferenceRetires)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyCelestialLight noon = {};
+    noon.IsAvailable       = true;
+    ASSERT_TRUE(environment.SubmitConfig({}, 1, {}, noon));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(1, Atmosphere(20)));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(30)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(40)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(30), true, Lighting(40), Atmosphere(20)), SkyEnvironmentBakeResult::Published);
+
+    SkyCelestialLight sunset   = noon;
+    sunset.DirectionToLight[0] = 1.0f;
+    sunset.DirectionToLight[1] = 0.0f;
+    ASSERT_TRUE(environment.SubmitConfig({}, 2, {}, sunset));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    const AtmosphereStaticResources* const reusable = environment.FindReusableAtmosphere(request.Config);
+    ASSERT_NE(reusable, nullptr);
+    EXPECT_EQ(reusable->Transmittance.Index, 20u);
+    EXPECT_EQ(reusable->Multiscattering.Index, 21u);
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(2, *reusable, false));
+    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(50)));
+    ASSERT_TRUE(environment.AttachBakeLighting(2, Lighting(60)));
+    ASSERT_EQ(environment.CompleteBake(2, Texture(50), true, Lighting(60), *reusable), SkyEnvironmentBakeResult::Published);
+
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 30u);
+    EXPECT_FALSE(retired.Atmosphere.Valid());
+
+    SkyConfig static_change                             = {};
+    static_change.Atmosphere.MieScatteringPerKilometer *= 1.1f;
+    ASSERT_TRUE(environment.SubmitConfig(static_change, 3, {}, sunset));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_EQ(environment.FindReusableAtmosphere(request.Config), nullptr);
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(3, Atmosphere(70)));
+    ASSERT_TRUE(environment.AttachBakeResource(3, Texture(80)));
+    ASSERT_TRUE(environment.AttachBakeLighting(3, Lighting(90)));
+    ASSERT_EQ(environment.CompleteBake(3, Texture(80), true, Lighting(90), Atmosphere(70)), SkyEnvironmentBakeResult::Published);
+
+    retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 50u);
+    EXPECT_EQ(retired.Atmosphere.Transmittance.Index, 20u);
+    EXPECT_EQ(retired.Atmosphere.Multiscattering.Index, 21u);
 }
 
 TEST(SkyEnvironmentTest, RetiringRevisionReturnsItsFullOwnedLightingSet)

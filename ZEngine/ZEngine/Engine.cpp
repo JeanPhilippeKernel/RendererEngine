@@ -388,8 +388,9 @@ namespace ZEngine
                 // configuration copy with its revision through the bounded
                 // frame-state mailbox instead of exposing Scene->Sky to the
                 // render thread.
-                state.Sky         = state.Scene->Sky;
-                state.SkyRevision = state.Scene->SkyRevision.value.load(std::memory_order_acquire);
+                state.Sky            = state.Scene->Sky;
+                state.CelestialLight = state.Scene->CelestialLight;
+                state.SkyRevision    = state.Scene->SkyRevision.value.load(std::memory_order_acquire);
             }
             state.RenderOverlay = g_engine_ctx->App->EnableRenderOverlay;
             pipeline->PublishFrameState(state);
@@ -473,7 +474,7 @@ namespace ZEngine
             if (frame_valid && state.Scene)
             {
                 const auto* overlay = state.RenderOverlay ? (has_next_overlay ? &next_overlay->ZUIOverlay : (retained_overlay ? &retained_overlay->ZUIOverlay : nullptr)) : nullptr;
-                pipeline->RenderScene(state.Camera, state.Scene, state.Sky, state.SkyRevision, overlay);
+                pipeline->RenderScene(state.Camera, state.Scene, state.Sky, state.CelestialLight, state.SkyRevision, overlay);
             }
             pipeline->EndFrame();
 

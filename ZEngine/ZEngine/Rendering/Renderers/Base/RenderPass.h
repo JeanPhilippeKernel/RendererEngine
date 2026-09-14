@@ -26,16 +26,17 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     /// @brief One pass-owned descriptor write that can be restored after shader hot reload.
     struct DescriptorReplayRecord
     {
-        cstring                                    Name        = nullptr;
-        Specifications::LayoutBindingSpecification Binding     = {};
-        const Core::Memory::BufferView*            Buffer      = nullptr;
-        Textures::TextureHandle                    Texture     = {};
-        VkDescriptorImageInfo                      Sampler     = {};
-        VkImageSubresourceRange                    ImageRange  = {};
-        VkImageLayout                              ImageLayout = VK_IMAGE_LAYOUT_MAX_ENUM;
-        VkDeviceSize                               Range       = 0;
-        uint32_t                                   FrameIndex  = UINT32_MAX;
-        DescriptorReplayKind                       Kind        = DescriptorReplayKind::StorageBuffer;
+        cstring                                    Name         = nullptr;
+        Specifications::LayoutBindingSpecification Binding      = {};
+        const Core::Memory::BufferView*            Buffer       = nullptr;
+        Textures::TextureHandle                    Texture      = {};
+        VkDescriptorImageInfo                      Sampler      = {};
+        VkImageSubresourceRange                    ImageRange   = {};
+        VkImageLayout                              ImageLayout  = VK_IMAGE_LAYOUT_MAX_ENUM;
+        VkDeviceSize                               Range        = 0;
+        uint32_t                                   FrameIndex   = UINT32_MAX;
+        uint32_t                                   ArrayElement = 0;
+        DescriptorReplayKind                       Kind         = DescriptorReplayKind::StorageBuffer;
     };
 
     /// @brief Backend pass owned by a render-graph persistent-pass slot.
@@ -67,7 +68,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         void SetStorageBufferForFrame(cstring name, uint32_t frame_index, const Core::Memory::BufferView* buffer);
         void SetDynamicUniform(cstring name, VkDeviceSize range);
         void SetTexture(cstring name, const Textures::TextureHandle& texture, VkImageLayout image_layout = VK_IMAGE_LAYOUT_MAX_ENUM);
-        void SetStorageImage(cstring name, const Textures::TextureHandle& texture, const VkImageSubresourceRange& range = {});
+        void SetStorageImage(cstring name, const Textures::TextureHandle& texture, const VkImageSubresourceRange& range = {}, uint32_t array_element = 0);
+        /// @brief Binds one storage-image view to each consecutive element of an image array.
+        void SetStorageImageArray(cstring name, const Textures::TextureHandle& texture, const VkImageSubresourceRange* ranges, uint32_t range_count);
         void SetSampler(cstring name, const VkDescriptorImageInfo& sampler_info);
         void UseTextureArray(cstring name);
 
