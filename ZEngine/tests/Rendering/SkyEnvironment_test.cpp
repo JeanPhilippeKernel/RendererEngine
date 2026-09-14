@@ -258,3 +258,64 @@ TEST(SkyEnvironmentTest, CancelledFrameDoesNotLeaveAReplacementPinned)
     ASSERT_TRUE(environment.TakeRetiredSnapshot(0, retired));
     EXPECT_EQ(retired.Index, 2u);
 }
+
+TEST(SkyEnvironmentTest, GpuBakeStagesAdvanceOnlyAfterTheirSubmittedTimelineCompletes)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(20)));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+
+    EXPECT_EQ(environment.GetActiveBakeStage(), SkyEnvironmentBakeStage::SourceMipChain);
+    ASSERT_TRUE(environment.CanRecordGpuBakeStage());
+    ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, SkyEnvironmentBakeStage::SourceMipChain));
+    ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, 5));
+    EXPECT_FALSE(environment.CanRecordGpuBakeStage());
+    EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(4));
+    ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(5));
+    EXPECT_EQ(environment.GetActiveBakeStage(), SkyEnvironmentBakeStage::DiffuseIrradiance);
+
+    ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, SkyEnvironmentBakeStage::DiffuseIrradiance));
+    ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, 6));
+    ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(6));
+    EXPECT_EQ(environment.GetActiveBakeStage(), SkyEnvironmentBakeStage::SpecularEnvironment);
+
+    ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, SkyEnvironmentBakeStage::SpecularEnvironment));
+    ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, 7));
+    ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(7));
+    EXPECT_TRUE(environment.IsGpuBakeReadyToPublish());
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true, Lighting(20)), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.DiffuseIrradiance.Index, 20u);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.SpecularEnvironment.Index, 21u);
+}
+
+TEST(SkyEnvironmentTest, RetiringRevisionReturnsItsFullOwnedLightingSet)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true, Lighting(20)), SkyEnvironmentBakeResult::Published);
+    ASSERT_NE(environment.AcquireForFrame(), nullptr);
+
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
+    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true, Lighting(30)), SkyEnvironmentBakeResult::Published);
+    environment.ReleaseSubmittedFrame(9);
+
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(9, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
+    EXPECT_EQ(retired.Lighting.DiffuseIrradiance.Index, 20u);
+    EXPECT_EQ(retired.Lighting.SpecularEnvironment.Index, 21u);
+    EXPECT_EQ(retired.Lighting.BrdfIntegrationLut.Index, 22u);
+}

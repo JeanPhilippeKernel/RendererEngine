@@ -1243,7 +1243,7 @@ namespace ZEngine::Rendering
         }
     }
 
-    Rendering::Textures::TextureHandle RenderResourceManager::UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data)
+    Rendering::Textures::TextureHandle RenderResourceManager::UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size)
     {
         using namespace Rendering::Specifications;
         using namespace Rendering::Primitives;
@@ -1256,12 +1256,19 @@ namespace ZEngine::Rendering
         if (FindStreamingUploadTicket(handle))
             return {};
 
-        uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+        uint32_t pool_index = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
 
-        auto     texture        = m_device->GlobalTextures.Access(handle);
-        auto     img_buf        = m_device->ImageBufferManager.Access(texture->BufferHandle);
-        auto     img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        auto     buffer_handle  = img_buf->GetHandle();
+        auto     texture    = m_device->GlobalTextures.Access(handle);
+        if (!texture)
+            return {};
+        const VkDeviceSize upload_size = data_size == 0 ? texture->BufferSize : static_cast<VkDeviceSize>(data_size);
+        if (upload_size == 0 || upload_size > texture->BufferSize)
+            return {};
+        auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
+        if (!img_buf)
+            return {};
+        auto img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        auto buffer_handle  = img_buf->GetHandle();
 
         if (m_device->HasSeparateTransferQueue)
         {
@@ -1296,7 +1303,7 @@ namespace ZEngine::Rendering
             // A streamed upload is submitted independently from the render timeline.
             // Keep its staging allocation off the render-timeline ring and retire it
             // with the producer timeline below.
-            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, nullptr, false);
+            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, nullptr, false, upload_size);
 
             ImageMemoryBarrierSpecification release          = {};
             release.ImageHandle                              = buffer_handle;
@@ -1366,7 +1373,7 @@ namespace ZEngine::Rendering
 
             // See the dedicated-transfer branch above: the upload submission is not
             // represented by RenderTimeline, so its staging buffer must not use the ring.
-            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data, nullptr, false);
+            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data, nullptr, false, upload_size);
 
             ImageMemoryBarrierSpecification to_final = {};
             to_final.ImageHandle                     = buffer_handle;
@@ -1497,7 +1504,7 @@ namespace ZEngine::Rendering
 
     bool RenderResourceManager::ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral)
     {
-        auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels);
+        auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels, deferral.ByteSize);
         if (!result.Valid())
             return false;
 
@@ -1819,6 +1826,18 @@ namespace ZEngine::Rendering
             }
         }
 
+        if (spec.IsCubemap)
+        {
+            const uint32_t largest_dimension = std::max(spec.Width, spec.Height);
+            uint32_t       mip_count         = 1;
+            for (uint32_t dimension = largest_dimension; dimension > 1; dimension >>= 1)
+                ++mip_count;
+            spec.MipLevelCount  = mip_count;
+            // HDRI mip generation is recorded as a graph compute stage before
+            // the cubemap is sampled by the IBL convolution passes.
+            spec.IsUsageStorage = true;
+        }
+
         spec.BytePerPixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
 
         Rendering::Textures::TextureHandle tex_handle;
@@ -1827,7 +1846,7 @@ namespace ZEngine::Rendering
             // Reimport — reconstruct in place only if dimensions/format actually changed;
             // same handle, same bindless index either way.
             auto* texture = m_device->GlobalTextures.Access(existing);
-            if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format))
+            if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format || texture->Specification.MipLevelCount != spec.MipLevelCount))
                 m_device->ReconstructTexture(existing, spec);
             tex_handle = existing;
         }

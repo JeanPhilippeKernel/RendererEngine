@@ -2,6 +2,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Compute/FrustumCullingPass.h>
+#include <ZEngine/Rendering/Renderers/Compute/SkyEnvironmentBakePass.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
@@ -73,14 +74,20 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(fallback_environment.Valid(), "Sky environment fallback source creation failed")
         ZENGINE_VALIDATE_ASSERT(fallback_lighting.Valid(), "Sky environment fallback lighting creation failed")
         m_sky_environment.Initialize(fallback_environment, fallback_lighting);
-        m_lighting_pass = lighting_pass;
-        m_skybox_pass   = skybox_pass;
+        m_lighting_pass               = lighting_pass;
+        m_skybox_pass                 = skybox_pass;
+        m_sky_mip_generation_pass     = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentMipGenerationPass, &m_sky_environment);
+        m_sky_diffuse_irradiance_pass = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentDiffuseIrradiancePass, &m_sky_environment);
+        m_sky_specular_prefilter_pass = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentSpecularPrefilterPass, &m_sky_environment);
         m_lighting_pass->SetEnvironmentLighting(fallback_lighting, m_sky_environment.GetPresentationConfig());
         m_skybox_pass->SetEnvironment(fallback_environment, m_sky_environment.GetPresentationConfig());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalVertex, rrm->GetGlobalVertexBuffer());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalIndex, rrm->GetGlobalIndexBuffer());
 
         RenderGraph->AddCallbackPass("Frustum Culling Pass", frustum_culling_pass);
+        RenderGraph->AddCallbackPass("Sky Source Mip Generation", m_sky_mip_generation_pass);
+        RenderGraph->AddCallbackPass("Sky Diffuse Irradiance", m_sky_diffuse_irradiance_pass);
+        RenderGraph->AddCallbackPass("Sky Specular Prefilter", m_sky_specular_prefilter_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
@@ -100,14 +107,15 @@ namespace ZEngine::Rendering::Renderers
         m_frame_output_index.value.store(UINT64_MAX, std::memory_order_relaxed);
         m_frame_output_generation.value.store(0, std::memory_order_relaxed);
         m_frame_output_sequence.value.fetch_add(1, std::memory_order_release);
-        const Textures::TextureHandle active_bake_texture = m_sky_environment.Shutdown();
-        if (active_bake_texture.Valid())
-            Device->DestroyTexture(active_bake_texture);
-        Textures::TextureHandle retired_sky_texture = {};
-        while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_texture))
-            Device->DestroyTexture(retired_sky_texture);
-        m_lighting_pass = nullptr;
-        m_skybox_pass   = nullptr;
+        DiscardSkyResources(m_sky_environment.Shutdown());
+        Scenes::SkyEnvironmentResources retired_sky_resources = {};
+        while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_resources))
+            DiscardSkyResources(retired_sky_resources);
+        m_lighting_pass               = nullptr;
+        m_skybox_pass                 = nullptr;
+        m_sky_mip_generation_pass     = nullptr;
+        m_sky_diffuse_irradiance_pass = nullptr;
+        m_sky_specular_prefilter_pass = nullptr;
 
         RenderGraph->Dispose();
         if (RenderSceneData)
@@ -219,6 +227,8 @@ namespace ZEngine::Rendering::Renderers
         m_lighting_pass->SetEnvironmentLighting(snapshot->Lighting, presentation);
         m_skybox_pass->SetEnvironment(snapshot->SourceRadiance, presentation);
         Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
+        if (m_sky_environment.CanRecordGpuBakeStage())
+            Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyBakeStageSubmitted, this);
     }
 
     void GraphicRenderer::StartPendingSkyBake()
@@ -280,44 +290,87 @@ namespace ZEngine::Rendering::Renderers
         if (!bake || !source_radiance.Valid() || !Device || !Device->RRM)
             return;
 
-        auto* const                                                rrm          = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
-        const Rendering::RenderResourceManager::TextureDecodeState decode_state = rrm->GetTextureDecodeState(source_radiance);
-        if (decode_state == Rendering::RenderResourceManager::TextureDecodeState::Pending)
+        const uint64_t revision = bake->Revision;
+        auto* const    rrm      = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+
+        if (m_sky_environment.GetActiveBakeStage() == Scenes::SkyEnvironmentBakeStage::AwaitingSource)
+        {
+            const Rendering::RenderResourceManager::TextureDecodeState decode_state = rrm->GetTextureDecodeState(source_radiance);
+            if (decode_state == Rendering::RenderResourceManager::TextureDecodeState::Pending)
+                return;
+
+            if (decode_state != Rendering::RenderResourceManager::TextureDecodeState::Succeeded)
+            {
+                rrm->ForgetTextureDecode(source_radiance);
+                const Scenes::SkyEnvironmentBakeResult result = m_sky_environment.CompleteBake(revision, source_radiance, false);
+                DiscardSkyTexture(source_radiance);
+                if (result == Scenes::SkyEnvironmentBakeResult::Discarded)
+                    ZENGINE_CORE_INFO("[SkyEnvironment] Cancelled stale HDRI revision {} before GPU baking", revision)
+                else
+                    ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} failed to decode; retaining the previous ready environment or fallback", revision)
+                StartPendingSkyBake();
+                return;
+            }
+
+            const Hardwares::StreamingUploadTicket* const ticket = rrm->FindStreamingUploadTicket(source_radiance);
+            if (!ticket || !ticket->CompletionTimeline)
+                return;
+
+            uint64_t completed_upload_value = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, ticket->CompletionTimeline->GetHandle(), &completed_upload_value);
+            if (completed_upload_value < ticket->CompletionValue)
+                return;
+
+            EnvironmentLightingResources lighting = CreateSkyLightingResources();
+            if (!lighting.Valid() || !m_sky_environment.AttachBakeLighting(revision, lighting) || !m_sky_environment.BeginGpuBake(revision))
+            {
+                const Scenes::SkyEnvironmentBakeResult result = m_sky_environment.CompleteBake(revision, source_radiance, false);
+                DiscardSkyResources({.SourceRadiance = source_radiance, .Lighting = lighting});
+                if (result == Scenes::SkyEnvironmentBakeResult::Discarded)
+                    ZENGINE_CORE_INFO("[SkyEnvironment] Cancelled stale HDRI revision {} before GPU baking", revision)
+                else
+                    ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} could not allocate IBL bake targets", revision)
+                StartPendingSkyBake();
+                return;
+            }
+
+            rrm->ForgetTextureDecode(source_radiance);
+            ZENGINE_CORE_INFO("[SkyEnvironment] GPU baking HDRI revision {}", revision)
+            return;
+        }
+
+        if (m_sky_environment.CanRecordGpuBakeStage() || !Device->SwapchainPtr || !Device->SwapchainPtr->RenderTimeline)
             return;
 
-        const uint64_t revision = bake->Revision;
-        if (decode_state != Rendering::RenderResourceManager::TextureDecodeState::Succeeded)
+        uint64_t completed_render_value = 0;
+        vkGetSemaphoreCounterValue(Device->LogicalDevice, Device->SwapchainPtr->RenderTimeline->GetHandle(), &completed_render_value);
+        if (!m_sky_environment.AdvanceCompletedGpuBakeStage(completed_render_value))
+            return;
+
+        // The stage boundary above is also a cancellation point. Do not spend
+        // more GPU work on a superseded source revision.
+        if (revision != m_sky_environment.GetLatestRevision())
         {
-            rrm->ForgetTextureDecode(source_radiance);
-            m_sky_environment.CompleteBake(revision, source_radiance, false);
-            Device->DestroyTexture(source_radiance);
-            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} failed to decode; retaining the previous ready environment or fallback", revision)
+            const EnvironmentLightingResources     lighting = m_sky_environment.GetActiveBakeLighting();
+            const Scenes::SkyEnvironmentBakeResult result   = m_sky_environment.CompleteBake(revision, source_radiance, false);
+            DiscardSkyResources({.SourceRadiance = source_radiance, .Lighting = lighting});
+            ZENGINE_CORE_INFO("[SkyEnvironment] Cancelled stale HDRI revision {} between GPU bake stages", revision)
             StartPendingSkyBake();
             return;
         }
 
-        const Hardwares::StreamingUploadTicket* const ticket = rrm->FindStreamingUploadTicket(source_radiance);
-        if (!ticket || !ticket->CompletionTimeline)
+        if (!m_sky_environment.IsGpuBakeReadyToPublish())
             return;
 
-        uint64_t completed_value = 0;
-        vkGetSemaphoreCounterValue(Device->LogicalDevice, ticket->CompletionTimeline->GetHandle(), &completed_value);
-        if (completed_value < ticket->CompletionValue)
-            return;
-
-        const Hardwares::StreamingUploadTicket completed_ticket = *ticket;
-        rrm->ForgetTextureDecode(source_radiance);
-        const Scenes::SkyEnvironmentBakeResult result = m_sky_environment.CompleteBake(revision, source_radiance, true);
+        const EnvironmentLightingResources     lighting = m_sky_environment.GetActiveBakeLighting();
+        const Scenes::SkyEnvironmentBakeResult result   = m_sky_environment.CompleteBake(revision, source_radiance, true, lighting);
         if (result == Scenes::SkyEnvironmentBakeResult::Published)
         {
             ZENGINE_CORE_INFO("[SkyEnvironment] Published HDRI revision {}", revision)
         }
         else
         {
-            // This source was never imported into a graph pass. Its upload is
-            // complete, so it can be discarded without invalidating a frame.
-            rrm->AcknowledgeStreamingUploadTicket(completed_ticket);
-            Device->DestroyTexture(source_radiance);
+            DiscardSkyResources({.SourceRadiance = source_radiance, .Lighting = lighting});
             if (result == Scenes::SkyEnvironmentBakeResult::Discarded)
                 ZENGINE_CORE_INFO("[SkyEnvironment] Discarded stale HDRI revision {}", revision)
             else
@@ -334,9 +387,9 @@ namespace ZEngine::Rendering::Renderers
         uint64_t completed_timeline_value = 0;
         vkGetSemaphoreCounterValue(Device->LogicalDevice, Device->SwapchainPtr->RenderTimeline->GetHandle(), &completed_timeline_value);
 
-        Textures::TextureHandle retired_source = {};
-        while (m_sky_environment.TakeRetiredSnapshot(completed_timeline_value, retired_source))
-            DiscardSkyTexture(retired_source);
+        Scenes::SkyEnvironmentResources retired_resources = {};
+        while (m_sky_environment.TakeRetiredSnapshot(completed_timeline_value, retired_resources))
+            DiscardSkyResources(retired_resources);
     }
 
     void GraphicRenderer::DiscardSkyTexture(Textures::TextureHandle texture)
@@ -357,6 +410,56 @@ namespace ZEngine::Rendering::Renderers
         Device->DestroyTexture(texture);
     }
 
+    void GraphicRenderer::DiscardSkyResources(const Scenes::SkyEnvironmentResources& resources)
+    {
+        DiscardSkyTexture(resources.SourceRadiance);
+        // The BRDF integration LUT is engine-global and remains owned by RRM.
+        // Per-snapshot allocations are only the source, diffuse, and specular cubes.
+        DiscardSkyTexture(resources.Lighting.DiffuseIrradiance);
+        DiscardSkyTexture(resources.Lighting.SpecularEnvironment);
+    }
+
+    EnvironmentLightingResources GraphicRenderer::CreateSkyLightingResources()
+    {
+        if (!Device || !Device->RRM)
+            return {};
+
+        auto* const rrm      = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+        const auto  fallback = rrm->GetOrCreateFallbackEnvironmentLighting();
+        if (!fallback.BrdfIntegrationLut.Valid())
+            return {};
+
+        TextureSpecification diffuse_spec      = {};
+        diffuse_spec.IsUsageSampled            = true;
+        diffuse_spec.IsUsageStorage            = true;
+        diffuse_spec.IsUsageTransfert          = false;
+        diffuse_spec.IsCubemap                 = true;
+        diffuse_spec.Width                     = 32;
+        diffuse_spec.Height                    = 32;
+        diffuse_spec.LayerCount                = 6;
+        diffuse_spec.MipLevelCount             = 1;
+        diffuse_spec.BytePerPixel              = sizeof(uint16_t) * 4;
+        diffuse_spec.Format                    = ImageFormat::R16G16B16A16_SFLOAT;
+
+        TextureSpecification specular_spec     = diffuse_spec;
+        specular_spec.Width                    = 128;
+        specular_spec.Height                   = 128;
+        specular_spec.MipLevelCount            = 8;
+
+        EnvironmentLightingResources resources = {};
+        resources.DiffuseIrradiance            = Device->CreateTexture(diffuse_spec, "SkyDiffuseIrradiance");
+        resources.SpecularEnvironment          = Device->CreateTexture(specular_spec, "SkySpecularEnvironment");
+        resources.BrdfIntegrationLut           = fallback.BrdfIntegrationLut;
+        resources.BrdfIntegrationKey           = fallback.BrdfIntegrationKey;
+        resources.SpecularMipCount             = specular_spec.MipLevelCount;
+        if (!resources.DiffuseIrradiance.Valid() || !resources.SpecularEnvironment.Valid())
+        {
+            DiscardSkyResources({.Lighting = resources});
+            return {};
+        }
+        return resources;
+    }
+
     void GraphicRenderer::OnSkyFrameSubmitted(void* context, Rendering::Primitives::Semaphore* /*timeline*/, uint64_t timeline_value)
     {
         if (context)
@@ -367,6 +470,14 @@ namespace ZEngine::Rendering::Renderers
     {
         if (context)
             static_cast<GraphicRenderer*>(context)->m_sky_environment.ReleaseCancelledFrame();
+    }
+
+    void GraphicRenderer::OnSkyBakeStageSubmitted(void* context, Rendering::Primitives::Semaphore* /*timeline*/, uint64_t timeline_value)
+    {
+        auto* const       renderer = static_cast<GraphicRenderer*>(context);
+        const auto* const bake     = renderer ? renderer->m_sky_environment.GetActiveBake() : nullptr;
+        if (bake)
+            renderer->m_sky_environment.MarkGpuBakeStageSubmitted(bake->Revision, timeline_value);
     }
 
     void GraphicRenderer::ApplyGridConfig(const Scenes::GridConfig& cfg)

@@ -57,12 +57,17 @@ namespace ZEngine::Rendering::Scenes
         if (!m_has_pending_request || m_has_active_bake)
             return false;
 
-        out_request           = m_pending_request;
-        m_active_bake         = m_pending_request;
-        m_active_bake_source  = {};
-        m_has_pending_request = false;
-        m_has_active_bake     = true;
-        m_state               = SkyEnvironmentState::Baking;
+        out_request              = m_pending_request;
+        m_active_bake            = m_pending_request;
+        m_active_bake_source     = {};
+        m_active_bake_lighting   = {};
+        m_active_stage_timeline  = 0;
+        m_active_bake_stage      = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_stage_submitted = false;
+        m_active_stage_recorded  = false;
+        m_has_pending_request    = false;
+        m_has_active_bake        = true;
+        m_state                  = SkyEnvironmentState::Baking;
         return true;
     }
 
@@ -75,15 +80,95 @@ namespace ZEngine::Rendering::Scenes
         return true;
     }
 
-    SkyEnvironmentBakeResult SkyEnvironment::CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success)
+    bool SkyEnvironment::AttachBakeLighting(uint64_t revision, const EnvironmentLightingResources& lighting)
+    {
+        if (!m_has_active_bake || m_active_bake.Revision != revision || !lighting.Valid())
+            return false;
+
+        m_active_bake_lighting = lighting;
+        return true;
+    }
+
+    bool SkyEnvironment::BeginGpuBake(uint64_t revision)
+    {
+        if (!m_has_active_bake || m_active_bake.Revision != revision || !m_active_bake_source.Valid() || !m_active_bake_lighting.Valid())
+            return false;
+
+        m_active_bake_stage      = SkyEnvironmentBakeStage::SourceMipChain;
+        m_active_stage_timeline  = 0;
+        m_active_stage_submitted = false;
+        m_active_stage_recorded  = false;
+        return true;
+    }
+
+    bool SkyEnvironment::CanRecordGpuBakeStage() const
+    {
+        return m_has_active_bake && m_active_bake_stage != SkyEnvironmentBakeStage::AwaitingSource && m_active_bake_stage != SkyEnvironmentBakeStage::ReadyToPublish && !m_active_stage_submitted;
+    }
+
+    bool SkyEnvironment::NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage)
+    {
+        if (!CanRecordGpuBakeStage() || m_active_bake.Revision != revision || m_active_bake_stage != stage)
+            return false;
+
+        m_active_stage_recorded = true;
+        return true;
+    }
+
+    bool SkyEnvironment::MarkGpuBakeStageSubmitted(uint64_t revision, uint64_t timeline_value)
+    {
+        if (!CanRecordGpuBakeStage() || !m_active_stage_recorded || m_active_bake.Revision != revision || timeline_value == 0)
+            return false;
+
+        m_active_stage_timeline  = timeline_value;
+        m_active_stage_submitted = true;
+        return true;
+    }
+
+    bool SkyEnvironment::AdvanceCompletedGpuBakeStage(uint64_t completed_timeline_value)
+    {
+        if (!m_has_active_bake || !m_active_stage_submitted || completed_timeline_value < m_active_stage_timeline)
+            return false;
+
+        m_active_stage_submitted = false;
+        m_active_stage_recorded  = false;
+        m_active_stage_timeline  = 0;
+        switch (m_active_bake_stage)
+        {
+            case SkyEnvironmentBakeStage::SourceMipChain:
+                m_active_bake_stage = SkyEnvironmentBakeStage::DiffuseIrradiance;
+                return true;
+            case SkyEnvironmentBakeStage::DiffuseIrradiance:
+                m_active_bake_stage = SkyEnvironmentBakeStage::SpecularEnvironment;
+                return true;
+            case SkyEnvironmentBakeStage::SpecularEnvironment:
+                m_active_bake_stage = SkyEnvironmentBakeStage::ReadyToPublish;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool SkyEnvironment::IsGpuBakeReadyToPublish() const
+    {
+        return m_has_active_bake && m_active_bake_stage == SkyEnvironmentBakeStage::ReadyToPublish && !m_active_stage_submitted;
+    }
+
+    SkyEnvironmentBakeResult SkyEnvironment::CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success, const EnvironmentLightingResources& lighting)
     {
         if (!m_has_active_bake || m_active_bake.Revision != revision)
             return SkyEnvironmentBakeResult::Ignored;
 
-        const Textures::TextureHandle completed_source = source_radiance.Valid() ? source_radiance : m_active_bake_source;
-        m_active_bake                                  = {};
-        m_active_bake_source                           = {};
-        m_has_active_bake                              = false;
+        const Textures::TextureHandle      completed_source   = source_radiance.Valid() ? source_radiance : m_active_bake_source;
+        const EnvironmentLightingResources completed_lighting = lighting.Valid() ? lighting : m_active_bake_lighting.Valid() ? m_active_bake_lighting : m_fallback_lighting;
+        m_active_bake                                         = {};
+        m_active_bake_source                                  = {};
+        m_active_bake_lighting                                = {};
+        m_active_bake_stage                                   = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_stage_timeline                               = 0;
+        m_active_stage_submitted                              = false;
+        m_active_stage_recorded                               = false;
+        m_has_active_bake                                     = false;
 
         if (revision != m_latest_bake_revision)
             return SkyEnvironmentBakeResult::Discarded;
@@ -109,7 +194,7 @@ namespace ZEngine::Rendering::Scenes
         published                         = {};
         published.Config                  = m_presentation_config;
         published.SourceRadiance          = completed_source;
-        published.Lighting                = m_fallback_lighting;
+        published.Lighting                = completed_lighting;
         published.Revision                = revision;
         published.State                   = SkyEnvironmentState::Ready;
         m_published_slot                  = static_cast<uint32_t>(new_slot);
@@ -145,21 +230,31 @@ namespace ZEngine::Rendering::Scenes
 
     bool SkyEnvironment::TakeRetiredSnapshot(uint64_t completed_timeline_value, Textures::TextureHandle& out_source_radiance)
     {
-        out_source_radiance = {};
+        SkyEnvironmentResources resources = {};
+        if (!TakeRetiredSnapshot(completed_timeline_value, resources))
+            return false;
+        out_source_radiance = resources.SourceRadiance;
+        return out_source_radiance.Valid();
+    }
+
+    bool SkyEnvironment::TakeRetiredSnapshot(uint64_t completed_timeline_value, SkyEnvironmentResources& out_resources)
+    {
+        out_resources = {};
         for (uint32_t index = 0; index < MaxSnapshots; ++index)
         {
             SkyEnvironmentSnapshot& snapshot = m_snapshots[index];
             if (!snapshot.Retired || snapshot.IsFallback || snapshot.PinCount != 0 || snapshot.LastUseTimeline > completed_timeline_value)
                 continue;
 
-            out_source_radiance = snapshot.SourceRadiance;
-            snapshot            = {};
-            return out_source_radiance.Valid();
+            out_resources.SourceRadiance = snapshot.SourceRadiance;
+            out_resources.Lighting       = snapshot.Lighting;
+            snapshot                     = {};
+            return out_resources.SourceRadiance.Valid();
         }
         return false;
     }
 
-    Textures::TextureHandle SkyEnvironment::Shutdown()
+    SkyEnvironmentResources SkyEnvironment::Shutdown()
     {
         while (m_frame_pin_count > 0)
             ReleaseNextFramePin(UINT64_MAX);
@@ -169,12 +264,17 @@ namespace ZEngine::Rendering::Scenes
             if (!m_snapshots[index].IsFallback)
                 m_snapshots[index].Retired = true;
         }
-        const Textures::TextureHandle active_bake_source = m_active_bake_source;
-        m_active_bake                                    = {};
-        m_active_bake_source                             = {};
-        m_has_active_bake                                = false;
-        m_has_pending_request                            = false;
-        return active_bake_source;
+        SkyEnvironmentResources active_bake_resources = {.SourceRadiance = m_active_bake_source, .Lighting = m_active_bake_lighting};
+        m_active_bake                                 = {};
+        m_active_bake_source                          = {};
+        m_active_bake_lighting                        = {};
+        m_active_bake_stage                           = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_stage_timeline                       = 0;
+        m_active_stage_submitted                      = false;
+        m_active_stage_recorded                       = false;
+        m_has_active_bake                             = false;
+        m_has_pending_request                         = false;
+        return active_bake_resources;
     }
 
     const SkyEnvironmentBakeRequest* SkyEnvironment::GetActiveBake() const
@@ -185,6 +285,16 @@ namespace ZEngine::Rendering::Scenes
     Textures::TextureHandle SkyEnvironment::GetActiveBakeSource() const
     {
         return m_has_active_bake ? m_active_bake_source : Textures::TextureHandle{};
+    }
+
+    const EnvironmentLightingResources& SkyEnvironment::GetActiveBakeLighting() const
+    {
+        return m_active_bake_lighting;
+    }
+
+    SkyEnvironmentBakeStage SkyEnvironment::GetActiveBakeStage() const
+    {
+        return m_active_bake_stage;
     }
 
     const SkyEnvironmentSnapshot* SkyEnvironment::GetPublishedSnapshot() const

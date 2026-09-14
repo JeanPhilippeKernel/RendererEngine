@@ -2955,7 +2955,7 @@ namespace ZEngine::Hardwares
         }
     }
 
-    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset, bool use_staging_ring)
+    BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset, bool use_staging_ring, VkDeviceSize data_size)
     {
         if (out_ring_offset)
             *out_ring_offset = std::numeric_limits<uint32_t>::max();
@@ -2968,12 +2968,16 @@ namespace ZEngine::Hardwares
         auto     resource    = GlobalTextures.Access(handle);
         auto     image_buf   = ImageBufferManager.Access(resource->BufferHandle);
 
+        const VkDeviceSize upload_size = data_size == 0 ? resource->BufferSize : data_size;
+        if (upload_size == 0 || upload_size > resource->BufferSize)
+            return {};
+
         uint32_t ring_offset = 0;
-        void*    ring_ptr    = use_staging_ring ? GpuMem.Ring.Allocate(static_cast<uint32_t>(resource->BufferSize), 4, &ring_offset) : nullptr;
+        void*    ring_ptr    = use_staging_ring ? GpuMem.Ring.Allocate(static_cast<uint32_t>(upload_size), 4, &ring_offset) : nullptr;
 
         if (ring_ptr)
         {
-            Helpers::secure_memcpy(ring_ptr, resource->BufferSize, data, resource->BufferSize);
+            Helpers::secure_memcpy(ring_ptr, upload_size, data, upload_size);
             BufferView ring_view = {};
             ring_view.Handle     = GpuMem.Ring.Buffer;
             ring_view.Allocation = GpuMem.Ring.Allocation;
@@ -2985,8 +2989,8 @@ namespace ZEngine::Hardwares
             return {};
         }
 
-        BufferView staging_view = CreateBuffer(resource->BufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, Core::Memory::GpuMemoryDomain::HostStaging, "WriteTextureData_staging");
-        MapAndCopyToMemory(staging_view, resource->BufferSize, data);
+        BufferView staging_view = CreateBuffer(upload_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, Core::Memory::GpuMemoryDomain::HostStaging, "WriteTextureData_staging");
+        MapAndCopyToMemory(staging_view, upload_size, data);
         command_buf->CopyBufferToImage(staging_view, image_buf->GetBuffer(), resource->Width, resource->Height, resource->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(image_buf->Layout)], 0, resource->Specification.Depth);
         return staging_view;
     }

@@ -133,7 +133,7 @@ namespace ZEngine::Rendering
         /// @param handle       Pre-allocated TextureHandle whose VkImage will receive the data.
         /// @param data         RGBA pixel data; must remain valid until SubmitAsyncUploads runs.
         /// @return The same handle on success; invalid handle if no free upload slot.
-        Rendering::Textures::TextureHandle  UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data);
+        Rendering::Textures::TextureHandle  UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size = 0);
 
         // Upload the ZUI font atlas synchronously using m_upload_cmd_mgr/m_sync_upload_fence.
         // Blocks until the GPU copy is complete so the texture is ready before the first

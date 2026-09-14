@@ -1,0 +1,44 @@
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform textureCube SourceRadiance;
+layout(set = 0, binding = 1) uniform sampler LinearClampToEdgeSampler;
+layout(set = 0, binding = 2, rgba32f) uniform writeonly image2DArray Destination;
+
+layout(push_constant) uniform MipGenerationPushConstants
+{
+    uint SourceMip;
+    uint DestinationMip;
+    uint DestinationResolution;
+    uint Padding;
+}
+Push;
+
+vec3 cube_direction(uint face, vec2 uv)
+{
+    if (face == 0u)
+        return normalize(vec3(1.0, -uv.y, -uv.x));
+    if (face == 1u)
+        return normalize(vec3(-1.0, -uv.y, uv.x));
+    if (face == 2u)
+        return normalize(vec3(uv.x, 1.0, uv.y));
+    if (face == 3u)
+        return normalize(vec3(uv.x, -1.0, -uv.y));
+    if (face == 4u)
+        return normalize(vec3(uv.x, -uv.y, 1.0));
+    return normalize(vec3(-uv.x, -uv.y, -1.0));
+}
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    const uint  face  = gl_GlobalInvocationID.z;
+    if (pixel.x >= Push.DestinationResolution || pixel.y >= Push.DestinationResolution || face >= 6u)
+        return;
+
+    const vec2 uv        = ((vec2(pixel) + vec2(0.5)) / float(Push.DestinationResolution)) * 2.0 - 1.0;
+    const vec3 direction = cube_direction(face, uv);
+    const vec3 radiance  = textureLod(samplerCube(SourceRadiance, LinearClampToEdgeSampler), direction, float(Push.SourceMip)).rgb;
+    imageStore(Destination, ivec3(pixel, face), vec4(radiance, 1.0));
+}

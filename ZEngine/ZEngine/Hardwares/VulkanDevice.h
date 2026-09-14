@@ -463,7 +463,7 @@ namespace ZEngine::Hardwares
         ///        to reclaim and a later allocation can overwrite it before the GPU reads it.
         /// @param use_staging_ring Set false for independently submitted work whose
         ///        completion is not represented by RenderTimeline.
-        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true);
+        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true, VkDeviceSize data_size = 0);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
 
