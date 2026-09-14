@@ -48,6 +48,13 @@ target_link_libraries(${TARGET_NAME} PUBLIC
     imported::External_obeliskLibs
 )
 
+# The executable loads packaged SPIR-V at startup, so an explicit Obelisk build
+# must refresh the shader package before the editor is run.
+add_dependencies(${TARGET_NAME} CompileShaders)
+if (TARGET CopyEngineSettings)
+    add_dependencies(${TARGET_NAME} CopyEngineSettings)
+endif()
+
 set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
 
 install(TARGETS ${TARGET_NAME} DESTINATION bin)

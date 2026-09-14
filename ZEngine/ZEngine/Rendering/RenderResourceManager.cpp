@@ -56,6 +56,10 @@ namespace ZEngine::Rendering
         m_registry = registry;
         m_pending_texture_decodes.value.store(0, std::memory_order_relaxed);
         m_accept_texture_decodes.value.store(true, std::memory_order_release);
+        m_fallback_cubemap = {};
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+            tracked = {};
+        m_texture_decode_tracker.Completions.clear();
 
         InitUploadPool();
         InitGlobalBuffers();
@@ -1650,7 +1654,7 @@ namespace ZEngine::Rendering
             m_device->DestroyTexture(local[i]);
     }
 
-    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing)
+    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing, bool track_decode)
     {
         using namespace Rendering::Specifications;
 
@@ -1724,17 +1728,27 @@ namespace ZEngine::Rendering
             tex_handle = m_device->CreateTexture(spec);
         }
 
+        if (track_decode && (!tex_handle.Valid() || !TrackTextureDecode(tex_handle)))
+        {
+            if (tex_handle.Valid() && !existing.Valid())
+                m_device->DestroyTexture(tex_handle);
+            return {};
+        }
+
         auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
         ZConstruct(task, TextureDecodeTask);
         task->Owner            = this;
         task->Specification    = spec;
         task->Texture          = tex_handle;
         task->IsEnvironmentMap = is_environment_map;
+        task->TrackCompletion  = track_decode;
         Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
 
         m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
         if (!Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
         {
+            if (task->TrackCompletion)
+                PublishTextureDecodeCompletion(tex_handle, false);
             CompleteTextureDecodeTask(task);
             ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
         }
@@ -1834,6 +1848,7 @@ namespace ZEngine::Rendering
             }
         }
 
+        bool decode_succeeded = false;
         if (pixels && byte_size > 0)
         {
             TextureDeferral deferral = {};
@@ -1845,6 +1860,7 @@ namespace ZEngine::Rendering
             if (manager->EnqueueTextureDeferral(deferral))
             {
                 manager->m_device->RequestDeferredDescriptorUpdate(task->Texture);
+                decode_succeeded = true;
             }
             else
             {
@@ -1853,6 +1869,8 @@ namespace ZEngine::Rendering
             }
         }
 
+        if (task->TrackCompletion)
+            manager->PublishTextureDecodeCompletion(task->Texture, decode_succeeded);
         if (!previous)
             Helpers::SetWorkerSlab(nullptr);
         manager->CompleteTextureDecodeTask(task);
@@ -1862,6 +1880,75 @@ namespace ZEngine::Rendering
     {
         m_texture_task_slab.Free(task);
         m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+    }
+
+    bool RenderResourceManager::TrackTextureDecode(const Rendering::Textures::TextureHandle& handle)
+    {
+        if (!handle.Valid())
+            return false;
+
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+                return true;
+        }
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (!tracked.Texture.Valid())
+            {
+                tracked.Texture = handle;
+                tracked.State   = TextureDecodeState::Pending;
+                return true;
+            }
+        }
+
+        ZENGINE_CORE_ERROR("[RRM] Texture decode observation table is full")
+        return false;
+    }
+
+    RenderResourceManager::TextureDecodeState RenderResourceManager::GetTextureDecodeState(const Rendering::Textures::TextureHandle& handle)
+    {
+        DrainTextureDecodeCompletions();
+        for (const TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+                return tracked.State;
+        }
+        return TextureDecodeState::Untracked;
+    }
+
+    void RenderResourceManager::ForgetTextureDecode(const Rendering::Textures::TextureHandle& handle)
+    {
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+            {
+                tracked = {};
+                return;
+            }
+        }
+    }
+
+    void RenderResourceManager::PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success)
+    {
+        if (!m_texture_decode_tracker.Completions.push({.Texture = handle, .Success = success}))
+            ZENGINE_CORE_ERROR("[RRM] Texture decode completion queue full — environment will retain its fallback")
+    }
+
+    void RenderResourceManager::DrainTextureDecodeCompletions()
+    {
+        TextureDecodeCompletion completion = {};
+        while (m_texture_decode_tracker.Completions.pop(completion))
+        {
+            for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+            {
+                if (tracked.Texture.Index == completion.Texture.Index && tracked.Texture.Generation == completion.Texture.Generation)
+                {
+                    tracked.State = completion.Success ? TextureDecodeState::Succeeded : TextureDecodeState::Failed;
+                    break;
+                }
+            }
+        }
     }
 
     Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackTexture()
@@ -1899,6 +1986,103 @@ namespace ZEngine::Rendering
             }
         }
         return result;
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackCubemap()
+    {
+        using namespace Rendering::Specifications;
+        using namespace Rendering::Primitives;
+
+        if (m_fallback_cubemap.Valid())
+            return m_fallback_cubemap;
+        if (!m_device || !m_upload_cmd_mgr || !m_sync_upload_fence)
+            return {};
+
+        // A dim neutral-blue source keeps the viewport visibly usable while an
+        // HDRI or future atmosphere bake is pending. It is a real cubemap, so
+        // samplerCube descriptors are always valid on the first frame.
+        constexpr uint8_t fallback_pixels[6 * 4] = {
+            35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255,
+        };
+
+        TextureSpecification spec = {};
+        spec.IsCubemap            = true;
+        spec.LayerCount           = 6;
+        spec.Width                = 1;
+        spec.Height               = 1;
+        spec.Format               = ImageFormat::R8G8B8A8_UNORM;
+
+        const auto  handle        = m_device->CreateTexture(spec, "SkyEnvironmentFallback");
+        auto* const texture       = m_device->GlobalTextures.Access(handle);
+        auto* const image         = texture ? m_device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+        if (!texture || !image)
+            return {};
+
+        ImageMemoryBarrierSpecification to_transfer = {};
+        to_transfer.ImageHandle                     = image->GetHandle();
+        to_transfer.OldLayout                       = image->Layout;
+        to_transfer.NewLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_transfer.ImageAspectMask                 = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_transfer.SourceAccessMask                = VK_ACCESS_NONE;
+        to_transfer.DestinationAccessMask           = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_transfer.SourceStageMask                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        to_transfer.DestinationStageMask            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_transfer.LayerCount                      = 6;
+        to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
+        to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
+
+        ImageMemoryBarrierSpecification to_read     = {};
+        to_read.ImageHandle                         = image->GetHandle();
+        to_read.OldLayout                           = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_read.NewLayout                           = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        to_read.ImageAspectMask                     = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_read.SourceAccessMask                    = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_read.DestinationAccessMask               = VK_ACCESS_SHADER_READ_BIT;
+        to_read.SourceStageMask                     = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_read.DestinationStageMask                = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        to_read.LayerCount                          = 6;
+        to_read.SourceQueueFamily                   = m_device->GraphicFamilyIndex;
+        to_read.DestinationQueueFamily              = m_device->GraphicFamilyIndex;
+
+        auto* const command_buffer                  = m_upload_cmd_mgr->GetCommandBuffer(QueueType::GRAPHIC_QUEUE, m_active_frame_index, 0, 0, false);
+        m_sync_upload_fence->Wait(UINT64_MAX);
+        m_sync_upload_fence->Reset();
+        command_buffer->ResetState();
+        vkResetCommandBuffer(command_buffer->GetHandle(), 0);
+        command_buffer->Begin();
+        command_buffer->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
+        image->Layout          = to_transfer.NewLayout;
+        uint32_t   ring_offset = 0;
+        BufferView staging     = m_device->WriteTextureData(command_buffer, handle, fallback_pixels, &ring_offset);
+        command_buffer->TransitionImageLayout(ImageMemoryBarrier{to_read});
+        image->Layout = to_read.NewLayout;
+        command_buffer->End();
+
+        const VkQueue         queue = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+        const VkCommandBuffer raw   = command_buffer->GetHandle();
+        VkSubmitInfo          submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers    = &raw;
+        if (vkQueueSubmit(queue, 1, &submit, m_sync_upload_fence->GetHandle()) != VK_SUCCESS)
+        {
+            m_device->DestroyTexture(handle);
+            return {};
+        }
+        m_sync_upload_fence->Wait(UINT64_MAX);
+        command_buffer->ResetState();
+
+        if (ring_offset != std::numeric_limits<uint32_t>::max())
+            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
+        if (staging)
+        {
+            DeferredFreeEntry entry = {};
+            entry.EntryKind         = DeferredFreeEntry::Kind::Buffer;
+            entry.Data.Buffer       = staging;
+            m_device->DeferFree(entry);
+        }
+
+        m_fallback_cubemap = handle;
+        return m_fallback_cubemap;
     }
 
 } // namespace ZEngine::Rendering

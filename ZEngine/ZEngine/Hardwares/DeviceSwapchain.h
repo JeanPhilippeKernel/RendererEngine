@@ -28,11 +28,14 @@ namespace ZEngine::Hardwares
     /// @param timeline Timeline semaphore signalled by the accepted graphics submission.
     /// @param timeline_value Exact value signalled by that submission.
     using RenderWorkSubmittedFn = void (*)(void* ctx, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+    /// @brief Called when a queued submission callback's frame was never submitted.
+    using RenderWorkCancelledFn = void (*)(void* ctx);
 
     /// @brief Render-thread callback associated with one pending graphics submission.
     struct RenderWorkSubmissionCallback
     {
         RenderWorkSubmittedFn Function = nullptr;
+        RenderWorkCancelledFn Cancel   = nullptr;
         void*                 Context  = nullptr;
     };
 
@@ -106,9 +109,9 @@ namespace ZEngine::Hardwares
         void AcquireNextImage(uint32_t frame_context_idx);
         void CollectAsyncGPUOperations();
         /// @brief Delivers `fn` after this frame's graphics work has been accepted by Vulkan.
-        /// @details The caller owns `context` until delivery or cancellation. Callbacks are
-        /// discarded, without invocation, when the frame cannot be submitted.
-        void EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context);
+        /// @details The caller owns `context` until delivery or cancellation. `cancel_fn`
+        /// releases any CPU-side frame state when the graphics submission is rejected.
+        void EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context, RenderWorkCancelledFn cancel_fn = nullptr);
         void Present();
 
 #if !defined(NDEBUG)

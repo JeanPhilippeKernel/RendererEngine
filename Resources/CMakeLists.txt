@@ -38,61 +38,48 @@ file (GLOB VertexShaders CONFIGURE_DEPENDS "${ShaderPath}/*.vert")
 file (GLOB FragmentShaders CONFIGURE_DEPENDS "${ShaderPath}/*.frag")
 file (GLOB ComputeShaders CONFIGURE_DEPENDS "${ShaderPath}/*.comp")
 
-foreach(VertexShader ${VertexShaders})
+# Editor executables load packaged SPIR-V. The aggregate target gives them a
+# complete package, while output dependencies keep unchanged shaders out of
+# subsequent builds.
+add_custom_target(CompileShaders)
 
-      cmake_path(GET VertexShader STEM shaderfilename)
-      cmake_path(APPEND_STRING shaderfilename "_vertex.spv" OUTPUT_VARIABLE VertexShaderOutputFileName)
-      cmake_path(APPEND ShaderOutputPath ${VertexShaderOutputFileName} OUTPUT_VARIABLE VertexShaderOutputPath)
+function(add_shader_compiler shader stage suffix)
+    cmake_path(GET shader STEM shader_name)
+    set(output_name "${shader_name}_${suffix}.spv")
+    set(shader_output "${ShaderOutputPath}/${output_name}")
+    set(packaged_outputs "${shader_output}" "${ShaderBinOutputPath}/${output_name}")
 
-      if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-          add_custom_target("Compile-${shaderfilename}-vertex" ALL
-              COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${VertexShaderOutputPath}" "${VertexShader}"
-              COMMAND ${CMAKE_COMMAND} -E copy_if_different "${VertexShaderOutputPath}" "${ShaderBinOutputPath}/${VertexShaderOutputFileName}"
-              COMMAND ${CMAKE_COMMAND} -E copy_if_different "${VertexShaderOutputPath}" "${ShaderObeliskOutputPath}/${VertexShaderOutputFileName}")
-      else()
-          add_custom_target("Compile-${shaderfilename}-vertex" ALL
-              COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${VertexShaderOutputPath}" "${VertexShader}"
-              COMMAND ${CMAKE_COMMAND} -E copy_if_different "${VertexShaderOutputPath}" "${ShaderBinOutputPath}/${VertexShaderOutputFileName}")
-      endif()
-
-endforeach()
-
-foreach(ComputeShader ${ComputeShaders})
-
-    cmake_path(GET ComputeShader STEM shaderfilename)
-    cmake_path(APPEND_STRING shaderfilename "_compute.spv" OUTPUT_VARIABLE ComputeShaderOutputFileName)
-    cmake_path(APPEND ShaderOutputPath ${ComputeShaderOutputFileName} OUTPUT_VARIABLE ComputeShaderOutputPath)
-
+    add_custom_command(
+        OUTPUT ${packaged_outputs}
+        COMMAND $<TARGET_FILE:glslang-standalone> "-I${ShaderPath}" "-V" ${Flags} "-o" "${shader_output}" "${shader}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${shader_output}" "${ShaderBinOutputPath}/${output_name}"
+        DEPENDS glslang-standalone "${shader}"
+        VERBATIM
+    )
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_custom_target("Compile-${shaderfilename}-compute" ALL
-            COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${ComputeShaderOutputPath}" "${ComputeShader}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ComputeShaderOutputPath}" "${ShaderBinOutputPath}/${ComputeShaderOutputFileName}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ComputeShaderOutputPath}" "${ShaderObeliskOutputPath}/${ComputeShaderOutputFileName}")
-    else()
-        add_custom_target("Compile-${shaderfilename}-compute" ALL
-            COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${ComputeShaderOutputPath}" "${ComputeShader}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ComputeShaderOutputPath}" "${ShaderBinOutputPath}/${ComputeShaderOutputFileName}")
+        add_custom_command(
+            OUTPUT "${ShaderObeliskOutputPath}/${output_name}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${shader_output}" "${ShaderObeliskOutputPath}/${output_name}"
+            DEPENDS "${shader_output}"
+            VERBATIM
+        )
+        list(APPEND packaged_outputs "${ShaderObeliskOutputPath}/${output_name}")
     endif()
 
+    add_custom_target("Compile-${shader_name}-${stage}" DEPENDS ${packaged_outputs})
+    add_dependencies(CompileShaders "Compile-${shader_name}-${stage}")
+endfunction()
+
+foreach(shader ${VertexShaders})
+    add_shader_compiler("${shader}" vertex vertex)
 endforeach()
 
-foreach(FragmentShader ${FragmentShaders})
+foreach(shader ${ComputeShaders})
+    add_shader_compiler("${shader}" compute compute)
+endforeach()
 
-    cmake_path(GET FragmentShader STEM shaderfilename)
-    cmake_path(APPEND_STRING shaderfilename "_fragment.spv" OUTPUT_VARIABLE FragmentShaderOutputFileName)
-    cmake_path(APPEND ShaderOutputPath ${FragmentShaderOutputFileName} OUTPUT_VARIABLE FragmentShaderOutputPath)
-
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_custom_target("Compile-${shaderfilename}-fragment" ALL
-            COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${FragmentShaderOutputPath}" "${FragmentShader}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FragmentShaderOutputPath}" "${ShaderBinOutputPath}/${FragmentShaderOutputFileName}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FragmentShaderOutputPath}" "${ShaderObeliskOutputPath}/${FragmentShaderOutputFileName}")
-    else()
-        add_custom_target("Compile-${shaderfilename}-fragment" ALL
-            COMMAND glslang-standalone "-I${ShaderPath}" "-V" ${Flags} "-o" "${FragmentShaderOutputPath}" "${FragmentShader}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FragmentShaderOutputPath}" "${ShaderBinOutputPath}/${FragmentShaderOutputFileName}")
-    endif()
-
+foreach(shader ${FragmentShaders})
+    add_shader_compiler("${shader}" fragment fragment)
 endforeach()
 
 install(DIRECTORY Editor/Settings DESTINATION bin/ZodiacEngine)

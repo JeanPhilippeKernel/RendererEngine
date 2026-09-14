@@ -53,14 +53,40 @@ if ($RunAsCheck) {
 
 $clangFormatProgram = Find-ClangFormat
 
-$process = Start-Process $clangFormatProgram -ArgumentList "$clangFormatArgument $srcFiles" -NoNewWindow -PassThru
-$handle = $process.Handle
-$process.WaitForExit()
-$exitCode = $process.ExitCode
+function Invoke-ClangFormat {
+    param (
+        [Parameter(Mandatory)]
+        [string[]]$Files
+    )
 
-if ($exitCode -ne 0) {
-    Write-Error "clang-format failed formatting source with exit code '$exitCode'" -ErrorAction Stop
+    & $clangFormatProgram @clangFormatArgument @Files
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "clang-format failed formatting source with exit code '$LASTEXITCODE'"
+    }
 }
-else {
-    Write-Host "clang-format source formatting succeeded"
+
+# Windows limits a process command line to 32 KiB. Invoke clang-format in
+# bounded batches so large source trees can be checked by CI.
+$maximumArgumentLength = 24KB
+$currentArgumentLength = 0
+$batch = [System.Collections.Generic.List[string]]::new()
+
+foreach ($srcFile in $srcFiles) {
+    $nextArgumentLength = $currentArgumentLength + $srcFile.Length + 3
+
+    if ($batch.Count -gt 0 -and $nextArgumentLength -gt $maximumArgumentLength) {
+        Invoke-ClangFormat -Files $batch.ToArray()
+        $batch.Clear()
+        $currentArgumentLength = 0
+    }
+
+    $batch.Add($srcFile)
+    $currentArgumentLength += $srcFile.Length + 3
 }
+
+if ($batch.Count -gt 0) {
+    Invoke-ClangFormat -Files $batch.ToArray()
+}
+
+Write-Host "clang-format source formatting succeeded"
