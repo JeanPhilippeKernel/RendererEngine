@@ -120,6 +120,29 @@ TEST(SkyEnvironmentTest, PresentationOnlyChangesDoNotScheduleAnotherBake)
     EXPECT_FLOAT_EQ(environment.GetPresentationConfig().EnvironmentYawRadians, 1.0f);
 }
 
+TEST(SkyEnvironmentTest, SkySphereUsesFallbackResourcesWithoutSchedulingABake)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyConfig sky_sphere                = SkySphereConfig();
+    sky_sphere.EnvironmentIntensity     = 2.0f;
+    SkyCelestialLight celestial_light   = {};
+    celestial_light.DirectionToLight[0] = 1.0f;
+    celestial_light.IsAvailable         = true;
+
+    ASSERT_TRUE(environment.SubmitConfig(sky_sphere, 1, {}, celestial_light));
+    SkyEnvironmentBakeRequest request = {};
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->SourceRadiance.Index, 1u);
+    EXPECT_EQ(environment.GetFallbackLighting().DiffuseIrradiance.Index, 10u);
+    EXPECT_TRUE(environment.GetPresentationConfig().IsSkySphere());
+    EXPECT_TRUE(environment.GetPresentationCelestialLight().IsAvailable);
+    EXPECT_FLOAT_EQ(environment.GetPresentationCelestialLight().DirectionToLight[0], 1.0f);
+    EXPECT_EQ(environment.GetState(), SkyEnvironmentState::Fallback);
+}
+
 TEST(SkyEnvironmentTest, QualityChangeDiscardsThePreviousRevisionAndSchedulesNewResources)
 {
     SkyEnvironment environment = {};
@@ -167,7 +190,7 @@ TEST(SkyEnvironmentTest, PresentationChangesKeepAnInFlightBakeCurrent)
     EXPECT_FLOAT_EQ(environment.GetPublishedSnapshot()->Config.EnvironmentIntensity, 2.0f);
 }
 
-TEST(SkyEnvironmentTest, StaleCompletionIsDiscardedAndDoesNotReplaceFallback)
+TEST(SkyEnvironmentTest, SkySphereCancelsStaleBakeAndKeepsTheFallback)
 {
     SkyEnvironment environment = {};
     environment.Initialize(Texture(1));
@@ -182,13 +205,8 @@ TEST(SkyEnvironmentTest, StaleCompletionIsDiscardedAndDoesNotReplaceFallback)
     ASSERT_TRUE(environment.SubmitConfig(config, 2));
     EXPECT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Discarded);
     ASSERT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
-
-    ASSERT_TRUE(environment.TakeBakeRequest(request));
-    EXPECT_EQ(request.Revision, 2u);
-    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
-    EXPECT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
-    EXPECT_EQ(environment.GetPublishedSnapshot()->Revision, 2u);
-    EXPECT_EQ(environment.GetPublishedSnapshot()->SourceRadiance.Index, 3u);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(environment.GetPresentationConfig().IsSkySphere());
 }
 
 TEST(SkyEnvironmentTest, FailedBakeRetainsVisibleFallback)
@@ -208,7 +226,7 @@ TEST(SkyEnvironmentTest, FailedBakeRetainsVisibleFallback)
     EXPECT_EQ(environment.GetState(), SkyEnvironmentState::Failed);
 }
 
-TEST(SkyEnvironmentTest, FailedReplacementRetainsPreviouslyReadyEnvironment)
+TEST(SkyEnvironmentTest, SkySphereReplacesReadyEnvironmentWithFallback)
 {
     SkyEnvironment environment = {};
     environment.Initialize(Texture(1));
@@ -221,14 +239,17 @@ TEST(SkyEnvironmentTest, FailedReplacementRetainsPreviouslyReadyEnvironment)
 
     SkyConfig replacement = SkySphereConfig();
     ASSERT_TRUE(environment.SubmitConfig(replacement, 2));
-    ASSERT_TRUE(environment.TakeBakeRequest(request));
-    EXPECT_EQ(environment.CompleteBake(2, {}, false), SkyEnvironmentBakeResult::Failed);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
 
     const SkyEnvironmentSnapshot* snapshot = environment.GetPublishedSnapshot();
     ASSERT_NE(snapshot, nullptr);
-    EXPECT_EQ(snapshot->Revision, 1u);
-    EXPECT_EQ(snapshot->SourceRadiance.Index, 2u);
-    EXPECT_EQ(environment.GetState(), SkyEnvironmentState::Failed);
+    EXPECT_TRUE(snapshot->IsFallback);
+    EXPECT_EQ(snapshot->SourceRadiance.Index, 1u);
+    EXPECT_EQ(environment.GetState(), SkyEnvironmentState::Fallback);
+
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
 }
 
 TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForItsSubmittedFrameTimeline)
@@ -247,9 +268,8 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForItsSubmittedFrameTimeline)
     EXPECT_EQ(first->SourceRadiance.Index, 2u);
 
     ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
-    ASSERT_TRUE(environment.TakeBakeRequest(request));
-    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
-    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
 
     SkyEnvironmentResources retired = {};
     EXPECT_FALSE(environment.TakeRetiredSnapshot(0, retired));
@@ -274,9 +294,8 @@ TEST(SkyEnvironmentTest, ReplacedSnapshotWaitsForEverySubmittedFrameConsumer)
     ASSERT_NE(environment.AcquireForFrame(), nullptr);
 
     ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
-    ASSERT_TRUE(environment.TakeBakeRequest(request));
-    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
-    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
 
     SkyEnvironmentResources retired = {};
     environment.ReleaseSubmittedFrame(7);
@@ -300,9 +319,8 @@ TEST(SkyEnvironmentTest, CancelledFrameDoesNotLeaveAReplacementPinned)
     ASSERT_NE(environment.AcquireForFrame(), nullptr);
 
     ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
-    ASSERT_TRUE(environment.TakeBakeRequest(request));
-    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
-    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
     environment.ReleaseCancelledFrame();
 
     SkyEnvironmentResources retired = {};
@@ -598,9 +616,8 @@ TEST(SkyEnvironmentTest, RetiringRevisionReturnsItsFullOwnedLightingSet)
     ASSERT_NE(environment.AcquireForFrame(), nullptr);
 
     ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
-    ASSERT_TRUE(environment.TakeBakeRequest(request));
-    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
-    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true, Lighting(30)), SkyEnvironmentBakeResult::Published);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
     environment.ReleaseSubmittedFrame(9);
 
     SkyEnvironmentResources retired = {};
