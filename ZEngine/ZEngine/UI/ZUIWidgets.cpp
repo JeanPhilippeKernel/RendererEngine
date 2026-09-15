@@ -2625,7 +2625,7 @@ namespace ZEngine::UI
 
     // ZUIDragFloat3
 
-    bool ZUIDragFloat3(ZUIContext* ctx, const char* key, float v[3], float speed, float comp_w)
+    bool ZUIDragFloat3(ZUIContext* ctx, const char* key, float v[3], float speed, float comp_w, const char* const labels[3])
     {
         struct AxisStyle
         {
@@ -2655,11 +2655,12 @@ namespace ZEngine::UI
             chip->Size[1]   = ZPx(ZUIGetFrameHeight(ctx));
             chip->TextAlign = ZUITextAlign::Center;
             ZUIBoxSetColorArr(chip, kAxes[i].chip);
-            chip->TextColor[0] = 1.f;
-            chip->TextColor[1] = 1.f;
-            chip->TextColor[2] = 1.f;
-            chip->TextColor[3] = 1.f;
-            chip->Label        = ZUIPushStr(&ctx->FrameArena, kAxes[i].label, 1);
+            chip->TextColor[0]      = 1.f;
+            chip->TextColor[1]      = 1.f;
+            chip->TextColor[2]      = 1.f;
+            chip->TextColor[3]      = 1.f;
+            const char* const label = labels ? labels[i] : kAxes[i].label;
+            chip->Label             = ZUIPushStr(&ctx->FrameArena, label, (uint32_t) strlen(label));
             ZUIBoxSetCornerRadius(chip, 2.f);
             chip->EdgeSoftness = 0.f;
             ZUIPopBox(ctx);

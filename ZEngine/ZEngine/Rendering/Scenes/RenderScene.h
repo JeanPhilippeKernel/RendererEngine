@@ -101,7 +101,7 @@ namespace ZEngine::Rendering::Scenes
         /// @brief Diffuse albedo of the implicit planet surface.
         /// @details The atmosphere closes rays that reach the planet against
         /// this Lambertian surface only where scene geometry is absent.
-        float GroundAlbedo[3]                   = {0.18f, 0.22f, 0.16f};
+        float GroundAlbedo[3]                   = {0.18f, 0.18f, 0.18f};
         /// @brief Scene-linear diffuse fill irradiance for the implicit ground.
         /// @details It prevents a no-terrain editor viewport from exposing a
         /// black lower hemisphere. Set it to zero for a fully unlit planet.

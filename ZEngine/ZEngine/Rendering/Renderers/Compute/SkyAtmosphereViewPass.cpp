@@ -74,15 +74,12 @@ namespace ZEngine::Rendering::Renderers
         m_celestial    = snapshot->CelestialLight;
         m_atmosphere   = snapshot->Atmosphere;
 
-        // These controls are evaluated per view and deliberately stay out of
-        // the static atmosphere bake key.
+        // Scene placement is evaluated per view and does not affect the
+        // planet-centred source capture. Ground values remain in the published
+        // snapshot because they also contribute to source radiance and IBL.
         for (uint32_t index = 0; index < 3; ++index)
-        {
             m_config.Atmosphere.PlanetCenterWorld[index] = presentation.Atmosphere.PlanetCenterWorld[index];
-            m_config.Atmosphere.GroundAlbedo[index]      = presentation.Atmosphere.GroundAlbedo[index];
-        }
-        m_config.Atmosphere.WorldUnitsPerMeter      = presentation.Atmosphere.WorldUnitsPerMeter;
-        m_config.Atmosphere.GroundAmbientIrradiance = presentation.Atmosphere.GroundAmbientIrradiance;
+        m_config.Atmosphere.WorldUnitsPerMeter = presentation.Atmosphere.WorldUnitsPerMeter;
     }
 
     void SkyAtmosphereViewPass::SetCameraPosition(const Core::Maths::Vec3f& position)

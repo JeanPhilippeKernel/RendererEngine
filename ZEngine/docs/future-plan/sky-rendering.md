@@ -42,7 +42,7 @@ These extensions consume the same immutable snapshot, RenderView, graph-declarat
 
 ## 2. Ownership, configuration, and units
 
-Sky configuration is owned by the scene or render world. A project may supply defaults, but it must not be the sole owner: different scenes can legitimately use different skies. The serialized scene representation is versioned and contains a stable environment asset reference, never a raw retained character pointer or an absolute working-space path.
+Sky configuration is owned by the scene or render world. A project may supply defaults, but it must not be the sole owner: different scenes can legitimately use different skies. The serialized scene representation contains a stable environment asset reference, never a raw retained character pointer or an absolute working-space path.
 
 Project defaults are a template for a newly created scene only. The editor accepts the following optional `project.json` section; an existing scene always retains the `SkyConfig` stored in its scene file:
 
@@ -92,6 +92,10 @@ The sky system distinguishes two change domains:
 - The presentation state contains dynamic values that can be applied at sampling time, such as HDRI yaw, a linear intensity multiplier, tint, and SkySphere colours. It combines SkyConfig with RenderView camera/post-processing inputs and is refreshed per frame without rebuilding cubemaps.
 
 HDRI yaw transforms the lookup direction for both background and IBL sampling; tint and intensity multiply both paths in linear colour. These operations are rotationally/equivariantly valid and do not require a rebake. Display exposure remains a camera/post-processing control. Asset completion and hot reload increment the bake key only when the completed asset is still the requested asset. This makes stale asynchronous completions harmless.
+
+For the analytic atmosphere, the editor exposes all serialized authoring fields in Planet, Molecular, Aerosols, Ozone, Sun, and Ground groups. Planet placement and world-unit scale are camera-local inputs: changing either refreshes the per-view atmosphere path without regenerating planet-centred resources. Rayleigh, Mie, and ozone properties regenerate the static LUTs as well as the source and IBL resources. The resolved sun and its radiometric settings, ground albedo, and ground ambient irradiance regenerate the source-radiance cubemap and IBL while reusing compatible static LUTs.
+
+Ground albedo and ambient irradiance are never presentation-only overrides. The implicit Lambertian ground is captured into the atmosphere source cubemap, so a ground edit remains on the pending revision until its source, diffuse IBL, and specular IBL are complete. Per-view sky and aerial passes read the ground values from that same published snapshot. This avoids a new visible lower hemisphere being combined with old environment lighting.
 
 ### 2.1 Configuration validity and migration
 

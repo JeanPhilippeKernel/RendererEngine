@@ -401,7 +401,8 @@ namespace ZEngine::Rendering::Scenes
         if (left.IsSkySphere())
             return true;
 
-        return HasEquivalentAtmosphereStaticInputs(left, right) && left_celestial_light.Matches(right_celestial_light) && left.Atmosphere.SunAngularRadiusRadians == right.Atmosphere.SunAngularRadiusRadians && left.Atmosphere.SunIlluminanceLux == right.Atmosphere.SunIlluminanceLux;
+        const auto equal3 = [](const float (&first)[3], const float (&second)[3]) { return first[0] == second[0] && first[1] == second[1] && first[2] == second[2]; };
+        return HasEquivalentAtmosphereStaticInputs(left, right) && left_celestial_light.Matches(right_celestial_light) && left.Atmosphere.SunAngularRadiusRadians == right.Atmosphere.SunAngularRadiusRadians && left.Atmosphere.SunIlluminanceLux == right.Atmosphere.SunIlluminanceLux && equal3(left.Atmosphere.GroundAlbedo, right.Atmosphere.GroundAlbedo) && left.Atmosphere.GroundAmbientIrradiance == right.Atmosphere.GroundAmbientIrradiance;
     }
 
     bool SkyEnvironment::IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const
