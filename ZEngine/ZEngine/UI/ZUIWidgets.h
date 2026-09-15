@@ -279,12 +279,13 @@ namespace ZEngine::UI
     /// @return true if @p *value changed this frame.
     bool        ZUIDragInt(ZUIContext* ctx, const char* key, int* value, float speed = 1.f, float width_px = 60.f);
 
-    /// @brief Three-component XYZ drag in a single compact row.
+    /// @brief Three-component drag in a single compact row.
     ///
-    /// Renders [X][Y][Z] drag boxes with colored axis labels.
+    /// Renders three drag boxes with colored component labels.
     /// @param component_w Per-component box width; 0 = equal distribution.
+    /// @param labels Optional labels for the three components; uses X, Y, Z when null.
     /// @return true if any component changed this frame.
-    bool        ZUIDragFloat3(ZUIContext* ctx, const char* key, float v[3], float speed = 0.05f, float component_w = 0.f);
+    bool        ZUIDragFloat3(ZUIContext* ctx, const char* key, float v[3], float speed = 0.05f, float component_w = 0.f, const char* const labels[3] = nullptr);
 
     /// @brief Text field that edits a float — click to focus, type, press Enter.
     /// @param ctx Active ZUI context.

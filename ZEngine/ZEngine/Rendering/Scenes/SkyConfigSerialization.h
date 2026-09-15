@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Scenes::Serialization
         return true;
     }
 
-    /// @brief Writes the versioned scene representation of stable sky authoring data.
+    /// @brief Writes the binary scene representation of stable sky authoring data.
     ///
     /// Native texture handles, generated-cache paths, revision state, and other
     /// per-frame values are intentionally not part of this codec.

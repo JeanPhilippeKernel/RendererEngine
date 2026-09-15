@@ -549,8 +549,9 @@ namespace Tetragrama::Components
             }
             else if (m_settings_page == 1 && stg_scene) // Sky
             {
-                auto& cfg        = stg_scene->Sky;
-                auto  scalar_row = [&](const char* row_key, const char* label, const char* control_key, float* value, float minimum, float maximum) {
+                auto&                        cfg             = stg_scene->Sky;
+                static constexpr const char* k_rgb_labels[3] = {"R", "G", "B"};
+                auto                         scalar_row      = [&](const char* row_key, const char* label, const char* control_key, float* value, float minimum, float maximum) {
                     ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
                     ZUISpacer(ctx, 14.f);
                     ZUIBeginColumn(ctx, "##sky_scalar_label", ZPx(170.f), ZFill());
@@ -560,6 +561,22 @@ namespace Tetragrama::Components
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     return changed;
+                };
+                auto drag_scalar_row = [&](const char* row_key, const char* label, const char* control_key, float* value, float speed, float minimum, float maximum) {
+                    const float previous = *value;
+                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sky_drag_scalar_label", ZPx(170.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUIDragFloat(ctx, control_key, value, speed, 100.0f);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (*value < minimum)
+                        *value = minimum;
+                    else if (*value > maximum)
+                        *value = maximum;
+                    return previous != *value;
                 };
                 auto color_row = [&](const char* row_key, const char* label, const char* control_key, float value[4]) {
                     ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
@@ -571,6 +588,42 @@ namespace Tetragrama::Components
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     return changed;
+                };
+                auto color3_row = [&](const char* row_key, const char* label, const char* control_key, float value[3]) {
+                    float rgba[4] = {value[0], value[1], value[2], 1.0f};
+                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sky_color3_label", ZPx(170.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    const bool changed = ZUIColorEdit4(ctx, control_key, rgba);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (changed)
+                    {
+                        value[0] = rgba[0];
+                        value[1] = rgba[1];
+                        value[2] = rgba[2];
+                    }
+                    return changed;
+                };
+                auto vector3_row = [&](const char* row_key, const char* label, const char* control_key, float value[3], float speed, bool non_negative, const char* const component_labels[3]) {
+                    float previous[3] = {value[0], value[1], value[2]};
+                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
+                    ZUISpacer(ctx, 14.f);
+                    ZUIBeginColumn(ctx, "##sky_vector3_label", ZPx(170.f), ZFill());
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUIDragFloat3(ctx, control_key, value, speed, 60.0f, component_labels);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 5.f);
+                    if (non_negative)
+                    {
+                        for (uint32_t index = 0; index < 3; ++index)
+                            if (value[index] < 0.0f)
+                                value[index] = 0.0f;
+                    }
+                    return previous[0] != value[0] || previous[1] != value[1] || previous[2] != value[2];
                 };
 
                 ZUISeparatorText(ctx, "Environment / Basic");
@@ -721,23 +774,51 @@ namespace Tetragrama::Components
                 }
                 else if (cfg.IsAtmosphere())
                 {
-                    ZUISeparatorText(ctx, "Atmosphere / Advanced");
-                    if (scalar_row("##sky_atm_world_scale_r", "World Units per Metre", "##sky_atm_world_scale", &cfg.Atmosphere.WorldUnitsPerMeter, 0.001f, 1000.0f))
+                    ZUISeparatorText(ctx, "Atmosphere / Planet");
+                    if (vector3_row("##sky_atm_planet_center_r", "Planet Centre (world)", "##sky_atm_planet_center", cfg.Atmosphere.PlanetCenterWorld, 1000.0f, false, nullptr))
                         mark_sky_dirty();
-                    if (scalar_row("##sky_atm_planet_radius_r", "Planet Radius (km)", "##sky_atm_planet_radius", &cfg.Atmosphere.PlanetRadiusKilometers, 1.0f, 100000.0f))
+                    if (drag_scalar_row("##sky_atm_world_scale_r", "World Units per Metre", "##sky_atm_world_scale", &cfg.Atmosphere.WorldUnitsPerMeter, 0.01f, 0.001f, 1000.0f))
+                        mark_sky_dirty();
+                    if (drag_scalar_row("##sky_atm_planet_radius_r", "Planet Radius (km)", "##sky_atm_planet_radius", &cfg.Atmosphere.PlanetRadiusKilometers, 1.0f, 1.0f, 100000.0f))
                         mark_sky_dirty();
                     const float minimum_atmosphere_radius = cfg.Atmosphere.PlanetRadiusKilometers + 0.1f;
-                    if (scalar_row("##sky_atm_radius_r", "Atmosphere Radius (km)", "##sky_atm_radius", &cfg.Atmosphere.AtmosphereRadiusKilometers, minimum_atmosphere_radius, 100100.0f))
+                    if (drag_scalar_row("##sky_atm_radius_r", "Atmosphere Radius (km)", "##sky_atm_radius", &cfg.Atmosphere.AtmosphereRadiusKilometers, 1.0f, minimum_atmosphere_radius, 100100.0f))
                         mark_sky_dirty();
-                    if (scalar_row("##sky_atm_rayleigh_height_r", "Rayleigh Height (km)", "##sky_atm_rayleigh_height", &cfg.Atmosphere.RayleighScaleHeightKilometers, 0.01f, 100.0f))
+
+                    ZUISeparatorText(ctx, "Atmosphere / Molecular");
+                    if (vector3_row("##sky_atm_rayleigh_scatter_r", "Rayleigh Scatter (1/km)", "##sky_atm_rayleigh_scatter", cfg.Atmosphere.RayleighScatteringPerKilometer, 0.0001f, true, k_rgb_labels))
                         mark_sky_dirty();
-                    if (scalar_row("##sky_atm_mie_height_r", "Mie Height (km)", "##sky_atm_mie_height", &cfg.Atmosphere.MieScaleHeightKilometers, 0.01f, 100.0f))
+                    if (drag_scalar_row("##sky_atm_rayleigh_height_r", "Rayleigh Height (km)", "##sky_atm_rayleigh_height", &cfg.Atmosphere.RayleighScaleHeightKilometers, 0.01f, 0.01f, 100.0f))
                         mark_sky_dirty();
-                    if (scalar_row("##sky_atm_mie_g_r", "Mie Anisotropy", "##sky_atm_mie_g", &cfg.Atmosphere.MieAnisotropy, -0.998f, 0.998f))
+
+                    ZUISeparatorText(ctx, "Atmosphere / Aerosols");
+                    if (drag_scalar_row("##sky_atm_mie_scatter_r", "Mie Scatter (1/km)", "##sky_atm_mie_scatter", &cfg.Atmosphere.MieScatteringPerKilometer, 0.0001f, 0.0f, 1.0f))
                         mark_sky_dirty();
-                    if (scalar_row("##sky_atm_sun_radius_r", "Sun Angular Radius (rad)", "##sky_atm_sun_radius", &cfg.Atmosphere.SunAngularRadiusRadians, 0.0f, 0.1f))
+                    if (drag_scalar_row("##sky_atm_mie_absorb_r", "Mie Absorb (1/km)", "##sky_atm_mie_absorb", &cfg.Atmosphere.MieAbsorptionPerKilometer, 0.0001f, 0.0f, 1.0f))
                         mark_sky_dirty();
-                    if (scalar_row("##sky_atm_sun_lux_r", "Sun Illuminance (lux)", "##sky_atm_sun_lux", &cfg.Atmosphere.SunIlluminanceLux, 0.0f, 200000.0f))
+                    if (drag_scalar_row("##sky_atm_mie_height_r", "Mie Height (km)", "##sky_atm_mie_height", &cfg.Atmosphere.MieScaleHeightKilometers, 0.01f, 0.01f, 100.0f))
+                        mark_sky_dirty();
+                    if (drag_scalar_row("##sky_atm_mie_g_r", "Mie Anisotropy", "##sky_atm_mie_g", &cfg.Atmosphere.MieAnisotropy, 0.01f, -0.998f, 0.998f))
+                        mark_sky_dirty();
+
+                    ZUISeparatorText(ctx, "Atmosphere / Ozone");
+                    if (vector3_row("##sky_atm_ozone_absorb_r", "Ozone Absorb (1/km)", "##sky_atm_ozone_absorb", cfg.Atmosphere.OzoneAbsorptionPerKilometer, 0.00001f, true, k_rgb_labels))
+                        mark_sky_dirty();
+                    if (drag_scalar_row("##sky_atm_ozone_center_r", "Ozone Centre (km)", "##sky_atm_ozone_center", &cfg.Atmosphere.OzoneCenterKilometers, 0.1f, 0.0f, 100.0f))
+                        mark_sky_dirty();
+                    if (drag_scalar_row("##sky_atm_ozone_thickness_r", "Ozone Thickness (km)", "##sky_atm_ozone_thickness", &cfg.Atmosphere.OzoneThicknessKilometers, 0.1f, 0.01f, 100.0f))
+                        mark_sky_dirty();
+
+                    ZUISeparatorText(ctx, "Atmosphere / Sun");
+                    if (drag_scalar_row("##sky_atm_sun_radius_r", "Sun Angular Radius (rad)", "##sky_atm_sun_radius", &cfg.Atmosphere.SunAngularRadiusRadians, 0.0001f, 0.0f, 0.1f))
+                        mark_sky_dirty();
+                    if (drag_scalar_row("##sky_atm_sun_lux_r", "Sun Illuminance (lux)", "##sky_atm_sun_lux", &cfg.Atmosphere.SunIlluminanceLux, 100.0f, 0.0f, 200000.0f))
+                        mark_sky_dirty();
+
+                    ZUISeparatorText(ctx, "Atmosphere / Ground");
+                    if (color3_row("##sky_atm_ground_albedo_r", "Ground Albedo", "##sky_atm_ground_albedo", cfg.Atmosphere.GroundAlbedo))
+                        mark_sky_dirty();
+                    if (drag_scalar_row("##sky_atm_ground_ambient_r", "Ground Ambient", "##sky_atm_ground_ambient", &cfg.Atmosphere.GroundAmbientIrradiance, 0.01f, 0.0f, 16.0f))
                         mark_sky_dirty();
                 }
 

@@ -43,6 +43,18 @@ namespace
             .Multiscattering = Texture(first_index + 1),
         };
     }
+
+    struct SkyAtmosphereViewPassProbe final : Renderers::SkyAtmosphereViewPass
+    {
+        using Renderers::SkyAtmosphereViewPass::MakePushConstants;
+
+        void    RegisterCompute(ZEngine::Hardwares::VulkanDevicePtr const /*device*/, const Renderers::RenderGraphFrameContext& /*frame_context*/, Renderers::RenderGraphResourceBuilderPtr const /*res_builder*/) override {}
+        void    ExecuteCompute(ZEngine::Hardwares::VulkanDevicePtr const /*device*/, Renderers::RenderGraphResourceInspectorPtr /*res_inspector*/, SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, ZEngine::Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
+        cstring GetShaderName() const override
+        {
+            return "";
+        }
+    };
 } // namespace
 
 TEST(SkyEnvironmentTest, FirstFramePinsTheValidFallbackSnapshot)
@@ -397,6 +409,36 @@ TEST(SkyEnvironmentTest, PerViewAtmospherePassOmitsMinimizedViews)
     EXPECT_TRUE(sky_view.ShouldRegisterCompute(renderable));
 }
 
+TEST(SkyAtmosphereViewPassTest, GroundValuesStayBoundToThePublishedSnapshot)
+{
+    SkyEnvironmentSnapshot snapshot                    = {};
+    snapshot.Config.Mode                               = SkyMode::Atmosphere;
+    snapshot.Config.Atmosphere.GroundAlbedo[0]         = 0.1f;
+    snapshot.Config.Atmosphere.GroundAlbedo[1]         = 0.2f;
+    snapshot.Config.Atmosphere.GroundAlbedo[2]         = 0.3f;
+    snapshot.Config.Atmosphere.GroundAmbientIrradiance = 0.4f;
+    snapshot.Atmosphere                                = Atmosphere(20);
+    snapshot.CelestialLight.IsAvailable                = true;
+
+    SkyConfig presentation                             = snapshot.Config;
+    presentation.Atmosphere.PlanetCenterWorld[0]       = 4000.0f;
+    presentation.Atmosphere.WorldUnitsPerMeter         = 2.0f;
+    presentation.Atmosphere.GroundAlbedo[0]            = 0.8f;
+    presentation.Atmosphere.GroundAlbedo[1]            = 0.7f;
+    presentation.Atmosphere.GroundAlbedo[2]            = 0.6f;
+    presentation.Atmosphere.GroundAmbientIrradiance    = 0.9f;
+
+    SkyAtmosphereViewPassProbe sky_view                = {};
+    sky_view.SetEnvironment(&snapshot, presentation);
+    const Renderers::AtmosphereViewPushConstants push = sky_view.MakePushConstants();
+
+    EXPECT_FLOAT_EQ(push.PlanetCenterRelativeAndMaxDistance[0], 2.0f);
+    EXPECT_FLOAT_EQ(push.RayleighScatteringAndGroundAlbedoR[3], 0.1f);
+    EXPECT_FLOAT_EQ(push.SunRadianceAvailabilityAndGroundAlbedoGB[2], 0.2f);
+    EXPECT_FLOAT_EQ(push.SunRadianceAvailabilityAndGroundAlbedoGB[3], 0.3f);
+    EXPECT_FLOAT_EQ(push.PresentationTintIntensityAndGroundAmbient[3], 0.4f);
+}
+
 TEST(SkyEnvironmentTest, InvalidInputsAreMarkedForFallbackInsteadOfRebakingDefaults)
 {
     SkyEnvironment environment = {};
@@ -450,6 +492,45 @@ TEST(SkyEnvironmentTest, AtmosphereSourceBakeIgnoresScenePlacementInputs)
     ASSERT_NE(environment.GetActiveBake(), nullptr);
     EXPECT_EQ(environment.GetActiveBake()->Revision, 2u);
     EXPECT_FALSE(environment.TakeBakeRequest(request));
+}
+
+TEST(SkyEnvironmentTest, GroundChangeRebakesSourceRadianceAndReusesStaticAtmosphere)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyCelestialLight sun = {};
+    sun.IsAvailable       = true;
+    ASSERT_TRUE(environment.SubmitConfig({}, 1, {}, sun));
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(1, Atmosphere(20)));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(30)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(40)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(30), true, Lighting(40), Atmosphere(20)), SkyEnvironmentBakeResult::Published);
+
+    SkyConfig ground_change                          = {};
+    ground_change.Atmosphere.GroundAlbedo[1]         = 0.4f;
+    ground_change.Atmosphere.GroundAmbientIrradiance = 0.75f;
+    ASSERT_TRUE(environment.SubmitConfig(ground_change, 2, {}, sun));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_EQ(request.Revision, 2u);
+    EXPECT_FLOAT_EQ(request.Config.Atmosphere.GroundAlbedo[1], 0.4f);
+    EXPECT_FLOAT_EQ(request.Config.Atmosphere.GroundAmbientIrradiance, 0.75f);
+
+    const AtmosphereStaticResources* const reusable = environment.FindReusableAtmosphere(request.Config);
+    ASSERT_NE(reusable, nullptr);
+    EXPECT_EQ(reusable->Transmittance.Index, 20u);
+    EXPECT_EQ(reusable->Multiscattering.Index, 21u);
+
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(2, *reusable, false));
+    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(50)));
+    ASSERT_TRUE(environment.AttachBakeLighting(2, Lighting(60)));
+    ASSERT_EQ(environment.CompleteBake(2, Texture(50), true, Lighting(60), *reusable), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->SourceRadiance.Index, 50u);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.DiffuseIrradiance.Index, 60u);
+    EXPECT_FLOAT_EQ(environment.GetPublishedSnapshot()->Config.Atmosphere.GroundAlbedo[1], 0.4f);
 }
 
 TEST(SkyEnvironmentTest, DirectionOnlyAtmosphereUpdateReusesStaticLutsUntilTheLastReferenceRetires)
