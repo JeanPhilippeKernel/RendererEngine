@@ -15,6 +15,8 @@ namespace ZEngine::Rendering::Specifications
         bool          IsCubemap             = false;
         /// @brief Creates a VK_IMAGE_TYPE_3D volume image; incompatible with cubemaps and array layers.
         bool          Is3D                  = false;
+        /// @brief Resizes this transient image when its owning render view changes extent.
+        bool          IsRenderTargetSized   = false;
         uint32_t      Width                 = 0;
         uint32_t      Height                = 0;
         uint32_t      Depth                 = 1;

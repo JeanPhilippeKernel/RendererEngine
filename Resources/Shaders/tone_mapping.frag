@@ -17,9 +17,16 @@ vec3 aces_fitted(vec3 colour)
     return clamp(output_matrix * (numerator / denominator), vec3(0.0), vec3(1.0));
 }
 
+float ordered_dither(ivec2 pixel)
+{
+    const int bayer[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+    const int index     = (pixel.y & 3) * 4 + (pixel.x & 3);
+    return (float(bayer[index]) + 0.5) / 16.0 - 0.5;
+}
+
 void main()
 {
     const vec3 hdr_colour     = texture(sampler2D(SceneColor, LinearClampToEdgeSampler), TexCoord).rgb;
     const vec3 display_colour = pow(aces_fitted(hdr_colour), vec3(1.0 / 2.2));
-    OutColor                  = vec4(display_colour, 1.0);
+    OutColor                  = vec4(clamp(display_colour + vec3(ordered_dither(ivec2(gl_FragCoord.xy)) / 255.0), vec3(0.0), vec3(1.0)), 1.0);
 }

@@ -7,9 +7,10 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, cstring shader_name, uint32_t /*push_constant_size*/)
+    void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, cstring shader_name, uint32_t push_constant_size)
     {
-        Device = device;
+        Device                   = device;
+        DeclaredPushConstantSize = push_constant_size;
         Specifications::ShaderSpecification spec{};
         spec.Name          = shader_name;
         auto shader_handle = Device->CompileShader(spec);
@@ -27,21 +28,68 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (!Shader)
         {
             ZENGINE_CORE_ERROR("Compute pipeline cannot bake because its shader is unavailable")
+            InvalidateBakedState();
             return;
         }
         if (Shader->ShaderCreateInfos.empty())
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader has no compute stage", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
             return;
         }
         if (Shader->ShaderCreateInfos[0].stage != VK_SHADER_STAGE_COMPUTE_BIT)
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader stage is not compute", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
+            return;
+        }
+
+        // Every command in this engine pushes the callback's declared range at
+        // offset zero. Reflection must therefore cover that exact interval for
+        // the compute stage, with neither a hole nor trailing compute bytes.
+        uint32_t covered_bytes  = 0;
+        bool     exact_coverage = true;
+        while (covered_bytes < DeclaredPushConstantSize)
+        {
+            bool found_next_range = false;
+            for (const VkPushConstantRange& range : Shader->PushConstants)
+            {
+                if ((range.stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) == 0 || range.offset != covered_bytes || range.size == 0)
+                    continue;
+
+                if (range.size > DeclaredPushConstantSize - covered_bytes)
+                {
+                    exact_coverage = false;
+                    break;
+                }
+                covered_bytes    += range.size;
+                found_next_range  = true;
+                break;
+            }
+            if (!found_next_range)
+            {
+                exact_coverage = false;
+                break;
+            }
+        }
+        for (const VkPushConstantRange& range : Shader->PushConstants)
+        {
+            if ((range.stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) != 0 && (range.offset >= DeclaredPushConstantSize || range.size > DeclaredPushConstantSize - range.offset))
+            {
+                exact_coverage = false;
+                break;
+            }
+        }
+        if (!exact_coverage)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}': callback push constants do not exactly match the reflected compute-stage range", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
             return;
         }
         if (!Device || !Device->PipelineStateCache)
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because the PSO cache is unavailable", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
             return;
         }
         if (Handle != VK_NULL_HANDLE)
@@ -65,6 +113,17 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Device->PipelineStateCache->PinPipeline(Handle);
         Device->PipelineStateCache->RecordComputeWarmup(Shader->m_specification.Name, key);
         BakedShaderGeneration = Shader->Generation;
+    }
+
+    void ComputePipeline::InvalidateBakedState()
+    {
+        if (Device && Device->PipelineStateCache && Handle != VK_NULL_HANDLE)
+            Device->PipelineStateCache->UnpinPipeline(Handle);
+
+        Handle                  = VK_NULL_HANDLE;
+        Layout                  = VK_NULL_HANDLE;
+        BakedShaderGeneration   = UINT32_MAX;
+        DescriptorBindingsValid = false;
     }
 
     void ComputePipeline::Dispose()

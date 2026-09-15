@@ -9,6 +9,11 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers
 {
+    void GridPass::SetUseCompositedSceneColor(bool enabled)
+    {
+        m_use_composited_scene_color = enabled;
+    }
+
     Specifications::GraphicsPipelineDesc GridPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const
     {
         Specifications::GraphicsPipelineDesc desc = {};
@@ -47,7 +52,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->UpdateColorAttachment(RendererResourceName::FrameHdrColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
+        res_builder->UpdateColorAttachment(m_use_composited_scene_color ? RendererResourceName::FrameHdrCompositedRenderTargetName : RendererResourceName::FrameHdrColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
         return true;
     }
 

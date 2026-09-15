@@ -345,6 +345,7 @@ namespace ZEngine::Hardwares
         VkPhysicalDeviceMemoryProperties                                                                                             PhysicalDeviceMemoryProperties                                              = {};
         VkSampler                                                                                                                    GlobalLinearWrapSampler                                                     = VK_NULL_HANDLE;
         VkSampler                                                                                                                    GlobalLinearClampToEdgeSampler                                              = VK_NULL_HANDLE;
+        VkSampler                                                                                                                    GlobalLinearWrapUClampToEdgeVSampler                                        = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             GlobalDescriptorPoolHandle                                                  = VK_NULL_HANDLE;
         VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                                                    = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                                                   = VK_NULL_HANDLE;
@@ -354,6 +355,7 @@ namespace ZEngine::Hardwares
         PerFrameUploadHeap                                                                                                           FrameHeaps[3]                                                               = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo                                            = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo                                     = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapUClampToEdgeVSamplerImageInfo                               = {};
         CommandBufferManagerPtr                                                                                                      CommandBufferMgr                                                            = {};
         DeviceSwapchainPtr                                                                                                           SwapchainPtr                                                                = {};
         Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                                                         = {};

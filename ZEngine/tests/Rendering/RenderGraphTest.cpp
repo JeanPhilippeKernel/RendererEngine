@@ -111,6 +111,7 @@ TEST(TextureSpecificationTest, DefaultsDescribeAnEmpty2DTexture)
     EXPECT_FALSE(specification.IsAliasable);
     EXPECT_FALSE(specification.IsCubemap);
     EXPECT_FALSE(specification.Is3D);
+    EXPECT_FALSE(specification.IsRenderTargetSized);
     EXPECT_EQ(specification.Width, 0U);
     EXPECT_EQ(specification.Height, 0U);
     EXPECT_EQ(specification.Depth, 1U);
@@ -198,6 +199,29 @@ TEST(RenderGraphTransientPoolTest, RequiresIdenticalVolumeDepthForAliasing)
     different_depth.Depth = 16;
     EXPECT_FALSE(pool.TryAlias(different_depth, 1).Valid());
     EXPECT_TRUE(pool.TryAlias(volume, 1).Valid());
+    manager.Shutdown();
+}
+
+TEST(RenderGraphTransientPoolTest, DoesNotAliasFixedAndRenderTargetSizedImages)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto&           arena = manager.MainArena;
+
+    RGTransientPool pool;
+    pool.Initialize(&arena);
+
+    ZEngine::Rendering::Specifications::TextureSpecification render_target{};
+    render_target.IsRenderTargetSized = true;
+    render_target.Width               = 128;
+    render_target.Height              = 128;
+    render_target.Format              = ZEngine::Rendering::Specifications::ImageFormat::R16G16B16A16_SFLOAT;
+    pool.Register({1, 0}, render_target, 0);
+
+    auto fixed_size                = render_target;
+    fixed_size.IsRenderTargetSized = false;
+    EXPECT_FALSE(pool.TryAlias(fixed_size, 1).Valid());
+    EXPECT_TRUE(pool.TryAlias(render_target, 1).Valid());
     manager.Shutdown();
 }
 

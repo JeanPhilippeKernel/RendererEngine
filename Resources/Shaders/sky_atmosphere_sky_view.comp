@@ -1,0 +1,184 @@
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 2, binding = 0) uniform texture2D Transmittance;
+layout(set = 2, binding = 1) uniform texture2D Multiscattering;
+layout(set = 2, binding = 2) uniform sampler LinearClampToEdgeSampler;
+layout(set = 2, binding = 3, rgba16f) uniform writeonly image2D Destination;
+
+layout(push_constant) uniform AtmosphereViewPushConstants
+{
+    vec4 PlanetCenterRelativeAndMaxDistance;
+    vec4 RadiiAndScaleHeights;
+    vec4 RayleighScattering;
+    vec4 MieAndOzone;
+    vec4 OzoneAbsorption;
+    vec4 SunDirectionAndRadius;
+    vec4 SunRadianceAndAvailability;
+    vec4 PresentationTintAndIntensity;
+    vec4 GroundAlbedoAndAmbient;
+}
+Push;
+
+const float PI                     = 3.14159265358979323846;
+const uint  VIEW_INTEGRATION_STEPS = 32u;
+
+bool        ray_sphere_intersection(vec3 origin, vec3 direction, float radius, out float near_distance, out float far_distance)
+{
+    const float projection  = dot(origin, direction);
+    const float determinant = projection * projection - dot(origin, origin) + radius * radius;
+    if (determinant < 0.0)
+        return false;
+
+    const float root = sqrt(determinant);
+    near_distance    = -projection - root;
+    far_distance     = -projection + root;
+    return far_distance >= 0.0;
+}
+
+float rayleigh_phase(float cosine)
+{
+    return 3.0 * (1.0 + cosine * cosine) / (16.0 * PI);
+}
+
+float mie_phase(float cosine, float anisotropy)
+{
+    const float g2          = anisotropy * anisotropy;
+    const float denominator = max(1.0 + g2 - 2.0 * anisotropy * cosine, 1.0e-4);
+    return (1.0 - g2) * (1.0 + cosine * cosine) / (8.0 * PI * denominator * sqrt(denominator));
+}
+
+float ozone_density(float height)
+{
+    return max(1.0 - abs(height - Push.MieAndOzone.z) / max(Push.MieAndOzone.w, 1.0e-3), 0.0);
+}
+
+vec2 transmittance_uv(vec3 position, vec3 direction)
+{
+    const float planet_radius     = max(Push.RadiiAndScaleHeights.x, 1.0e-3);
+    const float atmosphere_radius = max(Push.RadiiAndScaleHeights.y, planet_radius + 1.0e-3);
+    const float altitude          = clamp(length(position) - planet_radius, 0.0, atmosphere_radius - planet_radius);
+    const float mu                = clamp(dot(normalize(position), direction), -1.0, 1.0);
+    return vec2(mu * 0.5 + 0.5, altitude / max(atmosphere_radius - planet_radius, 1.0e-3));
+}
+
+vec3 sample_sun_transmittance(vec3 position, vec3 sun_direction)
+{
+    float ground_near = 0.0;
+    float ground_far  = 0.0;
+    if (ray_sphere_intersection(position, sun_direction, Push.RadiiAndScaleHeights.x, ground_near, ground_far) && ground_near > 1.0e-4)
+        return vec3(0.0);
+    return texture(sampler2D(Transmittance, LinearClampToEdgeSampler), transmittance_uv(position, sun_direction)).rgb;
+}
+
+vec3 make_tangent_reference(vec3 up, vec3 sun_direction)
+{
+    vec3 reference = sun_direction - up * dot(sun_direction, up);
+    if (dot(reference, reference) < 1.0e-8)
+    {
+        const vec3 fallback = abs(up.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        reference           = cross(fallback, up);
+    }
+    return normalize(reference);
+}
+
+vec3 ground_radiance(vec3 ground_position, vec3 sun_direction, float sun_radiance)
+{
+    const vec3  normal              = normalize(ground_position);
+    const float direct_illumination = max(dot(normal, sun_direction), 0.0) * sun_radiance;
+    const vec3  direct              = sample_sun_transmittance(ground_position + normal * 1.0e-3, sun_direction) * direct_illumination;
+    const vec3  irradiance          = direct + vec3(max(Push.GroundAlbedoAndAmbient.w, 0.0));
+    return max(Push.GroundAlbedoAndAmbient.rgb, vec3(0.0)) * irradiance / PI;
+}
+
+// This world-space parameterization makes the per-view LUT independent of the
+// viewport extent and concentrates samples around the horizon.
+vec3 decode_sky_view_direction(vec2 uv, vec3 up, vec3 sun_direction)
+{
+    const float encoded_mu = uv.y * 2.0 - 1.0;
+    const float mu         = sign(encoded_mu) * encoded_mu * encoded_mu;
+    const float azimuth    = (uv.x - 0.5) * (2.0 * PI);
+    const vec3  tangent    = make_tangent_reference(up, sun_direction);
+    const vec3  bitangent  = normalize(cross(up, tangent));
+    const float horizontal = sqrt(max(1.0 - mu * mu, 0.0));
+    return tangent * (cos(azimuth) * horizontal) + bitangent * (sin(azimuth) * horizontal) + up * mu;
+}
+
+vec3 integrate_sky_radiance(vec3 camera_position, vec3 direction, vec3 sun_direction, float sun_radiance)
+{
+    const float planet_radius     = max(Push.RadiiAndScaleHeights.x, 1.0e-3);
+    const float atmosphere_radius = max(Push.RadiiAndScaleHeights.y, planet_radius + 1.0e-3);
+    float       atmosphere_near   = 0.0;
+    float       atmosphere_far    = 0.0;
+    if (!ray_sphere_intersection(camera_position, direction, atmosphere_radius, atmosphere_near, atmosphere_far))
+        return vec3(0.0);
+
+    float ray_length      = max(atmosphere_far, 0.0);
+    float ground_distance = 0.0;
+    bool  hits_ground     = false;
+    float ground_near     = 0.0;
+    float ground_far      = 0.0;
+    if (ray_sphere_intersection(camera_position, direction, planet_radius, ground_near, ground_far) && ground_near > 1.0e-4)
+    {
+        ground_distance = min(ray_length, ground_near);
+        ray_length      = ground_distance;
+        hits_ground     = true;
+    }
+    if (ray_length <= 1.0e-4)
+        return vec3(0.0);
+
+    vec3  transmittance_to_viewer = vec3(1.0);
+    vec3  radiance                = vec3(0.0);
+    float previous_distance       = 0.0;
+    for (uint sample_index = 0u; sample_index < VIEW_INTEGRATION_STEPS; ++sample_index)
+    {
+        const float sample_fraction    = (float(sample_index) + 0.5) / float(VIEW_INTEGRATION_STEPS);
+        const float sample_distance    = ray_length * sample_fraction * sample_fraction;
+        const float step_length        = sample_distance - previous_distance;
+        previous_distance              = sample_distance;
+        const vec3  sample_position    = camera_position + direction * sample_distance;
+        const float sample_height      = max(length(sample_position) - planet_radius, 0.0);
+        const float rayleigh_density   = exp(-sample_height / max(Push.RadiiAndScaleHeights.z, 1.0e-3));
+        const float mie_density        = exp(-sample_height / max(Push.RadiiAndScaleHeights.w, 1.0e-3));
+        const float ozone              = ozone_density(sample_height);
+        const vec3  extinction         = Push.RayleighScattering.rgb * rayleigh_density + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie_density + Push.OzoneAbsorption.rgb * ozone;
+        const float view_sun_cosine    = dot(direction, sun_direction);
+        const vec3  scattering         = Push.RayleighScattering.rgb * rayleigh_density * rayleigh_phase(view_sun_cosine) + vec3(Push.MieAndOzone.x) * mie_density * mie_phase(view_sun_cosine, clamp(Push.OzoneAbsorption.a, -0.95, 0.95));
+        const vec3  sun_transmittance  = sample_sun_transmittance(sample_position, sun_direction);
+        const vec3  multiscattering    = texture(sampler2D(Multiscattering, LinearClampToEdgeSampler), transmittance_uv(sample_position, sun_direction)).rgb;
+
+        radiance                      += transmittance_to_viewer * (scattering * sun_transmittance * sun_radiance + multiscattering * (rayleigh_density + mie_density) * 0.25) * step_length;
+        transmittance_to_viewer       *= exp(-extinction * step_length);
+    }
+    if (hits_ground)
+        radiance += transmittance_to_viewer * ground_radiance(camera_position + direction * ground_distance, sun_direction, sun_radiance);
+    return radiance;
+}
+
+void main()
+{
+    const uvec2 pixel  = gl_GlobalInvocationID.xy;
+    const ivec2 extent = imageSize(Destination);
+    if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y))
+        return;
+
+    const vec2  uv              = (vec2(pixel) + vec2(0.5)) / vec2(extent);
+    const vec3  to_planet       = Push.PlanetCenterRelativeAndMaxDistance.xyz;
+    const float center_distance = length(to_planet);
+    if (center_distance <= Push.RadiiAndScaleHeights.x)
+    {
+        imageStore(Destination, ivec2(pixel), vec4(0.0));
+        return;
+    }
+
+    const vec3  camera_position = -to_planet;
+    const vec3  up              = camera_position / center_distance;
+    const float sun_length      = length(Push.SunDirectionAndRadius.xyz);
+    const bool  has_sun         = Push.SunRadianceAndAvailability.y > 0.5 && sun_length > 1.0e-6;
+    const vec3  sun_direction   = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
+    const float sun_radiance    = has_sun ? max(Push.SunRadianceAndAvailability.x, 0.0) : 0.0;
+    const vec3  direction       = decode_sky_view_direction(uv, up, sun_direction);
+    const vec3  radiance        = integrate_sky_radiance(camera_position, direction, sun_direction, sun_radiance);
+    imageStore(Destination, ivec2(pixel), vec4(clamp(radiance * Push.PresentationTintAndIntensity.rgb, vec3(0.0), vec3(65000.0)), 1.0));
+}

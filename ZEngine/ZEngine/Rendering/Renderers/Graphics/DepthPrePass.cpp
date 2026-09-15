@@ -18,7 +18,7 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadBuffer(RendererBufferName::Transform, "TransformSB");
         res_builder->ReadBuffer(RendererBufferName::RenderData, "DrawDataSB");
         res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
-        res_builder->WriteDepthAttachment(RendererResourceName::FrameDepthRenderTargetName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
+        res_builder->WriteDepthAttachment(RendererResourceName::FrameDepthRenderTargetName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
         return true;
     }
 

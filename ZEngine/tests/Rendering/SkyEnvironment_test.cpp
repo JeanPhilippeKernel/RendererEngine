@@ -1,3 +1,4 @@
+#include <ZEngine/Rendering/Renderers/Compute/SkyAtmosphereViewPass.h>
 #include <ZEngine/Rendering/Scenes/SkyEnvironment.h>
 #include <gtest/gtest.h>
 
@@ -371,6 +372,29 @@ TEST(SkyEnvironmentTest, AtmosphereBakeIncludesStaticLutsBeforeSourceRadiance)
     ASSERT_NE(environment.GetPublishedSnapshot(), nullptr);
     EXPECT_EQ(environment.GetPublishedSnapshot()->Atmosphere.Transmittance.Index, 20u);
     EXPECT_EQ(environment.GetPublishedSnapshot()->Atmosphere.Multiscattering.Index, 21u);
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->CelestialLight.IsAvailable);
+    EXPECT_FLOAT_EQ(environment.GetPublishedSnapshot()->CelestialLight.DirectionToLight[1], 1.0f);
+}
+
+TEST(SkyEnvironmentTest, PerViewAtmospherePassOmitsMinimizedViews)
+{
+    SkyEnvironmentSnapshot snapshot     = {};
+    snapshot.Config.Mode                = SkyMode::Atmosphere;
+    snapshot.Atmosphere                 = Atmosphere(20);
+    snapshot.CelestialLight.IsAvailable = true;
+
+    Renderers::SkyViewLutPass sky_view  = {};
+    sky_view.SetEnvironment(&snapshot, snapshot.Config);
+
+    Renderers::RenderGraphFrameContext minimized = {};
+    minimized.RenderWidth                        = 0;
+    minimized.RenderHeight                       = 720;
+    EXPECT_FALSE(sky_view.ShouldRegisterCompute(minimized));
+
+    Renderers::RenderGraphFrameContext renderable = {};
+    renderable.RenderWidth                        = 1280;
+    renderable.RenderHeight                       = 720;
+    EXPECT_TRUE(sky_view.ShouldRegisterCompute(renderable));
 }
 
 TEST(SkyEnvironmentTest, InvalidInputsAreMarkedForFallbackInsteadOfRebakingDefaults)

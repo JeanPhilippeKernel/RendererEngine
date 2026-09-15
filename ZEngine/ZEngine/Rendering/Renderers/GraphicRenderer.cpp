@@ -2,12 +2,14 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Compute/FrustumCullingPass.h>
+#include <ZEngine/Rendering/Renderers/Compute/SkyAtmosphereViewPass.h>
 #include <ZEngine/Rendering/Renderers/Compute/SkyEnvironmentBakePass.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/ToneMappingPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
@@ -70,6 +72,9 @@ namespace ZEngine::Rendering::Renderers
         auto gbuffer_pass         = ZPushStructCtor(Device->Arena, GbufferPass);
         auto lighting_pass        = ZPushStructCtor(Device->Arena, LightingPass);
         auto skybox_pass          = ZPushStructCtor(Device->Arena, SkyboxPass);
+        auto sky_view_lut_pass    = ZPushStructCtor(Device->Arena, SkyViewLutPass);
+        auto aerial_pass          = ZPushStructCtor(Device->Arena, AerialPerspectivePass);
+        auto sky_composite_pass   = ZPushStructCtor(Device->Arena, SkyCompositePass);
         auto grid_pass            = ZPushStructCtor(Device->Arena, GridPass);
         auto tone_mapping_pass    = ZPushStructCtor(Device->Arena, ToneMappingPass);
 
@@ -91,7 +96,13 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(fallback_lighting.Valid(), "Sky environment fallback lighting creation failed")
         m_sky_environment.Initialize(fallback_environment, fallback_lighting, Device->EnvironmentLightingBakeSettings);
         m_lighting_pass                       = lighting_pass;
+        m_grid_pass                           = grid_pass;
         m_skybox_pass                         = skybox_pass;
+        m_sky_view_lut_pass                   = sky_view_lut_pass;
+        m_aerial_perspective_pass             = aerial_pass;
+        m_sky_composite_pass                  = sky_composite_pass;
+        m_tone_mapping_pass                   = tone_mapping_pass;
+        m_atmosphere_view_resources_supported = SupportsAtmosphereViewResources();
         m_sky_atmosphere_transmittance_pass   = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereTransmittancePass, &m_sky_environment);
         m_sky_atmosphere_multiscattering_pass = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereMultiscatteringPass, &m_sky_environment);
         m_sky_atmosphere_source_radiance_pass = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereSourceRadiancePass, &m_sky_environment);
@@ -116,6 +127,9 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
+        RenderGraph->AddCallbackPass("Sky View LUT Pass", sky_view_lut_pass);
+        RenderGraph->AddCallbackPass("Aerial Perspective Pass", aerial_pass);
+        RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
         RenderGraph->Setup();
@@ -137,7 +151,12 @@ namespace ZEngine::Rendering::Renderers
         while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_resources))
             DiscardSkyResources(retired_sky_resources);
         m_lighting_pass                       = nullptr;
+        m_grid_pass                           = nullptr;
         m_skybox_pass                         = nullptr;
+        m_sky_view_lut_pass                   = nullptr;
+        m_aerial_perspective_pass             = nullptr;
+        m_sky_composite_pass                  = nullptr;
+        m_tone_mapping_pass                   = nullptr;
         m_sky_atmosphere_transmittance_pass   = nullptr;
         m_sky_atmosphere_multiscattering_pass = nullptr;
         m_sky_atmosphere_source_radiance_pass = nullptr;
@@ -145,6 +164,7 @@ namespace ZEngine::Rendering::Renderers
         m_sky_atmosphere_mip_generation_pass  = nullptr;
         m_sky_diffuse_irradiance_pass         = nullptr;
         m_sky_specular_prefilter_pass         = nullptr;
+        m_atmosphere_view_resources_supported = false;
 
         RenderGraph->Dispose();
         if (RenderSceneData)
@@ -184,9 +204,22 @@ namespace ZEngine::Rendering::Renderers
         // Light buffer is uploaded by AppRenderPipeline::RenderScene from scene->PendingLights.
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
-        auto& heap                             = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
-        auto  camera_alloc                     = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
-        RenderSceneData->CameraHeapOffset      = camera_alloc.Offset;
+        auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
+        auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
+        RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
+
+        // The view-local atmosphere kernels consume only immutable snapshot
+        // inputs plus this copied camera state. There is no temporal history to
+        // invalidate on a camera cut or dynamic-resolution change.
+        if (m_sky_view_lut_pass)
+            m_sky_view_lut_pass->SetCameraPosition(camera.Position);
+        if (m_aerial_perspective_pass)
+            m_aerial_perspective_pass->SetCameraPosition(camera.Position);
+        if (m_sky_composite_pass)
+        {
+            m_sky_composite_pass->SetCameraPosition(camera.Position);
+            m_sky_composite_pass->SetCameraDepthConvention(camera.UsesReverseZ);
+        }
 
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
         PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
@@ -250,12 +283,31 @@ namespace ZEngine::Rendering::Renderers
         CollectRetiredSkySnapshots();
 
         const Scenes::SkyEnvironmentSnapshot* snapshot = m_sky_environment.AcquireForFrame();
-        if (!snapshot || !m_lighting_pass || !m_skybox_pass)
+        if (!m_lighting_pass || !m_skybox_pass || !m_grid_pass || !m_tone_mapping_pass || !m_sky_view_lut_pass || !m_aerial_perspective_pass || !m_sky_composite_pass)
+            return;
+
+        // Reset every optional callback before handling the selected snapshot.
+        // This prevents a failed/minimized frame from retaining a prior view's
+        // declarations on the next graph registration.
+        m_sky_view_lut_pass->SetEnvironment(nullptr, {});
+        m_aerial_perspective_pass->SetEnvironment(nullptr, {});
+        m_sky_composite_pass->SetEnvironment(nullptr, {});
+        m_grid_pass->SetUseCompositedSceneColor(false);
+        m_tone_mapping_pass->SetUseCompositedSceneColor(false);
+        m_skybox_pass->SetEnabled(true);
+        if (!snapshot)
             return;
 
         const Scenes::SkyConfig& presentation = m_sky_environment.GetPresentationConfig();
         m_lighting_pass->SetEnvironmentLighting(snapshot->Lighting, presentation);
         m_skybox_pass->SetEnvironment(snapshot->SourceRadiance, presentation);
+        const bool use_atmosphere_view = m_atmosphere_view_resources_supported && snapshot->Config.IsAtmosphere() && snapshot->Atmosphere.Valid() && snapshot->CelestialLight.IsAvailable && snapshot->CelestialLight.IsValid();
+        m_skybox_pass->SetEnabled(!use_atmosphere_view);
+        m_sky_view_lut_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
+        m_aerial_perspective_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
+        m_sky_composite_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
+        m_grid_pass->SetUseCompositedSceneColor(use_atmosphere_view);
+        m_tone_mapping_pass->SetUseCompositedSceneColor(use_atmosphere_view);
         Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
         if (m_sky_environment.CanRecordGpuBakeStage())
             Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyBakeStageSubmitted, this);
@@ -503,6 +555,24 @@ namespace ZEngine::Rendering::Renderers
         VkPhysicalDeviceProperties properties = {};
         vkGetPhysicalDeviceProperties(Device->PhysicalDevice, &properties);
         return properties.limits.maxImageDimension2D >= 256 && properties.limits.maxImageDimensionCube >= bake_settings.SourceRadianceResolution;
+    }
+
+    bool GraphicRenderer::SupportsAtmosphereViewResources() const
+    {
+        if (!Device)
+            return false;
+
+        constexpr VkFormat             kAtmosphereFormat   = VK_FORMAT_R16G16B16A16_SFLOAT;
+        constexpr VkFormatFeatureFlags kRequiredFeatures   = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+        constexpr VkImageUsageFlags    kRequiredImageUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        VkFormatProperties             format_properties   = {};
+        vkGetPhysicalDeviceFormatProperties(Device->PhysicalDevice, kAtmosphereFormat, &format_properties);
+        if ((format_properties.optimalTilingFeatures & kRequiredFeatures) != kRequiredFeatures)
+            return false;
+
+        VkImageFormatProperties volume_properties = {};
+        const VkResult          volume_result     = vkGetPhysicalDeviceImageFormatProperties(Device->PhysicalDevice, kAtmosphereFormat, VK_IMAGE_TYPE_3D, VK_IMAGE_TILING_OPTIMAL, kRequiredImageUsage, 0, &volume_properties);
+        return volume_result == VK_SUCCESS && volume_properties.maxExtent.width >= 32 && volume_properties.maxExtent.height >= 32 && volume_properties.maxExtent.depth >= 32;
     }
 
     Scenes::AtmosphereStaticResources GraphicRenderer::CreateAtmosphereStaticResources()

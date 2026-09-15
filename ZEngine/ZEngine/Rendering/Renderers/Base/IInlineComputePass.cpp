@@ -4,7 +4,7 @@ namespace ZEngine::Rendering::Renderers
 {
     bool IInlineComputePass::Register(Hardwares::VulkanDevicePtr const device, cstring /*name*/, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
     {
-        if (!ShouldRegisterCompute())
+        if (!ShouldRegisterCompute(frame_context))
             return false;
         RegisterCompute(device, frame_context, res_builder);
         return true;

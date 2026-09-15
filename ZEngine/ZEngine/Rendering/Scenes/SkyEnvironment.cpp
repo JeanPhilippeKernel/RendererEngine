@@ -197,6 +197,7 @@ namespace ZEngine::Rendering::Scenes
             return SkyEnvironmentBakeResult::Ignored;
 
         const bool                         requires_atmosphere  = m_active_bake.Config.IsAtmosphere();
+        const SkyCelestialLight            completed_celestial  = m_active_bake.CelestialLight;
         const Textures::TextureHandle      completed_source     = source_radiance.Valid() ? source_radiance : m_active_bake_source;
         const EnvironmentLightingResources completed_lighting   = lighting.Valid() ? lighting : m_active_bake_lighting.Valid() ? m_active_bake_lighting : m_fallback_lighting;
         const AtmosphereStaticResources    completed_atmosphere = atmosphere.Valid() ? atmosphere : m_active_bake_atmosphere;
@@ -234,6 +235,7 @@ namespace ZEngine::Rendering::Scenes
         SkyEnvironmentSnapshot& published = m_snapshots[new_slot];
         published                         = {};
         published.Config                  = m_presentation_config;
+        published.CelestialLight          = completed_celestial;
         published.Atmosphere              = completed_atmosphere;
         published.SourceRadiance          = completed_source;
         published.Lighting                = completed_lighting;

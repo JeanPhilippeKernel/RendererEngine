@@ -60,7 +60,9 @@ namespace ZEngine::Rendering::Scenes
     /// expressed in scene world units and converted using WorldUnitsPerMeter.
     struct AtmosphereSettings
     {
-        float PlanetCenterWorld[3]              = {};
+        // With the default one-world-unit-per-metre convention, editor scenes
+        // are authored at the planet surface around world origin.
+        float PlanetCenterWorld[3]              = {0.0f, -6360000.0f, 0.0f};
         float WorldUnitsPerMeter                = 1.0f;
         float PlanetRadiusKilometers            = 6360.0f;
         float AtmosphereRadiusKilometers        = 6460.0f;
@@ -78,6 +80,14 @@ namespace ZEngine::Rendering::Scenes
         /// @details It is converted to scene-linear radiance at the renderer
         /// boundary; display exposure remains a per-view concern.
         float SunIlluminanceLux                 = StandardNoonSunIlluminanceLux;
+        /// @brief Diffuse albedo of the implicit planet surface.
+        /// @details The atmosphere closes rays that reach the planet against
+        /// this Lambertian surface only where scene geometry is absent.
+        float GroundAlbedo[3]                   = {0.18f, 0.22f, 0.16f};
+        /// @brief Scene-linear diffuse fill irradiance for the implicit ground.
+        /// @details It prevents a no-terrain editor viewport from exposing a
+        /// black lower hemisphere. Set it to zero for a fully unlit planet.
+        float GroundAmbientIrradiance           = 0.5f;
     };
 
     /// @brief Artistic inputs for the analytic SkySphere presentation mode.
@@ -158,7 +168,7 @@ namespace ZEngine::Rendering::Scenes
             const auto& atmosphere = Atmosphere;
             if (!finite(atmosphere.PlanetCenterWorld[0]) || !finite(atmosphere.PlanetCenterWorld[1]) || !finite(atmosphere.PlanetCenterWorld[2]) || !finite(atmosphere.WorldUnitsPerMeter) || atmosphere.WorldUnitsPerMeter <= 0.0f || !finite(atmosphere.PlanetRadiusKilometers) || atmosphere.PlanetRadiusKilometers <= 0.0f || !finite(atmosphere.AtmosphereRadiusKilometers) || atmosphere.AtmosphereRadiusKilometers <= atmosphere.PlanetRadiusKilometers || !finite_rgb(atmosphere.RayleighScatteringPerKilometer) || !finite(atmosphere.RayleighScaleHeightKilometers) ||
                 atmosphere.RayleighScaleHeightKilometers <= 0.0f || !finite_non_negative(atmosphere.MieScatteringPerKilometer) || !finite_non_negative(atmosphere.MieAbsorptionPerKilometer) || !finite(atmosphere.MieScaleHeightKilometers) || atmosphere.MieScaleHeightKilometers <= 0.0f || !finite(atmosphere.MieAnisotropy) || atmosphere.MieAnisotropy <= -0.999f || atmosphere.MieAnisotropy >= 0.999f || !finite_rgb(atmosphere.OzoneAbsorptionPerKilometer) || !finite_non_negative(atmosphere.OzoneCenterKilometers) || !finite(atmosphere.OzoneThicknessKilometers) ||
-                atmosphere.OzoneThicknessKilometers <= 0.0f || !finite_non_negative(atmosphere.SunAngularRadiusRadians) || !finite_non_negative(atmosphere.SunIlluminanceLux))
+                atmosphere.OzoneThicknessKilometers <= 0.0f || !finite_non_negative(atmosphere.SunAngularRadiusRadians) || !finite_non_negative(atmosphere.SunIlluminanceLux) || !finite_rgb(atmosphere.GroundAlbedo) || !finite_non_negative(atmosphere.GroundAmbientIrradiance))
                 return false;
 
             const auto& sphere = Sphere;

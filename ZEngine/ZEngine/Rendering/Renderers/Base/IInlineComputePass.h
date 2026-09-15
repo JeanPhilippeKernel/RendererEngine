@@ -44,6 +44,14 @@ namespace ZEngine::Rendering::Renderers
             return true;
         }
 
+        /// @brief Allows optional compute work to inspect the active render-view extent.
+        /// @details Returning false prevents all declarations for this pass. This
+        /// is required for view-local work when a viewport is minimized.
+        virtual bool ShouldRegisterCompute(const RenderGraphFrameContext& /*frame_context*/) const
+        {
+            return ShouldRegisterCompute();
+        }
+
         /// @brief Returns the byte size of the pass push-constant block.
         virtual uint32_t GetPushConstantSize() const
         {

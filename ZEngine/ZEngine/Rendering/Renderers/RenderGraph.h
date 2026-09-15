@@ -31,16 +31,26 @@ namespace ZEngine::Rendering::Renderers
     /// @brief Names of the shared virtual resources in the default frame graph.
     struct RendererResourceName
     {
-        inline static cstring FrameDepthRenderTargetName    = "g_frame_depth_render_target";
-        inline static cstring FrameSharedRenderTargetName   = "g_frame_shared_render_target";
-        inline static cstring FrameHdrColorRenderTargetName = "g_frame_hdr_color_render_target";
-        inline static cstring FrameColorRenderTargetName    = "g_frame_color_render_target";
+        inline static cstring FrameDepthRenderTargetName         = "g_frame_depth_render_target";
+        inline static cstring FrameSharedRenderTargetName        = "g_frame_shared_render_target";
+        inline static cstring FrameHdrColorRenderTargetName      = "g_frame_hdr_color_render_target";
+        /// @brief Opaque HDR scene after per-view atmosphere composition.
+        /// @details This remains distinct from FrameHdrColorRenderTargetName so
+        /// the composition pass never samples its active color attachment.
+        inline static cstring FrameHdrCompositedRenderTargetName = "g_frame_hdr_composited_render_target";
+        inline static cstring FrameColorRenderTargetName         = "g_frame_color_render_target";
 
-        inline static cstring GBufferAlbedoAOName           = "g_gbuffer_albedo_ao";
-        inline static cstring GBufferNormalRoughnessName    = "g_gbuffer_normal_roughness";
-        inline static cstring GBufferMetallicEmissiveName   = "g_gbuffer_metallic_emissive";
+        /// @brief Per-render-view atmosphere resources. They are transient and
+        /// are intentionally unrelated to the revision-owned SkyEnvironment LUTs.
+        inline static cstring FrameSkyViewLutName                = "g_frame_sky_view_lut";
+        inline static cstring FrameAerialInscatterName           = "g_frame_aerial_inscatter";
+        inline static cstring FrameAerialTransmittanceName       = "g_frame_aerial_transmittance";
 
-        inline static cstring SceneCameraBufferName         = "SceneCamera";
+        inline static cstring GBufferAlbedoAOName                = "g_gbuffer_albedo_ao";
+        inline static cstring GBufferNormalRoughnessName         = "g_gbuffer_normal_roughness";
+        inline static cstring GBufferMetallicEmissiveName        = "g_gbuffer_metallic_emissive";
+
+        inline static cstring SceneCameraBufferName              = "SceneCamera";
     };
 
     // Typed index into RenderGraph::Resources[]. No string on the execute hot path.
