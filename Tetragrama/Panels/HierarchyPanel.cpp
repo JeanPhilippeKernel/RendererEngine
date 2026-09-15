@@ -9,6 +9,7 @@
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIWidgets.h>
@@ -790,6 +791,9 @@ namespace Tetragrama::Panels
                 auto* mc = a->GetComponent<MeshComponent>();
                 if (mc && mc->RenderInstanceId != UINT32_MAX)
                     scene->RemoveMeshInstance(mc->RenderInstanceId, eng->RenderResourceManager);
+                const auto* identity = a->GetComponent<UUIDComponent>();
+                if (identity && identity->Value == scene->Sky.PrimaryCelestialLight)
+                    scene->ClearPrimaryCelestialLight();
                 if (scene->SelectedActorHandle.Index == pending_delete.Index && scene->SelectedActorHandle.Generation == pending_delete.Generation)
                     scene->SelectedActorHandle = {};
                 if (m_rename_id.IsValid() && m_rename_id == delete_eid)

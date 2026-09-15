@@ -9,6 +9,7 @@ namespace ZEngine::Rendering::Renderers
     struct LightingPass;
     struct GridPass;
     struct SkyboxPass;
+    struct SkySpherePass;
     struct SkyViewLutPass;
     struct AerialPerspectivePass;
     struct SkyCompositePass;
@@ -66,6 +67,7 @@ namespace ZEngine::Rendering::Renderers
         LightingPass*                                   m_lighting_pass                       = nullptr;
         GridPass*                                       m_grid_pass                           = nullptr;
         SkyboxPass*                                     m_skybox_pass                         = nullptr;
+        SkySpherePass*                                  m_sky_sphere_pass                     = nullptr;
         SkyViewLutPass*                                 m_sky_view_lut_pass                   = nullptr;
         AerialPerspectivePass*                          m_aerial_perspective_pass             = nullptr;
         SkyCompositePass*                               m_sky_composite_pass                  = nullptr;
