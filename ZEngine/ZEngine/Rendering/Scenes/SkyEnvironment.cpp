@@ -29,8 +29,29 @@ namespace ZEngine::Rendering::Scenes
         const EnvironmentLightingBakeSettings resolved_bake_settings = bake_settings.IsValid() ? bake_settings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
         sanitized.Sanitize();
 
-        m_presentation_config = sanitized;
-        m_latest_revision     = revision;
+        m_presentation_config          = sanitized;
+        m_presentation_celestial_light = celestial_light.IsValid() ? celestial_light : SkyCelestialLight{};
+        m_latest_revision              = revision;
+
+        // SkySphere is presentation-only. It deliberately uses the permanent
+        // engine fallback rather than retaining an unrelated HDRI/atmosphere
+        // IBL snapshot, and it must not enter the asset or GPU bake path.
+        if (sanitized.IsSkySphere())
+        {
+            SkyEnvironmentSnapshot& published = m_snapshots[m_published_slot];
+            if (!published.IsFallback)
+                published.Retired = true;
+
+            m_published_slot       = 0;
+            m_pending_request      = {};
+            m_has_pending_request  = false;
+            m_bake_config.Mode     = static_cast<SkyMode>(UINT8_MAX);
+            m_bake_celestial_light = {};
+            m_bake_inputs_valid    = false;
+            m_latest_bake_revision = revision;
+            m_state                = SkyEnvironmentState::Fallback;
+            return true;
+        }
 
         if (inputs_valid && m_bake_inputs_valid && HasEquivalentBakeInputs(m_bake_config, m_bake_celestial_light, sanitized, celestial_light) && m_bake_settings.Matches(resolved_bake_settings))
         {
@@ -366,6 +387,16 @@ namespace ZEngine::Rendering::Scenes
     const SkyConfig& SkyEnvironment::GetPresentationConfig() const
     {
         return m_presentation_config;
+    }
+
+    const SkyCelestialLight& SkyEnvironment::GetPresentationCelestialLight() const
+    {
+        return m_presentation_celestial_light;
+    }
+
+    const EnvironmentLightingResources& SkyEnvironment::GetFallbackLighting() const
+    {
+        return m_fallback_lighting;
     }
 
     SkyEnvironmentState SkyEnvironment::GetState() const

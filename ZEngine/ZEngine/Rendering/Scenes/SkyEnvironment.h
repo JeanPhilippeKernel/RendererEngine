@@ -153,6 +153,10 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] const SkyEnvironmentSnapshot*       GetPublishedSnapshot() const;
         /// @brief Returns the latest presentation state without mutating a published resource snapshot.
         [[nodiscard]] const SkyConfig&                    GetPresentationConfig() const;
+        /// @brief Returns the latest resolved light used by presentation-only sky modes.
+        [[nodiscard]] const SkyCelestialLight&            GetPresentationCelestialLight() const;
+        /// @brief Returns the engine-owned IBL fallback used by SkySphere.
+        [[nodiscard]] const EnvironmentLightingResources& GetFallbackLighting() const;
         [[nodiscard]] SkyEnvironmentState                 GetState() const;
         [[nodiscard]] uint64_t                            GetLatestRevision() const;
 
@@ -172,6 +176,7 @@ namespace ZEngine::Rendering::Scenes
         EnvironmentLightingResources    m_fallback_lighting                    = {};
         EnvironmentLightingBakeSettings m_bake_settings                        = {};
         SkyConfig                       m_presentation_config                  = {};
+        SkyCelestialLight               m_presentation_celestial_light         = {};
         SkyConfig                       m_bake_config                          = {};
         SkyCelestialLight               m_bake_celestial_light                 = {};
         uint16_t                        m_frame_pin_slots[MaxPendingFramePins] = {};

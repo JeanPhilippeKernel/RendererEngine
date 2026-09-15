@@ -324,6 +324,27 @@ TEST(MatrixTest, Inverse4x4)
     }
 }
 
+TEST(MatrixTest, Inverse4x4ProjectiveMatrix)
+{
+    // The non-affine last row models the perspective divide in a camera
+    // projection. This ensures inversion remains correct for InvViewProj.
+    Mat4f       view_projection(1.2990381f, 0.0f, 0.25f, -2.0f, -0.15f, 1.7320508f, 0.35f, 1.5f, 0.2f, -0.1f, -1.001001f, 4.9049048f, 0.0f, 0.0f, -1.0f, 5.0f);
+
+    const Mat4f inverse  = view_projection.Inverse();
+    const Mat4f identity = Identity<Mat4f>();
+    const Mat4f left     = view_projection * inverse;
+    const Mat4f right    = inverse * view_projection;
+
+    for (size_t row = 0; row < 4; ++row)
+    {
+        for (size_t column = 0; column < 4; ++column)
+        {
+            EXPECT_NEAR(left(row, column), identity(row, column), EPSILON);
+            EXPECT_NEAR(right(row, column), identity(row, column), EPSILON);
+        }
+    }
+}
+
 // ========== EDGE CASES AND ERROR CONDITIONS ==========
 
 TEST(MatrixTest, ZeroDivision)

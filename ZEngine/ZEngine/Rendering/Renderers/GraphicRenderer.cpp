@@ -10,6 +10,7 @@
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/SkySpherePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyboxPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/ToneMappingPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
@@ -72,6 +73,7 @@ namespace ZEngine::Rendering::Renderers
         auto gbuffer_pass         = ZPushStructCtor(Device->Arena, GbufferPass);
         auto lighting_pass        = ZPushStructCtor(Device->Arena, LightingPass);
         auto skybox_pass          = ZPushStructCtor(Device->Arena, SkyboxPass);
+        auto sky_sphere_pass      = ZPushStructCtor(Device->Arena, SkySpherePass);
         auto sky_view_lut_pass    = ZPushStructCtor(Device->Arena, SkyViewLutPass);
         auto aerial_pass          = ZPushStructCtor(Device->Arena, AerialPerspectivePass);
         auto sky_composite_pass   = ZPushStructCtor(Device->Arena, SkyCompositePass);
@@ -98,6 +100,7 @@ namespace ZEngine::Rendering::Renderers
         m_lighting_pass                       = lighting_pass;
         m_grid_pass                           = grid_pass;
         m_skybox_pass                         = skybox_pass;
+        m_sky_sphere_pass                     = sky_sphere_pass;
         m_sky_view_lut_pass                   = sky_view_lut_pass;
         m_aerial_perspective_pass             = aerial_pass;
         m_sky_composite_pass                  = sky_composite_pass;
@@ -126,6 +129,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
         RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
+        RenderGraph->AddCallbackPass("Sky Sphere Pass", sky_sphere_pass);
         RenderGraph->AddCallbackPass("Skybox Pass", skybox_pass);
         RenderGraph->AddCallbackPass("Sky View LUT Pass", sky_view_lut_pass);
         RenderGraph->AddCallbackPass("Aerial Perspective Pass", aerial_pass);
@@ -153,6 +157,7 @@ namespace ZEngine::Rendering::Renderers
         m_lighting_pass                       = nullptr;
         m_grid_pass                           = nullptr;
         m_skybox_pass                         = nullptr;
+        m_sky_sphere_pass                     = nullptr;
         m_sky_view_lut_pass                   = nullptr;
         m_aerial_perspective_pass             = nullptr;
         m_sky_composite_pass                  = nullptr;
@@ -220,6 +225,8 @@ namespace ZEngine::Rendering::Renderers
             m_sky_composite_pass->SetCameraPosition(camera.Position);
             m_sky_composite_pass->SetCameraDepthConvention(camera.UsesReverseZ);
         }
+        if (m_sky_sphere_pass)
+            m_sky_sphere_pass->SetCameraDepthConvention(camera.UsesReverseZ);
 
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
         PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
@@ -282,7 +289,7 @@ namespace ZEngine::Rendering::Renderers
         StartPendingSkyBake();
         CollectRetiredSkySnapshots();
 
-        if (!m_lighting_pass || !m_skybox_pass || !m_grid_pass || !m_tone_mapping_pass || !m_sky_view_lut_pass || !m_aerial_perspective_pass || !m_sky_composite_pass)
+        if (!m_lighting_pass || !m_skybox_pass || !m_sky_sphere_pass || !m_grid_pass || !m_tone_mapping_pass || !m_sky_view_lut_pass || !m_aerial_perspective_pass || !m_sky_composite_pass)
             return;
 
         const Scenes::SkyEnvironmentSnapshot* snapshot = m_sky_environment.AcquireForFrame();
@@ -293,16 +300,19 @@ namespace ZEngine::Rendering::Renderers
         m_sky_view_lut_pass->SetEnvironment(nullptr, {});
         m_aerial_perspective_pass->SetEnvironment(nullptr, {});
         m_sky_composite_pass->SetEnvironment(nullptr, {});
+        m_sky_sphere_pass->SetEnvironment({}, {});
         m_tone_mapping_pass->SetUseCompositedSceneColor(false);
         m_skybox_pass->SetEnabled(true);
         if (!snapshot)
             return;
 
-        const Scenes::SkyConfig& presentation = m_sky_environment.GetPresentationConfig();
-        m_lighting_pass->SetEnvironmentLighting(snapshot->Lighting, presentation);
+        const Scenes::SkyConfig& presentation   = m_sky_environment.GetPresentationConfig();
+        const bool               use_sky_sphere = presentation.IsSkySphere();
+        m_lighting_pass->SetEnvironmentLighting(use_sky_sphere ? m_sky_environment.GetFallbackLighting() : snapshot->Lighting, presentation);
         m_skybox_pass->SetEnvironment(snapshot->SourceRadiance, presentation);
+        m_sky_sphere_pass->SetEnvironment(use_sky_sphere ? presentation : Scenes::SkyConfig{}, use_sky_sphere ? m_sky_environment.GetPresentationCelestialLight() : Scenes::SkyCelestialLight{});
         const bool use_atmosphere_view = m_atmosphere_view_resources_supported && snapshot->Config.IsAtmosphere() && snapshot->Atmosphere.Valid() && snapshot->CelestialLight.IsAvailable && snapshot->CelestialLight.IsValid();
-        m_skybox_pass->SetEnabled(!use_atmosphere_view);
+        m_skybox_pass->SetEnabled(!use_atmosphere_view && !use_sky_sphere);
         m_sky_view_lut_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_aerial_perspective_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_sky_composite_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
