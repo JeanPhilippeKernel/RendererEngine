@@ -130,8 +130,8 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Sky View LUT Pass", sky_view_lut_pass);
         RenderGraph->AddCallbackPass("Aerial Perspective Pass", aerial_pass);
         RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass);
-        RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
+        RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->Setup();
         RenderGraph->Compile();
 
@@ -293,7 +293,6 @@ namespace ZEngine::Rendering::Renderers
         m_sky_view_lut_pass->SetEnvironment(nullptr, {});
         m_aerial_perspective_pass->SetEnvironment(nullptr, {});
         m_sky_composite_pass->SetEnvironment(nullptr, {});
-        m_grid_pass->SetUseCompositedSceneColor(false);
         m_tone_mapping_pass->SetUseCompositedSceneColor(false);
         m_skybox_pass->SetEnabled(true);
         if (!snapshot)
@@ -307,7 +306,6 @@ namespace ZEngine::Rendering::Renderers
         m_sky_view_lut_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_aerial_perspective_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_sky_composite_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
-        m_grid_pass->SetUseCompositedSceneColor(use_atmosphere_view);
         m_tone_mapping_pass->SetUseCompositedSceneColor(use_atmosphere_view);
         Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
         if (m_sky_environment.CanRecordGpuBakeStage())
