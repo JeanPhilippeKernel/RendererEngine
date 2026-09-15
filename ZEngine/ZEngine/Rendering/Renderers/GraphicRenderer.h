@@ -7,7 +7,12 @@
 namespace ZEngine::Rendering::Renderers
 {
     struct LightingPass;
+    struct GridPass;
     struct SkyboxPass;
+    struct SkyViewLutPass;
+    struct AerialPerspectivePass;
+    struct SkyCompositePass;
+    struct ToneMappingPass;
     struct SkyAtmosphereTransmittancePass;
     struct SkyAtmosphereMultiscatteringPass;
     struct SkyAtmosphereSourceRadiancePass;
@@ -42,6 +47,7 @@ namespace ZEngine::Rendering::Renderers
         void                                            DiscardSkyTexture(Textures::TextureHandle texture);
         void                                            DiscardSkyResources(const Scenes::SkyEnvironmentResources& resources);
         [[nodiscard]] bool                              SupportsAtmosphereBakeResources(const EnvironmentLightingBakeSettings& bake_settings) const;
+        [[nodiscard]] bool                              SupportsAtmosphereViewResources() const;
         [[nodiscard]] Scenes::AtmosphereStaticResources CreateAtmosphereStaticResources();
         [[nodiscard]] Textures::TextureHandle           CreateAtmosphereSourceRadiance(const EnvironmentLightingBakeSettings& bake_settings);
         EnvironmentLightingResources                    CreateSkyLightingResources(const EnvironmentLightingBakeSettings& bake_settings);
@@ -58,7 +64,12 @@ namespace ZEngine::Rendering::Renderers
         PaddedAtomic<uint64_t>                          m_frame_output_generation             = {};
         Scenes::SkyEnvironment                          m_sky_environment                     = {};
         LightingPass*                                   m_lighting_pass                       = nullptr;
+        GridPass*                                       m_grid_pass                           = nullptr;
         SkyboxPass*                                     m_skybox_pass                         = nullptr;
+        SkyViewLutPass*                                 m_sky_view_lut_pass                   = nullptr;
+        AerialPerspectivePass*                          m_aerial_perspective_pass             = nullptr;
+        SkyCompositePass*                               m_sky_composite_pass                  = nullptr;
+        ToneMappingPass*                                m_tone_mapping_pass                   = nullptr;
         SkyAtmosphereTransmittancePass*                 m_sky_atmosphere_transmittance_pass   = nullptr;
         SkyAtmosphereMultiscatteringPass*               m_sky_atmosphere_multiscattering_pass = nullptr;
         SkyAtmosphereSourceRadiancePass*                m_sky_atmosphere_source_radiance_pass = nullptr;
@@ -66,6 +77,7 @@ namespace ZEngine::Rendering::Renderers
         SkyEnvironmentMipGenerationPass*                m_sky_atmosphere_mip_generation_pass  = nullptr;
         SkyEnvironmentDiffuseIrradiancePass*            m_sky_diffuse_irradiance_pass         = nullptr;
         SkyEnvironmentSpecularPrefilterPass*            m_sky_specular_prefilter_pass         = nullptr;
+        bool                                            m_atmosphere_view_resources_supported = false;
     };
     ZDEFINE_PTR(GraphicRenderer);
 } // namespace ZEngine::Rendering::Renderers

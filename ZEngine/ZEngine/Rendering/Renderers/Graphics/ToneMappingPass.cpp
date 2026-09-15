@@ -5,6 +5,11 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
+    void ToneMappingPass::SetUseCompositedSceneColor(bool enabled)
+    {
+        m_use_composited_scene_color = enabled;
+    }
+
     bool ToneMappingPass::Register(Hardwares::VulkanDevicePtr const device, cstring /*name*/, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
     {
         if (!device || !res_builder)
@@ -15,16 +20,17 @@ namespace ZEngine::Rendering::Renderers
         if (width == 0 || height == 0)
             return false;
 
-        res_builder->ReadTexture(RendererResourceName::FrameHdrColorRenderTargetName, "SceneColor");
+        res_builder->ReadTexture(m_use_composited_scene_color ? RendererResourceName::FrameHdrCompositedRenderTargetName : RendererResourceName::FrameHdrColorRenderTargetName, "SceneColor");
         res_builder->WriteColorAttachment(
             RendererResourceName::FrameColorRenderTargetName,
             {
-            .IsUsageSampled = true,
-            .Width          = width,
-            .Height         = height,
-            .Format         = ImageFormat::R8G8B8A8_UNORM,
-            .LoadOp         = LoadOperation::CLEAR,
-            .ClearColor     = {0.0f, 0.0f, 0.0f, 1.0f},
+            .IsUsageSampled      = true,
+            .IsRenderTargetSized = true,
+            .Width               = width,
+            .Height              = height,
+            .Format              = ImageFormat::R8G8B8A8_UNORM,
+            .LoadOp              = LoadOperation::CLEAR,
+            .ClearColor          = {0.0f, 0.0f, 0.0f, 1.0f},
         });
         return true;
     }
@@ -44,7 +50,7 @@ namespace ZEngine::Rendering::Renderers
         if (!device || !res_inspector || !pass)
             return;
 
-        const Textures::TextureHandle scene_color = res_inspector->GetRenderTarget(RendererResourceName::FrameHdrColorRenderTargetName);
+        const Textures::TextureHandle scene_color = res_inspector->GetRenderTarget(m_use_composited_scene_color ? RendererResourceName::FrameHdrCompositedRenderTargetName : RendererResourceName::FrameHdrColorRenderTargetName);
         if (!scene_color.Valid())
             return;
 
@@ -55,7 +61,7 @@ namespace ZEngine::Rendering::Renderers
 
     void ToneMappingPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!framebuffer || framebuffer->Handle == VK_NULL_HANDLE)
+        if (!pass || !command_buffer || !framebuffer || framebuffer->Handle == VK_NULL_HANDLE)
             return;
 
         auto* const graphic_pass = static_cast<RenderPasses::GraphicPass*>(pass);

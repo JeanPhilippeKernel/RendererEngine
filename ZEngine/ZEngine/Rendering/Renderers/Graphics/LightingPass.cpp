@@ -33,7 +33,7 @@ namespace ZEngine::Rendering::Renderers
         res_builder->WriteColorAttachment(
             RendererResourceName::FrameHdrColorRenderTargetName,
             {
-            .IsUsageSampled = true, .Width = w, .Height = h, .BytePerPixel = sizeof(uint16_t) * 4, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT, .LoadOp = LoadOperation::CLEAR, .ClearColor = {0.11f, 0.11f, 0.11f, 1.0f}
+            .IsUsageSampled = true, .IsRenderTargetSized = true, .Width = w, .Height = h, .BytePerPixel = sizeof(uint16_t) * 4, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT, .LoadOp = LoadOperation::CLEAR, .ClearColor = {0.11f, 0.11f, 0.11f, 1.0f}
         });
 
         return true;

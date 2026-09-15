@@ -55,6 +55,9 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     struct ComputePipeline : IPipeline
     {
+        /// @brief Exact byte count each dispatch records through vkCmdPushConstants.
+        uint32_t            DeclaredPushConstantSize = 0;
+
         VkPipelineBindPoint GetBindPoint() const override
         {
             return VK_PIPELINE_BIND_POINT_COMPUTE;
@@ -62,5 +65,9 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         void Initialize(Hardwares::VulkanDevice* device, cstring shader_name, uint32_t push_constant_size = 0);
         void Bake() override;
         void Dispose() override;
+
+    private:
+        /// @brief Releases a stale borrowed PSO after an incompatible shader reload.
+        void InvalidateBakedState();
     };
 } // namespace ZEngine::Rendering::Renderers::Pipelines

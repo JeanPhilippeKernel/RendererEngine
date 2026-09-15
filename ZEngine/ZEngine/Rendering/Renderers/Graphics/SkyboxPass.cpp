@@ -16,11 +16,16 @@ namespace ZEngine::Rendering::Renderers
         m_sky_config = config;
     }
 
+    void SkyboxPass::SetEnabled(bool enabled)
+    {
+        m_enabled = enabled;
+    }
+
     bool SkyboxPass::Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
     {
         // A missing map means the environment fallback could not be created. A
         // healthy renderer always sets a valid cubemap before registration.
-        if (!m_env_map.Valid())
+        if (!m_enabled || !m_env_map.Valid())
             return false;
 
         auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
@@ -60,7 +65,7 @@ namespace ZEngine::Rendering::Renderers
 
     void SkyboxPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!m_env_map.Valid())
+        if (!m_enabled || !m_env_map.Valid())
             return;
         if (!framebuffer || framebuffer->Handle == VK_NULL_HANDLE)
             return;
@@ -74,7 +79,7 @@ namespace ZEngine::Rendering::Renderers
 
     bool SkyboxPass::RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const command_buffer)
     {
-        if (!m_env_map.Valid())
+        if (!m_enabled || !m_env_map.Valid())
             return false;
 
         auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);

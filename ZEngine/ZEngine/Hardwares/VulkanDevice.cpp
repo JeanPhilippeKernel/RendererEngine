@@ -787,46 +787,51 @@ namespace ZEngine::Hardwares
         /*
          * Creating Global Descriptor Pool for : Textures, Samplers
          */
-        VkSamplerCreateInfo linear_sampler_create_info                   = {};
-        linear_sampler_create_info.sType                                 = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        linear_sampler_create_info.minFilter                             = VK_FILTER_LINEAR;
-        linear_sampler_create_info.magFilter                             = VK_FILTER_LINEAR;
-        linear_sampler_create_info.addressModeU                          = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        linear_sampler_create_info.addressModeV                          = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        linear_sampler_create_info.addressModeW                          = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        linear_sampler_create_info.anisotropyEnable                      = PhysicalDeviceFeature.features.samplerAnisotropy;
-        linear_sampler_create_info.maxAnisotropy                         = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
-        linear_sampler_create_info.borderColor                           = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        linear_sampler_create_info.unnormalizedCoordinates               = VK_FALSE;
-        linear_sampler_create_info.compareEnable                         = VK_FALSE;
-        linear_sampler_create_info.mipmapMode                            = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        linear_sampler_create_info.mipLodBias                            = 0.0f;
-        linear_sampler_create_info.minLod                                = 0.0f;
-        linear_sampler_create_info.maxLod                                = VK_LOD_CLAMP_NONE;
+        VkSamplerCreateInfo linear_sampler_create_info                        = {};
+        linear_sampler_create_info.sType                                      = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        linear_sampler_create_info.minFilter                                  = VK_FILTER_LINEAR;
+        linear_sampler_create_info.magFilter                                  = VK_FILTER_LINEAR;
+        linear_sampler_create_info.addressModeU                               = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        linear_sampler_create_info.addressModeV                               = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        linear_sampler_create_info.addressModeW                               = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        linear_sampler_create_info.anisotropyEnable                           = PhysicalDeviceFeature.features.samplerAnisotropy;
+        linear_sampler_create_info.maxAnisotropy                              = PhysicalDeviceFeature.features.samplerAnisotropy ? PhysicalDeviceProperties.properties.limits.maxSamplerAnisotropy : 1.0f;
+        linear_sampler_create_info.borderColor                                = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        linear_sampler_create_info.unnormalizedCoordinates                    = VK_FALSE;
+        linear_sampler_create_info.compareEnable                              = VK_FALSE;
+        linear_sampler_create_info.mipmapMode                                 = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        linear_sampler_create_info.mipLodBias                                 = 0.0f;
+        linear_sampler_create_info.minLod                                     = 0.0f;
+        linear_sampler_create_info.maxLod                                     = VK_LOD_CLAMP_NONE;
 
-        VkSamplerCreateInfo linear_sampler_clamp_to_edge_create_info     = {};
-        linear_sampler_clamp_to_edge_create_info.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        linear_sampler_clamp_to_edge_create_info.minFilter               = VK_FILTER_LINEAR;
-        linear_sampler_clamp_to_edge_create_info.magFilter               = VK_FILTER_LINEAR;
-        linear_sampler_clamp_to_edge_create_info.addressModeU            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        linear_sampler_clamp_to_edge_create_info.addressModeV            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        linear_sampler_clamp_to_edge_create_info.addressModeW            = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        linear_sampler_clamp_to_edge_create_info.anisotropyEnable        = VK_FALSE;
-        linear_sampler_clamp_to_edge_create_info.maxAnisotropy           = 1.0f;
-        linear_sampler_clamp_to_edge_create_info.borderColor             = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        linear_sampler_clamp_to_edge_create_info.unnormalizedCoordinates = VK_FALSE;
-        linear_sampler_clamp_to_edge_create_info.compareEnable           = VK_FALSE;
-        linear_sampler_clamp_to_edge_create_info.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        linear_sampler_clamp_to_edge_create_info.mipLodBias              = 0.0f;
-        linear_sampler_clamp_to_edge_create_info.minLod                  = 0.0f;
-        linear_sampler_clamp_to_edge_create_info.maxLod                  = VK_LOD_CLAMP_NONE;
+        VkSamplerCreateInfo linear_sampler_clamp_to_edge_create_info          = {};
+        linear_sampler_clamp_to_edge_create_info.sType                        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        linear_sampler_clamp_to_edge_create_info.minFilter                    = VK_FILTER_LINEAR;
+        linear_sampler_clamp_to_edge_create_info.magFilter                    = VK_FILTER_LINEAR;
+        linear_sampler_clamp_to_edge_create_info.addressModeU                 = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linear_sampler_clamp_to_edge_create_info.addressModeV                 = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linear_sampler_clamp_to_edge_create_info.addressModeW                 = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        linear_sampler_clamp_to_edge_create_info.anisotropyEnable             = VK_FALSE;
+        linear_sampler_clamp_to_edge_create_info.maxAnisotropy                = 1.0f;
+        linear_sampler_clamp_to_edge_create_info.borderColor                  = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+        linear_sampler_clamp_to_edge_create_info.unnormalizedCoordinates      = VK_FALSE;
+        linear_sampler_clamp_to_edge_create_info.compareEnable                = VK_FALSE;
+        linear_sampler_clamp_to_edge_create_info.mipmapMode                   = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        linear_sampler_clamp_to_edge_create_info.mipLodBias                   = 0.0f;
+        linear_sampler_clamp_to_edge_create_info.minLod                       = 0.0f;
+        linear_sampler_clamp_to_edge_create_info.maxLod                       = VK_LOD_CLAMP_NONE;
 
-        GlobalLinearWrapSampler                                          = PipelineStateCache->GetOrCreateSampler(linear_sampler_create_info);
-        GlobalLinearClampToEdgeSampler                                   = PipelineStateCache->GetOrCreateSampler(linear_sampler_clamp_to_edge_create_info);
+        VkSamplerCreateInfo linear_sampler_wrap_u_clamp_to_edge_v_create_info = linear_sampler_clamp_to_edge_create_info;
+        linear_sampler_wrap_u_clamp_to_edge_v_create_info.addressModeU        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
-        GlobalLinearWrapSamplerImageInfo                                 = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-        GlobalLinearClampToEdgeSamplerImageInfo                          = VkDescriptorImageInfo{.sampler = GlobalLinearClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-        MaxGlobalTexture                                                 = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
+        GlobalLinearWrapSampler                                               = PipelineStateCache->GetOrCreateSampler(linear_sampler_create_info);
+        GlobalLinearClampToEdgeSampler                                        = PipelineStateCache->GetOrCreateSampler(linear_sampler_clamp_to_edge_create_info);
+        GlobalLinearWrapUClampToEdgeVSampler                                  = PipelineStateCache->GetOrCreateSampler(linear_sampler_wrap_u_clamp_to_edge_v_create_info);
+
+        GlobalLinearWrapSamplerImageInfo                                      = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        GlobalLinearClampToEdgeSamplerImageInfo                               = VkDescriptorImageInfo{.sampler = GlobalLinearClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        GlobalLinearWrapUClampToEdgeVSamplerImageInfo                         = VkDescriptorImageInfo{.sampler = GlobalLinearWrapUClampToEdgeVSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        MaxGlobalTexture                                                      = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         ImageBufferManager.Initialize(Arena, MaxGlobalTexture);
@@ -1055,10 +1060,11 @@ namespace ZEngine::Hardwares
         vkDestroyDevice(LogicalDevice, nullptr);
         vkDestroyInstance(Instance, nullptr);
 
-        GlobalLinearWrapSampler        = VK_NULL_HANDLE;
-        GlobalLinearClampToEdgeSampler = VK_NULL_HANDLE;
-        LogicalDevice                  = VK_NULL_HANDLE;
-        Instance                       = VK_NULL_HANDLE;
+        GlobalLinearWrapSampler              = VK_NULL_HANDLE;
+        GlobalLinearClampToEdgeSampler       = VK_NULL_HANDLE;
+        GlobalLinearWrapUClampToEdgeVSampler = VK_NULL_HANDLE;
+        LogicalDevice                        = VK_NULL_HANDLE;
+        Instance                             = VK_NULL_HANDLE;
     }
 
     bool VulkanDevice::QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, VkPipelineStageFlags2 wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_semaphore)

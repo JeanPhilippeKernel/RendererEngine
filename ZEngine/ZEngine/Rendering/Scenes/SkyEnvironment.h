@@ -52,6 +52,10 @@ namespace ZEngine::Rendering::Scenes
     struct SkyEnvironmentSnapshot
     {
         SkyConfig                    Config          = {};
+        /// @brief Resolved sun direction used to generate this immutable revision.
+        /// @details Per-view atmosphere work consumes this copy rather than
+        /// reading mutable scene light state on the render thread.
+        SkyCelestialLight            CelestialLight  = {};
         AtmosphereStaticResources    Atmosphere      = {};
         Textures::TextureHandle      SourceRadiance  = {};
         EnvironmentLightingResources Lighting        = {};

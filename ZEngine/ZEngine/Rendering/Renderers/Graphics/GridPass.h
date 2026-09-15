@@ -23,6 +23,8 @@ namespace ZEngine::Rendering::Renderers
 
     struct GridPass : public IRenderGraphCallbackPass
     {
+        /// @brief Selects the HDR target that already contains sky composition.
+        void                                 SetUseCompositedSceneColor(bool enabled);
         GridPushConstantData                 PushData = {};
         bool                                 Enabled  = true;
 
@@ -39,8 +41,9 @@ namespace ZEngine::Rendering::Renderers
         }
 
     private:
-        uint32_t m_vtx_offset          = 0;
-        uint32_t m_idx_offset          = 0;
-        bool     m_geometry_registered = false;
+        uint32_t m_vtx_offset                 = 0;
+        uint32_t m_idx_offset                 = 0;
+        bool     m_geometry_registered        = false;
+        bool     m_use_composited_scene_color = false;
     };
 } // namespace ZEngine::Rendering::Renderers

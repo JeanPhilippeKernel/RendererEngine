@@ -114,6 +114,10 @@ The scene supplies:
 - the scene world-unit-to-metre scale;
 - a camera position relative to that centre, converted to kilometres with a numerically stable large-world/floating-origin path.
 
+The default one-world-unit-per-metre configuration places the planet centre at `(0, -6,360,000, 0)`. World origin is consequently sea level, so ordinary editor scenes are never accidentally interpreted as being inside the planet.
+
+Rays that reach the analytic planet boundary are closed against the scene's Lambertian atmosphere-ground albedo and diffuse fill irradiance. This prevents a no-terrain editor viewport from exposing a black lower hemisphere. A terrain renderer remains responsible for replacing that implicit surface with real scene geometry.
+
 The public contract also defines coordinate handedness, cubemap face orientation, the sign of the light direction, and whether a directional light points toward or away from its source. The same primary celestial light drives the sun disc, atmosphere, direct lighting, and sun shadows. Selecting the first active directional light is not deterministic enough for this role. Solar angular radius and illuminance use documented physical units; any artistic multiplier is named and applied consistently to background radiance and environment lighting.
 
 ---
@@ -353,7 +357,7 @@ All atmosphere shader paths handle zero-length rays, horizon tangents, cameras b
 
 The captured source-radiance cubemap has a complete mip chain. Prefiltering selects source LOD from sample solid angle/PDF and source texel solid angle, avoiding rough-surface aliasing and fireflies. If hardware cannot linearly filter or generate the required HDR mip chain, the capability service chooses a shader downsample path or disables the affected quality tier.
 
-LUT samplers use normalized coordinates, linear filtering, and clamp-to-edge addressing. Cubemap samplers use the engine's canonical face orientation, clamp-to-edge addressing, and linear mip filtering. None of the radiance, transmittance, or IBL resources use an sRGB image view.
+LUT samplers use normalized coordinates and linear filtering. The sky-view LUT is an azimuth/elevation map, so its azimuth axis wraps and its elevation axis clamps; all other LUT axes clamp to edge. Cubemap samplers use the engine's canonical face orientation, clamp-to-edge addressing, and linear mip filtering. None of the radiance, transmittance, or IBL resources use an sRGB image view.
 
 ---
 

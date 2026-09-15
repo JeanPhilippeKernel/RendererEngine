@@ -1026,7 +1026,7 @@ namespace ZEngine::Rendering::Renderers
 
     static bool HasCompatibleImageLayout(const Specifications::TextureSpecification& left, const Specifications::TextureSpecification& right)
     {
-        return left.Format == right.Format && left.Width == right.Width && left.Height == right.Height && left.Depth == right.Depth && left.MipLevelCount == right.MipLevelCount && left.LayerCount == right.LayerCount && left.IsCubemap == right.IsCubemap && left.Is3D == right.Is3D;
+        return left.Format == right.Format && left.Width == right.Width && left.Height == right.Height && left.Depth == right.Depth && left.MipLevelCount == right.MipLevelCount && left.LayerCount == right.LayerCount && left.IsCubemap == right.IsCubemap && left.Is3D == right.Is3D && left.IsRenderTargetSized == right.IsRenderTargetSized;
     }
 
     static bool HasImageUsageSuperset(const Specifications::TextureSpecification& allocation, const Specifications::TextureSpecification& request)
@@ -2322,12 +2322,14 @@ namespace ZEngine::Rendering::Renderers
             Device->DeferFree(e);
         }
 
-        // Reconstruct each physical slot exactly once. A slot may back several
-        // non-overlapping virtual resources, so iterating Resources would recreate
-        // the same image repeatedly and lose transient-pool reuse after a resize.
+        // Reconstruct only the images that follow this render view's extent.
+        // Fixed-resolution resources — for example the sky-view and aerial LUTs —
+        // keep their declared dimensions and must not be resized with the viewport.
+        // Resize-compatible and fixed resources never alias one another, so a
+        // resizable slot can safely reconstruct all of its aliases at this extent.
         for (auto& slot : TransientPool.Slots)
         {
-            if (!slot.Handle.Valid())
+            if (!slot.Handle.Valid() || !slot.Spec.IsRenderTargetSized)
                 continue;
             slot.Spec.Width  = width;
             slot.Spec.Height = height;

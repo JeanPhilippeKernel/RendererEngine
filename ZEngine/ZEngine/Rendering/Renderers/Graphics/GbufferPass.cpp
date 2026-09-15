@@ -21,9 +21,9 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
         res_builder->ReadBindless();
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
-        res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
-        res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
+        res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
+        res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
+        res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
         return true;
     }
 

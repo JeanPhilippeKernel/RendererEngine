@@ -37,9 +37,14 @@ namespace ZEngine::Rendering::Cameras
     /// Camera instance owned by the main thread.
     struct CameraFrameData
     {
-        ZEngine::Core::Maths::Mat4f View       = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
-        ZEngine::Core::Maths::Mat4f Projection = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
-        ZEngine::Core::Maths::Vec3f Position   = {};
+        ZEngine::Core::Maths::Mat4f View         = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Mat4f Projection   = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Vec3f Position     = {};
+        /// @brief Selects the depth clear convention consumed by depth-aware post effects.
+        /// @details The current editor camera uses standard Vulkan depth. This
+        /// explicit frame value prevents future reverse-Z views from relying on
+        /// projection-matrix heuristics.
+        bool                        UsesReverseZ = false;
     };
 
     struct Camera

@@ -55,6 +55,8 @@ namespace ZEngine::Rendering::Scenes::Serialization
         Helpers::WriteBinary(out, atmosphere.OzoneThicknessKilometers);
         Helpers::WriteBinary(out, atmosphere.SunAngularRadiusRadians);
         Helpers::WriteBinary(out, atmosphere.SunIlluminanceLux);
+        WriteFloatArray(out, atmosphere.GroundAlbedo, 3);
+        Helpers::WriteBinary(out, atmosphere.GroundAmbientIrradiance);
 
         const auto& sphere = sky.Sphere;
         WriteFloatArray(out, sphere.HorizonColor, 4);
@@ -78,7 +80,7 @@ namespace ZEngine::Rendering::Scenes::Serialization
         sky.Mode         = static_cast<SkyMode>(mode);
         auto& atmosphere = sky.Atmosphere;
         if (!ReadFloatArray(in, atmosphere.PlanetCenterWorld, 3) || !Helpers::ReadBinary(in, atmosphere.WorldUnitsPerMeter) || !Helpers::ReadBinary(in, atmosphere.PlanetRadiusKilometers) || !Helpers::ReadBinary(in, atmosphere.AtmosphereRadiusKilometers) || !ReadFloatArray(in, atmosphere.RayleighScatteringPerKilometer, 3) || !Helpers::ReadBinary(in, atmosphere.RayleighScaleHeightKilometers) || !Helpers::ReadBinary(in, atmosphere.MieScatteringPerKilometer) || !Helpers::ReadBinary(in, atmosphere.MieAbsorptionPerKilometer) ||
-            !Helpers::ReadBinary(in, atmosphere.MieScaleHeightKilometers) || !Helpers::ReadBinary(in, atmosphere.MieAnisotropy) || !ReadFloatArray(in, atmosphere.OzoneAbsorptionPerKilometer, 3) || !Helpers::ReadBinary(in, atmosphere.OzoneCenterKilometers) || !Helpers::ReadBinary(in, atmosphere.OzoneThicknessKilometers) || !Helpers::ReadBinary(in, atmosphere.SunAngularRadiusRadians) || !Helpers::ReadBinary(in, atmosphere.SunIlluminanceLux))
+            !Helpers::ReadBinary(in, atmosphere.MieScaleHeightKilometers) || !Helpers::ReadBinary(in, atmosphere.MieAnisotropy) || !ReadFloatArray(in, atmosphere.OzoneAbsorptionPerKilometer, 3) || !Helpers::ReadBinary(in, atmosphere.OzoneCenterKilometers) || !Helpers::ReadBinary(in, atmosphere.OzoneThicknessKilometers) || !Helpers::ReadBinary(in, atmosphere.SunAngularRadiusRadians) || !Helpers::ReadBinary(in, atmosphere.SunIlluminanceLux) || !ReadFloatArray(in, atmosphere.GroundAlbedo, 3) || !Helpers::ReadBinary(in, atmosphere.GroundAmbientIrradiance))
             return false;
 
         auto& sphere = sky.Sphere;
