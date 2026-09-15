@@ -12,8 +12,9 @@ TEST(SkyAtmosphereViewPassTest, ComputeCallbacksDeclareTheirExactShaderPushConst
     ZEngine::Rendering::Renderers::SkyViewLutPass        sky_view = {};
     ZEngine::Rendering::Renderers::AerialPerspectivePass aerial   = {};
 
-    EXPECT_EQ(sky_view.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::SkyViewPushConstants));
+    EXPECT_EQ(sky_view.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::AtmosphereViewPushConstants));
     EXPECT_EQ(aerial.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::AtmosphereViewPushConstants));
+    EXPECT_EQ(sky_view.GetComputePushConstantSize(), 128u);
 }
 
 TEST(SkyConfigTest, DefaultConfigurationIsAtmosphereAndHasNoRuntimeReferences)

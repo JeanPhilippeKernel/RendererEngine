@@ -123,9 +123,10 @@ namespace ZEngine::Rendering::Renderers
         push.RadiiAndScaleHeights[1]                          = atmosphere.AtmosphereRadiusKilometers;
         push.RadiiAndScaleHeights[2]                          = atmosphere.RayleighScaleHeightKilometers;
         push.RadiiAndScaleHeights[3]                          = atmosphere.MieScaleHeightKilometers;
-        push.RayleighScattering[0]                            = atmosphere.RayleighScatteringPerKilometer[0];
-        push.RayleighScattering[1]                            = atmosphere.RayleighScatteringPerKilometer[1];
-        push.RayleighScattering[2]                            = atmosphere.RayleighScatteringPerKilometer[2];
+        push.RayleighScatteringAndGroundAlbedoR[0]            = atmosphere.RayleighScatteringPerKilometer[0];
+        push.RayleighScatteringAndGroundAlbedoR[1]            = atmosphere.RayleighScatteringPerKilometer[1];
+        push.RayleighScatteringAndGroundAlbedoR[2]            = atmosphere.RayleighScatteringPerKilometer[2];
+        push.RayleighScatteringAndGroundAlbedoR[3]            = atmosphere.GroundAlbedo[0];
         push.MieAndOzone[0]                                   = atmosphere.MieScatteringPerKilometer;
         push.MieAndOzone[1]                                   = atmosphere.MieAbsorptionPerKilometer;
         push.MieAndOzone[2]                                   = atmosphere.OzoneCenterKilometers;
@@ -138,12 +139,14 @@ namespace ZEngine::Rendering::Renderers
         push.SunDirectionAndRadius[1]                         = m_celestial.DirectionToLight[1];
         push.SunDirectionAndRadius[2]                         = m_celestial.DirectionToLight[2];
         push.SunDirectionAndRadius[3]                         = atmosphere.SunAngularRadiusRadians;
-        push.SunRadianceAndAvailability[0]                    = Scenes::ConvertSunIlluminanceToSceneRadiance(atmosphere.SunIlluminanceLux);
-        push.SunRadianceAndAvailability[1]                    = m_celestial.IsAvailable ? 1.0f : 0.0f;
-        push.PresentationTintAndIntensity[0]                  = m_presentation.EnvironmentTint[0] * m_presentation.EnvironmentIntensity;
-        push.PresentationTintAndIntensity[1]                  = m_presentation.EnvironmentTint[1] * m_presentation.EnvironmentIntensity;
-        push.PresentationTintAndIntensity[2]                  = m_presentation.EnvironmentTint[2] * m_presentation.EnvironmentIntensity;
-        push.PresentationTintAndIntensity[3]                  = 1.0f;
+        push.SunRadianceAvailabilityAndGroundAlbedoGB[0]      = Scenes::ConvertSunIlluminanceToSceneRadiance(atmosphere.SunIlluminanceLux);
+        push.SunRadianceAvailabilityAndGroundAlbedoGB[1]      = m_celestial.IsAvailable ? 1.0f : 0.0f;
+        push.SunRadianceAvailabilityAndGroundAlbedoGB[2]      = atmosphere.GroundAlbedo[1];
+        push.SunRadianceAvailabilityAndGroundAlbedoGB[3]      = atmosphere.GroundAlbedo[2];
+        push.PresentationTintIntensityAndGroundAmbient[0]     = m_presentation.EnvironmentTint[0] * m_presentation.EnvironmentIntensity;
+        push.PresentationTintIntensityAndGroundAmbient[1]     = m_presentation.EnvironmentTint[1] * m_presentation.EnvironmentIntensity;
+        push.PresentationTintIntensityAndGroundAmbient[2]     = m_presentation.EnvironmentTint[2] * m_presentation.EnvironmentIntensity;
+        push.PresentationTintIntensityAndGroundAmbient[3]     = atmosphere.GroundAmbientIrradiance;
         return push;
     }
 
@@ -154,7 +157,7 @@ namespace ZEngine::Rendering::Renderers
 
     uint32_t SkyViewLutPass::GetPushConstantSize() const
     {
-        return sizeof(SkyViewPushConstants);
+        return sizeof(AtmosphereViewPushConstants);
     }
 
     bool SkyViewLutPass::ShouldRegisterCompute(const RenderGraphFrameContext& frame_context) const
@@ -175,12 +178,7 @@ namespace ZEngine::Rendering::Renderers
         if (!device || !device->SwapchainPtr || !device->SwapchainPtr->CurrentFrame || !m_compute_pass || !IsViewActive())
             return;
 
-        SkyViewPushConstants push      = {};
-        push.Atmosphere                = MakePushConstants();
-        push.GroundAlbedoAndAmbient[0] = m_config.Atmosphere.GroundAlbedo[0];
-        push.GroundAlbedoAndAmbient[1] = m_config.Atmosphere.GroundAlbedo[1];
-        push.GroundAlbedoAndAmbient[2] = m_config.Atmosphere.GroundAlbedo[2];
-        push.GroundAlbedoAndAmbient[3] = m_config.Atmosphere.GroundAmbientIrradiance;
+        const AtmosphereViewPushConstants push = MakePushConstants();
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         command_buffer->Dispatch((kSkyViewWidth + kLocalSize2D - 1) / kLocalSize2D, (kSkyViewHeight + kLocalSize2D - 1) / kLocalSize2D, 1);

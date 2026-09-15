@@ -5,31 +5,20 @@
 namespace ZEngine::Rendering::Renderers
 {
     /// @brief Camera-relative physical inputs shared by the view-local atmosphere kernels.
-    /// @details Every field is a vec4 so its C++ layout exactly matches the common
-    /// GLSL push-constant prefix. PlanetCenterRelativeAndMaxDistance is in
-    /// kilometres relative to the current camera; no world-origin-sized value
-    /// reaches a shader.
+    /// @details Every field is a vec4 so its C++ layout matches GLSL and remains
+    /// within Vulkan's guaranteed 128-byte push-constant limit.
     struct AtmosphereViewPushConstants
     {
-        float PlanetCenterRelativeAndMaxDistance[4] = {};
-        float RadiiAndScaleHeights[4]               = {};
-        float RayleighScattering[4]                 = {};
-        float MieAndOzone[4]                        = {};
-        float OzoneAbsorption[4]                    = {};
-        float SunDirectionAndRadius[4]              = {};
-        float SunRadianceAndAvailability[4]         = {};
-        float PresentationTintAndIntensity[4]       = {};
+        float PlanetCenterRelativeAndMaxDistance[4]        = {};
+        float RadiiAndScaleHeights[4]                      = {};
+        float RayleighScatteringAndGroundAlbedoR[4]        = {};
+        float MieAndOzone[4]                               = {};
+        float OzoneAbsorption[4]                           = {};
+        float SunDirectionAndRadius[4]                     = {};
+        float SunRadianceAvailabilityAndGroundAlbedoGB[4]  = {};
+        float PresentationTintIntensityAndGroundAmbient[4] = {};
     };
     static_assert(sizeof(AtmosphereViewPushConstants) == 128, "Atmosphere view push constants must match the common GLSL prefix");
-
-    /// @brief Additional inputs required only by the sky-view ground closure.
-    struct SkyViewPushConstants
-    {
-        AtmosphereViewPushConstants Atmosphere                = {};
-        /// @brief RGB=implicit planet albedo, w=scene-linear diffuse fill irradiance.
-        float                       GroundAlbedoAndAmbient[4] = {};
-    };
-    static_assert(sizeof(SkyViewPushConstants) == 144, "Sky-view push constants must match GLSL");
 
     /// @brief Common immutable-frame state for camera-local atmosphere compute passes.
     struct SkyAtmosphereViewPass : public IInlineComputePass

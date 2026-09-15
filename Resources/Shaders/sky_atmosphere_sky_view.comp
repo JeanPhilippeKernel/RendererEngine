@@ -11,13 +11,12 @@ layout(push_constant) uniform AtmosphereViewPushConstants
 {
     vec4 PlanetCenterRelativeAndMaxDistance;
     vec4 RadiiAndScaleHeights;
-    vec4 RayleighScattering;
+    vec4 RayleighScatteringAndGroundAlbedoR;
     vec4 MieAndOzone;
     vec4 OzoneAbsorption;
     vec4 SunDirectionAndRadius;
-    vec4 SunRadianceAndAvailability;
-    vec4 PresentationTintAndIntensity;
-    vec4 GroundAlbedoAndAmbient;
+    vec4 SunRadianceAvailabilityAndGroundAlbedoGB;
+    vec4 PresentationTintIntensityAndGroundAmbient;
 }
 Push;
 
@@ -88,8 +87,9 @@ vec3 ground_radiance(vec3 ground_position, vec3 sun_direction, float sun_radianc
     const vec3  normal              = normalize(ground_position);
     const float direct_illumination = max(dot(normal, sun_direction), 0.0) * sun_radiance;
     const vec3  direct              = sample_sun_transmittance(ground_position + normal * 1.0e-3, sun_direction) * direct_illumination;
-    const vec3  irradiance          = direct + vec3(max(Push.GroundAlbedoAndAmbient.w, 0.0));
-    return max(Push.GroundAlbedoAndAmbient.rgb, vec3(0.0)) * irradiance / PI;
+    const vec3  irradiance          = direct + vec3(max(Push.PresentationTintIntensityAndGroundAmbient.w, 0.0));
+    const vec3  ground_albedo       = vec3(Push.RayleighScatteringAndGroundAlbedoR.w, Push.SunRadianceAvailabilityAndGroundAlbedoGB.zw);
+    return max(ground_albedo, vec3(0.0)) * irradiance / PI;
 }
 
 // This world-space parameterization makes the per-view LUT independent of the
@@ -142,9 +142,9 @@ vec3 integrate_sky_radiance(vec3 camera_position, vec3 direction, vec3 sun_direc
         const float rayleigh_density   = exp(-sample_height / max(Push.RadiiAndScaleHeights.z, 1.0e-3));
         const float mie_density        = exp(-sample_height / max(Push.RadiiAndScaleHeights.w, 1.0e-3));
         const float ozone              = ozone_density(sample_height);
-        const vec3  extinction         = Push.RayleighScattering.rgb * rayleigh_density + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie_density + Push.OzoneAbsorption.rgb * ozone;
+        const vec3  extinction         = Push.RayleighScatteringAndGroundAlbedoR.rgb * rayleigh_density + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie_density + Push.OzoneAbsorption.rgb * ozone;
         const float view_sun_cosine    = dot(direction, sun_direction);
-        const vec3  scattering         = Push.RayleighScattering.rgb * rayleigh_density * rayleigh_phase(view_sun_cosine) + vec3(Push.MieAndOzone.x) * mie_density * mie_phase(view_sun_cosine, clamp(Push.OzoneAbsorption.a, -0.95, 0.95));
+        const vec3  scattering         = Push.RayleighScatteringAndGroundAlbedoR.rgb * rayleigh_density * rayleigh_phase(view_sun_cosine) + vec3(Push.MieAndOzone.x) * mie_density * mie_phase(view_sun_cosine, clamp(Push.OzoneAbsorption.a, -0.95, 0.95));
         const vec3  sun_transmittance  = sample_sun_transmittance(sample_position, sun_direction);
         const vec3  multiscattering    = texture(sampler2D(Multiscattering, LinearClampToEdgeSampler), transmittance_uv(sample_position, sun_direction)).rgb;
 
@@ -175,10 +175,10 @@ void main()
     const vec3  camera_position = -to_planet;
     const vec3  up              = camera_position / center_distance;
     const float sun_length      = length(Push.SunDirectionAndRadius.xyz);
-    const bool  has_sun         = Push.SunRadianceAndAvailability.y > 0.5 && sun_length > 1.0e-6;
+    const bool  has_sun         = Push.SunRadianceAvailabilityAndGroundAlbedoGB.y > 0.5 && sun_length > 1.0e-6;
     const vec3  sun_direction   = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
-    const float sun_radiance    = has_sun ? max(Push.SunRadianceAndAvailability.x, 0.0) : 0.0;
+    const float sun_radiance    = has_sun ? max(Push.SunRadianceAvailabilityAndGroundAlbedoGB.x, 0.0) : 0.0;
     const vec3  direction       = decode_sky_view_direction(uv, up, sun_direction);
     const vec3  radiance        = integrate_sky_radiance(camera_position, direction, sun_direction, sun_radiance);
-    imageStore(Destination, ivec2(pixel), vec4(clamp(radiance * Push.PresentationTintAndIntensity.rgb, vec3(0.0), vec3(65000.0)), 1.0));
+    imageStore(Destination, ivec2(pixel), vec4(clamp(radiance * Push.PresentationTintIntensityAndGroundAmbient.rgb, vec3(0.0), vec3(65000.0)), 1.0));
 }

@@ -282,9 +282,10 @@ namespace ZEngine::Rendering::Renderers
         StartPendingSkyBake();
         CollectRetiredSkySnapshots();
 
-        const Scenes::SkyEnvironmentSnapshot* snapshot = m_sky_environment.AcquireForFrame();
         if (!m_lighting_pass || !m_skybox_pass || !m_grid_pass || !m_tone_mapping_pass || !m_sky_view_lut_pass || !m_aerial_perspective_pass || !m_sky_composite_pass)
             return;
+
+        const Scenes::SkyEnvironmentSnapshot* snapshot = m_sky_environment.AcquireForFrame();
 
         // Reset every optional callback before handling the selected snapshot.
         // This prevents a failed/minimized frame from retaining a prior view's

@@ -12,12 +12,12 @@ layout(push_constant) uniform AtmosphereViewPushConstants
 {
     vec4 PlanetCenterRelativeAndMaxDistance;
     vec4 RadiiAndScaleHeights;
-    vec4 RayleighScattering;
+    vec4 RayleighScatteringAndGroundAlbedoR;
     vec4 MieAndOzone;
     vec4 OzoneAbsorption;
     vec4 SunDirectionAndRadius;
-    vec4 SunRadianceAndAvailability;
-    vec4 PresentationTintAndIntensity;
+    vec4 SunRadianceAvailabilityAndGroundAlbedoGB;
+    vec4 PresentationTintIntensityAndGroundAmbient;
 }
 Push;
 
@@ -114,9 +114,9 @@ void main()
     const vec3  camera_position    = -to_planet;
     const vec3  up                 = camera_position / center_distance;
     const float sun_length         = length(Push.SunDirectionAndRadius.xyz);
-    const bool  has_sun            = Push.SunRadianceAndAvailability.y > 0.5 && sun_length > 1.0e-6;
+    const bool  has_sun            = Push.SunRadianceAvailabilityAndGroundAlbedoGB.y > 0.5 && sun_length > 1.0e-6;
     const vec3  sun_direction      = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
-    const float sun_radiance       = has_sun ? max(Push.SunRadianceAndAvailability.x, 0.0) : 0.0;
+    const float sun_radiance       = has_sun ? max(Push.SunRadianceAvailabilityAndGroundAlbedoGB.x, 0.0) : 0.0;
     const vec3  direction          = decode_sky_view_direction(uvw.xy, up, sun_direction);
     const float requested_distance = exp2(uvw.z * log2(1.0 + Push.PlanetCenterRelativeAndMaxDistance.w)) - 1.0;
     const float planet_radius      = max(Push.RadiiAndScaleHeights.x, 1.0e-3);
@@ -150,9 +150,9 @@ void main()
         const float rayleigh_density   = exp(-sample_height / max(Push.RadiiAndScaleHeights.z, 1.0e-3));
         const float mie_density        = exp(-sample_height / max(Push.RadiiAndScaleHeights.w, 1.0e-3));
         const float ozone              = ozone_density(sample_height);
-        const vec3  extinction         = Push.RayleighScattering.rgb * rayleigh_density + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie_density + Push.OzoneAbsorption.rgb * ozone;
+        const vec3  extinction         = Push.RayleighScatteringAndGroundAlbedoR.rgb * rayleigh_density + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie_density + Push.OzoneAbsorption.rgb * ozone;
         const float view_sun_cosine    = dot(direction, sun_direction);
-        const vec3  scattering         = Push.RayleighScattering.rgb * rayleigh_density * rayleigh_phase(view_sun_cosine) + vec3(Push.MieAndOzone.x) * mie_density * mie_phase(view_sun_cosine, clamp(Push.OzoneAbsorption.a, -0.95, 0.95));
+        const vec3  scattering         = Push.RayleighScatteringAndGroundAlbedoR.rgb * rayleigh_density * rayleigh_phase(view_sun_cosine) + vec3(Push.MieAndOzone.x) * mie_density * mie_phase(view_sun_cosine, clamp(Push.OzoneAbsorption.a, -0.95, 0.95));
         const vec3  sun_transmittance  = sample_sun_transmittance(sample_position, sun_direction);
         const vec3  multiscattering    = texture(sampler2D(Multiscattering, LinearClampToEdgeSampler), transmittance_uv(sample_position, sun_direction)).rgb;
 
@@ -160,6 +160,6 @@ void main()
         transmittance_to_viewer       *= exp(-extinction * step_length);
     }
 
-    imageStore(InscatterDestination, ivec3(voxel), vec4(clamp(inscatter * Push.PresentationTintAndIntensity.rgb, vec3(0.0), vec3(65000.0)), 1.0));
+    imageStore(InscatterDestination, ivec3(voxel), vec4(clamp(inscatter * Push.PresentationTintIntensityAndGroundAmbient.rgb, vec3(0.0), vec3(65000.0)), 1.0));
     imageStore(TransmittanceDestination, ivec3(voxel), vec4(clamp(transmittance_to_viewer, vec3(0.0), vec3(1.0)), 1.0));
 }
