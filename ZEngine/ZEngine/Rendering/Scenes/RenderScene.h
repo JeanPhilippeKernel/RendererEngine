@@ -31,6 +31,24 @@ namespace ZEngine::Rendering::Scenes
         return illuminance_lux / ReferenceSunIlluminanceLux;
     }
 
+    /// @brief CPU reference values for the static atmosphere multiscattering contract.
+    /// @details The LUT stores an angular radiance integral per direct solar
+    /// radiance. GPU consumers multiply it by IsotropicPhaseNormalization once.
+    namespace AtmosphereScatteringContract
+    {
+        inline constexpr float        AngularIntegralScale        = 12.566370614359172f;
+        inline constexpr float        IsotropicPhaseNormalization = 0.07957747154594767f;
+        inline constexpr float        RetainedLightFraction       = 0.5f;
+        inline constexpr float        MaximumReturnProbability    = 0.95f;
+
+        [[nodiscard]] constexpr float MakeAngularIntegral(float single_scatter_fraction)
+        {
+            const float fraction           = single_scatter_fraction < 0.0f ? 0.0f : (single_scatter_fraction > 1.0f ? 1.0f : single_scatter_fraction);
+            const float return_probability = fraction * RetainedLightFraction < MaximumReturnProbability ? fraction * RetainedLightFraction : MaximumReturnProbability;
+            return AngularIntegralScale * fraction * return_probability / (1.0f - return_probability);
+        }
+    } // namespace AtmosphereScatteringContract
+
     struct GridConfig
     {
         float CellSize      = 0.025f;

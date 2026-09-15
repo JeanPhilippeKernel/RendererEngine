@@ -1,4 +1,5 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -14,16 +15,19 @@ layout(push_constant) uniform AtmosphereSourceRadiancePushConstants
     vec4 MieAndOzone;
     vec4 OzoneAbsorption;
     vec4 SunDirectionAndRadius;
-    vec4 SunRadianceAndAvailability;
+    vec4 SunRadianceAvailabilityAndCaptureAltitude;
+    vec4 GroundAlbedoAndAmbient;
 }
 Push;
 
-const float PI = 3.14159265358979323846;
+#define SKY_ATMOSPHERE_TRANSMITTANCE_LUT   sampler2D(Transmittance, LinearClampToEdgeSampler)
+#define SKY_ATMOSPHERE_MULTISCATTERING_LUT sampler2D(Multiscattering, LinearClampToEdgeSampler)
+#include "sky_atmosphere_integrator.glsl"
 
 // This is the engine's canonical cubemap convention. It matches the environment
 // mip, irradiance, and specular shaders, so every environment consumer agrees on
 // the direction represented by each face texel.
-vec3        cube_direction(uint face, vec2 uv)
+vec3 cube_direction(uint face, vec2 uv)
 {
     if (face == 0u)
         return normalize(vec3(1.0, -uv.y, -uv.x));
@@ -38,18 +42,6 @@ vec3        cube_direction(uint face, vec2 uv)
     return normalize(vec3(-uv.x, -uv.y, -1.0));
 }
 
-float rayleigh_phase(float cosine)
-{
-    return 3.0 * (1.0 + cosine * cosine) / (16.0 * PI);
-}
-
-float mie_phase(float cosine, float anisotropy)
-{
-    const float g2    = anisotropy * anisotropy;
-    const float denom = max(1.0 + g2 - 2.0 * anisotropy * cosine, 1.0e-3);
-    return (1.0 - g2) * (1.0 + cosine * cosine) / (8.0 * PI * denom * sqrt(denom));
-}
-
 void main()
 {
     const uvec2 pixel  = gl_GlobalInvocationID.xy;
@@ -58,24 +50,26 @@ void main()
     if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y) || face >= uint(extent.z))
         return;
 
-    const vec2  uv             = ((vec2(pixel) + vec2(0.5)) / vec2(extent.xy)) * 2.0 - 1.0;
-    const vec3  view_direction = cube_direction(face, uv);
-    const float sun_length     = length(Push.SunDirectionAndRadius.xyz);
-    const bool  has_sun        = Push.SunRadianceAndAvailability.y > 0.5 && sun_length > 1.0e-6;
-    const vec3  sun_direction  = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
-    const float view_mu        = clamp(view_direction.y, -1.0, 1.0);
-    const vec2  lookup_uv      = vec2(view_mu * 0.5 + 0.5, 0.01);
-    const vec3  transmittance  = texture(sampler2D(Transmittance, LinearClampToEdgeSampler), lookup_uv).rgb;
-    const vec3  multi          = texture(sampler2D(Multiscattering, LinearClampToEdgeSampler), lookup_uv).rgb;
-    const float sun_cosine     = has_sun ? dot(view_direction, sun_direction) : -1.0;
-    const float rayleigh       = rayleigh_phase(sun_cosine);
-    const float mie            = mie_phase(sun_cosine, clamp(Push.OzoneAbsorption.a, -0.95, 0.95));
-    const vec3  phase          = Push.RayleighScattering.rgb * rayleigh + vec3(Push.MieAndOzone.x) * mie;
-    const float sun_radius     = clamp(Push.SunDirectionAndRadius.w, 0.0, 0.25);
-    const float sun_threshold  = cos(sun_radius);
-    const float sun_disc       = has_sun && sun_radius > 0.0 ? smoothstep(sun_threshold, 1.0, sun_cosine) : 0.0;
-    const float sun_radiance   = has_sun ? max(Push.SunRadianceAndAvailability.x, 0.0) : 0.0;
-    const vec3  sky_radiance   = (multi + phase * (1.0 - transmittance)) * sun_radiance;
-    const vec3  disc_radiance  = transmittance * sun_radiance * sun_disc;
+    const vec2              uv               = ((vec2(pixel) + vec2(0.5)) / vec2(extent.xy)) * 2.0 - 1.0;
+    const vec3              view_direction   = cube_direction(face, uv);
+    const float             sun_length       = length(Push.SunDirectionAndRadius.xyz);
+    const bool              has_sun          = Push.SunRadianceAvailabilityAndCaptureAltitude.y > 0.5 && sun_length > 1.0e-6;
+    const vec3              sun_direction    = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
+    const float             sun_cosine       = has_sun ? dot(view_direction, sun_direction) : -1.0;
+    const float             sun_radius       = clamp(Push.SunDirectionAndRadius.w, 0.0, 0.25);
+    const float             sun_threshold    = cos(sun_radius);
+    const float             sun_disc         = has_sun && sun_radius > 0.0 ? smoothstep(sun_threshold, 1.0, sun_cosine) : 0.0;
+    const float             sun_radiance     = has_sun ? max(Push.SunRadianceAvailabilityAndCaptureAltitude.x, 0.0) : 0.0;
+    const float             capture_altitude = clamp(Push.SunRadianceAvailabilityAndCaptureAltitude.z, 0.0, max(Push.RadiiAndScaleHeights.y - Push.RadiiAndScaleHeights.x, 0.0));
+    const vec3              camera_position  = vec3(0.0, Push.RadiiAndScaleHeights.x + capture_altitude, 0.0);
+    SkyAtmosphereParameters parameters;
+    parameters.RadiiAndScaleHeights               = Push.RadiiAndScaleHeights;
+    parameters.RayleighScatteringAndGroundAlbedoR = vec4(Push.RayleighScattering.rgb, Push.GroundAlbedoAndAmbient.x);
+    parameters.MieAndOzone                        = Push.MieAndOzone;
+    parameters.OzoneAbsorption                    = Push.OzoneAbsorption;
+    parameters.GroundAlbedoAndAmbient             = Push.GroundAlbedoAndAmbient;
+    vec3       transmittance_to_boundary;
+    const vec3 sky_radiance  = sky_integrate_radiance_segment(parameters, camera_position, view_direction, sun_direction, sun_radiance, -1.0, transmittance_to_boundary);
+    const vec3 disc_radiance = sky_sample_sun_transmittance(camera_position, sun_direction, parameters.RadiiAndScaleHeights) * sun_radiance * sun_disc;
     imageStore(Destination, ivec3(pixel, face), vec4(clamp(sky_radiance + disc_radiance, vec3(0.0), vec3(65000.0)), 1.0));
 }

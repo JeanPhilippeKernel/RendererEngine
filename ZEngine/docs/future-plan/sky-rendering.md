@@ -353,6 +353,22 @@ The atmosphere UBO is std140-aligned and checked with size and offset assertions
 
 The two aerial textures have an explicit payload: aerial in-scattering stores scene-linear RGB radiance and aerial transmittance stores RGB transmission. Alpha is unused or reserved with a documented value; it never ambiguously represents both radiance and coloured transmission. The initial two-texture representation costs little memory and avoids a colour-shifting scalar-alpha approximation. Any later packed representation requires matching HDR reference images before it replaces this baseline.
 
+The static multiscattering LUT has one shared spectral contract. Its coordinates are `u = 0.5 * (muSun + 1)` and `v = altitude / (atmosphereRadius - planetRadius)`, where `muSun` is the local-up cosine toward the sun. A texel stores `Mms = integral(Lms(omega) d omega) / Lsun`: the RGB angular integral of higher-order incident radiance, normalized by direct solar radiance. `Mms` consequently has steradian units. It excludes the local scattering coefficient, local extinction, all phase normalization, presentation tint, and solar radiance. It is not itself outgoing sky radiance and must never be added directly to a cubemap or a view LUT.
+
+The initial implementation uses a bounded isotropic-shell closure rather than claiming a full iterative solve. At the LUT sample point it computes the spectral scattering and extinction coefficients `sigmaS` and `sigmaT`, the direct-light scattering fraction `f = clamp((sigmaS / sigmaT) * (1 - TSun), 0, 1)`, and the retained-light probability `q = min(0.5 * f, 0.95)`. It stores `Mms = 4pi * f * q / (1 - q)`. The `0.5` represents the deliberately documented isotropic-shell return fraction; the `0.95` cap bounds the geometric series near opaque conditions. Because `sigmaS / sigmaT` is RGB, Rayleigh wavelength dependence is retained through both baking and consumption.
+
+Every ray integrator uses the same source terms at each sample, in kilometres:
+
+~~~text
+singleSource = (betaRayleigh * rhoRayleigh * RayleighPhase
+              + betaMie * rhoMie * MiePhase) * TSun * Lsun
+multipleSource = sigmaS * (Mms / (4pi)) * Lsun
+~~~
+
+`1 / (4pi)` is applied exactly once in `multipleSource`, as the isotropic phase normalization. The source-radiance cubemap, sky-view LUT, and aerial-perspective LUT call the same shader helper for this integration. The cubemap capture point is sea level (`0 km` above the planet radius) and uses the same implicit Lambertian ground closure as a view ray; it is therefore a true scene-linear radiance capture rather than a coefficient lookup. A future iterative Bruneton/Hillaire solve may replace the LUT producer only if it preserves this payload and consumer equation, or versions both together.
+
+Regression/reference checks for this contract include: zero scattering produces a zero `Mms` and zero multiple-scattering source; an isolated red/green/blue scattering coefficient produces an isolated matching source channel; and multiplying a stored `4pi` angular integral by the consumer's `1 / (4pi)` recovers the unnormalized isotropic source. Shader compilation covers the common helper from all three ray-integration entry points. HDR reference captures cover noon, sunset, below-horizon sun, elevated camera, and the ground boundary before numerical changes are accepted.
+
 All atmosphere shader paths handle zero-length rays, horizon tangents, cameras below the ground radius, cameras above the atmosphere radius, and sun directions below the horizon without generating NaN or infinity. Inputs are validated on the CPU, but shaders still guard divisions, square roots, phase-function denominators, and exponential ranges. Sun angular radius is converted to radians before upload.
 
 The captured source-radiance cubemap has a complete mip chain. Prefiltering selects source LOD from sample solid angle/PDF and source texel solid angle, avoiding rough-surface aliasing and fireflies. If hardware cannot linearly filter or generate the required HDR mip chain, the capability service chooses a shader downsample path or disables the affected quality tier.

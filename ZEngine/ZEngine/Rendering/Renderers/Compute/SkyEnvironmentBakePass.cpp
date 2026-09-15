@@ -1,7 +1,6 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Compute/SkyEnvironmentBakePass.h>
-#include <algorithm>
 
 using namespace ZEngine::Rendering::Specifications;
 
@@ -9,13 +8,14 @@ namespace ZEngine::Rendering::Renderers
 {
     namespace
     {
-        constexpr const char* kSourceRadianceName            = "SkyBakeSourceRadiance";
-        constexpr const char* kDiffuseIrradianceName         = "SkyBakeDiffuseIrradiance";
-        constexpr const char* kSpecularEnvironmentName       = "SkyBakeSpecularEnvironment";
-        constexpr const char* kAtmosphereTransmittanceName   = "SkyAtmosphereTransmittance";
-        constexpr const char* kAtmosphereMultiscatteringName = "SkyAtmosphereMultiscattering";
-        constexpr uint32_t    kLocalSize                     = 8;
-        constexpr uint32_t    kMaxSkyMipCount                = 16;
+        constexpr const char* kSourceRadianceName              = "SkyBakeSourceRadiance";
+        constexpr const char* kDiffuseIrradianceName           = "SkyBakeDiffuseIrradiance";
+        constexpr const char* kSpecularEnvironmentName         = "SkyBakeSpecularEnvironment";
+        constexpr const char* kAtmosphereTransmittanceName     = "SkyAtmosphereTransmittance";
+        constexpr const char* kAtmosphereMultiscatteringName   = "SkyAtmosphereMultiscattering";
+        constexpr uint32_t    kLocalSize                       = 8;
+        constexpr uint32_t    kMaxSkyMipCount                  = 16;
+        constexpr float       kSourceCaptureAltitudeKilometers = 0.0f;
 
         struct MipGenerationPushConstants
         {
@@ -52,16 +52,17 @@ namespace ZEngine::Rendering::Renderers
 
         struct AtmosphereSourceRadiancePushConstants
         {
-            AtmosphereStaticPushConstants StaticAtmosphere              = {};
-            float                         SunDirectionAndRadius[4]      = {};
-            float                         SunRadianceAndAvailability[4] = {};
+            AtmosphereStaticPushConstants StaticAtmosphere                             = {};
+            float                         SunDirectionAndRadius[4]                     = {};
+            float                         SunRadianceAvailabilityAndCaptureAltitude[4] = {};
+            float                         GroundAlbedoAndAmbient[4]                    = {};
         };
 
         static_assert(sizeof(MipGenerationPushConstants) == 16, "Sky mip push constants must match GLSL");
         static_assert(sizeof(DiffuseIrradiancePushConstants) == 16, "Diffuse irradiance push constants must match GLSL");
         static_assert(sizeof(SpecularPrefilterPushConstants) == 44, "Specular prefilter push constants must cover the GLSL layout");
         static_assert(sizeof(AtmosphereStaticPushConstants) == 64, "Atmosphere static push constants must match GLSL");
-        static_assert(sizeof(AtmosphereSourceRadiancePushConstants) == 96, "Atmosphere source push constants must match GLSL");
+        static_assert(sizeof(AtmosphereSourceRadiancePushConstants) == 112, "Atmosphere source push constants must match GLSL");
 
         AtmosphereStaticPushConstants MakeAtmosphereStaticPushConstants(const Scenes::AtmosphereSettings& atmosphere)
         {
@@ -137,7 +138,7 @@ namespace ZEngine::Rendering::Renderers
 
             VkImageSubresourceRange ranges[kMaxSkyMipCount] = {};
             for (uint32_t index = 0; index < kMaxSkyMipCount; ++index)
-                ranges[index] = MakeColorRange(std::min(index, mip_count - 1), 1);
+                ranges[index] = MakeColorRange(index < mip_count ? index : mip_count - 1, 1);
             pass->SetStorageImageArray("Destinations", texture_handle, ranges, kMaxSkyMipCount);
             return true;
         }
@@ -339,14 +340,19 @@ namespace ZEngine::Rendering::Renderers
         if (!bake || resolution == 0)
             return;
 
-        AtmosphereSourceRadiancePushConstants push = {};
-        push.StaticAtmosphere                      = MakeAtmosphereStaticPushConstants(bake->Config.Atmosphere);
-        push.SunDirectionAndRadius[0]              = bake->CelestialLight.DirectionToLight[0];
-        push.SunDirectionAndRadius[1]              = bake->CelestialLight.DirectionToLight[1];
-        push.SunDirectionAndRadius[2]              = bake->CelestialLight.DirectionToLight[2];
-        push.SunDirectionAndRadius[3]              = bake->Config.Atmosphere.SunAngularRadiusRadians;
-        push.SunRadianceAndAvailability[0]         = Scenes::ConvertSunIlluminanceToSceneRadiance(bake->Config.Atmosphere.SunIlluminanceLux);
-        push.SunRadianceAndAvailability[1]         = bake->CelestialLight.IsAvailable ? 1.0f : 0.0f;
+        AtmosphereSourceRadiancePushConstants push        = {};
+        push.StaticAtmosphere                             = MakeAtmosphereStaticPushConstants(bake->Config.Atmosphere);
+        push.SunDirectionAndRadius[0]                     = bake->CelestialLight.DirectionToLight[0];
+        push.SunDirectionAndRadius[1]                     = bake->CelestialLight.DirectionToLight[1];
+        push.SunDirectionAndRadius[2]                     = bake->CelestialLight.DirectionToLight[2];
+        push.SunDirectionAndRadius[3]                     = bake->Config.Atmosphere.SunAngularRadiusRadians;
+        push.SunRadianceAvailabilityAndCaptureAltitude[0] = Scenes::ConvertSunIlluminanceToSceneRadiance(bake->Config.Atmosphere.SunIlluminanceLux);
+        push.SunRadianceAvailabilityAndCaptureAltitude[1] = bake->CelestialLight.IsAvailable ? 1.0f : 0.0f;
+        push.SunRadianceAvailabilityAndCaptureAltitude[2] = kSourceCaptureAltitudeKilometers;
+        push.GroundAlbedoAndAmbient[0]                    = bake->Config.Atmosphere.GroundAlbedo[0];
+        push.GroundAlbedoAndAmbient[1]                    = bake->Config.Atmosphere.GroundAlbedo[1];
+        push.GroundAlbedoAndAmbient[2]                    = bake->Config.Atmosphere.GroundAlbedo[2];
+        push.GroundAlbedoAndAmbient[3]                    = bake->Config.Atmosphere.GroundAmbientIrradiance;
 
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
@@ -404,8 +410,9 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         for (uint32_t mip = 1; mip < mip_count; ++mip)
         {
-            const uint32_t                   resolution = std::max(1u, GetWidth(device, source) >> mip);
-            const MipGenerationPushConstants push       = {.SourceMip = mip - 1, .DestinationMip = mip, .DestinationResolution = resolution};
+            const uint32_t                   downsampled_resolution = GetWidth(device, source) >> mip;
+            const uint32_t                   resolution             = downsampled_resolution > 1u ? downsampled_resolution : 1u;
+            const MipGenerationPushConstants push                   = {.SourceMip = mip - 1, .DestinationMip = mip, .DestinationResolution = resolution};
             command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
             command_buffer->Dispatch((resolution + kLocalSize - 1) / kLocalSize, (resolution + kLocalSize - 1) / kLocalSize, 6);
             MakeMipVisible(device, command_buffer, source, mip);
@@ -507,8 +514,9 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         for (uint32_t mip = 0; mip < mip_count; ++mip)
         {
-            const uint32_t                       resolution = std::max(1u, base_resolution >> mip);
-            const SpecularPrefilterPushConstants push       = {
+            const uint32_t                       downsampled_resolution = base_resolution >> mip;
+            const uint32_t                       resolution             = downsampled_resolution > 1u ? downsampled_resolution : 1u;
+            const SpecularPrefilterPushConstants push                   = {
                 .Resolution     = resolution,
                 .MipLevel       = mip,
                 .SampleCount    = bake_settings.SpecularSampleCount,

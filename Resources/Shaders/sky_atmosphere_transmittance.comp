@@ -13,23 +13,45 @@ layout(push_constant) uniform AtmosphereStaticPushConstants
 }
 Push;
 
+bool ray_sphere_intersection(vec3 origin, vec3 direction, float radius, out float near_distance, out float far_distance)
+{
+    const float projection  = dot(origin, direction);
+    const float determinant = projection * projection - dot(origin, origin) + radius * radius;
+    if (determinant < 0.0)
+        return false;
+
+    const float root = sqrt(determinant);
+    near_distance    = -projection - root;
+    far_distance     = -projection + root;
+    return far_distance >= 0.0;
+}
+
+bool ground_intersection(vec3 position, vec3 direction, float planet_radius, out float distance)
+{
+    if (length(position) <= planet_radius + 1.0e-4 && dot(position, direction) < 0.0)
+    {
+        distance = 0.0;
+        return true;
+    }
+
+    float near_distance = 0.0;
+    float far_distance  = 0.0;
+    if (!ray_sphere_intersection(position, direction, planet_radius, near_distance, far_distance) || near_distance <= 1.0e-4)
+        return false;
+
+    distance = near_distance;
+    return true;
+}
+
+float ozone_density(float height, vec4 mie_and_ozone)
+{
+    return max(1.0 - abs(height - mie_and_ozone.z) / max(mie_and_ozone.w, 1.0e-3), 0.0);
+}
+
 const float PI                = 3.14159265358979323846;
 const uint  INTEGRATION_STEPS = 24u;
 
-float       distance_to_atmosphere(vec3 position, vec3 direction, float atmosphere_radius)
-{
-    const float b    = dot(position, direction);
-    const float c    = dot(position, position) - atmosphere_radius * atmosphere_radius;
-    const float disc = max(b * b - c, 0.0);
-    return max(-b + sqrt(disc), 0.0);
-}
-
-float ozone_density(float height, float center, float thickness)
-{
-    return max(1.0 - abs(height - center) / max(thickness, 1.0e-3), 0.0);
-}
-
-void main()
+void        main()
 {
     const uvec2 pixel  = gl_GlobalInvocationID.xy;
     const ivec2 extent = imageSize(Destination);
@@ -45,17 +67,32 @@ void main()
     const float mu                = clamp(uv.x * 2.0 - 1.0, -1.0, 1.0);
     const vec3  position          = vec3(0.0, planet_radius + altitude, 0.0);
     const vec3  direction         = vec3(sqrt(max(1.0 - mu * mu, 0.0)), mu, 0.0);
-    const float distance          = distance_to_atmosphere(position, direction, atmosphere_radius);
-    const float step_length       = distance / float(INTEGRATION_STEPS);
+    float       atmosphere_near   = 0.0;
+    float       atmosphere_far    = 0.0;
+    if (!ray_sphere_intersection(position, direction, atmosphere_radius, atmosphere_near, atmosphere_far))
+    {
+        imageStore(Destination, ivec2(pixel), vec4(0.0));
+        return;
+    }
 
-    vec3        optical_depth     = vec3(0.0);
+    float ground_distance = 0.0;
+    if (ground_intersection(position, direction, planet_radius, ground_distance))
+    {
+        imageStore(Destination, ivec2(pixel), vec4(0.0));
+        return;
+    }
+
+    const float distance      = max(atmosphere_far, 0.0);
+    const float step_length   = distance / float(INTEGRATION_STEPS);
+
+    vec3        optical_depth = vec3(0.0);
     for (uint step = 0u; step < INTEGRATION_STEPS; ++step)
     {
         const float sample_distance  = (float(step) + 0.5) * step_length;
         const float sample_height    = max(length(position + direction * sample_distance) - planet_radius, 0.0);
         const float rayleigh         = exp(-sample_height / rayleigh_height);
         const float mie              = exp(-sample_height / mie_height);
-        const float ozone            = ozone_density(sample_height, Push.MieAndOzone.z, Push.MieAndOzone.w);
+        const float ozone            = ozone_density(sample_height, Push.MieAndOzone);
         optical_depth               += (Push.RayleighScattering.rgb * rayleigh + vec3(Push.MieAndOzone.x + Push.MieAndOzone.y) * mie + Push.OzoneAbsorption.rgb * ozone) * step_length;
     }
 

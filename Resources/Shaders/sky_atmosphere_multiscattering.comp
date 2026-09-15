@@ -1,4 +1,5 @@
 #version 460
+#extension GL_GOOGLE_include_directive : require
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -15,6 +16,8 @@ layout(push_constant) uniform AtmosphereStaticPushConstants
 }
 Push;
 
+#include "sky_atmosphere_common.glsl"
+
 void main()
 {
     const uvec2 pixel  = gl_GlobalInvocationID.xy;
@@ -22,12 +25,20 @@ void main()
     if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y))
         return;
 
-    const vec2  uv            = (vec2(pixel) + vec2(0.5)) / vec2(extent);
-    const vec3  transmittance = texture(sampler2D(Transmittance, LinearClampToEdgeSampler), uv).rgb;
-    const float altitude      = uv.y * max(Push.RadiiAndScaleHeights.y - Push.RadiiAndScaleHeights.x, 0.0);
-    const float rayleigh      = exp(-altitude / max(Push.RadiiAndScaleHeights.z, 1.0e-3));
-    const float mie           = exp(-altitude / max(Push.RadiiAndScaleHeights.w, 1.0e-3));
-    const vec3  scattering    = Push.RayleighScattering.rgb * rayleigh + vec3(Push.MieAndOzone.x) * mie;
-    const vec3  multi         = scattering * (1.0 - transmittance) / max(vec3(1.0) - 0.35 * scattering, vec3(1.0e-3));
+    const vec2  uv                      = (vec2(pixel) + vec2(0.5)) / vec2(extent);
+    const vec3  transmittance           = texture(sampler2D(Transmittance, LinearClampToEdgeSampler), uv).rgb;
+    const float altitude                = uv.y * max(Push.RadiiAndScaleHeights.y - Push.RadiiAndScaleHeights.x, 0.0);
+    const float rayleigh                = exp(-altitude / max(Push.RadiiAndScaleHeights.z, 1.0e-3));
+    const float mie                     = exp(-altitude / max(Push.RadiiAndScaleHeights.w, 1.0e-3));
+    const float ozone                   = sky_ozone_density(altitude, Push.MieAndOzone);
+    const vec3  scattering              = Push.RayleighScattering.rgb * rayleigh + vec3(Push.MieAndOzone.x) * mie;
+    const vec3  extinction              = scattering + vec3(Push.MieAndOzone.y) * mie + Push.OzoneAbsorption.rgb * ozone;
+
+    // M_ms is the angular integral of higher-order incident radiance divided
+    // by direct solar radiance.  The bounded return probability represents an
+    // isotropic scattering event that remains inside the atmospheric shell.
+    const vec3  single_scatter_fraction = clamp(scattering / max(extinction, vec3(1.0e-6)) * (vec3(1.0) - transmittance), vec3(0.0), vec3(1.0));
+    const vec3  return_probability      = min(0.5 * single_scatter_fraction, vec3(0.95));
+    const vec3  multi                   = (4.0 * SKY_ATMOSPHERE_PI) * single_scatter_fraction * return_probability / max(vec3(1.0) - return_probability, vec3(1.0e-3));
     imageStore(Destination, ivec2(pixel), vec4(max(multi, vec3(0.0)), 1.0));
 }
