@@ -97,6 +97,36 @@ namespace
         void Execute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceInspectorPtr /*inspector*/, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderPasses::RenderPass* const /*pass*/, Rendering::Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
     };
 
+    struct ToneMappingOutputPass final : IRenderGraphCallbackPass
+    {
+        bool Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const builder, RenderGraphResourceInspectorPtr /*inspector*/) override
+        {
+            builder->WriteColorAttachment(
+                RendererResourceName::FrameColorRenderTargetName,
+                {
+                .IsUsageSampled = true,
+                .Width          = 1,
+                .Height         = 1,
+                .Format         = ZEngine::Rendering::Specifications::ImageFormat::R8G8B8A8_UNORM,
+                .LoadOp         = ZEngine::Rendering::Specifications::LoadOperation::CLEAR,
+                });
+            return true;
+        }
+
+        void Execute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceInspectorPtr /*inspector*/, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderPasses::RenderPass* const /*pass*/, Rendering::Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
+    };
+
+    struct DisplayOverlayPass final : IRenderGraphCallbackPass
+    {
+        bool Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const builder, RenderGraphResourceInspectorPtr /*inspector*/) override
+        {
+            builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = ZEngine::Rendering::Specifications::LoadOperation::LOAD});
+            return true;
+        }
+
+        void Execute(Hardwares::VulkanDevicePtr const /*device*/, RenderGraphResourceInspectorPtr /*inspector*/, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderPasses::RenderPass* const /*pass*/, Rendering::Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const /*command_buffer*/) override {}
+    };
+
     void TestReadbackCallback(const void* /*data*/, size_t /*size*/, void* /*context*/) {}
 } // namespace
 
@@ -1217,6 +1247,60 @@ TEST(RenderGraphTopologyTest, HandlesWriteAfterWrite)
     EXPECT_EQ(order[0], 0u);
     EXPECT_EQ(order[1], 1u);
 
+    manager.Shutdown();
+}
+
+TEST(RenderGraphTopologyTest, KeepsDisplayOverlayAfterToneMapping)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto& arena       = manager.MainArena;
+
+    auto  device      = std::make_unique<Hardwares::VulkanDevice>();
+    device->Arena     = &arena;
+    RenderGraph graph = {};
+    graph.Device      = device.get();
+    graph.FrameArena.Initialize(ZMega(1), arena.m_mem_page_size);
+    graph.PersistentPasses.init(&arena, 2);
+    graph.ImportedResources.init(&arena, 1);
+    graph.ImportedResourceIndex.init(&arena, 2);
+    graph.QueryPools.init(&arena, 1);
+    graph.QueryPoolIndex.init(&arena, 2);
+
+    RenderGraphResourceBuilder   builder   = {};
+    RenderGraphResourceInspector inspector = {};
+    builder.Initialize(&graph);
+    inspector.Initialize(&graph);
+    graph.ResourceBuilder              = &builder;
+    graph.ResourceInspector            = &inspector;
+
+    ToneMappingOutputPass tone_mapping = {};
+    DisplayOverlayPass    grid_overlay = {};
+    graph.AddCallbackPass("Tone Mapping", &tone_mapping);
+    graph.AddCallbackPass("Grid Overlay", &grid_overlay);
+    graph.Register();
+
+    Array<uint32_t> order;
+    order.init(&arena, 2);
+    Array<RGPassDependency> dependencies;
+    dependencies.init(&arena, 2);
+
+    ASSERT_EQ(graph.Resources.size(), 1u);
+    ASSERT_EQ(graph.Resources[0].LatestVersion, 2u);
+    ASSERT_EQ(graph.Passes[1].Writes.size(), 1u);
+    EXPECT_EQ(graph.Passes[1].Writes[0].Access, RGAccess::ColorReadWrite);
+    EXPECT_EQ(graph.Passes[1].Writes[0].LoadOp, ZEngine::Rendering::Specifications::LoadOperation::LOAD);
+    EXPECT_TRUE(ValidatePassDeclarations(&arena, graph.Passes, graph.Resources));
+
+    ASSERT_TRUE(BuildPassTopology(&arena, graph.Passes, order, nullptr, &dependencies));
+    ASSERT_EQ(order.size(), 2u);
+    EXPECT_EQ(order[0], 0u);
+    EXPECT_EQ(order[1], 1u);
+    ASSERT_EQ(dependencies.size(), 1u);
+    EXPECT_EQ(dependencies[0].From, 0u);
+    EXPECT_EQ(dependencies[0].To, 1u);
+
+    graph.FrameArena.Shutdown();
     manager.Shutdown();
 }
 
