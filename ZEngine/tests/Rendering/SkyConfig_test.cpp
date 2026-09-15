@@ -1,4 +1,5 @@
 #include <ZEngine/Rendering/Renderers/Compute/SkyAtmosphereViewPass.h>
+#include <ZEngine/Rendering/Renderers/Compute/SkyEnvironmentBakePass.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Rendering/Scenes/SkyConfigSerialization.h>
 #include <gtest/gtest.h>
@@ -9,12 +10,15 @@ using namespace ZEngine::Rendering::Scenes;
 
 TEST(SkyAtmosphereViewPassTest, ComputeCallbacksDeclareTheirExactShaderPushConstantBlocks)
 {
-    ZEngine::Rendering::Renderers::SkyViewLutPass        sky_view = {};
-    ZEngine::Rendering::Renderers::AerialPerspectivePass aerial   = {};
+    ZEngine::Rendering::Renderers::SkyViewLutPass                  sky_view = {};
+    ZEngine::Rendering::Renderers::AerialPerspectivePass           aerial   = {};
+    ZEngine::Rendering::Renderers::SkyAtmosphereSourceRadiancePass source(nullptr);
 
     EXPECT_EQ(sky_view.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::AtmosphereViewPushConstants));
     EXPECT_EQ(aerial.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::AtmosphereViewPushConstants));
     EXPECT_EQ(sky_view.GetComputePushConstantSize(), 128u);
+    EXPECT_EQ(source.GetComputePushConstantSize(), 112u);
+    EXPECT_LE(source.GetComputePushConstantSize(), 128u);
 }
 
 TEST(SkyConfigTest, DefaultConfigurationIsAtmosphereAndHasNoRuntimeReferences)
@@ -50,6 +54,24 @@ TEST(SkyConfigTest, AtmosphereIlluminanceUsesTheDocumentedSceneRadianceScale)
     EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(ReferenceSunIlluminanceLux), 1.0f);
     EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(ReferenceSunIlluminanceLux * 0.5f), 0.5f);
     EXPECT_FLOAT_EQ(ConvertSunIlluminanceToSceneRadiance(StandardNoonSunIlluminanceLux), 20.0f);
+}
+
+TEST(SkyConfigTest, MultiscatteringContractIsBoundedAndUsesOneIsotropicNormalization)
+{
+    using namespace AtmosphereScatteringContract;
+
+    EXPECT_FLOAT_EQ(MakeAngularIntegral(0.0f), 0.0f);
+    EXPECT_NEAR(MakeAngularIntegral(1.0f) * IsotropicPhaseNormalization, 1.0f, 1.0e-6f);
+
+    // The source factor multiplies each local RGB scattering coefficient; it
+    // has no scalar density or cross-channel weighting term.
+    constexpr float red_scattering   = 0.006f;
+    constexpr float green_scattering = 0.0f;
+    constexpr float blue_scattering  = 0.0f;
+    constexpr float source_factor    = MakeAngularIntegral(0.6f) * IsotropicPhaseNormalization * 20.0f;
+    EXPECT_GT(red_scattering * source_factor, 0.0f);
+    EXPECT_FLOAT_EQ(green_scattering * source_factor, 0.0f);
+    EXPECT_FLOAT_EQ(blue_scattering * source_factor, 0.0f);
 }
 
 TEST(SkyConfigTest, MissingOptionalReferencesRemainAValidFallbackConfiguration)

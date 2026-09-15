@@ -48,12 +48,21 @@ function(add_shader_compiler shader stage suffix)
     set(output_name "${shader_name}_${suffix}.spv")
     set(shader_output "${ShaderOutputPath}/${output_name}")
     set(packaged_outputs "${shader_output}" "${ShaderBinOutputPath}/${output_name}")
+    set(shader_dependencies "${shader}")
+
+    if (shader_name STREQUAL "sky_atmosphere_multiscattering")
+        list(APPEND shader_dependencies "${ShaderPath}/sky_atmosphere_common.glsl")
+    elseif (shader_name STREQUAL "sky_atmosphere_sky_view" OR shader_name STREQUAL "sky_atmosphere_aerial_perspective" OR shader_name STREQUAL "sky_atmosphere_source_radiance")
+        list(APPEND shader_dependencies
+            "${ShaderPath}/sky_atmosphere_common.glsl"
+            "${ShaderPath}/sky_atmosphere_integrator.glsl")
+    endif()
 
     add_custom_command(
         OUTPUT ${packaged_outputs}
         COMMAND $<TARGET_FILE:glslang-standalone> "-I${ShaderPath}" "-V" ${Flags} "-o" "${shader_output}" "${shader}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${shader_output}" "${ShaderBinOutputPath}/${output_name}"
-        DEPENDS glslang-standalone "${shader}"
+        DEPENDS glslang-standalone ${shader_dependencies}
         VERBATIM
     )
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
