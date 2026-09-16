@@ -37,15 +37,18 @@ namespace ZEngine::Rendering::Renderers
         m_active = snapshot && snapshot->Config.IsAtmosphere() && snapshot->Atmosphere.Valid() && snapshot->CelestialLight.IsAvailable && snapshot->CelestialLight.IsValid();
         if (!m_active)
         {
+            m_config       = {};
             m_presentation = {};
             m_celestial    = {};
             m_atmosphere   = {};
             return;
         }
 
-        m_presentation = presentation;
-        m_celestial    = snapshot->CelestialLight;
-        m_atmosphere   = snapshot->Atmosphere;
+        m_config            = snapshot->Config;
+        m_presentation      = presentation;
+        m_celestial         = snapshot->CelestialLight;
+        m_atmosphere        = snapshot->Atmosphere;
+        m_config.Atmosphere = Scenes::MakeAtmosphereViewSettings(snapshot->Config.Atmosphere, presentation.Atmosphere);
     }
 
     void SkyCompositePass::SetCameraDepthConvention(bool uses_reverse_z)
@@ -60,7 +63,11 @@ namespace ZEngine::Rendering::Renderers
 
     bool SkyCompositePass::IsViewActive() const
     {
-        return m_active;
+        if (!m_active)
+            return false;
+
+        const Scenes::AtmosphereViewClass view_class = Scenes::ClassifyAtmosphereView(m_config.Atmosphere, m_camera_pos);
+        return view_class == Scenes::AtmosphereViewClass::InsideAtmosphere || view_class == Scenes::AtmosphereViewClass::OutsideAtmosphere;
     }
 
     bool SkyCompositePass::Register(Hardwares::VulkanDevicePtr const device, cstring /*name*/, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
@@ -124,26 +131,27 @@ namespace ZEngine::Rendering::Renderers
         if (!IsViewActive() || !device || !scene)
             return false;
 
-        auto* const               graphic_pass = static_cast<RenderPasses::GraphicPass*>(pass);
-        SkyCompositePushConstants push         = {};
-        push.AerialMaxDistanceAndDepthClear[0] = kAerialMaxDistance;
-        push.AerialMaxDistanceAndDepthClear[1] = m_uses_reverse_z ? 0.0f : 1.0f;
-        push.AerialMaxDistanceAndDepthClear[2] = 1.0e-5f;
-        push.AerialMaxDistanceAndDepthClear[3] = m_presentation.Atmosphere.WorldUnitsPerMeter > 0.0f ? m_presentation.Atmosphere.WorldUnitsPerMeter * 1000.0f : 1.0f;
-        push.PlanetCenterRelative[0]           = (m_presentation.Atmosphere.PlanetCenterWorld[0] - m_camera_pos.x) / push.AerialMaxDistanceAndDepthClear[3];
-        push.PlanetCenterRelative[1]           = (m_presentation.Atmosphere.PlanetCenterWorld[1] - m_camera_pos.y) / push.AerialMaxDistanceAndDepthClear[3];
-        push.PlanetCenterRelative[2]           = (m_presentation.Atmosphere.PlanetCenterWorld[2] - m_camera_pos.z) / push.AerialMaxDistanceAndDepthClear[3];
-        push.AtmosphereRadiiAndPadding[0]      = m_presentation.Atmosphere.PlanetRadiusKilometers;
-        push.AtmosphereRadiiAndPadding[1]      = m_presentation.Atmosphere.AtmosphereRadiusKilometers;
-        push.SunDirectionAndRadius[0]          = m_celestial.DirectionToLight[0];
-        push.SunDirectionAndRadius[1]          = m_celestial.DirectionToLight[1];
-        push.SunDirectionAndRadius[2]          = m_celestial.DirectionToLight[2];
-        push.SunDirectionAndRadius[3]          = m_presentation.Atmosphere.SunAngularRadiusRadians;
-        const float sun_radiance               = Scenes::ConvertSunIlluminanceToSceneRadiance(m_presentation.Atmosphere.SunIlluminanceLux) * m_presentation.EnvironmentIntensity;
-        push.SunRadianceAndAvailability[0]     = sun_radiance * m_presentation.EnvironmentTint[0];
-        push.SunRadianceAndAvailability[1]     = sun_radiance * m_presentation.EnvironmentTint[1];
-        push.SunRadianceAndAvailability[2]     = sun_radiance * m_presentation.EnvironmentTint[2];
-        push.SunRadianceAndAvailability[3]     = m_celestial.IsAvailable ? 1.0f : 0.0f;
+        auto* const               graphic_pass       = static_cast<RenderPasses::GraphicPass*>(pass);
+        SkyCompositePushConstants push               = {};
+        push.AerialMaxDistanceAndDepthClear[0]       = kAerialMaxDistance;
+        push.AerialMaxDistanceAndDepthClear[1]       = m_uses_reverse_z ? 0.0f : 1.0f;
+        push.AerialMaxDistanceAndDepthClear[2]       = 1.0e-5f;
+        const Scenes::AtmosphereSettings& atmosphere = m_config.Atmosphere;
+        push.AerialMaxDistanceAndDepthClear[3]       = atmosphere.WorldUnitsPerMeter > 0.0f ? atmosphere.WorldUnitsPerMeter * 1000.0f : 1.0f;
+        push.PlanetCenterRelative[0]                 = (atmosphere.PlanetCenterWorld[0] - m_camera_pos.x) / push.AerialMaxDistanceAndDepthClear[3];
+        push.PlanetCenterRelative[1]                 = (atmosphere.PlanetCenterWorld[1] - m_camera_pos.y) / push.AerialMaxDistanceAndDepthClear[3];
+        push.PlanetCenterRelative[2]                 = (atmosphere.PlanetCenterWorld[2] - m_camera_pos.z) / push.AerialMaxDistanceAndDepthClear[3];
+        push.AtmosphereRadiiAndPadding[0]            = atmosphere.PlanetRadiusKilometers;
+        push.AtmosphereRadiiAndPadding[1]            = atmosphere.AtmosphereRadiusKilometers;
+        push.SunDirectionAndRadius[0]                = m_celestial.DirectionToLight[0];
+        push.SunDirectionAndRadius[1]                = m_celestial.DirectionToLight[1];
+        push.SunDirectionAndRadius[2]                = m_celestial.DirectionToLight[2];
+        push.SunDirectionAndRadius[3]                = atmosphere.SunAngularRadiusRadians;
+        const float sun_radiance                     = Scenes::ConvertSunIlluminanceToSceneRadiance(atmosphere.SunIlluminanceLux) * m_presentation.EnvironmentIntensity;
+        push.SunRadianceAndAvailability[0]           = sun_radiance * m_presentation.EnvironmentTint[0];
+        push.SunRadianceAndAvailability[1]           = sun_radiance * m_presentation.EnvironmentTint[1];
+        push.SunRadianceAndAvailability[2]           = sun_radiance * m_presentation.EnvironmentTint[2];
+        push.SunRadianceAndAvailability[3]           = m_celestial.IsAvailable ? 1.0f : 0.0f;
 
         command_buffer->SetViewport(graphic_pass->GetRenderAreaWidth(), graphic_pass->GetRenderAreaHeight());
         command_buffer->SetScissor(graphic_pass->GetRenderAreaWidth(), graphic_pass->GetRenderAreaHeight());

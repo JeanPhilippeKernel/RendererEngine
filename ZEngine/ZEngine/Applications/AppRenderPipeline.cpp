@@ -309,7 +309,7 @@ namespace ZEngine::Applications
         }
 
         ZUIRenderPass->SetPayload(overlay);
-        SceneRenderer->BeginSkyFrame();
+        SceneRenderer->BeginSkyFrame(camera);
         CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
         ZUIRenderPass->SetPayload(nullptr);
     }

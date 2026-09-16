@@ -108,6 +108,78 @@ namespace ZEngine::Rendering::Scenes
         float GroundAmbientIrradiance           = 0.5f;
     };
 
+    /// @brief Locates a camera relative to an analytic atmosphere's physical domain.
+    /// @details Scene world units become kilometres through
+    /// AtmosphereSettings::WorldUnitsPerMeter, matching the atmosphere shaders.
+    enum class AtmosphereViewClass : uint8_t
+    {
+        Invalid,
+        BelowGround,
+        InsideAtmosphere,
+        OutsideAtmosphere,
+    };
+
+    /// @brief Combines baked physical inputs with view-local planet placement.
+    /// @details Moving a planet or changing scene scale affects each view but
+    /// does not invalidate a published static atmosphere LUT. All remaining
+    /// physical settings stay paired with the snapshot that produced those LUTs.
+    [[nodiscard]] inline AtmosphereSettings MakeAtmosphereViewSettings(const AtmosphereSettings& baked_settings, const AtmosphereSettings& view_settings)
+    {
+        AtmosphereSettings result   = baked_settings;
+        result.PlanetCenterWorld[0] = view_settings.PlanetCenterWorld[0];
+        result.PlanetCenterWorld[1] = view_settings.PlanetCenterWorld[1];
+        result.PlanetCenterWorld[2] = view_settings.PlanetCenterWorld[2];
+        result.WorldUnitsPerMeter   = view_settings.WorldUnitsPerMeter;
+        return result;
+    }
+
+    /// @brief Classifies a world-space camera position against an atmosphere.
+    /// @details A camera on the implicit planet surface is BelowGround because
+    /// the GPU integration contract requires a strictly positive altitude.
+    /// Invalid authoring or camera values never reach the shader path.
+    [[nodiscard]] inline AtmosphereViewClass ClassifyAtmosphereView(const AtmosphereSettings& atmosphere, const Core::Maths::Vec3f& camera_position)
+    {
+        if (!std::isfinite(camera_position.x) || !std::isfinite(camera_position.y) || !std::isfinite(camera_position.z) || !std::isfinite(atmosphere.PlanetCenterWorld[0]) || !std::isfinite(atmosphere.PlanetCenterWorld[1]) || !std::isfinite(atmosphere.PlanetCenterWorld[2]) || !std::isfinite(atmosphere.WorldUnitsPerMeter) || atmosphere.WorldUnitsPerMeter <= 0.0f || !std::isfinite(atmosphere.PlanetRadiusKilometers) || atmosphere.PlanetRadiusKilometers <= 0.0f || !std::isfinite(atmosphere.AtmosphereRadiusKilometers) ||
+            atmosphere.AtmosphereRadiusKilometers <= atmosphere.PlanetRadiusKilometers)
+            return AtmosphereViewClass::Invalid;
+
+        const float world_units_per_kilometer = atmosphere.WorldUnitsPerMeter * 1000.0f;
+        if (!std::isfinite(world_units_per_kilometer) || world_units_per_kilometer <= 0.0f)
+            return AtmosphereViewClass::Invalid;
+
+        const float relative_x       = (camera_position.x - atmosphere.PlanetCenterWorld[0]) / world_units_per_kilometer;
+        const float relative_y       = (camera_position.y - atmosphere.PlanetCenterWorld[1]) / world_units_per_kilometer;
+        const float relative_z       = (camera_position.z - atmosphere.PlanetCenterWorld[2]) / world_units_per_kilometer;
+        const float distance_squared = relative_x * relative_x + relative_y * relative_y + relative_z * relative_z;
+        if (!std::isfinite(distance_squared))
+            return AtmosphereViewClass::Invalid;
+
+        const float planet_radius_squared     = atmosphere.PlanetRadiusKilometers * atmosphere.PlanetRadiusKilometers;
+        const float atmosphere_radius_squared = atmosphere.AtmosphereRadiusKilometers * atmosphere.AtmosphereRadiusKilometers;
+        if (!std::isfinite(planet_radius_squared) || !std::isfinite(atmosphere_radius_squared))
+            return AtmosphereViewClass::Invalid;
+        if (distance_squared <= planet_radius_squared)
+            return AtmosphereViewClass::BelowGround;
+        if (distance_squared < atmosphere_radius_squared)
+            return AtmosphereViewClass::InsideAtmosphere;
+        return AtmosphereViewClass::OutsideAtmosphere;
+    }
+
+    [[nodiscard]] inline cstring GetAtmosphereViewClassName(AtmosphereViewClass view_class)
+    {
+        switch (view_class)
+        {
+            case AtmosphereViewClass::BelowGround:
+                return "below ground";
+            case AtmosphereViewClass::InsideAtmosphere:
+                return "inside atmosphere";
+            case AtmosphereViewClass::OutsideAtmosphere:
+                return "outside atmosphere";
+            default:
+                return "invalid";
+        }
+    }
+
     /// @brief Artistic inputs for the analytic SkySphere presentation mode.
     struct SkySphereSettings
     {

@@ -1,9 +1,11 @@
 #include <Tetragrama/Controllers/EditorCameraController.h>
+#include <Tetragrama/Editor.h>
 #include <Tetragrama/EditorScene.h>
 #include <ZEngine/Core/Maths/MathUtils.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Rendering/Scenes/SceneRayQuery.h>
+#include <cmath>
 
 using namespace ZEngine::Rendering::Cameras;
 using namespace ZEngine::Core::Maths;
@@ -71,6 +73,27 @@ namespace
         out_radius = bounds.Radius;
         return true;
     }
+
+    bool GetEditorAtmosphereGroundConstraint(void* context, Vec3f& out_center, float& out_radius)
+    {
+        auto* editor = static_cast<Tetragrama::Editor*>(context);
+        if (!editor || !editor->ConstrainCameraToAtmosphereGround || !editor->CurrentScene)
+            return false;
+
+        auto* scene = static_cast<Tetragrama::EditorScene*>(editor->CurrentScene);
+        if (!scene || !scene->Sky.IsAtmosphere())
+            return false;
+
+        const auto& atmosphere                = scene->Sky.Atmosphere;
+        const float world_units_per_kilometer = atmosphere.WorldUnitsPerMeter * 1000.0f;
+        const float radius                    = atmosphere.PlanetRadiusKilometers * world_units_per_kilometer;
+        if (!std::isfinite(atmosphere.PlanetCenterWorld[0]) || !std::isfinite(atmosphere.PlanetCenterWorld[1]) || !std::isfinite(atmosphere.PlanetCenterWorld[2]) || !std::isfinite(radius) || radius <= 0.0f)
+            return false;
+
+        out_center = {atmosphere.PlanetCenterWorld[0], atmosphere.PlanetCenterWorld[1], atmosphere.PlanetCenterWorld[2]};
+        out_radius = radius;
+        return true;
+    }
 } // namespace
 
 namespace Tetragrama::Controllers
@@ -103,10 +126,11 @@ namespace Tetragrama::Controllers
         m_camera                     = ZPushStructCtorArgs(arena, FlyCamera, logicalW / logicalH, settings);
         m_camera->SetViewportSize(logicalW, logicalH);
 
-        m_camera->Hooks.Context            = app;
-        m_camera->Hooks.Raycast            = &RaycastEditorScene;
-        m_camera->Hooks.GetSelectionBounds = &GetEditorSelectionBounds;
-        m_camera->Hooks.GetSceneBounds     = &GetEditorSceneBounds;
+        m_camera->Hooks.Context             = app;
+        m_camera->Hooks.Raycast             = &RaycastEditorScene;
+        m_camera->Hooks.GetSelectionBounds  = &GetEditorSelectionBounds;
+        m_camera->Hooks.GetSceneBounds      = &GetEditorSceneBounds;
+        m_camera->Hooks.GetGroundConstraint = &GetEditorAtmosphereGroundConstraint;
 
         FlyCameraController::Initialize(input_manager, arena);
     }

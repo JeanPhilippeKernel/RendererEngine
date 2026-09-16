@@ -69,17 +69,15 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        m_config       = snapshot->Config;
-        m_presentation = presentation;
-        m_celestial    = snapshot->CelestialLight;
-        m_atmosphere   = snapshot->Atmosphere;
+        m_config            = snapshot->Config;
+        m_presentation      = presentation;
+        m_celestial         = snapshot->CelestialLight;
+        m_atmosphere        = snapshot->Atmosphere;
 
         // Scene placement is evaluated per view and does not affect the
         // planet-centred source capture. Ground values remain in the published
         // snapshot because they also contribute to source radiance and IBL.
-        for (uint32_t index = 0; index < 3; ++index)
-            m_config.Atmosphere.PlanetCenterWorld[index] = presentation.Atmosphere.PlanetCenterWorld[index];
-        m_config.Atmosphere.WorldUnitsPerMeter = presentation.Atmosphere.WorldUnitsPerMeter;
+        m_config.Atmosphere = Scenes::MakeAtmosphereViewSettings(snapshot->Config.Atmosphere, presentation.Atmosphere);
     }
 
     void SkyAtmosphereViewPass::SetCameraPosition(const Core::Maths::Vec3f& position)
@@ -98,7 +96,11 @@ namespace ZEngine::Rendering::Renderers
 
     bool SkyAtmosphereViewPass::IsViewActive() const
     {
-        return m_active && m_config.IsAtmosphere() && m_atmosphere.Valid() && m_celestial.IsAvailable && m_celestial.IsValid();
+        if (!m_active || !m_config.IsAtmosphere() || !m_atmosphere.Valid() || !m_celestial.IsAvailable || !m_celestial.IsValid())
+            return false;
+
+        const Scenes::AtmosphereViewClass view_class = Scenes::ClassifyAtmosphereView(m_config.Atmosphere, m_camera_pos);
+        return view_class == Scenes::AtmosphereViewClass::InsideAtmosphere || view_class == Scenes::AtmosphereViewClass::OutsideAtmosphere;
     }
 
     bool SkyAtmosphereViewPass::IsRenderableView(const RenderGraphFrameContext& frame_context) const

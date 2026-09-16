@@ -48,6 +48,25 @@ TEST(FlyCameraTest, FrameSnapshotContainsTheLatestCameraState)
     EXPECT_NEAR(frame.Position.z, 5.0f, 1e-6f);
 }
 
+TEST(FlyCameraTest, OptionalGroundConstraintKeepsTheCameraOutsideItsConfiguredSphere)
+{
+    FlyCamera camera(1.0f, {});
+    camera.Hooks.GetGroundConstraint = [](void*, Vec3f& center, float& radius) {
+        center = {0.0f, 0.0f, 0.0f};
+        radius = 5.0f;
+        return true;
+    };
+
+    camera.SetPosition({0.0f, 0.0f, 0.0f});
+    EXPECT_NEAR(camera.GetPosition().x, 0.0f, 1.0e-6f);
+    EXPECT_NEAR(camera.GetPosition().y, 5.0f, 1.0e-6f);
+    EXPECT_NEAR(camera.GetPosition().z, 0.0f, 1.0e-6f);
+
+    camera.Hooks.GetGroundConstraint = nullptr;
+    camera.SetPosition({0.0f, 0.0f, 0.0f});
+    EXPECT_NEAR(camera.GetPosition().y, 0.0f, 1.0e-6f);
+}
+
 TEST(FlyCameraTest, MouseLookAppliesPointerDelta)
 {
     CameraSetting settings = {};

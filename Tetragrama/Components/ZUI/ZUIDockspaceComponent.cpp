@@ -785,6 +785,14 @@ namespace Tetragrama::Components
                     if (drag_scalar_row("##sky_atm_radius_r", "Atmosphere Radius (km)", "##sky_atm_radius", &cfg.Atmosphere.AtmosphereRadiusKilometers, 1.0f, minimum_atmosphere_radius, 100100.0f))
                         mark_sky_dirty();
 
+                    if (stg_app)
+                    {
+                        const bool previous_ground_constraint = stg_app->ConstrainCameraToAtmosphereGround;
+                        ZUICheckbox(ctx, "Constrain editor camera to planet surface##sky_atm_camera_ground", &stg_app->ConstrainCameraToAtmosphereGround);
+                        if (stg_app->ConstrainCameraToAtmosphereGround != previous_ground_constraint)
+                            ZENGINE_CORE_INFO("[EditorCamera] Atmosphere ground constraint {}", stg_app->ConstrainCameraToAtmosphereGround ? "enabled" : "disabled")
+                    }
+
                     ZUISeparatorText(ctx, "Atmosphere / Molecular");
                     if (vector3_row("##sky_atm_rayleigh_scatter_r", "Rayleigh Scatter (1/km)", "##sky_atm_rayleigh_scatter", cfg.Atmosphere.RayleighScatteringPerKilometer, 0.0001f, true, k_rgb_labels))
                         mark_sky_dirty();

@@ -34,8 +34,8 @@ namespace ZEngine::Rendering::Renderers
         Hardwares::CommandBuffer* DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera);
         /// @brief Accepts an immutable main-thread sky snapshot carried by the frame mailbox.
         void                      ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision);
-        /// @brief Pins the published environment and selects it for all sky consumers this frame.
-        void                      BeginSkyFrame();
+        /// @brief Pins the published environment and selects it for this immutable camera frame.
+        void                      BeginSkyFrame(const Cameras::CameraFrameData& camera);
         void                      ApplyGridConfig(const Scenes::GridConfig& cfg);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
         Textures::TextureHandle   GetFrameOutput();
@@ -80,6 +80,7 @@ namespace ZEngine::Rendering::Renderers
         SkyEnvironmentDiffuseIrradiancePass*            m_sky_diffuse_irradiance_pass         = nullptr;
         SkyEnvironmentSpecularPrefilterPass*            m_sky_specular_prefilter_pass         = nullptr;
         bool                                            m_atmosphere_view_resources_supported = false;
+        Scenes::AtmosphereViewClass                     m_last_atmosphere_view_class          = Scenes::AtmosphereViewClass::Invalid;
     };
     ZDEFINE_PTR(GraphicRenderer);
 } // namespace ZEngine::Rendering::Renderers

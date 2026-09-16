@@ -48,6 +48,7 @@ namespace ZEngine::Rendering::Renderers
     private:
         [[nodiscard]] bool                IsViewActive() const;
 
+        Scenes::SkyConfig                 m_config         = {};
         Scenes::SkyConfig                 m_presentation   = {};
         Scenes::SkyCelestialLight         m_celestial      = {};
         Scenes::AtmosphereStaticResources m_atmosphere     = {};
