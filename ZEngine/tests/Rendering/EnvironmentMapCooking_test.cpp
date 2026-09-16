@@ -167,6 +167,8 @@ TEST(EnvironmentMapCookingTest, DeserializerRejectsTruncatedCookedArtifact)
 
     Bitmap corrupt = {};
     EXPECT_FALSE(DeserializeEnvironmentMapFile(artifact_path.c_str(), corrupt));
+    EnvironmentMapFileHeader truncated_header = {};
+    EXPECT_FALSE(ReadEnvironmentMapFileHeader(artifact_path.c_str(), truncated_header));
     std::error_code error;
     std::filesystem::remove(artifact_path, error);
 }

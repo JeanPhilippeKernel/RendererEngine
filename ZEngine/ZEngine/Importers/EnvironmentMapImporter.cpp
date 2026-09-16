@@ -21,13 +21,23 @@ namespace ZEngine::Importers
 {
     namespace
     {
-        void AddImportSetting(Core::VFS::MetaFileData& meta, const char* key, const char* value)
+        constexpr int k_rgba_channel_count = 4;
+
+        void          AddImportSetting(Core::VFS::MetaFileData& meta, const char* key, const char* value)
         {
             if (meta.SettingsCount >= Core::VFS::META_MAX_SETTINGS)
                 return;
             Core::VFS::MetaKeyValuePair& setting = meta.Settings[meta.SettingsCount++];
             std::snprintf(setting.Key, sizeof(setting.Key), "%s", key);
             std::snprintf(setting.Value, sizeof(setting.Value), "%s", value);
+        }
+
+        void FreeDecodedPixels(float* pixels, bool is_exr)
+        {
+            if (is_exr)
+                std::free(pixels);
+            else
+                stbi_image_free(pixels);
         }
     } // namespace
 
@@ -69,8 +79,8 @@ namespace ZEngine::Importers
 
     Core::VFS::VFSResult<void> EnvironmentMapImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {
-        // stb_image works on the filesystem, while the source identity and cooked
-        // artifact remain VFS paths. Resolve the source relative to its workspace.
+        // The decoders work on the filesystem, while the source identity and
+        // cooked artifact remain VFS paths. Resolve the source relative to its workspace.
         char        native[MAX_FILE_PATH_COUNT] = {};
         const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (working_space && working_space[0] != '\0')
@@ -78,7 +88,7 @@ namespace ZEngine::Importers
         else
             path.ToNative(native, sizeof(native));
 
-        int        width = 0, height = 0, channel = 0;
+        int        width = 0, height = 0;
         float*     image_data = nullptr;
         const bool is_exr     = path.Extension().Equals(".exr");
         if (is_exr)
@@ -89,15 +99,13 @@ namespace ZEngine::Importers
                 ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load EXR '{}': {}", native, error_message ? error_message : "unknown decoder error")
                 if (error_message)
                     FreeEXRErrorMessage(error_message);
-                if (image_data)
-                    std::free(image_data);
+                FreeDecodedPixels(image_data, true);
                 return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
             }
-            channel = STBI_rgb_alpha;
         }
         else
         {
-            image_data = const_cast<float*>(stbi_loadf(native, &width, &height, &channel, STBI_rgb_alpha));
+            image_data = stbi_loadf(native, &width, &height, nullptr, k_rgba_channel_count);
         }
         if (!image_data)
         {
@@ -107,20 +115,14 @@ namespace ZEngine::Importers
 
         if (!IsSupportedEquirectangularSource(width, height, image_data))
         {
-            if (is_exr)
-                std::free(image_data);
-            else
-                stbi_image_free(image_data);
-            ZENGINE_CORE_ERROR("EnvironmentMapImporter: '{}' must be a finite, non-negative 2:1 HDR equirectangular image with a face size no larger than {}", native, AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE)
+            FreeDecodedPixels(image_data, is_exr);
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: '{}' must be a finite, non-negative 2:1 HDRI equirectangular image with a face size no larger than {}", native, AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE)
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
         }
 
         Core::Memory::TLSFSlab* slab     = Helpers::GetWorkerSlab();
-        Bitmap                  equirect = Bitmap::FromData(width, height, 1, STBI_rgb_alpha, BitmapFormat::Float, BitmapType::Texture2D, image_data);
-        if (is_exr)
-            std::free(image_data);
-        else
-            stbi_image_free(image_data);
+        Bitmap                  equirect = Bitmap::FromData(width, height, 1, k_rgba_channel_count, BitmapFormat::Float, BitmapType::Texture2D, image_data);
+        FreeDecodedPixels(image_data, is_exr);
 
         Bitmap cubemap                           = BitmapConvert::EquirectToCubemap(equirect, slab);
 

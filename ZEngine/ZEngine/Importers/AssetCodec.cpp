@@ -21,6 +21,19 @@ using ZEngine::Core::VFS::VFSPath;
 
 namespace ZEngine::Importers::AssetCodec
 {
+    namespace
+    {
+        bool HasExactEnvironmentMapFileSize(std::ifstream& input, const EnvironmentMapFileHeader& header)
+        {
+            input.seekg(0, std::ios::end);
+            if (!input.good())
+                return false;
+
+            const std::streamoff expected_file_size = static_cast<std::streamoff>(header.HeaderByteSize) + static_cast<std::streamoff>(header.BufferByteSize);
+            return input.tellg() == expected_file_size;
+        }
+    } // namespace
+
     // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
     static bool WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
     {
@@ -366,13 +379,13 @@ namespace ZEngine::Importers::AssetCodec
         if (!in.good() || !IsEnvironmentMapFileHeaderValid(header))
             return false;
 
-        in.seekg(0, std::ios::end);
-        const std::streamoff expected_file_size = static_cast<std::streamoff>(header.HeaderByteSize) + static_cast<std::streamoff>(header.BufferByteSize);
-        if (in.tellg() != expected_file_size)
+        if (!HasExactEnvironmentMapFileSize(in, header))
             return false;
 
         in.seekg(static_cast<std::streamoff>(header.HeaderByteSize), std::ios::beg);
         Rendering::Buffers::Bitmap cubemap = Rendering::Buffers::Bitmap::Create(static_cast<int>(header.FaceWidth), static_cast<int>(header.FaceHeight), static_cast<int>(header.LayerCount), static_cast<int>(header.Channel), Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::CubeMap);
+        if (!cubemap.Buffer)
+            return false;
         in.read(reinterpret_cast<char*>(cubemap.Buffer), static_cast<std::streamsize>(header.BufferByteSize));
         if (!in.good())
             return false;
@@ -387,7 +400,7 @@ namespace ZEngine::Importers::AssetCodec
         if (!in.is_open())
             return false;
         in.read(reinterpret_cast<char*>(&out_header), sizeof(EnvironmentMapFileHeader));
-        return in.good() && IsEnvironmentMapFileHeaderValid(out_header);
+        return in.good() && IsEnvironmentMapFileHeaderValid(out_header) && HasExactEnvironmentMapFileSize(in, out_header);
     }
 
     Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata)

@@ -527,7 +527,7 @@ namespace ZEngine::Rendering::Renderers
             const Scenes::AtmosphereStaticResources atmosphere      = m_sky_environment.GetActiveBakeAtmosphere();
             const bool                              owns_atmosphere = m_sky_environment.ActiveBakeOwnsAtmosphere();
             const EnvironmentLightingResources      lighting        = m_sky_environment.GetActiveBakeLighting();
-            const Scenes::SkyEnvironmentBakeResult  result          = m_sky_environment.CompleteBake(revision, source_radiance, false);
+            m_sky_environment.CompleteBake(revision, source_radiance, false);
             DiscardSkyResources({.Atmosphere = owns_atmosphere ? atmosphere : Scenes::AtmosphereStaticResources{}, .SourceRadiance = source_radiance, .Lighting = lighting});
             ZENGINE_CORE_INFO("[SkyEnvironment] Cancelled stale revision {} between GPU bake stages", revision)
             StartPendingSkyBake();
