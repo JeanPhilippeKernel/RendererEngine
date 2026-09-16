@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <string>
 #include <system_error>
 #include <vector>
 
@@ -57,12 +58,13 @@ TEST(EnvironmentMapCookingTest, TinyExrDecodesAFloatEquirectangularSource)
     constexpr int                         width       = 4;
     constexpr int                         height      = 2;
     const std::filesystem::path           source_path = std::filesystem::temp_directory_path() / "zengine_environment_map_cooking_test.exr";
+    const std::string                     source_file = source_path.string();
     std::array<float, width * height * 4> source      = {};
     for (size_t index = 0; index < source.size(); ++index)
         source[index] = static_cast<float>(index) * 0.25f;
 
     const char* error_message = nullptr;
-    const int   write_result  = SaveEXR(source.data(), width, height, 4, 0, source_path.c_str(), &error_message);
+    const int   write_result  = SaveEXR(source.data(), width, height, 4, 0, source_file.c_str(), &error_message);
     if (write_result != TINYEXR_SUCCESS)
     {
         ADD_FAILURE() << "TinyEXR failed to write the test source: " << (error_message ? error_message : "unknown error");
@@ -75,7 +77,7 @@ TEST(EnvironmentMapCookingTest, TinyExrDecodesAFloatEquirectangularSource)
     int    decoded_width  = 0;
     int    decoded_height = 0;
     error_message         = nullptr;
-    const int read_result = LoadEXR(&decoded, &decoded_width, &decoded_height, source_path.c_str(), &error_message);
+    const int read_result = LoadEXR(&decoded, &decoded_width, &decoded_height, source_file.c_str(), &error_message);
     if (read_result != TINYEXR_SUCCESS)
     {
         ADD_FAILURE() << "TinyEXR failed to decode the test source: " << (error_message ? error_message : "unknown error");
@@ -143,6 +145,7 @@ TEST(EnvironmentMapCookingTest, HeaderValidationRejectsWrongContractsAndStaleSou
 TEST(EnvironmentMapCookingTest, DeserializerRejectsTruncatedCookedArtifact)
 {
     const std::filesystem::path    artifact_path = std::filesystem::temp_directory_path() / "zengine_environment_map_cooking_test.zenvmap";
+    const std::string              artifact_file = artifact_path.string();
     const EnvironmentMapFileHeader header        = MakeValidHeader();
     const std::vector<float>       payload(static_cast<size_t>(header.BufferByteSize) / sizeof(float), 0.25f);
 
@@ -154,7 +157,7 @@ TEST(EnvironmentMapCookingTest, DeserializerRejectsTruncatedCookedArtifact)
     }
 
     Bitmap decoded = {};
-    ASSERT_TRUE(DeserializeEnvironmentMapFile(artifact_path.c_str(), decoded));
+    ASSERT_TRUE(DeserializeEnvironmentMapFile(artifact_file.c_str(), decoded));
     EXPECT_EQ(decoded.Type, BitmapType::CubeMap);
     EXPECT_EQ(decoded.Width, 2);
     EXPECT_EQ(decoded.Layers, 6);
@@ -166,9 +169,9 @@ TEST(EnvironmentMapCookingTest, DeserializerRejectsTruncatedCookedArtifact)
     }
 
     Bitmap corrupt = {};
-    EXPECT_FALSE(DeserializeEnvironmentMapFile(artifact_path.c_str(), corrupt));
+    EXPECT_FALSE(DeserializeEnvironmentMapFile(artifact_file.c_str(), corrupt));
     EnvironmentMapFileHeader truncated_header = {};
-    EXPECT_FALSE(ReadEnvironmentMapFileHeader(artifact_path.c_str(), truncated_header));
+    EXPECT_FALSE(ReadEnvironmentMapFileHeader(artifact_file.c_str(), truncated_header));
     std::error_code error;
     std::filesystem::remove(artifact_path, error);
 }
