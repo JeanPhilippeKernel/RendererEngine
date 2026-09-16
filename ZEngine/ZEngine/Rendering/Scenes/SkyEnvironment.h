@@ -101,8 +101,16 @@ namespace ZEngine::Rendering::Scenes
     /// that frame's graphics timeline has completed.
     struct SkyEnvironment
     {
-        static constexpr uint32_t                         MaxSnapshots        = 8;
-        static constexpr uint32_t                         MaxPendingFramePins = 16;
+        static constexpr uint32_t                         MaxSnapshots                              = 8;
+        static constexpr uint32_t                         MaxPendingFramePins                       = 16;
+        /// @brief Bounds source-radiance churn from an animated primary sun.
+        /// @details Non-celestial edits always schedule immediately. A running
+        ///          day/night controller submits at most one new source bake for
+        ///          every eight observed sky revisions; an availability change
+        ///          or a direction change of at least five degrees bypasses the
+        ///          budget so an intentional editor edit is never delayed.
+        static constexpr uint64_t                         DynamicCelestialBakeRevisionInterval      = 8;
+        static constexpr float                            DynamicCelestialBakeDirectionCosThreshold = 0.9961947f; // cos(5 degrees)
 
         /// @brief Establishes the engine-provided source and lighting fallbacks.
         void                                              Initialize(Textures::TextureHandle fallback_source, const EnvironmentLightingResources& fallback_lighting = {}, const EnvironmentLightingBakeSettings& bake_settings = {});
@@ -171,6 +179,8 @@ namespace ZEngine::Rendering::Scenes
 
     private:
         [[nodiscard]] static bool       HasEquivalentAtmosphereStaticInputs(const SkyConfig& left, const SkyConfig& right);
+        [[nodiscard]] static bool       HasEquivalentAtmosphereSourceInputs(const SkyConfig& left, const SkyConfig& right);
+        [[nodiscard]] static bool       HasSignificantCelestialLightChange(const SkyCelestialLight& previous, const SkyCelestialLight& next);
         [[nodiscard]] static bool       HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, uint64_t left_hdri_source_hash, bool left_hdri_artifact_ready, const SkyConfig& right, const SkyCelestialLight& right_celestial_light, uint64_t right_hdri_source_hash, bool right_hdri_artifact_ready);
         [[nodiscard]] bool              IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const;
         void                            ReleaseNextFramePin(uint64_t timeline_value);

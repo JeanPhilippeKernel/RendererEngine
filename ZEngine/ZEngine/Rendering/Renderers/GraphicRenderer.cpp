@@ -16,6 +16,7 @@
 #include <ZEngine/Rendering/Renderers/Graphics/ToneMappingPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
+#include <algorithm>
 
 using namespace ZEngine::Hardwares;
 using namespace ZEngine::Helpers;
@@ -27,7 +28,12 @@ namespace ZEngine::Rendering::Renderers
 {
     namespace
     {
-        uint32_t GetFullMipCount(uint32_t resolution)
+        constexpr VkFormat             SkyLightingFormat         = VK_FORMAT_R16G16B16A16_SFLOAT;
+        constexpr VkFormat             HDRISourceFormat          = VK_FORMAT_R32G32B32A32_SFLOAT;
+        constexpr VkFormatFeatureFlags RequiredSkyFormatFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+        constexpr VkImageUsageFlags    RequiredSkyImageUsage     = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+
+        uint32_t                       GetFullMipCount(uint32_t resolution)
         {
             uint32_t mip_count = 1;
             while (resolution > 1)
@@ -36,6 +42,25 @@ namespace ZEngine::Rendering::Renderers
                 ++mip_count;
             }
             return mip_count;
+        }
+
+        void SetCapabilityReason(cstring* out_reason, cstring reason)
+        {
+            if (out_reason)
+                *out_reason = reason;
+        }
+
+        bool SupportsSkyFormat(VkPhysicalDevice device, VkFormat format)
+        {
+            VkFormatProperties properties = {};
+            vkGetPhysicalDeviceFormatProperties(device, format, &properties);
+            return (properties.optimalTilingFeatures & RequiredSkyFormatFeatures) == RequiredSkyFormatFeatures;
+        }
+
+        bool SupportsSkyImage(VkPhysicalDevice device, VkFormat format, VkImageType type, VkImageCreateFlags flags, uint32_t width, uint32_t height, uint32_t depth, uint32_t layers)
+        {
+            VkImageFormatProperties properties = {};
+            return vkGetPhysicalDeviceImageFormatProperties(device, format, type, VK_IMAGE_TILING_OPTIMAL, RequiredSkyImageUsage, flags, &properties) == VK_SUCCESS && properties.maxExtent.width >= width && properties.maxExtent.height >= height && properties.maxExtent.depth >= depth && properties.maxArrayLayers >= layers;
         }
     } // namespace
 
@@ -98,15 +123,23 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(fallback_environment.Valid(), "Sky environment fallback source creation failed")
         ZENGINE_VALIDATE_ASSERT(fallback_lighting.Valid(), "Sky environment fallback lighting creation failed")
         m_sky_environment.Initialize(fallback_environment, fallback_lighting, Device->EnvironmentLightingBakeSettings);
-        m_lighting_pass                       = lighting_pass;
-        m_grid_pass                           = grid_pass;
-        m_skybox_pass                         = skybox_pass;
-        m_sky_sphere_pass                     = sky_sphere_pass;
-        m_sky_view_lut_pass                   = sky_view_lut_pass;
-        m_aerial_perspective_pass             = aerial_pass;
-        m_sky_composite_pass                  = sky_composite_pass;
-        m_tone_mapping_pass                   = tone_mapping_pass;
-        m_atmosphere_view_resources_supported = SupportsAtmosphereViewResources();
+        m_lighting_pass                            = lighting_pass;
+        m_grid_pass                                = grid_pass;
+        m_skybox_pass                              = skybox_pass;
+        m_sky_sphere_pass                          = sky_sphere_pass;
+        m_sky_view_lut_pass                        = sky_view_lut_pass;
+        m_aerial_perspective_pass                  = aerial_pass;
+        m_sky_composite_pass                       = sky_composite_pass;
+        m_tone_mapping_pass                        = tone_mapping_pass;
+        m_environment_lighting_resources_supported = SupportsEnvironmentLightingResources(Device->EnvironmentLightingBakeSettings, &m_environment_lighting_unavailable_reason);
+        m_atmosphere_bake_resources_supported      = SupportsAtmosphereBakeResources(Device->EnvironmentLightingBakeSettings, &m_atmosphere_bake_unavailable_reason);
+        m_atmosphere_view_resources_supported      = SupportsAtmosphereViewResources(&m_atmosphere_view_unavailable_reason);
+        if (!m_environment_lighting_resources_supported)
+            ZENGINE_CORE_WARN("[SkyEnvironment] HDRI and atmosphere IBL are disabled: {}", m_environment_lighting_unavailable_reason)
+        if (!m_atmosphere_bake_resources_supported)
+            ZENGINE_CORE_WARN("[SkyEnvironment] Atmosphere baking is disabled: {}", m_atmosphere_bake_unavailable_reason)
+        if (!m_atmosphere_view_resources_supported)
+            ZENGINE_CORE_WARN("[SkyEnvironment] Per-view atmosphere composition is disabled: {}", m_atmosphere_view_unavailable_reason)
         m_sky_atmosphere_transmittance_pass   = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereTransmittancePass, &m_sky_environment);
         m_sky_atmosphere_multiscattering_pass = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereMultiscatteringPass, &m_sky_environment);
         m_sky_atmosphere_source_radiance_pass = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereSourceRadiancePass, &m_sky_environment);
@@ -155,22 +188,24 @@ namespace ZEngine::Rendering::Renderers
         Scenes::SkyEnvironmentResources retired_sky_resources = {};
         while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_resources))
             DiscardSkyResources(retired_sky_resources);
-        m_lighting_pass                       = nullptr;
-        m_grid_pass                           = nullptr;
-        m_skybox_pass                         = nullptr;
-        m_sky_sphere_pass                     = nullptr;
-        m_sky_view_lut_pass                   = nullptr;
-        m_aerial_perspective_pass             = nullptr;
-        m_sky_composite_pass                  = nullptr;
-        m_tone_mapping_pass                   = nullptr;
-        m_sky_atmosphere_transmittance_pass   = nullptr;
-        m_sky_atmosphere_multiscattering_pass = nullptr;
-        m_sky_atmosphere_source_radiance_pass = nullptr;
-        m_sky_hdri_mip_generation_pass        = nullptr;
-        m_sky_atmosphere_mip_generation_pass  = nullptr;
-        m_sky_diffuse_irradiance_pass         = nullptr;
-        m_sky_specular_prefilter_pass         = nullptr;
-        m_atmosphere_view_resources_supported = false;
+        m_lighting_pass                            = nullptr;
+        m_grid_pass                                = nullptr;
+        m_skybox_pass                              = nullptr;
+        m_sky_sphere_pass                          = nullptr;
+        m_sky_view_lut_pass                        = nullptr;
+        m_aerial_perspective_pass                  = nullptr;
+        m_sky_composite_pass                       = nullptr;
+        m_tone_mapping_pass                        = nullptr;
+        m_sky_atmosphere_transmittance_pass        = nullptr;
+        m_sky_atmosphere_multiscattering_pass      = nullptr;
+        m_sky_atmosphere_source_radiance_pass      = nullptr;
+        m_sky_hdri_mip_generation_pass             = nullptr;
+        m_sky_atmosphere_mip_generation_pass       = nullptr;
+        m_sky_diffuse_irradiance_pass              = nullptr;
+        m_sky_specular_prefilter_pass              = nullptr;
+        m_environment_lighting_resources_supported = false;
+        m_atmosphere_bake_resources_supported      = false;
+        m_atmosphere_view_resources_supported      = false;
 
         RenderGraph->Dispose();
         if (RenderSceneData)
@@ -351,9 +386,23 @@ namespace ZEngine::Rendering::Renderers
 
         if (request.Config.IsAtmosphere())
         {
-            if (!request.BakeInputsValid || !SupportsAtmosphereBakeResources(request.BakeSettings))
+            if (!request.BakeInputsValid)
             {
-                ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: atmosphere requires valid resources and a selected directional light", request.Revision)
+                ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: atmosphere requires valid settings and a selected directional light", request.Revision)
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+
+            if (!m_environment_lighting_resources_supported)
+            {
+                ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: atmosphere IBL is unavailable ({})", request.Revision, m_environment_lighting_unavailable_reason)
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+
+            if (!m_atmosphere_bake_resources_supported)
+            {
+                ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: atmosphere baking is unavailable ({})", request.Revision, m_atmosphere_bake_unavailable_reason)
                 m_sky_environment.CompleteBake(request.Revision, {}, false);
                 return;
             }
@@ -382,6 +431,13 @@ namespace ZEngine::Rendering::Renderers
         if (!request.BakeInputsValid || !request.Config.IsHDRI() || request.Config.EnvironmentMap.is_nil())
         {
             ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: the selected sky has no usable HDRI source", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
+            return;
+        }
+
+        if (!m_environment_lighting_resources_supported)
+        {
+            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: HDRI IBL is unavailable ({})", request.Revision, m_environment_lighting_unavailable_reason)
             m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
@@ -431,6 +487,14 @@ namespace ZEngine::Rendering::Renderers
         if (!Importers::AssetCodec::ReadEnvironmentMapFileHeader(native_path, artifact_header) || !Importers::AssetCodec::DoesEnvironmentMapHeaderMatchSource(artifact_header, request.HDRISourceHash))
         {
             ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked artifact is stale, corrupt, or incompatible", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
+            return;
+        }
+
+        cstring hdri_capability_reason = nullptr;
+        if (!SupportsHDRISourceResources(artifact_header.FaceWidth, &hdri_capability_reason))
+        {
+            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: HDRI source is unavailable ({})", request.Revision, hdri_capability_reason)
             m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
@@ -598,44 +662,103 @@ namespace ZEngine::Rendering::Renderers
         DiscardSkyTexture(resources.Lighting.SpecularEnvironment);
     }
 
-    bool GraphicRenderer::SupportsAtmosphereBakeResources(const EnvironmentLightingBakeSettings& bake_settings) const
+    bool GraphicRenderer::SupportsEnvironmentLightingResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason) const
     {
-        if (!Device || !bake_settings.IsValid())
+        SetCapabilityReason(out_reason, nullptr);
+        if (!Device || Device->PhysicalDevice == VK_NULL_HANDLE)
+        {
+            SetCapabilityReason(out_reason, "no Vulkan physical device is available");
             return false;
-
-        constexpr VkFormat             kAtmosphereFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-        constexpr VkFormatFeatureFlags kRequiredFeatures = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
-        VkFormatProperties             format_properties = {};
-        vkGetPhysicalDeviceFormatProperties(Device->PhysicalDevice, kAtmosphereFormat, &format_properties);
-        if ((format_properties.optimalTilingFeatures & kRequiredFeatures) != kRequiredFeatures)
+        }
+        if (!bake_settings.IsValid())
+        {
+            SetCapabilityReason(out_reason, "the selected environment-lighting quality tier is invalid");
             return false;
+        }
 
-        VkImageFormatProperties cube_properties = {};
-        const VkResult          cube_result     = vkGetPhysicalDeviceImageFormatProperties(Device->PhysicalDevice, kAtmosphereFormat, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, &cube_properties);
-        if (cube_result != VK_SUCCESS || cube_properties.maxExtent.width < bake_settings.SourceRadianceResolution || cube_properties.maxExtent.height < bake_settings.SourceRadianceResolution || cube_properties.maxArrayLayers < 6)
+        if (!SupportsSkyFormat(Device->PhysicalDevice, SkyLightingFormat))
+        {
+            SetCapabilityReason(out_reason, "RGBA16F images cannot be both sampled and written by compute shaders");
             return false;
+        }
 
-        VkPhysicalDeviceProperties properties = {};
-        vkGetPhysicalDeviceProperties(Device->PhysicalDevice, &properties);
-        return properties.limits.maxImageDimension2D >= 256 && properties.limits.maxImageDimensionCube >= bake_settings.SourceRadianceResolution;
+        const uint32_t cube_resolution = std::max({bake_settings.SourceRadianceResolution, bake_settings.DiffuseResolution, bake_settings.SpecularResolution});
+        if (!SupportsSkyImage(Device->PhysicalDevice, SkyLightingFormat, VK_IMAGE_TYPE_2D, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, cube_resolution, cube_resolution, 1, 6))
+        {
+            SetCapabilityReason(out_reason, "the selected quality tier exceeds RGBA16F cubemap support");
+            return false;
+        }
+        return true;
     }
 
-    bool GraphicRenderer::SupportsAtmosphereViewResources() const
+    bool GraphicRenderer::SupportsAtmosphereBakeResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason) const
     {
-        if (!Device)
+        if (!SupportsEnvironmentLightingResources(bake_settings, out_reason))
             return false;
 
-        constexpr VkFormat             kAtmosphereFormat   = VK_FORMAT_R16G16B16A16_SFLOAT;
-        constexpr VkFormatFeatureFlags kRequiredFeatures   = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
-        constexpr VkImageUsageFlags    kRequiredImageUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-        VkFormatProperties             format_properties   = {};
-        vkGetPhysicalDeviceFormatProperties(Device->PhysicalDevice, kAtmosphereFormat, &format_properties);
-        if ((format_properties.optimalTilingFeatures & kRequiredFeatures) != kRequiredFeatures)
+        if (!SupportsSkyImage(Device->PhysicalDevice, SkyLightingFormat, VK_IMAGE_TYPE_2D, 0, 256, 64, 1, 1))
+        {
+            SetCapabilityReason(out_reason, "the device cannot allocate the required RGBA16F atmosphere lookup textures");
             return false;
+        }
+        return true;
+    }
 
-        VkImageFormatProperties volume_properties = {};
-        const VkResult          volume_result     = vkGetPhysicalDeviceImageFormatProperties(Device->PhysicalDevice, kAtmosphereFormat, VK_IMAGE_TYPE_3D, VK_IMAGE_TILING_OPTIMAL, kRequiredImageUsage, 0, &volume_properties);
-        return volume_result == VK_SUCCESS && volume_properties.maxExtent.width >= 32 && volume_properties.maxExtent.height >= 32 && volume_properties.maxExtent.depth >= 32;
+    bool GraphicRenderer::SupportsAtmosphereViewResources(cstring* out_reason) const
+    {
+        SetCapabilityReason(out_reason, nullptr);
+        if (!Device || Device->PhysicalDevice == VK_NULL_HANDLE)
+        {
+            SetCapabilityReason(out_reason, "no Vulkan physical device is available");
+            return false;
+        }
+
+        if (!SupportsSkyFormat(Device->PhysicalDevice, SkyLightingFormat))
+        {
+            SetCapabilityReason(out_reason, "RGBA16F view textures cannot be both sampled and written by compute shaders");
+            return false;
+        }
+
+        if (!SupportsSkyImage(Device->PhysicalDevice, SkyLightingFormat, VK_IMAGE_TYPE_2D, 0, 192, 108, 1, 1))
+        {
+            SetCapabilityReason(out_reason, "the device cannot allocate the required RGBA16F sky-view lookup texture");
+            return false;
+        }
+
+        if (!SupportsSkyImage(Device->PhysicalDevice, SkyLightingFormat, VK_IMAGE_TYPE_3D, 0, 32, 32, 32, 1))
+        {
+            SetCapabilityReason(out_reason, "the device cannot allocate the required 32³ RGBA16F aerial-perspective volume");
+            return false;
+        }
+        return true;
+    }
+
+    bool GraphicRenderer::SupportsHDRISourceResources(uint32_t face_resolution, cstring* out_reason) const
+    {
+        SetCapabilityReason(out_reason, nullptr);
+        if (!Device || Device->PhysicalDevice == VK_NULL_HANDLE)
+        {
+            SetCapabilityReason(out_reason, "no Vulkan physical device is available");
+            return false;
+        }
+        if (face_resolution == 0 || face_resolution > Importers::AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE)
+        {
+            SetCapabilityReason(out_reason, "the cooked source has an invalid cubemap face resolution");
+            return false;
+        }
+
+        if (!SupportsSkyFormat(Device->PhysicalDevice, HDRISourceFormat))
+        {
+            SetCapabilityReason(out_reason, "RGBA32F cubemaps cannot be both sampled and written by compute shaders");
+            return false;
+        }
+
+        if (!SupportsSkyImage(Device->PhysicalDevice, HDRISourceFormat, VK_IMAGE_TYPE_2D, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, face_resolution, face_resolution, 1, 6))
+        {
+            SetCapabilityReason(out_reason, "the HDRI cubemap exceeds device support");
+            return false;
+        }
+        return true;
     }
 
     Scenes::AtmosphereStaticResources GraphicRenderer::CreateAtmosphereStaticResources()

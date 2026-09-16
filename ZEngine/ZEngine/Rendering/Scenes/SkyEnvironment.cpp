@@ -1,4 +1,6 @@
 #include <ZEngine/Rendering/Scenes/SkyEnvironment.h>
+#include <algorithm>
+#include <cmath>
 
 namespace ZEngine::Rendering::Scenes
 {
@@ -63,6 +65,14 @@ namespace ZEngine::Rendering::Scenes
             m_state                    = SkyEnvironmentState::Fallback;
             return true;
         }
+
+        // A moving primary sun can otherwise invalidate every stage of the
+        // atmosphere chain once per rendered frame. Keep the last bake key
+        // current until the fixed revision budget opens; the most recently
+        // submitted direction is still retained as presentation state above.
+        const bool only_dynamic_celestial_input_changed = sanitized.IsAtmosphere() && inputs_valid && m_bake_inputs_valid && m_bake_config.IsAtmosphere() && m_bake_settings.Matches(resolved_bake_settings) && HasEquivalentAtmosphereSourceInputs(m_bake_config, sanitized) && !m_bake_celestial_light.Matches(celestial_light) && !HasSignificantCelestialLightChange(m_bake_celestial_light, celestial_light);
+        if (only_dynamic_celestial_input_changed && revision >= m_latest_bake_revision && revision - m_latest_bake_revision < DynamicCelestialBakeRevisionInterval)
+            return true;
 
         if (inputs_valid && m_bake_inputs_valid && HasEquivalentBakeInputs(m_bake_config, m_bake_celestial_light, m_bake_hdri_source_hash, m_bake_hdri_artifact_ready, sanitized, celestial_light, hdri_source_hash, hdri_artifact_ready) && m_bake_settings.Matches(resolved_bake_settings))
         {
@@ -444,6 +454,33 @@ namespace ZEngine::Rendering::Scenes
                first.MieAnisotropy == second.MieAnisotropy && equal3(first.OzoneAbsorptionPerKilometer, second.OzoneAbsorptionPerKilometer) && first.OzoneCenterKilometers == second.OzoneCenterKilometers && first.OzoneThicknessKilometers == second.OzoneThicknessKilometers;
     }
 
+    bool SkyEnvironment::HasEquivalentAtmosphereSourceInputs(const SkyConfig& left, const SkyConfig& right)
+    {
+        if (!left.IsAtmosphere() || !right.IsAtmosphere() || !HasEquivalentAtmosphereStaticInputs(left, right))
+            return false;
+
+        const auto equal3 = [](const float (&first)[3], const float (&second)[3]) { return first[0] == second[0] && first[1] == second[1] && first[2] == second[2]; };
+        return left.Atmosphere.SunAngularRadiusRadians == right.Atmosphere.SunAngularRadiusRadians && left.Atmosphere.SunIlluminanceLux == right.Atmosphere.SunIlluminanceLux && equal3(left.Atmosphere.GroundAlbedo, right.Atmosphere.GroundAlbedo) && left.Atmosphere.GroundAmbientIrradiance == right.Atmosphere.GroundAmbientIrradiance;
+    }
+
+    bool SkyEnvironment::HasSignificantCelestialLightChange(const SkyCelestialLight& previous, const SkyCelestialLight& next)
+    {
+        if (previous.IsAvailable != next.IsAvailable)
+            return true;
+        if (!previous.IsAvailable)
+            return false;
+
+        const auto  squared_length          = [](const SkyCelestialLight& light) { return light.DirectionToLight[0] * light.DirectionToLight[0] + light.DirectionToLight[1] * light.DirectionToLight[1] + light.DirectionToLight[2] * light.DirectionToLight[2]; };
+        const float previous_length_squared = squared_length(previous);
+        const float next_length_squared     = squared_length(next);
+        if (!std::isfinite(previous_length_squared) || !std::isfinite(next_length_squared) || previous_length_squared <= 1.0e-8f || next_length_squared <= 1.0e-8f)
+            return true;
+
+        const float dot            = previous.DirectionToLight[0] * next.DirectionToLight[0] + previous.DirectionToLight[1] * next.DirectionToLight[1] + previous.DirectionToLight[2] * next.DirectionToLight[2];
+        const float normalized_dot = std::clamp(dot / std::sqrt(previous_length_squared * next_length_squared), -1.0f, 1.0f);
+        return normalized_dot < DynamicCelestialBakeDirectionCosThreshold;
+    }
+
     bool SkyEnvironment::HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, uint64_t left_hdri_source_hash, bool left_hdri_artifact_ready, const SkyConfig& right, const SkyCelestialLight& right_celestial_light, uint64_t right_hdri_source_hash, bool right_hdri_artifact_ready)
     {
         if (left.Mode != right.Mode)
@@ -453,8 +490,7 @@ namespace ZEngine::Rendering::Scenes
         if (left.IsSkySphere())
             return true;
 
-        const auto equal3 = [](const float (&first)[3], const float (&second)[3]) { return first[0] == second[0] && first[1] == second[1] && first[2] == second[2]; };
-        return HasEquivalentAtmosphereStaticInputs(left, right) && left_celestial_light.Matches(right_celestial_light) && left.Atmosphere.SunAngularRadiusRadians == right.Atmosphere.SunAngularRadiusRadians && left.Atmosphere.SunIlluminanceLux == right.Atmosphere.SunIlluminanceLux && equal3(left.Atmosphere.GroundAlbedo, right.Atmosphere.GroundAlbedo) && left.Atmosphere.GroundAmbientIrradiance == right.Atmosphere.GroundAmbientIrradiance;
+        return HasEquivalentAtmosphereSourceInputs(left, right) && left_celestial_light.Matches(right_celestial_light);
     }
 
     bool SkyEnvironment::IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const

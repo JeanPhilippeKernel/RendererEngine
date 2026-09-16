@@ -179,7 +179,7 @@ At frame start, the renderer acquires one ready snapshot and pins it for that fr
 
 Descriptor writes are scoped to a reusable frame slot only after that slot's prior submission has retired. Publishing a new snapshot updates future frame slots; it never overwrites descriptors still visible to an in-flight command buffer.
 
-An obsolete bake that has not been submitted may be cancelled. A submitted obsolete bake is allowed to finish, but its result is discarded unless its revision is still current. The bake scheduler has a bounded queue and a configurable time budget; it never accumulates one expensive full bake for every slider edit.
+An obsolete bake that has not been submitted may be cancelled. A submitted obsolete bake is allowed to finish, but its result is discarded unless its revision is still current. The bake scheduler has a bounded queue and a configurable time budget; it never accumulates one expensive full bake for every slider edit. Dynamic primary-celestial updates are additionally coalesced: the current implementation accepts at most one new atmosphere source bake per eight observed sky revisions, retaining the newest direction for the next accepted request. An availability change or a rotation of at least five degrees bypasses the budget, so a deliberate editor edit responds immediately. Physical atmosphere, ground, quality, and mode changes remain immediate because they are not animation-budgeted edits.
 
 Shutdown first unregisters asset-completion listeners and stops accepting bake work. It then retires pinned snapshots through the normal device-timeline path before the device allocator is destroyed. Worker completion messages received during shutdown are discarded without dereferencing scene or renderer state.
 
