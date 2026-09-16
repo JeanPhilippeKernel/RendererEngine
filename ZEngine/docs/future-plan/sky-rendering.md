@@ -330,6 +330,8 @@ static_assert(sizeof(SkySpherePush) == 80);
 
 The implementation also checks the device push-constant limit during capability initialization. SkySphere presentation does not alter the fallback IBL snapshot used by lighting.
 
+Selecting SkySphere immediately selects the engine fallback snapshot for lighting and retires any previously published non-fallback environment after its frame pins complete. It never queues asset decode, cubemap generation, or IBL baking. A directional light is optional: without one, the gradient remains valid and the sun disc is omitted. The unused `SunDirection.w` lane carries the far clip depth (`1` for standard depth, `0` for reverse-Z), preserving the 80-byte push-constant contract while allowing the fullscreen triangle to depth-test only where the depth buffer is clear.
+
 ---
 
 ## 7. Atmosphere rendering

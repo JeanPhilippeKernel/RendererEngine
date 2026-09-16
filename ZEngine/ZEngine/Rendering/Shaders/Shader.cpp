@@ -796,15 +796,23 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreatePushConstantRange()
     {
-        if (!PushConstantSpecifications.empty())
+        for (const auto& specification : PushConstantSpecifications)
         {
-            VkPushConstantRange& range = PushConstants.push_use(VkPushConstantRange{.offset = 0});
-            for (const auto& push_constant_spec : PushConstantSpecifications)
+            const VkShaderStageFlags stage_flags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(specification.Flags)];
+            bool                     merged      = false;
+            for (VkPushConstantRange& range : PushConstants)
             {
-                range.stageFlags |= ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(push_constant_spec.Flags)];
-                range.size       += push_constant_spec.Size;
+                if (range.offset != specification.Offset || range.size != specification.Size)
+                    continue;
+
+                range.stageFlags |= stage_flags;
+                merged            = true;
+                break;
             }
-            PushConstantSpecifications.clear();
+
+            if (!merged)
+                PushConstants.push(VkPushConstantRange{.stageFlags = stage_flags, .offset = specification.Offset, .size = specification.Size});
         }
+        PushConstantSpecifications.clear();
     }
 } // namespace ZEngine::Rendering::Shaders
