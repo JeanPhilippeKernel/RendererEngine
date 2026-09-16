@@ -4,8 +4,8 @@
 namespace ZEngine::Importers
 {
     /// @brief Imports flat 2D raster textures (png/jpg/jpeg/bmp/tga/gif/psd/pic).
-    /// @details Does not claim hdr/exr (EnvironmentMapImporter's domain) or ktx/ktx2
-    ///          (not decodable by stb_image today).
+    /// @details Does not claim HDR environment sources or ktx/ktx2, which are
+    ///          not flat stb_image texture inputs.
     class TextureImporter : public IAssetImporter
     {
     public:

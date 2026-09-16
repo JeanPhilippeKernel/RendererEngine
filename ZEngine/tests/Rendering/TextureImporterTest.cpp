@@ -16,9 +16,9 @@ TEST(TextureImporterTest, CanImportClaimsAllEightRasterExtensions)
 TEST(TextureImporterTest, CanImportDoesNotClaimEnvironmentMapOrContainerFormats)
 {
     TextureImporter importer;
-    // hdr/exr stay EnvironmentMapImporter's domain; ktx/ktx2 are recognized by
-    // AssetRegistry::InferTypeFromExtension but stb_image cannot decode them — neither
-    // should be claimed here, or ImportCoordinator's first-match routing gets ambiguous.
+    // HDR is claimed by EnvironmentMapImporter; EXR and KTX variants remain
+    // recognized by AssetRegistry::InferTypeFromExtension but unsupported until
+    // their dedicated decoders are introduced. None belong to this importer.
     const char*     unclaimed[] = {"hdr", "exr", "ktx", "ktx2", "zenvmap", "glb", "fbx", "obj"};
     for (const char* ext : unclaimed)
         EXPECT_FALSE(importer.CanImport(ext)) << ext;

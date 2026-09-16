@@ -253,6 +253,79 @@ namespace ZEngine::Rendering::Buffers
             return out;
         }
 
+        Bitmap EquirectToCubemap(const Bitmap& input, Core::Memory::TLSFSlab* slab)
+        {
+            if (input.Type != BitmapType::Texture2D || input.Width <= 0 || input.Height <= 0 || input.Width != input.Height * 2 || input.Width % 4 != 0 || input.Channel <= 0 || !input.Buffer)
+                return Bitmap();
+
+            const int      face_size           = input.Width / 4;
+            Bitmap         out                 = Bitmap::Create(face_size, face_size, 6, input.Channel, input.Format, BitmapType::CubeMap, slab);
+            const int      cw                  = input.Width - 1;
+            const int      ch                  = input.Height - 1;
+            // Preserve the face order and rotations produced by the legacy
+            // equirectangular -> vertical-cross -> cubemap conversion. Existing
+            // sky shaders and cached assets use this as the canonical order.
+            constexpr int  k_source_faces[6]   = {1, 3, 4, 5, 0, 2};
+            constexpr bool k_flip_face[6]      = {false, false, true, true, true, false};
+
+            const auto     write_cubemap_pixel = [&out, face_size](int face, int x, int y, const Core::Maths::Vec4f& pixel) {
+                const size_t offset = static_cast<size_t>(out.Channel) * (static_cast<size_t>(face) * face_size * face_size + static_cast<size_t>(y) * face_size + x);
+                if (out.Format == BitmapFormat::UnsignedByte)
+                {
+                    if (out.Channel > 0)
+                        out.Buffer[offset + 0] = uint8_t(pixel.x * 255.0f);
+                    if (out.Channel > 1)
+                        out.Buffer[offset + 1] = uint8_t(pixel.y * 255.0f);
+                    if (out.Channel > 2)
+                        out.Buffer[offset + 2] = uint8_t(pixel.z * 255.0f);
+                    if (out.Channel > 3)
+                        out.Buffer[offset + 3] = uint8_t(pixel.w * 255.0f);
+                }
+                else if (out.Format == BitmapFormat::Float)
+                {
+                    float* const data = reinterpret_cast<float*>(out.Buffer);
+                    if (out.Channel > 0)
+                        data[offset + 0] = pixel.x;
+                    if (out.Channel > 1)
+                        data[offset + 1] = pixel.y;
+                    if (out.Channel > 2)
+                        data[offset + 2] = pixel.z;
+                    if (out.Channel > 3)
+                        data[offset + 3] = pixel.w;
+                }
+            };
+
+            for (int face = 0; face < 6; ++face)
+            {
+                for (int i = 0; i < face_size; ++i)
+                {
+                    for (int j = 0; j < face_size; ++j)
+                    {
+                        const int                source_i = k_flip_face[face] ? face_size - (i + 1) : i;
+                        const int                source_j = k_flip_face[face] ? face_size - (j + 1) : j;
+                        const Core::Maths::Vec3f P        = FaceCoordToXYZ(source_i, source_j, k_source_faces[face], face_size);
+                        const float              R        = hypot(P.x, P.y);
+                        const float              theta    = atan2(P.y, P.x);
+                        const float              phi      = atan2(P.z, R);
+                        const float              Uf       = float(2.0f * face_size * (theta + Core::Maths::PI<float>) / Core::Maths::PI<float>);
+                        const float              Vf       = float(2.0f * face_size * (Core::Maths::PI<float> / 2.0f - phi) / Core::Maths::PI<float>);
+                        const int                U1       = Core::Maths::clamp(int(floor(Uf)), 0, cw);
+                        const int                V1       = Core::Maths::clamp(int(floor(Vf)), 0, ch);
+                        const int                U2       = Core::Maths::clamp(U1 + 1, 0, cw);
+                        const int                V2       = Core::Maths::clamp(V1 + 1, 0, ch);
+                        const float              s        = Uf - U1;
+                        const float              t        = Vf - V1;
+                        const Core::Maths::Vec4f A        = input.GetPixel(U1, V1);
+                        const Core::Maths::Vec4f B        = input.GetPixel(U2, V1);
+                        const Core::Maths::Vec4f C        = input.GetPixel(U1, V2);
+                        const Core::Maths::Vec4f D        = input.GetPixel(U2, V2);
+                        write_cubemap_pixel(face, i, j, A * (1 - s) * (1 - t) + B * s * (1 - t) + C * (1 - s) * t + D * s * t);
+                    }
+                }
+            }
+            return out;
+        }
+
         Bitmap CrossToCubemap(const Bitmap& input, Core::Memory::TLSFSlab* slab)
         {
             const int      face_w  = input.Width / 3;

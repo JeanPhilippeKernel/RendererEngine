@@ -18,16 +18,25 @@ namespace ZEngine::Rendering::Scenes
         m_state                       = SkyEnvironmentState::Fallback;
     }
 
-    bool SkyEnvironment::SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings, const SkyCelestialLight& celestial_light)
+    bool SkyEnvironment::SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings, const SkyCelestialLight& celestial_light, uint64_t hdri_source_hash, bool hdri_artifact_ready)
     {
-        if (revision == 0 || revision <= m_latest_revision)
+        if (revision == 0 || revision < m_latest_revision)
             return false;
 
         const bool                            has_required_sun       = !config.IsAtmosphere() || celestial_light.IsAvailable;
-        const bool                            inputs_valid           = config.IsValid() && celestial_light.IsValid() && has_required_sun;
         SkyConfig                             sanitized              = config;
         const EnvironmentLightingBakeSettings resolved_bake_settings = bake_settings.IsValid() ? bake_settings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
         sanitized.Sanitize();
+        const bool is_hdri         = sanitized.IsHDRI();
+        const bool source_is_ready = !is_hdri || hdri_artifact_ready;
+        const bool inputs_valid    = config.IsValid() && celestial_light.IsValid() && has_required_sun && source_is_ready;
+
+        // A normal scene revision remains immutable. The exception is an HDRI
+        // source transition: imports keep the scene's UUID and revision stable,
+        // but a new source hash or cooked-artifact readiness must replace any
+        // pending/active work for the prior source.
+        if (revision == m_latest_revision && (!is_hdri || (m_bake_config.IsHDRI() && m_bake_config.EnvironmentMap == sanitized.EnvironmentMap && m_bake_hdri_source_hash == hdri_source_hash && m_bake_hdri_artifact_ready == hdri_artifact_ready)))
+            return false;
 
         m_presentation_config          = sanitized;
         m_presentation_celestial_light = celestial_light.IsValid() ? celestial_light : SkyCelestialLight{};
@@ -42,18 +51,20 @@ namespace ZEngine::Rendering::Scenes
             if (!published.IsFallback)
                 published.Retired = true;
 
-            m_published_slot       = 0;
-            m_pending_request      = {};
-            m_has_pending_request  = false;
-            m_bake_config.Mode     = static_cast<SkyMode>(UINT8_MAX);
-            m_bake_celestial_light = {};
-            m_bake_inputs_valid    = false;
-            m_latest_bake_revision = revision;
-            m_state                = SkyEnvironmentState::Fallback;
+            m_published_slot           = 0;
+            m_pending_request          = {};
+            m_has_pending_request      = false;
+            m_bake_config.Mode         = static_cast<SkyMode>(UINT8_MAX);
+            m_bake_celestial_light     = {};
+            m_bake_inputs_valid        = false;
+            m_bake_hdri_source_hash    = 0;
+            m_bake_hdri_artifact_ready = true;
+            m_latest_bake_revision     = revision;
+            m_state                    = SkyEnvironmentState::Fallback;
             return true;
         }
 
-        if (inputs_valid && m_bake_inputs_valid && HasEquivalentBakeInputs(m_bake_config, m_bake_celestial_light, sanitized, celestial_light) && m_bake_settings.Matches(resolved_bake_settings))
+        if (inputs_valid && m_bake_inputs_valid && HasEquivalentBakeInputs(m_bake_config, m_bake_celestial_light, m_bake_hdri_source_hash, m_bake_hdri_artifact_ready, sanitized, celestial_light, hdri_source_hash, hdri_artifact_ready) && m_bake_settings.Matches(resolved_bake_settings))
         {
             // The source radiance remains valid. Keep editor-facing presentation
             // changes (tint, intensity, and yaw) off the bake path.
@@ -75,17 +86,21 @@ namespace ZEngine::Rendering::Scenes
             return true;
         }
 
-        m_bake_config                     = sanitized;
-        m_bake_celestial_light            = celestial_light;
-        m_bake_inputs_valid               = inputs_valid;
-        m_bake_settings                   = resolved_bake_settings;
-        m_pending_request.Config          = sanitized;
-        m_pending_request.CelestialLight  = celestial_light;
-        m_pending_request.BakeSettings    = resolved_bake_settings;
-        m_pending_request.Revision        = revision;
-        m_pending_request.BakeInputsValid = inputs_valid;
-        m_latest_bake_revision            = revision;
-        m_has_pending_request             = true;
+        m_bake_config                       = sanitized;
+        m_bake_celestial_light              = celestial_light;
+        m_bake_hdri_source_hash             = is_hdri ? hdri_source_hash : 0;
+        m_bake_hdri_artifact_ready          = source_is_ready;
+        m_bake_inputs_valid                 = inputs_valid;
+        m_bake_settings                     = resolved_bake_settings;
+        m_pending_request.Config            = sanitized;
+        m_pending_request.CelestialLight    = celestial_light;
+        m_pending_request.BakeSettings      = resolved_bake_settings;
+        m_pending_request.HDRISourceHash    = is_hdri ? hdri_source_hash : 0;
+        m_pending_request.Revision          = revision;
+        m_pending_request.HDRIArtifactReady = source_is_ready;
+        m_pending_request.BakeInputsValid   = inputs_valid;
+        m_latest_bake_revision              = revision;
+        m_has_pending_request               = true;
         return true;
     }
 
@@ -212,28 +227,34 @@ namespace ZEngine::Rendering::Scenes
         return m_has_active_bake && m_active_bake_stage == SkyEnvironmentBakeStage::ReadyToPublish && !m_active_stage_submitted;
     }
 
+    bool SkyEnvironment::IsActiveBakeCurrent() const
+    {
+        return m_has_active_bake && m_active_bake.Revision == m_latest_bake_revision && m_active_bake.BakeSettings.Matches(m_bake_settings) && HasEquivalentBakeInputs(m_active_bake.Config, m_active_bake.CelestialLight, m_active_bake.HDRISourceHash, m_active_bake.HDRIArtifactReady, m_bake_config, m_bake_celestial_light, m_bake_hdri_source_hash, m_bake_hdri_artifact_ready);
+    }
+
     SkyEnvironmentBakeResult SkyEnvironment::CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success, const EnvironmentLightingResources& lighting, const AtmosphereStaticResources& atmosphere)
     {
         if (!m_has_active_bake || m_active_bake.Revision != revision)
             return SkyEnvironmentBakeResult::Ignored;
 
-        const bool                         requires_atmosphere  = m_active_bake.Config.IsAtmosphere();
-        const SkyCelestialLight            completed_celestial  = m_active_bake.CelestialLight;
-        const Textures::TextureHandle      completed_source     = source_radiance.Valid() ? source_radiance : m_active_bake_source;
-        const EnvironmentLightingResources completed_lighting   = lighting.Valid() ? lighting : m_active_bake_lighting.Valid() ? m_active_bake_lighting : m_fallback_lighting;
-        const AtmosphereStaticResources    completed_atmosphere = atmosphere.Valid() ? atmosphere : m_active_bake_atmosphere;
-        m_active_bake                                           = {};
-        m_active_bake_atmosphere                                = {};
-        m_active_bake_owns_atmosphere                           = false;
-        m_active_bake_source                                    = {};
-        m_active_bake_lighting                                  = {};
-        m_active_bake_stage                                     = SkyEnvironmentBakeStage::AwaitingSource;
-        m_active_stage_timeline                                 = 0;
-        m_active_stage_submitted                                = false;
-        m_active_stage_recorded                                 = false;
-        m_has_active_bake                                       = false;
+        const bool                         active_bake_is_current = IsActiveBakeCurrent();
+        const bool                         requires_atmosphere    = m_active_bake.Config.IsAtmosphere();
+        const SkyCelestialLight            completed_celestial    = m_active_bake.CelestialLight;
+        const Textures::TextureHandle      completed_source       = source_radiance.Valid() ? source_radiance : m_active_bake_source;
+        const EnvironmentLightingResources completed_lighting     = lighting.Valid() ? lighting : m_active_bake_lighting.Valid() ? m_active_bake_lighting : m_fallback_lighting;
+        const AtmosphereStaticResources    completed_atmosphere   = atmosphere.Valid() ? atmosphere : m_active_bake_atmosphere;
+        m_active_bake                                             = {};
+        m_active_bake_atmosphere                                  = {};
+        m_active_bake_owns_atmosphere                             = false;
+        m_active_bake_source                                      = {};
+        m_active_bake_lighting                                    = {};
+        m_active_bake_stage                                       = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_stage_timeline                                   = 0;
+        m_active_stage_submitted                                  = false;
+        m_active_stage_recorded                                   = false;
+        m_has_active_bake                                         = false;
 
-        if (revision != m_latest_bake_revision)
+        if (!active_bake_is_current)
             return SkyEnvironmentBakeResult::Discarded;
 
         if (!success || !completed_source.Valid() || (requires_atmosphere && !completed_atmosphere.Valid()))
@@ -423,12 +444,12 @@ namespace ZEngine::Rendering::Scenes
                first.MieAnisotropy == second.MieAnisotropy && equal3(first.OzoneAbsorptionPerKilometer, second.OzoneAbsorptionPerKilometer) && first.OzoneCenterKilometers == second.OzoneCenterKilometers && first.OzoneThicknessKilometers == second.OzoneThicknessKilometers;
     }
 
-    bool SkyEnvironment::HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, const SkyConfig& right, const SkyCelestialLight& right_celestial_light)
+    bool SkyEnvironment::HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, uint64_t left_hdri_source_hash, bool left_hdri_artifact_ready, const SkyConfig& right, const SkyCelestialLight& right_celestial_light, uint64_t right_hdri_source_hash, bool right_hdri_artifact_ready)
     {
         if (left.Mode != right.Mode)
             return false;
         if (left.IsHDRI())
-            return left.EnvironmentMap == right.EnvironmentMap;
+            return left.EnvironmentMap == right.EnvironmentMap && left_hdri_source_hash == right_hdri_source_hash && left_hdri_artifact_ready == right_hdri_artifact_ready;
         if (left.IsSkySphere())
             return true;
 

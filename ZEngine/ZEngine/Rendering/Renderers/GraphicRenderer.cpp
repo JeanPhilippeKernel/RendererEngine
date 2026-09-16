@@ -1,4 +1,5 @@
 #include <ZEngine/Engine.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Compute/FrustumCullingPass.h>
@@ -262,8 +263,22 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision)
     {
-        const EnvironmentLightingBakeSettings bake_settings = Device ? Device->EnvironmentLightingBakeSettings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
-        if (m_sky_environment.SubmitConfig(sky, revision, bake_settings, celestial_light))
+        const EnvironmentLightingBakeSettings bake_settings       = Device ? Device->EnvironmentLightingBakeSettings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
+        uint64_t                              hdri_source_hash    = 0;
+        bool                                  hdri_artifact_ready = !sky.IsHDRI();
+        if (sky.IsHDRI())
+        {
+            if (auto* const asset_manager = ZEngine::Managers::AssetManager::Instance(); asset_manager && asset_manager->Registry)
+            {
+                if (const auto* const environment = asset_manager->Registry->FindByUUID(sky.EnvironmentMap))
+                {
+                    hdri_source_hash    = environment->Meta.SourceHash;
+                    hdri_artifact_ready = environment->State == Core::VFS::AssetState::Loaded && environment->Meta.ArtifactPath[0] != '\0';
+                }
+            }
+        }
+
+        if (m_sky_environment.SubmitConfig(sky, revision, bake_settings, celestial_light, hdri_source_hash, hdri_artifact_ready))
             StartPendingSkyBake();
         PollSkyBake();
     }
@@ -388,11 +403,34 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
+        if (environment->Meta.ArtifactPath[0] == '\0')
+        {
+            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: HDRI has no completed cooked artifact", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
+            return;
+        }
+
+        const auto artifact_path = Core::VFS::VFSPath::Parse(environment->Meta.ArtifactPath);
+        if (artifact_path.Failed())
+        {
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked-artifact path is invalid", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
+            return;
+        }
+
         char native_path[MAX_FILE_PATH_COUNT] = {};
-        environment->Path.ResolveNative(asset_manager->CurrentWorkingSpacePath, native_path, sizeof(native_path));
+        artifact_path.Value().ResolveNative(asset_manager->CurrentWorkingSpacePath, native_path, sizeof(native_path));
         if (native_path[0] == '\0')
         {
-            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI path cannot be resolved", request.Revision)
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked-artifact path cannot be resolved", request.Revision)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
+            return;
+        }
+
+        Importers::AssetCodec::EnvironmentMapFileHeader artifact_header = {};
+        if (!Importers::AssetCodec::ReadEnvironmentMapFileHeader(native_path, artifact_header) || !Importers::AssetCodec::DoesEnvironmentMapHeaderMatchSource(artifact_header, request.HDRISourceHash))
+        {
+            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked artifact is stale, corrupt, or incompatible", request.Revision)
             m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }
@@ -437,6 +475,16 @@ namespace ZEngine::Rendering::Renderers
                 return;
             }
 
+            if (!m_sky_environment.IsActiveBakeCurrent())
+            {
+                rrm->ForgetTextureDecode(source_radiance);
+                m_sky_environment.CompleteBake(revision, source_radiance, false);
+                DiscardSkyTexture(source_radiance);
+                ZENGINE_CORE_INFO("[SkyEnvironment] Cancelled stale HDRI revision {} before GPU baking", revision)
+                StartPendingSkyBake();
+                return;
+            }
+
             const Hardwares::StreamingUploadTicket* const ticket = rrm->FindStreamingUploadTicket(source_radiance);
             if (!ticket || !ticket->CompletionTimeline)
                 return;
@@ -474,7 +522,7 @@ namespace ZEngine::Rendering::Renderers
 
         // The stage boundary above is also a cancellation point. Do not spend
         // more GPU work on a superseded source revision.
-        if (revision != m_sky_environment.GetLatestRevision())
+        if (!m_sky_environment.IsActiveBakeCurrent())
         {
             const Scenes::AtmosphereStaticResources atmosphere      = m_sky_environment.GetActiveBakeAtmosphere();
             const bool                              owns_atmosphere = m_sky_environment.ActiveBakeOwnsAtmosphere();

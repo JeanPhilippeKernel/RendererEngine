@@ -9,6 +9,25 @@
 
 namespace ZEngine::Importers::AssetCodec
 {
+    inline constexpr uint32_t ENVIRONMENT_MAP_FILE_VERSION     = 2;
+    inline constexpr uint32_t ENVIRONMENT_MAP_IMPORTER_VERSION = 1;
+    inline constexpr uint32_t ENVIRONMENT_MAP_MAX_FACE_SIZE    = 1024;
+
+    enum class EnvironmentMapColorSpace : uint32_t
+    {
+        LinearScene = 1,
+    };
+
+    enum class EnvironmentMapOrientation : uint32_t
+    {
+        RendererCanonical = 1,
+    };
+
+    enum class EnvironmentMapMipPolicy : uint32_t
+    {
+        GenerateOnGpu = 1,
+    };
+
     // Binary codec for ZEngine's on-disk asset formats (.zasset, .zematerial, .zetextures, .zenvmap).
     // These are the cook-time serialization helpers used by format importers to produce
     // the cooked binary artifacts that AssetManager loads at runtime.
@@ -46,13 +65,30 @@ namespace ZEngine::Importers::AssetCodec
 
     struct EnvironmentMapFileHeader
     {
-        uint32_t MagicNumber    = 0;
-        uint32_t Version        = 0;
-        int32_t  FaceWidth      = 0;
-        int32_t  FaceHeight     = 0;
-        int32_t  Channel        = 0;
-        int32_t  LayerCount     = 0;
-        uint64_t BufferByteSize = 0;
+        uint32_t MagicNumber     = 0;
+        uint32_t Version         = 0;
+        uint32_t HeaderByteSize  = 0;
+        uint32_t ImporterVersion = 0;
+        uint64_t SourceHash      = 0;
+        uint32_t FaceWidth       = 0;
+        uint32_t FaceHeight      = 0;
+        uint32_t Channel         = 0;
+        uint32_t LayerCount      = 0;
+        uint32_t MipCount        = 0;
+        uint32_t ColorSpace      = 0;
+        uint32_t Orientation     = 0;
+        uint32_t MipPolicy       = 0;
+        float    Exposure        = 1.0f;
+        uint32_t Reserved        = 0;
+        uint64_t BufferByteSize  = 0;
+    };
+    static_assert(sizeof(EnvironmentMapFileHeader) == 72, "Environment-map artifact header must remain stable");
+
+    struct EnvironmentMapCookMetadata
+    {
+        uint64_t SourceHash      = 0;
+        float    Exposure        = 1.0f;
+        uint32_t ImporterVersion = ENVIRONMENT_MAP_IMPORTER_VERSION;
     };
 
     AssetImporterOutput        SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config);
@@ -61,9 +97,13 @@ namespace ZEngine::Importers::AssetCodec
 
     AssetImporterOutput        SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
 
+    [[nodiscard]] uint32_t     GetEnvironmentMapFullMipCount(uint32_t face_size);
+    [[nodiscard]] bool         IsEnvironmentMapFileHeaderValid(const EnvironmentMapFileHeader& header);
+    [[nodiscard]] bool         DoesEnvironmentMapHeaderMatchSource(const EnvironmentMapFileHeader& header, uint64_t source_hash);
+
     // VFS-based — writes through IVFSContext using atomic .tmp → rename protocol.
     // out_path: the VFS path to write (e.g. project://_cache/envmaps/<uuid>.zenvmap)
-    Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap);
+    Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata = {});
 
     void                       DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies);
 

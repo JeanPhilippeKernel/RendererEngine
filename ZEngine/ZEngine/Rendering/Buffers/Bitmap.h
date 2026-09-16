@@ -59,6 +59,9 @@ namespace ZEngine::Rendering::Buffers
     namespace BitmapConvert
     {
         Bitmap EquirectToCross(const Bitmap& equirect, Core::Memory::TLSFSlab* slab = nullptr);
+        /// @brief Converts a validated 2:1 equirectangular image into the renderer's canonical cubemap face order.
+        /// @details This avoids allocating a transient vertical-cross image during HDRI cooking.
+        Bitmap EquirectToCubemap(const Bitmap& equirect, Core::Memory::TLSFSlab* slab = nullptr);
         Bitmap CrossToCubemap(const Bitmap& cross, Core::Memory::TLSFSlab* slab = nullptr);
     } // namespace BitmapConvert
 

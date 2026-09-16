@@ -1786,7 +1786,12 @@ namespace ZEngine::Rendering
         cstring file_ext = std::strrchr(filename, '.');
         if (!file_ext)
             file_ext = "";
-        const bool           is_environment_map = Helpers::secure_strcmp(file_ext, ".zenvmap") == 0;
+        const bool is_environment_map = Helpers::secure_strcmp(file_ext, ".zenvmap") == 0;
+        if (Helpers::secure_strcmp(file_ext, ".hdr") == 0 || Helpers::secure_strcmp(file_ext, ".exr") == 0)
+        {
+            ZENGINE_CORE_ERROR("[RRM] Raw HDR environment maps must be imported into a .zenvmap artifact before runtime upload: {}", filename)
+            return {};
+        }
 
         TextureSpecification spec{};
 
@@ -1810,20 +1815,9 @@ namespace ZEngine::Rendering
             if (!stbi_info(filename, &w, &h, &ch))
                 return {};
 
-            const bool is_equirectangular = Helpers::secure_strcmp(file_ext, ".hdr") == 0 || Helpers::secure_strcmp(file_ext, ".exr") == 0;
-            spec.Width                    = static_cast<uint32_t>(w);
-            spec.Height                   = static_cast<uint32_t>(h);
-            spec.Format                   = ImageFormat::R8G8B8A8_SRGB;
-
-            if (is_equirectangular)
-            {
-                int face_size   = w / 4;
-                spec.IsCubemap  = true;
-                spec.LayerCount = 6;
-                spec.Format     = ImageFormat::R32G32B32A32_SFLOAT;
-                spec.Width      = static_cast<uint32_t>(face_size);
-                spec.Height     = static_cast<uint32_t>(face_size);
-            }
+            spec.Width  = static_cast<uint32_t>(w);
+            spec.Height = static_cast<uint32_t>(h);
+            spec.Format = ImageFormat::R8G8B8A8_SRGB;
         }
 
         if (spec.IsCubemap)
@@ -1913,38 +1907,7 @@ namespace ZEngine::Rendering
             }
             else
             {
-                int          width = 0, height = 0, channels = 0;
-                const float* image_data = stbi_loadf(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
-                if (!image_data)
-                {
-                    ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
-                }
-                else
-                {
-                    const size_t total_pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
-                    const size_t float_bytes  = total_pixels * STBI_rgb_alpha * sizeof(float);
-                    float*       rgba         = static_cast<float*>(slab->Alloc(float_bytes));
-                    if (channels == STBI_rgb)
-                    {
-                        stbir_resize_float(image_data, width, height, 0, rgba, width, height, 0, STBI_rgb_alpha);
-                        for (size_t i = 0; i < total_pixels; ++i)
-                            rgba[i * STBI_rgb_alpha + 3] = 255.f;
-                    }
-                    else
-                    {
-                        Helpers::secure_memcpy(rgba, float_bytes, image_data, float_bytes);
-                    }
-                    stbi_image_free(const_cast<float*>(image_data));
-
-                    Rendering::Buffers::Bitmap input = Rendering::Buffers::Bitmap::FromData(width, height, 1, STBI_rgb_alpha, Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::Texture2D, rgba, slab);
-                    slab->Free(rgba);
-                    Rendering::Buffers::Bitmap cross   = Rendering::Buffers::BitmapConvert::EquirectToCross(input, slab);
-                    Rendering::Buffers::Bitmap cubemap = Rendering::Buffers::BitmapConvert::CrossToCubemap(cross, slab);
-
-                    byte_size                          = cubemap.BufferSize;
-                    pixels                             = static_cast<uint8_t*>(slab->Alloc(byte_size));
-                    Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
-                }
+                ZENGINE_CORE_ERROR("[RRM] Cubemap uploads require a cooked .zenvmap artifact: {}", task->Filename)
             }
         }
         else
