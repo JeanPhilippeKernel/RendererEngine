@@ -190,6 +190,44 @@ TEST(SkyEnvironmentTest, PresentationChangesKeepAnInFlightBakeCurrent)
     EXPECT_FLOAT_EQ(environment.GetPublishedSnapshot()->Config.EnvironmentIntensity, 2.0f);
 }
 
+TEST(SkyEnvironmentTest, HdrSourceReloadAtTheSameSceneRevisionDiscardsStaleWork)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyConfig config                  = HDRIConfig();
+    config.EnvironmentMap             = uuids::uuid::from_string("550e8400-e29b-41d4-a716-446655440000").value();
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(config, 1, {}, {}, 0x1111ULL, true));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    EXPECT_TRUE(environment.IsActiveBakeCurrent());
+
+    // The source enters the stale/importing state before its new artifact is
+    // ready. Its scene UUID and scene revision intentionally remain unchanged.
+    ASSERT_TRUE(environment.SubmitConfig(config, 1, {}, {}, 0x2222ULL, false));
+    EXPECT_FALSE(environment.IsActiveBakeCurrent());
+    EXPECT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Discarded);
+
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_EQ(request.Revision, 1u);
+    EXPECT_EQ(request.HDRISourceHash, 0x2222ULL);
+    EXPECT_FALSE(request.HDRIArtifactReady);
+    EXPECT_FALSE(request.BakeInputsValid);
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Failed);
+
+    // An unchanged unavailable artifact does not cause per-frame retry spam.
+    EXPECT_FALSE(environment.SubmitConfig(config, 1, {}, {}, 0x2222ULL, false));
+
+    // Import completion uses the same UUID/hash but marks the cooked artifact
+    // ready, which schedules exactly one fresh bake.
+    ASSERT_TRUE(environment.SubmitConfig(config, 1, {}, {}, 0x2222ULL, true));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_TRUE(request.HDRIArtifactReady);
+    EXPECT_TRUE(request.BakeInputsValid);
+}
+
 TEST(SkyEnvironmentTest, SkySphereCancelsStaleBakeAndKeepsTheFallback)
 {
     SkyEnvironment environment = {};

@@ -70,12 +70,18 @@ namespace ZEngine::Rendering::Scenes
     /// @brief Immutable bake input claimed by the render thread.
     struct SkyEnvironmentBakeRequest
     {
-        SkyConfig                       Config          = {};
-        SkyCelestialLight               CelestialLight  = {};
-        EnvironmentLightingBakeSettings BakeSettings    = {};
-        uint64_t                        Revision        = 0;
+        SkyConfig                       Config            = {};
+        SkyCelestialLight               CelestialLight    = {};
+        EnvironmentLightingBakeSettings BakeSettings      = {};
+        /// @brief Registry snapshot for the selected HDRI source. This keeps
+        /// source reimports distinct even though scene data stores only a UUID.
+        uint64_t                        HDRISourceHash    = 0;
+        uint64_t                        Revision          = 0;
+        /// @brief False until the registry has a completed cooked artifact for
+        /// the selected HDRI. Ignored by atmosphere and SkySphere modes.
+        bool                            HDRIArtifactReady = true;
         /// @brief True only when this request has every valid input needed to bake.
-        bool                            BakeInputsValid = true;
+        bool                            BakeInputsValid   = true;
     };
 
     /// @brief Result of a revision-tagged environment bake completion.
@@ -103,7 +109,7 @@ namespace ZEngine::Rendering::Scenes
 
         /// @brief Coalesces an immutable config revision while preserving its identity.
         /// @return False if the revision is stale or already observed.
-        bool                                              SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings = {}, const SkyCelestialLight& celestial_light = {});
+        bool                                              SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings = {}, const SkyCelestialLight& celestial_light = {}, uint64_t hdri_source_hash = 0, bool hdri_artifact_ready = true);
 
         /// @brief Claims the newest revision when no other bake is in flight.
         bool                                              TakeBakeRequest(SkyEnvironmentBakeRequest& out_request);
@@ -125,6 +131,9 @@ namespace ZEngine::Rendering::Scenes
         /// @brief Advances one completed stage, exposing a cancellation point before the next one.
         bool                                              AdvanceCompletedGpuBakeStage(uint64_t completed_timeline_value);
         [[nodiscard]] bool                                IsGpuBakeReadyToPublish() const;
+        /// @brief Returns false once a newer config, quality setting, or HDRI
+        /// source snapshot supersedes the active request.
+        [[nodiscard]] bool                                IsActiveBakeCurrent() const;
 
         /// @brief Completes a bake, publishing it only if its revision is still current.
         SkyEnvironmentBakeResult                          CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success, const EnvironmentLightingResources& lighting = {}, const AtmosphereStaticResources& atmosphere = {});
@@ -162,7 +171,7 @@ namespace ZEngine::Rendering::Scenes
 
     private:
         [[nodiscard]] static bool       HasEquivalentAtmosphereStaticInputs(const SkyConfig& left, const SkyConfig& right);
-        [[nodiscard]] static bool       HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, const SkyConfig& right, const SkyCelestialLight& right_celestial_light);
+        [[nodiscard]] static bool       HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, uint64_t left_hdri_source_hash, bool left_hdri_artifact_ready, const SkyConfig& right, const SkyCelestialLight& right_celestial_light, uint64_t right_hdri_source_hash, bool right_hdri_artifact_ready);
         [[nodiscard]] bool              IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const;
         void                            ReleaseNextFramePin(uint64_t timeline_value);
         int32_t                         FindFreeSnapshotSlot() const;
@@ -179,6 +188,7 @@ namespace ZEngine::Rendering::Scenes
         SkyCelestialLight               m_presentation_celestial_light         = {};
         SkyConfig                       m_bake_config                          = {};
         SkyCelestialLight               m_bake_celestial_light                 = {};
+        uint64_t                        m_bake_hdri_source_hash                = 0;
         uint16_t                        m_frame_pin_slots[MaxPendingFramePins] = {};
         uint32_t                        m_published_slot                       = 0;
         uint32_t                        m_frame_pin_head                       = 0;
@@ -191,6 +201,7 @@ namespace ZEngine::Rendering::Scenes
         bool                            m_has_active_bake                      = false;
         bool                            m_active_bake_owns_atmosphere          = false;
         bool                            m_bake_inputs_valid                    = false;
+        bool                            m_bake_hdri_artifact_ready             = true;
         bool                            m_active_stage_submitted               = false;
         bool                            m_active_stage_recorded                = false;
         SkyEnvironmentState             m_state                                = SkyEnvironmentState::Fallback;

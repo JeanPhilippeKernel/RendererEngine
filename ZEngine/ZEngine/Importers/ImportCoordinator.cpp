@@ -146,7 +146,15 @@ namespace ZEngine::Importers
         {
             ZENGINE_CORE_INFO("[ImportCoordinator] Imported '{}'", job.Path.CStr())
             if (coordinator->m_registry)
+            {
+                // Importers may have published a new cooked artifact path or
+                // versioned import metadata. Refresh the lightweight registry
+                // snapshot before notifying runtime consumers that the source is ready.
+                auto updated_meta = Core::VFS::MetaFileIO::Read(*coordinator->m_vfs_ctx, job.Path);
+                if (updated_meta.Succeeded())
+                    coordinator->m_registry->UpdateMeta(job.Meta.AssetUUID, updated_meta.Value(), Core::VFS::AssetState::Loaded);
                 coordinator->m_registry->SetState(job.Meta.AssetUUID, Core::VFS::AssetState::Loaded);
+            }
             job.Callback.Invoke(true);
             coordinator->m_completed.value.fetch_add(1, std::memory_order_relaxed);
         }

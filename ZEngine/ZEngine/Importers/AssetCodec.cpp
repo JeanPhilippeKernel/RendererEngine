@@ -7,7 +7,9 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <uuid.h>
+#include <cmath>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -19,6 +21,19 @@ using ZEngine::Core::VFS::VFSPath;
 
 namespace ZEngine::Importers::AssetCodec
 {
+    namespace
+    {
+        bool HasExactEnvironmentMapFileSize(std::ifstream& input, const EnvironmentMapFileHeader& header)
+        {
+            input.seekg(0, std::ios::end);
+            if (!input.good())
+                return false;
+
+            const std::streamoff expected_file_size = static_cast<std::streamoff>(header.HeaderByteSize) + static_cast<std::streamoff>(header.BufferByteSize);
+            return input.tellg() == expected_file_size;
+        }
+    } // namespace
+
     // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
     static bool WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
     {
@@ -324,6 +339,35 @@ namespace ZEngine::Importers::AssetCodec
         return true;
     }
 
+    uint32_t GetEnvironmentMapFullMipCount(uint32_t face_size)
+    {
+        uint32_t mip_count = 1;
+        while (face_size > 1)
+        {
+            face_size >>= 1;
+            ++mip_count;
+        }
+        return mip_count;
+    }
+
+    bool IsEnvironmentMapFileHeaderValid(const EnvironmentMapFileHeader& header)
+    {
+        if (header.MagicNumber != ZENVMAP_MAGIC || header.Version != ENVIRONMENT_MAP_FILE_VERSION || header.HeaderByteSize != sizeof(EnvironmentMapFileHeader) || header.ImporterVersion == 0 || header.FaceWidth == 0 || header.FaceWidth != header.FaceHeight || header.FaceWidth > ENVIRONMENT_MAP_MAX_FACE_SIZE || header.Channel != 4 || header.LayerCount != 6 || header.MipCount != GetEnvironmentMapFullMipCount(header.FaceWidth) || header.ColorSpace != static_cast<uint32_t>(EnvironmentMapColorSpace::LinearScene) ||
+            header.Orientation != static_cast<uint32_t>(EnvironmentMapOrientation::RendererCanonical) || header.MipPolicy != static_cast<uint32_t>(EnvironmentMapMipPolicy::GenerateOnGpu) || !std::isfinite(header.Exposure) || header.Exposure <= 0.0f)
+            return false;
+
+        constexpr uint64_t k_bytes_per_pixel = sizeof(float) * 4;
+        const uint64_t     face_pixels       = static_cast<uint64_t>(header.FaceWidth) * static_cast<uint64_t>(header.FaceHeight);
+        if (face_pixels > std::numeric_limits<uint64_t>::max() / header.LayerCount || face_pixels * header.LayerCount > std::numeric_limits<uint64_t>::max() / k_bytes_per_pixel)
+            return false;
+        return header.BufferByteSize == face_pixels * header.LayerCount * k_bytes_per_pixel;
+    }
+
+    bool DoesEnvironmentMapHeaderMatchSource(const EnvironmentMapFileHeader& header, uint64_t source_hash)
+    {
+        return IsEnvironmentMapFileHeaderValid(header) && header.SourceHash == source_hash;
+    }
+
     bool DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap)
     {
         std::ifstream in(zenvmap_file, std::ios::binary);
@@ -332,12 +376,22 @@ namespace ZEngine::Importers::AssetCodec
 
         EnvironmentMapFileHeader header{};
         in.read(reinterpret_cast<char*>(&header), sizeof(header));
-        if (!in.good() || header.MagicNumber != ZENVMAP_MAGIC)
+        if (!in.good() || !IsEnvironmentMapFileHeaderValid(header))
             return false;
 
-        out_cubemap = Rendering::Buffers::Bitmap::Create(header.FaceWidth, header.FaceHeight, header.LayerCount, header.Channel, Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::CubeMap);
-        in.read(reinterpret_cast<char*>(out_cubemap.Buffer), static_cast<std::streamsize>(header.BufferByteSize));
-        return in.good();
+        if (!HasExactEnvironmentMapFileSize(in, header))
+            return false;
+
+        in.seekg(static_cast<std::streamoff>(header.HeaderByteSize), std::ios::beg);
+        Rendering::Buffers::Bitmap cubemap = Rendering::Buffers::Bitmap::Create(static_cast<int>(header.FaceWidth), static_cast<int>(header.FaceHeight), static_cast<int>(header.LayerCount), static_cast<int>(header.Channel), Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::CubeMap);
+        if (!cubemap.Buffer)
+            return false;
+        in.read(reinterpret_cast<char*>(cubemap.Buffer), static_cast<std::streamsize>(header.BufferByteSize));
+        if (!in.good())
+            return false;
+
+        out_cubemap = std::move(cubemap);
+        return true;
     }
 
     bool ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header)
@@ -346,11 +400,14 @@ namespace ZEngine::Importers::AssetCodec
         if (!in.is_open())
             return false;
         in.read(reinterpret_cast<char*>(&out_header), sizeof(EnvironmentMapFileHeader));
-        return in.good() && (out_header.MagicNumber == ZENVMAP_MAGIC);
+        return in.good() && IsEnvironmentMapFileHeaderValid(out_header) && HasExactEnvironmentMapFileSize(in, out_header);
     }
 
-    Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap)
+    Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata)
     {
+        if (cubemap.Type != Rendering::Buffers::BitmapType::CubeMap || cubemap.Width <= 0 || cubemap.Width != cubemap.Height || cubemap.Width > static_cast<int>(ENVIRONMENT_MAP_MAX_FACE_SIZE) || cubemap.Channel != 4 || cubemap.Layers != 6 || cubemap.Format != Rendering::Buffers::BitmapFormat::Float || !cubemap.Buffer || !std::isfinite(metadata.Exposure) || metadata.Exposure <= 0.0f || metadata.ImporterVersion == 0)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+
         // Build .tmp path for atomic write
         char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
         const char* raw                          = out_path.CStr();
@@ -368,14 +425,24 @@ namespace ZEngine::Importers::AssetCodec
         Core::VFS::IVFSFile*     file = open_result.Value();
 
         EnvironmentMapFileHeader header{
-            .MagicNumber    = ZENVMAP_MAGIC,
-            .Version        = ASSET_FILE_VERSION,
-            .FaceWidth      = cubemap.Width,
-            .FaceHeight     = cubemap.Height,
-            .Channel        = cubemap.Channel,
-            .LayerCount     = cubemap.Layers,
-            .BufferByteSize = static_cast<uint64_t>(cubemap.BufferSize),
+            .MagicNumber     = ZENVMAP_MAGIC,
+            .Version         = ENVIRONMENT_MAP_FILE_VERSION,
+            .HeaderByteSize  = sizeof(EnvironmentMapFileHeader),
+            .ImporterVersion = metadata.ImporterVersion,
+            .SourceHash      = metadata.SourceHash,
+            .FaceWidth       = static_cast<uint32_t>(cubemap.Width),
+            .FaceHeight      = static_cast<uint32_t>(cubemap.Height),
+            .Channel         = static_cast<uint32_t>(cubemap.Channel),
+            .LayerCount      = static_cast<uint32_t>(cubemap.Layers),
+            .MipCount        = GetEnvironmentMapFullMipCount(static_cast<uint32_t>(cubemap.Width)),
+            .ColorSpace      = static_cast<uint32_t>(EnvironmentMapColorSpace::LinearScene),
+            .Orientation     = static_cast<uint32_t>(EnvironmentMapOrientation::RendererCanonical),
+            .MipPolicy       = static_cast<uint32_t>(EnvironmentMapMipPolicy::GenerateOnGpu),
+            .Exposure        = metadata.Exposure,
+            .BufferByteSize  = static_cast<uint64_t>(cubemap.BufferSize),
         };
+        if (!IsEnvironmentMapFileHeaderValid(header))
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
 
         const auto* hdr_bytes  = reinterpret_cast<const uint8_t*>(&header);
         auto        w1         = file->Write({hdr_bytes, sizeof(header)}, 0);
