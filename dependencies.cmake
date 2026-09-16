@@ -16,6 +16,13 @@ FetchContent_Declare(
   )
 
 FetchContent_Declare(
+  tinyexr
+  GIT_REPOSITORY https://github.com/syoyo/tinyexr.git
+  GIT_TAG v1.0.13
+  GIT_SHALLOW TRUE
+  )
+
+FetchContent_Declare(
   glfw3
   GIT_REPOSITORY https://github.com/glfw/glfw.git
   GIT_SHALLOW TRUE
@@ -242,6 +249,17 @@ FetchContent_MakeAvailable(
   fastgltf
   )
 
+# TinyEXR's bundled CMake project declares another target named miniz. Fetch
+# only its source instead, then build it against the Miniz target already used
+# by the engine.
+FetchContent_GetProperties(tinyexr)
+if(NOT tinyexr_POPULATED)
+    FetchContent_Populate(tinyexr)
+endif()
+add_library(tinyexr STATIC ${tinyexr_SOURCE_DIR}/tinyexr.cc)
+target_include_directories(tinyexr PUBLIC ${tinyexr_SOURCE_DIR})
+target_link_libraries(tinyexr PRIVATE miniz ${CMAKE_DL_LIBS})
+
 foreach(_spirv_target IN ITEMS
     SPIRV-Tools SPIRV-Tools-static SPIRV-Tools-shared
     SPIRV-Tools-opt SPIRV-Tools-reduce SPIRV-Tools-link
@@ -299,6 +317,7 @@ target_link_libraries(External_libs
          nlohmann_json::nlohmann_json
          miniz
          fastgltf::fastgltf
+         tinyexr
          ufbx
          meshoptimizer
          freetype

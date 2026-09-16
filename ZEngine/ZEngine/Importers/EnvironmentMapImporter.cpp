@@ -9,9 +9,11 @@
 #include <uuid.h>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 // stb_image implementation is defined once in RenderResourceManager.cpp.
 #include <stb/stb_image.h>
+#include <tinyexr.h>
 
 using namespace ZEngine::Rendering::Buffers;
 
@@ -38,9 +40,7 @@ namespace ZEngine::Importers
     {
         if (!extension)
             return false;
-        // stb_image does not decode EXR. Do not advertise it until an EXR-capable
-        // importer is implemented and covered by the same artifact contract.
-        return Helpers::secure_strcmp(extension, "hdr") == 0;
+        return Helpers::secure_strcmp(extension, "hdr") == 0 || Helpers::secure_strcmp(extension, "exr") == 0;
     }
 
     bool EnvironmentMapImporter::IsSupportedEquirectangularSource(int width, int height, const float* rgba_pixels)
@@ -78,24 +78,49 @@ namespace ZEngine::Importers
         else
             path.ToNative(native, sizeof(native));
 
-        int          width = 0, height = 0, channel = 0;
-        const float* image_data = stbi_loadf(native, &width, &height, &channel, STBI_rgb_alpha);
+        int        width = 0, height = 0, channel = 0;
+        float*     image_data = nullptr;
+        const bool is_exr     = path.Extension().Equals(".exr");
+        if (is_exr)
+        {
+            const char* error_message = nullptr;
+            if (LoadEXR(&image_data, &width, &height, native, &error_message) != TINYEXR_SUCCESS)
+            {
+                ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load EXR '{}': {}", native, error_message ? error_message : "unknown decoder error")
+                if (error_message)
+                    FreeEXRErrorMessage(error_message);
+                if (image_data)
+                    std::free(image_data);
+                return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+            }
+            channel = STBI_rgb_alpha;
+        }
+        else
+        {
+            image_data = const_cast<float*>(stbi_loadf(native, &width, &height, &channel, STBI_rgb_alpha));
+        }
         if (!image_data)
         {
-            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load '{}': {}", native, stbi_failure_reason())
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load {} '{}': {}", is_exr ? "EXR" : "HDR", native, is_exr ? "decoder returned no pixels" : stbi_failure_reason())
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
         }
 
         if (!IsSupportedEquirectangularSource(width, height, image_data))
         {
-            stbi_image_free(const_cast<float*>(image_data));
+            if (is_exr)
+                std::free(image_data);
+            else
+                stbi_image_free(image_data);
             ZENGINE_CORE_ERROR("EnvironmentMapImporter: '{}' must be a finite, non-negative 2:1 HDR equirectangular image with a face size no larger than {}", native, AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE)
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
         }
 
         Core::Memory::TLSFSlab* slab     = Helpers::GetWorkerSlab();
         Bitmap                  equirect = Bitmap::FromData(width, height, 1, STBI_rgb_alpha, BitmapFormat::Float, BitmapType::Texture2D, image_data);
-        stbi_image_free(const_cast<float*>(image_data));
+        if (is_exr)
+            std::free(image_data);
+        else
+            stbi_image_free(image_data);
 
         Bitmap cubemap                           = BitmapConvert::EquirectToCubemap(equirect, slab);
 

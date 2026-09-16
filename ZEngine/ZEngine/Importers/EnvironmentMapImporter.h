@@ -4,7 +4,7 @@
 
 namespace ZEngine::Importers
 {
-    // Imports .hdr equirectangular images, converts them to cubemaps,
+    // Imports .hdr and standard .exr equirectangular images, converts them to cubemaps,
     // and writes a .zenvmap cooked artifact. Registered with ImportCoordinator
     // so the standard Enqueue/Tick pipeline handles HDRI assets off the render thread.
     class EnvironmentMapImporter : public IAssetImporter

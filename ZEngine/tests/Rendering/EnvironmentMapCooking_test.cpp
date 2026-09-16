@@ -3,6 +3,7 @@
 #include <ZEngine/Rendering/Buffers/Bitmap.h>
 #include <ZEngine/ZEngineDef.h>
 #include <gtest/gtest.h>
+#include <tinyexr.h>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -41,14 +42,60 @@ namespace
     }
 } // namespace
 
-TEST(EnvironmentMapCookingTest, ImporterClaimsOnlySupportedHdrSources)
+TEST(EnvironmentMapCookingTest, ImporterClaimsSupportedHdrAndExrSources)
 {
     EnvironmentMapImporter importer = {};
 
     EXPECT_TRUE(importer.CanImport("hdr"));
-    EXPECT_FALSE(importer.CanImport("exr"));
+    EXPECT_TRUE(importer.CanImport("exr"));
     EXPECT_FALSE(importer.CanImport("png"));
     EXPECT_FALSE(importer.CanImport(nullptr));
+}
+
+TEST(EnvironmentMapCookingTest, TinyExrDecodesAFloatEquirectangularSource)
+{
+    constexpr int                         width       = 4;
+    constexpr int                         height      = 2;
+    const std::filesystem::path           source_path = std::filesystem::temp_directory_path() / "zengine_environment_map_cooking_test.exr";
+    std::array<float, width * height * 4> source      = {};
+    for (size_t index = 0; index < source.size(); ++index)
+        source[index] = static_cast<float>(index) * 0.25f;
+
+    const char* error_message = nullptr;
+    const int   write_result  = SaveEXR(source.data(), width, height, 4, 0, source_path.c_str(), &error_message);
+    if (write_result != TINYEXR_SUCCESS)
+    {
+        ADD_FAILURE() << "TinyEXR failed to write the test source: " << (error_message ? error_message : "unknown error");
+        if (error_message)
+            FreeEXRErrorMessage(error_message);
+        return;
+    }
+
+    float* decoded        = nullptr;
+    int    decoded_width  = 0;
+    int    decoded_height = 0;
+    error_message         = nullptr;
+    const int read_result = LoadEXR(&decoded, &decoded_width, &decoded_height, source_path.c_str(), &error_message);
+    if (read_result != TINYEXR_SUCCESS)
+    {
+        ADD_FAILURE() << "TinyEXR failed to decode the test source: " << (error_message ? error_message : "unknown error");
+        if (error_message)
+            FreeEXRErrorMessage(error_message);
+        std::error_code error;
+        std::filesystem::remove(source_path, error);
+        return;
+    }
+
+    ASSERT_NE(decoded, nullptr);
+    EXPECT_EQ(decoded_width, width);
+    EXPECT_EQ(decoded_height, height);
+    EXPECT_TRUE(EnvironmentMapImporter::IsSupportedEquirectangularSource(decoded_width, decoded_height, decoded));
+    for (size_t index = 0; index < source.size(); ++index)
+        EXPECT_FLOAT_EQ(decoded[index], source[index]) << "component " << index;
+
+    std::free(decoded);
+    std::error_code error;
+    std::filesystem::remove(source_path, error);
 }
 
 TEST(EnvironmentMapCookingTest, SourceValidationRejectsMalformedAndOversizedInputs)

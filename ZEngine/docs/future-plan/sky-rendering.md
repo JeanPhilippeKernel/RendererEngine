@@ -400,7 +400,7 @@ authored .hdr
 
 Version 1 supports HDR input and extends the current importer that cooks it into a cubemap cache artifact. It must not also introduce a second runtime raw-equirectangular conversion pipeline. A future GPU-based cooker can replace the conversion implementation behind the same asset contract.
 
-EXR is not exposed as supported input until an EXR-capable decoder is integrated and covered by import tests. The current stb_image-based loader must not advertise EXR merely because the importer extension filter accepts it; it should reject unsupported input at import time with a useful error.
+Radiance `.hdr` and flat, single-part `.exr` input are supported. HDR uses stb_image and EXR uses TinyEXR; both decode to the same linear RGBA32F conversion path. Deep, multipart, and other EXR workflows that cannot be represented as one flat image are intentionally not accepted as environment sources.
 
 The current `.zenvmap` artifact is version 2. Its fixed header records source hash, importer version, RGBA32F payload contract, linear-scene colour, renderer-canonical cubemap orientation, exposure, face dimensions/layers, and the full GPU-generated mip policy. The runtime validates that complete contract and the exact payload length before it allocates or uploads; a header whose source hash does not match the registry is stale and is never used.
 
@@ -414,7 +414,7 @@ HDRI rotation/orientation, tint, and lighting intensity are common source-radian
 
 ### 8.1 Import validation and colour contract
 
-The importer currently accepts `.hdr` only; `.exr` remains unsupported until an EXR-capable decoder is integrated. It validates an equirectangular 2:1 source aspect ratio, finite non-negative RGBA pixels, width divisible by four, and a maximum 1024-pixel cubemap face before allocating conversion buffers. HDR source pixels are interpreted as linear scene radiance, never as sRGB. Invalid NaN/infinite or negative radiance fails import with a diagnostic.
+The importer accepts Radiance `.hdr` and flat, single-part `.exr`. It validates an equirectangular 2:1 source aspect ratio, finite non-negative RGBA pixels, width divisible by four, and a maximum 1024-pixel cubemap face before allocating conversion buffers. HDR source pixels are interpreted as linear scene radiance, never as sRGB. Invalid NaN/infinite or negative radiance fails import with a diagnostic.
 
 The cooker writes atomically and preserves the prior valid artifact if recooking fails. It converts directly into the established six-face canonical order (covered against the prior vertical-cross conversion), records the complete GPU-generated mip policy, and stores the source/import hash used for stale-artifact detection. The runtime uses only completed artifacts and never samples a partially written cache file. Registry source hash and artifact readiness are part of the immutable HDRI bake key, so a reimport with the same scene UUID invalidates pending or active work while an unchanged unavailable artifact produces no retry loop.
 
