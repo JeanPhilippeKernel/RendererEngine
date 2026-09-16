@@ -98,7 +98,7 @@ namespace ZEngine::Rendering::Cameras
 
     void FlyCamera::SetPosition(Vec3f position)
     {
-        Position = m_targetPos = position;
+        Position = m_targetPos = ConstrainPositionToGround(position);
         m_viewDirty            = true;
     }
 
@@ -241,6 +241,7 @@ namespace ZEngine::Rendering::Cameras
         }
 
         HandleCommands();
+        ApplyGroundConstraint();
 
         if (m_projDirty)
             RecalculateProjection();
@@ -393,7 +394,7 @@ namespace ZEngine::Rendering::Cameras
         }
 
         m_animStartPos    = Position;
-        m_animEndPos      = endPos;
+        m_animEndPos      = ConstrainPositionToGround(endPos);
         m_animStartPitch  = Pitch;
         m_animStartYaw    = Yaw;
         m_animEndPitch    = endPitch;
@@ -431,7 +432,7 @@ namespace ZEngine::Rendering::Cameras
             return;
         const auto& bm    = m_bookmarks[slot];
         m_animStartPos    = Position;
-        m_animEndPos      = bm.Pos;
+        m_animEndPos      = ConstrainPositionToGround(bm.Pos);
         m_animStartPitch  = Pitch;
         m_animStartYaw    = Yaw;
         m_animEndPitch    = bm.Pitch;
@@ -534,6 +535,39 @@ namespace ZEngine::Rendering::Cameras
                 return std::max(hit.Distance * 0.9f, Settings.MinOrbitDistance);
         }
         return desired;
+    }
+
+    Vec3f FlyCamera::ConstrainPositionToGround(Vec3f position) const
+    {
+        if (!Hooks.GetGroundConstraint)
+            return position;
+
+        Vec3f center = {};
+        float radius = 0.0f;
+        if (!Hooks.GetGroundConstraint(Hooks.Context, center, radius) || !std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z) || !std::isfinite(radius) || radius <= 0.0f)
+            return position;
+
+        const Vec3f relative         = position - center;
+        const float distance_squared = dot(relative, relative);
+        const float radius_squared   = radius * radius;
+        if (!std::isfinite(distance_squared) || !std::isfinite(radius_squared) || distance_squared >= radius_squared)
+            return position;
+
+        const float distance  = sqrtf(distance_squared);
+        const Vec3f direction = distance > 1.0e-5f ? relative / distance : Vec3f(0.0f, 1.0f, 0.0f);
+        return center + direction * radius;
+    }
+
+    void FlyCamera::ApplyGroundConstraint()
+    {
+        const Vec3f constrained_position = ConstrainPositionToGround(Position);
+        const Vec3f constrained_target   = ConstrainPositionToGround(m_targetPos);
+        if (constrained_position.x != Position.x || constrained_position.y != Position.y || constrained_position.z != Position.z)
+        {
+            Position    = constrained_position;
+            m_viewDirty = true;
+        }
+        m_targetPos = constrained_target;
     }
 
     void FlyCamera::HandleCommands()

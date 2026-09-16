@@ -415,6 +415,7 @@ TEST(SkyEnvironmentTest, PerViewAtmospherePassOmitsMinimizedViews)
 
     Renderers::SkyViewLutPass sky_view  = {};
     sky_view.SetEnvironment(&snapshot, snapshot.Config);
+    sky_view.SetCameraPosition({0.0f, 5.0f, 0.0f});
 
     Renderers::RenderGraphFrameContext minimized = {};
     minimized.RenderWidth                        = 0;
@@ -425,6 +426,54 @@ TEST(SkyEnvironmentTest, PerViewAtmospherePassOmitsMinimizedViews)
     renderable.RenderWidth                        = 1280;
     renderable.RenderHeight                       = 720;
     EXPECT_TRUE(sky_view.ShouldRegisterCompute(renderable));
+}
+
+TEST(SkyEnvironmentTest, AtmosphereViewClassificationUsesTheConfiguredPlanetSurface)
+{
+    const AtmosphereSettings atmosphere = {};
+
+    EXPECT_EQ(ClassifyAtmosphereView(atmosphere, {0.0f, 5.0f, 0.0f}), AtmosphereViewClass::InsideAtmosphere);
+    EXPECT_EQ(ClassifyAtmosphereView(atmosphere, {0.0f, 0.0f, 0.0f}), AtmosphereViewClass::BelowGround);
+    EXPECT_EQ(ClassifyAtmosphereView(atmosphere, {0.0f, -5.0f, 0.0f}), AtmosphereViewClass::BelowGround);
+    EXPECT_EQ(ClassifyAtmosphereView(atmosphere, {0.0f, 101000.0f, 0.0f}), AtmosphereViewClass::OutsideAtmosphere);
+
+    AtmosphereSettings invalid_scale = atmosphere;
+    invalid_scale.WorldUnitsPerMeter = 0.0f;
+    EXPECT_EQ(ClassifyAtmosphereView(invalid_scale, {0.0f, 5.0f, 0.0f}), AtmosphereViewClass::Invalid);
+
+    AtmosphereSettings configured         = {};
+    configured.PlanetCenterWorld[0]       = 100.0f;
+    configured.PlanetCenterWorld[1]       = 200.0f;
+    configured.PlanetCenterWorld[2]       = 300.0f;
+    configured.WorldUnitsPerMeter         = 2.0f;
+    configured.PlanetRadiusKilometers     = 2.0f;
+    configured.AtmosphereRadiusKilometers = 3.0f;
+    EXPECT_EQ(ClassifyAtmosphereView(configured, {100.0f, 4200.0f, 300.0f}), AtmosphereViewClass::BelowGround);
+    EXPECT_EQ(ClassifyAtmosphereView(configured, {100.0f, 4201.0f, 300.0f}), AtmosphereViewClass::InsideAtmosphere);
+    EXPECT_EQ(ClassifyAtmosphereView(configured, {100.0f, 7000.0f, 300.0f}), AtmosphereViewClass::OutsideAtmosphere);
+    EXPECT_EQ(ClassifyAtmosphereView(configured, {2100.0f, 200.0f, 300.0f}), AtmosphereViewClass::BelowGround);
+    EXPECT_EQ(ClassifyAtmosphereView(configured, {-1900.0f, 200.0f, 300.0f}), AtmosphereViewClass::BelowGround);
+}
+
+TEST(SkyEnvironmentTest, PerViewAtmospherePassSkipsBelowGroundViews)
+{
+    SkyEnvironmentSnapshot snapshot     = {};
+    snapshot.Config.Mode                = SkyMode::Atmosphere;
+    snapshot.Atmosphere                 = Atmosphere(20);
+    snapshot.CelestialLight.IsAvailable = true;
+
+    Renderers::SkyViewLutPass sky_view  = {};
+    sky_view.SetEnvironment(&snapshot, snapshot.Config);
+
+    Renderers::RenderGraphFrameContext frame_context = {};
+    frame_context.RenderWidth                        = 1280;
+    frame_context.RenderHeight                       = 720;
+
+    sky_view.SetCameraPosition({0.0f, -5.0f, 0.0f});
+    EXPECT_FALSE(sky_view.ShouldRegisterCompute(frame_context));
+
+    sky_view.SetCameraPosition({0.0f, 5.0f, 0.0f});
+    EXPECT_TRUE(sky_view.ShouldRegisterCompute(frame_context));
 }
 
 TEST(SkyAtmosphereViewPassTest, GroundValuesStayBoundToThePublishedSnapshot)

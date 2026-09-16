@@ -24,6 +24,12 @@ namespace ZEngine::Rendering::Cameras
         /// @brief Retrieves world-space bounds covering every frameable scene object.
         /// @returns True only when out_center and out_radius were written.
         bool (*GetSceneBounds)(void* context, Core::Maths::Vec3f& out_center, float& out_radius)                                       = nullptr;
+
+        /// @brief Retrieves an optional spherical editor-navigation boundary.
+        /// @details The camera stays on or outside out_radius around out_center
+        /// when this returns true. This keeps editor policy out of FlyCamera:
+        /// clients may use it for an analytic planet surface or leave it unset.
+        bool (*GetGroundConstraint)(void* context, Core::Maths::Vec3f& out_center, float& out_radius)                                  = nullptr;
     };
 
     struct FlyCamera : public Camera
@@ -80,6 +86,8 @@ namespace ZEngine::Rendering::Cameras
         Core::Maths::Vec3f KeyboardMoveDir() const;
         float              AdaptiveSpeed() const;
         float              OrbitCollide(float desired) const;
+        Core::Maths::Vec3f ConstrainPositionToGround(Core::Maths::Vec3f position) const;
+        void               ApplyGroundConstraint();
 
         Core::Maths::Vec3f m_targetPos          = {0.0f, 5.0f, 10.0f};
         float              m_targetPitch        = 0.0f;

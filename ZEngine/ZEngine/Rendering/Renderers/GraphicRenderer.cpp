@@ -209,24 +209,9 @@ namespace ZEngine::Rendering::Renderers
         // Light buffer is uploaded by AppRenderPipeline::RenderScene from scene->PendingLights.
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
-        auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
-        auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
-        RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
-
-        // The view-local atmosphere kernels consume only immutable snapshot
-        // inputs plus this copied camera state. There is no temporal history to
-        // invalidate on a camera cut or dynamic-resolution change.
-        if (m_sky_view_lut_pass)
-            m_sky_view_lut_pass->SetCameraPosition(camera.Position);
-        if (m_aerial_perspective_pass)
-            m_aerial_perspective_pass->SetCameraPosition(camera.Position);
-        if (m_sky_composite_pass)
-        {
-            m_sky_composite_pass->SetCameraPosition(camera.Position);
-            m_sky_composite_pass->SetCameraDepthConvention(camera.UsesReverseZ);
-        }
-        if (m_sky_sphere_pass)
-            m_sky_sphere_pass->SetCameraDepthConvention(camera.UsesReverseZ);
+        auto& heap                             = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
+        auto  camera_alloc                     = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
+        RenderSceneData->CameraHeapOffset      = camera_alloc.Offset;
 
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
         PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
@@ -283,7 +268,7 @@ namespace ZEngine::Rendering::Renderers
         PollSkyBake();
     }
 
-    void GraphicRenderer::BeginSkyFrame()
+    void GraphicRenderer::BeginSkyFrame(const Cameras::CameraFrameData& camera)
     {
         PollSkyBake();
         StartPendingSkyBake();
@@ -301,6 +286,12 @@ namespace ZEngine::Rendering::Renderers
         m_aerial_perspective_pass->SetEnvironment(nullptr, {});
         m_sky_composite_pass->SetEnvironment(nullptr, {});
         m_sky_sphere_pass->SetEnvironment({}, {});
+        m_sky_view_lut_pass->SetCameraPosition(camera.Position);
+        m_aerial_perspective_pass->SetCameraPosition(camera.Position);
+        m_sky_composite_pass->SetCameraPosition(camera.Position);
+        m_sky_composite_pass->SetCameraDepthConvention(camera.UsesReverseZ);
+        m_sky_sphere_pass->SetCameraDepthConvention(camera.UsesReverseZ);
+        m_skybox_pass->SetUseSolidColorFallback(false);
         m_tone_mapping_pass->SetUseCompositedSceneColor(false);
         m_skybox_pass->SetEnabled(true);
         if (!snapshot)
@@ -311,8 +302,23 @@ namespace ZEngine::Rendering::Renderers
         m_lighting_pass->SetEnvironmentLighting(use_sky_sphere ? m_sky_environment.GetFallbackLighting() : snapshot->Lighting, presentation);
         m_skybox_pass->SetEnvironment(snapshot->SourceRadiance, presentation);
         m_sky_sphere_pass->SetEnvironment(use_sky_sphere ? presentation : Scenes::SkyConfig{}, use_sky_sphere ? m_sky_environment.GetPresentationCelestialLight() : Scenes::SkyCelestialLight{});
-        const bool use_atmosphere_view = m_atmosphere_view_resources_supported && snapshot->Config.IsAtmosphere() && snapshot->Atmosphere.Valid() && snapshot->CelestialLight.IsAvailable && snapshot->CelestialLight.IsValid();
+        const Scenes::AtmosphereSettings  view_atmosphere = Scenes::MakeAtmosphereViewSettings(snapshot->Config.Atmosphere, presentation.Atmosphere);
+        const Scenes::AtmosphereViewClass view_class      = Scenes::ClassifyAtmosphereView(view_atmosphere, camera.Position);
+        if (snapshot->Config.IsAtmosphere() && view_class != m_last_atmosphere_view_class)
+        {
+            if (view_class == Scenes::AtmosphereViewClass::BelowGround)
+                ZENGINE_CORE_WARN("[SkyEnvironment] Camera entered a below-ground atmosphere view; using the baked sky fallback until it returns above the planet surface")
+            else if (view_class == Scenes::AtmosphereViewClass::Invalid)
+                ZENGINE_CORE_WARN("[SkyEnvironment] Camera or atmosphere placement is invalid; using the baked sky fallback")
+            else
+                ZENGINE_CORE_INFO("[SkyEnvironment] Camera atmosphere view is now {}", Scenes::GetAtmosphereViewClassName(view_class))
+            m_last_atmosphere_view_class = view_class;
+        }
+
+        const bool view_supports_atmosphere = view_class == Scenes::AtmosphereViewClass::InsideAtmosphere || view_class == Scenes::AtmosphereViewClass::OutsideAtmosphere;
+        const bool use_atmosphere_view      = m_atmosphere_view_resources_supported && snapshot->Config.IsAtmosphere() && snapshot->Atmosphere.Valid() && snapshot->CelestialLight.IsAvailable && snapshot->CelestialLight.IsValid() && view_supports_atmosphere;
         m_skybox_pass->SetEnabled(!use_atmosphere_view && !use_sky_sphere);
+        m_skybox_pass->SetUseSolidColorFallback(snapshot->Config.IsAtmosphere() && (view_class == Scenes::AtmosphereViewClass::BelowGround || view_class == Scenes::AtmosphereViewClass::Invalid));
         m_sky_view_lut_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_aerial_perspective_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_sky_composite_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);

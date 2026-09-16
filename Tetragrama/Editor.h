@@ -51,9 +51,12 @@ namespace Tetragrama
 
         virtual ~Editor() {}
 
-        Layers::ZUILayer*                  ZUIUILayer          = nullptr;
+        Layers::ZUILayer*                  ZUIUILayer                        = nullptr;
 
-        ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend = {};
+        /// @brief Editor-only navigation aid; it never changes game-camera behavior.
+        bool                               ConstrainCameraToAtmosphereGround = false;
+
+        ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend               = {};
 
         virtual void                       OnInitializing() override;
         virtual void                       OverrideWindowConfiguration() override;
