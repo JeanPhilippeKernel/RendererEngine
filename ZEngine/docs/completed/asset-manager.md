@@ -1,11 +1,20 @@
 # Asset Manager
 
-**Status:** Implemented  
-**Location:** `ZEngine/ZEngine/Managers/AssetManager.h/.cpp`  
-**Depends on:** `import-pipeline.md`, `render-resource-manager.md`, `vfs-ticket6-asset-registry.md`  
+**Status:** Implemented; retained as a completed implementation record.
+**Location:** `ZEngine/ZEngine/Managers/AssetManager.h/.cpp`
+**Depends on:** `import-pipeline.md`, `render-resource-manager.md`, `vfs-ticket6-asset-registry.md`
 **Related issues:** #603, #635
 
 ---
+
+> **Maintenance boundary:** [`docs/asset-manager.md`](../../../docs/asset-manager.md)
+> is the current ownership and thread-safety reference. This ticket retains the
+> original migration rationale, diagrams, and API sketches; where one conflicts
+> with the source or that current reference, it is historical rather than an API
+> contract. In particular, CPU asset lifetime is session-long while GPU geometry
+> residency and eviction are now implemented separately in
+> `RenderResourceManager`.
+
 
 ## Overview
 
@@ -14,8 +23,9 @@
 by the import pipeline. It also owns the GPU-side material data mirror (`GPUMeshMaterials`)
 that is uploaded to the `MatSB` storage buffer every frame.
 
-**It is not** a streaming system and does not evict assets. All ingested data lives for the
-lifetime of the engine session in a fixed arena. A future `StreamingManager` will sit above it.
+**It is not** a CPU asset streaming system and does not evict its ingested CPU assets. They live
+for the lifetime of the engine session in a fixed arena. GPU geometry residency, eviction, and
+reload are active `RenderResourceManager` responsibilities, not evidence of CPU asset eviction.
 
 ---
 
@@ -59,14 +69,14 @@ accumulating dead blocks in the parent arena. `GPUMeshMaterials`, `Textures`,
 graph TD
     ParentArena["AssetManager::Arena (engine-budgeted, no intermediate carve)"]
     ContainerSlab["AssetManager::ContainerSlab (TLSFSlab, 256 MB)"]
-    Meshes["Meshes: Array&lt;AssetMesh&gt;\nmax ~5000 entries — in slab"]
-    Hierarchies["NodeHierarchies: Array&lt;AssetNodeHierarchy&gt;\nmax ~5000 entries — in slab"]
-    Materials["Materials: Array&lt;AssetMaterial&gt;\nmax ~5000 entries — in slab"]
-    UUIDTexMap["UUIDToTextureHandle\nHashMap&lt;uuid → TextureHandle&gt; — in slab"]
-    UUIDMatMap["UUIDToMaterialSlot\nHashMap&lt;uuid → slot&gt; — in slab"]
-    Textures["Textures: Array&lt;AssetTexture&gt;\nmax ~5000 entries — direct from Arena"]
-    GPU["GPUMeshMaterials: Array&lt;MeshMaterial&gt;\nmirrors Materials 1:1 — direct from Arena"]
-    HierMap["MeshToHierarchySlot\nHashMap&lt;MeshUUID → slot&gt; — direct from Arena"]
+    Meshes["Meshes: Array of AssetMesh\nmax ~5000 entries — in slab"]
+    Hierarchies["NodeHierarchies: Array of AssetNodeHierarchy\nmax ~5000 entries — in slab"]
+    Materials["Materials: Array of AssetMaterial\nmax ~5000 entries — in slab"]
+    UUIDTexMap["UUIDToTextureHandle\nHash map: uuid → TextureHandle — in slab"]
+    UUIDMatMap["UUIDToMaterialSlot\nHash map: uuid → slot — in slab"]
+    Textures["Textures: Array of AssetTexture\nmax ~5000 entries — direct from Arena"]
+    GPU["GPUMeshMaterials: Array of MeshMaterial\nmirrors Materials 1:1 — direct from Arena"]
+    HierMap["MeshToHierarchySlot\nHash map: MeshUUID → slot — direct from Arena"]
     Registry["AssetRegistry\n(uuid → SlotHandle + state) — direct from Arena"]
 
     ParentArena --> ContainerSlab
@@ -279,7 +289,7 @@ sequenceDiagram
 
     Render->>AM: GetMeshAsset(MeshUUID)
     AM-->>Render: &Meshes[slot]
-    Render->>AM: GetAsset&lt;AssetMaterial&gt;(sub.MaterialUUID)
+    Render->>AM: GetAsset for AssetMaterial (sub.MaterialUUID)
     AM-->>Render: &Materials[mat_slot]
     Render->>Render: alloc.MaterialId = mat_slot
 
@@ -298,8 +308,8 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-    GetAssetUUID["GetAsset&lt;T&gt;(uuid)"]
-    GetAssetHandle["GetAsset&lt;T&gt;(AssetHandle)"]
+    GetAssetUUID["GetAsset for type T (uuid)"]
+    GetAssetHandle["GetAsset for type T (AssetHandle)"]
     Registry["AssetRegistry\nFindByUUID(uuid)"]
     SlotHandle["rec->SlotHandle"]
     Index["ReadAssetHandleIndex(h)"]

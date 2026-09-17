@@ -29,15 +29,15 @@ See also: [Engine Architecture](engine-architecture.md) · [Asset Manager](asset
 ```mermaid
 flowchart TD
     ecs["ECS::Scene\nActorManager\nWorldTick"]
-    bridge["ECS → Render bridge\nnot yet wired — issue #604"]
+    bridge["ECS → Render synchronization\nhierarchy, transform, and light sync"]
     rs["RenderScene::MeshInstance[]"]
-    arp["AppRenderPipeline\nbuilds SubMeshAllocation[]\nVkDrawIndirectCommand[]"]
+    arp["AppRenderPipeline\nbuilds scene buffers and indirect draws"]
     rrm["RenderResourceManager\nglobal VB / global IB\nbindless TextureArray\nMatSB upload"]
     registry["AssetRegistry callbacks\nOnAssetReady → m_pending"]
     rg["RenderGraph\npass DAG"]
     dev["VulkanDevice\nVMA, command pools\nswapchain, semaphores"]
 
-    ecs -->|bridge not wired| bridge -.-> rs
+    ecs -->|main-thread derived snapshot| bridge --> rs
     rs --> arp
     arp --> rrm
     registry --> rrm
@@ -45,7 +45,9 @@ flowchart TD
     rg --> dev
 ```
 
-**Key design rule:** Neither `AssetManager` nor `ECS` know about GPU resources directly. All GPU lifetime flows through `RenderResourceManager`.
+**Key design rule:** `RenderResourceManager` is the lifetime authority for Vulkan buffers and
+images. Asset and ECS code may request/render-bind resources through established integration
+points, but must not independently allocate, destroy, or retire Vulkan resources.
 
 ---
 
@@ -53,7 +55,7 @@ flowchart TD
 
 | Thread | Responsibilities |
 |---|---|
-| Main thread | Fixed-timestep ECS simulation, builds FramePacket, posts to render thread |
+| Main thread | Fixed-timestep ECS simulation, prepares `RenderFrameState`, and publishes independent ZUI payloads |
 | Render thread | `BeginFrame` → `FlushPendingUploads` → `RenderGraph::Execute` → present → `EndFrame` |
 | Asset/import thread | `AssetManager::IngestMesh` / `IngestTextures` → pushes `PendingUpload` via `m_pending_mutex` |
 
@@ -71,7 +73,7 @@ sequenceDiagram
     Main->>Main: WorldTick::Tick (ECS)
     Main->>Main: ActorManager::Tick
     Main->>Main: Scene::SnapshotTransforms
-    Main->>Render: Build FramePacket → Mailbox write
+    Main->>Render: Publish newest RenderFrameState
 
     Render->>Render: Swapchain::AcquireNextImage
     Render->>Render: RRM::BeginFrame(frame_index)
@@ -82,19 +84,20 @@ sequenceDiagram
     Render->>Render: EndBatchUpload
     Render->>Render: DoUploadTexture × M (per-texture timeline)
 
-    Render->>Render: AppRenderPipeline::Tick (if InstancesDirty)
-    Note over Render: Rebuild SubMeshAllocation[]
-    Render->>Render: Upload TransformSB + DrawDataSB + DrawIndirect[]
+    Render->>Render: AppRenderPipeline::RenderScene
+    Note over Render: Snapshot instances; rebuild submesh + culling input
+    Render->>Render: Upload TransformSB + DrawDataSB + CullingInputSB
 
     Render->>Render: RenderGraph::Execute
-    Note over Render: DepthPrePass → GbufferPass → LightingPass → selected SkyEnvironment background → GridPass
+    Note over Render: Depth → G-buffer → Lighting → environment → editor overlays
 
-    Render->>Render: ImGuiRenderer::Render
+    Render->>Render: ZUI Draw → swapchain
     Render->>Render: Swapchain::Present
-    Render->>Render: RRM::EndFrame — drain DeferredFreeQueue
+    Render->>Render: RRM::EndFrame — finish deferred batch work
 ```
 
-SkyEnvironment selects an HDRI environment-background pass, analytic SkySphere pass, or atmosphere composition for each frame; its fallback remains valid while an update loads or fails.
+SkyEnvironment selects an HDRI environment-background pass, analytic SkySphere pass, or
+atmosphere composition for each frame; its fallback remains valid while an update loads or fails.
 
 ---
 
@@ -108,9 +111,9 @@ Single authority over GPU buffer and image lifetime.
 
 ```mermaid
 graph LR
-    geo["Geometry\nOwns global_vertex_buf (256 MB)\nglobal_index_buf (256 MB)\nappends via DoUploadMesh\ntracks byte cursors"]
+    geo["Geometry\nOwns dynamically sized global VB/IB\n128–512 MiB each\nappends via DoUploadMesh\ntracks byte cursors"]
     tex["Textures\nAllocates VkImages\nper-frame timeline semaphores\nbindless TextureArray"]
-    pending["Pending queue\nthread-safe m_pending[256]\ndrained in FlushPendingUploads"]
+    pending["Pending queue\nthread-safe m_pending[1024]\ndrained in FlushPendingUploads"]
     deferred["Deferred deletion\nDeferredFreeQueue (2048 slots)\nstamped with timeline value\ndrains when GPU completes"]
     fallback["Fallback texture\n4×4 hot-pink (255,20,147)\nGetOrCreateFallbackTexture()"]
 ```
@@ -123,22 +126,22 @@ RRM owns a dedicated upload command pool (`m_upload_pool`, `m_upload_cmd`, `m_up
 
 ## Global Geometry Buffers
 
-All scene geometry lives in two device-local packed buffers:
+Streamable scene geometry lives in two device-local packed buffers. Each buffer's capacity is
+derived from 15% of the largest device-local heap, split evenly between vertex and index data,
+and clamped to 128–512 MiB; generated `project.json` may override the combined streaming budget.
 
 | Buffer | Size | Usage flags |
 |---|---|---|
-| `m_global_vertex_buf` | 256 MB | `STORAGE_BUFFER \| VERTEX_BUFFER \| TRANSFER_DST` |
-| `m_global_index_buf` | 256 MB | `STORAGE_BUFFER \| INDEX_BUFFER \| TRANSFER_DST` |
+| global vertex buffer | 128–512 MiB | `STORAGE_BUFFER \| VERTEX_BUFFER \| TRANSFER_DST` |
+| global index buffer | 128–512 MiB | `STORAGE_BUFFER \| INDEX_BUFFER \| TRANSFER_DST` |
 
 ```mermaid
 graph LR
-    subgraph VB["global_vertex_buf (256 MB)"]
-        GridV["GridPass\n4 DrawVertex\nregistered at Setup"]
+    subgraph VB["streamable global vertex buffer (128–512 MiB)"]
         SceneV["Scene mesh data\nDoUploadMesh per asset →"]
         CurV["vtx_cursor →"]
     end
-    subgraph IB["global_index_buf (256 MB)"]
-        GridI["GridPass\n6 uint32"]
+    subgraph IB["streamable global index buffer (128–512 MiB)"]
         SceneI["Scene mesh indices\nDoUploadMesh per asset →"]
         CurI["idx_cursor →"]
     end
@@ -151,7 +154,7 @@ offset 12 : float nx, ny, nz   (normal)
 offset 24 : float u, v          (UV)
 ```
 
-The grid pass only needs position, so it zeroes unused fields. All builtin geometry uses stride = 32 (`sizeof(float) * 8`).
+The grid compatibility path only needs position, so it zeroes unused fields. All builtin geometry uses stride = 32 (`sizeof(float) * 8`).
 
 ### Compaction on scene reload
 
@@ -170,13 +173,16 @@ sequenceDiagram
     RRM->>GPU: new scene meshes upload from offset 0 (single batched submit)
 ```
 
-Builtin geometry such as the grid is registered at pass `Setup()` before any scene loads — its offsets are stable and unaffected by compaction.
+Sky and compatibility-grid geometry reside in dedicated 1 MiB built-in vertex/index buffers so
+streaming reset, eviction, and compaction cannot invalidate their offsets. The production editor
+grid remains an analytic overlay described in `ZEngine/docs/future-plan/editor-grid.md` and must
+not rely on the finite compatibility mesh.
 
 ---
 
 ## Render Graph and Passes
 
-**Files:** `ZEngine/ZEngine/Rendering/Renderers/RendererPasses.h/.cpp`
+**Files:** `ZEngine/ZEngine/Rendering/Renderers/RenderGraph.h/.cpp` and callback-pass headers
 
 ### Data model
 
@@ -282,15 +288,21 @@ flowchart LR
     DP["DepthPrePass\ndepth_prepass_scene shader\nDrawIndirect — all scene meshes\ndepth only"]
     GBP["GbufferPass\ng_buffer shader\nDrawIndirect — all scene meshes\nwrites 3 G-buffer RTs\nreads FrameDepth"]
     LP["LightingPass\ndeferred_lighting shader\nDraw(3) full-screen triangle\nreads G-buffer + FrameDepth\nwrites FrameColor"]
-    SP["EnvironmentBackgroundPass\nenvironment_background shader\nDraw(3)\nfull-screen HDRI/fallback"]
-    GP["GridPass\ninfinite_grid shader\nDrawIndexed(6)\nbuiltin quad"]
+    SP["Sky modes\nHDI/analytic bake + composite or SkySphere"]
+    TM["Tone mapping\nFrameColor"]
+    GP["GridPass\nfinite XZ compatibility quad"]
 
-    DP --> GBP --> LP --> SP --> GP
+    DP --> GBP --> LP --> SP --> TM --> GP
 ```
 
 ### Scene passes (DepthPrePass, GbufferPass)
 
-Use `vkCmdDrawIndirect` with a pre-built `VkDrawIndirectCommand[]` array uploaded into the per-frame `FrameHeap`. `AppRenderPipeline::Tick` rebuilds the array whenever `InstancesDirty` is set.
+Use `vkCmdDrawIndirect` with commands written by `FrustumCullingPass` into the
+per-frame device-local culled-indirect buffer. `AppRenderPipeline::RenderScene()`
+rebuilds transforms, submesh draw data, and culling input from an instance
+snapshot every rendered frame; it clears `InstancesDirty` but does not use that
+flag as a rebuild gate. The per-frame upload heap currently carries camera UBO
+data; the scene storage buffers are updated through RRM.
 
 ### RenderGraph public API
 
@@ -299,7 +311,7 @@ Use `vkCmdDrawIndirect` with a pre-built `VkDrawIndirectCommand[]` array uploade
 | `GetPass(name)` | Returns `RGPass*` — O(1) typed-index lookup; for setup and configuration only |
 | `SetPassEnabled(name, bool)` | Toggles a pass on or off at runtime without recompiling the graph |
 
-### RenderGraphResourceBuilder (Setup phase)
+### RenderGraphResourceBuilder (Register phase)
 
 | Method | Effect |
 |---|---|
@@ -319,13 +331,14 @@ Use `vkCmdDrawIndirect` with a pre-built `VkDrawIndirectCommand[]` array uploade
 
 ### IRenderGraphCallbackPass interface
 
-Existing passes compile without modification. The three virtual methods are unchanged:
+Persistent callback passes use the current graph lifecycle:
 
 | Method | Phase | Purpose |
 |---|---|---|
-| `Setup(device, name, res_builder, res_inspector)` | Compile | Declare reads and writes via `res_builder` |
-| `Compile(device, scene, pass_builder, res_inspector, output_pass)` | Compile | Create Vulkan pipeline objects |
-| `Execute(device, res_inspector, scene, pass, framebuffer, cb)` | Execute | Record `vkCmd*` calls into `cb` |
+| `Register(device, name, frame_context, res_builder, res_inspector)` | Per-frame graph construction | Declare reads/writes and opt into this frame. |
+| Pipeline description / compute shader query | Backend graph preparation | Supply static pipeline requirements; the graph owns attachment compatibility. |
+| `Prepare(device, scene, inspector, pass)` | After graph compilation | Refresh frame-local descriptors and constants. |
+| `Execute(...)` or `RecordDraw(...)` | Command recording | Record pass work outside or inside graph-managed rendering. |
 
 ---
 
@@ -389,15 +402,18 @@ world  /= world.w
 
 ### Tone mapping
 
-Reinhard tone mapping followed by gamma correction (`pow(color, 1.0/2.2)`) is applied at the end of the lighting shader before writing to `FrameColor`.
+`ToneMappingPass` converts linear HDR scene colour into the sampled `FrameColor`
+target. The current `tone_mapping.frag` uses fitted ACES followed by a
+`pow(color, 1.0 / 2.2)` display transform; it is a separate pass after lighting,
+not Reinhard logic inside `LightingPass`.
 
 ---
 
 ## Builtin Geometry
 
-`GridPass` calls `RRM::RegisterBuiltinGeometry` during `Setup()`, before any scene is loaded. Vertices are pre-padded to the 32-byte DrawVertex layout:
+The current grid mesh is temporary compatibility geometry, not the production grid renderer:
 
-- **Grid:** 4 vertices (flat quad ±1000 units at Y=0), up-normal (0,1,0), UVs mapped to XZ
+- **Grid compatibility path:** 4 vertices (flat quad) used only until the serialized arbitrary-plane analytic grid passes its visual and validation gates
 
 ---
 
@@ -408,9 +424,9 @@ flowchart TD
     src["Source file\n.glb / .fbx"]
     cook["GltfImporter / AssimpImporter\n(ThreadPool via ImportCoordinator)\nCook → .zemesh + .zematerial + textures"]
     ingest["AssetManager::IngestMesh\nAssetManager::IngestTextures\nAssetManager::IngestMaterial"]
-    setLoaded["AssetRegistry::SetState(Loaded)\n→ RRM::OnAssetReady → m_pending.push"]
+    setLoaded["AssetRegistry::SetState(Loaded)\n→ RRM::OnAssetReady → pending upload queue"]
     flush["RRM::FlushPendingUploads\n(render thread, next BeginFrame)\nDoUploadMesh → AppendToGlobalBuffer\nMeshSlot registered"]
-    pipeline["AppRenderPipeline::Tick\n(when InstancesDirty)\nGetMeshOffsets → SubMeshAllocation\nVkDrawIndirectCommand → DrawIndirect"]
+    pipeline["AppRenderPipeline::RenderScene\nper-frame instance snapshot\nsubmesh allocations + culling input\n→ DrawIndirect"]
 
     src --> cook --> ingest --> setLoaded --> flush --> pipeline
 ```
@@ -449,7 +465,10 @@ flowchart TD
 
 `.zematerial` files are JSON (nlohmann/json). Texture paths are inline in `.zematerial` — `.zetextures` files are eliminated.
 
-On scene load, `EditorScene::ExtractAsync` processes materials **before** meshes so texture handles are available when mesh submeshes reference them.
+`EditorScene::ExtractAsync` currently processes materials **before** meshes so
+texture handles are available when mesh submeshes reference them. It is a
+compatibility scene-extraction path, not the staged UUID-based scene-document
+load contract described in `scene-serialization.md`.
 
 ---
 
@@ -462,7 +481,7 @@ flowchart TD
     T3["ECS::ActorManager::Shutdown\nECS::Scene::Shutdown"]
     T4["RRM::Shutdown\nQueueWaitAll\ndestroy upload/transfer pools\nfree global buffers"]
     T5["AssetManager::Shutdown"]
-    T6["AppRenderPipeline::Shutdown\nRenderGraph::Dispose (pipelines, framebuffers)\nImGuiRenderer::Deinitialize"]
+    T6["AppRenderPipeline::Shutdown\nRenderGraph callback/resource teardown\nZUI renderer/payload shutdown"]
     T7["VFS::Shutdown"]
     T8["VulkanDevice::Deinitialize\nQueueWaitAll\n1st PendingFree drain\nSwapchainPtr→Dispose\nCommandBufferMgr::Deinit\n2nd PendingFree drain"]
     T9["Window::Deinitialize"]
@@ -490,17 +509,19 @@ See [Memory Management — Arena-Allocated Vulkan Objects](memory-management.md#
 
 | Issue | Area | Description |
 |---|---|---|
-| [#604](https://github.com/JeanPhilippeKernel/RendererEngine/issues/604) | ECS bridge | `ECS::Scene::FillRenderableTransforms` exists but is never called; ECS `TransformComponent` changes do not propagate to `TransformSB` or `MeshInstance::Transform` |
-| [#599](https://github.com/JeanPhilippeKernel/RendererEngine/issues/599) | Importer | Import options (scale, axis, normals) in the importer panel are cosmetic — not passed to `ImportFile` |
-| [#600](https://github.com/JeanPhilippeKernel/RendererEngine/issues/600) | Importer | `GltfImporter`: `sources::URI` embedded textures silently skipped |
-| [#601](https://github.com/JeanPhilippeKernel/RendererEngine/issues/601) | Importer | `ImportProgressCallback` never called; progress bar stays at 0% |
+| Authoring render bindings | Scene lifecycle | Transform/light synchronization is live for bound instances. Staged scene load, create/delete, and undo restoration still need to rebuild MeshComponent to RenderScene bindings before publication; see scene-serialization.md and editor-undo-redo.md. |
+| [#753](https://github.com/JeanPhilippeKernel/RendererEngine/issues/753) | RRM tests | A headless *VulkanDevice* fixture is needed to unskip GPU-level texture/reload lifetime tests. |
+| [#663](https://github.com/JeanPhilippeKernel/RendererEngine/issues/663) | Visibility | GPU frustum rejection exists; compacted `vkDrawIndirectCount` submission remains. The issue's CPU-only description is stale. |
+| [#312](https://github.com/JeanPhilippeKernel/RendererEngine/issues/312) | Transient memory | Exact-match transient reuse exists. True overlapping-memory aliasing is a separate, measured-pressure optimization. |
+| [#314](https://github.com/JeanPhilippeKernel/RendererEngine/issues/314) | Transparency | A production transparent submission pass is still absent. |
+| [#318](https://github.com/JeanPhilippeKernel/RendererEngine/issues/318) | Shader validation | Runtime shader compilation needs automated behavioral coverage. |
+| [#821](https://github.com/JeanPhilippeKernel/RendererEngine/issues/821) | Environment policy | Settings UI is open work, but RendererEngine must not directly persist the Hub-generated `project.json`. |
 
-### Planned but not started
+### Remaining work
 
-- Draw call sorting by material (reduces descriptor set switches)
-- GPU frustum culling via compute pre-pass (`draw-call-sorting.md`, `culling-system.md`)
-- Hot-reload geometry swap (`RRM::ScheduleSwap` stub exists)
-- Texture batching in `FlushPendingUploads` (mesh uploads batched; textures still per-upload)
+- Production editor scene binding rebuild and immutable render snapshots
+- Advanced visibility: compacted indirect-count, occlusion/Hi-Z, and material-sort policy
+- Texture batching/streaming policy beyond the current upload and release paths
 
 ### Recently fixed
 

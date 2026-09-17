@@ -31,9 +31,9 @@ flowchart TD
     pool["ThreadPool workers\nGltfImporter\nAssimpImporter\nImportCoordinator jobs"]
 
     main -->|"mailbox write (lock-free)"| render
-    pool -->|"Post(ctx, fn)"| scheduler
+    pool -->|"Post(ctx, fn) when UI/main-thread work is needed"| scheduler
     scheduler -->|"Drain() — step 9 each frame"| main
-    pool -->|"IngestMesh / IngestTextures"| main
+    pool -->|"ImportCoordinator task → AssetManager/RRM queue"| render
 ```
 
 **Key design rules:**
@@ -85,13 +85,15 @@ loop (until s_close_requested):
  10. g_app->OnUpdate(raw_dt)       Subclass update (Editor: viewport hover → camera gate)
      CameraController→Update(dt)   After OnUpdate so hover state is current
 
- 11. Build RenderPayload (if mailbox slot available):
+ 11. Build independent UI payload when an overlay slot is available:
        BeginOverlayFrame → ZUIBeginFrame(ctx, dt)
        OnRenderUI() → ZUILayer::Render() — build ZUI box tree
        EndOverlayFrame → ZUIEndFrame (ZUILayoutSolve + ZUIInteractionPass)
        FillOverlayPayload → ZUIPass::PreparePayload (DFS → draw list)
-       SyncECSToRenderScene(alpha) + PrepareScene
-       MailBoxBufferHead.store(next, release)
+       PublishOverlay(slot)
+      Then SyncECSToRenderScene(alpha) + PrepareScene and publish RenderFrameState.
+      The state mailbox chooses a free slot or replaces its oldest unread state; it is
+      deliberately latest-state rather than FIFO.
 
  12. FrameRateCap::Wait()          Applied unconditionally — including when mailbox is
                                     full (buffer-full continue also calls Wait so the
@@ -107,7 +109,7 @@ loop (until s_close_requested):
 ```
 loop (until s_request_terminate):
 
-  1. Mailbox read (lock-free)         Wait for payload; re-use last if none
+  1. Latest-state read (lock-free)    Take newest RenderFrameState; retain last if none
 
   2. Swapchain::AcquireNextImage      Block on fence for in-flight slot
 
@@ -119,16 +121,17 @@ loop (until s_request_terminate):
          ├─ EndBatchUpload
          └─ DoUploadTexture × M        Per-texture timeline upload
 
-  4. AppRenderPipeline::Tick (if InstancesDirty)
-       GetMeshOffsets → SubMeshAllocation per submesh
-       Upload TransformSB, DrawDataSB, VkDrawIndirectCommand[]
+  4. AppRenderPipeline::RenderScene
+       Snapshot RenderScene instances and rebuild per-frame mesh input
+       Resolve resident mesh offsets; upload TransformSB, DrawDataSB, culling input
+       (this currently runs every rendered frame; InstancesDirty is cleared here)
 
   5. RenderGraph::Execute
        DepthPrePass  → DrawIndirect   (all scene meshes, depth only)
-       EnvironmentBackgroundPass → Draw(3) (HDRI/fallback full-screen background)
-       GridPass      → DrawIndexed    (builtin quad + push constants)
        GbufferPass   → DrawIndirect   (all scene meshes, full G-buffer)
        LightingPass  → Draw(3)        (full-screen deferred lighting triangle)
+       Sky passes    → HDRI/analytic-sky bake, compose, or background as enabled
+       ToneMapping + GridPass → final FrameColor (builtin compatibility quad)
        ZUIPass       → DrawIndexed    (overlay, targets swapchain)
 
   6. Swapchain::Present               Submit + present, advance timeline semaphore
@@ -140,7 +143,10 @@ loop (until s_request_terminate):
                                        Written here so FPS display reflects true GPU rate
 ```
 
-The render thread never writes ECS state. It reads only from the `RenderPayload` and `RenderScene::MeshInstance[]` (seqlock snapshot).
+The render thread never writes ECS state. It receives copied camera/sky/resize configuration
+through `RenderFrameState`, plus independently retained ZUI payloads. Its `RenderScene*` is
+still a borrowed pointer, not the renderer-owned immutable scene snapshot required for
+production editor mutations.
 
 ---
 
@@ -153,20 +159,23 @@ Three distinct channels, each with a different mechanism.
 ```mermaid
 sequenceDiagram
     participant Main as Main Thread
-    participant Ring as RenderPayload[3] ring buffer
+    participant State as RenderFrameState[3] slots
+    participant UI as OverlayPayload[3] slots
     participant Render as Render Thread
 
-    Main->>Ring: PrepareScene + OnRenderUI → RenderPayload[next]
-    Main->>Ring: MailBoxBufferHead.store(next, release)
-    Render->>Ring: tail = MailBoxBufferHead.load(acquire)
-    alt head != tail
-        Render->>Ring: consume payload[tail]
-    else head == tail
-        Render->>Render: re-use last payload (drop frame)
+    Main->>State: copy and publish newest RenderFrameState
+    Main->>UI: publish completed ZUI payload when a slot is free
+    Render->>State: claim newest Ready slot; release older unread slots
+    alt new state exists
+        Render->>Render: retain newest state
+    else no new state
+        Render->>Render: reuse retained state
     end
 ```
 
-`MailBoxBufferHead` is a `PaddedAtomic<uint32_t>` index into a 3-slot ring. No mutex, no blocking.
+State and UI each use three ownership-state slots (`Free`, `Writing`, `Ready`, `Reading`) with
+atomic acquire/release transitions. They are separate channels: a missed UI replacement does
+not block simulation or state publication.
 
 ### 2. Background → Main: MainThreadScheduler
 
@@ -189,7 +198,8 @@ sequenceDiagram
 
 512 arena-allocated slots, lock-free MPSC, no heap, C-style `Post(void* ctx, void (*fn)(void*))`.
 
-**Current users:** `AssetImporterUIComponent` — posts `TriggerScan()` after import completes or fails.
+**Current users:** editor panel/UI operations that must defer work out of the build/event
+callback, including asset-import and viewport drop flows.
 
 ### 3. Asset thread → Render thread: RRM pending queue
 
@@ -209,7 +219,8 @@ sequenceDiagram
     RRM->>GPU: DoUploadMesh → vkCmdCopyBuffer
 ```
 
-`m_pending[MAX_PENDING=256]` is a fixed array protected by `m_pending_mutex`. All Vulkan work stays on the render thread.
+`m_pending[MAX_PENDING=1024]` is a fixed array protected by `m_pending_mutex`. All Vulkan work
+stays on the render thread.
 
 ---
 
@@ -224,12 +235,12 @@ flowchart TD
     AM["ActorManager\nMAX_ACTORS = 1024\narena-backed HandleManager"]
     A["Actor (Tier 1)\nC++ object with vtable\nOwns EntityID\nOnCreate / OnTick / OnDestroy"]
     EID["EntityID\nindex (uint32) + generation (uint32)\nIsValid() = generation != 0"]
-    SC["Scene\nEntityRegistry (MAX 65536)\nUnorderedHashMap<ComponentTypeID, IComponentStorage*>"]
-    CS["ComponentStorage<T>\nsparse-set\nm_sparse[] + m_dense[] + m_dense_ids[]"]
+    SC["Scene\nEntityRegistry (MAX 65536)\nHash map from ComponentTypeID to IComponentStorage pointer"]
+    CS["Component storage by component type\nsparse-set\nm_sparse[] + m_dense[] + m_dense_ids[]"]
     WT["WorldTick\nDAG scheduler\nMAX_SYSTEMS = 64"]
     WC["WorldCommands\ndeferred mutations\ninitial cap 256 commands"]
 
-    AM -->|"Create<T>() allocates Actor\nassigns EntityID"| A
+    AM -->|"Create by actor type allocates Actor\nassigns EntityID"| A
     A -->|"owns"| EID
     EID -->|"indexes"| SC
     SC -->|"stores components in"| CS
@@ -253,8 +264,8 @@ All components live in `ECS/Components/`, namespace `ZEngine::ECS::Components`. 
 
 | Component | Key fields | Notes |
 |---|---|---|
-| `TransformComponent` | `Position`, `Rotation`, `Scale`, `PreviousPosition` (all `Vec3f`) | Fits one cache line (`sizeof ≤ 64`). `PreviousPosition` used for fixed-timestep interpolation. Distinct from `Rendering::Components::TransformComponent`. |
-| `MeshComponent` | `uuids::uuid MeshUUID`, `uint32_t RenderInstanceId` | `RenderInstanceId = UINT32_MAX` = not yet registered in `RenderScene`. The bridge to update this is not yet implemented (see ECS → Render gap below). |
+| `TransformComponent` | local `Position`, `Rotation`, `Scale`, `PreviousPosition`, derived `WorldTransform` | WorldTransform is propagated by HierarchySystem and is never directly authored. This component intentionally exceeds one cache line; do not claim a 64-byte limit. |
+| `MeshComponent` | `uuids::uuid MeshUUID`, runtime `uint32_t RenderInstanceId` | `RenderInstanceId = UINT32_MAX` means no render instance is currently bound. TransformSyncSystem updates bound instances; load/create/delete binding reconstruction is an authoring lifecycle concern. |
 | `CameraComponent` | `FovY`, `Near`, `Far`, `AspectRatio`, `bool IsMain` | Exactly one entity should have `IsMain = true`. |
 | `LightComponent` | `Type` (Directional/Point/Spot), `Intensity`, `Range`, `SpotAngle`, `Color[3]` | Range and SpotAngle unused for Directional lights. |
 | `MaterialComponent` | `uuids::uuid MaterialUUID` | Per-instance material override. Absent = use mesh's baked material UUIDs. |
@@ -304,7 +315,7 @@ sequenceDiagram
     participant AM as ActorManager
     participant Scene
 
-    App->>AM: Create<PlayerActor>()
+    App->>AM: Create PlayerActor
     AM->>Scene: CreateEntity() → EntityID
     AM->>AM: arena-alloc PlayerActor, assign EntityID + Scene*
     AM->>App: actor->OnCreate()   ← override to AddComponent()
@@ -374,7 +385,7 @@ Structural scene mutations (`AddComponent`, `DestroyEntity`, etc.) cannot happen
 flowchart TD
     PW["Parallel wave\nN workers each have own staging[i]"]
     S0["worker 0\nstaging[0].SpawnEntity(callback)\nstaging[0].AddComponent(id, comp)"]
-    S1["worker 1\nstaging[1].DestroyEntity(id)\nstaging[1].RemoveComponent<T>(id)"]
+    S1["worker 1\nstaging[1].DestroyEntity(id)\nstaging[1].RemoveComponent by type (id)"]
     B["Barrier — all workers complete"]
     M["Main thread: Merge staging[0..N]\nfix SpawnCallbackIndex offsets"]
     F["WorldCommands::Flush(scene)\napply in command order\nSpawnCallbacks invoked with new EntityID"]
@@ -395,35 +406,37 @@ Staging buffers are pre-allocated at `Commit()` (arena-backed, initial cap 256 c
 
 ---
 
-### ECS → Render Bridge (gap — issue #604)
+### ECS → Render synchronization
 
-The connection between ECS state and the render pipeline is **partially implemented but not wired**.
+HierarchySystem, TransformSyncSystem, and LightSyncSystem provide the current
+main-thread derived-state synchronization path. They do not make runtime render
+IDs serializable and do not replace the scene-load/create/delete binding lifecycle.
 
 ```mermaid
 flowchart LR
     TC["TransformComponent\n(ECS)"]
     MC["MeshComponent\nRenderInstanceId = UINT32_MAX"]
-    FRT["Scene::FillRenderableTransforms(alpha)\n→ Array<RenderableTransform>"]
+    FRT["HierarchySystem + TransformSyncSystem\nlocal TRS -> WorldTransform -> RenderScene"]
     RS["RenderScene::MeshInstance[]\nId, MeshUUID, Transform, Name"]
     DP["DrawScene → DrawIndirect"]
 
     TC -->|"exists"| FRT
-    MC -.->|"RenderInstanceId never set\nno bridge system"| RS
-    FRT -.->|"output never consumed\nno system reads it"| RS
+    MC -->|"bound instance ID"| RS
+    FRT -->|"updates existing instance transform"| RS
     RS --> DP
 ```
 
 **What exists:**
-- `Scene::FillRenderableTransforms(float alpha, Array<RenderableTransform>& out)` — lerps between `PreviousPosition` and `Position` for all entities with `TransformComponent`. The function is fully implemented.
-- `MeshComponent::RenderInstanceId` — the intended hook for linking an ECS entity to a `RenderScene::MeshInstance`.
-- `RenderScene::SetInstanceTransform(uint32_t id, Mat4f)` — the receiving API on the render side.
+- HierarchySystem computes WorldTransform from local TransformComponent values.
+- TransformSyncSystem updates bound RenderScene mesh instance transforms.
+- LightSyncSystem updates RenderScene light data from ECS light/transform components.
+- MeshComponent::RenderInstanceId links a live ECS entity to a live RenderScene instance.
 
-**What is missing:**
-- No ECS system that reads `MeshComponent` + `TransformComponent` and calls `RenderScene::SetInstanceTransform`.
-- `MeshComponent::RenderInstanceId` is always `UINT32_MAX`; nothing ever calls `RenderScene::AddMeshInstance` and writes the result back.
-- `FillRenderableTransforms` output is never consumed.
-
-Until the bridge is wired, mesh transforms in the scene are set manually by editor code via `RenderScene::SetInstanceTransform` when actors are dragged in the viewport.
+**Authoring work still required:**
+- Staged scene load/create/delete must rebuild mesh-instance bindings before publishing a
+  new scene instance.
+- RenderInstanceId remains runtime-only and is never serialized or stored in undo snapshots.
+- The render thread consumes immutable snapshots; it must not read mutable ECS data.
 
 ---
 
@@ -435,10 +448,10 @@ flowchart TD
     importer["GltfImporter / AssimpImporter\n(ThreadPool worker via ImportCoordinator)"]
     cooked["Cooked artifacts\n.zemesh · .zematerial · Assets/Textures/…"]
     ingest["AssetManager::IngestMesh\nAssetManager::IngestTextures\nAssetManager::IngestMaterial"]
-    registry["AssetRegistry::SetState(Loaded)\n→ RRM::OnAssetReady → m_pending.push"]
+    registry["AssetRegistry::SetState(Loaded)\n→ RRM::OnAssetReady → pending upload queue"]
     rrm["RRM::FlushPendingUploads\n(render thread, next BeginFrame)"]
     gpu["GPU global VB/IB\nTextureArray (bindless)"]
-    pipeline["AppRenderPipeline::Tick\n(when InstancesDirty)\nSubMeshAllocation + DrawIndirect"]
+    pipeline["AppRenderPipeline::RenderScene\nper-frame instance snapshot\nsubmesh/culling input + DrawIndirect"]
 
     src --> importer --> cooked --> ingest --> registry --> rrm --> gpu --> pipeline
 ```
@@ -479,7 +492,7 @@ sequenceDiagram
     participant TP as ThreadPool
 
     FW->>CTX: debounced change event
-    CTX->>AR: SetStale(uuid)
+    CTX->>AR: OnAssetModified(path) → mark matching record/dependents stale
     CTX->>IC: Enqueue(path, Immediate)
     IC->>TP: dispatch reimport job (next Tick)
 ```
@@ -505,7 +518,7 @@ sequenceDiagram
     EP->>Win: Initialize (GLFW + VkInstance + surface)
     Win->>Dev: Initialize (queues, VMA, bindless descriptors)
     Dev->>VFS: Initialize (mount table, disk backend)
-    VFS->>AM: Initialize (UUID map, registry, 512 MB sub-arena)
+    VFS->>AM: Initialize (UUID map, registry, 1,024 MiB arena + 256 MiB container slab)
     AM->>ECS: Initialize (Scene, ActorManager, WorldCommands, WorldTick)
     ECS->>IC: Initialize + register importers (Gltf, Assimp, EnvMap)
     IC->>RRM: Initialize (global VB/IB, texture timelines, upload pool)

@@ -5,6 +5,15 @@
 **Depends on:** `render-resource-manager.md`, `shader-asset-pipeline.md`, `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`
 **Blocks:** Visual polish, final image quality
 
+> **RenderGraph API correction:** this design predates the active callback contract.
+> Any pass-level Setup/Compile snippets below express resource/pipeline intent only.
+> Implement passes with Register, static pipeline description or compute-shader query,
+> Prepare, Execute, and optional RecordDraw as defined in render-graph-integration.md.
+> PostProcessStack compilation remains an internal stack operation, not a retired
+> IRenderGraphCallbackPass callback.
+>
+> **Current implementation correction:** the renderer already contains an HDR lighting target, sky composition, and `ToneMappingPass`. It does not contain the `PostProcessStack`, effect registry, or SSAO/bloom/LUT chain specified below. Treat this document as the extension design around the existing tone-mapping endpoint.
+
 **Goal**: Implement a fully data-driven, RenderGraph-integrated post-processing stack inside
 `ZEngine::Rendering::PostProcessing`. The stack reads from a full-resolution HDR color buffer
 produced by the main scene pass, chains a configurable sequence of `PostProcessPass` nodes

@@ -4,6 +4,10 @@ Single authority over all CPU-side cooked asset data at runtime. Owns every mesh
 texture, and node hierarchy ingested during a session, and owns the `GPUMeshMaterials` mirror
 that drives the `MatSB` storage buffer read by the G-buffer fragment shader every frame.
 
+**Status:** Current runtime ownership reference. The manager has 1,024 MiB in the configured
+CPU profile and a 256 MiB TLSF container slab; its CPU assets are session-lifetime data. GPU
+geometry residency/eviction is a separate `RenderResourceManager` responsibility.
+
 See also: [Engine Architecture](engine-architecture.md) · [Rendering Domain](rendering-domain.md) · [Memory Management](memory-management.md)
 
 ---
@@ -56,22 +60,25 @@ residency.
 
 ## Memory Layout
 
-All data lives inside a single 512 MB sub-arena carved from the `AssetManager` budget slot
-in `MemoryBudgetConfig`. Every flat array and hash map is allocated from this arena — no heap.
+The manager receives the 1,024 MiB `AssetManager` arena configured by `MemoryBudgetConfig`.
+The meshes, node hierarchies, materials, texture-handle map, and material-slot map use a 256 MiB
+TLSF slab so their variable-size growth can reclaim old blocks. `GPUMeshMaterials`, textures,
+and some maps remain arena-backed. This is explicit engine-owned allocation, not a claim that
+third-party import/decode code never uses another allocator.
 
 ```mermaid
 graph TD
     root["MainArena · 8 GB root"]
-    asset["AssetManager::Arena · 512 MB\ncarved in Initialize()"]
+    asset["AssetManager arena · 1,024 MiB\n256 MiB TLSF container slab"]
 
-    meshes["Meshes\nArray&lt;AssetMesh&gt; · cap 5000"]
-    hier["NodeHierarchies\nArray&lt;AssetNodeHierarchy&gt; · cap 5000"]
-    mats["Materials\nArray&lt;AssetMaterial&gt; · cap 5000"]
-    tex["Textures\nArray&lt;AssetTexture&gt; · cap 5000"]
-    gpu["GPUMeshMaterials\nArray&lt;MeshMaterial&gt; · cap 5000\nmirrors Materials 1:1"]
+    meshes["Meshes\nArray of AssetMesh · cap 5000"]
+    hier["NodeHierarchies\nArray of AssetNodeHierarchy · cap 5000"]
+    mats["Materials\nArray of AssetMaterial · cap 5000"]
+    tex["Textures\nArray of AssetTexture · cap 5000"]
+    gpu["GPUMeshMaterials\nArray of MeshMaterial · cap 5000\nmirrors Materials 1:1"]
 
-    uuid_map["UUIDToTextureHandle\nHashMap&lt;uuid → TextureHandle&gt;"]
-    hier_map["MeshToHierarchySlot\nHashMap&lt;MeshUUID → slot_index&gt;"]
+    uuid_map["UUIDToTextureHandle\nHash map: uuid → TextureHandle"]
+    hier_map["MeshToHierarchySlot\nHash map: MeshUUID → slot_index"]
     registry["AssetRegistry\nuuid → SlotHandle + AssetState"]
 
     root --> asset
@@ -249,7 +256,7 @@ sequenceDiagram
     Note over RT: Next frame — InstancesDirty = true
 
     RT->>AM: GetMeshAsset(MeshUUID) → &Meshes[slot]
-    RT->>AM: GetAsset&lt;AssetMaterial&gt;(sub.MaterialUUID) → &Materials[mat_slot]
+    RT->>AM: GetAsset for AssetMaterial (sub.MaterialUUID) → &Materials[mat_slot]
     RT->>RT: alloc.MaterialId = mat_slot
 
     RT->>RRM: UpdateBuffer(MaterialBuffer, GPUMeshMaterials)
@@ -293,9 +300,10 @@ If the UUID is not registered or the slot index is out of range, all paths retur
 | `IngestTexture` | Yes | Acquires `IngestMutex` |
 | `IngestTextures` | Yes | Calls `IngestTexture` per element |
 | `IngestMaterial` | Yes | Acquires `IngestMutex`; may call `IngestTexture` (recursive lock) |
-| `IsRegistered` | Yes | Read-only registry lookup |
-| `GetAsset<T>(uuid/handle)` | Yes | Read-only after ingest completes |
-| `GetMeshNodeHierarchy` | Yes | O(1) via `MeshToHierarchySlot` map |
+| `IsRegistered` | No standalone synchronization | Caller must not race registry mutation. |
+| `GetAsset<T>(uuid/handle)` | No standalone synchronization | Safe after ingestion is quiescent or under the caller's synchronization. |
+| `GetMeshNodeHierarchy` | No standalone synchronization | O(1) lookup; does not acquire `IngestMutex`. |
+| `TryGetMeshBounds` | Yes | Acquires `IngestMutex` and copies the bounds. |
 | `InitFallbackTexture` | Main thread only | Called once during engine init |
 
 `IngestMutex` is `std::recursive_mutex` — `IngestMaterial` can call `IngestTexture` while
@@ -338,7 +346,9 @@ ZENGINE_VALIDATE_ASSERT(FallbackTextureHandle.Valid(),
 
 | Gap | Tracking |
 |---|---|
-| No asset eviction — all data lives until shutdown | [#635](https://github.com/JeanPhilippeKernel/RendererEngine/issues/635) — future StreamingManager |
-| Duplicate `AssimpImporter` (350 MB) and `GltfImporter` (64 MB) in `AssetImporterUIComponent` | [#635](https://github.com/JeanPhilippeKernel/RendererEngine/issues/635) |
-| `sources::URI` images in GLB/GLTF silently skipped | [#600](https://github.com/JeanPhilippeKernel/RendererEngine/issues/600) |
-| Reimport flow from `.meta` `SourcePath` not wired | [#602](https://github.com/JeanPhilippeKernel/RendererEngine/issues/602) |
+| CPU-side cooked asset eviction — manager data remains session-lifetime | Future streaming/asset residency policy |
+| GPU geometry residency/eviction policy | Implemented separately in `RenderResourceManager`; do not infer CPU AssetManager eviction from it. |
+| Raster and environment-map import paths remain duplicated | [#750](https://github.com/JeanPhilippeKernel/RendererEngine/issues/750) |
+| Manual reimport from the content browser needs current ZUI-panel integration | [#602](https://github.com/JeanPhilippeKernel/RendererEngine/issues/602) |
+| Importer and ZUI regression-test scaffolding is absent | [#735](https://github.com/JeanPhilippeKernel/RendererEngine/issues/735) |
+| Initial scanner results do not yet enqueue an import batch | `VFSScanner` currently registers assets; watcher modifications enqueue immediate reimport. |

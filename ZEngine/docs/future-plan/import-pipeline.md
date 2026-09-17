@@ -1,11 +1,30 @@
 # Import Pipeline — Asset Import Coordination
 
-**Priority:** P3  
-**Status:** Mostly Implemented — ImportCoordinator, ImportQueue, ImportJob, ImportPriority all live; DependencyGraph and VFSScanner/FileWatcher wiring remain design  
-**Depends on:** `vfs-ticket6-asset-registry.md`, `actor-ecs-architecture.md`  
+**Priority:** P3
+**Status:** Core coordinator, dependency gate, registry transitions, and file-watcher reimport
+are implemented; initial scanner-to-import enqueue and production observability remain design
+**Tracked by:** [#735](https://github.com/JeanPhilippeKernel/RendererEngine/issues/735) (test
+scaffolding), [#750](https://github.com/JeanPhilippeKernel/RendererEngine/issues/750) (unified
+image importer), and [#602](https://github.com/JeanPhilippeKernel/RendererEngine/issues/602)
+(manual reimport UX). The latter's old component names are not current ZUI panel names.
+**Depends on:** `vfs-ticket6-asset-registry.md`, `actor-ecs-architecture.md`
 **Blocks:** `animation-system.md` (AssimpImporter end-to-end), `render-resource-manager.md`
 
-### What is already implemented (as of PR #597)
+> **Current implementation correction.** `ImportCoordinator` is initialized and its five
+> importers (glTF, FBX, Assimp, environment map, and texture) are registered by `Engine`. It
+> dispatches bounded jobs through the thread pool, consults the live `AssetRegistry` dependency
+> graph, and transitions records through `AssetState::{Importing,Loaded,Failed}`. The VFS watcher
+> marks modified assets stale and enqueues them at `ImportPriority::Immediate`; shader `.spv`
+> changes additionally request a render-thread shader reload. `VFSScanner` registers discovered
+> assets with the registry, but it does **not** currently feed its initial scan into
+> `ImportCoordinator::EnqueueBatch`.
+>
+> The API sketches and tests below began as a design proposal. The shipped registry vocabulary is
+> `AssetState`, `SetState`, record `State`, and `Loaded`; the source is authoritative where a
+> sketch differs. `VFSScanner::SetOnScanComplete` reports `ScanStats`, not a list of paths, and
+> there is no `OnBatchComplete` API.
+
+### Implemented foundation
 
 - `IAssetImporter` interface — `CanImport(ext)` + `Import(ctx, path, meta)` — live in `ZEngine/Importers/IAssetImporter.h`
 - `AssimpImporter::ImportFile()` — editor path; cooks .fbx/.obj to `.zemesh` + `.zematerial` on disk, reports progress via `ImportCompleteCallback` / `ImportProgressCallback` / `ImportErrorCallback` / `ImportLogCallback` type aliases
@@ -18,12 +37,14 @@
 - `ImportJob` + `ImportPriority` — job struct with `DiagnosticMessage[256]`, `RequeueCount`, priority enum
 - `EnvironmentMapImporter` — implements `IAssetImporter` for .hdr/.exr environment map files
 
-### What is still design (this document)
+### Remaining design work
 
-- VFSScanner → `EnqueueBatch` wiring
-- FileWatcher → `Enqueue(Immediate)` wiring
+- VFSScanner → `EnqueueBatch` wiring for initial imports
+- durable batch accounting, diagnostics retrieval, and completion notification
 
-Note: ImportCoordinator, ImportQueue, ImportJob, and ImportPriority are implemented in `ZEngine/ZEngine/Importers/`. The DependencyGraph and VFSScanner/FileWatcher integration remain design.
+Note: `ImportCoordinator`, `ImportQueue`, `ImportJob`, and `ImportPriority` are implemented in
+`ZEngine/ZEngine/Importers/`. The registry dependency graph and file-watcher reimport path are
+also live; the scanner-to-coordinator bridge is not.
 
 **Goal**: Implement a priority-driven, thread-safe asset import pipeline inside
 `ZEngine::Importers` that routes any source file to the correct importer, tracks progress
@@ -33,7 +54,7 @@ integrates cleanly with the existing VFS layer — all without exceptions and wi
 
 ---
 
-## 1. `IAssetImporter` Interface
+## 1. Historical API and extension design
 
 Every concrete importer (Assimp, STB-image, a custom shader compiler, etc.) implements
 this interface. The interface is intentionally minimal: two pure-virtual methods and no
@@ -74,7 +95,7 @@ namespace ZEngine::Importers {
 - `CanImport` is called once per importer during routing (see Section 4 `Route()`). It
   must be stateless and cheap — a string comparison, nothing more.
 - `Import` receives a fully resolved `MetaFileData` reference. The importer must never
-  generate a UUID internally; it must read `meta.UUID`. This is the primary change from
+  generate a UUID internally; it must read `meta.AssetUUID`. This is the primary change from
   the legacy Assimp path (see Section 6).
 - `VFS::VFSResult<void>` carries either success or an error string without throwing. The
   coordinator checks the result and records failures in the registry (Section 7).
@@ -89,7 +110,8 @@ namespace ZEngine::Importers {
 ## 2. `ImportJob` and `ImportPriority`
 
 `ImportJob` is the unit of work that flows through the queue. It is a plain aggregate with
-no virtual methods and no heap-allocated members except the `std::function` callback.
+no virtual methods and no heap-allocated callback: `ImportCallback` is context plus function
+pointer.
 
 ```cpp
 // ZEngine/Importers/ImportJob.h
@@ -310,7 +332,7 @@ namespace ZEngine::Importers {
         // Returns the first importer that CanImport(ext), or nullptr.
         IAssetImporter* Route(const char* ext) const;
 
-        // Checks DependencyGraph to verify all upstream assets are AssetStatus::Ready.
+        // Checks DependencyGraph to verify all upstream assets are AssetState::Loaded.
         bool DependenciesSatisfied(const VFS::VFSPath& path) const;
 
         // Extracts the extension from path (without dot) into out_ext[16].
@@ -320,32 +342,33 @@ namespace ZEngine::Importers {
 }  // namespace ZEngine::Importers
 ```
 
-**`Enqueue(path, priority, cb)` implementation**:
-1. Read `MetaFileData meta = MetaFileIO::Read(path)`. If the `.meta` file does not exist,
-   call `MetaFileIO::GenerateDefault(path)` to create it (assigns a fresh UUID, default
-   import settings) and read again.
-2. Construct `ImportJob{path, meta, priority, cb}`.
-3. Call `m_queue.Enqueue(std::move(job))`.
-4. Increment `m_total` with `fetch_add(1, std::memory_order_relaxed)`.
+**Current `Enqueue(path, priority, cb)` implementation**:
+1. Compute the source hash and call
+   `MetaFileIO::GetOrCreate(*m_vfs_ctx, path, "ImportCoordinator", hash)`.
+   It reads an existing sidecar or creates one with a stable `AssetUUID`.
+2. Copy the returned `MetaFileData` into `ImportJob`, enqueue it, and increment
+   the outstanding `m_total` counter.
+3. Return `job.Meta.AssetUUID`, or a nil UUID if VFS/meta creation fails.
 
 **`Tick()` implementation**:
 1. For `i` in `[0, m_jobs_per_tick)`:
    a. `ImportJob job; if (!m_queue.TryPop(job)) break;`
    b. `if (!DependenciesSatisfied(job.Path))`:
       - If `job.RequeueCount >= 3`: write `"Circular dependency or missing upstream asset"`
-        into `job.DiagnosticMessage`, call `AssetRegistry::SetStatus(job.Meta.UUID, AssetStatus::Failed)`,
+        into `job.DiagnosticMessage`, call `AssetRegistry::SetState(job.Meta.AssetUUID, AssetState::Failed)`,
         increment `m_failed`, decrement `m_total`, invoke `job.Callback` with `false`. Continue.
       - Otherwise: `job.RequeueCount++; m_queue.Enqueue(std::move(job));` Continue.
    c. Route: `ExtractExtension(job.Path, ext); IAssetImporter* imp = Route(ext);`
    d. If `imp == nullptr`: write `"No importer for extension"` into `job.DiagnosticMessage`,
       mark `Failed`, increment `m_failed`, decrement `m_total`, invoke callback. Continue.
-   e. Dispatch to `ThreadPool::Submit([imp, job, this]() mutable { ... })`. Inside the lambda:
+   e. Claim one of the fixed `ImportTask` slots and dispatch
+      `ThreadPoolHelper::Submit(&task, &ImportCoordinator::RunImportTask)`. The task:
       - Call `VFS::VFSResult<void> result = imp->Import(ctx, job.Path, job.Meta);`
-      - If success: `AssetRegistry::SetStatus(job.Meta.UUID, AssetStatus::Ready); m_completed.fetch_add(1);`
+      - If success: `AssetRegistry::SetState(job.Meta.AssetUUID, AssetState::Loaded); m_completed.fetch_add(1);`
       - If failure: copy error into `job.DiagnosticMessage` via `snprintf`,
-        `AssetRegistry::SetStatus(job.Meta.UUID, AssetStatus::Failed); m_failed.fetch_add(1);`
+        `AssetRegistry::SetState(job.Meta.AssetUUID, AssetState::Failed); m_failed.fetch_add(1);`
       - `m_total.fetch_sub(1, std::memory_order_relaxed);`
-      - `if (job.Callback) job.Callback(job.Path, success);`
+      - invokes the optional context/function callback with the success value.
 
 **`Route(ext)` implementation**:
 - Linear scan over `m_importers`. Return the first `imp` where `imp->CanImport(ext) == true`.
@@ -373,16 +396,13 @@ ImportProgress ImportCoordinator::GetProgress() const {
 - All three counters are `std::atomic<uint32_t>`. `GetProgress()` reads them with
   `memory_order_relaxed` — a consistent snapshot is not required; the editor bar updates
   every frame and momentary inaccuracy is invisible to the user.
-- `Total` is incremented at `Enqueue` time and decremented when a job is finalized
-  (success, failure, or cycle abort). This makes `Total - Completed - Failed` the count
-  of in-flight or queued jobs, which the editor can display as "remaining".
-- No mutex is held during `GetProgress()`. The three atomic reads are not jointly atomic,
-  meaning a transient `Completed > Total` is theoretically possible in a race. This is
-  acceptable; the UI clamps displayed values to `[0, 100]%`.
-- For a precise end-of-import notification (e.g. to trigger a post-import script),
-  `Tick()` checks `m_total.load() == 0` after its dispatch loop and fires a registered
-  `OnBatchComplete` callback if present. This callback is not part of the v1 API but
-  the hook site is reserved.
+- In the current implementation `Total` means outstanding queued or in-flight jobs: it is
+  incremented by `Enqueue` and decremented when a job reaches a terminal outcome. `Completed`
+  and `Failed` are cumulative counters and do not reset with `Total`; UI must not compute a
+  batch percentage as `Completed / Total`.
+- No mutex is held during `GetProgress()`. The three relaxed atomic reads are not a coherent
+  snapshot. There is no batch identifier or completion callback yet; production batch progress
+  needs that explicit API.
 
 ---
 
@@ -414,15 +434,16 @@ VFS::VFSResult<void> AssimpImporter::Import(
     const VFS::VFSPath& path,
     const VFS::MetaFileData& meta)       // meta is now authoritative
 {
-    const UUID id = meta.UUID;           // ← stable identity from .meta file
-    AssetRegistry::Register(id, path);
+    AssetMesh mesh = ExtractMesh(ctx, path);
+    mesh.MeshUUID = meta.AssetUUID;      // ← stable identity from .meta file
+    AssetManager::IngestMesh(std::move(mesh), hierarchy);
     // ... load mesh data ...
     return VFS::VFSResult<void>::Ok();
 }
 ```
 
-**Key change**: remove the `UUID::Generate()` call and replace it with `meta.UUID`. The
-`.meta` file is created by `MetaFileIO::GenerateDefault` on first import and reused on
+**Key change**: remove the `UUID::Generate()` call and replace it with `meta.AssetUUID`. The
+`.meta` file is created by `MetaFileIO::GetOrCreate` on first import and reused on
 every subsequent import, so the UUID is stable across reimport, project reload, and
 version control.
 
@@ -439,13 +460,14 @@ internally receives the same fix. A project-wide search for `UUID::Generate()` i
 When `IAssetImporter::Import` returns a failure `VFSResult`, the coordinator:
 1. Copies the error string into `job.DiagnosticMessage` via
    `snprintf(job.DiagnosticMessage, 256, "%s", result.Error())`.
-2. Calls `AssetRegistry::SetStatus(job.Meta.UUID, AssetStatus::Failed)`.
+2. Calls `AssetRegistry::SetState(job.Meta.AssetUUID, AssetState::Failed)`.
 3. Increments `m_failed`.
 4. Decrements `m_total`.
 5. Invokes `job.Callback(job.Path, false)` if present.
 
-The asset remains in the registry with `AssetStatus::Failed`. The editor can display the
-`DiagnosticMessage` in the import log panel by querying the registry entry.
+The asset remains in the registry with `AssetState::Failed`. The current coordinator logs a
+fixed diagnostic but does not persist `ImportJob::DiagnosticMessage` in `AssetRegistry`; an
+editor diagnostics query remains design work.
 
 **No automatic retry**:
 
@@ -471,7 +493,7 @@ Fixed-size, zero-initialized. Never heap-allocated. The coordinator and importer
 into it via `snprintf`. The editor reads it as a C-string. 256 bytes is sufficient for
 file paths (≤ 200 characters in practice) plus a short error reason.
 
-**`AssetStatus::Failed` persistence**:
+**`AssetState::Failed` persistence target**:
 
 `AssetRegistry` persists `Failed` status to the project cache on save. On next project
 open, the editor shows the asset as failed without re-attempting import, prompting the
@@ -481,8 +503,8 @@ user to fix the source and reimport.
 
 ## 8. Dependency Ordering
 
-**Type import order**: textures must be `AssetStatus::Ready` before materials that
-reference them; materials must be `Ready` before meshes that reference them. The enforced
+**Type import order**: textures must be `AssetState::Loaded` before materials that
+reference them; materials must be `Loaded` before meshes that reference them. The enforced
 order is:
 
 ```
@@ -496,9 +518,9 @@ Textures  →  Materials  →  Meshes  →  (Scenes / Prefabs)
    performed by each importer before the full cook).
 2. For each dependency `dep_path`:
    a. Resolve `dep_uuid = MetaFileIO::Read(dep_path).UUID`.
-   b. Query `AssetRegistry::GetStatus(dep_uuid)`.
-   c. If status is not `AssetStatus::Ready`, return false.
-3. Return true if all dependencies are `Ready` (or if the dependency list is empty).
+   b. Query `AssetRegistry::FindByUUID(dep_uuid)->State` after checking the returned pointer.
+   c. If state is not `AssetState::Loaded`, return false.
+3. Return true if all dependencies are `Loaded` (or if the dependency list is empty).
 
 **Requeueing on unsatisfied dependencies**:
 
@@ -525,16 +547,16 @@ registering them in the graph before returning from the material-parse phase.
 
 ## 9. Integration Points
 
-### `VFSScanner::ScanCompleteCallback` → `EnqueueBatch`
+### Proposed VFSScanner discovery → `EnqueueBatch` bridge
 
-When `VFSScanner` finishes scanning a directory (project open, folder add), it fires
-`ScanCompleteCallback` with the list of discovered paths:
+This bridge is not implemented. The current `VFSScanner::SetOnScanComplete` callback only
+reports aggregate `ScanStats`, while discovered files are registered one at a time. A production
+bridge must collect only importable discovered paths in scanner-owned data, hand that immutable
+batch to the main thread, then call `EnqueueBatch`:
 
 ```cpp
-// In VFSScanner setup (e.g. ProjectManager.cpp)
-scanner.SetScanCompleteCallback([&coordinator](const Core::Containers::Array<VFS::VFSPath>& paths) {
-    coordinator.EnqueueBatch(paths);
-});
+// Proposed main-thread handoff after the scanner owns a completed immutable path batch.
+coordinator.EnqueueBatch(discovered_paths);
 ```
 
 `EnqueueBatch` iterates the array and calls `Enqueue(path, ImportPriority::Normal)` for
@@ -582,7 +604,8 @@ scene references pointing at the previous handle.
 // ZEngine/VFS/AssetRegistry.h — addition
 // Replaces the AssetRecord for an existing UUID in-place.
 // - Updates ArtifactPath, ImporterName, LastSourceSha256 from new_meta.
-// - Sets status to Loading (caller is responsible for setting Ready/Failed after import).
+// Historical migration note: current coordinator sets AssetState::Importing and then
+// AssetState::{Loaded,Failed}; this importer does not choose the terminal state.
 // - The existing AssetHandle is preserved — all scene references remain valid.
 // - Asserts if uuid is not already registered (use Register for new assets).
 void AssetRegistry::UpdateRecord(const uuids::uuid& uuid, const VFS::MetaFileData& new_meta);
@@ -597,10 +620,10 @@ FileWatcher::Modified → ImportCoordinator::Enqueue(path, Immediate)
     2. uuid = meta.AssetUUID                          ← same UUID as before
     3. AssetRegistry::UpdateRecord(uuid, meta)        ← status → Loading, handle preserved
     4. importer->Import(ctx, path, meta)              ← reimport to new artifact
-    5a. Success → AssetRegistry::SetStatus(uuid, Ready)
+    5a. Success → AssetRegistry::SetState(uuid, AssetState::Loaded)
         RenderResourceManager::ScheduleSwap(           ← swap GPU resource, handle unchanged
             registry.GetHandle(uuid), new_asset_handle)
-    5b. Failure → AssetRegistry::SetStatus(uuid, Failed)
+    5b. Failure → AssetRegistry::SetState(uuid, AssetState::Failed)
                   (old GPU resource remains bound — no visual corruption)
 ```
 
@@ -611,7 +634,7 @@ bindings all remain valid without any fixup.
 
 ---
 
-## 11. Unit Tests
+## 11. Historical proposed tests
 
 File: `ZEngine/tests/Importers/ImportPipelineTest.cpp`
 
@@ -706,7 +729,7 @@ TEST(ImportCoordinator, RouteByExtensionSelectsCorrectImporter)
 }
 ```
 
-### Test 5 — Successful import updates AssetRegistry state to Ready
+### Test 5 — Successful import updates `AssetRegistry` to loaded
 
 ```cpp
 TEST(ImportCoordinator, SuccessfulImportSetsStatusReady)
@@ -734,11 +757,11 @@ TEST(ImportCoordinator, SuccessfulImportSetsStatusReady)
     EXPECT_TRUE(callback_success);
 
     UUID uuid = MetaFileIO::Read(path).UUID;
-    EXPECT_EQ(registry.GetStatus(uuid), AssetStatus::Ready);
+    EXPECT_EQ(registry.FindByUUID(uuid)->State, AssetState::Loaded);
 }
 ```
 
-### Test 6 — Failed import sets AssetStatus to Failed with message
+### Test 6 — Failed import sets `AssetState::Failed`
 
 ```cpp
 TEST(ImportCoordinator, FailedImportSetsStatusFailed)
@@ -764,11 +787,9 @@ TEST(ImportCoordinator, FailedImportSetsStatusFailed)
     EXPECT_FALSE(callback_success);
 
     UUID uuid = MetaFileIO::Read(path).UUID;
-    EXPECT_EQ(registry.GetStatus(uuid), AssetStatus::Failed);
+    EXPECT_EQ(registry.FindByUUID(uuid)->State, AssetState::Failed);
 
-    // Diagnostic message must be non-empty
-    const char* diag = registry.GetDiagnosticMessage(uuid);
-    EXPECT_GT(strlen(diag), 0u);
+    // The current registry has no persisted diagnostic field; assert the failure log instead.
 }
 ```
 
@@ -795,7 +816,7 @@ TEST(ImportCoordinator, EnqueueBatchEnqueuesAllPaths)
 }
 ```
 
-### Test 8 — `DependenciesSatisfied` blocks mesh until texture is Ready
+### Test 8 — `DependenciesSatisfied` blocks mesh until texture is loaded
 
 ```cpp
 TEST(ImportCoordinator, DependenciesSatisfiedBlocksMeshUntilTextureReady)
@@ -819,24 +840,24 @@ TEST(ImportCoordinator, DependenciesSatisfiedBlocksMeshUntilTextureReady)
     coordinator.Enqueue(tex_path,  ImportPriority::Normal);
     coordinator.Enqueue(mesh_path, ImportPriority::Immediate);
 
-    // First Tick: mesh pops first (Immediate), but texture is not Ready → requeued
+    // First Tick: mesh pops first (Immediate), but texture is not loaded → requeued
     coordinator.Tick();
     UUID mesh_uuid = MetaFileIO::Read(mesh_path).UUID;
-    EXPECT_NE(registry.GetStatus(mesh_uuid), AssetStatus::Ready);
+    EXPECT_NE(registry.FindByUUID(mesh_uuid)->State, AssetState::Loaded);
 
-    // Simulate texture finishing (as if thread pool completed its job)
+    // Simulate texture finishing (as if thread pool completed its job).
     UUID tex_uuid = MetaFileIO::Read(tex_path).UUID;
-    registry.SetStatus(tex_uuid, AssetStatus::Ready);
+    registry.SetState(tex_uuid, AssetState::Loaded);
 
-    // Second Tick: texture is Ready → mesh proceeds and imports successfully
+    // Second Tick: texture is loaded → mesh proceeds and imports successfully.
     coordinator.Tick();
-    EXPECT_EQ(registry.GetStatus(mesh_uuid), AssetStatus::Ready);
+    EXPECT_EQ(registry.FindByUUID(mesh_uuid)->State, AssetState::Loaded);
 }
 ```
 
 ---
 
-## 12. Deliverables Checklist
+## 12. Historical checklist and remaining work
 
 - [ ] `ZEngine/Importers/IAssetImporter.h` — `CanImport(ext)` + `Import(ctx, path, meta)` interface; no UUID generation inside importers
 - [x] `ZEngine/Importers/ImportJob.h` — `ImportPriority` enum, `ImportCallback` typedef, `ImportJob` struct with `DiagnosticMessage[256]` and `RequeueCount`
@@ -845,11 +866,11 @@ TEST(ImportCoordinator, DependenciesSatisfiedBlocksMeshUntilTextureReady)
 - [x] `Tick()` pops up to `m_jobs_per_tick` jobs per call and dispatches each to `ThreadPool`; never blocks the main thread
 - [ ] `DependenciesSatisfied` queries `DependencyGraph`; stalled jobs requeued with `RequeueCount++`; at `RequeueCount == 3` asset is marked `Failed` with diagnostic
 - [ ] `AssimpImporter` (and all other importers) remove internal `UUID::Generate()` calls and read `meta.UUID` instead
-- [ ] `AssetRegistry::SetStatus(uuid, AssetStatus::Failed)` called on import failure; `DiagnosticMessage` stored and retrievable via `AssetRegistry::GetDiagnosticMessage(uuid)`
+- [x] Import failure calls `AssetRegistry::SetState(uuid, AssetState::Failed)`; persisted editor diagnostics are still missing
 - [ ] No automatic retry; manual retry via `Enqueue(path, ImportPriority::Immediate)`
-- [ ] `VFSScanner::ScanCompleteCallback` wired to `ImportCoordinator::EnqueueBatch`
-- [ ] `FileWatcher::OnModified` wired to `Enqueue(path, ImportPriority::Immediate)`
-- [ ] `FileWatcher::OnStale` wired to `Enqueue(path, ImportPriority::Normal)`
+- [ ] Scanner discovery batch wired to `ImportCoordinator::EnqueueBatch`
+- [x] `VFSFileWatcher::Modified` wires to `Enqueue(path, ImportPriority::Immediate)`
+- [ ] Define a deliberate reimport policy for a stale dependency cascade; there is no `OnStale` watcher callback
 - [ ] `GetProgress()` returns `{Total, Completed, Failed}` via three `memory_order_relaxed` atomic reads; no mutex held
 - [ ] `tests/Importers/ImportPipelineTest.cpp` — all 8 tests pass under AddressSanitizer and UBSanitizer
-- [ ] Manual smoke test: open a project with 500 assets (mix of `.png`, `.fbx`, `.glsl`); verify all import to `AssetStatus::Ready` with no ASAN errors, progress bar reaches 100%, no duplicate imports in the log
+- [ ] Manual smoke test: open a project with 500 assets (mix of `.png`, `.fbx`, `.glsl`); verify terminal `AssetState`, logs, and no duplicate imports under sanitizers

@@ -1,9 +1,16 @@
 # ZEngine — Shadow Mapping
 
 **Priority:** P2 — Required for visual quality in any 3D game
-**Status:** Design
+**Status:** Design — no directional, spot, or point shadow-map implementation is currently registered in the renderer.
 **Depends on:** `gpu-allocator-rearchitecture.md`, `per-frame-upload-heap.md`, `actor-ecs-architecture.md` (LightComponent), `vfs-design.md` (Ticket 1)
 **Blocks:** Visual quality, night/indoor scenes
+
+> **Current implementation correction:** the v1/v2 tables and callback code below are target-state design, not shipped shadow functionality. The current renderer has no CSM, spot, or point shadow pass.
+>
+> **RenderGraph API correction:** callback snippets in this design use a retired
+> Setup/Compile form. Preserve their resource and pipeline requirements, but implement
+> them with the current Register, pipeline-description/query, Prepare, Execute, and
+> optional RecordDraw lifecycle in render-graph-integration.md.
 
 **Goal**: Implement a multi-technique shadow system for ZEngine that covers the three
 primary light types (directional, spot, point) using classical depth-map shadow techniques
@@ -16,7 +23,7 @@ CPU-side data owned by `ArenaAllocator`-backed containers.
 
 ## 1. Shadow Techniques Overview
 
-### v1 — Implemented
+### v1 — Target
 
 | Technique | Light Type | Notes |
 |---|---|---|
@@ -257,7 +264,7 @@ namespace ZEngine::Rendering::Shadows {
 } // namespace ZEngine::Rendering::Shadows
 ```
 
-### 3.3 Setup Phase
+### 3.3 Historical callback sketch — not buildable as written
 
 During `Setup`, the pass declares its output texture as a `RenderGraph` resource so the
 graph can allocate the Vulkan image and schedule it in the correct barrier state before

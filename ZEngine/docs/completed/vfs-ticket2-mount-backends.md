@@ -1,13 +1,20 @@
 # ZEngine VFS System — Ticket 2 Implementation Specification
 
-**Priority:** P2 — Implement after VFS Ticket 1 is live  
-**Status:** Implemented  
-**Depends on:** `vfs-design.md` (Ticket 1)  
+**Priority:** P2 — Implement after VFS Ticket 1 is live
+**Status:** Core mount routing and disk/ZIP backends are implemented; this is a completed ticket record, not a production-security sign-off.
+**Depends on:** `vfs-design.md` (Ticket 1)
 **Blocks:** `vfs-ticket3`, `import-pipeline.md`
 
 ## Mount Table, VFSContext, VFSDiskBackend, VFSZipBackend
 
 ---
+
+> **Current limitations:** the shipped disk backend does not implement the
+> canonicalization/containment design retained below, and concurrent reads of
+> the *same* `VFSZipFile` are not safe because its lazy decompression state is
+> unguarded. Use `ZEngine/ZEngine/Core/VFS/` as the API reference. The detailed
+> planned declarations and test checklist are historical where they claim those
+> protections or a different ZIP implementation.
 
 ## 1. Directory Layout (New Files Only)
 

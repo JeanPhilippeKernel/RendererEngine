@@ -4,13 +4,19 @@
 **Status:** Design
 **Depends on:** `actor-ecs-architecture.md`, `render-graph-integration.md`, `lod-system.md`
 
+> **RenderGraph API correction:** resource declaration and pass snippets that use
+> Setup/Compile are historical. Future culling work uses the active Register, Prepare,
+> Execute, and optional RecordDraw lifecycle documented in render-graph-integration.md.
+>
+> **Current implementation correction:** current scene rendering builds CPU draw candidates and uses `FrustumCullingPass` on the GPU to write a fixed-size indirect buffer with culled commands disabled through `instanceCount = 0`. There is no ECS `CulledComponent`, CPU frustum system, Hi-Z pyramid, occlusion pass, or compacted indirect-count path yet. The techniques below are target design beyond that shipped pass.
+
 ---
 
 ## 1. Why Culling
 
 Without culling, the renderer submits a draw call for every entity in the scene every frame regardless of whether that entity is visible. For a scene with 2000 entities, 60% of which are behind the camera or behind opaque geometry, this wastes both CPU time (recording draw commands) and GPU time (vertex processing for invisible triangles).
 
-Two-stage culling eliminates this waste:
+The target two-stage culling design would eliminate this waste:
 
 - **Frustum culling** runs on the CPU. It removes all objects outside the view frustum using a simple sphere-vs-plane test. No GPU involvement. Typical elimination rate: 50–70% of scene objects, achieved in under 0.5ms for 2000 entities with SIMD.
 - **Occlusion culling** runs on the GPU. It removes objects that are within the frustum but hidden behind other geometry (terrain, buildings, walls). Elimination rate varies by scene; in a dense urban scene it can reach 60–80% of remaining frustum-visible objects.
@@ -19,7 +25,7 @@ Together they can reduce the submitted draw call count from 2000 to under 200 fo
 
 ---
 
-## 2. Bounding Volumes
+## 2. Target bounding-volume model
 
 Every entity that participates in culling must have a bounding volume. ZEngine uses bounding spheres for culling (cheaper than AABB for frustum tests; axis-aligned boxes are also supported for occlusion).
 
@@ -43,7 +49,7 @@ The bounding sphere is a conservative enclosure of the AABB: center is the AABB 
 
 ---
 
-## 3. Frustum Culling
+## 3. Target CPU frustum-culling system
 
 ### 3.1 Plane Extraction
 
@@ -140,7 +146,7 @@ Both tags are removed at the start of each frame (before the cull systems run) s
 
 ---
 
-## 5. GPU Occlusion Culling — Hi-Z Approach
+## 5. Target GPU occlusion culling — Hi-Z approach
 
 Frustum culling cannot remove objects that are within the frustum but behind a mountain or a wall. GPU occlusion culling catches these using the Hi-Z (hierarchical depth) technique.
 

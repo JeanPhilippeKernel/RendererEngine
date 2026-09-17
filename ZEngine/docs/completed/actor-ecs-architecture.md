@@ -1,7 +1,7 @@
 # ZEngine — Hybrid Actor-ECS Architecture
 
-**Priority:** P1  
-**Status:** Core Implemented — ECS, Actor, WorldTick, WorldCommands all live; missing: MeshComponent, NameComponent, ECS↔RenderScene bridge, Outliner UI (tracked in issue #604)  
+**Priority:** P1
+**Status:** Core implemented — ECS, Actor, WorldTick, WorldCommands, MeshComponent, NameComponent, hierarchy sync, and ECS-to-RenderScene transform/light sync are live. Editor-wide selection, authoring transactions, durable scene serialization, and complete lifecycle/render binding restoration remain separate work.
 **Blocks:** `system-scheduler.md`, `animation-system.md`, `scene-serialization.md`
 
 ## Capacity constants
@@ -30,6 +30,10 @@ ZEngine uses a two-tier object model:
 Both tiers live in the same `ECS::Scene`. Both are backed by an `EntityID`. ECS systems query
 both tiers uniformly — a `ForEach<TransformComponent, RigidBodyComponent>` hits Actors and
 pure ECS entities alike with no special cases.
+
+Editor consequence: global selection, inspector, picking, gizmo, and undo/redo operate on
+ECS entities. ActorHandle is an optional Tier 1 façade and must not be used as the editor's
+universal identity; see editor-entity-selection.md and editor-undo-redo.md.
 
 The programmer decides explicitly which tier an object belongs to. There is no automatic
 promotion or demotion.
@@ -427,8 +431,8 @@ m_free_list  — Array<uint32_t> of recyclable slot indices
 m_alive_count
 ```
 
-`Create()`: pop from free-list or append new slot. Increment generation, skip 0.  
-`Destroy(id)`: assert alive, increment generation (skip 0), push index onto free-list.  
+`Create()`: pop from free-list or append new slot. Increment generation, skip 0.
+`Destroy(id)`: assert alive, increment generation (skip 0), push index onto free-list.
 `IsAlive(id)`: `id.Generation != 0 && id.Index < m_slots.Size() && m_slots[id.Index].Generation == id.Generation`.
 
 > **Note:** The `id.Generation != 0` guard ensures `INVALID_ENTITY {0,0}` is never considered alive, even if slot 0 exists with generation 0.
@@ -688,6 +692,8 @@ programmer error and asserts in debug.
 - Scene load/unload — handled by `engine-lifecycle.md`
 - Actor creation — `Actor::Create(scene)` is safe to call from `Actor::OnTick` since
   that runs after `WorldTick::Tick` completes
+- Editor undo/redo — EditorSession applies semantic, synchronous transactions only at its
+  exclusive editor mutation point. It never treats this deferred runtime queue as history.
 
 ### 7.5 Thread safety — per-system staging buffers
 
@@ -898,7 +904,10 @@ tests/
 - [x] `tests/ECS/ECSTest.cpp` — entity/component/query/generational handle tests
 - [x] `tests/ECS/ActorTest.cpp` — covered in ECSTest.cpp — Actor create/destroy, component access via Actor, ECS system sees Actor entity
 - [x] `tests/ECS/WorldCommandsTest.cpp` — covered in ECSTest.cpp — deferred spawn, deferred destroy, duplicate destroy guard, flush ordering
-- [ ] `ZEngine/ECS/Components/MeshComponent.h` — `{ uuids::uuid MeshUUID; }` linking Actor to cooked mesh
-- [ ] `ZEngine/ECS/Components/NameComponent.h` — `{ char Value[128]; }` display name for Outliner
-- [ ] ECS → RenderScene bridge system — syncs `MeshComponent` add/remove to `RenderScene::MeshInstance` lifecycle; propagates `TransformComponent` changes to GPU buffer (tracked in issue #604)
-- [ ] `Tetragrama/Components/HierarchyViewUIComponent` — rebuild around `ActorManager`; rows from `NameComponent`, selection via `ActorHandle` (tracked in issue #604)
+- [x] `ZEngine/ECS/Components/MeshComponent.h` — stable mesh UUID plus runtime RenderInstanceId
+- [x] `ZEngine/ECS/Components/NameComponent.h` — 128-byte display name
+- [x] ECS → RenderScene transform/light synchronization — hierarchy runs before transform/light sync
+- [x] Tetragrama hierarchy panel — current UI exists; its actor-only selection state is a
+  temporary limitation superseded by editor-entity-selection.md
+- [ ] Durable scene authoring integration — UUID-based scene load, runtime render binding
+  reconstruction, and all-ECS editor selection remain tracked by their dedicated plans

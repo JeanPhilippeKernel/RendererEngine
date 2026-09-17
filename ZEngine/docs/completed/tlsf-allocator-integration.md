@@ -1,8 +1,9 @@
 # TLSF Allocator Integration
 
-**Status:** Phase 1 and Phase 2 complete (merged to develop). Phase 3 pending — blocked on ECS heterogeneous components.
+**Status:** Completed TLSF slab integration record. The ECS-archetype and closure-slab
+ideas later in this historical record are not current implementation plans.
 **Scope:** Texture upload pipeline, per-worker decode slabs, long-lived asset container allocations
-**Relates to:** `memory-allocator-audit.md`, `memory-budget.md`, `asset-manager.md`
+**Relates to:** `memory-allocator-audit.md`, `../memory-budget.md`, `asset-manager.md`
 
 ---
 
@@ -141,9 +142,10 @@ struct TLSFSlab
     size_t Overhead() const;
 
 private:
-    // Atomic spinlock — protects concurrent Alloc/Free across threads.
-    // Typical contention pattern: one worker calls Alloc, render thread calls
-    // Free after GPU upload completes. Uncontended lock overhead is ~5 ns.
+    // Atomic spinlock — protects concurrent Alloc, Realloc, and Free calls.
+    // The common use is one worker allocating and the render thread freeing
+    // after upload completion; callers must nevertheless treat every slab
+    // operation as lock-protected rather than thread-confined.
     mutable std::atomic_flag m_lock = ATOMIC_FLAG_INIT;
 };
 ```
@@ -179,7 +181,11 @@ Each worker sets a thread-local slab pointer before starting its task loop via a
          └── ...
 ```
 
-No lock is needed for per-worker allocation — each slab is owned exclusively by one OS thread. The spinlock in `TLSFSlab` exists only for cross-thread `Free`: the render thread calls `Slab->Free(Pixels)` after GPU upload completes, racing with a worker's next `Alloc`.
+Workers are normally assigned one slab each, but that assignment is a usage
+convention, not a lock-free guarantee. `TLSFSlab::Alloc`, `Realloc`, and `Free`
+all take its internal spinlock. This protects the supported worker-allocation /
+render-thread-free pattern and any other concurrent slab use, at the cost of
+serializing operations on the same slab.
 
 ```
  Workers and their slabs:
@@ -232,7 +238,7 @@ Each upload touches the system heap 4–5 times. Multiple concurrent uploads con
 ```
  Thread pool worker N  (t_worker_slab = &slab[N])
      │
-     ├── STBI_MALLOC → GetWorkerSlab()->Alloc(...)  ← TLSF, no lock (same thread)
+     ├── STBI_MALLOC → GetWorkerSlab()->Alloc(...)  ← TLSF (spinlock-protected)
      │
      ├── uint8_t* pixels = slab[N].Alloc(bytes)     ← TLSF
      ├── memmove(pixels, decoded_data, bytes)
@@ -391,9 +397,13 @@ When heterogeneous component types land (physics, animation, scripting), each co
 
 Blocked on: physics/animation/scripting systems not yet built.
 
-### 10.2 Lambda captures in ThreadPoolHelper (done)
+### 10.2 Lambda captures in ThreadPoolHelper (historical; not implemented)
 
-`ThreadPoolHelper::Submit(T&& f)` now carves `[TLSFSlab* header | Fn closure]` from a dedicated 512 KB closure slab (`ThreadPool::InitClosureSlab`, called from `RenderResourceManager::Initialize`) instead of `new`/`delete`. Falls back to `::operator new`/`delete` when the closure slab hasn't been initialized yet (early startup, tests). Eliminates the last system-heap touch on the upload hot path.
+The current thread pool accepts caller-owned C-style work through
+`ThreadPoolHelper::Submit(void* context, TaskFn)`. It has no templated
+`Submit(T&&)`, closure slab, or `InitClosureSlab` API. The closure-allocation
+proposal in older revisions of this section is retained only as an idea; do not
+rely on it when designing asynchronous work.
 
 ### 10.3 Bitmap intermediate buffers (done)
 
@@ -425,4 +435,4 @@ Blocked on: physics/animation/scripting systems not yet built.
 | `ZEngine/ZEngine/Managers/AssetManager.h` | `ContainerSlab` field + `CONTAINER_SLAB_BYTES` | Done |
 | `ZEngine/ZEngine/Managers/AssetManager.cpp` | `ContainerSlab.Init`; 5 container migrations; `ContainerSlab.Shutdown` | Done |
 | `ZEngine/ZEngine/Rendering/Buffers/Bitmap.h` / `.cpp` | Slab-aware `Create`/`FromData`; `BitmapConvert::EquirectToCross`/`CrossToCubemap` forward the slab | Done |
-| `ZEngine/ZEngine/Helpers/ThreadPool.h` | `m_closure_slab`; `InitClosureSlab`/`GetClosureSlab`; `Submit<T>` carves `[TLSFSlab*\|Fn]` from it | Done |
+| `ZEngine/ZEngine/Helpers/ThreadPool.h` | C-style `Task`, `Submit(void*, TaskFn)`, worker slab pointer, and worker-init callback | Done; no closure-slab API |

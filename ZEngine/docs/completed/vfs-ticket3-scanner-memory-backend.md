@@ -1,14 +1,22 @@
 # ZEngine VFS — Ticket 3: Async Scanner and VFSMemoryBackend
 
-**Priority:** P2 — Implement after Ticket 2  
-**Status:** Implemented  
-**Module:** `ZEngine/Core/VFS/` + `Tetragrama/Components/`  
-**Standard:** C++20  
-**Estimated effort:** 3–4 days (1 engineer)  
-**Depends on:** Ticket 1 (VFSPath, IVFSFile, IVFSBackend, IVFSContext), Ticket 2 (VFSContext, VFSDiskBackend)  
+**Priority:** P2 — Implement after Ticket 2
+**Status:** Scanner and memory backend implemented; editor-integration sketches are historical.
+**Module:** `ZEngine/Core/VFS/` + `Tetragrama/Components/`
+**Standard:** C++20
+**Estimated effort:** 3–4 days (1 engineer)
+**Depends on:** Ticket 1 (VFSPath, IVFSFile, IVFSBackend, IVFSContext), Ticket 2 (VFSContext, VFSDiskBackend)
 **Blocks:** `vfs-ticket4`, `vfs-ticket5`, `vfs-ticket6`
 
 ---
+
+> **Maintenance boundary:** `VFSScanner` currently scans asynchronously, updates
+> `VFSDirectoryCache`, creates/updates sidecars, registers discovered assets, and
+> reports `ScanStats` through `SetOnScanComplete`. Its callback does **not** hand
+> a batch of discovered paths to the importer, so initial discovery still does
+> not create an import batch. The ImGui/`ProjectViewUIComponent` walkthrough
+> below predates the ZUI panel implementation and is archival.
+
 
 ## Table of Contents
 
@@ -28,14 +36,17 @@
 
 ## 1. Motivation
 
-Two concrete regressions this ticket fixes:
+Two concrete regressions this ticket addressed:
 
 | File | Line | Problem |
 |---|---|---|
 | `ProjectViewUIComponent.cpp` | 106 | `std::filesystem::directory_iterator` called on the render/UI thread every frame during normal browsing |
 | `ProjectViewUIComponent.cpp` | 183 | `std::filesystem::recursive_directory_iterator` called on UI thread during every search keystroke |
 
-Both are synchronous filesystem scans on the UI thread. On a large project (thousands of assets) these stall the editor frame. After this ticket, the UI reads from an in-memory `VFSDirectoryCache` that is populated asynchronously by `VFSScanner` using the existing `ThreadPoolHelper`.
+Both were synchronous filesystem scans on the UI thread. On a large project
+(thousands of assets) they stalled the editor frame. The scanner and directory
+cache now exist; the old UI migration shown later is archival and was superseded
+by the ZUI panels.
 
 ---
 

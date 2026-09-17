@@ -40,7 +40,19 @@ style: |
 # ZEngine
 ## Engine Architecture & Memory Management
 
-Design — Concepts — Performance — TLSF Integration Roadmap
+Archive presentation — concepts and historical TLSF integration plan
+
+> **Point-in-time material:** implementation status, profile sizes, and roadmap
+> dates in the remaining slides are not current. Use `ZEngine/docs/memory-budget.md`,
+> `docs/memory-management.md`, and `ZEngine/docs/completed/tlsf-allocator-integration.md`
+> for the maintained contracts. `TLSFSlab` is implemented and spinlock-protects
+> `Alloc`, `Realloc`, and `Free`.
+>
+> **POSIX correction:** slides below describe a proposed `PROT_NONE`/`mprotect`
+> reserve-and-commit model. Current macOS/Linux source instead creates one writable
+> 8 GiB anonymous mapping and relies on permissive overcommit. It can fail at startup
+> under Linux strict-overcommit, address-space, or container limits; the maintained
+> production gate is in `ZEngine/docs/future-plan/memory-budget.md`.
 
 ---
 
@@ -242,8 +254,8 @@ graph TD
     VD  --> TLS["TLSFSlab × N workers\n64–128 MB each\n(Phase 1 target — not yet in codebase)"]
     RP  --> SC["ZGetScratch\nArenaTemp — reset each frame"]
 
-    AM  --> PM["Array&lt;AssetMesh&gt; · Array&lt;AssetMaterial&gt;\nbacked by ArenaAllocator (grows → dead blocks)"]
-    AM  --> PH["UnorderedHashMap&lt;uuid,Handle&gt;\nbacked by ArenaAllocator (grows → dead blocks)"]
+    AM  --> PM["Array of AssetMesh · Array of AssetMaterial\nbacked by ArenaAllocator (grows → dead blocks)"]
+    AM  --> PH["UnorderedHashMap of uuid to Handle\nbacked by ArenaAllocator (grows → dead blocks)"]
 
     ECS --> PE["PoolAllocator\nEntitySlots fixed-cap"]
     ECS --> PC["PoolAllocator\nComponentSlots fixed-cap"]

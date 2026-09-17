@@ -1,10 +1,36 @@
 # Sky Rendering System
 
-**Relates to:** render-graph integration, render-graph redesign, GPU allocator rearchitecture, per-frame upload heap
-**Status:** Production implementation; SkyEnvironment owns HDRI, analytic, and atmosphere backgrounds.
+**Relates to:** render-graph integration, render-graph redesign, GPU allocator rearchitecture, per-frame upload heap, scene-serialization.md, editor-undo-redo.md
+**Legacy status:** the pre-SkyEnvironment `SkyboxPass` was retired in #827.
+**Status:** Partial renderer implementation plus production design. The
+implementation-status correction below takes precedence over later target-state
+language.
 **Scope:** scene-owned sky configuration, HDRI and analytic-sky presentation, atmosphere rendering, and the environment lighting resources consumed by the renderer.
 
 ---
+
+> ## Current implementation correction
+>
+> The renderer already owns a live `Scenes::SkyConfig` in `RenderScene`, a
+> revision counter, fallback cubemap/IBL resources, atmosphere/HDRI bake and
+> presentation callbacks, capability fallback, and the persistent
+> environment-lighting memory gate. `GraphicRenderer` registers those callbacks
+> at initialization and declares their resources through the current render-graph
+> callback contract.
+>
+> It does **not** yet have the document/EditorSession boundary specified below:
+> `YAMLSceneSerializer` does not serialize the scene sky, entity identity is not
+> durable across a current load, and `RenderFrameState` still borrows a mutable
+> `RenderScene*` even though it carries copied sky values. The scene serializer,
+> transaction system, and immutable render snapshot described in the editor docs
+> are prerequisites for calling scene-owned sky authoring production ready.
+>
+> `skyDefaults` below is a proposed project-template shape, not a currently
+> parsed project configuration section. The implemented generated-project keys
+> are `rendering.environment_lighting_quality` and
+> `rendering.environment_lighting_budget_mb`; their value is renderer/project
+> policy, not serialized scene data. Do not edit generated `project.json` merely
+> to change the 384 MiB default.
 
 ## 1. Goals and boundaries
 
@@ -43,7 +69,10 @@ These extensions consume the same immutable snapshot, RenderView, graph-declarat
 
 Sky configuration is owned by the scene or render world. A project may supply defaults, but it must not be the sole owner: different scenes can legitimately use different skies. The serialized scene representation contains a stable environment asset reference, never a raw retained character pointer or an absolute working-space path.
 
-Project defaults are a template for a newly created scene only. The editor accepts the following optional `project.json` section; an existing scene always retains the `SkyConfig` stored in its scene file:
+**Target state:** project defaults are a template for a newly created scene
+only. The proposed optional `project.json` section is shown below; it is not
+currently parsed. An existing scene must retain the `SkyConfig` stored in its
+scene file once serialization lands:
 
 ~~~json
 "skyDefaults": {
@@ -57,7 +86,9 @@ Project defaults are a template for a newly created scene only. The editor accep
 
 The nested atmosphere and SkySphere settings begin with the engine's validated defaults. A project must not store generated environment-cache paths, live Vulkan data, or editor viewport preview state in this section.
 
-Sky serialization is not yet stable, so this change intentionally breaks the current string-based schema. Existing sky fields are not migrated. Scenes authored before this schema either receive the new default SkyConfig on load or must be resaved by the editor, according to the scene-version policy selected for the implementation.
+Sky serialization is not implemented in the current YAML scene serializer. The
+target schema must introduce a versioned migration policy rather than silently
+discard or replace previously authored data.
 
 The exact engine type follows the asset-manager API, but the conceptual configuration is:
 
@@ -78,7 +109,7 @@ struct SkyConfig
     float          EnvironmentIntensity = 1.0f;
     Vec4f          EnvironmentTint = {1.0f, 1.0f, 1.0f, 1.0f};
     float          EnvironmentYawRadians = 0.0f;
-    EntityId       PrimaryCelestialLight = {}; // Optional; invalid means no direct sun.
+    EntityID       PrimaryCelestialLight = {}; // Optional runtime resolution of an authored UUID reference; invalid means no direct sun.
 
     AtmosphereSettings Atmosphere = {};
     SkySphereSettings  Sphere = {};
@@ -563,6 +594,6 @@ Unsupported tiers are not release failures when capability detection clearly dis
 | 7 | Static atmosphere LUTs and atmosphere source-radiance cubemap | Steps 0-3 |
 | 8 | Per-view sky/aerial LUTs and opaque/transparent atmospheric composition | Step 7 |
 | 9 | Atmosphere IBL baking, dynamic celestial-light budget, full validation matrix | Steps 6-8 |
-| 10 | Retire the pre-SkyEnvironment background implementation after visual, graph, and fallback parity is proven | All prior steps |
+| 10 | Retire the pre-SkyEnvironment background implementation after visual, graph, and fallback parity is proven (completed in #827) | All prior steps |
 
 This order ships a useful, safe HDRI/SkySphere baseline before the more expensive atmosphere system, while preserving one resource and lifetime model for all modes.

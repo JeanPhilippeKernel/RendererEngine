@@ -1,8 +1,16 @@
 # ZEngine — Full Migration Plan
 
-**Priority:** P0 — Master sequencing document; read before touching any code  
-**Status:** Planning  
-**Based on:** `actor-ecs-architecture.md`, `system-scheduler.md`, `animation-system.md`
+**Priority:** P0 — historical master sequencing document
+**Status:** Completed migration record — core ECS/Actor phases have landed; retain for rationale and completed-phase traceability
+**Based on:** `actor-ecs-architecture.md`, `system-scheduler.md`, and the still-active `../future-plan/animation-system.md`
+
+> **Current implementation note:** the Current State Inventory and phase checklists describe
+> the pre-migration repository and must not be used as present-tense status. ECS, Actor,
+> WorldTick, WorldCommands, ECS components, hierarchy sync, and transform/light render
+> synchronization are live. Current editor authoring work follows
+> `../future-plan/scene-serialization.md`, `../future-plan/editor-undo-redo.md`,
+> `../future-plan/editor-entity-selection.md`, `../future-plan/gizmo-3d-pass.md`,
+> `../future-plan/editor-grid.md`, and `../execution-plan.md`.
 
 ---
 

@@ -1,11 +1,18 @@
 # VFS Path Abstraction — Architecture Design
 
-**Priority:** P1 — Implement in parallel with ECS core (Phase 6 of migration-plan.md)  
-**Status:** Implemented  
-**Module:** `ZEngine/Core/VFS/`  
-**Standard:** C++20  
-**Estimated effort:** 2–3 days (1 engineer)  
+**Priority:** P1 — Implement in parallel with ECS core (Phase 6 of migration-plan.md)
+**Status:** Implemented
+**Module:** `ZEngine/Core/VFS/`
+**Standard:** C++20
+**Estimated effort:** 2–3 days (1 engineer)
 **Blocks:** `vfs-ticket2`, `vfs-ticket3`, `vfs-ticket4`, `vfs-ticket5`, `vfs-ticket6`, `import-pipeline.md`
+
+> **Historical ticket record:** `VFSPath`, the interfaces, and the production
+> backends were delivered across the VFS tickets, but much of the original
+> `VFSDiskContext` implementation sketch below was superseded by `VFSContext`,
+> `VFSMountTable`, and `VFSDiskBackend`. Source under
+> `ZEngine/ZEngine/Core/VFS/` is authoritative; do not implement from the
+> historical code blocks without reconciling them first.
 
 > **Naming note (verified against code):** `VFSPath`, `VFSError`, `IVFSFile`, `IVFSBackend`
 > match this doc closely — enum values, `VFSResult<T>` API, the `Parse()` normalization algorithm,
@@ -43,7 +50,7 @@
 
 ## 1. Motivation
 
-Every file access in ZEngine currently uses raw `std::filesystem::path` at the call site —
+At the start of this ticket, every file access in ZEngine used raw `std::filesystem::path` at the call site —
 `ProjectViewUIComponent`, `AssetManager`, `ShaderReader`, and others. This creates four concrete problems:
 
 | Problem | Where it hurts today |

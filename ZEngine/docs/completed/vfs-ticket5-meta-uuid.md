@@ -1,21 +1,29 @@
 # Ticket 5 — .meta Sidecars, MetaFileIO, and Stable UUID Persistence
 
-**Priority:** P2 — Implement after Ticket 4  
-**Status:** Implemented  
-**Depends on:** `vfs-ticket4-filewatcher.md`  
+**Priority:** P2 — Implement after Ticket 4
+**Status:** Implemented; retained as a completed ticket record.
+**Depends on:** `vfs-ticket4-filewatcher.md`
 **Blocks:** `vfs-ticket6`, `scene-serialization.md`, `import-pipeline.md`
 
 **Goal**: Assign a stable UUID to every project asset on first import; persist that UUID in a
 `.meta` sidecar file (JSON, committed to VCS); load the UUID on subsequent imports instead of
-generating a new one. This fixes `AssetManager`'s current UUID-per-launch instability and
-enables deterministic scene YAML references.
+generating a new one. This fixed the pre-ticket UUID-per-launch instability and
+made stable asset references available to scene serialization.
+
+> **Current boundary:** `.meta` sidecars persist asset UUID and importer/source
+> metadata. `MetaFileData::Status` is runtime-only; registry lifecycle is held
+> separately in `AssetState`. Stable asset UUIDs are available today, but the
+> production scene-document schema and staged UUID reference resolution remain
+> work owned by `scene-serialization.md`. Detailed snippets below are historical
+> where their include paths or surrounding importer integration differ from
+> `ZEngine/ZEngine/Core/VFS/Meta/`.
 
 ---
 
 ## 1. Problem Statement
 
-`AssetManager` currently calls `uuids::uuid_random_generator{}()` at import time.
-Every editor restart produces different UUIDs for the same file, breaking:
+Before this ticket, imports generated UUIDs ad hoc. That made editor restarts
+produce different UUIDs for the same file, breaking:
 
 - Scene YAML files that reference `MeshUUID`, `MaterialUUID`, etc.
 - Incremental re-import (engine cannot tell if the asset changed or was re-imported)

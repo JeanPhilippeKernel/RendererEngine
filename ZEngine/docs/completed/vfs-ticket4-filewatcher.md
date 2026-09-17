@@ -1,13 +1,21 @@
 # Ticket 4 — VFSFileWatcher: Platform File-Watch + Debounce
 
-**Priority:** P2 — Implement after Ticket 3  
-**Status:** Implemented  
-**Depends on:** `vfs-ticket3-scanner-memory-backend.md`  
+**Priority:** P2 — Implement after Ticket 3
+**Status:** Implemented; detailed ticket sketches are historical where they differ from the shipped C-style callback API.
+**Depends on:** `vfs-ticket3-scanner-memory-backend.md`
 **Blocks:** `vfs-ticket5`, `vfs-ticket6`, `import-pipeline.md` (OnStale hook)
 
 **Goal**: Deliver a cross-platform file-watcher that fires debounced `VFSWatchEvent` notifications
 into the engine's existing callback system, driving `VFSDirectoryCache::Invalidate()` and
-`VFSScanner::RequestScan()` without polling the filesystem from user code.
+`VFSScanner::Scan()` without polling the filesystem from user code.
+
+> **Current behavior:** `VFSContext::Tick()` invalidates relevant cache entries,
+> calls `AssetRegistry::OnAssetModified(path)` and queues immediate imports for
+> modified non-`.meta` files, handles delete/rename registry updates, then asks
+> an idle scanner to rescan the affected directory. The current watcher uses
+> `WatchCallback = std::function<void(const VFSWatchEvent&)>`; the platform
+> watcher below it uses a C-style raw-event callback. Treat detailed ticket
+> declarations as historical only where they differ from those shipped types.
 
 ---
 
@@ -162,7 +170,7 @@ Phase B – Emit (Tick(), called from editor/main thread, ~60 Hz):
   now = steady_clock::now()
   for each (path, entry) in m_pending:
     if (now - entry.LastSeen) >= m_window:
-      fire m_callbacks[entry.Event's WatchHandle](entry.Event)
+      dispatch entry.Event through m_callbacks[entry.Event's WatchHandle]
       erase entry
   unlock m_mtx
 ```

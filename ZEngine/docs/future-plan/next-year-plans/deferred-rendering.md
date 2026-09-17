@@ -3,7 +3,13 @@
 **Priority:** Next-year plan — required for scenes with 50+ dynamic lights
 **Status:** Design
 **Depends on:** `render-graph-integration.md`, `shadows.md`, `light-culling.md`
-**Note:** This is an alternative rendering path, not a replacement. Forward rendering remains the default for games with fewer than 20 lights. Deferred is opt-in.
+**Note:** This is a future extension of the renderer's existing G-buffer and lighting path, not a currently selectable forward/deferred toggle.
+
+> **Current-state correction:** the main renderer already has a G-buffer and lighting
+> path. This document is a future alternative/extension only where it differs from
+> that active path. Its Setup/Compile callback examples are retired; use the current
+> Register, pipeline-description/query, Prepare, Execute, and optional RecordDraw
+> lifecycle from render-graph-integration.md.
 
 ---
 
@@ -24,11 +30,11 @@ The two rendering paths differ in when lighting is evaluated relative to visibil
 | Material variety | Unlimited | Must fit in G-buffer layout |
 | Best for | Mobile, outdoor, few lights, high transparency | Indoor/architectural, 50+ lights, complex scenes |
 
-**Default path:** Forward rendering with tile-based light culling (`light-culling.md`). Forward handles up to ~100 lights comfortably with culling. Deferred is activated only when a scene has 50+ lights or when the project explicitly enables it.
+**Current correction:** `GraphicRenderer` already registers depth pre-pass, GPU frustum culling, G-buffer, and lighting callbacks. It has no `ZENGINE_DEFERRED` switch, scene light-count route, tile light culling, or separate forward-default alternative. The comparison and proposed switching policy below are target state.
 
 ---
 
-## 2. G-Buffer Layout
+## 2. Target G-buffer extension
 
 The G-buffer is four render targets. All targets share the same dimensions as the swapchain. All targets are created and owned by the RenderGraph as named resources.
 
@@ -49,7 +55,7 @@ The G-buffer is four render targets. All targets share the same dimensions as th
 
 ---
 
-## 3. GBufferPass
+## 3. Historical `GBufferPass` callback sketch
 
 `GBufferPass` replaces the forward `GeometryPass` in the deferred pipeline. It draws all opaque geometry and writes PBR material properties to the G-buffer. No lighting computation occurs in this pass.
 
@@ -143,7 +149,7 @@ void main() {
 
 ---
 
-## 4. DeferredLightingPass
+## 4. Historical `DeferredLightingPass` callback sketch
 
 `DeferredLightingPass` is a full-screen triangle pass that reads the G-buffer and evaluates all PBR lighting. It consumes the `light_grid` and `light_index_list` buffers from `LightCullPass` to restrict per-pixel light iteration to only the lights affecting each tile.
 
@@ -267,7 +273,7 @@ Alpha-cutout materials (masked) that do not require blending can be rendered in 
 
 ---
 
-## 6. RenderGraph Integration
+## 6. Proposed RenderGraph integration
 
 `GraphicRenderer::Initialize` is the orchestrator for pass registration. Passes are registered via `AddCallbackPass` and toggled with `SetPassEnabled`. The deferred path is disabled by default; enabling it requires disabling the forward geometry pass and enabling the deferred passes.
 

@@ -1,579 +1,144 @@
 # ZEngine — Render Graph Integration Guide
 
-**Priority:** P0 — post-processing, shadows, UI, text, and particles all depend on this
-**Status:** Partially implemented — render graph core and the current scene, environment-background, grid, lighting, and post-process passes are implemented; remaining work is tracked in their dedicated plans.
-**Files:**
-```
-ZEngine/ZEngine/Rendering/Renderers/RenderGraph.h
-ZEngine/ZEngine/Rendering/Renderers/RenderGraph.cpp
-ZEngine/ZEngine/Rendering/Renderers/GraphicRenderer.h
-ZEngine/ZEngine/Rendering/Renderers/GraphicRenderer.cpp
-ZEngine/ZEngine/Rendering/Renderers/RendererPasses.h
-ZEngine/ZEngine/Rendering/Renderers/RendererPasses.cpp
-```
+**Priority:** P0 — renderer and editor overlays depend on it
+**Status:** Active implementation reference
+**Related:** rendering-flow.md, render-graph-redesign.md, pso-cache-architecture.md
 
----
+## 1. Purpose
 
-## 1. What Exists
+RenderGraph rebuilds a virtual graph for each frame, validates declarations,
+derives dependencies and synchronization, allocates or reuses graph resources,
+and records the resulting queue work. Persistent callback passes declare their
+per-frame work; the graph owns attachment compatibility, resource state, and
+schedule.
 
-`RenderGraph` is production code. The following capabilities are fully implemented.
+This document describes the current callback API. Earlier Setup/Compile-only
+examples are retired.
 
-### 1.1 Topological Sort
+## 2. Callback lifecycle
 
-`RenderGraph::BuildTopology()` (via the device-independent `BuildPassTopology()`,
-`RenderGraphTopology.h`) builds a DAG from resource producer/consumer relationships and runs
-Kahn's algorithm, with a lowest-declared-index tie-break, to produce an execution order. The sort
-detects cycles and logs an error via `ZENGINE_CORE_ERROR`, falling back to declaration order
-rather than crashing. Passes are executed in sorted order during `Execute()`; `Compile()` runs
-`BuildTopology()` before `BuildLifetimes()` so transient-resource lifetimes are computed against
-real execution order, not raw declaration order.
+IRenderGraphCallbackPass provides this contract:
 
-Edges come from the RAW/WAW/WAR hazard triad. For a resource written by exactly one pass, every
-reader is bound to that writer directly — regardless of their relative declared order, which is
-what lets the sort actually fix a pass registered before the producer it depends on (e.g. if pass
-B declares a read on `"hdr_color"` and pass A writes it, A is placed before B in execution order
-even if B was registered first). A resource written by more than one pass (a ping-pong chain) has
-no versioning to disambiguate which write a given read wants, so that case falls back to a
-declared-order replay instead — not a limitation that matters for any pass shipped today.
+| Callback | When | Responsibility |
+|---|---|---|
+| Register | Once while constructing this frame's virtual graph | Declare exact resource versions, accesses, queue/flags, and whether the pass participates. |
+| BuildGraphicsPipelineDescription or compute-shader query | When graph creates compatible backend work | Provide static pipeline description only; no per-frame resource or extent ownership. |
+| Prepare | After graph compilation and resolved resource binding | Refresh frame-local descriptors, constants, and pass-local state. |
+| Execute | During command recording for non-graph-managed work | Record the complete draw/dispatch body. |
+| RecordDraw | During graph-managed dynamic rendering when supported | Record graphics work inside the active rendering instance and report whether work was recorded. |
+| Deinitialize | Persistent pass teardown | Release only persistent resources owned by the callback. |
 
-Full GPU memory aliasing (issue #312) is explicitly deferred — see that issue for the rationale.
-The `BuildLifetimes()` lifetime tracking this sort enables is the scaffolding a future aliasing
-pass would build on.
+Register returns false to omit a pass, its virtual resources, and its
+synchronization from that frame. Execute is still the required callback for a
+pass that cannot use graph-managed recording.
 
-### 1.2 Resource Declaration via RenderGraphResourceBuilder (Setup phase only)
+Callbacks do not own transient attachments or create ad hoc per-frame Vulkan
+images/framebuffers. Per-frame data is supplied through `SceneData` and the
+render-state handoff. Camera, sky, light, resize, and overlay configuration are
+copied into `RenderFrameState`; its `RenderScene*` is still borrowed in the
+current implementation. Callback code must not reach into mutable main-thread
+ECS/editor state directly, and the planned immutable scene snapshot will remove
+that remaining borrowed-scene boundary.
 
-`RenderGraphResourceBuilderPtr` is the write side. All declarations must happen inside
-`IRenderGraphCallbackPass::Setup()`.
+## 3. Resource declarations
 
-| Method | Description |
+Register uses RenderGraphResourceBuilder and typed RGResourceHandle values:
+
+- declare texture/buffer writes and reads with exact versions;
+- import externally owned textures only with their valid initial layout;
+- declare bindless reads precisely when the graph can identify the image;
+- use typed handles while recording rather than repeated name lookups;
+- declare queue transfers and conditional rendering through graph APIs; and
+- request CPU readback from an exact GPU buffer version.
+
+The graph derives write/read, write/write, and read/write dependencies, barriers,
+queue ownership transitions, lifetimes, culling, and topological/queue schedule.
+Names remain diagnostics and registration keys; typed handles carry the exact
+resource version consumed by a pass.
+
+Resource declaration must be complete before command recording. A callback may
+not discover a new dependency while Execute or RecordDraw is running.
+
+## 4. Persistent versus frame-local ownership
+
+| Resource | Owner and lifetime |
 |---|---|
-| `WriteColorAttachment(name, TextureSpecification)` → `RGResourceHandle` | Declares a transient color attachment written by this pass. Graph owns the texture. |
-| `WriteDepthAttachment(name, TextureSpecification)` → `RGResourceHandle` | Declares a transient depth attachment written by this pass. Graph owns the texture. |
-| `ReadTexture(name, binding_key = nullptr)` → `RGResourceHandle` | Declares a sampled texture read by this pass. |
-| `ReadDepth(name)` → `RGResourceHandle` | Declares a depth resource read (depth test, no write). |
-| `ImportRenderTarget(name, TextureHandle)` → `RGResourceHandle` | Registers an externally-owned render target. Graph does not own or free it. |
-| `AttachRenderTarget(name, TextureHandle)` → `RGResourceHandle` | Attaches an already-imported RT by name. |
-
-`RGResourceHandle` is a typed index (`uint32_t Index`, `uint32_t Version`). Call `.Valid()` to
-check before use.
-
-External resources (imported or attached) survive `Dispose()` intact.
-
-### 1.3 Resource Query via RenderGraphResourceInspector (Compile + Execute)
-
-`RenderGraphResourceInspectorPtr` is the read side.
-
-| Method | Cost | Notes |
-|---|---|---|
-| `GetTextureHandle(RGResourceHandle)` → `TextureHandle` | O(1) | Preferred in Execute — no string lookup |
-| `GetRenderTarget(cstring)` → `TextureHandle` | string lookup | Use in Compile for handles not stored from Setup |
-| `GetTexture(cstring)` → `TextureHandle` | string lookup | |
-
-### 1.4 Three-Phase Pass Lifecycle
-
-```
-RenderGraph::Setup()    calls pass->Setup()   for every registered pass
-RenderGraph::Compile()  builds edge graph, sorts, then calls pass->Compile() per pass
-RenderGraph::Execute()  calls pass->Execute() per enabled pass in sorted order
-```
-
-`Execute()` is the only method called per frame. `Resize()` triggers a full re-Compile.
-
-### 1.5 Automatic Barrier Insertion
-
-`Execute()` inserts `VkImageMemoryBarrier` commands before each pass based on `RGAccess`
-entries in `kAccessTable`. `RuntimeState` tracks actual per-frame image layout starting from
-UNDEFINED on frame 0; `CurrentState` is compile-time simulation only.
-
-- Color write attachments: transitioned to `COLOR_ATTACHMENT_OPTIMAL`.
-- Depth write attachments: transitioned to `DEPTH_STENCIL_ATTACHMENT_OPTIMAL`.
-- `DepthRead`: stays in `VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL`
-  (`depthWriteEnable=false` in pipeline). This is MoltenVK-compatible.
-- Shader-read textures: transitioned to `SHADER_READ_ONLY_OPTIMAL`.
-
-Passes must not insert redundant barriers for resources they declared in Setup. Passes that use
-resources in ways the graph cannot infer (e.g., storage image writes in compute) must insert
-their own barriers.
-
-### 1.6 RenderGraph Public API
-
-```cpp
-void Initialize(VulkanDevicePtr device, SceneDataPtr data = nullptr);
-void AddCallbackPass(cstring name, IRenderGraphCallbackPass* cb, bool enabled = true);
-RGPass* GetPass(cstring name);       // O(1) name lookup; use for config/enable, not Execute
-void SetPassEnabled(cstring name, bool enabled);
-RGResourceHandle ImportRenderTarget(cstring name, TextureHandle handle);
-void Setup();
-void Compile();
-void Execute(CommandBufferPtr cb);
-void Resize(uint32_t w, uint32_t h);
-void Dispose();
-```
-
-### 1.7 Key Types
-
-```cpp
-struct RGResourceHandle { uint32_t Index = UINT32_MAX; uint32_t Version = 0; bool Valid() const; };
-
-enum class RGAccess : uint8_t {
-    None, ColorWrite, DepthWrite, DepthRead,
-    ShaderRead, ShaderReadWrite, TransferRead, TransferWrite, Present
-};
-
-struct RGPass {
-    cstring Name;
-    bool Enabled;
-    IRenderGraphCallbackPass* Callback;
-    RenderPass* Handle;
-    FramebufferVNext* Framebuffer;
-    Array<RGPassResource> Reads;
-    Array<RGPassResource> Writes;
-};
-
-struct RGResource {
-    cstring Name;
-    RGResourceKind Kind;
-    bool External;
-    TextureHandle TextureHandle;
-    RGResourceState CurrentState;   // compile-time simulation
-    RGResourceState RuntimeState;   // actual per-frame layout
-    TextureSpecification Spec;
-};
-```
-
----
-
-## 2. The Three-Phase Lifecycle
-
-### 2.1 Setup
-
-Called once: `RenderGraph::Setup()` calls each pass's `Setup()`.
-
-A pass's `Setup()` must:
-- Declare every resource it writes via `WriteColorAttachment` or `WriteDepthAttachment`.
-- Declare every resource it reads via `ReadTexture` or `ReadDepth`.
-- Attach external resources via `ImportRenderTarget` or `AttachRenderTarget`.
-- Store returned `RGResourceHandle` values as members for use in Compile and Execute.
-
-A pass's `Setup()` must not:
-- Create any Vulkan objects (`VkPipeline`, `VkRenderPass`, `VkFramebuffer`,
-  `VkDescriptorSet`, or any `vk*` handle).
-- Use returned handles as valid textures — allocation happens in `Compile()`.
-
-Arena allocation macros for pass-lifetime data:
-```
-ZPushStruct(arena, Type)
-ZPushStructCtor(arena, Type)
-ZPushStructCtorArgs(arena, Type, ...)
-ZPushArray(arena, Type, count)
-```
-All defined in `ZEngineDef.h`. Pass-lifetime allocations go on `Device->Arena`;
-per-frame scratch allocations use `ZGetScratch(Device->Arena)`.
-
-### 2.2 Compile
-
-Called once (and again after `Resize()`): after sorting, the graph calls each pass's
-`Compile()`.
-
-Before calling `pass->Compile()`, the graph pre-populates `RenderPassBuilder`:
-- Each declared Write → `pass_builder->UseRenderTarget(handle)`
-- Each declared Read → `pass_builder->AddInputAttachment(handle)`
-
-The `pass_builder` parameter is already populated when `Compile()` is entered. Passes call
-`pass_builder->SetPipelineName(...)`, `pass_builder->UseShader(...)`, etc. on it.
-
-A pass's `Compile()` must:
-- Read input handles from `res_inspector` when they were not stored in Setup.
-- Create all Vulkan objects this pass owns: render pass, framebuffer, descriptor sets,
-  pipeline layout, pipeline. Store them as arena-allocated members.
-- Write the compiled `RenderPass` pointer to `*output_pass`.
-
-A pass's `Compile()` must not:
-- Call any builder methods. The declaration phase is over.
-- Record Vulkan commands.
-- Block on GPU completion.
-
-### 2.3 Execute
-
-Called once per frame: the graph inserts barriers and calls each enabled pass's `Execute()`.
-
-A pass's `Execute()` must:
-- Record all Vulkan commands into `command_buffer`.
-- Call begin/end render pass around draw calls for graphic passes.
-- Use `res_inspector->GetTextureHandle(handle)` (preferred) or
-  `res_inspector->GetRenderTarget(name)` to get the current frame's texture handles.
-
-A pass's `Execute()` must not:
-- Create or destroy Vulkan objects.
-- Call any builder methods.
-
----
-
-## 3. Canonical Frame Pass Order
-
-The table below lists every pass in dependency order. Columns note current implementation
-status. Passes with no data dependency on each other (e.g., shadow passes) may be reordered
-by the graph within their tier.
-
-```
-Pass name string           Category            Produces                    Consumes                    Status
-"Depth Pre-Pass"           Geometry            FrameDepth                  scene geometry              Implemented
-"G-Buffer Pass"            Scene geometry      FrameColor, gbuffer_normals FrameDepth                  Implemented
-"Environment Background Pass" Sky              FrameColor (in-place)       FrameDepth                  Implemented when HDRI or fallback presentation is active
-"Grid Pass"                Editor              FrameColor (in-place)       FrameDepth                  Implemented
-"ShadowPassDir_0"          Shadow (CSM)        shadow_dir_0                scene geometry              Not started
-"ShadowPassDir_1"          Shadow (CSM)        shadow_dir_1                scene geometry              Not started
-"ShadowPassDir_2"          Shadow (CSM)        shadow_dir_2                scene geometry              Not started
-"ShadowPassDir_3"          Shadow (CSM)        shadow_dir_3                scene geometry              Not started
-"ShadowPassSpot_0"         Shadow (spot)       shadow_spot_0               scene geometry              Not started
-"ShadowPassSpot_1"         Shadow (spot)       shadow_spot_1               scene geometry              Not started
-"ShadowPassSpot_2"         Shadow (spot)       shadow_spot_2               scene geometry              Not started
-"ShadowPassSpot_3"         Shadow (spot)       shadow_spot_3               scene geometry              Not started
-"ShadowPassPoint_0"        Shadow (point)      shadow_point_0              scene geometry              Not started
-"ShadowPassPoint_1"        Shadow (point)      shadow_point_1              scene geometry              Not started
-"SkinningUploadPass"       Animation           bone_matrix_buffers         CPU animation data          Not started
-"LightingPass"             Deferred lighting   hdr_lit                     hdr_color, hdr_normals,     Not started
-                                                                           hdr_depth,
-                                                                           shadow_dir_0..3,
-                                                                           shadow_spot_0..3,
-                                                                           shadow_point_0..1
-"SSAOPass"                 Post-process        ssao                        hdr_depth, hdr_normals      Not started
-"BloomThresholdPass"       Post-process        bloom_threshold             hdr_lit                     Not started
-"BloomDownsample_0..4"     Post-process        bloom_mip_0..4              bloom_threshold/prev        Not started
-"BloomUpsample_0..4"       Post-process        bloom_upsample_0..4         bloom_mip/prev              Not started
-"ToneMappingPass"          Post-process        ldr_color                   hdr_lit, bloom_upsample_0,  Not started
-                                                                           ssao
-"FXAAPass"                 Post-process        ldr_fxaa                    ldr_color                   Not started
-"UIPass"                   UI                  ldr_final                   ldr_fxaa                    Not started
-"TextPass"                 Text                ldr_final (in-place)        ldr_final                   Not started
-"OverlayPass"              ImGui / editor      swapchain image             ldr_final                   Not started
-```
-
-Ordering constraints: `G-Buffer Pass` must follow `Depth Pre-Pass`; `LightingPass` must follow
-all shadow passes and `G-Buffer Pass`; tone mapping must follow SSAO and all bloom upsample
-passes.
-
----
-
-## 4. Resource Naming Conventions
-
-All passes must use exactly these names when declaring or consuming shared resources. The graph
-is string-keyed; a typo creates a disconnected resource entry rather than a compile error.
-
-| Name | Format | Notes |
-|---|---|---|
-| `"hdr_color"` | `VK_FORMAT_R16G16B16A16_SFLOAT` | Main scene HDR color RT, full resolution |
-| `"hdr_depth"` | `VK_FORMAT_D32_SFLOAT` | Main scene depth buffer, full resolution |
-| `"hdr_normals"` | `VK_FORMAT_R16G16B16A16_SFLOAT` | View-space normals, full resolution |
-| `"hdr_lit"` | `VK_FORMAT_R16G16B16A16_SFLOAT` | Post-lighting HDR composite, full resolution |
-| `"ldr_color"` | `VK_FORMAT_R8G8B8A8_UNORM` | After tone mapping, full resolution |
-| `"ldr_fxaa"` | `VK_FORMAT_R8G8B8A8_UNORM` | After FXAA, full resolution |
-| `"ldr_final"` | `VK_FORMAT_R8G8B8A8_UNORM` | After UI and text, full resolution |
-| `"shadow_dir_0"` .. `"shadow_dir_3"` | `VK_FORMAT_D32_SFLOAT` | CSM cascades, 2048x2048 each |
-| `"shadow_spot_0"` .. `"shadow_spot_3"` | `VK_FORMAT_D32_SFLOAT` | Spot shadow maps, 1024x1024 each |
-| `"shadow_point_0"` .. `"shadow_point_1"` | `VK_FORMAT_D32_SFLOAT` | Point light cube maps, 512x512 per face |
-| `"ssao"` | `VK_FORMAT_R8_UNORM` | SSAO occlusion, full resolution |
-| `"bloom_threshold"` | `VK_FORMAT_R16G16B16A16_SFLOAT` | Bloom extract, half resolution |
-| `"bloom_mip_0"` .. `"bloom_mip_4"` | `VK_FORMAT_R16G16B16A16_SFLOAT` | Downsample chain |
-| `"bloom_upsample_0"` .. `"bloom_upsample_4"` | `VK_FORMAT_R16G16B16A16_SFLOAT` | Upsample chain |
-| `"bone_matrix_buffers"` | `BUFFER_SET / STORAGE` | Per-bone world matrices for skinning |
-
-Shadow map specs must set `Width` and `Height` to their fixed sizes (2048, 1024, 512) rather
-than 0. Only render targets that track the window size use `Width = 0, Height = 0`.
-
-Resource names are globally unique within a `RenderGraph` instance. Custom passes must use
-unique names; recommended convention: `"<subsystem>_<purpose>"`, e.g. `"mymod_custom_bloom"`.
-
----
-
-## 5. How to Write a New Pass
-
-Minimal skeleton for a new pass. `m_color_handle` and `m_input_handle` are stored from Setup
-and reused in Compile and Execute.
-
-```cpp
-// MyPass.h
-#pragma once
-#include <Rendering/Renderers/RenderGraph.h>
-#include <Rendering/Renderers/RenderPasses/RenderPass.h>
-
-namespace ZEngine::Rendering::Renderers
-{
-    struct MyCustomPass final : public IRenderGraphCallbackPass
-    {
-        void Setup(
-            Hardwares::VulkanDevicePtr const         device,
-            cstring                                  name,
-            RenderGraphResourceBuilderPtr const      res_builder,
-            RenderGraphResourceInspectorPtr          res_inspector) override
-        {
-            m_color_handle = res_builder->WriteColorAttachment("ldr_color",
-                Specifications::TextureSpecification{
-                    .Width  = 0,
-                    .Height = 0,
-                    .Format = VK_FORMAT_R8G8B8A8_UNORM,
-                    .Usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                            | VK_IMAGE_USAGE_SAMPLED_BIT,
-                });
-            m_input_handle = res_builder->ReadTexture("hdr_lit");
-        }
-
-        void Compile(
-            Hardwares::VulkanDevicePtr const         device,
-            Rendering::Scenes::SceneDataPtr const    scene,
-            RenderPasses::RenderPassBuilder*         pass_builder,
-            RenderGraphResourceInspectorPtr          res_inspector,
-            RenderPasses::RenderPass**         const output_pass) override
-        {
-            // pass_builder is pre-populated: UseRenderTarget called for each Write,
-            // AddInputAttachment called for each Read. Configure the rest here.
-            pass_builder->SetPipelineName("my_pass_pipeline");
-            pass_builder->UseShader("my_pass.vert", "my_pass.frag");
-
-            // Build render pass, pipeline, descriptor sets.
-            // Store handles as arena-allocated members.
-            // *output_pass = <compiled RenderPass*>;
-        }
-
-        void Execute(
-            Hardwares::VulkanDevicePtr const         device,
-            RenderGraphResourceInspectorPtr          res_inspector,
-            Rendering::Scenes::SceneDataPtr const    scene,
-            RenderPasses::RenderPass*          const pass,
-            Buffers::FramebufferVNext*         const framebuffer,
-            Hardwares::CommandBufferPtr        const command_buffer) override
-        {
-            // O(1) handle lookup — prefer GetTextureHandle over GetTexture in Execute.
-            Textures::TextureHandle input = res_inspector->GetTextureHandle(m_input_handle);
-
-            command_buffer->BeginRenderPass(pass, framebuffer);
-            {
-                command_buffer->SetViewport(pass->GetRenderAreaWidth(), pass->GetRenderAreaHeight());
-                command_buffer->SetScissor(pass->GetRenderAreaWidth(), pass->GetRenderAreaHeight());
-                command_buffer->BindPipeline(Specifications::PipelineBindPoint::GRAPHIC, pass->Pipeline);
-                command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
-                command_buffer->Draw(3, 1, 0, 0);  // full-screen triangle
-            }
-            command_buffer->EndRenderPass();
-        }
-
-        void Deinitialize(Hardwares::VulkanDevicePtr const device) override {}
-
-    private:
-        RGResourceHandle m_color_handle = {};
-        RGResourceHandle m_input_handle = {};
-    };
-}
-```
-
----
-
-## 6. The Main Lighting Pass
-
-`LightingPass` is not yet implemented. This section is the authoritative spec.
-
-**Pass name string:** `"LightingPass"`
-
-### 6.1 Inputs
-
-| Input name | Descriptor set | Binding |
-|---|---|---|
-| `"hdr_color"` | set 3 | binding 0 |
-| `"hdr_normals"` | set 3 | binding 1 |
-| `"hdr_depth"` | set 3 | binding 2 |
-| `"shadow_dir_0"` | set 2 | binding 0 |
-| `"shadow_dir_1"` | set 2 | binding 1 |
-| `"shadow_dir_2"` | set 2 | binding 2 |
-| `"shadow_dir_3"` | set 2 | binding 3 |
-| `"shadow_spot_0"` | set 2 | binding 4 |
-| `"shadow_spot_1"` | set 2 | binding 5 |
-| `"shadow_spot_2"` | set 2 | binding 6 |
-| `"shadow_spot_3"` | set 2 | binding 7 |
-| `"shadow_point_0"` | set 2 | binding 8 |
-| `"shadow_point_1"` | set 2 | binding 9 |
-
-All inputs are declared via `ReadTexture(name)` in Setup. Depth resources are declared via
-`ReadDepth(name)` and stay in `DEPTH_STENCIL_ATTACHMENT_OPTIMAL` at runtime.
-
-### 6.2 Output
-
-| Output name | Format |
-|---|---|
-| `"hdr_lit"` | `VK_FORMAT_R16G16B16A16_SFLOAT` |
-
-Declared via `WriteColorAttachment("hdr_lit", spec)` in Setup.
-
-### 6.3 Descriptor Set Layout
-
-```
-Set 0 — Scene UBO (once per frame)
-  Binding 0: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-    struct SceneUBO {
-        mat4 View;
-        mat4 Proj;
-        mat4 InvView;
-        mat4 InvProj;
-        vec4 CameraPositionWS;
-        vec2 ScreenSize;
-        float NearPlane;
-        float FarPlane;
-    };
-
-Set 1 — Light array UBO (when scene lights change)
-  Binding 0: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-    struct GpuDirectionLight { vec4 DirectionWS; vec4 Color; float Intensity; uint32_t CascadeCount; float _pad[2]; };
-    struct GpuPointLight     { vec4 PositionWS;  vec4 Color; float Intensity; float Radius; float _pad[2]; };
-    struct GpuSpotlight      { vec4 PositionWS; vec4 DirectionWS; vec4 Color;
-                               float Intensity; float InnerCone; float OuterCone; float Range; };
-    struct LightArrayUBO {
-        GpuDirectionLight DirectionLights[4];
-        GpuPointLight     PointLights[8];
-        GpuSpotlight      SpotLights[8];
-        uint32_t          DirectionLightCount;
-        uint32_t          PointLightCount;
-        uint32_t          SpotLightCount;
-        uint32_t          _pad;
-    };
-
-Set 2 — Shadow UBO + shadow map samplers
-  Binding 0: VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-    struct CSMData        { mat4 LightSpaceMatrices[4]; float CascadeSplits[4]; };
-    struct SpotShadowData { mat4 LightSpaceMatrix; };
-    struct PointShadowData{ float FarPlane; float _pad[3]; };
-    struct ShadowUBO {
-        CSMData         Directional;
-        SpotShadowData  Spot[4];
-        PointShadowData Point[2];
-    };
-  Binding 1..4:  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER — shadow_dir_0..3
-                 (VK_COMPARE_OP_LESS, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-                  border color = (1,1,1,1))
-  Binding 5..8:  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER — shadow_spot_0..3
-  Binding 9..10: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER — shadow_point_0..1
-                 (cube sampler, VK_IMAGE_VIEW_TYPE_CUBE)
-
-Set 3 — G-buffer textures (after G-Buffer Pass)
-  Binding 0: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER — hdr_color
-  Binding 1: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER — hdr_normals
-  Binding 2: VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER — hdr_depth
-             (aspect = VK_IMAGE_ASPECT_DEPTH_BIT)
-```
-
-### 6.4 Draw Call
-
-Full-screen triangle, no vertex buffer. The vertex shader generates clip-space positions and
-UVs from `gl_VertexIndex`:
-
-```glsl
-void main() {
-    vec2 uv  = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
-    gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
-    v_uv = uv;
-}
-```
-
-`vkCmdDraw(cmd, 3, 1, 0, 0)` — three vertices, one instance, no index buffer, no vertex buffer
-binding.
-
----
-
-## 7. How GraphicRenderer Registers Passes
-
-`GraphicRenderer::Initialize` is the orchestrator. It attaches external render targets and
-registers passes before calling `Setup()` and `Compile()`:
-
-```cpp
-RenderGraph->ResourceBuilder->AttachRenderTarget("FrameDepth", FrameDepthRenderTarget);
-RenderGraph->ResourceBuilder->AttachRenderTarget("FrameColor", FrameColorRenderTarget);
-RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
-RenderGraph->AddCallbackPass("G-Buffer Pass",  gbuffer_pass);
-RenderGraph->AddCallbackPass("Environment Background Pass", environment_background_pass);
-RenderGraph->AddCallbackPass("Grid Pass",      grid_pass);
-RenderGraph->Setup();
-RenderGraph->Compile();
-```
-
-Registration order in `AddCallbackPass` is irrelevant to execution order; `Compile()` determines
-order from the resource graph.
-
----
-
-## 8. Pass Enable/Disable at Runtime
-
-The frame-selected SkyEnvironment configures its callback passes before graph registration:
-
-```cpp
-environment_background_pass->SetEnvironment(snapshot.SourceRadiance, presentation);
-environment_background_pass->SetActive(presentation.IsHDRI() || use_fallback_background);
-```
-
-`GetPass` is O(1) by name and is intended for configuration, not for calling Execute.
-
-Disabled passes are skipped in `Execute()`: their barriers are not emitted and their `Execute()`
-callback is not called. Their declared output resources still exist in the graph. Do not disable
-a pass whose output is consumed by downstream passes unless those consumers are also disabled.
-
----
-
-## 9. Resize Handling
-
-`RenderGraph::Resize(uint32_t width, uint32_t height)` is the only entry point for window resize
-events. For every registered pass:
-
-1. Resources declared with `Width = 0, Height = 0` in their `TextureSpecification` are
-   re-created at the new `(width, height)`.
-2. Resources declared with fixed dimensions (e.g., shadow maps at 2048) are recreated at their
-   fixed sizes.
-3. The graph updates `FramebufferVNext` in place.
-4. A full re-Compile runs after all resources are reallocated.
-
-Passes that cache `VkFramebuffer` or `VkImageView` handles outside the graph-managed
-`FramebufferVNext` must detect the resize. Recommended pattern: compare the stored handle
-against `res_inspector->GetTextureHandle(m_handle)` at the start of `Execute()` and rebuild if
-it differs. Alternatively, subscribe to the resize callback from `AppRenderPipeline`.
-
----
-
-## 10. Thread Safety
-
-`RenderGraph` has no internal synchronization. All of the following must be called from the
-render thread only:
-
-- `AddCallbackPass`, `Setup`, `Compile`, `Execute`, `Resize`, `Dispose`
-- Any `RenderGraphResourceInspector` or `RenderGraphResourceBuilder` method
-
-The main thread communicates with the render thread exclusively through the `RenderPayload`
-mailbox in `AppRenderPipeline`. The mailbox is a three-slot ring buffer protected by
-`PaddedAtomic<int>` head/tail indices.
-
-If an ECS system or animation system wants to enable or disable a render graph pass, it must
-write that intent into `RenderPayload`, not call `SetPassEnabled` from the game thread.
-
----
-
-## 11. Deliverables Checklist
-
-| Pass | Design doc | Status |
-|---|---|---|
-| `Depth Pre-Pass` | — | Implemented |
-| `G-Buffer Pass` | — | Implemented |
-| `Environment Background Pass` | — | Implemented when HDRI or fallback presentation is active |
-| `Grid Pass` | — | Implemented |
-| `ShadowPassDir_0..3` (CSM) | `shadows.md` | Not started |
-| `ShadowPassSpot_0..3` | `shadows.md` | Not started |
-| `ShadowPassPoint_0..1` | `shadows.md` | Not started |
-| `SkinningUploadPass` | `animation-system.md` | Not started |
-| `LightingPass` | this document (section 6) | Not started |
-| `SSAOPass` | `post-processing.md` | Not started |
-| `BloomThresholdPass` | `post-processing.md` | Not started |
-| `BloomDownsample_0..4` | `post-processing.md` | Not started |
-| `BloomUpsample_0..4` | `post-processing.md` | Not started |
-| `ToneMappingPass` | `post-processing.md` | Not started |
-| `FXAAPass` | `post-processing.md` | Not started |
-| `UIPass` | `ui-system.md` | Not started |
-| `TextPass` | `text-rendering.md` | Not started |
-| `OverlayPass` (ImGui migration) | — | Not started |
-
-Implementation order recommendation: `LightingPass` first (unblocks all visual output), then
-shadow passes (unblocks lighting quality), then SSAO and bloom (unblocks visual polish), then
-`UIPass` and `TextPass`, then `OverlayPass` migration.
+| Virtual pass/resource declarations | RenderGraph frame arena; rebuilt every frame. |
+| Transient textures/buffers/framebuffers | RenderGraph allocator/cache; graph-controlled lifetime. |
+| Pipelines and persistent callback state | Callback/resource manager; compatible with graph attachment contract. |
+| Per-frame descriptors and camera | Renderer `SceneData` plus copied `RenderFrameState` configuration. Scene draw input is currently rebuilt from a borrowed `RenderScene`; replace it with an immutable scene snapshot before production editor mutations. |
+| Readback bytes | Graph readback ring; valid only during completion callback. |
+| GPU upload tickets and queue timelines | RenderGraph/resource manager synchronization domain. |
+
+A render pass may retain a stable pipeline or static geometry allocation, but
+never a pointer into a mutable Scene or transient resource from another frame.
+
+## 5. Readback contract
+
+DeclareReadback copies one exact GPU buffer version into the graph-managed mapped
+readback ring. Its callback runs on the render thread after the exact submission
+timeline has completed, and the byte pointer is valid only for that callback.
+
+The API is buffer-based. Image picking must first copy the selected image pixel
+or region into a declared transfer buffer. Code must not assume a result arrives
+the next frame, block command recording waiting for it, or retain the byte
+pointer beyond the callback. Main-thread consumers receive durable copied data
+with a frame token and validate it against their current scene/viewport state.
+
+## 6. Current renderer and editor integration
+
+Copied frame configuration is published through the latest-state channel
+described by rendering-flow.md. The renderer constructs per-frame scene draw
+data, camera data, and lights before RenderGraph execution. There is no shipped
+editor overlay snapshot, object-ID picking, outline, or gizmo pass yet.
+
+The current high-level dependency path is:
+
+~~~text
+frustum culling -> depth pre-pass -> G-buffer -> lighting
+  -> optional environment background -> editor overlays -> final ZUI composition
+~~~
+
+Exact pass participation is data-driven. The current compatibility grid receives
+its configuration through the borrowed render scene; environment settings are
+copied with the frame state. New editor outlines, object-ID picking, gizmo
+handles, and the analytic grid must instead consume immutable snapshot data and
+declare their exact depth/color/transfer dependencies rather than rely on a
+manually maintained global pass order.
+
+The editor-overlay color stage belongs after scene tone mapping and before final
+ZUI composition. If the active renderer currently uses a different color stage,
+the change is a graph contract change with validation/reference-image coverage,
+not an overlay-local shortcut.
+
+## 7. Writing a new pass
+
+1. Define immutable frame input and persistent callback state separately.
+2. In Register, validate enable conditions and declare all exact resource access.
+3. Specify static graphics or compute pipeline requirements only.
+4. In Prepare, resolve frame-local descriptors and constants from typed handles.
+5. Record in Execute or RecordDraw without allocating/reading mutable scene state.
+6. Declare timing/readback/conditional behavior through graph APIs.
+7. Test disabled, culled, resized, device-recreated, and validation-layer paths.
+
+Use cstring for new engine-owned pass/resource names. External C APIs retain
+their required character-pointer signatures.
+
+## 8. Required validation
+
+- Resource declaration validation catches absent producers, invalid versions,
+  incompatible formats/usages, and feedback loops.
+- Dependency schedule and barriers are correct across graphics/transfer/compute
+  queue combinations.
+- Resize and transient reuse never expose stale texture/framebuffer handles.
+- Callback state survives graph rebuilds and releases persistent resources safely.
+- Disabled/cullable passes leave no undeclared reads or presentation gap.
+- Readback completion, pointer lifetime, and image-to-buffer staging are tested.
+- The future editor overlays consume immutable snapshot data and pass GPU validation.
+
+## 9. Documentation maintenance
+
+When a RenderGraph API changes, update this guide, rendering-flow.md, and every
+active design document that shows callback signatures before merging dependent
+work. Historical completed documents may retain their original implementation
+record but should be labelled historical when their API examples differ.

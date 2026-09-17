@@ -1,9 +1,12 @@
 # Thumbnail Generation — Editor Asset Previews
 
-**Priority:** P4 — Implement after render-resource-manager, VFS scanner, and import pipeline are live  
-**Status:** Design — no blocking correctness issues; editor-only feature  
-**Depends on:** `render-resource-manager.md`, `vfs-ticket3-scanner-memory-backend.md`, `import-pipeline.md`  
+**Priority:** P4 — Implement after render-resource-manager, VFS scanner, and import pipeline are live
+**Status:** Design — no blocking correctness issues; editor-only feature
+**Depends on:** `render-resource-manager.md`, `vfs-ticket3-scanner-memory-backend.md`, `import-pipeline.md`
 **Blocks:** Nothing critical — editor UX only
+**Tracked by:** [#423](https://github.com/JeanPhilippeKernel/RendererEngine/issues/423). Its
+title remains valid; implementation must target the current `ProjectViewPanel`, not the
+historical `ProjectViewUIComponent` named in older sketches below.
 
 **Goal**: Provide 128×128 RGBA8 thumbnail images for every importable asset (textures,
 meshes, materials) inside the editor's `ProjectViewUIComponent`, with async off-thread
@@ -472,9 +475,14 @@ uses the real image.
 
 ## 7. `ProjectViewUIComponent` Integration
 
-`ProjectViewUIComponent` is the ImGui-based panel that lists project assets in a grid.
-Before this feature it displayed only file names and type icons. After this feature each
-asset cell shows its 128×128 thumbnail image.
+**Correction:** the active project-view implementation is ZUI based. The legacy
+ImGui code in this section is historical cache-lifetime pseudocode only and is
+not an implementation or API dependency. The production panel uses ZUI image
+draw-list commands and the mailbox payload lifetime described in rendering-flow.md.
+
+`ProjectViewPanel` is the ZUI panel that lists project assets in a grid. Before this
+feature it displayed only file names and type icons. After this feature each asset cell
+shows its thumbnail through the ZUI image/draw-list path.
 
 ### Data additions to `ProjectViewUIComponent`
 

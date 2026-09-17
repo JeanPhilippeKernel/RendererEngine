@@ -1,105 +1,61 @@
 # Memory Budget
 
-Documents the full arena hierarchy, each slot's purpose, sizing rationale, and growth headroom.
+This is the current reference for the CPU arena profile. The production work remaining around enforcement and GPU accounting is tracked in [`future-plan/memory-budget.md`](future-plan/memory-budget.md).
 
-**Root arena:** `ZGiga(8ULL)` = 8 GB (virtual reservation via `mmap` / `VirtualAlloc`; physical pages committed on first write — RSS is much lower than the virtual reservation).
+## Root reservation and profiles
 
----
+`Obelisk/EntryPoint.cpp` initializes `MemoryManager` with an 8 GiB root arena:
 
-## MemoryBudgetConfig slots
-
-Defined in `ZEngine/ZEngine/Core/Memory/MemoryManager.h`. `Default()` is the game runtime profile; `Editor()` overrides UIContext and zeroes Audio/Network.
-
-| Slot | Default | Editor | What lives here |
-|---|---|---|---|
-| `VulkanDevice` | 1 GB | 1 GB | VMA metadata, descriptor pool backing, command pools, swapchain objects |
-| `ImportPipeline` | 1 GB | 1 GB | Engine importers: GltfImporter (64 MB) + AssimpImporter (350 MB) + EnvironmentMapImporter (32 MB) + ImportCoordinator. **Also** editor's duplicate GltfImporter (64 MB) + AssimpImporter (350 MB) in AssetImporterUIComponent — see [Editor import duplication](#editor-import-duplication) |
-| `AssetManager` | 512 MB | 512 MB | Flat arrays: Meshes, NodeHierarchies, Materials, Textures, GPUMeshMaterials (all capped at 5000 entries). UUID hash maps (UUIDToTextureHandle, MeshToHierarchySlot). AssetRegistry. RenderResourceManager and ImportCoordinator structs placed in the budget parent arena |
-| `ECSScene` | 512 MB | 512 MB | ComponentStorage dense arrays, EntityRegistry, ActorManager, WorldCommands staging buffers, WorldTick DAG |
-| `Serializer` | 256 MB | 256 MB | EditorSceneSerializer scratch (150 MB sub-arena), scene file temporaries |
-| `AnimationManager` | 256 MB | 256 MB | Skeleton data, clip arrays, pose pools (system not yet implemented) |
-| `AudioEngine` | 128 MB | **0** | miniaudio state, decoded clip pool (disabled in editor) |
-| `UIContext` | 64 MB | **128 MB** | ImguiLayer (64 MB) → all UI components (Dockspace 32 MB, AssetImporter 12 MB, ProjectView 4 MB, others) |
-| `VirtualFS` | 64 MB | 64 MB | VFSContext mount table, VFSScanner cache, FileWatcher event queue, AssetRegistry scratch |
-| `ShaderCache` | 64 MB | 64 MB | SPIR-V bytecode, shader reflection data |
-| `Network` | 64 MB | **0** | Peer state, rollback ring buffers (disabled in editor) |
-| `Logging` | 8 MB | 8 MB | Logger ring buffer (spdlog), category filter arrays |
-| `Swapchain` | 8 MB | 8 MB | Swapchain-specific metadata |
-| `Input` | 4 MB | 4 MB | InputManager state, key/axis binding tables |
-| **Total committed** | ~3.95 GB | ~3.82 GB | **Headroom: ~4 GB** reserved for future systems |
-
----
-
-## Arenas NOT in the budget config
-
-These are carved directly from `MainArena` and are intentionally outside `MemoryBudgetConfig`.
-
-| Who | Size | Why outside budget |
-|---|---|---|
-| `EditorScene::LocalArena` | 200 MB | Scene-level system, not a UI component. Covers AssetFiles list, scene graph data, seqlock instance buffers, material/texture path strings. |
-| `AppRenderPipeline::LocalArena` | 30 MB | Render-pipeline-level scratch, carved from VulkanDevice arena |
-
----
-
-## ImportPipeline breakdown
-
-```
-ImportPipeline (1 GB)
-├── ImportCoordinator struct + queue    ~1 MB
-├── Engine importers
-│   ├── s_gltf_arena   (GltfImporter)   64 MB
-│   ├── s_assimp_arena (AssimpImporter) 350 MB
-│   └── s_envmap_arena (EnvMapImporter)  32 MB
-└── Editor importers (AssetImporterUIComponent)
-    ├── GltfImporterArena               64 MB
-    └── AssimpImporterArena            350 MB
-                                ─────────────
-                    Total used:        861 MB
-                    Headroom:          163 MB
+```cpp
+manager.Initialize(ZGiga(8ULL),
+                   launch_editor ? MemoryBudgetConfig::Editor()
+                                 : MemoryBudgetConfig::Default());
 ```
 
-### Editor import duplication
+On Windows, the allocator reserves this address range and commits child-arena pages lazily. The
+current macOS/Linux backend instead creates one writable anonymous `mmap` for the whole range and
+marks it fully committed in allocator bookkeeping. Permissive overcommit kernels normally back
+physical pages only when touched, so this is not an 8 GiB immediate RSS allocation. It can still
+fail at startup on Linux under strict overcommit, an address-space limit, or a container memory
+limit because the 8 GiB writable mapping is charged against the applicable commit limit. This is
+a current portability gap, not a GPU-memory requirement; its required reserve/commit redesign is
+tracked by [`future-plan/memory-budget.md`](future-plan/memory-budget.md).
 
-`AssetImporterUIComponent` maintains its own `GltfImporter` + `AssimpImporter` instances because:
-1. The editor import UI requires granular callbacks (per-file output, per-log-message, progress percentage) that `ImportCoordinator`'s `ImportCallback` (`void(*)(void*, bool success)`) does not support.
-2. Imports triggered from the editor panel run concurrently with background ImportCoordinator jobs — sharing importer instances would require an additional mutex and could stall the background pipeline.
+`MemoryBudgetConfig` has these exact configured totals:
 
-**Design debt:** when `ImportCoordinator` is extended to support full progress/log/output callbacks (tracked in `import-pipeline.md`), the editor importers should be removed and `AssetImporterUIComponent::StartImport` should call `ImportCoordinator::Enqueue` instead.
+| Profile | Configured total | Difference from root reservation |
+|---|---:|---:|
+| `Default()` | 7,060 MiB | 1,132 MiB |
+| `Editor()` | 6,932 MiB | 1,260 MiB |
+| `Server()` | 5,780 MiB | 2,412 MiB |
 
----
+`Editor()` changes `AudioEngine` and `Network` to zero and raises `UIContext` from 64 to 128 MiB. `Server()` zeroes `AudioEngine`, `UIContext`, `VulkanDevice`, and `Network`. `MemoryManager::Initialize` validates the selected total before it initializes `MainArena`.
 
-## UIContext component chain (Editor)
+## Slot definitions
 
-```
-UIContext (128 MB, Editor)
-└── ImguiLayer::LocalArena (64 MB)
-    ├── DockspaceUIComponent::LocalArena     32 MB
-    │   └── (mesh deserialization scratch — large meshes need up to ~20 MB)
-    ├── AssetImporterUIComponent::LocalArena  8 MB
-    ├── AssetImporterUIComponent::LocalStringArena  4 MB
-    ├── ProjectViewUIComponent::m_local_arena 4 MB
-    └── remaining for other components       ~16 MB
-```
+| Slot | Default | Editor |
+|---|---:|---:|
+| `AudioEngine` | 128 MiB | 0 |
+| `AnimationManager` | 256 MiB | 256 MiB |
+| `AssetManager` | 1,024 MiB | 1,024 MiB |
+| `ECSScene` | 512 MiB | 512 MiB |
+| `Logging` | 8 MiB | 8 MiB |
+| `VirtualFS` | 64 MiB | 64 MiB |
+| `VulkanDevice` | 1,024 MiB | 1,024 MiB |
+| `ImportPipeline` | 3,584 MiB | 3,584 MiB |
+| `UIContext` | 64 MiB | 128 MiB |
+| `Swapchain` | 8 MiB | 8 MiB |
+| `ShaderCache` | 64 MiB | 64 MiB |
+| `Serializer` | 256 MiB | 256 MiB |
+| `Network` | 64 MiB | 0 |
+| `Input` | 4 MiB | 4 MiB |
 
----
+The slots are a validated profile, not evidence that every subsystem has already been isolated. Startup currently creates budgeted arenas for logging, VFS, asset management, input, ECS scene data, import pipeline, and UI context. Several remaining owners still allocate from `MainArena` or create their own child arena; do not describe those as enforced slots until they are migrated.
 
-## Headroom for future systems
+`CreateBudgetedArena` validates a nonzero size, creates the child arena, and registers it with `MemoryProfiler` in profiling builds. `MemoryProfiler` tracks current and peak offsets and emits an 80% watermark warning with a 60-second cooldown. It only sees arenas explicitly registered this way.
 
-The ~4 GB headroom in the 8 GB root is reserved for systems not yet built:
+## Separate renderer policy
 
-| System | Planned budget | Notes |
-|---|---|---|
-| `StreamingManager` | 2 GB | Open world chunk geometry + texture page streaming; arena cleared per-region-transition |
-| `PhysicsEngine` | 512 MB | Rigid bodies, terrain collision, broad-phase structures |
-| `NavigationEngine` | 256 MB | NavMesh, pathfinding graph, agent state |
+The CPU profile is independent of GPU memory. The persistent IBL/environment resource gate defaults to 384 MiB in `Rendering/EnvironmentLighting.h` and can be supplied by the generated project configuration key `rendering.environment_lighting_budget_mb`. This budget is not CPU arena space, is not serialized scene data, and is not a total-VRAM requirement. Its source and lifecycle are documented in `future-plan/sky-rendering.md`.
 
-These will be added as new `SubArenaConfig` fields in `MemoryBudgetConfig` when the systems are implemented.
-
----
-
-## How to update this document
-
-1. When a budget slot changes size, update the table above.
-2. When a new slot is added, add it to the table and to `TotalCommitted()`.
-3. When `EditorScene::LocalArena` or other unbudgeted arenas change, update the "Arenas NOT in the budget config" table.
-4. Recalculate the total and verify headroom is positive with at least 1 GB margin.
+Do not update generated `project.json` merely to change this default; make that policy change in ZodiacEngineHub or in the appropriate project-generation flow.

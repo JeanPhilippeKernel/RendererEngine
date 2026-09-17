@@ -23,12 +23,17 @@
 > 2. **Real remaining gap:** `EditorCameraController::Initialize` wires `Hooks.Raycast` to a stub
 >    (`[](Vec3f, Vec3f, float maxDist) { return maxDist; }`) — the hook exists, but there's no
 >    real scene raycast behind it yet, so `AdaptiveSpeed()` still effectively falls back to the
->    height-based estimate §1 originally complained about. This is the one open item from this
->    doc's own checklist worth tracking as a follow-up issue.
+>    height-based estimate §1 originally complained about. GitHub issue
+>    [#781](https://github.com/JeanPhilippeKernel/RendererEngine/issues/781) was closed on
+>    2026-09-13, but the stub remains in source; its closure is therefore not acceptance
+>    evidence. Reopen #781 or create a successor before treating the gap as tracked.
+>
+> Sections 1–11 preserve the completed redesign rationale and API plan. Treat the source files
+> named above as current behavior when an old ImGui-era example differs.
 
 ---
 
-## 1. What Is Wrong With the Current Design
+## 1. Historical motivation for the completed redesign
 
 **Input state is split across two objects.**
 `FlyCamera` owns `m_keys[512]`, `m_rightMouseDown`, `m_middleMouseDown`, `m_leftMouseDown`,
