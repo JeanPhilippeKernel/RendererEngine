@@ -1,7 +1,17 @@
 # Obelisk & Tetragrama — ZEngine Migration Impact Analysis
 
-**Date:** 2026-06-25  
-**Scope:** Full exploration of both projects; cross-referenced against migration-plan.md  
+**Date:** 2026-06-25
+**Scope:** Full exploration of both projects; cross-referenced against migration-plan.md
+
+> **Historical migration record.** This analysis predates the ECS migration and the
+> ZUI editor path. References below to an ImGui editor, missing NameComponent/
+> MeshComponent/ParentComponent, an absent ECS render bridge, node-int selection, and a
+> future selection document describe the June 2026 starting point, not current behavior.
+> Use `rendering-flow.md`, `actor-ecs-architecture.md`,
+> `../future-plan/scene-serialization.md`,
+> `../future-plan/editor-entity-selection.md`, `../future-plan/editor-undo-redo.md`,
+> `../future-plan/gizmo-3d-pass.md`, and `../future-plan/editor-grid.md` for active
+> implementation decisions. This record is retained for migration history.
 
 ---
 
@@ -113,20 +123,20 @@ That is the **only** change Obelisk needs. Everything else is already correct.
 ---
 
 ### Phase 0 — Math prerequisites (Vec3 lerp, TRS)
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama:** No impact.
 
 ---
 
 ### Phase 1 — ECS core + System scheduler
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama:** No impact — Tetragrama does not use ECS directly today.
 
 ---
 
 ### Phase 2 — ECS Components + Actor layer (old Rendering::Components removed)
 
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama:** Done — `Rendering/Components/` has been deleted.
 
 `Rendering/Components/` no longer exists. `InspectorViewUIComponent` and
@@ -147,7 +157,7 @@ replaced inline. The old references to `Rendering::Components::TransformComponen
 
 ### Phase 3 — Migrate Rendering::Components call sites
 
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama:** Done — old headers are already deleted. Tetragrama has no remaining
 references to `Rendering::Components::*`; the component display code has been
 commented out and will be rewritten against the ECS component headers.
@@ -156,7 +166,7 @@ commented out and will be rewritten against the ECS component headers.
 
 ### Phase 4 — Animation system
 
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama:** The editor will need to display animated entities. This is additive:
 - `InspectorViewUIComponent` should show `SkeletonComponent`, `AnimatorComponent`
 - `HierarchyViewUIComponent` should mark animated entities with an icon
@@ -171,7 +181,7 @@ feature gap to fill after the animation system is implemented.
 
 ### Phase 5 — Dead code removal (entt, #if 0, GraphicSceneEntity)
 
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama:** Done — `GraphicSceneEntity.h/.cpp` have been deleted.
 
 `GraphicSceneEntity.h` and `GraphicSceneEntity.cpp` no longer exist.
@@ -187,7 +197,7 @@ depend on `GraphicSceneEntity` directly — it uses `EditorScene` which uses `Re
 
 ### Phase 6 — VFS Stack
 
-**Obelisk:** No impact.  
+**Obelisk:** No impact.
 **Tetragrama (ProjectViewUIComponent):** This component currently uses
 `std::filesystem::directory_iterator` directly to scan the asset browser. It is listed
 in `vfs-design.md` §7.3 as one of the two proof-of-concept migration call sites.
@@ -222,7 +232,7 @@ There is no design for:
 
 This requires a new `component-reflection.md` doc (planned in execution-plan.md Sprint 13).
 
-**Required new doc:** `editor-entity-selection.md` or extend `component-reflection.md`  
+**Required new doc:** `editor-entity-selection.md` or extend `component-reflection.md`
 **Estimate:** 3 days (doc + impl)
 
 ---
@@ -235,7 +245,7 @@ parent-child transform inheritance works — there is no `ParentComponent` or
 `ChildrenComponent` and no `TransformInheritanceSystem`.
 
 **Required:** Extend `actor-ecs-architecture.md` with a hierarchy section:
-- `ParentComponent { EntityID Parent; }` 
+- `ParentComponent { EntityID Parent; }`
 - `TransformHierarchySystem` — propagates world transforms from root to leaves
 - `WorldCommands::DeferSetParent(EntityID child, EntityID parent)`
 

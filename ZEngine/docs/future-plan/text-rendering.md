@@ -1,9 +1,15 @@
 # ZEngine — Text Rendering
 
 **Priority:** P1 — Required for any UI, HUD, or localized text
-**Status:** Design
-**Depends on:** `vfs-design.md` (Ticket 1), `render-resource-manager.md`, `ui-system.md`
-**Blocks:** `ui-system.md` (labels, buttons), localization
+**Status:** ZUI bitmap-atlas text is implemented; the MSDF/cook-pipeline architecture below remains design work.
+**Depends on:** the VFS, render-resource lifetime path, and the existing ZUI text path
+**Blocks:** an MSDF/localized text asset path
+
+> **RenderGraph API correction:** pass snippets using Setup/Compile are historical.
+> Text passes must use the Register, pipeline-description/query, Prepare, Execute, and
+> optional RecordDraw contract in render-graph-integration.md.
+>
+> **Current implementation correction:** ZUI currently bakes Small, Body, and Header fonts with FreeType into one 1024×2048 alpha atlas, expands it to RGBA8, and renders glyph quads through `ZUIPass`. It is not an MSDF atlas, does not use `msdf-atlas-gen`, and has no `TextRenderPass` or `.zatlas` runtime asset system. Treat the remaining sections as target design.
 **Approach:** SDF (Signed Distance Field) font atlas via msdf-atlas-gen, rendered as textured quads
 
 ---
@@ -35,8 +41,7 @@ anti-aliased coverage. The result is:
 | Anti-aliasing | MSAA or blur | Analytical | `fwidth`-based, hardware-accelerated |
 | Outline support | Separate bake | Free | Second threshold, free |
 
-ZEngine uses MSDF for all text: one atlas per font family covers any point size from 8pt
-to 96pt without visible degradation.
+**Target state:** MSDF could replace or complement the current bitmap atlas after quality, localization, cook, and runtime lifecycle requirements are validated.
 
 ---
 
@@ -588,7 +593,7 @@ void main() {
 
 ---
 
-## 7. Text Render Pass
+## 7. Proposed `TextRenderPass`
 
 ```cpp
 // ZEngine/Text/TextRenderPass.h

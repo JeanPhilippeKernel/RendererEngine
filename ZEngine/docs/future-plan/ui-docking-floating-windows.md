@@ -1,16 +1,21 @@
-# ZUI — ImGui Floating-Window Docking Model
+# ZUI — Floating Windows and Docking
 
-**Status:** Planning  
-**Branch target:** `feature/zui-floating-dock`  
-**Priority:** P2 — Major editor UX improvement  
+**Status:** Planning
+**Branch target:** `feature/zui-floating-dock`
+**Priority:** P2 — Major editor UX improvement
 **Depends on:**
 - ZUI Style System (`ZUIStyle` struct) — **done** on `feature/zui`
 - ZUI Docking v3 (split tree, tab metrics, central node) — **done** on `feature/zui`
 - ZUI Panel close deferred queue (`PendingCloseKeys`) — **done** on `feature/zui`
 
-**Estimated effort:** 6–7 engineering days  
-**Author:** (assign when work begins)  
+**Estimated effort:** 6–7 engineering days
+**Author:** (assign when work begins)
 **Last updated:** 2026-08-27
+
+> **Terminology correction:** ImGui names in this document are conceptual comparisons
+> only. The feature extends ZUI; it must not add an ImGui dependency or route input/rendering
+> through ImGui. Viewport tools additionally use the explicit ZUI pointer-capture contract
+> described in docs/zui-system.md.
 
 ---
 

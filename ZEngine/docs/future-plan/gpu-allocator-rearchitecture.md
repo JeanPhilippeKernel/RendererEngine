@@ -1,23 +1,32 @@
 # GPU Allocator Rearchitecture — VMA Pools, Staging Ring, Timeline Drain
 
-**Priority:** P0 — Required before 4K resolution target; fixes confirmed correctness bugs  
-**Status:** Segregated VMA pools now implemented (`DeviceGeometry`/`DeviceTexture`/`HostUniform`/
-`HostStaging`), as part of this month's rendering-foundation hardening pass — `RenderTarget`
-intentionally left on the default/dedicated-allocation pool (see the domain table in that track's
-plan for the reasoning). `DeviceTexture` and `HostStaging` use `blockSize=0` (auto-sized) rather
-than a fixed block — both a fixed-size single-allocation-exceeds-block case (`DeviceTexture`) and
-an exact-equal-to-block-size case (`HostStaging`, the ring's own buffer) were found to fail with
-`VK_ERROR_OUT_OF_DEVICE_MEMORY` during implementation; auto-sizing avoids both. Every custom pool
-is now destroyed in `Shutdown()` before the allocator (VMA asserts otherwise). Covered by
-`ZEngine/tests/Rendering/GpuAllocatorTest.cpp` against a real (headless) Vulkan device. Remaining
-stale items below (H3 mechanism, `AsyncResourceLoader.cpp` path) are unrelated pre-existing doc
-debt this track didn't touch — not yet moved back to `completed/` for that reason.
-**Depends on:** Nothing — self-contained hardware layer change  
-**Blocks:** `per-frame-upload-heap.md` (needs clean allocator API first)
+**Priority:** P0 — GPU-memory correctness and telemetry foundation
+**Status:** Core allocator, pools, staging ring, deferred frees, and per-frame heaps implemented;
+budget enforcement policy remains design work
+**Depends on:** Nothing
+**Unblocks:** `per-frame-upload-heap.md` foundation (already integrated)
+
+> **Current implementation correction.** The live type is
+> `Core::Memory::GpuAllocator` (`Core/Memory/GpuAllocator.*`), not the historical
+> `Hardwares/GpuAllocator.*` path used later in this document. It owns VMA, optional
+> `VK_EXT_memory_budget` sampling, a 64 MiB staging ring, and pools for `DeviceGeometry`,
+> `DeviceTexture`, `HostUniform`, `HostStaging`, and `HostReadback`; render targets deliberately
+> use the default allocator path. `VulkanDevice::TickMemory()` drains timeline-safe frees and
+> staging reservations, samples budgets, and resets the reusable frame heap. Pool creation and
+> destruction are covered by `GpuAllocatorTest` on a headless Vulkan device.
+> Open [#753](https://github.com/JeanPhilippeKernel/RendererEngine/issues/753) tracks the
+> missing real-`VulkanDevice` fixture needed to turn the currently skipped RRM/texture
+> lifetime tests into automated device-level coverage.
+>
+> These mechanisms are telemetry and allocation policy, not a hard VRAM admission controller:
+> no per-domain cap rejects an allocation yet. The original gap table, file paths, code sketches,
+> and step checklist below are retained as a historical implementation plan. In particular,
+> `AsyncResourceLoader.cpp` no longer exists; its relevant work resides in
+> `Rendering/RenderResourceManager.cpp`.
 
 ---
 
-## Correction (re-verification finding)
+## Historical re-verification notes
 
 A deep-verification pass against the current codebase found this doc was moved to `completed/`
 prematurely. Specific gaps (the segregated-pools gap is now fixed, per the Status line above; the
@@ -42,7 +51,7 @@ and provides the foundation for 4K resource budgets and cross-platform unified m
 
 ---
 
-## 1. Current State Problems
+## 1. Historical problem statement
 
 | ID | Location | Problem |
 |---|---|---|
@@ -246,7 +255,7 @@ so callers can trigger LRU eviction from `GlobalTextures` before retrying.
 
 ---
 
-## 3. Changes to Existing Files
+## 3. Historical implementation plan
 
 ### `VulkanDevice.h`
 
@@ -415,7 +424,7 @@ timeline (previous frame completed) and before any new command buffers are recor
 
 ---
 
-## 4. New Files
+## 4. Historical file plan
 
 ### `ZEngine/Hardwares/GpuAllocator.h`
 
@@ -493,7 +502,7 @@ void GpuAllocator::SampleBudgets() {
 
 ---
 
-## 7. Implementation Order
+## 7. Remaining policy work
 
 Each step compiles and passes existing tests before the next begins.
 
@@ -513,7 +522,7 @@ Each step compiles and passes existing tests before the next begins.
 
 ---
 
-## 8. Verification
+## 8. Remaining verification
 
 1. Debug build with `VMA_DEBUG_DETECT_CORRUPTION=1`, `VMA_DEBUG_MARGIN=16` (already in CMakeLists). Run scene load + 100-frame render + unload. Zero corruption reports.
 2. Assert inside `GpuAllocator::FreeBuffer`: verify `vkGetSemaphoreCounterValue(RenderTimeline) >= entry.TimelineValue` at destruction time. Validates the timeline gate.

@@ -1,6 +1,13 @@
 # Memory Management
 
-ZEngine uses a custom arena-based memory model with no `new`/`delete` in hot paths. This page documents all memory primitives, allocation patterns, GPU memory domains, and the rules for objects that own Vulkan handles.
+**Status:** Current allocator primitives and GPU-domain reference, with historical planning
+notes called out below. The authoritative configured CPU profile is
+[`ZEngine/docs/memory-budget.md`](../ZEngine/docs/memory-budget.md).
+
+ZEngine primarily uses explicit arena, pool, and TLSF-slab ownership. This page documents the
+live primitives, allocation patterns, GPU memory domains, and teardown rules for Vulkan handles.
+It does not claim that every allocation in the repository avoids the system heap: third-party
+libraries and a few non-hot-path facilities still use their own allocation policies.
 
 See also: [Engine Architecture](engine-architecture.md) · [Asset Manager](asset-manager.md)
 
@@ -47,11 +54,11 @@ Each allocation belongs to exactly one lifetime tier:
 | Tier | When freed | Allocator | Examples |
 |---|---|---|---|
 | **Engine** | Shutdown only | `ArenaAllocator` | `VulkanDevice`, `ECSScene`, `AssetManager` arenas |
-| **Scene** | Scene load/unload | `ArenaAllocator` | `EditorScene::LocalArena` (200 MB) — instance arrays, scene graph, strings |
-| **Per-task** | After task completes | `ArenaAllocator` | `ImportPipeline` (1 GB) — GltfImporter, Assimp decode scratch |
-| **Per-frame** | End of frame | `ArenaTemp` (scratch) | Draw lists, barrier batches, camera UBO staging |
+| **Scene** | Scene load/unload | `ArenaAllocator` | target editor/session data; it is not yet a separately budgeted production editor arena |
+| **Per-task** | Task-specific boundary | `ArenaAllocator` or `TLSFSlab` | importer scratch and variable-lifetime upload/decode data |
+| **Per-frame** | End of frame / GPU completion | `ArenaTemp` or `PerFrameUploadHeap` | CPU scratch; mapped GPU uniform/storage/indirect uploads |
 | **Per-object** | Individual free needed | `PoolAllocator` | Entity slots, command buffer handles, mesh instance slots |
-| **Variable** | Individual free, variable size | `TLSFSlab` (roadmap) | Texture decode buffers, asset metadata grows |
+| **Variable** | Individual free, variable size | `TLSFSlab` | Texture decode buffers and growable engine containers |
 
 ---
 
@@ -148,8 +155,9 @@ Free list links are stored **inside** free chunks — zero separate metadata. Af
 
 ## CPU Memory — TLSFSlab
 
-**Status: Planned — Phase 1 target v0.5.0. Not yet in codebase.**
-**Tracking:** [#687](https://github.com/JeanPhilippeKernel/RendererEngine/issues/687) and related issues.
+**Status: Implemented.** `TLSFSlab` is backed by `mattconte/tlsf`, protected by an internal
+atomic spinlock, and used by the asset manager, render-resource manager, bitmap helpers, and
+TLSF-aware `Array`/`UnorderedHashMap` variants.
 
 `TLSFSlab` wraps `mattconte/tlsf` (already vendored via FetchContent) with a backing buffer carved from a parent `ArenaAllocator`. Fills the gap for variable-size, individually-freed allocations that neither Arena nor Pool can handle: texture decode buffers, asset metadata containers that grow unpredictably.
 
@@ -166,18 +174,19 @@ struct TLSFSlab {
 
 The backing buffer is carved from the parent arena **once** at `Init`. Subsequent `Alloc`/`Free` never touch the arena. Internal fragmentation is bounded at ≤ 1.0625× requested size. Adjacent frees always coalesce — no fragmentation cliff over time.
 
-### Phase 1 use case: texture upload pipeline
+### Current texture/upload use
 
-Each texture decode currently does 4–5 system heap round-trips (`std::vector<float>`, `Bitmap`, `std::vector<uint8_t>`). Phase 1 replaces all of these with per-worker `TLSFSlab` allocs, reducing system heap involvement to zero during import.
+Texture/upload work can use worker slabs and the render-resource manager's upload slabs. The
+slab's lock makes a cross-thread `Free` safe; it is not a lock-free per-worker-only allocator.
+Individual importers and third-party decoders may still have their own allocations, so this is
+not a promise of zero process-heap activity.
 
-**Open problem:** `CompleteDeferrals()` runs on the render thread and calls `Free` on a worker's slab — a data race on ARM64. Resolution required before Phase 1 ships (issue [#690](https://github.com/JeanPhilippeKernel/RendererEngine/issues/690)).
-
-### Roadmap
+### Historical rollout record
 
 | Phase | Target | Scope |
 |---|---|---|
-| 1 | v0.5.0 | Per-worker upload slabs, `TextureDeferral` refactor, `STBI_MALLOC` override |
-| 2 | v0.6.0 | `AssetManager` containers (typed allocator for `Array<T>` / `UnorderedHashMap`) |
+| 1 | v0.5.0 target | Per-worker upload slabs, `TextureDeferral` refactor, `STBI_MALLOC` override |
+| 2 | v0.6.0 target | `AssetManager` containers (typed allocator for `Array<T>` / `UnorderedHashMap`) |
 | 3 | v1.0.0 | Per-archetype ECS slab for variable-payload component types |
 
 ---
@@ -237,55 +246,31 @@ sequenceDiagram
 |---|---|---|
 | `ArenaAllocator` | No | All arenas carved on main thread before workers start. Workers never call `ArenaAllocator::Allocate` after init. |
 | `PoolAllocator` | No | All current pools are single-threaded (main thread or one render thread). CAS / spinlock needed if shared. |
-| `TLSFSlab` (planned) | No per-slab lock | Each worker owns its slab exclusively via `thread_local`. Cross-thread `Free` is a data race — see issue [#690](https://github.com/JeanPhilippeKernel/RendererEngine/issues/690). |
+| `TLSFSlab` | Yes | An internal atomic spinlock protects `Alloc`, `Realloc`, and `Free`, including cross-thread release. |
 | `GpuAllocator` (VMA) | Yes | VMA handles its own synchronization internally. |
 
 ---
 
 ## Memory Budget
 
-`MemoryBudgetConfig` in `ZEngine/ZEngine/Core/Memory/MemoryManager.h`.
+`MemoryBudgetConfig` in `ZEngine/ZEngine/Core/Memory/MemoryManager.h` defines the profile.
+`Obelisk` reserves 8 GiB and validates the sum before initialization. The actual configured
+totals are 7,060 MiB (`Default`), 6,932 MiB (`Editor`), and 5,780 MiB (`Server`); the largest
+live slots are `ImportPipeline` (3,584 MiB), `AssetManager` (1,024 MiB), `VulkanDevice`
+(1,024 MiB), and `ECSScene` (512 MiB). `UIContext` is 64 MiB by default and 128 MiB for the
+editor. Not every declared budget slot is materialized as a separate live arena yet.
 
-```mermaid
-graph TD
-    root["MainArena · 8 GB virtual\nmmap / VirtualAlloc — demand-paged\nRSS much lower than reservation"]
+**Linux startup limitation:** Windows reserves the root range and commits pages as allocations
+advance. Current macOS/Linux code maps the full 8 GiB root with writable anonymous `mmap` and
+relies on permissive overcommit for low initial RSS. Linux strict-overcommit configurations,
+address-space limits, and cgroup memory limits can reject that mapping before startup. A
+production POSIX backend must reserve with `PROT_NONE` and commit only each allocation's page
+range, while retaining enough commit tracking for discontiguous sub-arenas. Do not use
+`MAP_NORESERVE` alone as the fix: it can defer the failure to an unrecoverable page fault.
 
-    vkd["VulkanDevice · 1 GB\nVMA, descriptor pools, command pools,\nswapchain, TLSFSlab × N workers (Phase 1)"]
-    asset["AssetManager · 512 MB\nMesh / material / texture / hierarchy arrays\nUUID maps, AssetRegistry"]
-    ecs["ECSScene · 512 MB\nComponentStorage dense arrays\nEntityRegistry, ActorManager"]
-    imp["ImportPipeline · 1 GB\nGltf + Assimp decode scratch\nCleared after each import session"]
-    ser["Serializer · 256 MB\nScene save/load temporaries"]
-    anim["AnimationManager · 256 MB\nSkeleton data, clip arrays, blend trees"]
-    ui["UIContext · 128 MB\nZUI system — FrameArena, PersistentArena,\nfont atlases, panel state"]
-    vfs["VirtualFS · 64 MB\nMount table, scanner cache, watcher events"]
-    shader["ShaderCache · 64 MB\nSPIR-V bytecode, reflection data"]
-    swap["Swapchain · 8 MB"]
-    log["Logging · 8 MB\nRing buffer, category filter"]
-    input["Input · 4 MB"]
-
-    root --> vkd & asset & ecs & imp & ser & anim
-    root --> ui & vfs & shader & swap & log & input
-```
-
-| Subsystem | Budget | What lives there |
-|---|---|---|
-| VulkanDevice | 1 GB | VMA, descriptor pools, command buffers, swapchain, upload slabs (Phase 1) |
-| ImportPipeline | 1 GB | GltfImporter (64 MB) + AssimpImporter (128 MB) × 2 instances |
-| AssetManager | 512 MB | `Meshes[]`, `Materials[]`, `Textures[]`, UUID hash maps |
-| ECSScene | 512 MB | `ComponentStorage` dense arrays, `EntityRegistry` |
-| Serializer | 256 MB | EditorSceneSerializer scratch (150 MB sub-arena) |
-| AnimationManager | 256 MB | Animation clips, blend tree nodes, state machines |
-| UIContext | 128 MB | ZUI FrameArena, PersistentArena, font atlases, panel state |
-| ShaderCache | 64 MB | SPIR-V, reflection data |
-| VirtualFS | 64 MB | Mount table, scanner cache, file watcher events |
-
-**Total committed: ~3.8 GB. Headroom: ~4.2 GB** reserved for future systems:
-
-| Planned system | Budget |
-|---|---|
-| StreamingManager | 2 GB |
-| PhysicsEngine | 512 MB |
-| NavigationEngine | 256 MB |
+The GPU allocator's domains and the 384 MiB persistent environment-lighting gate are separate
+GPU policies, not deductions from this CPU profile. See
+[`ZEngine/docs/memory-budget.md`](../ZEngine/docs/memory-budget.md) for the full live table.
 
 ---
 
@@ -297,11 +282,13 @@ Approximate cycle counts on a cache-warm allocation path (bookkeeping only — d
 |---|---|---|---|---|
 | **ArenaAllocator** | ~3–5 cyc + `memset(n)` | N/A | Zero | Scratch, import, per-frame |
 | **PoolAllocator** | ~5–8 cyc + `memset(chunk)` | ~5–8 cyc | Zero | Entity slots, fixed-size objects |
-| **TLSFSlab** (planned) | ~20–40 cyc | ~20–40 cyc | ≤ 1.0625× | Upload buffers, growing containers |
+| **TLSFSlab** | ~20–40 cyc | ~20–40 cyc | ≤ 1.0625× | Upload buffers, growing containers |
 | System heap (jemalloc) | ~50–300 cyc | ~50–300 cyc | Accumulates | Nothing on the hot path |
 | System heap (ptmalloc) | ~100–500 cyc | ~100–500 cyc | Accumulates | Nothing on the hot path |
 
-> Arena and Pool cover ~95% of engine allocations. TLSFSlab fills the remaining 5% — variable size, individual lifetimes — currently leaking through to the system heap.
+> The cycle counts are planning estimates, not a current benchmark suite. TLSFSlab is available
+> for variable-size individual lifetimes; it is not a claim that all such allocations have been
+> migrated.
 
 ---
 
@@ -332,9 +319,12 @@ void Consume(Array<uint32_t> arr);          // ownership transfer — caller std
 
 `ArrayView<T>` is a plain `{T*, size_t}` — freely copyable, no ownership semantics.
 
-### Growing containers leak dead arena blocks
+### Growing containers and allocator choice
 
-Every `Array<T>::grow()` that reallocates on an arena abandons the old block — it becomes permanently dead for the lifetime of the arena. After 100 import sessions, ~20 MB of dead blocks accumulate in the `AssetManager` arena. Mitigation: pre-size containers via `init(arena, expected_capacity)`. Long-term fix: Phase 2 TLSFSlab backing (issue [#695](https://github.com/JeanPhilippeKernel/RendererEngine/issues/695)).
+Every `Array<T>::grow()` that reallocates on an arena abandons the old block for that arena's
+lifetime. Pre-size stable containers. For a genuinely variable, individually released workload,
+use the implemented TLSF-aware container initialization rather than treating arena growth as a
+general allocator.
 
 ### `HashMap` / `UnorderedHashMap` with move-only values
 
@@ -370,13 +360,17 @@ void        FreeImage(BufferImage&, VkDevice);
 
 ```mermaid
 graph LR
-    DG["DeviceGeometry\nVMA_MEMORY_USAGE_AUTO\ndevice-local preferred → VRAM\nGlobal VB / IB, render targets"]
+    DG["DeviceGeometry\nVMA_MEMORY_USAGE_AUTO\ndevice-local preferred → VRAM\nGlobal vertex/index/storage buffers"]
     DT["DeviceTexture\nVMA_MEMORY_USAGE_AUTO\ndevice-local preferred → VRAM\nTexture images"]
     HU["HostUniform\nVMA_MEMORY_USAGE_AUTO\nhost-visible required → BAR / shared\nTransformSB, DrawDataSB"]
-    HS["HostStaging\nVMA_MEMORY_USAGE_AUTO\nhost-visible required → RAM\nUpload staging — alloc + free per call"]
+    HS["HostStaging\nPersistent staging ring plus one-shot fallback\nSequential CPU writes"]
+    HR["HostReadback\nMapped read-mostly allocations\nGPU-to-CPU readback"]
 ```
 
-**Rule:** `HostUniform` buffers are written with `vmaCopyMemoryToAllocation`. `DeviceGeometry` and `DeviceTexture` require a staging copy via `VkCommandBuffer`.
+**Rule:** `HostUniform` includes the mapped per-frame heaps and is flushed when non-coherent.
+`DeviceGeometry` and `DeviceTexture` receive GPU copies through the staging ring or a one-shot
+fallback. `RenderTarget` intentionally follows the default allocator path rather than a custom
+domain pool.
 
 ---
 
@@ -424,13 +418,21 @@ flowchart TD
 
 ### macOS Apple Silicon — Unified Memory Architecture
 
-CPU and GPU share the same physical memory pool. With MoltenVK, a TLSFSlab-backed decode buffer (Phase 1) could be passed directly to Metal as `MTLBuffer { storageMode = .shared }`, eliminating the GPU staging copy entirely on Apple Silicon. Not yet implemented — `TextureDeferral` still stages through VMA today.
+CPU and GPU share the same physical memory pool. The renderer still uses Vulkan/VMA allocations
+and staging copies through MoltenVK; it does not expose a direct TLSF-to-`MTLBuffer` path.
 
 ### ARM64 weak memory ordering
 
-ARM64 (Apple Silicon, Linux ARM) uses a weakly-ordered memory model. Stores require explicit barriers (`dmb`/`stlr`) to guarantee visibility across cores. The planned render-thread `d.Slab->Free(d.Pixels)` on a worker's TLSF slab (Phase 1 open problem) is a data race on all platforms but is more reliably observable on ARM64 under TSAN. Resolve with issue [#690](https://github.com/JeanPhilippeKernel/RendererEngine/issues/690) before Phase 1 ships.
+ARM64 (Apple Silicon, Linux ARM) uses a weakly ordered memory model. Concurrent ownership paths
+must use the C++ atomic/lock synchronization already present in `TLSFSlab` and queue handoffs;
+the old cross-thread slab-free data-race warning was resolved by that lock.
 
 ### Linux — Transparent Huge Pages
+
+The current writable whole-root mapping depends on permissive overcommit and is not a portable
+startup contract. The pending POSIX reserve/commit redesign is documented in
+[`ZEngine/docs/future-plan/memory-budget.md`](../ZEngine/docs/future-plan/memory-budget.md).
+Only after that change should an arena call `madvise` for the committed ranges below.
 
 On Linux with `THP = madvise`, calling `madvise(ptr, size, MADV_HUGEPAGE)` on hot arenas promotes pages to 2 MB huge pages. TLB coverage improves from 4 KB × 512 entries = 2 MB to 2 MB × 512 = 1 GB per miss. Measurable win for dense ECS archetype iteration. No code change required beyond one `madvise` call in `ArenaAllocator::Initialize` for arenas larger than 2 MB.
 
@@ -448,4 +450,7 @@ On Windows, `VirtualAlloc(MEM_COMMIT)` reserves pagefile space immediately (not 
 Profiling::MemoryProfiler::TrackArena("MainArena", &MainArena);
 ```
 
-`ZENGINE_PROFILING` must be defined (set by default in Debug builds). Records per-arena peak usage; reported in the in-editor memory overlay (MemoryProfilerPanel).
+`MemoryProfiler` records tracked-arena current and peak offsets and warns above 80% with a
+60-second cooldown. A budgeted arena is registered only if profiling is enabled. The engine loop
+does not currently call `MemoryProfiler::Update()` or `ProfilerBuffer::BeginFrame()`, so these
+facilities are implemented but not yet producing an automatic per-frame runtime feed.

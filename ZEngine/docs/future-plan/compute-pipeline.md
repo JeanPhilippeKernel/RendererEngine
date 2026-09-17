@@ -2,24 +2,24 @@
 
 **Priority:** P2 — Required for SSAO, bloom threshold, GPU-driven culling, and any effect that
 benefits from general-purpose GPU compute.
-**Status:** Design
+**Status:** Compute pipeline foundation implemented; the effect catalogue and historical implementation sketch below are design material.
 **Depends on:** `render-graph-redesign.md`, `shader-asset-pipeline.md`
 **Blocks:** `post-processing.md` (SSAO, bloom), `next-year-plans/culling-system.md` (DrawCull)
 
-**Goal:** Add end-to-end compute pipeline support to ZEngine. This covers shader-stage
-recognition, pipeline creation, command recording, the render pass compute path, a thin
-builder and callback helper, and three concrete compute pass examples that exercise the
-full stack. Every change is grounded in the current state of the codebase; nothing is
-designed in the abstract.
+> **Current implementation correction:** `ShaderType::COMPUTE`, `IInlineComputePass`, compute PSO creation, render-graph compute execution, and shipped frustum-culling/sky compute passes already exist. The old “COMPUTE is absent” before/after narrative is historical.
+>
+> **RenderGraph API correction:** this plan's callback Setup/Compile examples predate
+> the active API. Compute passes declare resources in Register, provide their shader and
+> static requirements through the current graph contract, refresh bindings in Prepare,
+> and record dispatches in Execute. See render-graph-integration.md.
+
+**Remaining goal:** extend the shipped compute foundation with effects whose resource, queue, validation, and immutable-frame-data contracts are designed against the current renderer.
 
 ---
 
-## 1. ShaderType::COMPUTE — ShaderEnums.h
+## 1. Historical migration record — ShaderType::COMPUTE
 
-`ShaderEnums.h` currently defines four shader types. `COMPUTE` is absent and
-`CompilationStage::GetEShLanguage` falls through to `EShLangGeometry` for any type it does
-not explicitly recognise, which means feeding a compute source file through the current
-pipeline silently produces broken SPIR-V.
+The following before/after snippet records the completed compute-stage migration. It is not a statement about the current source tree or a recipe to reapply.
 
 **Before:**
 
@@ -107,7 +107,7 @@ public:
     VkPipeline               Handle = VK_NULL_HANDLE;
     VkPipelineLayout         Layout = VK_NULL_HANDLE;
 
-    void Initialize(Hardwares::VulkanDevice* device, const char* shader_name);
+    void Initialize(Hardwares::VulkanDevice* device, cstring shader_name);
     void Bake();
     void Dispose();
 };
@@ -120,7 +120,7 @@ public:
 layout — identical to the graphics path.
 
 ```cpp
-void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, const char* shader_name)
+void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, cstring shader_name)
 {
     Device = device;
     Shader = device->ShaderCaches.Find(shader_name);
@@ -318,7 +318,7 @@ struct ComputePassBuilder
 
     void Initialize(Core::Memory::ArenaAllocator* arena);
 
-    ComputePassBuilder& UseShader(const char* name);
+    ComputePassBuilder& UseShader(cstring name);
     ComputePassBuilder& SetPushConstantRange(
         uint32_t size,
         VkShaderStageFlags stage = VK_SHADER_STAGE_COMPUTE_BIT);
@@ -342,7 +342,7 @@ void ComputePassBuilder::Initialize(Core::Memory::ArenaAllocator* arena)
     m_spec.Type = Specifications::RenderPassType::COMPUTE;
 }
 
-ComputePassBuilder& ComputePassBuilder::UseShader(const char* name)
+ComputePassBuilder& ComputePassBuilder::UseShader(cstring name)
 {
     m_spec.PipelineSpecification.ShaderSpecificationValue.Name = name;
     return *this;
@@ -375,7 +375,7 @@ auto spec = builder
 
 ---
 
-## 6. IInlineComputePass
+## 6. Historical `IInlineComputePass` callback sketch
 
 `IRenderGraphCallbackPass` has three methods: `Setup`, `Compile`, and `Execute`. A concrete
 pass must implement all three. For compute passes the `Compile` step is always the same:
@@ -434,7 +434,7 @@ namespace ZEngine::Rendering::Renderers
             Hardwares::CommandBufferPtr cb) = 0;
 
         // Subclass provides the shader name; Compile() uses it.
-        virtual const char* GetShaderName() const = 0;
+        virtual cstring GetShaderName() const = 0;
 
         // Optional: subclass overrides to supply push constant size.
         // Default: 0 (no push constants).
@@ -500,7 +500,7 @@ sets and push constants without digging into `RenderPass` internals.
 
 ---
 
-## 7. Concrete Compute Pass Examples
+## 7. Proposed compute-effect examples
 
 ### 7a. SSAOComputePass
 
@@ -522,7 +522,7 @@ struct SSAOComputePass final : public IInlineComputePass
     uint32_t         m_width            = 0;
     uint32_t         m_height           = 0;
 
-    const char* GetShaderName()      const override { return "ssao_compute"; }
+    cstring GetShaderName()          const override { return "ssao_compute"; }
     uint32_t    GetPushConstantSize() const override { return sizeof(SSAOPushConstants); }
 
     void SetupCompute(Hardwares::VulkanDevicePtr device, RGBuilder* builder) override
@@ -622,7 +622,7 @@ struct BloomThresholdComputePass final : public IInlineComputePass
     uint32_t         m_width            = 0;
     uint32_t         m_height           = 0;
 
-    const char* GetShaderName()      const override { return "bloom_threshold_compute"; }
+    cstring GetShaderName()          const override { return "bloom_threshold_compute"; }
     uint32_t    GetPushConstantSize() const override { return sizeof(BloomThresholdPushConstants); }
 
     void SetupCompute(Hardwares::VulkanDevicePtr device, RGBuilder* builder) override
@@ -718,7 +718,7 @@ struct DrawCullPass final : public IInlineComputePass
     RGResourceHandle m_indirect_buffer_handle = {};
     uint32_t         m_draw_count            = 0;
 
-    const char* GetShaderName()      const override { return "draw_cull_compute"; }
+    cstring GetShaderName()          const override { return "draw_cull_compute"; }
     uint32_t    GetPushConstantSize() const override { return sizeof(DrawCullPushConstants); }
 
     void SetupCompute(Hardwares::VulkanDevicePtr /*device*/, RGBuilder* builder) override
@@ -827,7 +827,7 @@ void main()
 
 ---
 
-## 8. Render Graph Integration
+## 8. Proposed graph integration
 
 The barrier system in `render-graph-redesign.md` already handles compute barriers. The
 `kAccessTable` entry for `RGAccess::ShaderReadWrite` maps to
@@ -866,7 +866,7 @@ automatically.
 
 ---
 
-## 9. Framebuffer Skip in RenderGraph::Compile
+## 9. Historical framebuffer-skip rationale
 
 `render-graph-redesign.md` section 10.1 describes the framebuffer skip guard. It is
 reproduced here for completeness and to clarify the implementation obligation for

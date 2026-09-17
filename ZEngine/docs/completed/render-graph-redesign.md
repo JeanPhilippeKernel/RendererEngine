@@ -4,9 +4,26 @@
 **Status:** Implemented architecture and maintenance reference
 **Scope:** Per-frame declarative resources, versioned dependency culling, subresource-aware Synchronization2 barriers, transient reuse, capability-resolved multi-queue scheduling, dynamic rendering, and parallel command recording.
 
+**Open follow-up:** [#312](https://github.com/JeanPhilippeKernel/RendererEngine/issues/312)
+correctly distinguishes shipped exact-match transient reuse from true overlapping-memory
+aliasing. It is a future memory-pressure optimization, not unfinished implementation of
+this redesign.
+
 **PSO integration:** `pso-cache-architecture.md` provides the device-owned pipeline cache used by pass compilation and material prewarming. A graph pass borrows a cached pipeline handle; pass disposal never destroys the cache-owned Vulkan pipeline.
 
 Reference implementations: Frostbite Framegraph (O'Donnell, GDC 2017), UE5 RDG (`FRDGBuilder`).
+
+> **Current callback contract.** This document retains the architecture and migration
+> rationale. The pass API shown in early diagrams/snippets that has a callback
+> `Compile(...)` is historical. Active callbacks use `Register`,
+> `BuildGraphicsPipelineDescription` or the compute query, `Prepare`, `Execute`,
+> and optional `RecordDraw`. Use render-graph-integration.md for implementation
+> signatures and update dependent plans to that contract.
+
+> **Reading order.** Sections 1–13 preserve the redesign's historical motivation and migration
+> sketches. They are not current pass-interface reference. Sections 14–17 describe the shipped
+> architecture and release gates; `render-graph-integration.md` is the concise authoritative
+> callback contract.
 
 ---
 
@@ -33,7 +50,8 @@ classDiagram
     class IRenderGraphCallbackPass {
         <<interface>>
         +Register(device, name, frame_context, builder, inspector) bool
-        +Compile(device, scene, pass_builder, inspector, out_pass**)
+        +BuildGraphicsPipelineDescription(arena)
+        +Prepare(device, scene, inspector, pass)
         +Execute(device, inspector, scene, pass, framebuffer, cmd)
         +RecordDraw(..., cmd) bool
         +SupportsSecondaryRecording() bool

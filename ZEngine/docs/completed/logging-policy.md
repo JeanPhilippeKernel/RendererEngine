@@ -6,7 +6,13 @@
 
 ---
 
-## 1. Current State Analysis
+## 1. Historical gap analysis
+
+> **Implementation status.** The gaps described in this section were addressed by the current
+> `Logger`: it has `LogChannel` and per-channel minimum levels, a `std::string_view` log entry
+> point, a context-plus-function-pointer `LogEventHandler`, and shared/exclusive handler-map
+> locking. The detailed code below is retained to explain the decision and migration, not as a
+> list of outstanding defects.
 
 The existing `Logger.h` / `Logger.cpp` provides a working foundation. The following items are assessed:
 

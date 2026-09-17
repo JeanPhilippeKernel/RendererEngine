@@ -1,9 +1,22 @@
 # Per-Frame Upload Heap — Replacing IBufferSet with a Linear Frame Heap
 
-**Priority:** P1 — Required for scalable 4K scene rendering (hundreds of draw calls)  
-**Status:** Design  
-**Depends on:** `gpu-allocator-rearchitecture.md` (needs `GpuAllocator` and `GpuMemoryDomain::HostUniform`)  
-**Blocks:** Nothing, but unlocks scalable per-draw-call UBO streaming and large bone matrix uploads
+**Priority:** P1 — required for scalable per-frame CPU-to-GPU uploads
+**Status:** Foundation implemented; generalized streaming remains design work
+**Depends on:** `gpu-allocator-rearchitecture.md`
+**Blocks:** generalized per-draw and skinning upload migration
+
+> **Current implementation correction.** `Hardwares::PerFrameUploadHeap` is live. VulkanDevice
+> creates one persistently mapped 64 MiB `HostUniform` heap for each of the three swapchain
+> frames, resets the reusable frame's cursor from `VulkanDevice::TickMemory()`, and flushes it
+> from `DeviceSwapchain::EndFrame()`. `GraphicRenderer::DrawScene()` already places the camera
+> UBO in that heap and retains its byte offset for a dynamic-uniform binding. The heap accepts
+> uniform, storage, and indirect-buffer usage, but the renderer has **not** migrated every
+> scene buffer, per-draw payload, or skinning payload to it. Overflow is currently a validation
+> assertion, not a growth or fallback policy.
+>
+> The original proposal below remains the design for that migration. Its "current" comparison,
+> object-count estimates, and implementation-order checklist predate the shipped heap and must
+> not be read as a description of the live renderer.
 
 **Goal:** Replace the current `IBufferSet<T>` pattern (one `VkBuffer` per resource type per
 frame) with a `PerFrameUploadHeap` — a single large persistently-mapped buffer per frame in
@@ -14,7 +27,7 @@ write pass per frame for all per-draw data.
 
 ---
 
-## 1. Current State Problems
+## 1. Historical problem statement
 
 The current `IBufferSet<T>` pattern:
 
@@ -50,10 +63,12 @@ but growing the scene requires tracking more buffer set handles and more descrip
 
 ---
 
-## 2. `PerFrameUploadHeap`
+## 2. Implemented heap and proposed extension
 
-One heap per frame in flight. The heap is a single `VkBuffer` in `GpuMemoryDomain::HostUniform`
-(persistently mapped, `ALLOW_TRANSFER_INSTEAD` for BAR overflow). At the start of each frame
+One heap per frame in flight. The heap is a single persistently mapped `VkBuffer` in
+`GpuMemoryDomain::HostUniform`. It uses VMA's `AUTO` memory usage with the sequential-write
+and mapped flags; it deliberately does **not** use `ALLOW_TRANSFER_INSTEAD`, so the allocation
+must be host-visible even on a discrete GPU without a BAR mapping. At the start of each frame
 the bump pointer resets to zero — no `vmaDestroyBuffer`, no `vmaCreateBuffer`. The GPU has
 finished reading the previous use of this frame's buffer (timeline semaphore ensures it).
 
@@ -74,7 +89,7 @@ struct PerFrameUploadHeap {
     bool             Coherent   = false; // cached from VkMemoryPropertyFlags at init
 
     // Initialized once per frame slot in VulkanDevice::Initialize
-    void Initialize(GpuAllocator* alloc, const char* debug_name);
+    void Initialize(GpuAllocator* alloc, cstring debug_name);
     void Shutdown(GpuAllocator* alloc);
 
     // Reset at frame start — O(1), no GPU wait (timeline guarantees GPU is done)
@@ -286,7 +301,7 @@ can be removed or repurposed for static multi-draw-indirect batches.
 
 ---
 
-## 9. Implementation Order
+## 9. Remaining migration order
 
 Depends on `gpu-allocator-rearchitecture.md` steps 1–5 being complete (GpuAllocator with
 `GpuMemoryDomain::HostUniform` pool functional).
@@ -306,7 +321,7 @@ Depends on `gpu-allocator-rearchitecture.md` steps 1–5 being complete (GpuAllo
 
 ---
 
-## 10. Verification
+## 10. Remaining verification
 
 1. Frame heap `WritePos` after all pushes must be less than `kCapacity`. Assert in Debug builds. Log peak `WritePos` via `MemoryProfiler` to validate budget sizing.
 2. One `vmaFlushAllocation` call per frame (not per buffer), which maps to one `vkFlushMappedMemoryRanges` at the Vulkan level. Verify with `VK_LAYER_LUNARG_api_dump` — count `vkFlushMappedMemoryRanges` invocations before and after migration.

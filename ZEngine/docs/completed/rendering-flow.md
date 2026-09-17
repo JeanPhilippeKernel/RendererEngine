@@ -12,24 +12,32 @@ The engine has a main thread and a render thread. During runtime, Vulkan command
 ```
 MAIN THREAD                                      RENDER THREAD
 -----------                                      -------------
-Poll window and input                            consume next mailbox slot
-tick world, imports, schedulers                  apply viewport resize, if any
+Poll window and input                            take newest ready frame state
+tick world, imports, schedulers                  apply a newer viewport resize, if any
 update application and camera                    BeginFrame: acquire + upload/retirement work
-build ZUI tree                                   RenderScene
-prepare immutable ZUI payload                    RenderGraph::Execute
-prepare scene/camera/resize payload              EndFrame: submit + present
-publish mailbox slot  ------------------------>  retire mailbox slot
+build ZUI tree when its token/slot is available  take newest ready overlay or retain the last one
+publish state and, independently, overlay  --->  RenderScene + RenderGraph::Execute
+                                                  EndFrame: submit + present
 ```
 
-`AppRenderPipeline` owns three `RenderPayload` slots. The producer publishes the next slot with a release store on `MailBoxBufferHead`; the render thread consumes it with an acquire load and advances `MailBoxBufferTail` only after the frame is finished. If the mailbox is full, the main loop yields to the frame cap instead of overwriting a payload that the render thread may still read.
+`AppRenderPipeline` has two independent three-slot handoffs. `RenderFrameState`
+is a latest-state channel: its producer claims a free slot or replaces the oldest
+unread ready slot; the consumer claims the newest ready slot and frees older ready
+slots. If every slot is being written or read, publication is skipped for that
+iteration. This deliberately favours current camera/resize state over a FIFO queue.
 
-The payload contains:
+`OverlayPayload` uses a separate three-slot channel and a presentation-paced build
+token. The render thread retains its last readable overlay until a newer one is
+available, then releases the old slot. Its per-slot arena is cleared only when a
+later writer claims that slot, so draw data remains valid while it is recorded.
 
-- the render-scene and camera pointers;
-- one coalesced viewport render-target extent;
-- a mailbox-slot-arena-backed `ZUIRenderPayload` (vertices, indices, commands, scale, and framebuffer scale).
-
-The ZUI payload arena is selected by mailbox slot, so its storage stays valid until the render thread has consumed that slot. The UI tree itself is built and discarded only on the main thread.
+`RenderFrameState` copies camera data, sky configuration, celestial-light data,
+sky revision, render-target extent, resize sequence, and the overlay-enabled flag.
+It currently carries a borrowed `RenderScene*`; only the sky configuration has a
+separate immutable copy. `RenderScene::GetInstancesSnapshot()` protects the
+instance list at draw preparation time, but an engine-owned immutable whole-scene
+render snapshot is still required before the render thread can be said to consume
+only immutable scene input.
 
 ---
 
@@ -39,12 +47,14 @@ For every non-minimized window frame, `Engine::MainThreadRun()` performs the fol
 
 1. Poll window events, tick the VFS watcher, run fixed world steps, progress imports, and drain main-thread callbacks.
 2. Call `GameApplication::Update(dt)`. It polls input, calls the application update, then updates the camera controller.
-3. When overlay rendering is enabled, call `AppRenderPipeline::BeginOverlayFrame(dt)`, `GameApplication::OnRenderUI()`, and `EndOverlayFrame()`.
-4. `BeginOverlayFrame()` updates the ZUI context with the logical GLFW window size and the physical/logical framebuffer scale. That keeps GLFW cursor coordinates, ZUI layout, and high-DPI scissor conversion in the same coordinate system.
-5. Tetragrama builds the editor through `ZUILayer`: `ZUIPanelManagerComponent`, the dockspace shell, status bar, and panels such as `ViewportPanel`. This replaces the old ImGui component hierarchy.
-6. `FillOverlayPayload()` walks the completed ZUI box tree and writes its draw list into the arena assigned to the mailbox slot.
-7. The ECS scene is synchronized into the render scene. `GameApplication::PrepareScene()` drains all pending viewport-resize requests and keeps only the last requested extent, then attaches the current scene and camera.
-8. Publish the mailbox slot.
+3. The production `EditorSession`, asynchronous object-ID picking, and transaction
+   mutation point described in the editor design documents are not implemented yet.
+4. When overlay rendering is enabled, call `AppRenderPipeline::BeginOverlayFrame(dt)`, `GameApplication::OnRenderUI()`, and `EndOverlayFrame()`.
+5. `BeginOverlayFrame()` updates the ZUI context with the logical GLFW window size and the physical/logical framebuffer scale. That keeps GLFW cursor coordinates, ZUI layout, and high-DPI scissor conversion in the same coordinate system.
+6. Tetragrama builds the editor through `ZUILayer`: `ZUIPanelManagerComponent`, the dockspace shell, status bar, and panels such as `ViewportPanel`. This replaces the old ImGui component hierarchy.
+7. `FillOverlayPayload()` walks the completed ZUI box tree and writes its draw list into the arena assigned to the overlay slot.
+8. `SyncHierarchy`, `SyncECSToRenderScene`, and `SyncECSToLights` update the live render scene. `GameApplication::PrepareScene()` drains pending viewport-resize requests, keeps the final extent, and captures camera data.
+9. Publish the frame state; publish an overlay separately when one was built.
 
 `ViewportPanel` reads `GraphicRenderer::GetFrameOutput()` and emits an image box using its bindless texture index. The handle is published by the render thread after a real graph execution, using an index/generation pair guarded by a sequence counter. There is intentionally no output handle during renderer initialization: before ZUI declares its read of `FrameColor`, graph culling may legitimately leave that transient resource unallocated.
 
@@ -52,10 +62,10 @@ For every non-minimized window frame, `Engine::MainThreadRun()` performs the fol
 
 ## 3. Render-thread frame
 
-The render thread waits for a published payload. Its frame lifecycle is:
+The render thread waits until it has received a frame state. Its frame lifecycle is:
 
 ```
-if payload contains a resize:
+if frame state contains a newer resize:
     AppRenderPipeline::ResizeRenderTarget()
 
 BeginFrame()
@@ -67,7 +77,7 @@ BeginFrame()
     complete texture deferrals
     begin the application-owned primary graphics command buffer
 
-RenderScene(camera, scene, zui payload)
+RenderScene(camera, borrowed scene, copied sky state, retained ZUI payload)
     rebuild per-frame scene input and upload it
     set ZUIPass payload
     GraphicRenderer::DrawScene()
@@ -103,10 +113,10 @@ The pipeline uploads those arrays along with the light array. `GraphicRenderer::
 | G-Buffer | global geometry, transforms, draw data, materials, bindless textures, depth | albedo/AO, normal/roughness, metallic/emissive |
 | Lighting | G-buffer textures, depth, lights, camera | sampled-capable `FrameColor` |
 | Environment background | optional HDRI environment map, depth, `FrameColor` | `FrameColor` loaded and extended when HDRI or fallback presentation is active |
-| Grid | depth and `FrameColor` | `FrameColor` loaded and extended |
-| ZUI Draw | `FrameColor`, ZUI geometry, bindless texture array | acquired swapchain image |
+| Editor overlays | depth and post-tone-map scene color | selected/hovered outlines, grid, gizmo, and optional editor IDs |
+| ZUI Draw | final scene/editor color, ZUI geometry, bindless texture array | acquired swapchain image |
 
-The environment-background and grid passes register conditionally from the selected SkyEnvironment snapshot and grid configuration. The ZUI pass declares both its `FrameColor` read and its swapchain write, making it the graph's presentation side effect and retaining the scene-color producer. When no ZUI draw geometry exists, its execution is empty; `EndFrame()` still ensures the acquired image is ready for presentation.
+The environment-background pass registers conditionally from the selected SkyEnvironment snapshot. Editor overlays register from immutable editor/render snapshots: grid settings, selected/hovered draw proxies, gizmo state, and optional object-ID work. The ZUI pass declares its final scene/editor-color read and its swapchain write, making it the graph's presentation side effect and retaining the scene-color producer. When no ZUI draw geometry exists, its execution is empty; `EndFrame()` still ensures the acquired image is ready for presentation.
 
 The graph owns resource state transitions and inter-pass synchronization. Individual callback passes own their draw body and use the resolved framebuffer/resource bindings supplied by the graph. `FrameColor` is recreated at the editor viewport extent, not the window/swapchain extent, and is sampled by ZUI through the global bindless texture array.
 
@@ -118,7 +128,7 @@ The graph owns resource state transitions and inter-pass synchronization. Indivi
 ViewportPanel layout changes
     -> push requested viewport extent into ApplicationState queue
     -> PrepareScene drains queue and retains final extent
-    -> payload crosses the mailbox
+    -> `RenderFrameState` crosses the latest-state channel
     -> render thread calls RenderGraph::Resize(width, height)
     -> next graph execution allocates/binds resized transient targets
     -> GraphicRenderer publishes the allocated FrameColor handle
@@ -152,17 +162,17 @@ Requests are coalesced before they cross the mailbox, so intermediate panel exte
 - A render-target resize calls `vkDeviceWaitIdle`; it is correct and coalesced, but intentionally not a hitch-free resize path.
 - The mapped-ring device-local `UpdateBuffer()` path performs a fence-synchronized graphics copy. It is appropriate for the current loading/update cadence but should not be mistaken for a fully asynchronous high-frequency streaming path.
 - ZUI has fixed per-frame GPU capacities (65,536 vertices and 131,072 indices). Excess draw data is clipped for that frame rather than growing GPU buffers while rendering.
-- The viewport texture reaches the UI through the main/render mailbox, so a newly allocated or resized viewport becomes visible after the next payload cycle. This is normal frame pipelining, not a stale-handle path.
+- The viewport texture reaches the UI through the independent state/overlay handoffs, so a newly allocated or resized viewport becomes visible after a subsequent UI build. This is normal frame pipelining, not a stale-handle path.
 
 ---
 
 ## 8. Dependency sketch
 
 ```
-main-thread ZUI build --payload--> ZUI Draw Pass --swapchain write--> present
-                                  ^
-                                  | sampled FrameColor
-Frustum Culling --> Depth --> G-Buffer --> Lighting --> [Environment Background] --> [Grid]
+main-thread render state + ZUI build --separate slots--> ZUI Draw Pass --swapchain write--> present
+                                                       ^
+                                                       | final editor-overlay color
+Frustum Culling --> Depth --> G-Buffer --> Lighting --> [Environment Background] --> [Editor overlays]
 ```
 
 The graph supplies the actual scheduling, resource lifetimes, aliases, barriers, and queue waits; the sketch only expresses the default data flow.

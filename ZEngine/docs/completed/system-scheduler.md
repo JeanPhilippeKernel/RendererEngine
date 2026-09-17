@@ -1,11 +1,18 @@
 # ZEngine — System Scheduler
 
-**Priority:** P1 — Implement alongside ECS core (Phase 1 of migration-plan.md)  
-**Status:** Implemented  
-**Depends on:** `actor-ecs-architecture.md`  
+**Priority:** P1 — Implement alongside ECS core (Phase 1 of migration-plan.md)
+**Status:** Implemented; retained as a completed design and migration record.
+**Depends on:** `actor-ecs-architecture.md`
 **Blocks:** `animation-system.md`
 
 ---
+
+> **Maintenance boundary:** the live scheduler API and behavior are defined by
+> `ZEngine/ZEngine/ECS/WorldTick.*` and `WorldCommands.*`. The detailed code
+> sketches and milestone language below are historical unless they match those
+> files. This document does not define the pending production editor transaction
+> boundary; see `future-plan/editor-undo-redo.md` for that separate design.
+
 
 ## 1. Why this exists
 

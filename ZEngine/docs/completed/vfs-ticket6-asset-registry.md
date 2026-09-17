@@ -1,14 +1,23 @@
 # Ticket 6 — AssetRegistry: Multi-Index Store, Dependency Graph, and Hot-Reload Cascade
 
-**Priority:** P3 — Implement after all VFS tickets 1–5 are live  
-**Status:** Implemented  
-**Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`  
-**Standard:** C++20  
-**Estimated effort:** 5–7 days (1 engineer)  
-**Depends on:** Ticket 1 (VFSPath), Ticket 3 (VFSDirectoryCache, VFSScanner), Ticket 4 (VFSFileWatcher, VFSWatchEvent), Ticket 5 (MetaFileData, MetaFileIO)  
+**Priority:** P3 — Implement after all VFS tickets 1–5 are live
+**Status:** Implemented; retained as a completed ticket record.
+**Module:** `ZEngine/VFS/Registry/` + `ZEngine/Managers/AssetManager`
+**Standard:** C++20
+**Estimated effort:** 5–7 days (1 engineer)
+**Depends on:** Ticket 1 (VFSPath), Ticket 3 (VFSDirectoryCache, VFSScanner), Ticket 4 (VFSFileWatcher, VFSWatchEvent), Ticket 5 (MetaFileData, MetaFileIO)
 **Blocks:** `import-pipeline.md`, `cook-pipeline.md`
 
 ---
+
+> **Maintenance boundary:** the live API is under
+> `ZEngine/ZEngine/Core/VFS/Registry/`. It provides UUID/path lookup, dependency
+> propagation, lifecycle `AssetState`, and ready/stale/removed callbacks. The
+> detailed migration code and test pseudocode below are historical where they
+> diverge from that API. Registry diagnostics and an initial scanner-to-importer
+> batch handoff are not persisted/implemented merely because this ticket is
+> complete.
+
 
 ## Table of Contents
 
@@ -30,9 +39,9 @@
 
 ## 1. Motivation
 
-`AssetManager` currently uses two flat maps — `UUIDToHandle` and `HandleToUUID` — to correlate
-assets between their stable identity (UUID) and their runtime slot (a packed `uint32_t`). This
-design has four concrete problems:
+At the start of this ticket, `AssetManager` used two flat maps — `UUIDToHandle`
+and `HandleToUUID` — to correlate assets between their stable identity (UUID)
+and a runtime slot. That design had four concrete problems:
 
 | Problem | Where it hurts today |
 |---|---|
@@ -41,9 +50,9 @@ design has four concrete problems:
 | No dependency tracking — reimporting `material.glb` cannot determine which meshes reference it | Future hot-reload |
 | `AssetHandle = uint32_t` encodes type in the high bits but has no generation field, so a stale handle to a deleted asset silently aliases a new one at the same index | `GetAsset<T>` template specializations |
 
-This ticket introduces `AssetRegistry`, which replaces `UUIDToHandle`/`HandleToUUID` with a
-generational-handle-backed, multi-indexed record store and adds a `DependencyGraph` for
-O(k) hot-reload cascade propagation.
+This ticket introduced `AssetRegistry`, which supplements the manager's
+per-type runtime maps with a multi-indexed record store and a `DependencyGraph`
+for O(k) hot-reload cascade propagation.
 
 The migration is incremental: `AssetManager` is not deleted in this ticket. It is given a new
 field `Registry` of type `AssetRegistry*` and its existing methods are redirected one by one.

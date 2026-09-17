@@ -34,6 +34,11 @@ style: |
 
 Virtual Memory · Page Faults · Physical Mapping · `malloc` Internals
 
+> **Educational, point-in-time material:** latency figures and platform details
+> illustrate allocation risks; they are not ZEngine benchmarks or a current
+> implementation specification. See `docs/memory-management.md` for the live
+> allocator and ownership policy.
+
 ---
 
 # Virtual Memory — the Illusion Every Process Lives In

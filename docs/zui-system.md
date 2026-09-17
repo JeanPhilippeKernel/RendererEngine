@@ -154,6 +154,19 @@ struct ZUISignal {
 
 Popup / modal input-blocking: when a modal is active, only boxes inside the modal receive hover. When a popup stack is open, only popup-interior boxes receive hover.
 
+### Pointer capture for viewport tools
+
+Hot and Active keys are sufficient for ordinary widgets but are not a complete
+viewport-tool capture contract: a 3D gizmo drag must survive the cursor leaving
+its originating box or handle. ZUI needs an explicit capture token owned by a
+box/tool and released only by pointer release, cancellation, focus loss, modal
+replacement, or viewport destruction.
+
+The capture API must report cancellation distinctly from release and route
+physical/logical framebuffer coordinates to the owner. EditorSession cancels an
+active transaction on capture cancellation. Capture state is transient,
+main-thread-only, and never part of ZUI layout serialization or a scene file.
+
 ---
 
 ## Input Feed
