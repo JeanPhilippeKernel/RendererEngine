@@ -44,6 +44,46 @@ namespace ZEngine::Rendering::Renderers
             return mip_count;
         }
 
+        uint64_t EstimateTextureBytes(uint32_t width, uint32_t height, uint32_t depth, uint32_t bytes_per_pixel, uint32_t layers, uint32_t mip_count)
+        {
+            uint64_t bytes = 0;
+            for (uint32_t mip = 0; mip < mip_count; ++mip)
+            {
+                const uint32_t mip_width   = std::max(1u, width >> mip);
+                const uint32_t mip_height  = std::max(1u, height >> mip);
+                const uint32_t mip_depth   = std::max(1u, depth >> mip);
+                bytes                     += static_cast<uint64_t>(mip_width) * mip_height * mip_depth * bytes_per_pixel * layers;
+            }
+            return bytes;
+        }
+
+        uint64_t EstimateSkyLightingBytes(const EnvironmentLightingBakeSettings& bake_settings)
+        {
+            constexpr uint32_t rgba16f_bytes_per_pixel = sizeof(uint16_t) * 4;
+            return EstimateTextureBytes(bake_settings.DiffuseResolution, bake_settings.DiffuseResolution, 1, rgba16f_bytes_per_pixel, 6, 1) + EstimateTextureBytes(bake_settings.SpecularResolution, bake_settings.SpecularResolution, 1, rgba16f_bytes_per_pixel, 6, GetFullMipCount(bake_settings.SpecularResolution));
+        }
+
+        uint64_t EstimateAtmosphereBakeBytes(const EnvironmentLightingBakeSettings& bake_settings)
+        {
+            constexpr uint32_t rgba16f_bytes_per_pixel = sizeof(uint16_t) * 4;
+            constexpr uint32_t atmosphere_lut_bytes    = 256 * 64 * rgba16f_bytes_per_pixel + 32 * 32 * rgba16f_bytes_per_pixel;
+            return atmosphere_lut_bytes + EstimateTextureBytes(bake_settings.SourceRadianceResolution, bake_settings.SourceRadianceResolution, 1, rgba16f_bytes_per_pixel, 6, GetFullMipCount(bake_settings.SourceRadianceResolution)) + EstimateSkyLightingBytes(bake_settings);
+        }
+
+        uint64_t EstimateHDRIBakeBytes(const EnvironmentLightingBakeSettings& bake_settings, uint32_t face_resolution)
+        {
+            constexpr uint32_t rgba32f_bytes_per_pixel = sizeof(float) * 4;
+            return EstimateTextureBytes(face_resolution, face_resolution, 1, rgba32f_bytes_per_pixel, 6, GetFullMipCount(face_resolution)) + EstimateSkyLightingBytes(bake_settings);
+        }
+
+        uint64_t GetTextureBytes(Hardwares::VulkanDevice* device, Textures::TextureHandle handle)
+        {
+            if (!device || !handle.Valid())
+                return 0;
+            const Textures::Texture* const texture = device->GlobalTextures.Access(handle);
+            return texture ? static_cast<uint64_t>(texture->BufferSize) : 0;
+        }
+
         void SetCapabilityReason(cstring* out_reason, cstring reason)
         {
             if (out_reason)
@@ -123,6 +163,8 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(fallback_environment.Valid(), "Sky environment fallback source creation failed")
         ZENGINE_VALIDATE_ASSERT(fallback_lighting.Valid(), "Sky environment fallback lighting creation failed")
         m_sky_environment.Initialize(fallback_environment, fallback_lighting, Device->EnvironmentLightingBakeSettings);
+        const uint64_t fallback_memory_bytes = GetTextureBytes(Device, fallback_environment) + GetTextureBytes(Device, fallback_lighting.DiffuseIrradiance) + GetTextureBytes(Device, fallback_lighting.SpecularEnvironment) + GetTextureBytes(Device, fallback_lighting.BrdfIntegrationLut);
+        m_sky_environment.ConfigureMemoryBudget(Device->EnvironmentLightingMemoryBudget, fallback_memory_bytes);
         m_lighting_pass                            = lighting_pass;
         m_grid_pass                                = grid_pass;
         m_skybox_pass                              = skybox_pass;
@@ -407,6 +449,14 @@ namespace ZEngine::Rendering::Renderers
                 return;
             }
 
+            const uint64_t atmosphere_bake_bytes = EstimateAtmosphereBakeBytes(request.BakeSettings);
+            if (!m_sky_environment.ReserveActiveBakeMemory(request.Revision, atmosphere_bake_bytes))
+            {
+                ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: atmosphere bake needs {} bytes but {} of the {} byte environment budget is reserved", request.Revision, atmosphere_bake_bytes, m_sky_environment.GetReservedMemoryBytes(), m_sky_environment.GetMemoryBudgetBytes())
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+
             const Scenes::AtmosphereStaticResources* reusable_atmosphere = m_sky_environment.FindReusableAtmosphere(request.Config);
             const Scenes::AtmosphereStaticResources  atmosphere          = reusable_atmosphere ? *reusable_atmosphere : CreateAtmosphereStaticResources();
             const bool                               owns_atmosphere     = reusable_atmosphere == nullptr;
@@ -495,6 +545,14 @@ namespace ZEngine::Rendering::Renderers
         if (!SupportsHDRISourceResources(artifact_header.FaceWidth, &hdri_capability_reason))
         {
             ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: HDRI source is unavailable ({})", request.Revision, hdri_capability_reason)
+            m_sky_environment.CompleteBake(request.Revision, {}, false);
+            return;
+        }
+
+        const uint64_t hdri_bake_bytes = EstimateHDRIBakeBytes(request.BakeSettings, artifact_header.FaceWidth);
+        if (!m_sky_environment.ReserveActiveBakeMemory(request.Revision, hdri_bake_bytes))
+        {
+            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: HDRI bake needs {} bytes but {} of the {} byte environment budget is reserved", request.Revision, hdri_bake_bytes, m_sky_environment.GetReservedMemoryBytes(), m_sky_environment.GetMemoryBudgetBytes())
             m_sky_environment.CompleteBake(request.Revision, {}, false);
             return;
         }

@@ -75,6 +75,49 @@ TEST(SkyEnvironmentTest, FirstFramePinsTheValidFallbackSnapshot)
     EXPECT_EQ(snapshot->LastUseTimeline, 7u);
 }
 
+TEST(SkyEnvironmentTest, MemoryBudgetDefersBakesUntilRetiredSnapshotsReleaseReservations)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    environment.ConfigureMemoryBudget(100, 10);
+    EXPECT_EQ(environment.GetMemoryBudgetBytes(), 100u);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 10u);
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(1, 60));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 70u);
+    ASSERT_NE(environment.AcquireForFrame(), nullptr);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, {}, {}, 2));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(2, 30));
+    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
+    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 100u);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 3, {}, {}, 3));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_FALSE(environment.ReserveActiveBakeMemory(3, 1));
+    ASSERT_EQ(environment.CompleteBake(3, {}, false), SkyEnvironmentBakeResult::Failed);
+
+    environment.ReleaseSubmittedFrame(9);
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(9, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 40u);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 4, {}, {}, 4));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(4, 60));
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 100u);
+    ASSERT_EQ(environment.CompleteBake(4, {}, false), SkyEnvironmentBakeResult::Failed);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 40u);
+}
+
 TEST(SkyEnvironmentTest, RapidEditsCoalesceToTheNewestRevision)
 {
     SkyEnvironment environment = {};
