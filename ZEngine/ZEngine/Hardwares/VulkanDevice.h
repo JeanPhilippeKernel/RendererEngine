@@ -331,8 +331,12 @@ namespace ZEngine::Hardwares
         ///        Set by Engine::Initialize from project.json memory.geometry_streaming_mb
         ///        before RenderResourceManager::Initialize runs.
         VkDeviceSize                                                                                                                 GeometryStreamingBudget                                                     = 0;
-        /// @brief Project-selected IBL budget copied into each new SkyEnvironment revision.
+        /// @brief Project-selected IBL quality copied into each new SkyEnvironment revision.
         Rendering::EnvironmentLightingBakeSettings                                                                                   EnvironmentLightingBakeSettings                                             = {};
+        /// @brief Persistent fallback, published, and active-bake environment texture budget.
+        ///        Set by Engine::Initialize from project.json
+        ///        rendering.environment_lighting_budget_mb.
+        VkDeviceSize                                                                                                                 EnvironmentLightingMemoryBudget                                             = Rendering::DefaultEnvironmentLightingMemoryBudget;
         VkInstance                                                                                                                   Instance                                                                    = VK_NULL_HANDLE;
         VkSurfaceKHR                                                                                                                 Surface                                                                     = VK_NULL_HANDLE;
         VkSurfaceFormatKHR                                                                                                           SurfaceFormat                                                               = {};

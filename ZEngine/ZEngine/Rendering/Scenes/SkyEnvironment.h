@@ -61,6 +61,10 @@ namespace ZEngine::Rendering::Scenes
         EnvironmentLightingResources Lighting        = {};
         uint64_t                     Revision        = 0;
         uint64_t                     LastUseTimeline = 0;
+        /// @brief Conservative persistent-memory reservation for this snapshot.
+        /// @details Static atmosphere LUTs are counted by every snapshot that
+        /// references them, which can defer a bake early but never undercounts.
+        uint64_t                     MemoryBytes     = 0;
         uint32_t                     PinCount        = 0;
         SkyEnvironmentState          State           = SkyEnvironmentState::Fallback;
         bool                         IsFallback      = false;
@@ -101,11 +105,25 @@ namespace ZEngine::Rendering::Scenes
     /// that frame's graphics timeline has completed.
     struct SkyEnvironment
     {
-        static constexpr uint32_t                         MaxSnapshots        = 8;
-        static constexpr uint32_t                         MaxPendingFramePins = 16;
+        static constexpr uint32_t                         MaxSnapshots                              = 8;
+        static constexpr uint32_t                         MaxPendingFramePins                       = 16;
+        /// @brief Bounds source-radiance churn from an animated primary sun.
+        /// @details Non-celestial edits always schedule immediately. A running
+        ///          day/night controller submits at most one new source bake for
+        ///          every eight observed sky revisions; an availability change
+        ///          or a direction change of at least five degrees bypasses the
+        ///          budget so an intentional editor edit is never delayed.
+        static constexpr uint64_t                         DynamicCelestialBakeRevisionInterval      = 8;
+        static constexpr float                            DynamicCelestialBakeDirectionCosThreshold = 0.9961947f; // cos(5 degrees)
 
         /// @brief Establishes the engine-provided source and lighting fallbacks.
         void                                              Initialize(Textures::TextureHandle fallback_source, const EnvironmentLightingResources& fallback_lighting = {}, const EnvironmentLightingBakeSettings& bake_settings = {});
+
+        /// @brief Sets the persistent environment-texture budget after fallbacks are created.
+        void                                              ConfigureMemoryBudget(uint64_t budget_bytes, uint64_t fallback_bytes);
+        /// @brief Reserves the complete next-snapshot allocation before the renderer creates it.
+        /// @return False when the current snapshots plus this bake would exceed the configured cap.
+        bool                                              ReserveActiveBakeMemory(uint64_t revision, uint64_t bytes);
 
         /// @brief Coalesces an immutable config revision while preserving its identity.
         /// @return False if the revision is stale or already observed.
@@ -168,9 +186,13 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] const EnvironmentLightingResources& GetFallbackLighting() const;
         [[nodiscard]] SkyEnvironmentState                 GetState() const;
         [[nodiscard]] uint64_t                            GetLatestRevision() const;
+        [[nodiscard]] uint64_t                            GetReservedMemoryBytes() const;
+        [[nodiscard]] uint64_t                            GetMemoryBudgetBytes() const;
 
     private:
         [[nodiscard]] static bool       HasEquivalentAtmosphereStaticInputs(const SkyConfig& left, const SkyConfig& right);
+        [[nodiscard]] static bool       HasEquivalentAtmosphereSourceInputs(const SkyConfig& left, const SkyConfig& right);
+        [[nodiscard]] static bool       HasSignificantCelestialLightChange(const SkyCelestialLight& previous, const SkyCelestialLight& next);
         [[nodiscard]] static bool       HasEquivalentBakeInputs(const SkyConfig& left, const SkyCelestialLight& left_celestial_light, uint64_t left_hdri_source_hash, bool left_hdri_artifact_ready, const SkyConfig& right, const SkyCelestialLight& right_celestial_light, uint64_t right_hdri_source_hash, bool right_hdri_artifact_ready);
         [[nodiscard]] bool              IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const;
         void                            ReleaseNextFramePin(uint64_t timeline_value);
@@ -196,6 +218,8 @@ namespace ZEngine::Rendering::Scenes
         uint64_t                        m_latest_revision                      = 0;
         uint64_t                        m_latest_bake_revision                 = 0;
         uint64_t                        m_active_stage_timeline                = 0;
+        uint64_t                        m_memory_budget_bytes                  = 0;
+        uint64_t                        m_active_bake_reserved_memory_bytes    = 0;
         SkyEnvironmentBakeStage         m_active_bake_stage                    = SkyEnvironmentBakeStage::AwaitingSource;
         bool                            m_has_pending_request                  = false;
         bool                            m_has_active_bake                      = false;

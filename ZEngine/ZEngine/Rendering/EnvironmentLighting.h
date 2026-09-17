@@ -1,9 +1,13 @@
 #pragma once
 #include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
 namespace ZEngine::Rendering
 {
+    /// @brief Default cap for persistent fallback, published, and baking environment textures.
+    inline constexpr uint64_t DefaultEnvironmentLightingMemoryBudget = ZMega(384ULL);
+
     /// @brief Selects the fixed resource and sampling budget for environment IBL.
     /// @details This is renderer/project policy, not serialized artistic scene data.
     enum class EnvironmentLightingQualityTier : uint8_t

@@ -75,6 +75,49 @@ TEST(SkyEnvironmentTest, FirstFramePinsTheValidFallbackSnapshot)
     EXPECT_EQ(snapshot->LastUseTimeline, 7u);
 }
 
+TEST(SkyEnvironmentTest, MemoryBudgetDefersBakesUntilRetiredSnapshotsReleaseReservations)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    environment.ConfigureMemoryBudget(100, 10);
+    EXPECT_EQ(environment.GetMemoryBudgetBytes(), 100u);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 10u);
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(1, 60));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 70u);
+    ASSERT_NE(environment.AcquireForFrame(), nullptr);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, {}, {}, 2));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(2, 30));
+    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(3)));
+    ASSERT_EQ(environment.CompleteBake(2, Texture(3), true), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 100u);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 3, {}, {}, 3));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_FALSE(environment.ReserveActiveBakeMemory(3, 1));
+    ASSERT_EQ(environment.CompleteBake(3, {}, false), SkyEnvironmentBakeResult::Failed);
+
+    environment.ReleaseSubmittedFrame(9);
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(9, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 40u);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 4, {}, {}, 4));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(4, 60));
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 100u);
+    ASSERT_EQ(environment.CompleteBake(4, {}, false), SkyEnvironmentBakeResult::Failed);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 40u);
+}
+
 TEST(SkyEnvironmentTest, RapidEditsCoalesceToTheNewestRevision)
 {
     SkyEnvironment environment = {};
@@ -597,6 +640,38 @@ TEST(SkyEnvironmentTest, AtmosphereSourceBakeIgnoresScenePlacementInputs)
     ASSERT_NE(environment.GetActiveBake(), nullptr);
     EXPECT_EQ(environment.GetActiveBake()->Revision, 2u);
     EXPECT_FALSE(environment.TakeBakeRequest(request));
+}
+
+TEST(SkyEnvironmentTest, DynamicCelestialUpdatesCoalesceUntilTheBakeBudgetOpens)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+
+    SkyConfig         config          = {};
+    SkyCelestialLight sun             = {};
+    sun.IsAvailable                   = true;
+
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.SubmitConfig(config, 1, {}, sun));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(1, Atmosphere(20)));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(30)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(40)));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(30), true, Lighting(40), Atmosphere(20)), SkyEnvironmentBakeResult::Published);
+
+    for (uint64_t revision = 2; revision < SkyEnvironment::DynamicCelestialBakeRevisionInterval + 1; ++revision)
+    {
+        sun.DirectionToLight[0] = static_cast<float>(revision) * 0.001f;
+        ASSERT_TRUE(environment.SubmitConfig(config, revision, {}, sun));
+        EXPECT_FALSE(environment.TakeBakeRequest(request));
+    }
+
+    const uint64_t accepted_revision = SkyEnvironment::DynamicCelestialBakeRevisionInterval + 1;
+    sun.DirectionToLight[0]          = static_cast<float>(accepted_revision) * 0.001f;
+    ASSERT_TRUE(environment.SubmitConfig(config, accepted_revision, {}, sun));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_EQ(request.Revision, accepted_revision);
+    EXPECT_FLOAT_EQ(request.CelestialLight.DirectionToLight[0], sun.DirectionToLight[0]);
 }
 
 TEST(SkyEnvironmentTest, GroundChangeRebakesSourceRadianceAndReusesStaticAtmosphere)

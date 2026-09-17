@@ -26,6 +26,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -41,7 +42,7 @@ namespace ZEngine
     // Read memory.geometry_streaming_mb from a project.json file.
     // Returns 0 if the file is absent, unparseable, or the key is missing — callers
     // treat 0 as "use auto-detection from device VRAM".
-    static VkDeviceSize     ReadGeometryBudgetOverride(const char* config_file)
+    static VkDeviceSize     ReadGeometryBudgetOverride(cstring config_file)
     {
         if (!config_file || config_file[0] == '\0')
             return 0;
@@ -59,7 +60,7 @@ namespace ZEngine
 
     // Read rendering.environment_lighting_quality from a project.json file.
     // Missing, malformed, or unrecognized values retain the documented Standard tier.
-    static Rendering::EnvironmentLightingBakeSettings ReadEnvironmentLightingQuality(const char* config_file)
+    static Rendering::EnvironmentLightingBakeSettings ReadEnvironmentLightingQuality(cstring config_file)
     {
         const auto fallback = Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::Standard);
         if (!config_file || config_file[0] == '\0')
@@ -83,6 +84,32 @@ namespace ZEngine
         if (quality == "high")
             return Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::High);
         return fallback;
+    }
+
+    // Read rendering.environment_lighting_budget_mb from project.json.
+    // Missing, malformed, zero, and overflowing values retain the documented default.
+    static VkDeviceSize ReadEnvironmentLightingMemoryBudget(cstring config_file)
+    {
+        if (!config_file || config_file[0] == '\0')
+            return Rendering::DefaultEnvironmentLightingMemoryBudget;
+
+        std::ifstream file(config_file);
+        if (!file.is_open())
+            return Rendering::DefaultEnvironmentLightingMemoryBudget;
+
+        const auto json = nlohmann::json::parse(file, nullptr, /*exceptions=*/false);
+        if (json.is_discarded() || !json.contains("rendering") || !json["rendering"].is_object())
+            return Rendering::DefaultEnvironmentLightingMemoryBudget;
+
+        const auto& rendering = json["rendering"];
+        if (!rendering.contains("environment_lighting_budget_mb") || !rendering["environment_lighting_budget_mb"].is_number_unsigned())
+            return Rendering::DefaultEnvironmentLightingMemoryBudget;
+
+        constexpr uint64_t bytes_per_megabyte = 1024ULL * 1024ULL;
+        const uint64_t     megabytes          = rendering["environment_lighting_budget_mb"].get<uint64_t>();
+        if (megabytes == 0 || megabytes > std::numeric_limits<uint64_t>::max() / bytes_per_megabyte)
+            return Rendering::DefaultEnvironmentLightingMemoryBudget;
+        return megabytes * bytes_per_megabyte;
     }
 
     void Engine::Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app)
@@ -184,6 +211,7 @@ namespace ZEngine
         // since InitGlobalBuffers reads it during VkBuffer allocation.
         g_engine_ctx->Device->GeometryStreamingBudget         = ReadGeometryBudgetOverride(app->ConfigFile);
         g_engine_ctx->Device->EnvironmentLightingBakeSettings = ReadEnvironmentLightingQuality(app->ConfigFile);
+        g_engine_ctx->Device->EnvironmentLightingMemoryBudget = ReadEnvironmentLightingMemoryBudget(app->ConfigFile);
 
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
         g_engine_ctx->RenderResourceManager                   = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
