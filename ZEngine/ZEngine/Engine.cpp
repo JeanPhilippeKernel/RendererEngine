@@ -125,11 +125,15 @@ namespace ZEngine
         auto window  = ZPushStructCtor(&arena, Windows::GameWindow);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
         window->Initialize(&arena, *window_cfg_ptr);
-        g_engine_ctx->Window         = window;
+        g_engine_ctx->Window = window;
 
-        g_engine_ctx->Device         = ZPushStructCtor(&arena, Hardwares::VulkanDevice);
+        // Device-owned CPU state (command buffers, shaders, render graph, and
+        // swapchain state) must consume the declared VulkanDevice budget rather
+        // than silently taking unbounded capacity from MainArena.
+        memory->CreateBudgetedArena(memory->Budget.VulkanDevice, &g_engine_ctx->VulkanDeviceArena);
+        g_engine_ctx->Device         = ZPushStructCtor(&g_engine_ctx->VulkanDeviceArena, Hardwares::VulkanDevice);
         uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
-        g_engine_ctx->Device->Initialize(&arena, window, worker_thread_count);
+        g_engine_ctx->Device->Initialize(&g_engine_ctx->VulkanDeviceArena, window, worker_thread_count);
 
         memory->CreateBudgetedArena(memory->Budget.VirtualFS, &g_engine_ctx->VFSArena);
         auto vfs_ctx = ZPushStructCtor(&g_engine_ctx->VFSArena, Core::VFS::VFSContext);
@@ -187,9 +191,9 @@ namespace ZEngine
         ECS::ComponentReflectionRegistry::Get().Initialize(&g_engine_ctx->ECSArena);
         ECS::Components::RegisterBuiltInComponentReflection();
 
-        // ImportPipeline arena: each importer carves its own sub-arena directly from this
-        // parent (glTF 64 MB + Assimp 128 MB + envmap 32 MB + texture 512 KB + editor ~414 MB).
-        // Each Import() call ends with Arena.Clear() so the sub-arena is reused, not consumed.
+        // ImportPipeline owns importer sub-arenas and the bounded CPU decode slabs used
+        // by RenderResourceManager. The 4 GiB profile capacity covers their simultaneous
+        // reservation at the maximum 16-worker configuration.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
         memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
@@ -215,7 +219,7 @@ namespace ZEngine
 
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
         g_engine_ctx->RenderResourceManager                   = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
-        g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry);
+        g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry, &g_engine_ctx->ImportPipelineArena);
         g_engine_ctx->Device->RRM = g_engine_ctx->RenderResourceManager;
 
         // Now that RRM is live, create the hot-pink fallback texture for missing assets
