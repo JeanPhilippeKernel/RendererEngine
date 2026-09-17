@@ -1,7 +1,7 @@
 # ZEngine — Render Graph Integration Guide
 
 **Priority:** P0 — post-processing, shadows, UI, text, and particles all depend on this
-**Status:** Partially implemented — render graph core complete; passes DepthPrePass, GbufferPass, SkyboxPass, GridPass implemented; LightingPass and post-process chain not started
+**Status:** Partially implemented — render graph core and the current scene, environment-background, grid, lighting, and post-process passes are implemented; remaining work is tracked in their dedicated plans.
 **Files:**
 ```
 ZEngine/ZEngine/Rendering/Renderers/RenderGraph.h
@@ -219,7 +219,7 @@ by the graph within their tier.
 Pass name string           Category            Produces                    Consumes                    Status
 "Depth Pre-Pass"           Geometry            FrameDepth                  scene geometry              Implemented
 "G-Buffer Pass"            Scene geometry      FrameColor, gbuffer_normals FrameDepth                  Implemented
-"Skybox Pass"              Sky                 FrameColor (in-place)       FrameDepth                  Implemented (disabled at startup)
+"Environment Background Pass" Sky              FrameColor (in-place)       FrameDepth                  Implemented when HDRI or fallback presentation is active
 "Grid Pass"                Editor              FrameColor (in-place)       FrameDepth                  Implemented
 "ShadowPassDir_0"          Shadow (CSM)        shadow_dir_0                scene geometry              Not started
 "ShadowPassDir_1"          Shadow (CSM)        shadow_dir_1                scene geometry              Not started
@@ -487,7 +487,7 @@ RenderGraph->ResourceBuilder->AttachRenderTarget("FrameDepth", FrameDepthRenderT
 RenderGraph->ResourceBuilder->AttachRenderTarget("FrameColor", FrameColorRenderTarget);
 RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
 RenderGraph->AddCallbackPass("G-Buffer Pass",  gbuffer_pass);
-RenderGraph->AddCallbackPass("Skybox Pass",    skybox_pass, false);  // disabled until sky config
+RenderGraph->AddCallbackPass("Environment Background Pass", environment_background_pass);
 RenderGraph->AddCallbackPass("Grid Pass",      grid_pass);
 RenderGraph->Setup();
 RenderGraph->Compile();
@@ -500,14 +500,11 @@ order from the resource graph.
 
 ## 8. Pass Enable/Disable at Runtime
 
-Use `SetPassEnabled` and `GetPass` to toggle or configure passes after the graph is compiled:
+The frame-selected SkyEnvironment configures its callback passes before graph registration:
 
 ```cpp
-RenderGraph->SetPassEnabled("Skybox Pass", true);
-auto* pass = RenderGraph->GetPass("Skybox Pass");
-if (pass) {
-    static_cast<SkyboxPass*>(pass->Callback)->EnvMapPath = path;
-}
+environment_background_pass->SetEnvironment(snapshot.SourceRadiance, presentation);
+environment_background_pass->SetActive(presentation.IsHDRI() || use_fallback_background);
 ```
 
 `GetPass` is O(1) by name and is intended for configuration, not for calling Execute.
@@ -560,7 +557,7 @@ write that intent into `RenderPayload`, not call `SetPassEnabled` from the game 
 |---|---|---|
 | `Depth Pre-Pass` | — | Implemented |
 | `G-Buffer Pass` | — | Implemented |
-| `Skybox Pass` | — | Implemented (disabled at startup) |
+| `Environment Background Pass` | — | Implemented when HDRI or fallback presentation is active |
 | `Grid Pass` | — | Implemented |
 | `ShadowPassDir_0..3` (CSM) | `shadows.md` | Not started |
 | `ShadowPassSpot_0..3` | `shadows.md` | Not started |

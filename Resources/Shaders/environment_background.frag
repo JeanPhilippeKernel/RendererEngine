@@ -5,12 +5,13 @@ layout(location = 0) out vec4 outColor;
 layout(set = 0, binding = 1) uniform textureCube EnvMap;
 layout(set = 0, binding = 2) uniform sampler LinearClampToEdgeSampler;
 
-layout(push_constant) uniform SkyboxPushConstants
+layout(push_constant) uniform EnvironmentBackgroundPushConstants
 {
     vec4  TintIntensity;
     float YawRadians;
     float UseSolidColorFallback;
-    vec2  Padding;
+    float FarDepth;
+    float Padding;
 }
 Environment;
 

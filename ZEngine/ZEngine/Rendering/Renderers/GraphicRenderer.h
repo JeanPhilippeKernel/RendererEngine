@@ -8,7 +8,7 @@ namespace ZEngine::Rendering::Renderers
 {
     struct LightingPass;
     struct GridPass;
-    struct SkyboxPass;
+    struct EnvironmentBackgroundPass;
     struct SkySpherePass;
     struct SkyViewLutPass;
     struct AerialPerspectivePass;
@@ -72,7 +72,7 @@ namespace ZEngine::Rendering::Renderers
         Scenes::SkyEnvironment                          m_sky_environment                          = {};
         LightingPass*                                   m_lighting_pass                            = nullptr;
         GridPass*                                       m_grid_pass                                = nullptr;
-        SkyboxPass*                                     m_skybox_pass                              = nullptr;
+        EnvironmentBackgroundPass*                      m_environment_background_pass              = nullptr;
         SkySpherePass*                                  m_sky_sphere_pass                          = nullptr;
         SkyViewLutPass*                                 m_sky_view_lut_pass                        = nullptr;
         AerialPerspectivePass*                          m_aerial_perspective_pass                  = nullptr;

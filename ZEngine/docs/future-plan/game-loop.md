@@ -225,7 +225,7 @@ Rules:
 
 This means cameras, particles, and any visual-only objects can update at display frequency
 while physics objects are correctly interpolated. Do **not** interpolate positions that
-are not physics-driven (e.g., UI elements, skybox); they should always read `CurrentPosition`
+are not physics-driven (e.g., UI elements, sky backgrounds); they should always read `CurrentPosition`
 directly.
 
 ### 4.1 Frame packet layout (relevant fields)

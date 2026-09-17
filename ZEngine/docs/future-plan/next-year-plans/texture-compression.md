@@ -230,7 +230,7 @@ Mip generation in the cook pipeline:
 
 The result: the KTX2 file contains the complete mip chain, already compressed. `UploadTexture` uploads it level by level with no runtime mip generation.
 
-If `GenerateMips = false` in `TextureImportConfig`, only mip level 0 is written to the KTX2. Used for render targets and textures that are known to render at fixed distance (UI elements, skybox).
+If `GenerateMips = false` in `TextureImportConfig`, only mip level 0 is written to the KTX2. Used for render targets and textures that are known to render at fixed distance (UI elements, static background textures).
 
 ---
 

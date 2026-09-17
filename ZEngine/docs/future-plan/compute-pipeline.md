@@ -848,7 +848,7 @@ void GraphicRenderer::RegisterPasses()
     RenderGraph->AddCallbackPass("Upload Pass",      upload_pass);
     RenderGraph->AddCallbackPass("Depth Pre-Pass",   scene_depth_prepass);
     RenderGraph->AddCallbackPass("Base Pass",        base_pass);
-    RenderGraph->AddCallbackPass("Skybox Pass",      skybox_pass);
+    RenderGraph->AddCallbackPass("Environment Background Pass", environment_background_pass);
     RenderGraph->AddCallbackPass("Grid Pass",        grid_pass);
 
     // Compute passes register identically. The graph detects the pass type
