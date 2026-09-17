@@ -102,11 +102,11 @@ The pipeline uploads those arrays along with the light array. `GraphicRenderer::
 | Depth Pre-Pass | global geometry, transforms, draw data, culled indirect commands | `FrameDepth` |
 | G-Buffer | global geometry, transforms, draw data, materials, bindless textures, depth | albedo/AO, normal/roughness, metallic/emissive |
 | Lighting | G-buffer textures, depth, lights, camera | sampled-capable `FrameColor` |
-| Skybox | optional environment map, depth, `FrameColor` | `FrameColor` loaded and extended |
+| Environment background | optional HDRI environment map, depth, `FrameColor` | `FrameColor` loaded and extended when HDRI or fallback presentation is active |
 | Grid | depth and `FrameColor` | `FrameColor` loaded and extended |
 | ZUI Draw | `FrameColor`, ZUI geometry, bindless texture array | acquired swapchain image |
 
-Skybox and grid registration is conditional on their configuration. The ZUI pass declares both its `FrameColor` read and its swapchain write, making it the graph's presentation side effect and retaining the scene-color producer. When no ZUI draw geometry exists, its execution is empty; `EndFrame()` still ensures the acquired image is ready for presentation.
+The environment-background and grid passes register conditionally from the selected SkyEnvironment snapshot and grid configuration. The ZUI pass declares both its `FrameColor` read and its swapchain write, making it the graph's presentation side effect and retaining the scene-color producer. When no ZUI draw geometry exists, its execution is empty; `EndFrame()` still ensures the acquired image is ready for presentation.
 
 The graph owns resource state transitions and inter-pass synchronization. Individual callback passes own their draw body and use the resolved framebuffer/resource bindings supplied by the graph. `FrameColor` is recreated at the editor viewport extent, not the window/swapchain extent, and is sampled by ZUI through the global bindless texture array.
 
@@ -162,7 +162,7 @@ Requests are coalesced before they cross the mailbox, so intermediate panel exte
 main-thread ZUI build --payload--> ZUI Draw Pass --swapchain write--> present
                                   ^
                                   | sampled FrameColor
-Frustum Culling --> Depth --> G-Buffer --> Lighting --> [Skybox] --> [Grid]
+Frustum Culling --> Depth --> G-Buffer --> Lighting --> [Environment Background] --> [Grid]
 ```
 
 The graph supplies the actual scheduling, resource lifetimes, aliases, barriers, and queue waits; the sketch only expresses the default data flow.

@@ -125,7 +125,7 @@ loop (until s_request_terminate):
 
   5. RenderGraph::Execute
        DepthPrePass  → DrawIndirect   (all scene meshes, depth only)
-       SkyboxPass    → DrawIndexed    (builtin cube)
+       EnvironmentBackgroundPass → Draw(3) (HDRI/fallback full-screen background)
        GridPass      → DrawIndexed    (builtin quad + push constants)
        GbufferPass   → DrawIndirect   (all scene meshes, full G-buffer)
        LightingPass  → Draw(3)        (full-screen deferred lighting triangle)

@@ -87,14 +87,14 @@ sequenceDiagram
     Render->>Render: Upload TransformSB + DrawDataSB + DrawIndirect[]
 
     Render->>Render: RenderGraph::Execute
-    Note over Render: DepthPrePass → GbufferPass → LightingPass → SkyboxPass → GridPass
+    Note over Render: DepthPrePass → GbufferPass → LightingPass → selected SkyEnvironment background → GridPass
 
     Render->>Render: ImGuiRenderer::Render
     Render->>Render: Swapchain::Present
     Render->>Render: RRM::EndFrame — drain DeferredFreeQueue
 ```
 
-SkyboxPass is disabled by default and enabled when the sky configuration loads an HDRI.
+SkyEnvironment selects an HDRI environment-background pass, analytic SkySphere pass, or atmosphere composition for each frame; its fallback remains valid while an update loads or fails.
 
 ---
 
@@ -133,13 +133,11 @@ All scene geometry lives in two device-local packed buffers:
 ```mermaid
 graph LR
     subgraph VB["global_vertex_buf (256 MB)"]
-        SkyV["SkyboxPass\n8 DrawVertex\nregistered at Setup"]
         GridV["GridPass\n4 DrawVertex\nregistered at Setup"]
         SceneV["Scene mesh data\nDoUploadMesh per asset →"]
         CurV["vtx_cursor →"]
     end
     subgraph IB["global_index_buf (256 MB)"]
-        SkyI["SkyboxPass\n36 uint32"]
         GridI["GridPass\n6 uint32"]
         SceneI["Scene mesh indices\nDoUploadMesh per asset →"]
         CurI["idx_cursor →"]
@@ -153,7 +151,7 @@ offset 12 : float nx, ny, nz   (normal)
 offset 24 : float u, v          (UV)
 ```
 
-Passes that only need position (skybox, grid) zero out the unused fields. All passes use stride = 32 (`sizeof(float) * 8`).
+The grid pass only needs position, so it zeroes unused fields. All builtin geometry uses stride = 32 (`sizeof(float) * 8`).
 
 ### Compaction on scene reload
 
@@ -172,7 +170,7 @@ sequenceDiagram
     RRM->>GPU: new scene meshes upload from offset 0 (single batched submit)
 ```
 
-Builtin geometry (skybox, grid) is registered at pass `Setup()` before any scene loads — their offsets are stable and unaffected by compaction.
+Builtin geometry such as the grid is registered at pass `Setup()` before any scene loads — its offsets are stable and unaffected by compaction.
 
 ---
 
@@ -242,8 +240,8 @@ GbufferPass   (DepthRead)   → memory-only barrier (no layout change; only acce
 LightingPass  (ShaderRead)  → barrier DEPTH_STENCIL_ATTACHMENT_OPTIMAL → SHADER_READ_ONLY_OPTIMAL
                                RuntimeState = {FRAGMENT_SHADER, SHADER_READ, SHADER_READ_ONLY_OPTIMAL}
 
-SkyboxPass    (DepthRead)   → barrier SHADER_READ_ONLY_OPTIMAL → DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                               RuntimeState = {EARLY_FRAGMENT, DEPTH_READ, DEPTH_STENCIL_ATTACHMENT_OPTIMAL}
+EnvironmentBackgroundPass (DepthRead) → barrier SHADER_READ_ONLY_OPTIMAL → DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                                        RuntimeState = {EARLY_FRAGMENT, DEPTH_READ, DEPTH_STENCIL_ATTACHMENT_OPTIMAL}
 
 Frame N+1: RuntimeState carries across — no reset to UNDEFINED
 ```
@@ -284,7 +282,7 @@ flowchart LR
     DP["DepthPrePass\ndepth_prepass_scene shader\nDrawIndirect — all scene meshes\ndepth only"]
     GBP["GbufferPass\ng_buffer shader\nDrawIndirect — all scene meshes\nwrites 3 G-buffer RTs\nreads FrameDepth"]
     LP["LightingPass\ndeferred_lighting shader\nDraw(3) full-screen triangle\nreads G-buffer + FrameDepth\nwrites FrameColor"]
-    SP["SkyboxPass\nskybox shader\nDrawIndexed(36)\nbuiltin cube\n(disabled by default)"]
+    SP["EnvironmentBackgroundPass\nenvironment_background shader\nDraw(3)\nfull-screen HDRI/fallback"]
     GP["GridPass\ninfinite_grid shader\nDrawIndexed(6)\nbuiltin quad"]
 
     DP --> GBP --> LP --> SP --> GP
@@ -397,9 +395,8 @@ Reinhard tone mapping followed by gamma correction (`pow(color, 1.0/2.2)`) is ap
 
 ## Builtin Geometry
 
-`SkyboxPass` and `GridPass` call `RRM::RegisterBuiltinGeometry` during `Setup()`, before any scene is loaded. Vertices are pre-padded to the 32-byte DrawVertex layout:
+`GridPass` calls `RRM::RegisterBuiltinGeometry` during `Setup()`, before any scene is loaded. Vertices are pre-padded to the 32-byte DrawVertex layout:
 
-- **Skybox:** 8 vertices (unit cube), normals and UVs zeroed
 - **Grid:** 4 vertices (flat quad ±1000 units at Y=0), up-normal (0,1,0), UVs mapped to XZ
 
 ---
@@ -514,4 +511,4 @@ See [Memory Management — Arena-Allocated Vulkan Objects](memory-management.md#
 | [#633](https://github.com/JeanPhilippeKernel/RendererEngine/pull/633) | Importer | GLB texture extraction fixed: `fastgltf::visitor` + `std::visit` dispatch failure replaced with explicit `std::get_if` chains; texture loop optimized (pre-resolved buffer ptrs, `fopen`/`fwrite`, no heap in hot path) |
 | [#632](https://github.com/JeanPhilippeKernel/RendererEngine/pull/632) | Importer | Dangling path pointers in `AssetImporterUIComponent`; `.zematerial` routing to wrong directory; GltfImporter texture `dest_dir` dropped workspace; codec writes migrated to VFS atomic rename |
 | [#612](https://github.com/JeanPhilippeKernel/RendererEngine/pull/612) | Vulkan shutdown | All `vkDestroyDevice` validation errors eliminated |
-| [#611](https://github.com/JeanPhilippeKernel/RendererEngine/pull/611) | Rendering | SkyboxPass/GridPass geometry migrated into RRM global buffers; mesh upload batching (N submissions → 1); geometry compaction on scene reload |
+| [#611](https://github.com/JeanPhilippeKernel/RendererEngine/pull/611) | Rendering | Legacy builtin background/grid geometry migrated into RRM global buffers; mesh upload batching (N submissions → 1); geometry compaction on scene reload |

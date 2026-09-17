@@ -1,8 +1,7 @@
 # Sky Rendering System
 
 **Relates to:** render-graph integration, render-graph redesign, GPU allocator rearchitecture, per-frame upload heap
-**Replaces:** the legacy SkyboxPass after feature parity is validated
-**Status:** Production design; renderer foundations in progress
+**Status:** Production implementation; SkyEnvironment owns HDRI, analytic, and atmosphere backgrounds.
 **Scope:** scene-owned sky configuration, HDRI and analytic-sky presentation, atmosphere rendering, and the environment lighting resources consumed by the renderer.
 
 ---
@@ -122,7 +121,7 @@ The default one-world-unit-per-metre configuration places the planet centre at `
 
 Rays that reach the analytic planet boundary are closed against the scene's Lambertian atmosphere-ground albedo and diffuse fill irradiance. This prevents a no-terrain editor viewport from exposing a black lower hemisphere. A terrain renderer remains responsible for replacing that implicit surface with real scene geometry.
 
-Every atmosphere RenderView is classified from that same camera-relative kilometre conversion before graph declaration: `BelowGround` (at or inside the planet radius), `InsideAtmosphere`, `OutsideAtmosphere`, or `Invalid`. Only the latter two run per-view sky and aerial integration. A below-ground or invalid editor view uses a fixed blue SkyboxPass fallback, so opaque content, grid, and gizmos remain usable without sending an invalid ray to the atmosphere kernels. The fallback does not sample the baked cubemap: its appearance is therefore independent of camera position and orientation. This is an editor fallback, not physical underground rendering: gameplay terrain and underground materials remain responsible for occlusion. The editor may opt into a spherical ground constraint derived from the active atmosphere's configured centre and radius; it is disabled by default and never applies to game cameras or SkySphere/HDRI modes.
+Every atmosphere RenderView is classified from that same camera-relative kilometre conversion before graph declaration: `BelowGround` (at or inside the planet radius), `InsideAtmosphere`, `OutsideAtmosphere`, or `Invalid`. Only the latter two run per-view sky and aerial integration. A below-ground or invalid editor view uses a fixed blue environment-background fallback, so opaque content, grid, and gizmos remain usable without sending an invalid ray to the atmosphere kernels. The fallback does not sample the baked cubemap: its appearance is therefore independent of camera position and orientation. This is an editor fallback, not physical underground rendering: gameplay terrain and underground materials remain responsible for occlusion. The editor may opt into a spherical ground constraint derived from the active atmosphere's configured centre and radius; it is disabled by default and never applies to game cameras or SkySphere/HDRI modes.
 
 The public contract also defines coordinate handedness, cubemap face orientation, the sign of the light direction, and whether a directional light points toward or away from its source. The same primary celestial light drives the sun disc, atmosphere, direct lighting, and sun shadows. Selecting the first active directional light is not deterministic enough for this role. Solar angular radius and illuminance use documented physical units; any artistic multiplier is named and applied consistently to background radiance and environment lighting.
 
@@ -564,6 +563,6 @@ Unsupported tiers are not release failures when capability detection clearly dis
 | 7 | Static atmosphere LUTs and atmosphere source-radiance cubemap | Steps 0-3 |
 | 8 | Per-view sky/aerial LUTs and opaque/transparent atmospheric composition | Step 7 |
 | 9 | Atmosphere IBL baking, dynamic celestial-light budget, full validation matrix | Steps 6-8 |
-| 10 | Remove SkyboxPass only after visual, graph, and fallback parity is proven | All prior steps |
+| 10 | Retire the pre-SkyEnvironment background implementation after visual, graph, and fallback parity is proven | All prior steps |
 
 This order ships a useful, safe HDRI/SkySphere baseline before the more expensive atmosphere system, while preserving one resource and lifetime model for all modes.

@@ -269,7 +269,7 @@ namespace ZEngine::Rendering
             return &m_pool.IndexBuffer;
         }
 
-        /// @brief Return the pinned VkBuffer that holds builtin vertex data (skybox, grid).
+        /// @brief Return the pinned VkBuffer that holds builtin vertex data (grid and future static primitives).
         /// @details Written once at Setup time via RegisterBuiltinGeometry; never touched by
         ///          ResetGeometryBuffers or the streaming eviction path.
         /// @return Pointer to the builtin vertex BufferView; always valid after Initialize.
@@ -278,7 +278,7 @@ namespace ZEngine::Rendering
             return &m_builtin_vertex_buf;
         }
 
-        /// @brief Return the pinned VkBuffer that holds builtin index data (skybox, grid).
+        /// @brief Return the pinned VkBuffer that holds builtin index data (grid and future static primitives).
         /// @details Analogous to GetBuiltinVertexBuffer for index (uint32) data.
         /// @return Pointer to the builtin index BufferView; always valid after Initialize.
         const Core::Memory::BufferView* GetBuiltinIndexBuffer() const
@@ -319,7 +319,7 @@ namespace ZEngine::Rendering
         ///          the queue is full (256 pending reloads).
         bool         RequestMeshLoad(BufferHandle handle, const uuids::uuid& uuid);
 
-        /// @brief Upload builtin geometry (skybox, grid, etc.) into the global vertex/index
+        /// @brief Upload builtin geometry (grid and future static primitives) into the global vertex/index
         ///        buffers and return the element-count offsets.  Vertices must already be
         ///        laid out as DrawVertex (8 floats: xyz nxnynz uv). Indices must be uint32_t.
         /// @param vtx_data   Pointer to tightly-packed DrawVertex float data.
@@ -606,7 +606,7 @@ namespace ZEngine::Rendering
         GeometryStreamingManager                                                   m_streaming_mgr                                  = {};
 
         // Separate from the global streaming pool so a scene reload cannot corrupt the
-        // skybox and grid draw offsets via ResetGeometryBuffers.
+        // builtin draw offsets via ResetGeometryBuffers.
         Core::Memory::BufferView                                                   m_builtin_vertex_buf                             = {};
         Core::Memory::BufferView                                                   m_builtin_index_buf                              = {};
         VkDeviceSize                                                               m_builtin_vtx_cursor                             = 0;

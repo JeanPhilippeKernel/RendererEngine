@@ -15,7 +15,7 @@ The current global VB/IB reserves **1 GB of VRAM at startup** (512 MB vertex + 5
 buffers are append-only: `ReleaseMeshGeometry` frees the slot and UUID map entry but leaves
 the bytes permanently orphaned. Hot-reload swap makes this worse — each re-ingest appends new
 data at the current watermark and orphans the old region. The only reclaim mechanism is
-`ResetGeometryBuffers`, a full bulk reset that also corrupts the skybox and grid (see §3).
+`ResetGeometryBuffers`, a full bulk reset that also corrupts builtin geometry such as the grid (see §3).
 
 For projects whose total geometry fits in VRAM this is fine. For large scenes it is not, and
 the static 1 GB reservation is wasted on machines with 4–8 GB VRAM budgets.
@@ -38,7 +38,7 @@ the static 1 GB reservation is wasted on machines with 4–8 GB VRAM budgets.
   pass triggered when free space falls below a threshold. Compaction re-uploads all resident
   meshes from offset 0, then re-registers builtins. This is simpler than a first-fit
   allocator over variable-size holes.
-- **Builtins are pinned on a separate allocation.** Skybox and grid geometry live in a
+- **Builtins are pinned on a separate allocation.** Grid and future static-primitives geometry live in a
   dedicated small VkBuffer that is never touched by the streaming system, eliminating the
   existing `ResetGeometryBuffers` corruption bug.
 
@@ -46,7 +46,7 @@ the static 1 GB reservation is wasted on machines with 4–8 GB VRAM budgets.
 
 ## 3. Existing bug — builtin geometry and ResetGeometryBuffers
 
-`RegisterBuiltinGeometry` appends skybox/grid data to the main global VB/IB at the current
+`RegisterBuiltinGeometry` appends builtin data such as the grid to the main global VB/IB at the current
 cursor and stores the resulting element offsets in the pass structs (`m_vtx_offset`,
 `m_idx_offset`). `ResetGeometryBuffersInternal` zeroes the cursors but does not zero the
 VkBuffer contents and does not call `RegisterBuiltinGeometry` again. The pass structs keep
@@ -54,7 +54,7 @@ their stale offsets, which point at GPU bytes that will be silently overwritten 
 mesh upload. The passes appear to work until that overwrite occurs.
 
 **Fix (prerequisite to streaming):** Give builtins their own separate VkBuffer allocation,
-independent of the main streaming pool. Skybox and grid register into this buffer once at
+independent of the main streaming pool. Builtin geometry registers into this buffer once at
 `Setup` time; it is never touched by `ResetGeometryBuffers` or the streaming eviction path.
 
 ---
@@ -307,7 +307,7 @@ static VkDeviceSize ReadGeometryBudgetOverride(const std::string& config_file)
 ### 7.4 Compile-time constants
 
 ```cpp
-/// @brief Builtin geometry buffer size — skybox + grid + headroom. Never auto-derived.
+/// @brief Builtin geometry buffer size — grid and future static primitives plus headroom. Never auto-derived.
 constexpr uint64_t BuiltinGeometryBytes = 1ULL << 20;
 ```
 
@@ -346,7 +346,7 @@ if (!rrm->IsMeshResident(handle))
 rrm->MarkMeshReferenced(handle);   // set clock-hand Referenced bit for this frame
 ```
 
-### RendererPasses (SkyboxPass, GridPass)
+### Renderer passes that use builtin geometry
 
 `RegisterBuiltinGeometry` writes into the pinned builtin buffer after this change. The draw
 path for these passes already uses the conventional `BindVertexBuffer`/`BindIndexBuffer` +
