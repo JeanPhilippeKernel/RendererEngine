@@ -3,7 +3,7 @@
 **Priority:** P1 — foundation for persistent editor authoring
 **Status:** In progress; serializer foundation exists, production schema contract remains open
 **Owner:** jnyfah
-**Tracked by:** [#714](https://github.com/JeanPhilippeKernel/RendererEngine/issues/714)–[#719](https://github.com/JeanPhilippeKernel/RendererEngine/issues/719). Their original implementation sketches are subordinate to this current schema and source-backed lifecycle contract.
+**Tracked by:** [#714](https://github.com/JeanPhilippeKernel/RendererEngine/issues/714)–[#719](https://github.com/JeanPhilippeKernel/RendererEngine/issues/719), [#829](https://github.com/JeanPhilippeKernel/RendererEngine/issues/829), and [#830](https://github.com/JeanPhilippeKernel/RendererEngine/issues/830). Their issue descriptions are subordinate to this current schema and source-backed lifecycle contract.
 **Depends on:** actor-ecs-architecture.md, VFS stable UUID/asset registry,
 component-reflection.md, import-pipeline.md
 **Blocks:** shared scene settings, safe undoable lifecycle edits, Play snapshots,
