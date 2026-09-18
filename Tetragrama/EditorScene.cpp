@@ -37,10 +37,9 @@ namespace Tetragrama
 
     void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name, const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
     {
-        // 200 MB carved directly from MainArena — not part of UIContext budget.
-        // Covers: AssetFiles list (500 entries), scene graph data, seqlock instance buffers,
-        // material/texture path strings on reload, and sub-arenas (InstanceArena 4 MB).
-        // No budget config entry: EditorScene is a scene-level system, not a UI component.
+        // The caller supplies the bounded Editor owner. This child arena covers
+        // asset lists, scene graph data, seqlock instance buffers, reload paths,
+        // and the 4 MiB InstanceArena sub-arena.
         arena->CreateSubArena(ZMega(200), &LocalArena);
 
         Name = name;

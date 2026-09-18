@@ -25,11 +25,11 @@ tracked by [`future-plan/memory-budget.md`](future-plan/memory-budget.md).
 
 | Profile | Configured total | Difference from root reservation |
 |---|---:|---:|
-| `Default()` | 7,060 MiB | 1,132 MiB |
-| `Editor()` | 6,932 MiB | 1,260 MiB |
-| `Server()` | 5,780 MiB | 2,412 MiB |
+| `Default()` | 7,572 MiB | 620 MiB |
+| `Editor()` | 7,700 MiB | 492 MiB |
+| `Server()` | 6,292 MiB | 1,900 MiB |
 
-`Editor()` changes `AudioEngine` and `Network` to zero and raises `UIContext` from 64 to 128 MiB. `Server()` zeroes `AudioEngine`, `UIContext`, `VulkanDevice`, and `Network`. `MemoryManager::Initialize` validates the selected total before it initializes `MainArena`.
+`Editor()` changes `AudioEngine` and `Network` to zero, raises `UIContext` from 64 to 128 MiB, and adds the 256 MiB `EditorContext` owner. `Server()` zeroes `AudioEngine`, `UIContext`, `VulkanDevice`, and `Network`. `MemoryManager::Initialize` validates the selected total before it initializes `MainArena`.
 
 ## Slot definitions
 
@@ -42,15 +42,16 @@ tracked by [`future-plan/memory-budget.md`](future-plan/memory-budget.md).
 | `Logging` | 8 MiB | 8 MiB |
 | `VirtualFS` | 64 MiB | 64 MiB |
 | `VulkanDevice` | 1,024 MiB | 1,024 MiB |
-| `ImportPipeline` | 3,584 MiB | 3,584 MiB |
+| `ImportPipeline` | 4,096 MiB | 4,096 MiB |
 | `UIContext` | 64 MiB | 128 MiB |
+| `EditorContext` | 0 MiB | 256 MiB |
 | `Swapchain` | 8 MiB | 8 MiB |
 | `ShaderCache` | 64 MiB | 64 MiB |
 | `Serializer` | 256 MiB | 256 MiB |
 | `Network` | 64 MiB | 0 |
 | `Input` | 4 MiB | 4 MiB |
 
-The slots are a validated profile, not evidence that every subsystem has already been isolated. Startup currently creates budgeted arenas for logging, VFS, asset management, input, ECS scene data, import pipeline, and UI context. Several remaining owners still allocate from `MainArena` or create their own child arena; do not describe those as enforced slots until they are migrated.
+The slots are a validated profile, not evidence that every subsystem has already been isolated. Startup currently creates budgeted arenas for logging, Vulkan device state, VFS, asset management, input, ECS scene data, import pipeline, and UI context. The import-pipeline arena also owns the renderer's bounded worker decode slabs. The editor creates its `EditorContext` arena before configuration loading; it owns the editor scene, tools, and panel layer. Several remaining owners still allocate from `MainArena` or create their own child arena; do not describe those as enforced slots until they are migrated.
 
 `CreateBudgetedArena` validates a nonzero size, creates the child arena, and registers it with `MemoryProfiler` in profiling builds. `MemoryProfiler` tracks current and peak offsets and emits an 80% watermark warning with a 60-second cooldown. It only sees arenas explicitly registered this way.
 

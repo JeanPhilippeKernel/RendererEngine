@@ -51,38 +51,40 @@ namespace Tetragrama
 
         virtual ~Editor() {}
 
-        Layers::ZUILayer*                  ZUIUILayer                        = nullptr;
+        Layers::ZUILayer*                     ZUIUILayer                        = nullptr;
 
         /// @brief Editor-only navigation aid; it never changes game-camera behavior.
-        bool                               ConstrainCameraToAtmosphereGround = false;
+        bool                                  ConstrainCameraToAtmosphereGround = false;
 
-        ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend               = {};
+        ZEngine::Core::VFS::VFSDiskBackend    WorkingSpaceBackend               = {};
+        // All editor-owned persistent CPU state is bounded by the Editor budget.
+        ZEngine::Core::Memory::ArenaAllocator EditorArena                       = {};
 
-        virtual void                       OnInitializing() override;
-        virtual void                       OverrideWindowConfiguration() override;
-        virtual void                       OnInitialized() override;
+        virtual void                          OnInitializing() override;
+        virtual void                          OverrideWindowConfiguration() override;
+        virtual void                          OnInitialized() override;
 
-        virtual void                       OnUpdate(float dt) override;
-        virtual void                       OnEvent(ZEngine::Core::CoreEvent&) override;
+        virtual void                          OnUpdate(float dt) override;
+        virtual void                          OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        void                               ProcessEvent(ZEngine::Core::CoreEvent&) override;
+        void                                  ProcessEvent(ZEngine::Core::CoreEvent&) override;
 
-        virtual void                       OnPreRender() override;
-        virtual void                       OnPostRender() override;
-        virtual void                       OnRenderUI() override;
+        virtual void                          OnPreRender() override;
+        virtual void                          OnPostRender() override;
+        virtual void                          OnRenderUI() override;
 
-        virtual void                       OnClosing() override;
-        virtual void                       OnClosed() override;
+        virtual void                          OnClosing() override;
+        virtual void                          OnClosed() override;
 
         /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
-        void                               SaveScene();
+        void                                  SaveScene();
 
         /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
-        void                               SaveSceneAs();
+        void                                  SaveSceneAs();
 
         /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
         /// @param path Native filesystem path to the scene file.
-        void                               OpenScene(const char* path);
+        void                                  OpenScene(const char* path);
     };
     ZDEFINE_PTR(Editor);
 
