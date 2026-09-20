@@ -48,23 +48,23 @@ namespace ZEngine::ECS
 
     struct SceneUUIDRemap
     {
-        void* Context                                                               = nullptr;
+        void* Context                                                                       = nullptr;
         bool (*Find)(void* context, const uuids::uuid& old_uuid, uuids::uuid* out_new_uuid) = nullptr;
     };
 
     struct SceneReferenceFns
     {
-        void* Context                                                                                                                        = nullptr;
+        void* Context                                                                                                                                      = nullptr;
         bool (*Enumerate)(void* context, const SceneValue& payload, SceneReferenceVisitorFn visitor, void* visitor_context, SceneDiagnostics* diagnostics) = nullptr;
         bool (*Remap)(void* context, const SceneValue& payload, const SceneUUIDRemap& remap, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics) = nullptr;
     };
 
     struct SceneComponentCodecFns
     {
-        void* Context                                                                                                                              = nullptr;
-        bool (*Capture)(void* context, EntityID entity, const Scene& scene, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics)           = nullptr;
-        bool (*PopulateCandidate)(void* context, EntityID entity, Scene& candidate, const SceneValue& payload, SceneDiagnostics* diagnostics)       = nullptr;
-        bool (*EncodeBinary)(void* context, const SceneValue& payload, SceneBinaryWriter* writer, SceneDiagnostics* diagnostics)                    = nullptr;
+        void* Context                                                                                                                                          = nullptr;
+        bool (*Capture)(void* context, EntityID entity, const Scene& scene, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics)                      = nullptr;
+        bool (*PopulateCandidate)(void* context, EntityID entity, Scene& candidate, const SceneValue& payload, SceneDiagnostics* diagnostics)                  = nullptr;
+        bool (*EncodeBinary)(void* context, const SceneValue& payload, SceneBinaryWriter* writer, SceneDiagnostics* diagnostics)                               = nullptr;
         bool (*DecodeBinary)(void* context, uint32_t encoded_version, SceneBinaryReader* reader, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics) = nullptr;
     };
 

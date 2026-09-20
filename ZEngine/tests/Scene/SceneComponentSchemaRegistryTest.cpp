@@ -122,7 +122,7 @@ TEST_F(SchemaRegistryFixture, InitializeIsIdempotent)
 TEST_F(SchemaRegistryFixture, RegisterThenLookupByKeyAndRuntimeType)
 {
     SceneFieldSchema fields[] = {
-        {"position", SceneFieldClass::Authored},
+        {     "position",       SceneFieldClass::Authored},
         {"cached_matrix", SceneFieldClass::RuntimeDerived},
     };
 
@@ -151,7 +151,9 @@ TEST_F(SchemaRegistryFixture, KeysAreCopiedNotBorrowed)
 {
     char             key[32]   = "transform";
     char             field[32] = "position";
-    SceneFieldSchema fields[]  = {{field, SceneFieldClass::Authored}};
+    SceneFieldSchema fields[]  = {
+        {field, SceneFieldClass::Authored}
+    };
 
     SceneComponentSchemaDesc d = Desc(key, 1);
     d.Fields                   = fields;
@@ -228,9 +230,11 @@ TEST_F(SchemaRegistryFixture, RejectsBadFieldDeclarations)
     d.FieldCount               = 2;
     EXPECT_FALSE(m_registry.Register(d, &m_diag));
 
-    SceneFieldSchema missing[] = {{nullptr, SceneFieldClass::Authored}};
-    d.Fields                   = missing;
-    d.FieldCount               = 1;
+    SceneFieldSchema missing[] = {
+        {nullptr, SceneFieldClass::Authored}
+    };
+    d.Fields     = missing;
+    d.FieldCount = 1;
     EXPECT_FALSE(m_registry.Register(d, &m_diag));
 
     d.Fields     = nullptr;
@@ -246,8 +250,8 @@ TEST_F(SchemaRegistryFixture, RejectsMissingCodecCallbacks)
     d.Codecs.Capture           = nullptr;
     EXPECT_FALSE(m_registry.Register(d, &m_diag));
 
-    d                          = Desc("transform", 1);
-    d.Codecs.DecodeBinary      = nullptr;
+    d                     = Desc("transform", 1);
+    d.Codecs.DecodeBinary = nullptr;
     EXPECT_FALSE(m_registry.Register(d, &m_diag));
 
     EXPECT_EQ(m_registry.Count(), 0u);
@@ -259,13 +263,13 @@ TEST_F(SchemaRegistryFixture, RejectsHalfOfTheReferenceHookPair)
     d.References.Enumerate     = Enumerate; // Remap left null
     EXPECT_FALSE(m_registry.Register(d, &m_diag));
 
-    d                          = Desc("mesh", 2);
-    d.References.Remap         = Remap; // Enumerate left null
+    d                  = Desc("mesh", 2);
+    d.References.Remap = Remap; // Enumerate left null
     EXPECT_FALSE(m_registry.Register(d, &m_diag));
 
-    d                          = Desc("light", 3);
-    d.References.Enumerate     = Enumerate;
-    d.References.Remap         = Remap;
+    d                      = Desc("light", 3);
+    d.References.Enumerate = Enumerate;
+    d.References.Remap     = Remap;
     EXPECT_TRUE(m_registry.Register(d, &m_diag)); // both is fine
 
     EXPECT_TRUE(m_registry.Register(Desc("camera", 4), &m_diag)); // neither is fine
@@ -295,7 +299,7 @@ TEST_F(SchemaRegistryFixture, RegisterWithNullDiagnosticsStillRejects)
 
 TEST_F(SchemaRegistryFixture, RejectsRegistrationPastReservedCapacity)
 {
-    MemoryManager                small;
+    MemoryManager small;
     small.Initialize(ZMega(1), {});
     SceneComponentSchemaRegistry tight;
     tight.Initialize(&small.MainArena, 2);

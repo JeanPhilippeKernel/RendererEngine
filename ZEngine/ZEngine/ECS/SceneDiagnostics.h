@@ -19,7 +19,7 @@ namespace ZEngine::ECS
 
         struct Entry
         {
-            SceneDiagnosticSeverity Severity = SceneDiagnosticSeverity::Error;
+            SceneDiagnosticSeverity Severity                 = SceneDiagnosticSeverity::Error;
             char                    Message[MAX_MESSAGE_LEN] = {};
         };
 
