@@ -39,6 +39,7 @@ TEST(ZUIInputCaptureTest, TextInputCapturesOnlyKeyboardInput)
 {
     ZUIContext ctx                = {};
     ctx.FocusKey                  = 7;
+    ctx.ViewportInputKey          = 42;
 
     const ZUIInputCapture capture = ZUIGetInputCapture(&ctx);
     EXPECT_FALSE(capture.Pointer);
@@ -46,6 +47,15 @@ TEST(ZUIInputCaptureTest, TextInputCapturesOnlyKeyboardInput)
 
     ctx.TextInputActive = true;
     EXPECT_TRUE(ZUIGetInputCapture(&ctx).Keyboard);
+}
+
+TEST(ZUIInputCaptureTest, MissingViewportCapturesPointer)
+{
+    ZUIContext            ctx     = {};
+
+    const ZUIInputCapture capture = ZUIGetInputCapture(&ctx);
+    EXPECT_TRUE(capture.Pointer);
+    EXPECT_FALSE(capture.Keyboard);
 }
 
 TEST(ZUIInputCaptureTest, PopupsAndModalsCaptureBothInputChannels)
