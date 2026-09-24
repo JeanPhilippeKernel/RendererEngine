@@ -43,7 +43,7 @@ namespace ZEngine::Importers
 
     void EnvironmentMapImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(32), &Arena);
+        arena->CreateSubArena(ZMega(32), &Arena, "ImportPipeline/EnvironmentMapImporter");
     }
 
     bool EnvironmentMapImporter::CanImport(const char* extension) const

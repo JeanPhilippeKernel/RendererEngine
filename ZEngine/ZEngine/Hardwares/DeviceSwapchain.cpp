@@ -16,7 +16,7 @@ namespace ZEngine::Hardwares
 {
     void DeviceSwapchain::Initialize(VulkanDevice* const device, uint32_t buffered_frame_size)
     {
-        device->Arena->CreateSubArena(ZMega(3), &Arena);
+        device->Arena->CreateSubArena(ZMega(3), &Arena, "VulkanDevice/Swapchain");
 
         Device                                                           = device;
 

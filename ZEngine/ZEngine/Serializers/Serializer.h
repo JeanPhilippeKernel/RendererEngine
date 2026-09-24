@@ -55,7 +55,7 @@ namespace ZEngine::Serializers
         void                                  Initialize(ZEngine::Core::Memory::ArenaAllocator* arena)
         {
             ZENGINE_VALIDATE_ASSERT(arena != nullptr, "Serializer::Initialize: arena must not be null")
-            arena->CreateSubArena(ZMega(150), &Arena);
+            arena->CreateSubArena(ZMega(150), &Arena, "SerializerScratch");
         }
 
         virtual void SetOnCompleteCallback(on_serializer_complete_fn callback)

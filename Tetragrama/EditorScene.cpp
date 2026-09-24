@@ -40,7 +40,7 @@ namespace Tetragrama
         // The caller supplies the bounded Editor owner. This child arena covers
         // asset lists, scene graph data, seqlock instance buffers, reload paths,
         // and the 4 MiB InstanceArena sub-arena.
-        arena->CreateSubArena(ZMega(200), &LocalArena);
+        arena->CreateSubArena(ZMega(200), &LocalArena, "EditorContext/EditorScene");
 
         Name = name;
         Sky  = sky_defaults;
@@ -50,7 +50,7 @@ namespace Tetragrama
         HashToAssetFile.init(&LocalArena, 500);
 
         // Allocate a sub-arena for the instance list.
-        LocalArena.CreateSubArena(ZMega(4), &InstanceArena);
+        LocalArena.CreateSubArena(ZMega(4), &InstanceArena, "EditorContext/EditorScene/Instances");
         Instances.init(&InstanceArena, 64);
 
         // Spawn a default directional light so new scenes are not dark.
@@ -109,11 +109,11 @@ namespace Tetragrama
         // This allocation belongs to the deserialized scene, not to the
         // serializer's worker scratch arena. It therefore remains valid after
         // the worker returns and after the next serializer job rewinds scratch.
-        LocalArena.Initialize(ZMega(200), page_size);
+        LocalArena.Initialize(ZMega(200), page_size, "EditorSceneDeserialized");
         if (!LocalArena.m_memory)
             return false;
 
-        LocalArena.CreateSubArena(ZMega(4), &InstanceArena);
+        LocalArena.CreateSubArena(ZMega(4), &InstanceArena, "EditorSceneDeserialized/Instances");
         if (!InstanceArena.m_memory)
             return false;
 

@@ -11,8 +11,8 @@ namespace ZEngine::UI
     {
         ZENGINE_VALIDATE_ASSERT(StateCapacity > 0 && (StateCapacity & (StateCapacity - 1)) == 0, "ZUIContextInit: StateCapacity must be a power of two — hash probing is bitmasked");
 
-        parent->CreateSubArena(FrameArenaBytes, &ctx->FrameArena);
-        parent->CreateSubArena(PersistentArenaBytes, &ctx->PersistentArena);
+        parent->CreateSubArena(FrameArenaBytes, &ctx->FrameArena, "UIContext/Frame");
+        parent->CreateSubArena(PersistentArenaBytes, &ctx->PersistentArena, "UIContext/Persistent");
 
         ctx->StateStore.Slots    = ZPushArray(&ctx->PersistentArena, ZUIPersistentSlot, StateCapacity);
         ctx->StateStore.Capacity = StateCapacity;

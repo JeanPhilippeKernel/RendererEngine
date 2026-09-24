@@ -160,7 +160,8 @@ protected:
     void              SetUp() override
     {
         m_cache_mgr.Initialize(ZMega(16), {});
-        m_scan_mgr.Initialize(ZMega(64), {});
+        // Scanner owns four 128 MiB bounded children of its supplied owner.
+        m_scan_mgr.Initialize(ZGiga(1), {});
         m_scan_arena = &m_scan_mgr.MainArena;
         m_cache.Initialize(&m_cache_mgr.MainArena);
         m_scanner.Initialize(m_scan_arena); // slot arenas reuse this arena's page size
@@ -324,7 +325,8 @@ protected:
 
     void              SetUp() override
     {
-        m_manager.Initialize(ZMega(16), {});
+        // Scanner owns four 128 MiB bounded children of its supplied owner.
+        m_manager.Initialize(ZGiga(1), {});
         m_arena = &m_manager.MainArena;
         m_cache.Initialize(m_arena);
         m_backend.Initialize(m_arena);

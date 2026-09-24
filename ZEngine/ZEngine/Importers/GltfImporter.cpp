@@ -382,7 +382,7 @@ namespace ZEngine::Importers
 
     void GltfImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(64), &Arena);
+        arena->CreateSubArena(ZMega(64), &Arena, "ImportPipeline/GltfImporter");
     }
 
     bool GltfImporter::CanImport(const char* extension) const
@@ -422,7 +422,7 @@ namespace ZEngine::Importers
         fastgltf::Asset&             asset = result.get();
 
         Core::Memory::ArenaAllocator scratch{};
-        Arena.CreateSubArena(ZMega(32), &scratch);
+        Arena.CreateSubArena(ZMega(32), &scratch, "ImportPipeline/GltfImporter/RuntimeScratch");
 
         std::random_device    rd;
         std::mt19937          generator(rd());
@@ -474,7 +474,7 @@ namespace ZEngine::Importers
         // copy below and the final serialized outputs share the same backing memory
         // instead of each getting an independent, aliasing CreateSubArena carve-out.
         Core::Memory::ArenaAllocator scratch{};
-        Arena.CreateSubArena(ZMega(32), &scratch);
+        Arena.CreateSubArena(ZMega(32), &scratch, "ImportPipeline/GltfImporter/EditorScratch");
         arena                                  = &scratch;
 
         // Build arena-allocated config copy (same pattern as AssimpImporter::ImportFile)

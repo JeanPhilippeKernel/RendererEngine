@@ -369,7 +369,7 @@ namespace Tetragrama::Panels
 
         auto* payload  = new MeshLoadPayload();
         payload->Arena = new ZEngine::Core::Memory::ArenaAllocator{};
-        payload->Arena->Initialize(file_bytes * 4 + (8u << 20), 0);
+        payload->Arena->Initialize(file_bytes * 4 + (8u << 20), 0, "EditorDroppedMeshTask");
         payload->MeshId = header.Id;
         payload->Layer  = m_layer;
         secure_strncpy(payload->MeshPath, sizeof(payload->MeshPath), native_path, secure_strlen(native_path));

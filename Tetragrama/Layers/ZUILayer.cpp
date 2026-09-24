@@ -26,7 +26,7 @@ namespace Tetragrama::Layers
         Arena      = arena;
         CurrentApp = app;
         m_ctx      = app->RenderPipeline ? app->RenderPipeline->ZUICtx : nullptr;
-        arena->CreateSubArena(ZMega(4), &LocalArena);
+        arena->CreateSubArena(ZMega(4), &LocalArena, "EditorContext/ZUILayer");
 
         // Engine::Initialize registers a GLFW scroll callback that overrides GameWindow's,
         // so MouseButtonWheelEvent never fires for ZUI.  Register here (AFTER Engine::Initialize)

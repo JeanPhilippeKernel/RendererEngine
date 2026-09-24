@@ -93,7 +93,7 @@ namespace ZEngine::Core::VFS
         ZENGINE_VALIDATE_ASSERT(page_source != nullptr, "VFSScanner::Initialize requires a valid arena for its page size")
         for (int i = 0; i < MaxConcurrentDirLists; ++i)
         {
-            m_slot_arenas[i].Initialize(SlotArenaReserve, page_source->m_mem_page_size);
+            page_source->CreateSubArena(SlotArenaReserve, &m_slot_arenas[i], "AssetManager/VFSScannerSlot");
             m_slot_in_use[i].value.store(false, std::memory_order_relaxed);
         }
         for (uint32_t i = 0; i < MaxScanTasks; ++i)

@@ -29,7 +29,7 @@ namespace ZEngine::Core::VFS
         m_callbacks.init(arena, pending_capacity);
 
         // Dedicated sub arena for per tick temporaries
-        arena->CreateSubArena(ZKilo(512), &m_local_arena);
+        arena->CreateSubArena(ZKilo(512), &m_local_arena, "VFSFileWatcherScratch");
     }
 
     WatchHandle VFSFileWatcher::Watch(const char* native_path, bool recursive, WatchCallback cb)
