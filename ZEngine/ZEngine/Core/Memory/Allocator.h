@@ -17,10 +17,11 @@ namespace ZEngine::Core::Memory
 
     // ArenaAllocator — linear bump-pointer allocator backed by a virtual memory reservation.
     //
-    // Memory is reserved upfront via mmap/VirtualAlloc (PROT_NONE / PAGE_NOACCESS) and
-    // committed on demand in page-aligned increments as allocations are made. Individual
-    // allocations cannot be freed — the entire arena is reclaimed at once via Clear() or
-    // Shutdown(). This makes it suitable for per-frame, per-task, or lifetime-scoped data.
+    // Windows reserves with PAGE_NOACCESS and commits pages on demand. The current POSIX
+    // backend maps the range writable and relies on OS overcommit for physical backing.
+    // Individual allocations cannot be freed — the entire arena is reclaimed at once via
+    // Clear() or Shutdown(). This makes it suitable for per-frame, per-task, or
+    // lifetime-scoped data.
     //
     // LIFETIME CONTRACT — all users must observe:
     //   1. Any PoolAllocator carved from this arena via PoolAllocator::Initialize() must

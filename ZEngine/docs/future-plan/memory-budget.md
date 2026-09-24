@@ -18,22 +18,23 @@ The current profiles total the following maximum reservations:
 | `ECSScene` | 512 MiB | 512 MiB | carved by `Engine::Initialize` |
 | `Logging` | 8 MiB | 8 MiB | carved in `Obelisk/EntryPoint.cpp` |
 | `VirtualFS` | 64 MiB | 64 MiB | carved by `Engine::Initialize` |
-| `VulkanDevice` | 1 GiB | 1 GiB | declared; device currently uses the root arena directly |
-| `ImportPipeline` | 3.5 GiB | 3.5 GiB | carved by `Engine::Initialize` |
+| `VulkanDevice` | 1 GiB | 1 GiB | carved by `Engine::Initialize` |
+| `ImportPipeline` | 4 GiB | 4 GiB | carved by `Engine::Initialize`; owns importer arenas and renderer decode slabs |
 | `UIContext` | 64 MiB | 128 MiB | carved by `Engine::Initialize` |
+| `EditorContext` | 0 | 256 MiB | carved by `Tetragrama::Editor::OnInitializing`; owns the editor scene and tools |
 | `Swapchain` | 8 MiB | 8 MiB | declared; not carved through this config |
 | `ShaderCache` | 64 MiB | 64 MiB | declared; shader currently makes its own sub-arena |
 | `Serializer` | 256 MiB | 256 MiB | declared; serializer currently makes its own sub-arena |
 | `Network` | 64 MiB | 0 | declared; not carved during current startup |
 | `Input` | 4 MiB | 4 MiB | carved by `Engine::Initialize` |
 
-The exact totals are **7,060 MiB** for `Default()` and **6,932 MiB** for `Editor()`. Both fit inside the 8 GiB root reservation. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
+The exact totals are **7,572 MiB** for `Default()` and **7,700 MiB** for `Editor()`. Both fit inside the 8 GiB root reservation. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
 
-`ImportPipeline` is a parent arena. Its present importer allocations include 64 MiB for glTF, 128 MiB for Assimp, 512 MiB for FBX, and 32 MiB for environment-map import. Importers may create temporary child arenas and clear them between jobs; their individual allocations do not make the whole 3.5 GiB physically resident by themselves.
+`ImportPipeline` is a parent arena. Its present importer allocations include 64 MiB for glTF, 128 MiB for Assimp, 512 MiB for FBX, and 32 MiB for environment-map import. It also owns one 128 MiB TLSF decode slab per worker (up to 16), a 128 MiB fallback slab, and a 2 MiB texture-task slab for `RenderResourceManager`. Importers may create temporary child arenas and clear them between jobs; their individual allocations do not make the whole 4 GiB physically resident by themselves.
 
 ## What this does and does not enforce
 
-The startup validation limits the *declared profile*. It does not prove that every current allocation uses its declared slot: several systems still allocate from `MainArena` or directly create a child arena. Consequently, a config slot is not a hard per-subsystem limit until its owner is initialized from `CreateBudgetedArena`. No code should treat unused declared slots as already materialized allocations.
+The startup validation limits the *declared profile*. Vulkan device state and editor state now use their named slots, but several systems still allocate from `MainArena` or directly create a child arena. Consequently, a config slot is not a hard per-subsystem limit until its owner is initialized from `CreateBudgetedArena`. No code should treat unused declared slots as already materialized allocations.
 
 On Windows, child arenas reserve address space and commit pages lazily. The current macOS/Linux
 implementation maps the full root range writable and sets its allocator committed size to the

@@ -84,7 +84,9 @@ namespace ZEngine::Rendering
         ///          the packed global vertex and index buffers.
         /// @param device   The active Vulkan device; must outlive this RRM instance.
         /// @param registry The asset registry to subscribe to; must outlive this RRM instance.
-        void                                Initialize(Hardwares::VulkanDevice* device, Core::VFS::AssetRegistry* registry);
+        /// @param upload_arena Owns bounded CPU decode storage and must outlive this
+        ///                     manager and the worker-pool registrations.
+        void                                Initialize(Hardwares::VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena);
 
         /// @brief Drain in-flight GPU work and release all GPU resources.
         /// @details Calls vkQueueWaitAll, shuts down texture timelines, and frees the
@@ -626,8 +628,9 @@ namespace ZEngine::Rendering
         uint8_t                                                                    m_active_frame_index                             = 0;
         bool                                                                       m_batch_mode                                     = false;
 
-        // Per-worker TLSF slabs carved from Device->Arena at Initialize. Each worker owns
-        // one slab exclusively via t_worker_slab (ThreadPool.h).
+        // Per-worker TLSF slabs carved from the ImportPipeline owner at Initialize.
+        // Each worker owns one slab exclusively via t_worker_slab (ThreadPool.h).
+        Core::Memory::ArenaAllocator*                                              m_upload_arena                                   = nullptr;
         Core::Memory::TLSFSlab                                                     m_upload_slabs[Helpers::ThreadPool::MAX_WORKERS] = {};
         uint32_t                                                                   m_upload_slab_count                              = 0;
         // Used when a bounded thread-pool queue runs a decode inline on a non-worker.

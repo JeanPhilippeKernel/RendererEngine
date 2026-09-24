@@ -13,6 +13,22 @@ TEST(AllocatorTest, ArenaInit)
     manager.Shutdown();
 }
 
+TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
+{
+    const MemoryBudgetConfig default_budget = MemoryBudgetConfig::Default();
+    const MemoryBudgetConfig budget         = MemoryBudgetConfig::Editor();
+    const MemoryBudgetConfig server_budget  = MemoryBudgetConfig::Server();
+
+    EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(256));
+    EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
+    EXPECT_EQ(default_budget.TotalCommitted(), ZMega(7572));
+    EXPECT_EQ(budget.TotalCommitted(), ZMega(7700));
+    EXPECT_EQ(server_budget.TotalCommitted(), ZMega(6292));
+    EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
+    EXPECT_TRUE(budget.Validate(ZGiga(8)));
+    EXPECT_TRUE(server_budget.Validate(ZGiga(8)));
+}
+
 TEST(AllocatorTest, ArenaAllocate)
 {
     MemoryManager manager{};

@@ -20,8 +20,11 @@ namespace ZEngine::Core::Memory
         SubArenaConfig  Logging          = {};
         SubArenaConfig  VirtualFS        = {};
         SubArenaConfig  VulkanDevice     = {};
-        SubArenaConfig  ImportPipeline   = {}; // engine importers + editor importers
+        SubArenaConfig  ImportPipeline   = {}; // importers + renderer resource uploads
         SubArenaConfig  UIContext        = {};
+        // Editor-only persistent state: editor scene, viewport tools, and panel layer.
+        // This remains zero for game and server profiles.
+        SubArenaConfig  EditorContext    = {};
         SubArenaConfig  Swapchain        = {};
         SubArenaConfig  ShaderCache      = {};
         SubArenaConfig  Serializer       = {};
@@ -31,7 +34,7 @@ namespace ZEngine::Core::Memory
         // Returns the total bytes committed by all SubArenaConfig entries.
         inline uint64_t TotalCommitted() const
         {
-            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
+            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
         }
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
@@ -53,7 +56,9 @@ namespace ZEngine::Core::Memory
             cfg.Logging            = {"Logging", ZMega(8ULL)};
             cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};
             cfg.VulkanDevice       = {"VulkanDevice", ZGiga(1ULL)};
-            cfg.ImportPipeline     = {"ImportPipeline", ZMega(3584ULL)}; // 3.5 GB — each importer gets generous headroom for large scenes
+            // 4 GiB covers the persistent importer arenas plus the bounded
+            // per-worker CPU decode slabs used to upload imported resources.
+            cfg.ImportPipeline     = {"ImportPipeline", ZGiga(4ULL)};
             cfg.UIContext          = {"UIContext", ZMega(64ULL)};
             cfg.Swapchain          = {"Swapchain", ZMega(8ULL)};
             cfg.ShaderCache        = {"ShaderCache", ZMega(64ULL)};
@@ -83,6 +88,9 @@ namespace ZEngine::Core::Memory
             cfg.AudioEngine.SizeBytes = 0ull;
             cfg.Network.SizeBytes     = 0ull;
             cfg.UIContext.SizeBytes   = ZMega(128ULL);
+            // EditorScene reserves 200 MiB itself. The remaining capacity owns
+            // editor objects, panel state, camera state, and transient font work.
+            cfg.EditorContext         = {"EditorContext", ZMega(256ULL)};
 
             return cfg;
         }
