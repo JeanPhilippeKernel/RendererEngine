@@ -6,7 +6,7 @@
 
 ## Current implementation
 
-`MemoryManager::Initialize(buffer_size, config)` stores the selected config, validates `config.TotalCommitted() <= buffer_size`, and initializes the root `MainArena`. Windows reserves that range with `PAGE_NOACCESS`; POSIX reserves it with `PROT_NONE`. An allocation promotes only its page range (`VirtualAlloc(MEM_COMMIT)` or `mprotect`), and a root-owned page bitmap keeps parent and child commitments discontiguous. `CreateBudgetedArena(config, result)` carves a named sub-arena and registers it with `MemoryProfiler` in profiling builds. `Shutdown()` is implemented and releases the root arena after application, worker, and logger shutdown.
+`MemoryManager::Initialize(buffer_size, config)` stores the selected config, validates `config.TotalCapacity() <= buffer_size`, and initializes the root `MainArena`. Windows reserves that range with `PAGE_NOACCESS`; POSIX reserves it with `PROT_NONE`. An allocation promotes only its page range (`VirtualAlloc(MEM_COMMIT)` or `mprotect`), and a root-owned page bitmap keeps parent and child commitments discontiguous. `CreateBudgetedArena(config, result)` carves a named sub-arena and registers it with `MemoryProfiler` in profiling builds. `Shutdown()` is implemented and releases the root arena after application, worker, and logger shutdown.
 
 The current profiles total the following maximum reservations:
 

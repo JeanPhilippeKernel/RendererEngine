@@ -22,9 +22,11 @@ TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
     EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(256));
     EXPECT_EQ(default_budget.Bootstrap.SizeBytes, ZMega(32));
     EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
-    EXPECT_EQ(default_budget.TotalCommitted(), ZMega(7604));
-    EXPECT_EQ(budget.TotalCommitted(), ZMega(7732));
-    EXPECT_EQ(server_budget.TotalCommitted(), ZMega(6324));
+    EXPECT_EQ(default_budget.TotalCapacity(), ZMega(7604));
+    EXPECT_EQ(budget.TotalCapacity(), ZMega(7732));
+    EXPECT_EQ(server_budget.TotalCapacity(), ZMega(6324));
+    // Legacy callers retain the same profile sum while page commitment is lazy.
+    EXPECT_EQ(default_budget.TotalCommitted(), default_budget.TotalCapacity());
     EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
     EXPECT_TRUE(budget.Validate(ZGiga(8)));
     EXPECT_TRUE(server_budget.Validate(ZGiga(8)));
