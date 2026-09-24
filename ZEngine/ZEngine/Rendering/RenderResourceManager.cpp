@@ -1930,10 +1930,10 @@ namespace ZEngine::Rendering
         RenderResourceManager*  manager  = task->Owner;
         Core::Memory::TLSFSlab* previous = Helpers::GetWorkerSlab();
         ZENGINE_VALIDATE_ASSERT(task->DecodeSlabIndex < MAX_CONCURRENT_TEXTURE_DECODES, "RenderResourceManager::RunTextureDecodeTask: task has no decode slab lease")
-        Core::Memory::TLSFSlab* slab      = &manager->m_upload_slabs[task->DecodeSlabIndex];
+        Core::Memory::TLSFSlab* slab = &manager->m_upload_slabs[task->DecodeSlabIndex];
         Helpers::SetWorkerSlab(slab);
-        uint8_t*                pixels    = nullptr;
-        size_t                  byte_size = 0;
+        uint8_t* pixels    = nullptr;
+        size_t   byte_size = 0;
 
         if (task->Specification.IsCubemap)
         {

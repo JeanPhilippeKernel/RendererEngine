@@ -175,11 +175,11 @@ namespace ZEngine::Rendering
         /// When Slab is nullptr the pixels are borrowed (valid until CompleteDeferrals).
         struct TextureDeferral
         {
-            uint8_t*                           Pixels    = nullptr; ///< Pixel data (slab-owned or borrowed).
-            size_t                             ByteSize  = 0;       ///< Size of Pixels in bytes.
-            Core::Memory::TLSFSlab*            Slab      = nullptr; ///< Owning slab; nullptr = borrowed pointer.
+            uint8_t*                           Pixels          = nullptr;   ///< Pixel data (slab-owned or borrowed).
+            size_t                             ByteSize        = 0;         ///< Size of Pixels in bytes.
+            Core::Memory::TLSFSlab*            Slab            = nullptr;   ///< Owning slab; nullptr = borrowed pointer.
             uint8_t                            DecodeSlabIndex = UINT8_MAX; ///< Lease retained until this deferral is consumed or discarded.
-            Rendering::Textures::TextureHandle TexHandle = {};
+            Rendering::Textures::TextureHandle TexHandle       = {};
         };
 
         /// @brief Enqueue a texture upload deferral for processing in the next BeginFrame.
@@ -479,18 +479,18 @@ namespace ZEngine::Rendering
         };
         // Upper bound for texture timeline slot search — keeps textures out of geometry
         // slots and caps the retire loop to the same range.
-        static constexpr uint32_t     GEOMETRY_UPLOAD_SLOT    = 15;
+        static constexpr uint32_t     GEOMETRY_UPLOAD_SLOT              = 15;
         // A decode may need an equirectangular-cubemap-sized output (about 96 MiB).
         // The fixed lease count is deliberately independent of thread-pool worker count:
         // a lease remains occupied until its decoded pixels reach the GPU or are discarded.
-        static constexpr uint32_t     MAX_CONCURRENT_TEXTURE_DECODES = 4;
-        static constexpr size_t       UPLOAD_SLAB_BYTES              = 128 * 1024 * 1024;
-        static constexpr size_t       TEXTURE_TASK_SLAB_BYTES        = ZMega(2);
+        static constexpr uint32_t     MAX_CONCURRENT_TEXTURE_DECODES    = 4;
+        static constexpr size_t       UPLOAD_SLAB_BYTES                 = 128 * 1024 * 1024;
+        static constexpr size_t       TEXTURE_TASK_SLAB_BYTES           = ZMega(2);
         static constexpr size_t       SYNCHRONOUS_TEXTURE_SCRATCH_BYTES = ZMega(4);
         // Written once at Setup time via RegisterBuiltinGeometry; never reset by
         // ResetGeometryBuffers and never touched by the streaming eviction path.
-        static constexpr VkDeviceSize BUILTIN_VTX_CAPACITY    = 1 * 1024 * 1024; // 1 MB — ample for all engine builtins
-        static constexpr VkDeviceSize BUILTIN_IDX_CAPACITY    = 1 * 1024 * 1024;
+        static constexpr VkDeviceSize BUILTIN_VTX_CAPACITY              = 1 * 1024 * 1024; // 1 MB — ample for all engine builtins
+        static constexpr VkDeviceSize BUILTIN_IDX_CAPACITY              = 1 * 1024 * 1024;
 
         BufferHandle                  DoUploadMesh(Managers::AssetHandle asset, uint32_t frame_index);
 
@@ -591,75 +591,75 @@ namespace ZEngine::Rendering
         friend struct ::RRMTestHelper; // test-only — grants slot state access to streaming manager tests
         friend struct ::RRMDecodeTestHelper;
 
-        Hardwares::VulkanDevice*                                                   m_device                                         = nullptr;
-        Core::VFS::AssetRegistry*                                                  m_registry                                       = nullptr;
+        Hardwares::VulkanDevice*                                                   m_device                                       = nullptr;
+        Core::VFS::AssetRegistry*                                                  m_registry                                     = nullptr;
 
         // Dedicated command buffer manager for geometry/font-atlas uploads, separate from
         // Device->CommandBufferMgr. Regular pool slot 0 serves the two remaining
         // synchronous callers (UploadFontAtlas, UpdateBuffer's ring path); the instant
         // pool serves BeginBatchUpload/EndBatchUpload, whose submission is deferred to
         // SubmitAsyncUploads instead of blocked on.
-        Hardwares::CommandBufferManagerPtr                                         m_upload_cmd_mgr                                 = {};
+        Hardwares::CommandBufferManagerPtr                                         m_upload_cmd_mgr                               = {};
         // The only two remaining synchronous, fence-blocking uploads (UploadFontAtlas and
         // UpdateBuffer's ring path) are both render-thread-only and always fully block
         // before returning, so one shared fence is enough — neither can ever be in flight
         // when the other starts.
-        Rendering::Primitives::Fence*                                              m_sync_upload_fence                              = nullptr;
-        Hardwares::AsyncUploadQueue                                                m_async_uploads                                  = {};
+        Rendering::Primitives::Fence*                                              m_sync_upload_fence                            = nullptr;
+        Hardwares::AsyncUploadQueue                                                m_async_uploads                                = {};
 
         // Streaming geometry pool — owns the global VB/IB and their free lists.
-        GeometryPool                                                               m_pool                                           = {};
-        GeometryStreamingManager                                                   m_streaming_mgr                                  = {};
+        GeometryPool                                                               m_pool                                         = {};
+        GeometryStreamingManager                                                   m_streaming_mgr                                = {};
 
         // Separate from the global streaming pool so a scene reload cannot corrupt the
         // builtin draw offsets via ResetGeometryBuffers.
-        Core::Memory::BufferView                                                   m_builtin_vertex_buf                             = {};
-        Core::Memory::BufferView                                                   m_builtin_index_buf                              = {};
-        VkDeviceSize                                                               m_builtin_vtx_cursor                             = 0;
-        VkDeviceSize                                                               m_builtin_idx_cursor                             = 0;
+        Core::Memory::BufferView                                                   m_builtin_vertex_buf                           = {};
+        Core::Memory::BufferView                                                   m_builtin_index_buf                            = {};
+        VkDeviceSize                                                               m_builtin_vtx_cursor                           = 0;
+        VkDeviceSize                                                               m_builtin_idx_cursor                           = 0;
 
         // Dedicated timeline semaphore — single writer (EndBatchUpload), intentionally NOT
         // DeviceSwapchain::RenderTimeline. Sharing RenderTimeline with Present()'s own
         // two-per-frame increments produced non-monotonic values on Intel's Windows driver.
-        Rendering::Primitives::Semaphore*                                          m_batch_timeline                                 = nullptr;
-        Hardwares::CommandBuffer*                                                  m_batch_cmd                                      = nullptr;
-        Core::Containers::Array<BatchFrameState>                                   m_batch_frames                                   = {};
-        uint64_t                                                                   m_batch_next_value                               = 0;
+        Rendering::Primitives::Semaphore*                                          m_batch_timeline                               = nullptr;
+        Hardwares::CommandBuffer*                                                  m_batch_cmd                                    = nullptr;
+        Core::Containers::Array<BatchFrameState>                                   m_batch_frames                                 = {};
+        uint64_t                                                                   m_batch_next_value                             = 0;
         // Single-byte batch fields packed together to eliminate alignment padding gaps.
-        uint8_t                                                                    m_batch_frame_index                              = 0;
+        uint8_t                                                                    m_batch_frame_index                            = 0;
         // Set at BeginFrame — lets upload paths not threaded through a frame_index param
         // (UpdateBuffer, UploadFontAtlas) pick the correct per-frame command buffer.
-        uint8_t                                                                    m_active_frame_index                             = 0;
-        bool                                                                       m_batch_mode                                     = false;
+        uint8_t                                                                    m_active_frame_index                           = 0;
+        bool                                                                       m_batch_mode                                   = false;
 
         // Bounded TLSF decode slabs carved from the ImportPipeline owner. Each occupied
         // slot owns one decoded result through upload completion or discard.
-        Core::Memory::ArenaAllocator*                                              m_upload_arena                                   = nullptr;
-        Core::Memory::TLSFSlab                                                     m_upload_slabs[MAX_CONCURRENT_TEXTURE_DECODES]  = {};
-        PaddedAtomic<uint32_t>                                                     m_active_texture_decode_slabs                    = {};
-        Core::Memory::TLSFSlab                                                     m_synchronous_texture_scratch                    = {};
-        Core::Memory::TLSFSlab                                                     m_texture_task_slab                              = {};
-        PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                        = {};
-        PaddedAtomic<bool>                                                         m_accept_texture_decodes                         = {};
+        Core::Memory::ArenaAllocator*                                              m_upload_arena                                 = nullptr;
+        Core::Memory::TLSFSlab                                                     m_upload_slabs[MAX_CONCURRENT_TEXTURE_DECODES] = {};
+        PaddedAtomic<uint32_t>                                                     m_active_texture_decode_slabs                  = {};
+        Core::Memory::TLSFSlab                                                     m_synchronous_texture_scratch                  = {};
+        Core::Memory::TLSFSlab                                                     m_texture_task_slab                            = {};
+        PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                      = {};
+        PaddedAtomic<bool>                                                         m_accept_texture_decodes                       = {};
 
-        TextureDecodeTracker                                                       m_texture_decode_tracker                         = {};
-        Rendering::Textures::TextureHandle                                         m_fallback_cubemap                               = {};
-        EnvironmentLightingResources                                               m_fallback_environment_lighting                  = {};
+        TextureDecodeTracker                                                       m_texture_decode_tracker                       = {};
+        Rendering::Textures::TextureHandle                                         m_fallback_cubemap                             = {};
+        EnvironmentLightingResources                                               m_fallback_environment_lighting                = {};
 
-        Slot<MeshSlot>                                                             m_mesh_slots[MAX_BUFFERS]                        = {};
-        uint32_t                                                                   m_mesh_slot_count                                = 0;
+        Slot<MeshSlot>                                                             m_mesh_slots[MAX_BUFFERS]                      = {};
+        uint32_t                                                                   m_mesh_slot_count                              = 0;
         // Monotonic per-slot counter, never reset by Release() — provides ABA protection
         // on slot reuse (a stale handle with the old generation is never re-validated).
-        uint32_t                                                                   m_mesh_slot_gen_counter[MAX_BUFFERS]             = {};
+        uint32_t                                                                   m_mesh_slot_gen_counter[MAX_BUFFERS]           = {};
 
         // Handles carry GBUF_GEN_TAG in bit 31 to distinguish from mesh handles.
-        Slot<Core::Memory::BufferView>                                             m_gbuf_slots[MAX_GENERIC_BUFS]                   = {};
-        uint32_t                                                                   m_gbuf_slot_count                                = 0;
-        uint32_t                                                                   m_gbuf_slot_gen_counter[MAX_GENERIC_BUFS]        = {};
+        Slot<Core::Memory::BufferView>                                             m_gbuf_slots[MAX_GENERIC_BUFS]                 = {};
+        uint32_t                                                                   m_gbuf_slot_count                              = 0;
+        uint32_t                                                                   m_gbuf_slot_gen_counter[MAX_GENERIC_BUFS]      = {};
 
         // Written on first upload; read on OnAssetStale.
-        UUIDBufferPair                                                             m_uuid_to_buffer[MAX_UUID_MAP]                   = {};
-        uint32_t                                                                   m_uuid_to_buffer_count                           = 0;
+        UUIDBufferPair                                                             m_uuid_to_buffer[MAX_UUID_MAP]                 = {};
+        uint32_t                                                                   m_uuid_to_buffer_count                         = 0;
         std::mutex                                                                 m_uuid_map_mutex;
 
         PendingUpload                                                              m_pending[MAX_PENDING] = {};
