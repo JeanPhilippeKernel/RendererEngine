@@ -34,6 +34,19 @@ namespace ZEngine::ECS
             return true;
         }
 
+        bool IsValidFieldClass(SceneFieldClass field_class)
+        {
+            switch (field_class)
+            {
+                case SceneFieldClass::Authored:
+                case SceneFieldClass::RuntimeDerived:
+                case SceneFieldClass::EditorOnly:
+                case SceneFieldClass::Forbidden:
+                    return true;
+            }
+            return false;
+        }
+
         void Reject(SceneDiagnostics* diagnostics, cstring message)
         {
             SceneDiagnosticError(diagnostics, message);
@@ -56,15 +69,26 @@ namespace ZEngine::ECS
             return;
         }
 
-        m_arena = arena;
         m_schemas.init(arena, capacity);
         m_canonical.init(arena, capacity);
+
+        if (!m_schemas.data() || !m_canonical.data())
+        {
+            ZENGINE_CORE_ERROR("SceneComponentSchemaRegistry::Initialize: arena could not satisfy {} slots; registry stays uninitialized", capacity)
+            return;
+        }
+
+        m_arena = arena;
     }
 
     cstring SceneComponentSchemaRegistry::CopyKey(cstring key)
     {
         const size_t len  = Helpers::secure_strlen(key);
         char*        copy = ZPushString(m_arena, len + 1);
+        if (!copy)
+        {
+            return nullptr; // arena exhausted; caller must reject the registration
+        }
         Helpers::secure_strncpy(copy, len + 1, key, len);
         return copy;
     }
@@ -114,6 +138,11 @@ namespace ZEngine::ECS
                 Reject(diagnostics, "field key is null, empty, too long, or contains reserved characters");
                 return false;
             }
+            if (!IsValidFieldClass(desc.Fields[i].Class))
+            {
+                Reject(diagnostics, "field class is not one of Authored, RuntimeDerived, EditorOnly, or Forbidden");
+                return false;
+            }
             for (uint32_t j = 0; j < i; ++j)
             {
                 if (Helpers::secure_strcmp(desc.Fields[i].Key, desc.Fields[j].Key) == 0)
@@ -143,24 +172,44 @@ namespace ZEngine::ECS
             return false;
         }
 
+        cstring key_copy = CopyKey(desc.Key);
+        if (!key_copy)
+        {
+            Reject(diagnostics, "arena exhausted while copying the schema key");
+            return false;
+        }
+
+        SceneFieldSchema* fields = nullptr;
+        if (desc.FieldCount > 0)
+        {
+            fields = ZPushArray(m_arena, SceneFieldSchema, desc.FieldCount);
+            if (!fields)
+            {
+                Reject(diagnostics, "arena exhausted while allocating the field table");
+                return false;
+            }
+
+            for (uint32_t i = 0; i < desc.FieldCount; ++i)
+            {
+                cstring field_key = CopyKey(desc.Fields[i].Key);
+                if (!field_key)
+                {
+                    Reject(diagnostics, "arena exhausted while copying a field key");
+                    return false;
+                }
+                fields[i].Key   = field_key;
+                fields[i].Class = desc.Fields[i].Class;
+            }
+        }
+
         SceneComponentSchema schema{};
-        schema.Key         = CopyKey(desc.Key);
+        schema.Key         = key_copy;
         schema.Version     = desc.Version;
         schema.RuntimeType = desc.RuntimeType;
+        schema.Fields      = fields;
         schema.FieldCount  = desc.FieldCount;
         schema.Codecs      = desc.Codecs;
         schema.References  = desc.References;
-
-        if (desc.FieldCount > 0)
-        {
-            auto* fields = ZPushArray(m_arena, SceneFieldSchema, desc.FieldCount);
-            for (uint32_t i = 0; i < desc.FieldCount; ++i)
-            {
-                fields[i].Key   = CopyKey(desc.Fields[i].Key);
-                fields[i].Class = desc.Fields[i].Class;
-            }
-            schema.Fields = fields;
-        }
 
         m_schemas.push(schema);
 

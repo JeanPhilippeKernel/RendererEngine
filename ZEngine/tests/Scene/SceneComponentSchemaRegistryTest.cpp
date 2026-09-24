@@ -312,3 +312,94 @@ TEST_F(SchemaRegistryFixture, RejectsRegistrationPastReservedCapacity)
 
     small.Shutdown();
 }
+
+TEST(SchemaRegistryAllocationTest, ExhaustedArenaLeavesRegistryUninitialized)
+{
+    MemoryManager small;
+    small.Initialize(ZKilo(64), {});
+
+    SceneComponentSchemaRegistry registry;
+    registry.Initialize(&small.MainArena, 100000000u); // far beyond the arena
+
+    EXPECT_FALSE(registry.IsInitialized());
+
+    SceneDiagnostics diag;
+    EXPECT_FALSE(registry.Register(Desc("transform", 1), &diag));
+    EXPECT_TRUE(diag.HasErrors());
+    EXPECT_EQ(registry.Count(), 0u);
+
+    small.Shutdown();
+}
+
+// A registration that runs out of arena must publish nothing at all.
+TEST(SchemaRegistryAllocationTest, ExhaustedArenaDuringRegisterPublishesNoSchema)
+{
+    MemoryManager small;
+    small.Initialize(ZKilo(64), {});
+
+    SceneComponentSchemaRegistry registry;
+    registry.Initialize(&small.MainArena, 8);
+    ASSERT_TRUE(registry.IsInitialized());
+
+    SceneDiagnostics diag;
+    ASSERT_TRUE(registry.Register(Desc("first", 1), &diag));
+
+    SceneComponentSchemaDesc huge      = Desc("second", 2);
+    static SceneFieldSchema  fields[3] = {
+        {"a", SceneFieldClass::Authored},
+        {"b", SceneFieldClass::Authored},
+        {"c", SceneFieldClass::Authored},
+    };
+    huge.Fields     = fields;
+    huge.FieldCount = 3;
+
+    for (size_t block = 1024; block >= 1; block /= 2)
+    {
+        while (small.MainArena.Allocate(block, 16) != nullptr)
+        {
+        }
+        if (block == 1)
+        {
+            break;
+        }
+    }
+
+    EXPECT_FALSE(registry.Register(huge, &diag));
+    EXPECT_EQ(registry.Count(), 1u);
+    EXPECT_EQ(registry.FindByKey("second"), nullptr);
+    EXPECT_NE(registry.FindByKey("first"), nullptr); // untouched
+
+    small.Shutdown();
+}
+
+TEST_F(SchemaRegistryFixture, RejectsOutOfRangeFieldClass)
+{
+    SceneFieldSchema bogus[] = {
+        {"position", static_cast<SceneFieldClass>(200)},
+    };
+
+    SceneComponentSchemaDesc d = Desc("transform", 1);
+    d.Fields                   = bogus;
+    d.FieldCount               = 1;
+
+    EXPECT_FALSE(m_registry.Register(d, &m_diag));
+    EXPECT_TRUE(m_diag.HasErrors());
+    EXPECT_EQ(m_registry.Count(), 0u);
+}
+
+TEST_F(SchemaRegistryFixture, AcceptsEveryDeclaredFieldClass)
+{
+    SceneFieldSchema all[] = {
+        { "authored",       SceneFieldClass::Authored},
+        {  "derived", SceneFieldClass::RuntimeDerived},
+        {   "editor",     SceneFieldClass::EditorOnly},
+        {"forbidden",      SceneFieldClass::Forbidden},
+    };
+
+    SceneComponentSchemaDesc d = Desc("transform", 1);
+    d.Fields                   = all;
+    d.FieldCount               = 4;
+
+    EXPECT_TRUE(m_registry.Register(d, &m_diag));
+    EXPECT_EQ(m_registry.Count(), 1u);
+}

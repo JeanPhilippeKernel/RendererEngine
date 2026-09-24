@@ -184,6 +184,10 @@ namespace ZEngine
         g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
         g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
 
+        g_engine_ctx->SceneSchemas = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::SceneComponentSchemaRegistry);
+        g_engine_ctx->SceneSchemas->Initialize(&g_engine_ctx->ECSArena);
+        ZENGINE_VALIDATE_ASSERT(g_engine_ctx->SceneSchemas->IsInitialized(), "Engine::Initialize: scene schema registry could not be initialized")
+
         ECS::ComponentReflectionRegistry::Get().Initialize(&g_engine_ctx->ECSArena);
         ECS::Components::RegisterBuiltInComponentReflection();
 
