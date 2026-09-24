@@ -25,11 +25,14 @@ namespace Tetragrama
 {
     void Editor::OnInitializing()
     {
-        Configuration = ZPushStructCtor(&Memory->MainArena, EditorConfiguration);
+        // Reserve the editor owner before creating configuration and workspace
+        // state. EditorScene will later carve its 200 MiB local arena from here.
+        Memory->CreateBudgetedArena(Memory->Budget.EditorContext, &EditorArena);
+        Configuration = ZPushStructCtor(&EditorArena, EditorConfiguration);
 
         if (ZEngine::Helpers::secure_strlen(ConfigFile))
         {
-            Configuration->ReadConfig(&Memory->MainArena, ConfigFile);
+            Configuration->ReadConfig(&EditorArena, ConfigFile);
         }
 
         if (Configuration->ActiveSceneName.empty())
@@ -37,12 +40,12 @@ namespace Tetragrama
             ZENGINE_CORE_WARN("Editor Scene name is empty")
 
             cstring active_scene = "<empty scene>";
-            Configuration->ActiveSceneName.init(&Memory->MainArena, active_scene);
+            Configuration->ActiveSceneName.init(&EditorArena, active_scene);
         }
         WorkingSpacePath = Configuration->WorkingSpacePath.c_str();
         if (WorkingSpacePath && WorkingSpacePath[0] != '\0')
         {
-            WorkingSpaceBackend.Initialize(WorkingSpacePath, ZEngine::Core::VFS::VFSBackendCaps::Read | ZEngine::Core::VFS::VFSBackendCaps::Write | ZEngine::Core::VFS::VFSBackendCaps::List, &Memory->MainArena);
+            WorkingSpaceBackend.Initialize(WorkingSpacePath, ZEngine::Core::VFS::VFSBackendCaps::Read | ZEngine::Core::VFS::VFSBackendCaps::Write | ZEngine::Core::VFS::VFSBackendCaps::List, &EditorArena);
             VFSBackend = &WorkingSpaceBackend;
         }
     }
@@ -53,36 +56,36 @@ namespace Tetragrama
         const char* scene_name   = Configuration->ActiveSceneName.empty() ? "<empty scene>" : Configuration->ActiveSceneName.c_str();
         std::string title        = fmt::format("{0} - Active Scene : {1}", project_name, scene_name);
         WindowCfg.EnableVsync    = true;
-        WindowCfg.Title.init(&Memory->MainArena, title.c_str());
+        WindowCfg.Title.init(&EditorArena, title.c_str());
     }
 
     void Editor::OnInitialized()
     {
-        auto editor_scene          = ZPushStructCtor(&Memory->MainArena, EditorScene);
-        auto editor_cam_controller = ZPushStructCtor(&Memory->MainArena, Controllers::EditorCameraController);
-        ZUIUILayer                 = ZPushStructCtor(&Memory->MainArena, ZUILayer);
+        auto editor_scene          = ZPushStructCtor(&EditorArena, EditorScene);
+        auto editor_cam_controller = ZPushStructCtor(&EditorArena, Controllers::EditorCameraController);
+        ZUIUILayer                 = ZPushStructCtor(&EditorArena, ZUILayer);
 
-        ZUIUILayer->Initialize(&Memory->MainArena, this);
+        ZUIUILayer->Initialize(&EditorArena, this);
 
         // Single panel-manager component replaces all old per-panel components.
         // It owns the dock tree, tab bars, and all panel views.
-        auto* pm = ZPushStructCtor(&Memory->MainArena, Tetragrama::Panels::ZUIPanelManagerComponent);
+        auto* pm = ZPushStructCtor(&EditorArena, Tetragrama::Panels::ZUIPanelManagerComponent);
         pm->Initialize(ZUIUILayer, "PanelManager");
         ZUIUILayer->AddComponent(pm);
 
         // Editor shell: menu bar + floating overlays (settings, etc.)
         // Registered after PanelManager so it renders on top.
-        auto* shell = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIDockspaceComponent);
+        auto* shell = ZPushStructCtor(&EditorArena, Tetragrama::Components::ZUIDockspaceComponent);
         shell->Initialize(ZUIUILayer, "EditorShell");
         shell->ShellPanelManager = &pm->Manager;
         ZUIUILayer->AddComponent(shell);
 
-        auto* sbar              = ZPushStructCtor(&Memory->MainArena, Tetragrama::Components::ZUIStatusBarComponent);
+        auto* sbar              = ZPushStructCtor(&EditorArena, Tetragrama::Components::ZUIStatusBarComponent);
         sbar->ShellPanelManager = &pm->Manager;
         sbar->Initialize(ZUIUILayer, "StatusBar");
         ZUIUILayer->AddComponent(sbar);
-        editor_cam_controller->Initialize(&Memory->MainArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
-        editor_scene->Initialize(&Memory->MainArena, Configuration->ActiveSceneName.c_str(), Configuration->DefaultSky);
+        editor_cam_controller->Initialize(&EditorArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
+        editor_scene->Initialize(&EditorArena, Configuration->ActiveSceneName.c_str(), Configuration->DefaultSky);
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
@@ -116,7 +119,7 @@ namespace Tetragrama
 
             ZENGINE_CORE_INFO("[ZUI] FontBake body={:.0f} small={:.0f} header={:.0f}  FontScale={:.2f}", kBake, kSmall, kHeader, kFontScale);
 
-            auto scratch = ZGetScratch(&Memory->MainArena);
+            auto scratch = ZGetScratch(&EditorArena);
             ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBake, kHeader, 32, 96, kHeaderFontPath);
             ZReleaseScratch(scratch);
 

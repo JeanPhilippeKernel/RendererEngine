@@ -154,13 +154,15 @@ namespace ZEngine::Rendering
         }
     } // namespace
 
-    void RenderResourceManager::Initialize(VulkanDevice* device, Core::VFS::AssetRegistry* registry)
+    void RenderResourceManager::Initialize(VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena)
     {
         ZENGINE_VALIDATE_ASSERT(device != nullptr, "RenderResourceManager::Initialize: device must not be null")
         ZENGINE_VALIDATE_ASSERT(registry != nullptr, "RenderResourceManager::Initialize: registry must not be null")
+        ZENGINE_VALIDATE_ASSERT(upload_arena != nullptr, "RenderResourceManager::Initialize: upload arena must not be null")
 
-        m_device   = device;
-        m_registry = registry;
+        m_device       = device;
+        m_registry     = registry;
+        m_upload_arena = upload_arena;
         m_pending_texture_decodes.value.store(0, std::memory_order_relaxed);
         m_accept_texture_decodes.value.store(true, std::memory_order_release);
         m_fallback_cubemap              = {};
@@ -173,8 +175,8 @@ namespace ZEngine::Rendering
         InitGlobalBuffers();
         InitTextureTimelines();
         InitUploadSlabs(static_cast<uint32_t>(Helpers::ThreadPoolHelper::Pool->WorkerCount));
-        m_fallback_upload_slab.Init(m_device->Arena, UPLOAD_SLAB_BYTES);
-        m_texture_task_slab.Init(m_device->Arena, TEXTURE_TASK_SLAB_BYTES);
+        m_fallback_upload_slab.Init(m_upload_arena, UPLOAD_SLAB_BYTES);
+        m_texture_task_slab.Init(m_upload_arena, TEXTURE_TASK_SLAB_BYTES);
 
         registry->SetOnReadyCallback(this, &RenderResourceManager::OnAssetReady);
         registry->SetOnStaleCallback(this, &RenderResourceManager::OnAssetStale);
@@ -1201,9 +1203,9 @@ namespace ZEngine::Rendering
         m_upload_slab_count = worker_count;
 
         for (uint32_t i = 0; i < worker_count; ++i)
-            m_upload_slabs[i].Init(m_device->Arena, UPLOAD_SLAB_BYTES);
+            m_upload_slabs[i].Init(m_upload_arena, UPLOAD_SLAB_BYTES);
 
-        auto* context  = ZPushStructCtor(m_device->Arena, UploadSlabInitContext);
+        auto* context  = ZPushStructCtor(m_upload_arena, UploadSlabInitContext);
         context->Slabs = m_upload_slabs;
         Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(&RenderResourceManager::BindWorkerUploadSlab, context);
     }

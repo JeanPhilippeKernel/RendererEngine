@@ -164,7 +164,7 @@ Each worker sets a thread-local slab pointer before starting its task loop via a
  RRM::InitUploadSlabs(worker_count)
    │
    ├── for i in [0, worker_count):
-   │       m_upload_slabs[i].Init(Device->Arena, UPLOAD_SLAB_BYTES)
+   │       m_upload_slabs[i].Init(ImportPipelineArena, UPLOAD_SLAB_BYTES)
    │
    └── ThreadPool::RegisterWorkerInit(
            [](void* ctx, size_t idx) { SetWorkerSlab(&slabs[idx]); },
@@ -191,7 +191,7 @@ serializing operations on the same slab.
  Workers and their slabs:
 
  worker[0] ──owns──► slab[0]  128 MB  ─┐
- worker[1] ──owns──► slab[1]  128 MB   │  all backed from Device->Arena
+ worker[1] ──owns──► slab[1]  128 MB   │  all backed from ImportPipelineArena
  worker[2] ──owns──► slab[2]  128 MB   │  (N × 128 MB reservation)
  worker[3] ──owns──► slab[3]  128 MB  ─┘
  ...up to MAX_WORKERS (16)

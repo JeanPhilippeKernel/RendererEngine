@@ -14,7 +14,7 @@ namespace ZEngine::Core::Memory
 #ifdef _WIN32
         // Reserve the full range. Pages are committed lazily in ArenaAllocateRaw via
         // VirtualAlloc(MEM_COMMIT) — this avoids consuming pagefile quota for budget
-        // regions that may never be fully used (e.g. ImportPipeline at 3.5 GB).
+        // regions that may never be fully used (e.g. ImportPipeline at 4 GiB).
         m_memory = (uint8_t*) VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 #else
         // macOS/Linux use overcommit: mmap with full permissions allocates virtual address
@@ -221,7 +221,7 @@ namespace ZEngine::Core::Memory
 
         // Windows: m_committed_size = 0 — sub-arena commits its own pages lazily via
         //   VirtualAlloc(MEM_COMMIT) in ArenaAllocateRaw. Avoids consuming pagefile quota
-        //   for large budgets (ImportPipeline 3.5 GB, AssetManager 1 GB, …) that may
+        //   for large budgets (ImportPipeline 4 GiB, AssetManager 1 GiB, …) that may
         //   never be fully used, which was causing UIContext commit to fail.
         // macOS/Linux: m_committed_size = size — the parent's mmap(PROT_READ|PROT_WRITE)
         //   already covers this range; no mprotect call is needed, ever.
@@ -238,8 +238,8 @@ namespace ZEngine::Core::Memory
 
 #ifdef _WIN32
         // Advance the parent's m_committed_size to match so that a subsequent direct
-        // Allocate on the parent (e.g. Device->Arena == MainArena in Engine.cpp) does
-        // not attempt to commit the entire sub-arena region in one VirtualAlloc call.
+        // allocation on the parent does not attempt to commit the entire sub-arena
+        // region in one VirtualAlloc call.
         // The sub-arena pages remain PAGE_NOACCESS; each sub-arena commits lazily.
         if (m_committed_size < m_current_offset)
             m_committed_size = m_current_offset;
