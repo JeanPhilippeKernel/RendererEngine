@@ -13,6 +13,9 @@ namespace ZEngine::Core::Memory
 
     struct MemoryBudgetConfig
     {
+        // Process-lifetime engine/application objects that exist before a subsystem
+        // owner is available (window, EngineContext, application state, scheduler).
+        SubArenaConfig  Bootstrap        = {};
         SubArenaConfig  AudioEngine      = {};
         SubArenaConfig  AnimationManager = {};
         SubArenaConfig  AssetManager     = {};
@@ -34,7 +37,7 @@ namespace ZEngine::Core::Memory
         // Returns the total bytes committed by all SubArenaConfig entries.
         inline uint64_t TotalCommitted() const
         {
-            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
+            return Bootstrap.SizeBytes + AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
         }
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
@@ -49,6 +52,7 @@ namespace ZEngine::Core::Memory
         inline static MemoryBudgetConfig Default()
         {
             MemoryBudgetConfig cfg = {};
+            cfg.Bootstrap          = {"Bootstrap", ZMega(32ULL)};
             cfg.AudioEngine        = {"AudioEngine", ZMega(128ULL)};
             cfg.AnimationManager   = {"AnimationManager", ZMega(256ULL)};
             cfg.AssetManager       = {"AssetManager", ZGiga(1ULL)};
@@ -98,8 +102,11 @@ namespace ZEngine::Core::Memory
 
     struct MemoryManager
     {
-        ArenaAllocator     MainArena = {};
-        MemoryBudgetConfig Budget    = {};
+        ArenaAllocator     MainArena      = {};
+        // The sole long-lived owner carved automatically during Initialize. It is
+        // intentionally small and exists before logging, VFS, or device state.
+        ArenaAllocator     BootstrapArena = {};
+        MemoryBudgetConfig Budget         = {};
 
         void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config);
         void               CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result);

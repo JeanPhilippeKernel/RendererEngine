@@ -20,13 +20,30 @@ TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
     const MemoryBudgetConfig server_budget  = MemoryBudgetConfig::Server();
 
     EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(256));
+    EXPECT_EQ(default_budget.Bootstrap.SizeBytes, ZMega(32));
     EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
-    EXPECT_EQ(default_budget.TotalCommitted(), ZMega(7572));
-    EXPECT_EQ(budget.TotalCommitted(), ZMega(7700));
-    EXPECT_EQ(server_budget.TotalCommitted(), ZMega(6292));
+    EXPECT_EQ(default_budget.TotalCommitted(), ZMega(7604));
+    EXPECT_EQ(budget.TotalCommitted(), ZMega(7732));
+    EXPECT_EQ(server_budget.TotalCommitted(), ZMega(6324));
     EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
     EXPECT_TRUE(budget.Validate(ZGiga(8)));
     EXPECT_TRUE(server_budget.Validate(ZGiga(8)));
+}
+
+TEST(MemoryManagerTest, MaterializesBootstrapOwner)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap = {"Bootstrap", ZKilo(64)};
+
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(128), config);
+
+    EXPECT_NE(manager.BootstrapArena.m_memory, nullptr);
+    EXPECT_TRUE(manager.BootstrapArena.m_is_sub_arena);
+    EXPECT_EQ(manager.BootstrapArena.m_total_size, ZKilo(64));
+    EXPECT_STREQ(manager.BootstrapArena.m_owner_name, "Bootstrap");
+
+    manager.Shutdown();
 }
 
 TEST(AllocatorTest, ArenaAllocate)

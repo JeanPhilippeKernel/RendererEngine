@@ -24,9 +24,9 @@ owners. This is a CPU-address-space concern, not a GPU-memory requirement.
 
 | Profile | Configured total | Difference from root reservation |
 |---|---:|---:|
-| `Default()` | 7,572 MiB | 620 MiB |
-| `Editor()` | 7,700 MiB | 492 MiB |
-| `Server()` | 6,292 MiB | 1,900 MiB |
+| `Default()` | 7,604 MiB | 588 MiB |
+| `Editor()` | 7,732 MiB | 460 MiB |
+| `Server()` | 6,324 MiB | 1,868 MiB |
 
 `Editor()` changes `AudioEngine` and `Network` to zero, raises `UIContext` from 64 to 128 MiB, and adds the 256 MiB `EditorContext` owner. `Server()` zeroes `AudioEngine`, `UIContext`, `VulkanDevice`, and `Network`. `MemoryManager::Initialize` validates the selected total before it initializes `MainArena`.
 
@@ -34,6 +34,7 @@ owners. This is a CPU-address-space concern, not a GPU-memory requirement.
 
 | Slot | Default | Editor |
 |---|---:|---:|
+| `Bootstrap` | 32 MiB | 32 MiB |
 | `AudioEngine` | 128 MiB | 0 |
 | `AnimationManager` | 256 MiB | 256 MiB |
 | `AssetManager` | 1,024 MiB | 1,024 MiB |
@@ -50,7 +51,7 @@ owners. This is a CPU-address-space concern, not a GPU-memory requirement.
 | `Network` | 64 MiB | 0 |
 | `Input` | 4 MiB | 4 MiB |
 
-The slots are a validated profile, not evidence that every subsystem has already been isolated. Startup currently creates budgeted arenas for logging, Vulkan device state, VFS, asset management, input, ECS scene data, import pipeline, and UI context. The import-pipeline arena also owns the renderer's bounded worker decode slabs. The editor creates its `EditorContext` arena before configuration loading; it owns the editor scene, tools, and panel layer. Several remaining owners still allocate from `MainArena` or create their own child arena; do not describe those as enforced slots until they are migrated.
+The slots are a validated profile, not evidence that every subsystem has already been isolated. Startup creates the bounded `Bootstrap` owner for process-lifetime application/engine state, then creates budgeted arenas for logging, Vulkan device state, VFS, asset management, input, ECS scene data, import pipeline, and UI context. The import-pipeline arena also owns the renderer's bounded worker decode slabs. The editor creates its `EditorContext` arena before configuration loading; it owns the editor scene, tools, and panel layer. Several remaining owners still create direct child arenas; do not describe unused declared slots as enforced until they are migrated.
 
 `CreateBudgetedArena` validates a nonzero size, creates the child arena, and registers it with `MemoryProfiler` in profiling builds. `MemoryProfiler` tracks current and peak offsets and emits an 80% watermark warning with a 60-second cooldown. It only sees arenas explicitly registered this way.
 

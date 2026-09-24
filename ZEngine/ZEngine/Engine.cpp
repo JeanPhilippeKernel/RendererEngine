@@ -118,7 +118,7 @@ namespace ZEngine
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::IsInitialized(), "Engine::Initialize: ThreadPool not initialized — Obelisk must call ThreadPoolHelper::Initialize first")
 
-        auto& arena  = memory->MainArena;
+        auto& arena  = memory->BootstrapArena;
 
         g_engine_ctx = ZPushStructCtor(&arena, EngineContext);
 
@@ -129,7 +129,7 @@ namespace ZEngine
 
         // Device-owned CPU state (command buffers, shaders, render graph, and
         // swapchain state) must consume the declared VulkanDevice budget rather
-        // than silently taking unbounded capacity from MainArena.
+        // than silently taking unbounded capacity from the bootstrap owner.
         memory->CreateBudgetedArena(memory->Budget.VulkanDevice, &g_engine_ctx->VulkanDeviceArena);
         g_engine_ctx->Device         = ZPushStructCtor(&g_engine_ctx->VulkanDeviceArena, Hardwares::VulkanDevice);
         uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));

@@ -12,6 +12,7 @@ The current profiles total the following maximum reservations:
 
 | Slot | Default | Editor | Current consumer status |
 |---|---:|---:|---|
+| `Bootstrap` | 32 MiB | 32 MiB | carved by `MemoryManager::Initialize`; owns process-lifetime application and engine bootstrap state |
 | `AudioEngine` | 128 MiB | 0 | declared; not carved during current startup |
 | `AnimationManager` | 256 MiB | 256 MiB | declared; not carved during current startup |
 | `AssetManager` | 1 GiB | 1 GiB | carved by `Engine::Initialize` |
@@ -28,13 +29,13 @@ The current profiles total the following maximum reservations:
 | `Network` | 64 MiB | 0 | declared; not carved during current startup |
 | `Input` | 4 MiB | 4 MiB | carved by `Engine::Initialize` |
 
-The exact totals are **7,572 MiB** for `Default()` and **7,700 MiB** for `Editor()`. Both fit inside the 8 GiB root reservation. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
+The exact totals are **7,604 MiB** for `Default()` and **7,732 MiB** for `Editor()`. Both fit inside the 8 GiB root reservation. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
 
 `ImportPipeline` is a parent arena. Its present importer allocations include 64 MiB for glTF, 128 MiB for Assimp, 512 MiB for FBX, and 32 MiB for environment-map import. It also owns one 128 MiB TLSF decode slab per worker (up to 16), a 128 MiB fallback slab, and a 2 MiB texture-task slab for `RenderResourceManager`. Importers may create temporary child arenas and clear them between jobs; their individual allocations do not make the whole 4 GiB physically resident by themselves.
 
 ## What this does and does not enforce
 
-The startup validation limits the *declared profile*. Vulkan device state and editor state now use their named slots, but several systems still allocate from `MainArena` or directly create a child arena. Consequently, a config slot is not a hard per-subsystem limit until its owner is initialized from `CreateBudgetedArena`. No code should treat unused declared slots as already materialized allocations.
+The startup validation limits the *declared profile*. Process-lifetime application and engine state use the `Bootstrap` owner; Vulkan device state and editor state use their named slots. Several systems still directly create a child arena, so a config slot is not a hard per-subsystem limit until its owner is initialized from `CreateBudgetedArena`. No code should treat unused declared slots as already materialized allocations.
 
 All platforms reserve child address space without making it writable. POSIX no longer requires a
 single writable 8 GiB mapping before startup; it promotes allocation pages with `mprotect`.
@@ -56,7 +57,7 @@ The 384 MiB gate covers the persistent environment bake/update peak. It does not
 1. Add Linux coverage under a constrained address-space or commit limit and exercise the
    `mmap`/`mprotect` diagnostics. The allocator now reserves the root with `PROT_NONE`, promotes
    only allocation page ranges, and tracks discontiguous parent/child commitments.
-2. Move every listed live subsystem to its named budgeted arena, or remove its slot from the profile. Direct `MainArena.CreateSubArena` calls need an explicit owner and a documented exception before they remain.
+2. Move every listed live subsystem to its named budgeted arena, or remove its slot from the profile. Direct child-arena creation needs an explicit owner and a documented exception before it remains.
 3. Make profile sizes data-backed: record arena peaks from representative editor and game workloads, then set headroom from those measurements rather than speculative tables.
 4. Add a report which distinguishes root/direct allocations, tracked CPU arenas, VMA/driver allocations, persistent environment resources, and render-graph transients. Never combine these as though they share one enforced ceiling.
 5. Fail startup with a useful slot-by-slot diagnostic when a profile exceeds the root arena, and add tests for `Default()`, `Editor()`, and `Server()` totals.

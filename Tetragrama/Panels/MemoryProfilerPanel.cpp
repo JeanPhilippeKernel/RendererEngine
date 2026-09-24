@@ -88,17 +88,18 @@ namespace Tetragrama::Panels
             ZUIBeginRow(ctx, "##mp_hdr", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 10.f);
 
-            // Total = root arena (MainArena, first registered) — its offset IS the
-            // real physical memory in use; sub-arenas are slices of it, not additional.
+            // Bootstrap is the first tracked owner. It contains process-lifetime
+            // application objects; the per-owner rows below remain non-additive views
+            // into the same root reservation.
             if (arena_count > 0)
             {
-                const ArenaStats& root = stats[0];
+                const ArenaStats& bootstrap = stats[0];
                 char              buf_used[32], buf_cap[32];
-                FormatBytes(buf_used, sizeof(buf_used), root.CurrentOffset);
-                FormatBytes(buf_cap, sizeof(buf_cap), root.Capacity);
-                float root_pct = (root.Capacity > 0) ? (float) root.CurrentOffset / (float) root.Capacity * 100.f : 0.f;
+                FormatBytes(buf_used, sizeof(buf_used), bootstrap.CurrentOffset);
+                FormatBytes(buf_cap, sizeof(buf_cap), bootstrap.Capacity);
+                float bootstrap_pct = (bootstrap.Capacity > 0) ? (float) bootstrap.CurrentOffset / (float) bootstrap.Capacity * 100.f : 0.f;
                 char  hdr[96];
-                snprintf(hdr, sizeof(hdr), "Total: %s / %s  (%.0f%%)", buf_used, buf_cap, root_pct);
+                snprintf(hdr, sizeof(hdr), "Bootstrap: %s / %s  (%.0f%%)", buf_used, buf_cap, bootstrap_pct);
                 ZUILabel(ctx, hdr, ctx->Theme.TextDefault);
             }
             else

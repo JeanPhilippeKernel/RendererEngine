@@ -25,6 +25,8 @@ namespace ZEngine::Core::Memory
         page_size = sysconf(_SC_PAGESIZE);
 #endif
         MainArena.Initialize(buffer_size, page_size, "MainArena");
+        if (Budget.Bootstrap.SizeBytes > 0)
+            CreateBudgetedArena(Budget.Bootstrap, &BootstrapArena);
     }
 
     void MemoryManager::CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result)
@@ -41,6 +43,7 @@ namespace ZEngine::Core::Memory
 
     void MemoryManager::Shutdown()
     {
+        BootstrapArena.Shutdown();
         MainArena.Shutdown();
     }
 } // namespace ZEngine::Core::Memory
