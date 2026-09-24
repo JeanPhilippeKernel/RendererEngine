@@ -55,13 +55,13 @@ namespace ZEngine
         Importers::TextureImporter         TextureImporter                 = {};
 
         // Sub-arenas (large structs — grouped together to avoid pointer/arena interleaving)
-        Core::Memory::ArenaAllocator      VFSArena                        = {};
-        Core::Memory::ArenaAllocator      AssetArena                      = {};
-        Core::Memory::ArenaAllocator      InputArena                      = {};
-        Core::Memory::ArenaAllocator      ECSArena                        = {};
-        Core::Memory::ArenaAllocator      ImportPipelineArena             = {};
-        Core::Memory::ArenaAllocator      UIContextArena                  = {};
-        Core::Memory::ArenaAllocator      VulkanDeviceArena               = {};
+        Core::Memory::ArenaAllocator       VFSArena                        = {};
+        Core::Memory::ArenaAllocator       AssetArena                      = {};
+        Core::Memory::ArenaAllocator       InputArena                      = {};
+        Core::Memory::ArenaAllocator       ECSArena                        = {};
+        Core::Memory::ArenaAllocator       ImportPipelineArena             = {};
+        Core::Memory::ArenaAllocator       UIContextArena                  = {};
+        Core::Memory::ArenaAllocator       VulkanDeviceArena               = {};
 
         // Pointers (8 bytes each — grouped to pack cleanly)
         Hardwares::VulkanDevicePtr         Device                          = nullptr;
