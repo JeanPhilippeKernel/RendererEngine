@@ -14,24 +14,24 @@ The current profiles total the following maximum reservations:
 |---|---:|---:|---|
 | `Bootstrap` | 32 MiB | 32 MiB | carved by `MemoryManager::Initialize`; owns process-lifetime application and engine bootstrap state |
 | `AudioEngine` | 128 MiB | 0 | declared; not carved during current startup |
-| `AnimationManager` | 256 MiB | 256 MiB | declared; not carved during current startup |
-| `AssetManager` | 1 GiB | 1 GiB | carved by `Engine::Initialize` |
+| `AnimationManager` | 256 MiB | 0 | not materialized by the current editor startup |
+| `AssetManager` | 1 GiB | 1.25 GiB | carved by `Engine::Initialize` |
 | `ECSScene` | 512 MiB | 512 MiB | carved by `Engine::Initialize` |
 | `Logging` | 8 MiB | 8 MiB | carved in `Obelisk/EntryPoint.cpp` |
 | `VirtualFS` | 64 MiB | 64 MiB | carved by `Engine::Initialize` |
 | `VulkanDevice` | 1 GiB | 1 GiB | carved by `Engine::Initialize` |
 | `ImportPipeline` | 4 GiB | 4 GiB | carved by `Engine::Initialize`; owns importer arenas and renderer decode slabs |
 | `UIContext` | 64 MiB | 128 MiB | carved by `Engine::Initialize` |
-| `EditorContext` | 0 | 256 MiB | carved by `Tetragrama::Editor::OnInitializing`; owns the editor scene and tools |
+| `EditorContext` | 0 | 320 MiB | carved by `Tetragrama::Editor::OnInitializing`; owns the editor scene and tools |
 | `EditorSceneLoadA` | 0 | 200 MiB | carved by `Engine::Initialize`; first bounded deserialization lease |
 | `EditorSceneLoadB` | 0 | 200 MiB | carved by `Engine::Initialize`; second bounded deserialization lease |
-| `Swapchain` | 8 MiB | 8 MiB | declared; not carved through this config |
-| `ShaderCache` | 64 MiB | 64 MiB | declared; shader currently makes its own sub-arena |
-| `Serializer` | 256 MiB | 256 MiB | declared; serializer currently makes its own sub-arena |
+| `Swapchain` | 8 MiB | 0 | not materialized by the current editor startup |
+| `ShaderCache` | 64 MiB | 0 | shader state is owned by `VulkanDevice` |
+| `Serializer` | 256 MiB | 0 | scene replacement uses the two explicit editor scene-load owners |
 | `Network` | 64 MiB | 0 | declared; not carved during current startup |
 | `Input` | 4 MiB | 4 MiB | carved by `Engine::Initialize` |
 
-The exact totals are **7,604 MiB** for `Default()` and **8,132 MiB** for `Editor()`. Both fit below the 8 GiB configured capacity limit. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
+The exact totals are **7,604 MiB** for `Default()` and **7,868 MiB** for `Editor()`. Both fit below the 8 GiB configured capacity limit. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
 
 `ImportPipeline` is a parent arena. Its present importer allocations include 64 MiB for glTF, 128 MiB for Assimp, 512 MiB for FBX, and 128 MiB for the serialized environment-map import slab. `RenderResourceManager` owns four 128 MiB texture-decode slabs, a 2 MiB task slab, and 4 MiB of synchronous LUT scratch. A decode lease remains occupied until its pixels upload or are discarded, so this 512 MiB bound does not vary with CPU worker count. Importers may create temporary child arenas and clear them between jobs; their individual allocations do not make the whole 4 GiB physically resident by themselves.
 
@@ -57,7 +57,7 @@ The 384 MiB gate covers the persistent environment bake/update peak. It does not
 
 ## Production completion criteria
 
-1. Make profile sizes data-backed: record arena peaks from representative editor and game workloads, then set headroom from those measurements rather than speculative tables.
+1. The representative `SampleProject` editor workload is calibrated: default atmosphere baking plus the two bundled meshes peaked at 209.2 MiB in `EditorContext` and 788.9 MiB in `AssetManager`, so their editor capacities are 320 MiB and 1.25 GiB. Repeat this measurement for a representative game workload before changing `Default()`.
 2. The editor profiler reports named CPU arenas, VMA/driver samples, persistent environment resources, and render-graph transients in separate sections. Configured runs have no shared root/direct arena; Bootstrap is reported as a named CPU owner. Never combine these sections as though they share one enforced ceiling.
 3. Startup reports a useful slot-by-slot diagnostic when a profile exceeds the configured capacity limit; tests cover all built-in totals and the diagnostic's named owners.
 4. Establish a GPU-budget policy separately using VMA heap-budget telemetry and allocation-class accounting. A per-category hard cap must be designed and implemented rather than inferred from this CPU configuration.

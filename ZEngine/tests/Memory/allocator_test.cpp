@@ -32,13 +32,18 @@ TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
     const MemoryBudgetConfig budget         = MemoryBudgetConfig::Editor();
     const MemoryBudgetConfig server_budget  = MemoryBudgetConfig::Server();
 
-    EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(256));
+    EXPECT_EQ(budget.AssetManager.SizeBytes, ZMega(1280));
+    EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(320));
     EXPECT_EQ(budget.EditorSceneLoadA.SizeBytes, ZMega(200));
     EXPECT_EQ(budget.EditorSceneLoadB.SizeBytes, ZMega(200));
+    EXPECT_EQ(budget.AnimationManager.SizeBytes, 0);
+    EXPECT_EQ(budget.Swapchain.SizeBytes, 0);
+    EXPECT_EQ(budget.ShaderCache.SizeBytes, 0);
+    EXPECT_EQ(budget.Serializer.SizeBytes, 0);
     EXPECT_EQ(default_budget.Bootstrap.SizeBytes, ZMega(32));
     EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
     EXPECT_EQ(default_budget.TotalCapacity(), ZMega(7604));
-    EXPECT_EQ(budget.TotalCapacity(), ZMega(8132));
+    EXPECT_EQ(budget.TotalCapacity(), ZMega(7868));
     EXPECT_EQ(server_budget.TotalCapacity(), ZMega(6324));
     EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
     EXPECT_TRUE(budget.Validate(ZGiga(8)));

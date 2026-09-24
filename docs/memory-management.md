@@ -255,10 +255,11 @@ sequenceDiagram
 
 `MemoryBudgetConfig` in `ZEngine/ZEngine/Core/Memory/MemoryManager.h` defines the profile.
 `Obelisk` validates that profile against an 8 GiB configured-capacity limit before initialization.
-The actual configured totals are 7,604 MiB (`Default`), 8,132 MiB (`Editor`), and 6,324 MiB
-(`Server`); the largest slots are `ImportPipeline` (4,096 MiB), `AssetManager` (1,024 MiB),
-`VulkanDevice` (1,024 MiB), and `ECSScene` (512 MiB). `UIContext` is 64 MiB by default and
-128 MiB for the editor. Not every declared slot is materialized by every runtime mode.
+The actual configured totals are 7,604 MiB (`Default`), 7,868 MiB (`Editor`), and 6,324 MiB
+(`Server`); the largest slots are `ImportPipeline` (4,096 MiB), `AssetManager` (1,024 MiB by
+default and 1,280 MiB for the calibrated editor profile), `VulkanDevice` (1,024 MiB), and
+`ECSScene` (512 MiB). `UIContext` is 64 MiB by default and 128 MiB for the editor. Not every
+declared slot is materialized by every runtime mode.
 
 Configured owners are separate virtual reservations: Windows starts them `PAGE_NOACCESS`, while
 macOS/Linux start them `PROT_NONE`. The allocator promotes only the required page range on each

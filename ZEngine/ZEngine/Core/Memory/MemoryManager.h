@@ -82,18 +82,29 @@ namespace ZEngine::Core::Memory
             return cfg;
         }
 
-        // Returns a reduced budget for tool / editor builds (no audio, no network).
+        // Returns a calibrated budget for tool / editor builds. The editor does not
+        // materialize the legacy animation, swapchain, shader-cache, or serializer
+        // roots; their capacity is reassigned to the measured persistent owners.
         inline static MemoryBudgetConfig Editor()
         {
-            auto cfg                  = Default();
-            cfg.AudioEngine.SizeBytes = 0ull;
-            cfg.Network.SizeBytes     = 0ull;
-            cfg.UIContext.SizeBytes   = ZMega(128ULL);
+            auto cfg                       = Default();
+            cfg.AudioEngine.SizeBytes      = 0ull;
+            cfg.Network.SizeBytes          = 0ull;
+            cfg.AnimationManager.SizeBytes = 0ull;
+            cfg.Swapchain.SizeBytes        = 0ull;
+            cfg.ShaderCache.SizeBytes      = 0ull;
+            cfg.Serializer.SizeBytes       = 0ull;
+            // SampleProject with its atmosphere and both representative meshes
+            // peaked at 788.9 MiB. 1.25 GiB leaves approximately 38% headroom.
+            cfg.AssetManager.SizeBytes     = ZMega(1280ULL);
+            cfg.UIContext.SizeBytes        = ZMega(128ULL);
             // The active editor scene reserves 200 MiB from this owner. Separate
             // scene-load owners below keep replacement deserialization bounded.
-            cfg.EditorContext         = {"EditorContext", ZMega(256ULL)};
-            cfg.EditorSceneLoadA      = {"EditorSceneLoadA", ZMega(200ULL)};
-            cfg.EditorSceneLoadB      = {"EditorSceneLoadB", ZMega(200ULL)};
+            // The same workload peaked at 209.2 MiB; 320 MiB leaves approximately
+            // 35% headroom instead of crossing the 80% profiler watermark.
+            cfg.EditorContext              = {"EditorContext", ZMega(320ULL)};
+            cfg.EditorSceneLoadA           = {"EditorSceneLoadA", ZMega(200ULL)};
+            cfg.EditorSceneLoadB           = {"EditorSceneLoadB", ZMega(200ULL)};
 
             return cfg;
         }
