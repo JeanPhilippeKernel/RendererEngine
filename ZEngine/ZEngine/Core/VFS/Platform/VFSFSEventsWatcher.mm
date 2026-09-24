@@ -1,6 +1,7 @@
 #include <ZEngine/Core/VFS/Platform/VFSFSEventsWatcher.h>
 #if defined(__APPLE__)
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <cstring>
 #include <sys/stat.h>
 
 namespace ZEngine::Core::VFS
@@ -43,8 +44,50 @@ namespace ZEngine::Core::VFS
 
     void VFSFSEventsWatcher::PushEvent(const VFSWatchEvent& ev)
     {
-        std::lock_guard<std::mutex> lock(m_queue_mutex);
+        // Keep the watch lock until the event is in the queue. RemoveWatch uses
+        // the same lock to remove stale queued events, so no event from a removed
+        // root can be published after RemoveWatch returns.
+        std::lock_guard<std::mutex> watch_lock(m_watch_mutex);
+        if (m_watches.empty() || (ev.Kind != WatchEventKind::Overflow && !IsPathWatchedLocked(ev.Path)))
+            return;
+
+        std::lock_guard<std::mutex> queue_lock(m_queue_mutex);
         m_queue.push(ev);
+    }
+
+    bool VFSFSEventsWatcher::IsPathWatchedLocked(const char* path) const
+    {
+        if (!path || path[0] == '\0')
+            return false;
+
+        for (auto it = m_watches.begin(); it != m_watches.end(); ++it)
+        {
+            const char* root       = (*it).second.Path;
+            const size_t root_size = Helpers::secure_strlen(root);
+            if (root_size == 0 || std::strncmp(path, root, root_size) != 0)
+                continue;
+
+            if (root[root_size - 1] == '/' || path[root_size] == '\0' || path[root_size] == '/')
+                return true;
+        }
+        return false;
+    }
+
+    void VFSFSEventsWatcher::DropEventsOutsideActiveWatchesLocked()
+    {
+        std::lock_guard<std::mutex> queue_lock(m_queue_mutex);
+        size_t                      kept = 0;
+        for (size_t index = 0; index < m_queue.size(); ++index)
+        {
+            const VFSWatchEvent& event = m_queue[index];
+            if (event.Kind != WatchEventKind::Overflow && !IsPathWatchedLocked(event.Path))
+                continue;
+            if (event.Kind == WatchEventKind::Overflow && m_watches.empty())
+                continue;
+            m_queue[kept++] = event;
+        }
+        while (m_queue.size() > kept)
+            m_queue.erase(m_queue.size() - 1);
     }
 
     void VFSFSEventsWatcher::FSEventsCallback(ConstFSEventStreamRef, void* context, size_t count, void* paths, const FSEventStreamEventFlags* flags, const FSEventStreamEventId*)
@@ -141,13 +184,12 @@ namespace ZEngine::Core::VFS
 
         std::lock_guard<std::mutex> lock(m_watch_mutex);
 
-        const WatchHandle           handle = m_next_handle++;
-        WatchEntry                  entry;
+        const WatchHandle handle = m_next_handle++;
+        WatchEntry        entry;
         Helpers::secure_strncpy(entry.Path, sizeof(entry.Path), native_path, ClampedLength(native_path));
-        entry.Recursive   = recursive;
+        entry.Recursive = recursive;
 
         m_watches[handle] = entry;
-
         if (m_run_loop)
         {
             CFRunLoopRef run_loop = m_run_loop;
@@ -165,11 +207,12 @@ namespace ZEngine::Core::VFS
         std::lock_guard<std::mutex> lock(m_watch_mutex);
 
         if (!m_watches.find(handle))
-        {
             return;
-        }
 
         m_watches.remove(handle);
+        // Purging alongside PushEvent's watch lock makes removal a completion
+        // boundary, even while the old FSEvent stream awaits its rebuild.
+        DropEventsOutsideActiveWatchesLocked();
 
         if (m_run_loop)
         {
@@ -218,9 +261,9 @@ namespace ZEngine::Core::VFS
         }
 
         m_thread = std::thread([this] {
-            m_run_loop = CFRunLoopGetCurrent();
             {
                 std::lock_guard<std::mutex> lock(m_watch_mutex);
+                m_run_loop = CFRunLoopGetCurrent();
                 RebuildStream();
             }
             // Signal that FSEventStreamStart has been called and the run loop
@@ -244,7 +287,6 @@ namespace ZEngine::Core::VFS
         {
             return;
         }
-
         {
             std::lock_guard<std::mutex> lock(m_watch_mutex);
             if (m_run_loop)

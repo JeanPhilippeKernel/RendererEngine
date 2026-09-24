@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <uuid.h>
 #include <algorithm>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -103,27 +104,29 @@ TEST(RenderHandle, SizeFitsInEightBytes)
 
 TEST(RenderResourceManagerDecodePolicy, LeasesAreBoundedAndReclaimed)
 {
-    RenderResourceManager manager{};
-    uint8_t               leases[RRMDecodeTestHelper::Capacity()] = {};
+    // RenderResourceManager contains bounded queues and slot tables, making it
+    // too large for the default Windows test-thread stack.
+    auto    manager                                 = std::make_unique<RenderResourceManager>();
+    uint8_t leases[RRMDecodeTestHelper::Capacity()] = {};
 
     for (uint32_t index = 0; index < RRMDecodeTestHelper::Capacity(); ++index)
     {
-        EXPECT_TRUE(RRMDecodeTestHelper::Acquire(manager, &leases[index]));
+        EXPECT_TRUE(RRMDecodeTestHelper::Acquire(*manager, &leases[index]));
         EXPECT_EQ(leases[index], index);
     }
 
     uint8_t unavailable = UINT8_MAX;
-    EXPECT_FALSE(RRMDecodeTestHelper::Acquire(manager, &unavailable));
+    EXPECT_FALSE(RRMDecodeTestHelper::Acquire(*manager, &unavailable));
 
-    RRMDecodeTestHelper::Release(manager, leases[2]);
+    RRMDecodeTestHelper::Release(*manager, leases[2]);
     uint8_t reclaimed = UINT8_MAX;
-    EXPECT_TRUE(RRMDecodeTestHelper::Acquire(manager, &reclaimed));
+    EXPECT_TRUE(RRMDecodeTestHelper::Acquire(*manager, &reclaimed));
     EXPECT_EQ(reclaimed, leases[2]);
 
     for (uint32_t index = 0; index < RRMDecodeTestHelper::Capacity(); ++index)
         if (index != 2)
-            RRMDecodeTestHelper::Release(manager, leases[index]);
-    RRMDecodeTestHelper::Release(manager, reclaimed);
+            RRMDecodeTestHelper::Release(*manager, leases[index]);
+    RRMDecodeTestHelper::Release(*manager, reclaimed);
 }
 
 // ============================================================
