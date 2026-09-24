@@ -41,13 +41,6 @@ namespace ZEngine::Core::Memory
             return Bootstrap.SizeBytes + AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
         }
 
-        // Compatibility accessor for callers predating lazy page commitment.
-        // New code should use TotalCapacity().
-        inline uint64_t TotalCommitted() const
-        {
-            return TotalCapacity();
-        }
-
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
         // Returns false and logs the overage if the budget is exceeded.
         inline bool Validate(uint64_t total_available_bytes) const

@@ -35,7 +35,7 @@ The exact totals are **7,604 MiB** for `Default()` and **7,732 MiB** for `Editor
 
 ## What this does and does not enforce
 
-The startup validation limits the *declared profile*. Process-lifetime application and engine state use the `Bootstrap` owner; Vulkan device state and editor state use their named slots. Every nested production arena now carries a qualified owner name, making allocation failures attributable to its parent budget and local consumer. The VFS scanner's four slots are children of `AssetManager`. Two standalone, non-profile owners remain: `EditorSceneDeserialized` and `EditorDroppedMeshTask`; their lifetimes are respectively the loaded scene and a single dropped-mesh callback. No code should treat unused declared slots as already materialized allocations.
+The startup validation limits the *declared profile*. Process-lifetime application and engine state use the `Bootstrap` owner; Vulkan device state and editor state use their named slots. Every nested production arena now carries a qualified owner name, making allocation failures attributable to its parent budget and local consumer. The VFS scanner's four slots are children of `AssetManager`; a dropped mesh uses one 256 MiB `ImportPipeline/EditorDroppedMeshTask` lease until its main-thread callback releases it. The one remaining standalone, non-profile owner is the capped 200 MiB `EditorSceneDeserialized` arena, whose data must survive the serializer worker's scratch reset. No code should treat unused declared slots as already materialized allocations.
 
 All platforms reserve child address space without making it writable. POSIX no longer requires a
 single writable 8 GiB mapping before startup; it promotes allocation pages with `mprotect`.
@@ -57,7 +57,7 @@ The 384 MiB gate covers the persistent environment bake/update peak. It does not
 1. Add Linux coverage under a constrained address-space or commit limit and exercise the
    `mmap`/`mprotect` diagnostics. The allocator now reserves the root with `PROT_NONE`, promotes
    only allocation page ranges, and tracks discontiguous parent/child commitments.
-2. Migrate the two documented standalone editor owners (`EditorSceneDeserialized` and `EditorDroppedMeshTask`) to a bounded profile owner, or retain a measured, explicit independent-reservation policy for them.
+2. Migrate the standalone `EditorSceneDeserialized` arena to a bounded profile owner, or retain a measured, explicit independent-reservation policy for it.
 3. Make profile sizes data-backed: record arena peaks from representative editor and game workloads, then set headroom from those measurements rather than speculative tables.
 4. Add a report which distinguishes root/direct allocations, tracked CPU arenas, VMA/driver allocations, persistent environment resources, and render-graph transients. Never combine these as though they share one enforced ceiling.
 5. Fail startup with a useful slot-by-slot diagnostic when a profile exceeds the root arena, and add tests for `Default()`, `Editor()`, and `Server()` totals.
