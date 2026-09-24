@@ -2,9 +2,9 @@
 
 This is the current reference for the CPU arena profile. The production work remaining around enforcement and GPU accounting is tracked in [`future-plan/memory-budget.md`](future-plan/memory-budget.md).
 
-## Root reservation and profiles
+## Reservation policy and profiles
 
-`Obelisk/EntryPoint.cpp` initializes `MemoryManager` with an 8 GiB root arena:
+`Obelisk/EntryPoint.cpp` initializes `MemoryManager` with an 8 GiB configured-capacity limit:
 
 ```cpp
 manager.Initialize(ZGiga(8ULL),
@@ -12,23 +12,23 @@ manager.Initialize(ZGiga(8ULL),
                                  : MemoryBudgetConfig::Default());
 ```
 
-On every platform, the allocator reserves this address range without making it writable, then
-promotes only allocation pages. Windows uses `VirtualAlloc(MEM_COMMIT)` and macOS/Linux use
-`mprotect` from an initial `PROT_NONE` mapping. The allocator tracks promoted pages across parent
-and child arenas, so a root allocation after a child does not make the child's unused range
-writable. The 8 GiB root is still virtual address space: a process with an `RLIMIT_AS` below that
-reservation cannot start until the tracked ownership model is evolved to independently reserved
-owners. This is a CPU-address-space concern, not a GPU-memory requirement.
+For a configured run, that value validates the sum of the declared profile but is **not** mapped as
+one root arena. Each owner requested through `CreateBudgetedArena` receives its own virtual
+reservation. Windows reserves it with `PAGE_NOACCESS`; macOS/Linux use `PROT_NONE`; an allocation
+then promotes only its pages with `VirtualAlloc(MEM_COMMIT)` or `mprotect`. Child arenas remain
+slices of their named owner, and the owner-local page tracker prevents an allocation following a
+child from making that child's unused range writable. `MainArena` exists only for unconfigured
+low-level/unit-test use. This is CPU address space, not GPU memory.
 
 `MemoryBudgetConfig` has these exact configured totals:
 
-| Profile | Configured total | Difference from root reservation |
+| Profile | Configured total | Headroom below the configured cap |
 |---|---:|---:|
 | `Default()` | 7,604 MiB | 588 MiB |
-| `Editor()` | 7,732 MiB | 460 MiB |
+| `Editor()` | 8,132 MiB | 60 MiB |
 | `Server()` | 6,324 MiB | 1,868 MiB |
 
-`Editor()` changes `AudioEngine` and `Network` to zero, raises `UIContext` from 64 to 128 MiB, and adds the 256 MiB `EditorContext` owner. `Server()` zeroes `AudioEngine`, `UIContext`, `VulkanDevice`, and `Network`. `MemoryManager::Initialize` validates the selected total before it initializes `MainArena`.
+`Editor()` changes `AudioEngine` and `Network` to zero, raises `UIContext` from 64 to 128 MiB, and adds the 256 MiB `EditorContext` owner. `Server()` zeroes `AudioEngine`, `UIContext`, `VulkanDevice`, and `Network`. `MemoryManager::Initialize` validates the selected total before any named owner is reserved.
 
 ## Slot definitions
 
@@ -45,6 +45,8 @@ owners. This is a CPU-address-space concern, not a GPU-memory requirement.
 | `ImportPipeline` | 4,096 MiB | 4,096 MiB |
 | `UIContext` | 64 MiB | 128 MiB |
 | `EditorContext` | 0 MiB | 256 MiB |
+| `EditorSceneLoadA` | 0 MiB | 200 MiB |
+| `EditorSceneLoadB` | 0 MiB | 200 MiB |
 | `Swapchain` | 8 MiB | 8 MiB |
 | `ShaderCache` | 64 MiB | 64 MiB |
 | `Serializer` | 256 MiB | 256 MiB |
@@ -53,9 +55,9 @@ owners. This is a CPU-address-space concern, not a GPU-memory requirement.
 
 The slots are a validated profile, not evidence that every subsystem has already been isolated. Startup creates the bounded `Bootstrap` owner for process-lifetime application/engine state, then creates budgeted arenas for logging, Vulkan device state, VFS, asset management, input, ECS scene data, import pipeline, and UI context. The import-pipeline arena also owns the renderer's bounded worker decode slabs. The editor creates its `EditorContext` arena before configuration loading; it owns the editor scene, tools, and panel layer.
 
-Every production `CreateSubArena` call has an explicit diagnostic owner. Nested owners use a qualified name such as `ImportPipeline/GltfImporter/RuntimeScratch` or `VulkanDevice/RenderGraphFrame`, so allocator failures name both the top-level budget and the local consumer. The four 128 MiB VFS scanner slots are children of `AssetManager`, rather than independently reserved roots. Texture decoding has four 128 MiB leased slabs independent of worker count; each lease is reclaimed after its upload succeeds or is discarded. A dropped-mesh import has one 256 MiB `ImportPipeline/EditorDroppedMeshTask` lease; another drop is rejected until its main-thread completion callback releases it. The only standalone owner is the capped 200 MiB `EditorSceneDeserialized` allocation, which must survive the serializer worker's scratch reset and remains a candidate for migration to the bounded `EditorContext` owner.
+Every production `CreateSubArena` call has an explicit diagnostic owner. Nested owners use a qualified name such as `ImportPipeline/GltfImporter/RuntimeScratch` or `VulkanDevice/RenderGraphFrame`, so allocator failures name both the top-level budget and the local consumer. The four 128 MiB VFS scanner slots are children of `AssetManager`, rather than independently reserved roots. Texture decoding has four 128 MiB leased slabs independent of worker count; each lease is reclaimed after its upload succeeds or is discarded. A dropped-mesh import has one 256 MiB `ImportPipeline/EditorDroppedMeshTask` lease; another drop is rejected until its main-thread completion callback releases it. Scene deserialization leases one of two 200 MiB profiled owners (`EditorSceneLoadA`/`EditorSceneLoadB`) until its `EditorScene` is destroyed, so loading a replacement never invalidates the active scene.
 
-`CreateBudgetedArena` validates a nonzero size, creates the child arena, and registers it with `MemoryProfiler` in profiling builds. `MemoryProfiler` tracks current and peak offsets and emits an 80% watermark warning with a 60-second cooldown. It only sees arenas explicitly registered this way.
+`CreateBudgetedArena` validates a nonzero size, independently reserves the named owner, and registers it with `MemoryProfiler` in profiling builds. `MemoryProfiler` tracks current and peak offsets and emits an 80% watermark warning with a 60-second cooldown. It only sees arenas explicitly registered this way. `MemoryManager` shuts down independently reserved owners in reverse creation order after application, worker, and logger shutdown.
 
 ## Separate renderer policy
 

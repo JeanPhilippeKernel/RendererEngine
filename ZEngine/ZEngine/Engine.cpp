@@ -18,6 +18,7 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 #include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Windows/GameWindow.h>
@@ -196,6 +197,10 @@ namespace ZEngine
         // not by the machine's worker count.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
         memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
+        if (memory->Budget.EditorSceneLoadA.SizeBytes > 0)
+            memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadA, &g_engine_ctx->EditorSceneLoadArenaA);
+        if (memory->Budget.EditorSceneLoadB.SizeBytes > 0)
+            memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadB, &g_engine_ctx->EditorSceneLoadArenaB);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
@@ -382,6 +387,13 @@ namespace ZEngine
                 g_engine_ctx->ImportCoordinator->Tick();
 
             Core::MainThreadScheduler::Drain();
+
+#if ZENGINE_PROFILING
+            // Sample named CPU owners at a single main-thread frame boundary so
+            // the editor profiler's current and peak values represent workload
+            // usage rather than only arena registration capacity.
+            Profiling::MemoryProfiler::Update();
+#endif
 
             // Application update (non-ECS game logic)
             g_engine_ctx->App->Update(raw_dt);

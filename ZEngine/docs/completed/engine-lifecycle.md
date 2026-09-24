@@ -10,9 +10,10 @@ for a separate application bootstrap API.
 
 1. Install the crash handler.
 2. Parse `--projectConfigFile` and `--launchEditor`.
-3. Initialize the stack-owned `MemoryManager` with an 8 GiB root arena and
-   `MemoryBudgetConfig::Default()` or `Editor()`.
-4. Initialize `MemoryProfiler` and track the root arena in profiling builds.
+3. Initialize the stack-owned `MemoryManager` with an 8 GiB configured-capacity
+   limit and `MemoryBudgetConfig::Default()` or `Editor()`. Configured owners are
+   independently reserved; startup does not map an 8 GiB root arena.
+4. Initialize `MemoryProfiler` and track the `Bootstrap` owner in profiling builds.
 5. Initialize the thread pool.
 6. Create the budgeted logging arena and initialize the logger.
 7. Create the application, initialize it, run it, then shut it down.
@@ -21,16 +22,15 @@ for a separate application bootstrap API.
 
 `MemoryManager` is not an engine singleton. The entry point owns it and passes
 a pointer through `GameApplication::Initialize` to `Engine::Initialize`.
-The 8 GiB number is allocator address-space capacity, not immediate physical
-memory or a GPU-memory budget. Current Linux startup nevertheless relies on
-permissive overcommit for its writable root mapping and can fail under strict
-overcommit, address-space, or container limits; see the
-[memory-budget reference](../memory-budget.md).
+The 8 GiB number is a configured-capacity limit, not immediate physical memory
+or a GPU-memory budget. Each configured owner reserves its own address range
+without making it writable, which permits a process below an 8 GiB `RLIMIT_AS`
+when its concrete owners fit; see the [memory-budget reference](../memory-budget.md).
 
 ## Application and engine initialization
 
 `GameApplication::Initialize(memory)` first stores the memory manager and
-allocates `ApplicationState` from its root arena. It then calls:
+allocates `ApplicationState` from its `Bootstrap` owner. It then calls:
 
 ```text
 OnInitializing()

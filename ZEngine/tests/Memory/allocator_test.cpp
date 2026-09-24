@@ -3,6 +3,19 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 
+#if defined(__linux__)
+#include <spawn.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <vector>
+
+extern char** environ;
+#endif
+
 using namespace ZEngine;
 using namespace ZEngine::Core::Memory;
 
@@ -20,10 +33,12 @@ TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
     const MemoryBudgetConfig server_budget  = MemoryBudgetConfig::Server();
 
     EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(256));
+    EXPECT_EQ(budget.EditorSceneLoadA.SizeBytes, ZMega(200));
+    EXPECT_EQ(budget.EditorSceneLoadB.SizeBytes, ZMega(200));
     EXPECT_EQ(default_budget.Bootstrap.SizeBytes, ZMega(32));
     EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
     EXPECT_EQ(default_budget.TotalCapacity(), ZMega(7604));
-    EXPECT_EQ(budget.TotalCapacity(), ZMega(7732));
+    EXPECT_EQ(budget.TotalCapacity(), ZMega(8132));
     EXPECT_EQ(server_budget.TotalCapacity(), ZMega(6324));
     EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
     EXPECT_TRUE(budget.Validate(ZGiga(8)));
@@ -39,9 +54,31 @@ TEST(MemoryManagerTest, MaterializesBootstrapOwner)
     manager.Initialize(ZKilo(128), config);
 
     EXPECT_NE(manager.BootstrapArena.m_memory, nullptr);
-    EXPECT_TRUE(manager.BootstrapArena.m_is_sub_arena);
+    EXPECT_FALSE(manager.BootstrapArena.m_is_sub_arena);
     EXPECT_EQ(manager.BootstrapArena.m_total_size, ZKilo(64));
     EXPECT_STREQ(manager.BootstrapArena.m_owner_name, "Bootstrap");
+    EXPECT_EQ(manager.MainArena.m_memory, nullptr);
+
+    manager.Shutdown();
+}
+
+TEST(MemoryManagerTest, ConfiguredOwnersAreIndependentlyReserved)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap    = {"Bootstrap", ZKilo(64)};
+    config.AssetManager = {"AssetManager", ZKilo(64)};
+
+    MemoryManager manager{};
+    manager.Initialize(ZMega(1), config);
+
+    ArenaAllocator asset_arena{};
+    manager.CreateBudgetedArena(config.AssetManager, &asset_arena);
+
+    EXPECT_EQ(manager.MainArena.m_memory, nullptr);
+    EXPECT_FALSE(asset_arena.m_is_sub_arena);
+    EXPECT_NE(asset_arena.m_memory, nullptr);
+    EXPECT_NE(manager.BootstrapArena.m_memory, asset_arena.m_memory);
+    EXPECT_NE(asset_arena.Allocate(1), nullptr);
 
     manager.Shutdown();
 }
@@ -391,6 +428,98 @@ TEST(AllocatorTest, PosixReservationLeavesUnallocatedPagesProtected)
         "");
 
     manager.Shutdown();
+}
+#endif
+
+#if defined(__linux__)
+namespace
+{
+    constexpr const char* LinuxAddressLimitChildEnvironment = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD";
+
+    uint64_t              CurrentLinuxAddressSpaceBytes()
+    {
+        FILE* file = fopen("/proc/self/statm", "r");
+        if (!file)
+            return 0;
+
+        unsigned long pages = 0;
+        const int     read  = fscanf(file, "%lu", &pages);
+        fclose(file);
+        if (read != 1)
+            return 0;
+
+        const long page_size = sysconf(_SC_PAGESIZE);
+        if (page_size <= 0 || pages > std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(page_size))
+            return 0;
+        return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size);
+    }
+} // namespace
+
+TEST(MemoryManagerTest, LinuxConfiguredOwnersStartBelowRootAddressLimit)
+{
+    if (std::getenv(LinuxAddressLimitChildEnvironment))
+    {
+        const uint64_t current_address_space = CurrentLinuxAddressSpaceBytes();
+        if (current_address_space == 0)
+            GTEST_SKIP() << "unable to read /proc/self/statm";
+
+        struct rlimit previous_limit = {};
+        if (getrlimit(RLIMIT_AS, &previous_limit) != 0)
+            GTEST_SKIP() << "RLIMIT_AS is unavailable";
+
+        constexpr rlim_t headroom = static_cast<rlim_t>(ZMega(128));
+        if (current_address_space > std::numeric_limits<rlim_t>::max() - headroom)
+            GTEST_SKIP() << "current address space is too large for an RLIMIT_AS test";
+
+        const rlim_t constrained_limit = static_cast<rlim_t>(current_address_space) + headroom;
+        if (previous_limit.rlim_cur != RLIM_INFINITY && previous_limit.rlim_cur < constrained_limit)
+            GTEST_SKIP() << "inherited RLIMIT_AS is already more restrictive";
+
+        struct rlimit limit = previous_limit;
+        limit.rlim_cur      = constrained_limit;
+        if (setrlimit(RLIMIT_AS, &limit) != 0)
+            GTEST_SKIP() << "unable to set constrained RLIMIT_AS";
+
+        MemoryBudgetConfig config{};
+        config.Bootstrap    = {"Bootstrap", ZMega(4)};
+        config.AssetManager = {"ConstrainedAsset", ZMega(32)};
+
+        MemoryManager manager{};
+        manager.Initialize(ZGiga(8), config);
+
+        ArenaAllocator asset_arena{};
+        manager.CreateBudgetedArena(config.AssetManager, &asset_arena);
+
+        ASSERT_EQ(manager.MainArena.m_memory, nullptr);
+        ASSERT_NE(manager.BootstrapArena.m_memory, nullptr);
+        ASSERT_NE(asset_arena.m_memory, nullptr);
+        ASSERT_NE(asset_arena.Allocate(1), nullptr);
+        EXPECT_EQ(asset_arena.m_committed_size, asset_arena.m_mem_page_size);
+
+        manager.Shutdown();
+        return;
+    }
+
+    std::vector<char*> child_environment;
+    for (char** entry = environ; *entry; ++entry)
+        child_environment.push_back(*entry);
+
+    char child_marker[] = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD=1";
+    child_environment.push_back(child_marker);
+    child_environment.push_back(nullptr);
+
+    char  child_path[]   = "/proc/self/exe";
+    char  child_filter[] = "--gtest_filter=MemoryManagerTest.LinuxConfiguredOwnersStartBelowRootAddressLimit";
+    char  child_brief[]  = "--gtest_brief=1";
+    char* child_argv[]   = {child_path, child_filter, child_brief, nullptr};
+
+    pid_t child_pid      = 0;
+    ASSERT_EQ(posix_spawn(&child_pid, child_path, nullptr, nullptr, child_argv, child_environment.data()), 0);
+
+    int status = 0;
+    ASSERT_EQ(waitpid(child_pid, &status, 0), child_pid);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
 }
 #endif
 

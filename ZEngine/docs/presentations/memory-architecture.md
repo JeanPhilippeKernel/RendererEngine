@@ -117,6 +117,11 @@ Archive presentation — concepts and historical TLSF integration plan
 
 # Engine Memory Architecture
 
+> **Current implementation note:** this presentation's historical root-arena diagrams and
+> provisional capacity figures predate #835. Configured application runs now reserve named
+> owners independently; the 8 GiB value is a validation limit, not one mapped root arena.
+> See [`memory-budget.md`](../memory-budget.md) for the current profile and reservation contract.
+
 ```mermaid
 graph TD
     OS["OS — mmap / VirtualAlloc"]
@@ -1688,7 +1693,7 @@ On Linux with `THP = madvise`, calling `madvise(ptr, 2MB_aligned_size, MADV_HUGE
 
 ### Windows — Commit semantics differ
 
-On Windows, `VirtualAlloc(MEM_COMMIT)` backs the range with **pagefile reservation immediately** (not demand-paged like POSIX `mprotect`). Physical RAM is still demand-paged on first write, but pagefile space is reserved at commit time. This means `m_committed_size` on Windows represents a harder resource: committing the full 8 GB root arena would reserve 8 GB of pagefile even if no pages are ever touched. The current engine only commits on demand (as the cursor advances) — this is correct, but auditing `m_committed_size` leaks on Windows is different from auditing RSS on Linux.
+On Windows, `VirtualAlloc(MEM_COMMIT)` backs a range with **pagefile reservation immediately** (not demand-paged like POSIX `mprotect`). Physical RAM is still demand-paged on first write, but pagefile space is reserved at commit time. This means `m_committed_size` is a harder resource: committing an entire large owner would reserve its capacity in the pagefile even if no pages are ever touched. The current engine commits on demand as each owner cursor advances, but auditing `m_committed_size` leaks on Windows is different from auditing RSS on Linux.
 
 </div>
 </div>

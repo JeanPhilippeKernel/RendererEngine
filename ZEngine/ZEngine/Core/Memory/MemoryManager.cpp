@@ -16,15 +16,23 @@ namespace ZEngine::Core::Memory
         Budget = config;
         config.Validate(buffer_size);
 
-        size_t page_size = 0;
+        m_page_size = 0;
 #ifdef _WIN32
         SYSTEM_INFO sys_info;
         GetSystemInfo(&sys_info);
-        page_size = sys_info.dwPageSize;
+        m_page_size = sys_info.dwPageSize;
 #elif defined(__linux__) || defined(__APPLE__)
-        page_size = sysconf(_SC_PAGESIZE);
+        m_page_size = sysconf(_SC_PAGESIZE);
 #endif
-        MainArena.Initialize(buffer_size, page_size, "MainArena");
+
+        // A configured application consists of independently reserved named owners.
+        // This avoids a mandatory 8 GiB VMA at startup on Linux where RLIMIT_AS counts
+        // PROT_NONE reservations. The no-profile mode remains useful for small unit
+        // tests and callers that deliberately want one general-purpose arena.
+        m_uses_independent_owners = config.TotalCapacity() > 0;
+        if (!m_uses_independent_owners)
+            MainArena.Initialize(buffer_size, m_page_size, "MainArena");
+
         if (Budget.Bootstrap.SizeBytes > 0)
             CreateBudgetedArena(Budget.Bootstrap, &BootstrapArena);
     }
@@ -34,7 +42,15 @@ namespace ZEngine::Core::Memory
         ZENGINE_VALIDATE_ASSERT(config.SizeBytes > 0, "MemoryManager::CreateBudgetedArena: SizeBytes must be > 0")
         ZENGINE_VALIDATE_ASSERT(result != nullptr, "MemoryManager::CreateBudgetedArena: out must not be null")
 
-        MainArena.CreateSubArena(config.SizeBytes, result, config.Name);
+        if (m_uses_independent_owners)
+        {
+            result->Initialize(config.SizeBytes, m_page_size, config.Name);
+            RegisterOwnedArena(result);
+        }
+        else
+        {
+            MainArena.CreateSubArena(config.SizeBytes, result, config.Name);
+        }
 
 #if ZENGINE_PROFILING
         Profiling::MemoryProfiler::TrackArena(config.Name, result);
@@ -43,7 +59,20 @@ namespace ZEngine::Core::Memory
 
     void MemoryManager::Shutdown()
     {
-        BootstrapArena.Shutdown();
+        while (m_owned_arena_count > 0)
+        {
+            ArenaAllocator* arena               = m_owned_arenas[--m_owned_arena_count];
+            m_owned_arenas[m_owned_arena_count] = nullptr;
+            arena->Shutdown();
+        }
         MainArena.Shutdown();
+        m_uses_independent_owners = false;
+        m_page_size               = 0;
+    }
+
+    void MemoryManager::RegisterOwnedArena(ArenaAllocator* arena)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_owned_arena_count < MaxOwnedArenas, "MemoryManager::RegisterOwnedArena: too many independent arena owners")
+        m_owned_arenas[m_owned_arena_count++] = arena;
     }
 } // namespace ZEngine::Core::Memory

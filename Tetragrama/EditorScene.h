@@ -28,13 +28,15 @@ namespace Tetragrama
         ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t> HashToAssetFile     = {};
         ZEngine::Core::Containers::Array<EditorAssetSceneFiles>         AssetFiles          = {};
 
-        ZEngine::Core::Memory::ArenaAllocator                           LocalArena          = {};
+        ZEngine::Core::Memory::ArenaAllocator                           LocalArenaStorage   = {};
+        ZEngine::Core::Memory::ArenaAllocator*                          LocalArena          = nullptr;
+        PaddedAtomic<bool>*                                             DeserializedInUse   = nullptr;
 
         ~EditorScene();
 
         void                      Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "", const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
         /// @brief Initializes persistent scene storage without creating default editor content.
-        bool                      InitializeDeserialized(size_t page_size);
+        bool                      InitializeDeserialized();
 
         bool                      HasPendingChange() const;
         void                      PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
@@ -52,6 +54,9 @@ namespace Tetragrama
         // NameComponent + TransformComponent + MeshComponent in one call.
         // Returns the ActorHandle (invalid if ActorManager is not live).
         ZEngine::ECS::ActorHandle SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name);
+
+    private:
+        void ReleaseDeserializedArena();
     };
     ZDEFINE_PTR(EditorScene);
 

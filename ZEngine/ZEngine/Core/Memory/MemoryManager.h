@@ -28,6 +28,10 @@ namespace ZEngine::Core::Memory
         // Editor-only persistent state: editor scene, viewport tools, and panel layer.
         // This remains zero for game and server profiles.
         SubArenaConfig  EditorContext    = {};
+        // Two independent scene-load slots allow a serializer worker to prepare a
+        // replacement scene while the active deserialized scene remains readable.
+        SubArenaConfig  EditorSceneLoadA = {};
+        SubArenaConfig  EditorSceneLoadB = {};
         SubArenaConfig  Swapchain        = {};
         SubArenaConfig  ShaderCache      = {};
         SubArenaConfig  Serializer       = {};
@@ -38,7 +42,7 @@ namespace ZEngine::Core::Memory
         // Physical pages are committed lazily when an arena allocates from them.
         inline uint64_t TotalCapacity() const
         {
-            return Bootstrap.SizeBytes + AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
+            return Bootstrap.SizeBytes + AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + EditorSceneLoadA.SizeBytes + EditorSceneLoadB.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
         }
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
@@ -93,9 +97,11 @@ namespace ZEngine::Core::Memory
             cfg.AudioEngine.SizeBytes = 0ull;
             cfg.Network.SizeBytes     = 0ull;
             cfg.UIContext.SizeBytes   = ZMega(128ULL);
-            // EditorScene reserves 200 MiB itself. The remaining capacity owns
-            // editor objects, panel state, camera state, and transient font work.
+            // The active editor scene reserves 200 MiB from this owner. Separate
+            // scene-load owners below keep replacement deserialization bounded.
             cfg.EditorContext         = {"EditorContext", ZMega(256ULL)};
+            cfg.EditorSceneLoadA      = {"EditorSceneLoadA", ZMega(200ULL)};
+            cfg.EditorSceneLoadB      = {"EditorSceneLoadB", ZMega(200ULL)};
 
             return cfg;
         }
@@ -103,8 +109,10 @@ namespace ZEngine::Core::Memory
 
     struct MemoryManager
     {
+        // Configured application runs reserve each named budget independently.
+        // MainArena is retained only for unconfigured allocator/unit-test use.
         ArenaAllocator     MainArena      = {};
-        // The sole long-lived owner carved automatically during Initialize. It is
+        // The sole long-lived owner created automatically during Initialize. It is
         // intentionally small and exists before logging, VFS, or device state.
         ArenaAllocator     BootstrapArena = {};
         MemoryBudgetConfig Budget         = {};
@@ -112,5 +120,15 @@ namespace ZEngine::Core::Memory
         void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config);
         void               CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result);
         void               Shutdown();
+
+    private:
+        static constexpr uint32_t MaxOwnedArenas = 32;
+
+        void                      RegisterOwnedArena(ArenaAllocator* arena);
+
+        ArenaAllocator*           m_owned_arenas[MaxOwnedArenas] = {};
+        uint32_t                  m_owned_arena_count            = 0;
+        size_t                    m_page_size                    = 0;
+        bool                      m_uses_independent_owners      = false;
     };
 } // namespace ZEngine::Core::Memory
