@@ -29,12 +29,12 @@ namespace ZEngine::Helpers
         }
     };
 
-    /// @brief Thread-local worker slab set by the resource manager at worker startup.
-    /// @details It is null outside initialized worker threads. A slab is exclusively
-    /// owned by its worker, so cross-thread frees are not permitted.
+    /// @brief Thread-local decode slab active for the current worker task.
+    /// @details It is null outside a bounded decode task. RenderResourceManager assigns
+    /// a lease before dispatch and restores the previous value when that task exits.
     inline thread_local Core::Memory::TLSFSlab* t_worker_slab = nullptr;
 
-    /// @brief Set the calling thread's worker slab. Call once per worker at task-loop start.
+    /// @brief Set the calling thread's active decode slab.
     /// @param slab Pointer to the worker's TLSFSlab, or nullptr to clear.
     inline void                                 SetWorkerSlab(Core::Memory::TLSFSlab* slab)
     {

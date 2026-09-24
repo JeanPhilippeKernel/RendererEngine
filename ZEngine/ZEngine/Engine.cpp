@@ -192,8 +192,8 @@ namespace ZEngine
         ECS::Components::RegisterBuiltInComponentReflection();
 
         // ImportPipeline owns importer sub-arenas and the bounded CPU decode slabs used
-        // by RenderResourceManager. The 4 GiB profile capacity covers their simultaneous
-        // reservation at the maximum 16-worker configuration.
+        // by RenderResourceManager. Decode reservation is fixed by the four-job policy,
+        // not by the machine's worker count.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
         memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);

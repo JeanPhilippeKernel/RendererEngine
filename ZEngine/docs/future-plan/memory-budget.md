@@ -31,7 +31,7 @@ The current profiles total the following maximum reservations:
 
 The exact totals are **7,604 MiB** for `Default()` and **7,732 MiB** for `Editor()`. Both fit inside the 8 GiB root reservation. The earlier 3 GiB root-arena and 1.5 GiB profile figures in this document were obsolete.
 
-`ImportPipeline` is a parent arena. Its present importer allocations include 64 MiB for glTF, 128 MiB for Assimp, 512 MiB for FBX, and 32 MiB for environment-map import. It also owns one 128 MiB TLSF decode slab per worker (up to 16), a 128 MiB fallback slab, and a 2 MiB texture-task slab for `RenderResourceManager`. Importers may create temporary child arenas and clear them between jobs; their individual allocations do not make the whole 4 GiB physically resident by themselves.
+`ImportPipeline` is a parent arena. Its present importer allocations include 64 MiB for glTF, 128 MiB for Assimp, 512 MiB for FBX, and 128 MiB for the serialized environment-map import slab. `RenderResourceManager` owns four 128 MiB texture-decode slabs, a 2 MiB task slab, and 4 MiB of synchronous LUT scratch. A decode lease remains occupied until its pixels upload or are discarded, so this 512 MiB bound does not vary with CPU worker count. Importers may create temporary child arenas and clear them between jobs; their individual allocations do not make the whole 4 GiB physically resident by themselves.
 
 ## What this does and does not enforce
 

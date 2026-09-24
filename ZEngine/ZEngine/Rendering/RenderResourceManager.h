@@ -23,6 +23,7 @@
 
 // Forward declaration for the test-only helper that accesses RRM private members.
 struct RRMTestHelper;
+struct RRMDecodeTestHelper;
 
 namespace ZEngine::Hardwares
 {
@@ -177,6 +178,7 @@ namespace ZEngine::Rendering
             uint8_t*                           Pixels    = nullptr; ///< Pixel data (slab-owned or borrowed).
             size_t                             ByteSize  = 0;       ///< Size of Pixels in bytes.
             Core::Memory::TLSFSlab*            Slab      = nullptr; ///< Owning slab; nullptr = borrowed pointer.
+            uint8_t                            DecodeSlabIndex = UINT8_MAX; ///< Lease retained until this deferral is consumed or discarded.
             Rendering::Textures::TextureHandle TexHandle = {};
         };
 
@@ -478,9 +480,13 @@ namespace ZEngine::Rendering
         // Upper bound for texture timeline slot search — keeps textures out of geometry
         // slots and caps the retire loop to the same range.
         static constexpr uint32_t     GEOMETRY_UPLOAD_SLOT    = 15;
-        // Per-worker TLSF slab size — covers worst-case decode buffer (equirect→cubemap ≈ 96 MB).
-        static constexpr size_t       UPLOAD_SLAB_BYTES       = 128 * 1024 * 1024;
-        static constexpr size_t       TEXTURE_TASK_SLAB_BYTES = ZMega(2);
+        // A decode may need an equirectangular-cubemap-sized output (about 96 MiB).
+        // The fixed lease count is deliberately independent of thread-pool worker count:
+        // a lease remains occupied until its decoded pixels reach the GPU or are discarded.
+        static constexpr uint32_t     MAX_CONCURRENT_TEXTURE_DECODES = 4;
+        static constexpr size_t       UPLOAD_SLAB_BYTES              = 128 * 1024 * 1024;
+        static constexpr size_t       TEXTURE_TASK_SLAB_BYTES        = ZMega(2);
+        static constexpr size_t       SYNCHRONOUS_TEXTURE_SCRATCH_BYTES = ZMega(4);
         // Written once at Setup time via RegisterBuiltinGeometry; never reset by
         // ResetGeometryBuffers and never touched by the streaming eviction path.
         static constexpr VkDeviceSize BUILTIN_VTX_CAPACITY    = 1 * 1024 * 1024; // 1 MB — ample for all engine builtins
@@ -493,6 +499,7 @@ namespace ZEngine::Rendering
             RenderResourceManager*               Owner                         = nullptr;
             Specifications::TextureSpecification Specification                 = {};
             Rendering::Textures::TextureHandle   Texture                       = {};
+            uint8_t                              DecodeSlabIndex               = UINT8_MAX;
             bool                                 IsEnvironmentMap              = false;
             bool                                 TrackCompletion               = false;
             char                                 Filename[MAX_FILE_PATH_COUNT] = {};
@@ -517,11 +524,6 @@ namespace ZEngine::Rendering
             Core::Containers::MPSCQueue<TextureDecodeCompletion, MAX_TEXTURE_DEFERRALS> Completions         = {};
         };
 
-        struct UploadSlabInitContext
-        {
-            Core::Memory::TLSFSlab* Slabs = nullptr;
-        };
-
         /// @brief Append one mesh asset's vertex/index data to the global buffers.
         /// @details Shared by DoUploadMesh (new slot) and FlushPendingSwaps (reuse slot).
         ///          Returns a zero-VtxCount MeshSlot on failure.
@@ -542,8 +544,9 @@ namespace ZEngine::Rendering
         static void             OnAssetStale(void* context, const uuids::uuid& uuid);
         static void             OnAssetRemoved(void* context, const uuids::uuid& uuid, Managers::AssetType type);
         static void             RunTextureDecodeTask(void* context);
-        static void             BindWorkerUploadSlab(void* context, size_t worker_index);
         void                    CompleteTextureDecodeTask(TextureDecodeTask* task);
+        bool                    TryAcquireTextureDecodeSlab(uint8_t* out_index);
+        void                    ReleaseTextureDecodeSlab(uint8_t index);
         bool                    TrackTextureDecode(const Rendering::Textures::TextureHandle& handle);
         void                    PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success);
         void                    DrainTextureDecodeCompletions();
@@ -574,7 +577,7 @@ namespace ZEngine::Rendering
         void                    RunCompaction();
         void                    InitUploadPool();
         void                    InitGlobalBuffers();
-        void                    InitUploadSlabs(uint32_t worker_count);
+        void                    InitUploadSlabs();
         void                    InitTextureTimelines();
         void                    ShutdownTextureTimelines();
         Textures::TextureHandle CreateSynchronousTexture(const Specifications::TextureSpecification& specification, const void* pixels, cstring debug_name);
@@ -586,6 +589,7 @@ namespace ZEngine::Rendering
 
         friend class GeometryStreamingManager;
         friend struct ::RRMTestHelper; // test-only — grants slot state access to streaming manager tests
+        friend struct ::RRMDecodeTestHelper;
 
         Hardwares::VulkanDevice*                                                   m_device                                         = nullptr;
         Core::VFS::AssetRegistry*                                                  m_registry                                       = nullptr;
@@ -628,14 +632,12 @@ namespace ZEngine::Rendering
         uint8_t                                                                    m_active_frame_index                             = 0;
         bool                                                                       m_batch_mode                                     = false;
 
-        // Per-worker TLSF slabs carved from the ImportPipeline owner at Initialize.
-        // Each worker owns one slab exclusively via t_worker_slab (ThreadPool.h).
+        // Bounded TLSF decode slabs carved from the ImportPipeline owner. Each occupied
+        // slot owns one decoded result through upload completion or discard.
         Core::Memory::ArenaAllocator*                                              m_upload_arena                                   = nullptr;
-        Core::Memory::TLSFSlab                                                     m_upload_slabs[Helpers::ThreadPool::MAX_WORKERS] = {};
-        uint32_t                                                                   m_upload_slab_count                              = 0;
-        // Used when a bounded thread-pool queue runs a decode inline on a non-worker.
-        // TLSFSlab serialises access, so it is also safe for a temporary worker fallback.
-        Core::Memory::TLSFSlab                                                     m_fallback_upload_slab                           = {};
+        Core::Memory::TLSFSlab                                                     m_upload_slabs[MAX_CONCURRENT_TEXTURE_DECODES]  = {};
+        PaddedAtomic<uint32_t>                                                     m_active_texture_decode_slabs                    = {};
+        Core::Memory::TLSFSlab                                                     m_synchronous_texture_scratch                    = {};
         Core::Memory::TLSFSlab                                                     m_texture_task_slab                              = {};
         PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                        = {};
         PaddedAtomic<bool>                                                         m_accept_texture_decodes                         = {};

@@ -1,6 +1,5 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
-#include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/EnvironmentMapImporter.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -43,7 +42,8 @@ namespace ZEngine::Importers
 
     void EnvironmentMapImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(32), &Arena, "ImportPipeline/EnvironmentMapImporter");
+        arena->CreateSubArena(ZMega(128), &Arena, "ImportPipeline/EnvironmentMapImporter");
+        DecodeSlab.Init(&Arena, ZMega(128));
     }
 
     bool EnvironmentMapImporter::CanImport(const char* extension) const
@@ -79,10 +79,15 @@ namespace ZEngine::Importers
 
     Core::VFS::VFSResult<void> EnvironmentMapImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {
+        // Keep the source decode and 96 MiB cubemap conversion under one bounded
+        // peak. ImportCoordinator may dispatch several paths at once, but this
+        // importer intentionally admits one environment map at a time.
+        std::lock_guard decode_lock(m_decode_mutex);
+
         // The decoders work on the filesystem, while the source identity and
         // cooked artifact remain VFS paths. Resolve the source relative to its workspace.
-        char        native[MAX_FILE_PATH_COUNT] = {};
-        const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        char            native[MAX_FILE_PATH_COUNT] = {};
+        const char*     working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (working_space && working_space[0] != '\0')
             path.ResolveNative(working_space, native, sizeof(native));
         else
@@ -120,14 +125,11 @@ namespace ZEngine::Importers
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
         }
 
-        Core::Memory::TLSFSlab* slab     = Helpers::GetWorkerSlab();
-        Bitmap                  equirect = Bitmap::FromData(width, height, 1, k_rgba_channel_count, BitmapFormat::Float, BitmapType::Texture2D, image_data);
+        Bitmap equirect = Bitmap::FromData(width, height, 1, k_rgba_channel_count, BitmapFormat::Float, BitmapType::Texture2D, image_data);
         FreeDecodedPixels(image_data, is_exr);
 
-        Bitmap cubemap                           = BitmapConvert::EquirectToCubemap(equirect, slab);
-
         // The cache is UUID keyed, regenerable, and never stored in scene data.
-        char   vfs_path_buf[MAX_FILE_PATH_COUNT] = {};
+        char vfs_path_buf[MAX_FILE_PATH_COUNT] = {};
         if (!BuildArtifactPath(meta.AssetUUID, vfs_path_buf, sizeof(vfs_path_buf)))
         {
             ZENGINE_CORE_ERROR("EnvironmentMapImporter: cannot build a cache path for '{}'", native)
@@ -151,6 +153,7 @@ namespace ZEngine::Importers
         }
 
         const AssetCodec::EnvironmentMapCookMetadata cook_metadata = {.SourceHash = meta.SourceHash};
+        Bitmap                                       cubemap       = BitmapConvert::EquirectToCubemap(equirect, &DecodeSlab);
         auto                                         write_result  = AssetCodec::SerializeEnvironmentMapFileVFS(ctx, out_path_result.Value(), cubemap, cook_metadata);
         if (write_result.Failed())
         {

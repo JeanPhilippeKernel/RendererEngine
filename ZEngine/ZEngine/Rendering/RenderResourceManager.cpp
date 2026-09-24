@@ -174,8 +174,8 @@ namespace ZEngine::Rendering
         InitUploadPool();
         InitGlobalBuffers();
         InitTextureTimelines();
-        InitUploadSlabs(static_cast<uint32_t>(Helpers::ThreadPoolHelper::Pool->WorkerCount));
-        m_fallback_upload_slab.Init(m_upload_arena, UPLOAD_SLAB_BYTES);
+        InitUploadSlabs();
+        m_synchronous_texture_scratch.Init(m_upload_arena, SYNCHRONOUS_TEXTURE_SCRATCH_BYTES);
         m_texture_task_slab.Init(m_upload_arena, TEXTURE_TASK_SLAB_BYTES);
 
         registry->SetOnReadyCallback(this, &RenderResourceManager::OnAssetReady);
@@ -268,14 +268,10 @@ namespace ZEngine::Rendering
         ShutdownTextureTimelines();
         DiscardTextureDeferrals();
 
-        // Shut down per-worker upload slabs. Clear the worker init callback first so
-        // any worker that wakes after this does not call SetWorkerSlab on a dead slab.
-        if (Helpers::ThreadPoolHelper::Pool)
-            Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(nullptr, nullptr);
-        for (uint32_t i = 0; i < m_upload_slab_count; ++i)
+        ZENGINE_VALIDATE_ASSERT(m_active_texture_decode_slabs.value.load(std::memory_order_acquire) == 0, "RenderResourceManager::Shutdown: texture decode slab lease was not released")
+        for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
             m_upload_slabs[i].Shutdown();
-        m_upload_slab_count = 0;
-        m_fallback_upload_slab.Shutdown();
+        m_synchronous_texture_scratch.Shutdown();
         m_texture_task_slab.Shutdown();
 
         // Arena-allocated objects have no automatic destructor — explicit calls are required.
@@ -1195,25 +1191,49 @@ namespace ZEngine::Rendering
         m_streaming_upload_tickets.init(m_device->Arena, MAX_TEXTURE_DEFERRALS);
     }
 
-    void RenderResourceManager::InitUploadSlabs(uint32_t worker_count)
+    void RenderResourceManager::InitUploadSlabs()
     {
-        ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::Pool != nullptr, "RenderResourceManager::InitUploadSlabs: ThreadPool not initialized")
-
-        worker_count        = worker_count < Helpers::ThreadPool::MAX_WORKERS ? worker_count : Helpers::ThreadPool::MAX_WORKERS;
-        m_upload_slab_count = worker_count;
-
-        for (uint32_t i = 0; i < worker_count; ++i)
+        m_active_texture_decode_slabs.value.store(0, std::memory_order_relaxed);
+        for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
             m_upload_slabs[i].Init(m_upload_arena, UPLOAD_SLAB_BYTES);
-
-        auto* context  = ZPushStructCtor(m_upload_arena, UploadSlabInitContext);
-        context->Slabs = m_upload_slabs;
-        Helpers::ThreadPoolHelper::Pool->RegisterWorkerInit(&RenderResourceManager::BindWorkerUploadSlab, context);
     }
 
-    void RenderResourceManager::BindWorkerUploadSlab(void* context, size_t worker_index)
+    bool RenderResourceManager::TryAcquireTextureDecodeSlab(uint8_t* out_index)
     {
-        UploadSlabInitContext* init = static_cast<UploadSlabInitContext*>(context);
-        Helpers::SetWorkerSlab(&init->Slabs[worker_index]);
+        ZENGINE_VALIDATE_ASSERT(out_index != nullptr, "RenderResourceManager::TryAcquireTextureDecodeSlab: output must not be null")
+        uint32_t occupied = m_active_texture_decode_slabs.value.load(std::memory_order_acquire);
+        for (;;)
+        {
+            for (uint32_t index = 0; index < MAX_CONCURRENT_TEXTURE_DECODES; ++index)
+            {
+                const uint32_t bit = 1u << index;
+                if ((occupied & bit) != 0)
+                    continue;
+
+                const uint32_t desired = occupied | bit;
+                if (m_active_texture_decode_slabs.value.compare_exchange_weak(occupied, desired, std::memory_order_acq_rel, std::memory_order_acquire))
+                {
+                    *out_index = static_cast<uint8_t>(index);
+                    return true;
+                }
+                break;
+            }
+            if (occupied == (1u << MAX_CONCURRENT_TEXTURE_DECODES) - 1u)
+                return false;
+        }
+    }
+
+    void RenderResourceManager::ReleaseTextureDecodeSlab(uint8_t index)
+    {
+        ZENGINE_VALIDATE_ASSERT(index < MAX_CONCURRENT_TEXTURE_DECODES, "RenderResourceManager::ReleaseTextureDecodeSlab: invalid slab index")
+        const uint32_t bit      = 1u << index;
+        uint32_t       occupied = m_active_texture_decode_slabs.value.load(std::memory_order_acquire);
+        for (;;)
+        {
+            ZENGINE_VALIDATE_ASSERT((occupied & bit) != 0, "RenderResourceManager::ReleaseTextureDecodeSlab: slab was not leased")
+            if (m_active_texture_decode_slabs.value.compare_exchange_weak(occupied, occupied & ~bit, std::memory_order_acq_rel, std::memory_order_acquire))
+                return;
+        }
     }
 
     void RenderResourceManager::ShutdownTextureTimelines()
@@ -1512,6 +1532,8 @@ namespace ZEngine::Rendering
 
         if (deferral.Slab && deferral.Pixels)
             deferral.Slab->Free(deferral.Pixels);
+        if (deferral.DecodeSlabIndex != UINT8_MAX)
+            ReleaseTextureDecodeSlab(deferral.DecodeSlabIndex);
         return true;
     }
 
@@ -1519,12 +1541,20 @@ namespace ZEngine::Rendering
     {
         TextureDeferral deferral = {};
         while (m_tex_deferral_queue.pop(deferral))
+        {
             if (deferral.Slab && deferral.Pixels)
                 deferral.Slab->Free(deferral.Pixels);
+            if (deferral.DecodeSlabIndex != UINT8_MAX)
+                ReleaseTextureDecodeSlab(deferral.DecodeSlabIndex);
+        }
 
         for (TextureDeferral& retry : m_tex_deferral_retry)
+        {
             if (retry.Slab && retry.Pixels)
                 retry.Slab->Free(retry.Pixels);
+            if (retry.DecodeSlabIndex != UINT8_MAX)
+                ReleaseTextureDecodeSlab(retry.DecodeSlabIndex);
+        }
         m_tex_deferral_retry.clear();
     }
 
@@ -1857,12 +1887,26 @@ namespace ZEngine::Rendering
                 m_device->DestroyTexture(tex_handle);
             return {};
         }
+        if (!tex_handle.Valid())
+            return {};
+
+        uint8_t decode_slab_index = UINT8_MAX;
+        if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
+        {
+            if (track_decode)
+                PublishTextureDecodeCompletion(tex_handle, false);
+            if (!existing.Valid())
+                m_device->DestroyTexture(tex_handle);
+            ZENGINE_CORE_WARN("[RRM] Texture decode capacity ({}) reached — rejecting {}", MAX_CONCURRENT_TEXTURE_DECODES, filename)
+            return existing;
+        }
 
         auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
         ZConstruct(task, TextureDecodeTask);
         task->Owner            = this;
         task->Specification    = spec;
         task->Texture          = tex_handle;
+        task->DecodeSlabIndex  = decode_slab_index;
         task->IsEnvironmentMap = is_environment_map;
         task->TrackCompletion  = track_decode;
         Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
@@ -1872,6 +1916,7 @@ namespace ZEngine::Rendering
         {
             if (task->TrackCompletion)
                 PublishTextureDecodeCompletion(tex_handle, false);
+            ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
             CompleteTextureDecodeTask(task);
             ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
         }
@@ -1884,10 +1929,9 @@ namespace ZEngine::Rendering
         TextureDecodeTask*      task     = static_cast<TextureDecodeTask*>(context);
         RenderResourceManager*  manager  = task->Owner;
         Core::Memory::TLSFSlab* previous = Helpers::GetWorkerSlab();
-        if (!previous)
-            Helpers::SetWorkerSlab(&manager->m_fallback_upload_slab);
-
-        Core::Memory::TLSFSlab* slab      = Helpers::GetWorkerSlab();
+        ZENGINE_VALIDATE_ASSERT(task->DecodeSlabIndex < MAX_CONCURRENT_TEXTURE_DECODES, "RenderResourceManager::RunTextureDecodeTask: task has no decode slab lease")
+        Core::Memory::TLSFSlab* slab      = &manager->m_upload_slabs[task->DecodeSlabIndex];
+        Helpers::SetWorkerSlab(slab);
         uint8_t*                pixels    = nullptr;
         size_t                  byte_size = 0;
 
@@ -1947,6 +1991,7 @@ namespace ZEngine::Rendering
             deferral.Pixels          = pixels;
             deferral.ByteSize        = byte_size;
             deferral.Slab            = slab;
+            deferral.DecodeSlabIndex = task->DecodeSlabIndex;
             deferral.TexHandle       = task->Texture;
 
             if (manager->EnqueueTextureDeferral(deferral))
@@ -1963,8 +2008,9 @@ namespace ZEngine::Rendering
 
         if (task->TrackCompletion)
             manager->PublishTextureDecodeCompletion(task->Texture, decode_succeeded);
-        if (!previous)
-            Helpers::SetWorkerSlab(nullptr);
+        Helpers::SetWorkerSlab(previous);
+        if (!decode_succeeded)
+            manager->ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
         manager->CompleteTextureDecodeTask(task);
     }
 
@@ -2231,7 +2277,7 @@ namespace ZEngine::Rendering
         }
 
         const size_t pixel_count = static_cast<size_t>(lut_key.Resolution) * lut_key.Resolution * 4;
-        auto* const  lut_pixels  = static_cast<uint16_t*>(m_fallback_upload_slab.Alloc(pixel_count * sizeof(uint16_t)));
+        auto* const  lut_pixels  = static_cast<uint16_t*>(m_synchronous_texture_scratch.Alloc(pixel_count * sizeof(uint16_t)));
         if (!lut_pixels)
         {
             m_device->DestroyTexture(resources.DiffuseIrradiance);
@@ -2246,7 +2292,7 @@ namespace ZEngine::Rendering
         lut_spec.BytePerPixel         = sizeof(uint16_t) * 4;
         lut_spec.Format               = ImageFormat::R16G16B16A16_SFLOAT;
         resources.BrdfIntegrationLut  = CreateSynchronousTexture(lut_spec, lut_pixels, "BrdfIntegrationLut");
-        m_fallback_upload_slab.Free(lut_pixels);
+        m_synchronous_texture_scratch.Free(lut_pixels);
 
         if (!resources.BrdfIntegrationLut.Valid())
         {
