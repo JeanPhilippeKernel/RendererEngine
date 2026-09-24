@@ -51,9 +51,10 @@ namespace Tetragrama::Panels
     {
         static const float kBg[4] = {0.09f, 0.09f, 0.095f, 1.f};
 
-        // Outer scroll-able column
+        // Keep the summary and reset action fixed while the detailed memory
+        // report below occupies the remaining vertical space.
         ZUIBox*            bg     = ZUIBeginColumn(ctx, "##mp_bg", ZFill(), ZFill());
-        bg->Flags                 = bg->Flags | ZUI_DrawBackground | ZUI_Scrollable;
+        bg->Flags                 = bg->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bg, kBg);
         bg->EdgeSoftness                                       = 0.f;
 
@@ -80,22 +81,6 @@ namespace Tetragrama::Panels
         {
             renderer_memory     = engine->App->RenderPipeline->SceneRenderer->GetMemoryStatistics();
             has_renderer_memory = true;
-        }
-
-        // Sync history count
-        if ((int) arena_count > m_history_count)
-            m_history_count = (int) arena_count;
-
-        // HOT PATH — runs every frame, no heap allocation allowed.
-        // Update history ring buffers
-        for (uint32_t i = 0; i < arena_count && i < (uint32_t) kMaxArenas; ++i)
-        {
-            ArenaHistory& h   = m_history[i];
-            float         mb  = (stats[i].Capacity > 0) ? (float) stats[i].CurrentOffset / (1024.f * 1024.f) : 0.f;
-            h.samples[h.head] = mb;
-            h.head            = (h.head + 1) % kHistorySize;
-            if (h.count < kHistorySize)
-                h.count++;
         }
 
         // Header
@@ -137,6 +122,8 @@ namespace Tetragrama::Panels
         ZUISeparator(ctx);
         ZUISpacer(ctx, 6.f);
 
+        ZUIBeginScrollRegion(ctx, "##mp_scroll", ZFill(), ZFill());
+
         // Configured production runs have no shared root mapping. Bootstrap is one
         // ordinary named owner and carries the process-lifetime engine objects.
         ZUIBeginRow(ctx, "##mp_cpu_scope", ZFill(), ZPx(fh));
@@ -155,8 +142,6 @@ namespace Tetragrama::Panels
         for (uint32_t i = 0; i < arena_count && i < (uint32_t) kMaxArenas; ++i)
         {
             const ArenaStats& s        = stats[i];
-            ArenaHistory&     h        = m_history[i];
-
             float             fraction = (s.Capacity > 0) ? fminf(1.f, (float) s.CurrentOffset / (float) s.Capacity) : 0.f;
             float             col[4];
             UsageColor(fraction, col);
@@ -278,6 +263,7 @@ namespace Tetragrama::Panels
         }
 
         ZUISpacer(ctx, 8.f);
+        ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx);
     }
 
