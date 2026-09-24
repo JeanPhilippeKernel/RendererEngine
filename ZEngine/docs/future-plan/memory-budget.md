@@ -6,7 +6,7 @@
 
 ## Current implementation
 
-`MemoryManager::Initialize(buffer_size, config)` stores the selected config, validates `config.TotalCommitted() <= buffer_size`, and initializes the root `MainArena`. `CreateBudgetedArena(config, result)` carves a named sub-arena and registers it with `MemoryProfiler` in profiling builds. `Shutdown()` is implemented and releases the root arena after application, worker, and logger shutdown.
+`MemoryManager::Initialize(buffer_size, config)` stores the selected config, validates `config.TotalCommitted() <= buffer_size`, and initializes the root `MainArena`. Windows reserves that range with `PAGE_NOACCESS`; POSIX reserves it with `PROT_NONE`. An allocation promotes only its page range (`VirtualAlloc(MEM_COMMIT)` or `mprotect`), and a root-owned page bitmap keeps parent and child commitments discontiguous. `CreateBudgetedArena(config, result)` carves a named sub-arena and registers it with `MemoryProfiler` in profiling builds. `Shutdown()` is implemented and releases the root arena after application, worker, and logger shutdown.
 
 The current profiles total the following maximum reservations:
 
@@ -36,12 +36,12 @@ The exact totals are **7,572 MiB** for `Default()` and **7,700 MiB** for `Editor
 
 The startup validation limits the *declared profile*. Vulkan device state and editor state now use their named slots, but several systems still allocate from `MainArena` or directly create a child arena. Consequently, a config slot is not a hard per-subsystem limit until its owner is initialized from `CreateBudgetedArena`. No code should treat unused declared slots as already materialized allocations.
 
-On Windows, child arenas reserve address space and commit pages lazily. The current macOS/Linux
-implementation maps the full root range writable and sets its allocator committed size to the
-full reservation. On a permissive overcommit kernel, physical RSS still follows pages touched;
-on Linux with strict overcommit, `RLIMIT_AS`, or a container memory limit, the 8 GiB mapping can
-fail before engine startup. The figure is therefore neither a GPU budget nor a portable startup
-guarantee.
+All platforms reserve child address space without making it writable. POSIX no longer requires a
+single writable 8 GiB mapping before startup; it promotes allocation pages with `mprotect`.
+The root reservation is still address space, so a process with an `RLIMIT_AS` below 8 GiB cannot
+admit this root-owner model. That limitation requires the separately tracked decision between a
+single root reservation and independently reserved named owners; it is not hidden by
+`MAP_NORESERVE`.
 
 `MemoryProfiler::Update()` samples registered arenas, maintains their peak offset, warns above 80% at most once per 60 seconds, and validates a full arena. Only arenas passed to `CreateBudgetedArena` after profiler initialization are tracked. The current warning identifies the arena generically; it does not yet report a per-allocation call stack or impose category-specific GPU limits.
 
@@ -53,11 +53,9 @@ The 384 MiB gate covers the persistent environment bake/update peak. It does not
 
 ## Production completion criteria
 
-1. Implement POSIX reserve/commit behavior: reserve the root with `PROT_NONE`, then commit only
-   allocation page ranges with `mprotect`. The commit tracker must support discontiguous parent
-   and child-arena ranges; it must not commit every intervening sub-arena merely because a parent
-   allocation follows one. Report the failing `mmap`/`mprotect` errno, and test startup under a
-   constrained address-space or commit limit.
+1. Add Linux coverage under a constrained address-space or commit limit and exercise the
+   `mmap`/`mprotect` diagnostics. The allocator now reserves the root with `PROT_NONE`, promotes
+   only allocation page ranges, and tracks discontiguous parent/child commitments.
 2. Move every listed live subsystem to its named budgeted arena, or remove its slot from the profile. Direct `MainArena.CreateSubArena` calls need an explicit owner and a documented exception before they remain.
 3. Make profile sizes data-backed: record arena peaks from representative editor and game workloads, then set headroom from those measurements rather than speculative tables.
 4. Add a report which distinguishes root/direct allocations, tracked CPU arenas, VMA/driver allocations, persistent environment resources, and render-graph transients. Never combine these as though they share one enforced ceiling.

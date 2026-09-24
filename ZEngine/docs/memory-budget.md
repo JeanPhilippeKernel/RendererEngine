@@ -12,14 +12,13 @@ manager.Initialize(ZGiga(8ULL),
                                  : MemoryBudgetConfig::Default());
 ```
 
-On Windows, the allocator reserves this address range and commits child-arena pages lazily. The
-current macOS/Linux backend instead creates one writable anonymous `mmap` for the whole range and
-marks it fully committed in allocator bookkeeping. Permissive overcommit kernels normally back
-physical pages only when touched, so this is not an 8 GiB immediate RSS allocation. It can still
-fail at startup on Linux under strict overcommit, an address-space limit, or a container memory
-limit because the 8 GiB writable mapping is charged against the applicable commit limit. This is
-a current portability gap, not a GPU-memory requirement; its required reserve/commit redesign is
-tracked by [`future-plan/memory-budget.md`](future-plan/memory-budget.md).
+On every platform, the allocator reserves this address range without making it writable, then
+promotes only allocation pages. Windows uses `VirtualAlloc(MEM_COMMIT)` and macOS/Linux use
+`mprotect` from an initial `PROT_NONE` mapping. The allocator tracks promoted pages across parent
+and child arenas, so a root allocation after a child does not make the child's unused range
+writable. The 8 GiB root is still virtual address space: a process with an `RLIMIT_AS` below that
+reservation cannot start until the tracked ownership model is evolved to independently reserved
+owners. This is a CPU-address-space concern, not a GPU-memory requirement.
 
 `MemoryBudgetConfig` has these exact configured totals:
 

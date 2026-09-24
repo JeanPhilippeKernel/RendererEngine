@@ -7,6 +7,29 @@ namespace ZEngine::Core::Memory
 {
     struct ArenaAllocator;
     struct ArenaTemp;
+    struct ArenaCommitTracker;
+
+    enum class ArenaAllocationFailureKind : uint8_t
+    {
+        None,
+        ArenaNotInitialized,
+        CapacityExceeded,
+        ReservationFailed,
+        CommitFailed,
+    };
+
+    // Allocation APIs return nullptr on capacity or platform-commit failure. The
+    // caller can use this record to include the bounded owner and OS error in its
+    // own recovery path instead of collapsing every failure into a generic OOM.
+    struct ArenaAllocationFailure
+    {
+        ArenaAllocationFailureKind Kind          = ArenaAllocationFailureKind::None;
+        cstring                    OwnerName     = nullptr;
+        size_t                     RequestedSize = 0;
+        size_t                     CurrentUsage  = 0;
+        size_t                     Capacity      = 0;
+        int                        PlatformError = 0;
+    };
 
     struct ArenaTemp
     {
@@ -17,11 +40,12 @@ namespace ZEngine::Core::Memory
 
     // ArenaAllocator — linear bump-pointer allocator backed by a virtual memory reservation.
     //
-    // Windows reserves with PAGE_NOACCESS and commits pages on demand. The current POSIX
-    // backend maps the range writable and relies on OS overcommit for physical backing.
-    // Individual allocations cannot be freed — the entire arena is reclaimed at once via
-    // Clear() or Shutdown(). This makes it suitable for per-frame, per-task, or
-    // lifetime-scoped data.
+    // Windows reserves with PAGE_NOACCESS; POSIX reserves with PROT_NONE. Both backends
+    // promote only pages touched by an allocation. A root-owned page bitmap keeps those
+    // promotions discontiguous, so a root allocation after a child arena never makes the
+    // child's unused pages writable. Individual allocations cannot be freed — the entire
+    // arena is reclaimed at once via Clear() or Shutdown(). This makes it suitable for
+    // per-frame, per-task, or lifetime-scoped data.
     //
     // LIFETIME CONTRACT — all users must observe:
     //   1. Any PoolAllocator carved from this arena via PoolAllocator::Initialize() must
@@ -41,6 +65,8 @@ namespace ZEngine::Core::Memory
     //      allocations, corrupting them.
     struct ArenaAllocator
     {
+        friend bool CommitAllocationPages(ArenaAllocator* arena, size_t allocation_offset, size_t allocation_size);
+
         ArenaAllocator() = default;
         ~ArenaAllocator()
         {
@@ -67,52 +93,78 @@ namespace ZEngine::Core::Memory
             return *this;
         }
 
-        void     Initialize(uint64_t size, size_t page_size);
-        void     Shutdown();
+        void                                        Initialize(uint64_t size, size_t page_size, cstring owner_name = "UnnamedArena");
+        void                                        Shutdown();
 
-        void*    Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
-        void*    Allocate(size_t size, size_t alignment, const char* file, int line);
+        void*                                       Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
+        void*                                       Allocate(size_t size, size_t alignment, const char* file, int line);
 
         // AllocateNoZero — same as Allocate but skips the secure_memset zeroing step.
         // Use only when the caller will fully initialize the returned memory before reading it
         // (e.g. large decode buffers, staging allocations). Saves up to 0.4 ms for 16 MB
         // allocations. Do NOT use for structs whose fields rely on zero-initialization.
-        void*    AllocateNoZero(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
+        void*                                       AllocateNoZero(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
 
-        void*    Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
-        void     Clear();
+        void*                                       Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
+        void                                        Clear();
 
-        void     CreateSubArena(size_t size, ArenaAllocator* out_arena);
+        void                                        CreateSubArena(size_t size, ArenaAllocator* out_arena, cstring owner_name = "UnnamedSubArena");
 
-        uint8_t* m_memory                  = nullptr;
-        bool     m_is_sub_arena            = false;
-        size_t   m_total_size              = 0;
-        size_t   m_initial_current_offset  = 0;
-        size_t   m_initial_previous_offset = 0;
-        size_t   m_current_offset          = 0;
-        size_t   m_previous_offset         = 0;
-        size_t   m_committed_size          = 0;
+        [[nodiscard]] const ArenaAllocationFailure& LastFailure() const
+        {
+            return m_last_failure;
+        }
+
+        uint8_t*               m_memory                  = nullptr;
+        bool                   m_is_sub_arena            = false;
+        size_t                 m_total_size              = 0;
+        // Physical address-space range reserved for this arena. Sub-arenas reserve a
+        // page-rounded range while preserving m_total_size as their usable capacity.
+        size_t                 m_reserved_size           = 0;
+        size_t                 m_initial_current_offset  = 0;
+        size_t                 m_initial_previous_offset = 0;
+        size_t                 m_current_offset          = 0;
+        size_t                 m_previous_offset         = 0;
+        // Bytes in pages promoted writable for this arena only. This is intentionally
+        // not a contiguous-prefix cursor: parent and child commitments may interleave.
+        size_t                 m_committed_size          = 0;
         // size_t, not unsigned long: unsigned long is 32-bit on Windows LLP64, which
         // truncates the page-align mask past 4 GB (see ArenaAllocateRaw / Resize).
-        size_t   m_mem_page_size           = 0;
+        size_t                 m_mem_page_size           = 0;
+        cstring                m_owner_name              = "UnnamedArena";
+        ArenaAllocationFailure m_last_failure            = {};
 
     private:
-        void MoveFrom(ArenaAllocator& other) noexcept
-        {
-            m_memory                  = other.m_memory;
-            m_is_sub_arena            = other.m_is_sub_arena;
-            m_total_size              = other.m_total_size;
-            m_initial_current_offset  = other.m_initial_current_offset;
-            m_initial_previous_offset = other.m_initial_previous_offset;
-            m_current_offset          = other.m_current_offset;
-            m_previous_offset         = other.m_previous_offset;
-            m_committed_size          = other.m_committed_size;
-            m_mem_page_size           = other.m_mem_page_size;
+        ArenaCommitTracker* m_commit_tracker      = nullptr;
+        size_t              m_root_offset         = 0;
+        bool                m_owns_commit_tracker = false;
 
-            other.m_memory            = nullptr;
-            other.m_total_size        = 0;
-            other.m_committed_size    = 0;
-            other.m_is_sub_arena      = false;
+        void                MoveFrom(ArenaAllocator& other) noexcept
+        {
+            m_memory                    = other.m_memory;
+            m_is_sub_arena              = other.m_is_sub_arena;
+            m_total_size                = other.m_total_size;
+            m_reserved_size             = other.m_reserved_size;
+            m_initial_current_offset    = other.m_initial_current_offset;
+            m_initial_previous_offset   = other.m_initial_previous_offset;
+            m_current_offset            = other.m_current_offset;
+            m_previous_offset           = other.m_previous_offset;
+            m_committed_size            = other.m_committed_size;
+            m_mem_page_size             = other.m_mem_page_size;
+            m_owner_name                = other.m_owner_name;
+            m_last_failure              = other.m_last_failure;
+            m_commit_tracker            = other.m_commit_tracker;
+            m_root_offset               = other.m_root_offset;
+            m_owns_commit_tracker       = other.m_owns_commit_tracker;
+
+            other.m_memory              = nullptr;
+            other.m_total_size          = 0;
+            other.m_reserved_size       = 0;
+            other.m_committed_size      = 0;
+            other.m_is_sub_arena        = false;
+            other.m_commit_tracker      = nullptr;
+            other.m_root_offset         = 0;
+            other.m_owns_commit_tracker = false;
         }
     }; // struct ArenaAllocator
 

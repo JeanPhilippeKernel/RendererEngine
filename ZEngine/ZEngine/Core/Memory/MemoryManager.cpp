@@ -24,7 +24,7 @@ namespace ZEngine::Core::Memory
 #elif defined(__linux__) || defined(__APPLE__)
         page_size = sysconf(_SC_PAGESIZE);
 #endif
-        MainArena.Initialize(buffer_size, page_size);
+        MainArena.Initialize(buffer_size, page_size, "MainArena");
     }
 
     void MemoryManager::CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result)
@@ -32,7 +32,7 @@ namespace ZEngine::Core::Memory
         ZENGINE_VALIDATE_ASSERT(config.SizeBytes > 0, "MemoryManager::CreateBudgetedArena: SizeBytes must be > 0")
         ZENGINE_VALIDATE_ASSERT(result != nullptr, "MemoryManager::CreateBudgetedArena: out must not be null")
 
-        MainArena.CreateSubArena(config.SizeBytes, result);
+        MainArena.CreateSubArena(config.SizeBytes, result, config.Name);
 
 #if ZENGINE_PROFILING
         Profiling::MemoryProfiler::TrackArena(config.Name, result);

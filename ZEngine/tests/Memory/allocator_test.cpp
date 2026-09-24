@@ -220,6 +220,24 @@ TEST(AllocatorTest, ArenaAllocateOOM)
     manager.Shutdown();
 }
 
+TEST(AllocatorTest, ArenaCapacityFailureIdentifiesOwnerAndRequest)
+{
+    ArenaAllocator arena{};
+    arena.Initialize(64, 4096, "TinyArena");
+
+    ASSERT_NE(arena.Allocate(64), nullptr);
+    EXPECT_EQ(arena.Allocate(1), nullptr);
+
+    const ArenaAllocationFailure& failure = arena.LastFailure();
+    EXPECT_EQ(failure.Kind, ArenaAllocationFailureKind::CapacityExceeded);
+    EXPECT_STREQ(failure.OwnerName, "TinyArena");
+    EXPECT_EQ(failure.RequestedSize, 1u);
+    EXPECT_EQ(failure.CurrentUsage, 64u);
+    EXPECT_EQ(failure.Capacity, 64u);
+
+    arena.Shutdown();
+}
+
 TEST(AllocatorTest, ArenaResizeSlowPath)
 {
     MemoryManager manager{};
@@ -290,16 +308,13 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
     EXPECT_TRUE(sub.m_is_sub_arena);
     EXPECT_EQ(sub.m_total_size, ZKilo(4));
 
-    // Platform contract: Windows defers commit (m_committed_size = 0, lazy VirtualAlloc);
-    // macOS/Linux pre-marks the whole range as accessible via mmap overcommit.
-#ifdef _WIN32
+    // All platforms reserve child address space without making it writable. The first
+    // allocation promotes only its first page.
     EXPECT_EQ(sub.m_committed_size, 0u);
-#else
-    EXPECT_EQ(sub.m_committed_size, ZKilo(4));
-#endif
 
     int* val = reinterpret_cast<int*>(sub.Allocate(sizeof(int)));
     ASSERT_NE(val, nullptr);
+    EXPECT_EQ(sub.m_committed_size, sub.m_mem_page_size);
     *val = 77;
     EXPECT_EQ(*val, 77);
 
@@ -311,6 +326,56 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
 
     manager.Shutdown();
 }
+
+TEST(AllocatorTest, ParentAndChildCommitOnlyOwnedPages)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto* parent = &manager.MainArena;
+
+    ASSERT_NE(parent->Allocate(1), nullptr);
+    EXPECT_EQ(parent->m_committed_size, parent->m_mem_page_size);
+
+    ArenaAllocator child{};
+    parent->CreateSubArena(ZMega(1), &child, "ChildArena");
+    EXPECT_EQ(child.m_committed_size, 0u);
+
+    ASSERT_NE(child.Allocate(1), nullptr);
+    EXPECT_EQ(child.m_committed_size, child.m_mem_page_size);
+    EXPECT_EQ(parent->m_committed_size, parent->m_mem_page_size);
+
+    // This allocation follows the child arena in the root range. It must promote a
+    // single parent page, not the child's entire unused reservation.
+    ASSERT_NE(parent->Allocate(1), nullptr);
+    EXPECT_EQ(parent->m_committed_size, 2 * parent->m_mem_page_size);
+    EXPECT_EQ(child.m_committed_size, child.m_mem_page_size);
+
+    child.Shutdown();
+    manager.Shutdown();
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+TEST(AllocatorTest, PosixReservationLeavesUnallocatedPagesProtected)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(1), {});
+    ArenaAllocator& arena = manager.MainArena;
+
+    ASSERT_NE(arena.Allocate(1), nullptr);
+    ASSERT_EQ(arena.m_committed_size, arena.m_mem_page_size);
+
+    // The second page remains PROT_NONE until an allocation reaches it. This guards
+    // against regressing to a full read/write mmap on macOS or Linux.
+    EXPECT_DEATH(
+        {
+            volatile uint8_t* uncommitted_page = arena.m_memory + arena.m_mem_page_size;
+            *uncommitted_page                  = 1;
+        },
+        "");
+
+    manager.Shutdown();
+}
+#endif
 
 // Regression: multiple large sub-arenas carved from one parent must all succeed and be
 // independently usable. This reproduces the Windows UIContext failure where eager commit
