@@ -37,6 +37,20 @@ namespace ZEngine::Core::Memory
         INDIRECT = 5
     };
 
+    // Snapshot of the allocator's current GPU-memory accounting. VMA allocation
+    // and block bytes describe engine allocations; heap usage/budget comes from
+    // VK_EXT_memory_budget when available and otherwise is a VMA-derived fallback.
+    // Neither quantity is part of a CPU arena capacity.
+    struct GpuMemoryStatistics
+    {
+        uint64_t AllocationBytes           = 0;
+        uint64_t BlockBytes                = 0;
+        uint64_t HeapUsageBytes            = 0;
+        uint64_t HeapBudgetBytes           = 0;
+        uint32_t HeapCount                 = 0;
+        bool     UsesDriverBudgetTelemetry = false;
+    };
+
     struct BufferView
     {
         const char*        DebugName      = nullptr;
@@ -120,32 +134,33 @@ namespace ZEngine::Core::Memory
 
     struct GpuAllocator
     {
-        VmaAllocator      Allocator                                           = nullptr;
-        VmaPool           Pools[static_cast<uint8_t>(GpuMemoryDomain::Count)] = {nullptr};
-        StagingRingBuffer Ring                                                = {};
-        VmaBudget         HeapBudgets[VK_MAX_MEMORY_HEAPS]                    = {};
-        uint32_t          HeapCount                                           = 0;
-        bool              HasBudgetExt                                        = false;
+        VmaAllocator                      Allocator                                           = nullptr;
+        VmaPool                           Pools[static_cast<uint8_t>(GpuMemoryDomain::Count)] = {nullptr};
+        StagingRingBuffer                 Ring                                                = {};
+        VmaBudget                         HeapBudgets[VK_MAX_MEMORY_HEAPS]                    = {};
+        uint32_t                          HeapCount                                           = 0;
+        bool                              HasBudgetExt                                        = false;
 
-        void              Initialize(VkPhysicalDevice physical_device, VkDevice device, VkInstance instance, bool has_memory_budget_ext, bool has_buffer_device_address_ext);
-        void              Shutdown();
+        void                              Initialize(VkPhysicalDevice physical_device, VkDevice device, VkInstance instance, bool has_memory_budget_ext, bool has_buffer_device_address_ext);
+        void                              Shutdown();
 
-        BufferView        AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name = nullptr);
+        BufferView                        AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name = nullptr);
         /// @brief Creates a distinct buffer object backed by an existing allocation.
-        BufferView        AllocateAliasingBuffer(const BufferView& backing, VkDeviceSize size, VkBufferUsageFlags usage, const char* debug_name = nullptr);
-        BufferImage       AllocateImage(VkImageCreateInfo& image_info, GpuMemoryDomain domain, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name = nullptr);
+        BufferView                        AllocateAliasingBuffer(const BufferView& backing, VkDeviceSize size, VkBufferUsageFlags usage, const char* debug_name = nullptr);
+        BufferImage                       AllocateImage(VkImageCreateInfo& image_info, GpuMemoryDomain domain, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name = nullptr);
         /// @brief Creates a distinct image object backed by an existing allocation.
-        BufferImage       AllocateAliasingImage(const BufferImage& backing, const VkImageCreateInfo& image_info, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name = nullptr);
-        void              FreeBuffer(BufferView& buffer);
-        void              FreeImage(BufferImage& image, VkDevice device = VK_NULL_HANDLE);
+        BufferImage                       AllocateAliasingImage(const BufferImage& backing, const VkImageCreateInfo& image_info, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name = nullptr);
+        void                              FreeBuffer(BufferView& buffer);
+        void                              FreeImage(BufferImage& image, VkDevice device = VK_NULL_HANDLE);
 
-        void              SampleBudgets();
-        float             HeapPressure(uint32_t heap_index) const;
+        void                              SampleBudgets();
+        float                             HeapPressure(uint32_t heap_index) const;
+        [[nodiscard]] GpuMemoryStatistics GetMemoryStatistics() const;
         /// @brief Returns the byte range reserved for one owning VMA allocation.
-        VkDeviceSize      GetAllocationSize(VmaAllocation allocation) const;
+        VkDeviceSize                      GetAllocationSize(VmaAllocation allocation) const;
         /// @brief Makes GPU writes visible to the CPU for a host-visible VMA allocation.
         /// @return True when the allocation was invalidated successfully.
-        bool              InvalidateAllocation(VmaAllocation allocation, VkDeviceSize offset, VkDeviceSize size) const;
+        bool                              InvalidateAllocation(VmaAllocation allocation, VkDeviceSize offset, VkDeviceSize size) const;
     };
 
 } // namespace ZEngine::Core::Memory

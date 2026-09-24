@@ -68,7 +68,7 @@ third-party import/decode code never uses another allocator.
 
 ```mermaid
 graph TD
-    root["MainArena · 8 GB root"]
+    root["Configured CPU profile limit · 8 GiB"]
     asset["AssetManager arena · 1,024 MiB\n256 MiB TLSF container slab"]
 
     meshes["Meshes\nArray of AssetMesh · cap 5000"]

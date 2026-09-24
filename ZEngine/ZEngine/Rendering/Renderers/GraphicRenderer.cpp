@@ -214,6 +214,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->Setup();
         RenderGraph->Compile();
+        PublishMemoryStatistics();
 
         // No viewport texture is published here: before the ZUI pass is attached,
         // graph culling deliberately leaves FrameColor unallocated. DrawScene()
@@ -293,7 +294,42 @@ namespace ZEngine::Rendering::Renderers
 
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
         PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
+        PublishMemoryStatistics();
         return output;
+    }
+
+    RendererMemoryStatistics GraphicRenderer::GetMemoryStatistics() const
+    {
+        while (true)
+        {
+            const uint64_t sequence_before = m_memory_statistics_sequence.value.load(std::memory_order_acquire);
+            if ((sequence_before & 1u) != 0)
+                continue;
+
+            RendererMemoryStatistics result = {
+                .Vma =
+                    {
+                          .AllocationBytes           = m_vma_allocation_bytes.value.load(std::memory_order_relaxed),
+                          .BlockBytes                = m_vma_block_bytes.value.load(std::memory_order_relaxed),
+                          .HeapUsageBytes            = m_vma_heap_usage_bytes.value.load(std::memory_order_relaxed),
+                          .HeapBudgetBytes           = m_vma_heap_budget_bytes.value.load(std::memory_order_relaxed),
+                          .HeapCount                 = static_cast<uint32_t>(m_vma_heap_count.value.load(std::memory_order_relaxed)),
+                          .UsesDriverBudgetTelemetry = m_vma_uses_driver_budget.value.load(std::memory_order_relaxed) != 0,
+                          },
+                .EnvironmentReservedBytes     = m_environment_reserved_bytes.value.load(std::memory_order_relaxed),
+                .EnvironmentBudgetBytes       = m_environment_budget_bytes.value.load(std::memory_order_relaxed),
+                .TransientVirtualImageBytes   = m_transient_virtual_image_bytes.value.load(std::memory_order_relaxed),
+                .TransientPhysicalImageBytes  = m_transient_physical_image_bytes.value.load(std::memory_order_relaxed),
+                .TransientVirtualBufferBytes  = m_transient_virtual_buffer_bytes.value.load(std::memory_order_relaxed),
+                .TransientPhysicalBufferBytes = m_transient_physical_buffer_bytes.value.load(std::memory_order_relaxed),
+                .TransientImageBackingCount   = static_cast<uint32_t>(m_transient_image_backing_count.value.load(std::memory_order_relaxed)),
+                .TransientBufferBackingCount  = static_cast<uint32_t>(m_transient_buffer_backing_count.value.load(std::memory_order_relaxed)),
+            };
+
+            const uint64_t sequence_after = m_memory_statistics_sequence.value.load(std::memory_order_acquire);
+            if (sequence_before == sequence_after)
+                return result;
+        }
     }
 
     Textures::TextureHandle GraphicRenderer::GetFrameOutput()
@@ -336,6 +372,32 @@ namespace ZEngine::Rendering::Renderers
         // RenderGraph::Resize queues its own write after reconstructing the
         // backing image while the handle remains stable.
         Device->RequestDescriptorUpdate(output);
+    }
+
+    void GraphicRenderer::PublishMemoryStatistics()
+    {
+        if (!Device || !RenderGraph)
+            return;
+
+        const Core::Memory::GpuMemoryStatistics vma        = Device->GpuMem.GetMemoryStatistics();
+        const RGTransientStatistics&            transients = RenderGraph->GetTransientStatistics();
+
+        m_memory_statistics_sequence.value.fetch_add(1, std::memory_order_acq_rel);
+        m_vma_allocation_bytes.value.store(vma.AllocationBytes, std::memory_order_relaxed);
+        m_vma_block_bytes.value.store(vma.BlockBytes, std::memory_order_relaxed);
+        m_vma_heap_usage_bytes.value.store(vma.HeapUsageBytes, std::memory_order_relaxed);
+        m_vma_heap_budget_bytes.value.store(vma.HeapBudgetBytes, std::memory_order_relaxed);
+        m_vma_heap_count.value.store(vma.HeapCount, std::memory_order_relaxed);
+        m_vma_uses_driver_budget.value.store(vma.UsesDriverBudgetTelemetry ? 1u : 0u, std::memory_order_relaxed);
+        m_environment_reserved_bytes.value.store(m_sky_environment.GetReservedMemoryBytes(), std::memory_order_relaxed);
+        m_environment_budget_bytes.value.store(m_sky_environment.GetMemoryBudgetBytes(), std::memory_order_relaxed);
+        m_transient_virtual_image_bytes.value.store(transients.VirtualImageBytes, std::memory_order_relaxed);
+        m_transient_physical_image_bytes.value.store(transients.PhysicalImageBytes, std::memory_order_relaxed);
+        m_transient_virtual_buffer_bytes.value.store(transients.VirtualBufferBytes, std::memory_order_relaxed);
+        m_transient_physical_buffer_bytes.value.store(transients.PhysicalBufferBytes, std::memory_order_relaxed);
+        m_transient_image_backing_count.value.store(transients.ImageBackingAllocationCount, std::memory_order_relaxed);
+        m_transient_buffer_backing_count.value.store(transients.BufferBackingAllocationCount, std::memory_order_relaxed);
+        m_memory_statistics_sequence.value.fetch_add(1, std::memory_order_release);
     }
 
     void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision)

@@ -45,6 +45,15 @@ TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
     EXPECT_TRUE(server_budget.Validate(ZGiga(8)));
 }
 
+TEST(MemoryBudgetConfigTest, CapacityOverrunIdentifiesEveryConfiguredOwner)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap    = {"BootstrapOwner", ZMega(2)};
+    config.AssetManager = {"AssetsOwner", ZMega(1)};
+
+    EXPECT_DEATH_IF_SUPPORTED((void) config.Validate(ZMega(1)), "Bootstrap.*BootstrapOwner.*AssetsOwner");
+}
+
 TEST(MemoryManagerTest, MaterializesBootstrapOwner)
 {
     MemoryBudgetConfig config{};

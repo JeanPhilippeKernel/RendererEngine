@@ -15,44 +15,36 @@ namespace ZEngine::Core::Memory
     {
         // Process-lifetime engine/application objects that exist before a subsystem
         // owner is available (window, EngineContext, application state, scheduler).
-        SubArenaConfig  Bootstrap        = {};
-        SubArenaConfig  AudioEngine      = {};
-        SubArenaConfig  AnimationManager = {};
-        SubArenaConfig  AssetManager     = {};
-        SubArenaConfig  ECSScene         = {};
-        SubArenaConfig  Logging          = {};
-        SubArenaConfig  VirtualFS        = {};
-        SubArenaConfig  VulkanDevice     = {};
-        SubArenaConfig  ImportPipeline   = {}; // importers + renderer resource uploads
-        SubArenaConfig  UIContext        = {};
+        SubArenaConfig                   Bootstrap        = {};
+        SubArenaConfig                   AudioEngine      = {};
+        SubArenaConfig                   AnimationManager = {};
+        SubArenaConfig                   AssetManager     = {};
+        SubArenaConfig                   ECSScene         = {};
+        SubArenaConfig                   Logging          = {};
+        SubArenaConfig                   VirtualFS        = {};
+        SubArenaConfig                   VulkanDevice     = {};
+        SubArenaConfig                   ImportPipeline   = {}; // importers + renderer resource uploads
+        SubArenaConfig                   UIContext        = {};
         // Editor-only persistent state: editor scene, viewport tools, and panel layer.
         // This remains zero for game and server profiles.
-        SubArenaConfig  EditorContext    = {};
+        SubArenaConfig                   EditorContext    = {};
         // Two independent scene-load slots allow a serializer worker to prepare a
         // replacement scene while the active deserialized scene remains readable.
-        SubArenaConfig  EditorSceneLoadA = {};
-        SubArenaConfig  EditorSceneLoadB = {};
-        SubArenaConfig  Swapchain        = {};
-        SubArenaConfig  ShaderCache      = {};
-        SubArenaConfig  Serializer       = {};
-        SubArenaConfig  Network          = {};
-        SubArenaConfig  Input            = {};
+        SubArenaConfig                   EditorSceneLoadA = {};
+        SubArenaConfig                   EditorSceneLoadB = {};
+        SubArenaConfig                   Swapchain        = {};
+        SubArenaConfig                   ShaderCache      = {};
+        SubArenaConfig                   Serializer       = {};
+        SubArenaConfig                   Network          = {};
+        SubArenaConfig                   Input            = {};
 
         // Returns the total virtual capacity reserved by all SubArenaConfig entries.
         // Physical pages are committed lazily when an arena allocates from them.
-        inline uint64_t TotalCapacity() const
-        {
-            return Bootstrap.SizeBytes + AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + ImportPipeline.SizeBytes + UIContext.SizeBytes + EditorContext.SizeBytes + EditorSceneLoadA.SizeBytes + EditorSceneLoadB.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes + Input.SizeBytes;
-        }
+        [[nodiscard]] uint64_t           TotalCapacity() const;
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
         // Returns false and logs the overage if the budget is exceeded.
-        inline bool Validate(uint64_t total_available_bytes) const
-        {
-            const uint64_t capacity = TotalCapacity();
-            ZENGINE_VALIDATE_ASSERT(capacity <= total_available_bytes, "MemoryBudgetConfig::Validate: budget exceeds arena size")
-            return capacity <= total_available_bytes;
-        }
+        [[nodiscard]] bool               Validate(uint64_t total_available_bytes) const;
 
         inline static MemoryBudgetConfig Default()
         {

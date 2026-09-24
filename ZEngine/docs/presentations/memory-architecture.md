@@ -49,10 +49,10 @@ Archive presentation — concepts and historical TLSF integration plan
 > `Alloc`, `Realloc`, and `Free`.
 >
 > **POSIX correction:** slides below describe a proposed `PROT_NONE`/`mprotect`
-> reserve-and-commit model. Current macOS/Linux source instead creates one writable
-> 8 GiB anonymous mapping and relies on permissive overcommit. It can fail at startup
-> under Linux strict-overcommit, address-space, or container limits; the maintained
-> production gate is in `ZEngine/docs/future-plan/memory-budget.md`.
+> reserve-and-commit model. That model is now implemented for independently reserved
+> configured owners; the 8 GiB value is a capacity-validation limit rather than one
+> writable mapping. The maintained production contract is in
+> `ZEngine/docs/future-plan/memory-budget.md`.
 
 ---
 

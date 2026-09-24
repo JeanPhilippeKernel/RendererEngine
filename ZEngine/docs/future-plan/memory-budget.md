@@ -6,7 +6,7 @@
 
 ## Current implementation
 
-`MemoryManager::Initialize(buffer_size, config)` stores the selected config and validates `config.TotalCapacity() <= buffer_size`. Configured application owners are independently reserved: Windows uses `PAGE_NOACCESS`, POSIX uses `PROT_NONE`, and an allocation promotes only its page range (`VirtualAlloc(MEM_COMMIT)` or `mprotect`). Each owner owns a page bitmap, keeping its parent and child commitments discontiguous. `CreateBudgetedArena(config, result)` reserves a named owner independently and registers it with `MemoryProfiler` in profiling builds. `MainArena` is now used only by unconfigured low-level/unit-test callers. `Shutdown()` releases independent owners in reverse creation order after application, worker, and logger shutdown.
+`MemoryManager::Initialize(buffer_size, config)` stores the selected config and validates `config.TotalCapacity() <= buffer_size`. On an overrun, validation prints the requested/allowed/overage values and every named configuration slot before terminating; this works before the logger starts and is included in the assertion report. Configured application owners are independently reserved: Windows uses `PAGE_NOACCESS`, POSIX uses `PROT_NONE`, and an allocation promotes only its page range (`VirtualAlloc(MEM_COMMIT)` or `mprotect`). Each owner owns a page bitmap, keeping its parent and child commitments discontiguous. `CreateBudgetedArena(config, result)` reserves a named owner independently and registers it with `MemoryProfiler` in profiling builds. `MainArena` is now used only by unconfigured low-level/unit-test callers. `Shutdown()` releases independent owners in reverse creation order after application, worker, and logger shutdown.
 
 The current profiles total the following maximum reservations:
 
@@ -58,6 +58,6 @@ The 384 MiB gate covers the persistent environment bake/update peak. It does not
 ## Production completion criteria
 
 1. Make profile sizes data-backed: record arena peaks from representative editor and game workloads, then set headroom from those measurements rather than speculative tables.
-2. Add a report which distinguishes root/direct allocations, tracked CPU arenas, VMA/driver allocations, persistent environment resources, and render-graph transients. Never combine these as though they share one enforced ceiling.
-3. Fail startup with a useful slot-by-slot diagnostic when a profile exceeds the configured capacity limit, and add tests for `Default()`, `Editor()`, and `Server()` totals.
+2. The editor profiler reports named CPU arenas, VMA/driver samples, persistent environment resources, and render-graph transients in separate sections. Configured runs have no shared root/direct arena; Bootstrap is reported as a named CPU owner. Never combine these sections as though they share one enforced ceiling.
+3. Startup reports a useful slot-by-slot diagnostic when a profile exceeds the configured capacity limit; tests cover all built-in totals and the diagnostic's named owners.
 4. Establish a GPU-budget policy separately using VMA heap-budget telemetry and allocation-class accounting. A per-category hard cap must be designed and implemented rather than inferred from this CPU configuration.
