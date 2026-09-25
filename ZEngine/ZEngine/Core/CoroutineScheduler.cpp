@@ -1,5 +1,6 @@
 #include <ZEngine/Core/CoroutineScheduler.h>
-#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
+#include <chrono>
 #include <thread>
 
 namespace ZEngine::Core
@@ -42,7 +43,7 @@ namespace ZEngine::Core
                 if (!action.IsValid())
                     continue;
                 if (action.IsReady())
-                    Helpers::ThreadPoolHelper::Submit(action.ActionCtx, action.Action);
+                    MainThreadScheduler::Post(action.ActionCtx, action.Action);
                 else
                     deferred[deferred_count++] = action;
             }
@@ -51,6 +52,11 @@ namespace ZEngine::Core
             // drained at this point so there are no aliased slots.
             for (uint32_t i = 0; i < deferred_count; ++i)
                 s_queue.push(deferred[i]);
+
+            // A native file dialog may wait for user input for minutes. Avoid
+            // busy-spinning a CPU core while polling its future.
+            if (deferred_count > 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
             // Exit when nothing left to process.
             if (s_queue.empty() && deferred_count == 0)

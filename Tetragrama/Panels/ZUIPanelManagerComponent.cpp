@@ -27,11 +27,11 @@ namespace Tetragrama::Panels
         hierarchy.m_layer            = parent;
         inspector.m_layer            = parent;
         project.m_layer              = parent;
-        viewport.m_layer             = parent;
+        viewport.Initialize(parent);
 
-        constexpr float kLeft        = 0.14f; // Viewport-focused default
-        constexpr float kRight       = 0.18f;
-        constexpr float kBottom      = 0.22f;
+        constexpr float kLeft   = 0.14f; // Viewport-focused default
+        constexpr float kRight  = 0.18f;
+        constexpr float kBottom = 0.22f;
 
         ZUIDockSplitH(Manager.DockTree, Manager.DockTree->Root, kLeft, ZUIDockHashName("Hierarchy"), 0);
 

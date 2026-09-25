@@ -1,6 +1,8 @@
 #pragma once
+#include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <mutex>
 
 namespace ZEngine::Importers
 {
@@ -24,6 +26,12 @@ namespace ZEngine::Importers
         /// @brief Builds the cache-only VFS path for a stable source asset UUID.
         [[nodiscard]] static bool    BuildArtifactPath(const uuids::uuid& asset_uuid, char* out_path, size_t out_path_size);
 
-        Core::Memory::ArenaAllocator Arena = {};
+        Core::Memory::ArenaAllocator Arena      = {};
+        Core::Memory::TLSFSlab       DecodeSlab = {};
+
+    private:
+        // Serialize source decode, conversion, and artifact writing so their peak does
+        // not multiply with the import coordinator's worker count.
+        std::mutex m_decode_mutex;
     };
 } // namespace ZEngine::Importers

@@ -9,7 +9,7 @@ namespace ZEngine::Core::VFS
 {
     void AssetRegistry::Initialize(Core::Memory::ArenaAllocator* arena, uint64_t scratch_size)
     {
-        arena->CreateSubArena(scratch_size, &m_scratch);
+        arena->CreateSubArena(scratch_size, &m_scratch, "AssetRegistryScratch");
         m_index.Initialize(arena);
         m_graph.Initialize(arena);
     }

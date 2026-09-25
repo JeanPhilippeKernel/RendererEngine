@@ -1277,7 +1277,7 @@ namespace ZEngine::Rendering::Renderers
         // RenderGraph has a bounded number of virtual passes/resources per frame.
         // Persistent pipelines, framebuffers, and transient images stay in the
         // device arena; this sub-arena can therefore be rewound after recording.
-        Device->Arena->CreateSubArena(ZMega(2), &FrameArena);
+        Device->Arena->CreateSubArena(ZMega(2), &FrameArena, "VulkanDevice/RenderGraphFrame");
         InitializeFrameStorage();
         PersistentPasses.init(Device->Arena, 16);
         ImportedResources.init(Device->Arena, 32);

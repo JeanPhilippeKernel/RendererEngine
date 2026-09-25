@@ -18,8 +18,8 @@ namespace ZEngine::Profiling
     class MemoryProfiler
     {
     public:
-        // Must be called once before any TrackArena call, passing the engine's main arena.
-        // Reserves capacity for all sub-arenas that will be registered.
+        // Must be called once before any TrackArena call, passing the Bootstrap
+        // owner that holds profiler metadata for the process lifetime.
         static void Initialize(Core::Memory::ArenaAllocator* arena);
 
         // Register an arena for watermark tracking. `name` must be a string literal.

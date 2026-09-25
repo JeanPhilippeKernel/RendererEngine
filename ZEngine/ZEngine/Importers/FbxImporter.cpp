@@ -44,7 +44,7 @@ namespace ZEngine::Importers
 
     void FbxImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(512), &Arena);
+        arena->CreateSubArena(ZMega(512), &Arena, "ImportPipeline/FbxImporter");
     }
 
     bool FbxImporter::CanImport(const char* extension) const

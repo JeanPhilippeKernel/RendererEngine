@@ -40,13 +40,13 @@ namespace Tetragrama::Panels
 
         // Scratch arena for ImportConfiguration strings — carved from layer arena
         // ZKilo(64): ~8 path strings × ≤512 bytes each — a few KB is all we need
-        layer->LocalArena.CreateSubArena(ZKilo(64), &m_local_arena);
+        layer->LocalArena.CreateSubArena(ZKilo(64), &m_local_arena, "EditorContext/AssetImporterPanelScratch");
 
         // Importer arenas carved from the engine's ImportPipeline budget so all
         // import memory — engine importers and editor importers — is budget-tracked.
         auto* import_arena = &ZEngine::Engine::GetContext()->ImportPipelineArena;
-        import_arena->CreateSubArena(ZMega(64), &m_gltf_importer_arena);
-        import_arena->CreateSubArena(ZMega(128), &m_assimp_importer_arena);
+        import_arena->CreateSubArena(ZMega(64), &m_gltf_importer_arena, "ImportPipeline/EditorGltfImporter");
+        import_arena->CreateSubArena(ZMega(128), &m_assimp_importer_arena, "ImportPipeline/EditorAssimpImporter");
 
         m_gltf_importer   = ZPushStructCtor(import_arena, ZEngine::Importers::GltfImporter);
         m_fbx_importer    = ZPushStructCtor(import_arena, ZEngine::Importers::FbxImporter);

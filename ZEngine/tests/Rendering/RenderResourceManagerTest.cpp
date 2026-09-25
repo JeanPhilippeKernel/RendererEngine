@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <uuid.h>
 #include <algorithm>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -14,6 +15,24 @@ using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Managers;
+
+struct RRMDecodeTestHelper
+{
+    static bool Acquire(RenderResourceManager& manager, uint8_t* out_index)
+    {
+        return manager.TryAcquireTextureDecodeSlab(out_index);
+    }
+
+    static void Release(RenderResourceManager& manager, uint8_t index)
+    {
+        manager.ReleaseTextureDecodeSlab(index);
+    }
+
+    static constexpr uint32_t Capacity()
+    {
+        return RenderResourceManager::MAX_CONCURRENT_TEXTURE_DECODES;
+    }
+};
 
 static uuids::uuid MakeUUID()
 {
@@ -81,6 +100,33 @@ TEST(RenderHandle, SizeFitsInEightBytes)
     static_assert(sizeof(SamplerHandle) == 8, "SamplerHandle must fit in 8 bytes");
     static_assert(sizeof(PipelineHandle) == 8, "PipelineHandle must fit in 8 bytes");
     SUCCEED();
+}
+
+TEST(RenderResourceManagerDecodePolicy, LeasesAreBoundedAndReclaimed)
+{
+    // RenderResourceManager contains bounded queues and slot tables, making it
+    // too large for the default Windows test-thread stack.
+    auto    manager                                 = std::make_unique<RenderResourceManager>();
+    uint8_t leases[RRMDecodeTestHelper::Capacity()] = {};
+
+    for (uint32_t index = 0; index < RRMDecodeTestHelper::Capacity(); ++index)
+    {
+        EXPECT_TRUE(RRMDecodeTestHelper::Acquire(*manager, &leases[index]));
+        EXPECT_EQ(leases[index], index);
+    }
+
+    uint8_t unavailable = UINT8_MAX;
+    EXPECT_FALSE(RRMDecodeTestHelper::Acquire(*manager, &unavailable));
+
+    RRMDecodeTestHelper::Release(*manager, leases[2]);
+    uint8_t reclaimed = UINT8_MAX;
+    EXPECT_TRUE(RRMDecodeTestHelper::Acquire(*manager, &reclaimed));
+    EXPECT_EQ(reclaimed, leases[2]);
+
+    for (uint32_t index = 0; index < RRMDecodeTestHelper::Capacity(); ++index)
+        if (index != 2)
+            RRMDecodeTestHelper::Release(*manager, leases[index]);
+    RRMDecodeTestHelper::Release(*manager, reclaimed);
 }
 
 // ============================================================

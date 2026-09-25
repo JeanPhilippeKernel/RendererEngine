@@ -35,7 +35,7 @@ namespace ZEngine::Hardwares
         // storage, so give persistent command-buffer state an independent arena.
         // 256 MiB supports more than 2,000 120 KiB recording arenas while only
         // reserving virtual address space until the buffers are actually used.
-        Device->Arena->CreateSubArena(ZMega(256), &m_render_graph_command_buffer_arena);
+        Device->Arena->CreateSubArena(ZMega(256), &m_render_graph_command_buffer_arena, "VulkanDevice/RenderGraphCommandBuffers");
 
         InstantGraphicsPools.init(Device->Arena, TotalPoolCount, TotalPoolCount);
         InstantGraphicsCommandBuffers.init(Device->Arena, TotalInstantCommandBufferCount, TotalInstantCommandBufferCount);

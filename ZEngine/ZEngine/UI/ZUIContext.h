@@ -553,19 +553,22 @@ namespace ZEngine::UI
 
     /// @brief Return whether the previous UI frame owns pointer or keyboard input.
     /// @details The viewport's scene image is deliberately excluded from pointer capture so
-    ///          editor-camera pan and orbit remain available over it.
+    ///          editor-camera pan and orbit remain available over it. When no viewport image
+    ///          was built, the editor owns pointer input; this prevents a stale camera viewport
+    ///          rect from receiving input while another tab is active.
     inline ZUIInputCapture ZUIGetInputCapture(const ZUIContext* ctx)
     {
         if (!ctx)
             return {};
 
-        const bool modal_or_popup = ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0;
-        const bool other_hot      = ctx->HotKey != 0 && ctx->HotKey != ctx->ViewportInputKey;
-        const bool other_active   = ctx->ActiveKey != 0 && ctx->ActiveKey != ctx->ViewportInputKey;
-        const bool other_drag     = ctx->DragSourceKey != 0 && ctx->DragSourceKey != ctx->ViewportInputKey;
+        const bool viewport_active = ctx->ViewportInputKey != 0;
+        const bool modal_or_popup  = ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0;
+        const bool other_hot       = ctx->HotKey != 0 && ctx->HotKey != ctx->ViewportInputKey;
+        const bool other_active    = ctx->ActiveKey != 0 && ctx->ActiveKey != ctx->ViewportInputKey;
+        const bool other_drag      = ctx->DragSourceKey != 0 && ctx->DragSourceKey != ctx->ViewportInputKey;
 
         return {
-            .Pointer  = modal_or_popup || other_hot || other_active || other_drag,
+            .Pointer  = !viewport_active || modal_or_popup || other_hot || other_active || other_drag,
             .Keyboard = modal_or_popup || ctx->TextInputActive,
         };
     }

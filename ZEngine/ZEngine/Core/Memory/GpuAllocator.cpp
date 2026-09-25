@@ -404,6 +404,31 @@ namespace ZEngine::Core::Memory
         return (float) HeapBudgets[heap_index].usage / (float) HeapBudgets[heap_index].budget;
     }
 
+    GpuMemoryStatistics GpuAllocator::GetMemoryStatistics() const
+    {
+        GpuMemoryStatistics result = {
+            .HeapCount                 = HeapCount,
+            .UsesDriverBudgetTelemetry = HasBudgetExt,
+        };
+
+        const auto add_saturating = [](uint64_t* total, uint64_t value) {
+            if (value > std::numeric_limits<uint64_t>::max() - *total)
+                *total = std::numeric_limits<uint64_t>::max();
+            else
+                *total += value;
+        };
+
+        for (uint32_t heap_index = 0; heap_index < HeapCount; ++heap_index)
+        {
+            const VmaStatistics& heap = HeapBudgets[heap_index].statistics;
+            add_saturating(&result.AllocationBytes, static_cast<uint64_t>(heap.allocationBytes));
+            add_saturating(&result.BlockBytes, static_cast<uint64_t>(heap.blockBytes));
+            add_saturating(&result.HeapUsageBytes, static_cast<uint64_t>(HeapBudgets[heap_index].usage));
+            add_saturating(&result.HeapBudgetBytes, static_cast<uint64_t>(HeapBudgets[heap_index].budget));
+        }
+        return result;
+    }
+
     VkDeviceSize GpuAllocator::GetAllocationSize(VmaAllocation allocation) const
     {
         if (Allocator == nullptr || allocation == nullptr)

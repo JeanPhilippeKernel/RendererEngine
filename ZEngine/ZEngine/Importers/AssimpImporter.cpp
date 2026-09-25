@@ -34,7 +34,7 @@ namespace ZEngine::Importers
 
     void AssimpImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZMega(128), &Arena);
+        arena->CreateSubArena(ZMega(128), &Arena, "ImportPipeline/AssimpImporter");
     }
 
     bool AssimpImporter::CanImport(const char* extension) const
@@ -65,7 +65,7 @@ namespace ZEngine::Importers
         }
 
         Core::Memory::ArenaAllocator scratch{};
-        Arena.CreateSubArena(ZMega(64), &scratch);
+        Arena.CreateSubArena(ZMega(64), &scratch, "ImportPipeline/AssimpImporter/RuntimeScratch");
 
         std::random_device    rd;
         std::mt19937          generator(rd());
@@ -107,7 +107,7 @@ namespace ZEngine::Importers
         // scratch sub-arena from this importer's own, generously-sized private Arena
         // instead, matching the pattern Import() already uses for hot-reload.
         Core::Memory::ArenaAllocator scratch{};
-        Arena.CreateSubArena(ZMega(64), &scratch);
+        Arena.CreateSubArena(ZMega(64), &scratch, "ImportPipeline/AssimpImporter/EditorScratch");
         arena                                  = &scratch;
 
         AssetCodec::ImportConfiguration config = {};

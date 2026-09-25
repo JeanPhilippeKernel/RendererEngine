@@ -10,7 +10,7 @@ namespace ZEngine::Importers
 {
     void TextureImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
-        arena->CreateSubArena(ZKilo(512), &Arena);
+        arena->CreateSubArena(ZKilo(512), &Arena, "ImportPipeline/TextureImporter");
     }
 
     bool TextureImporter::CanImport(const char* extension) const

@@ -524,7 +524,7 @@ sequenceDiagram
     IC->>RRM: Initialize (global VB/IB, texture timelines, upload pool)
     RRM->>AM: InitFallbackTexture (hot-pink 4×4 — requires RRM live)
     AM->>VFS: InitWatcher (FSEvents / inotify / RDCW)
-    VFS->>MTS: Initialize (512 MPSC slots from MainArena)
+    VFS->>MTS: Initialize (512 MPSC slots from Bootstrap owner)
 ```
 
 Hard dependencies: Device before VFS (surface), RRM before fallback texture, watcher after working directory.

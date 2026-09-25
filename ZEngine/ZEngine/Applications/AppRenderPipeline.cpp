@@ -91,7 +91,7 @@ namespace ZEngine::Applications
         ZEngine::UI::ZUIContextInit(ZUICtx, ui_arena, ZMega(32), ZMega(1), 8192, 8192);
         for (uint32_t i = 0; i < MaxOverlayBufferCount; ++i)
         {
-            ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i]);
+            ui_arena->CreateSubArena(ZMega(9), &ZUIPayloadArenas[i], "UIContext/OverlayPayload");
         }
 
         // The scene graph owns editor-viewport-sized images, while the UI pass

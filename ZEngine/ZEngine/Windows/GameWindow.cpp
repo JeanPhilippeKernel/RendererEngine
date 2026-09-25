@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <future>
+#include <string>
 #include <vector>
 
 #if defined(__APPLE__)
@@ -435,54 +437,66 @@ namespace ZEngine::Windows
 
 #elif defined(__linux__)
         {
-            // Try zenity first, then kdialog.
-            // Build the --file-filter argument (e.g. "*.glb *.gltf *.fbx *.obj").
-            std::string filter;
-            for (auto& f : type_filters)
-            {
-                if (!filter.empty())
-                    filter += ' ';
-                filter += '*';
-                filter += std::string(f);
-            }
+            // Zenity and kdialog block until the picker closes. Run them off
+            // the UI thread, then resume this coroutine on the main thread.
+            std::vector<std::string> extensions;
+            extensions.reserve(type_filters.size());
+            for (std::string_view filter : type_filters)
+                extensions.emplace_back(filter);
 
-            std::string start_dir = default_dir.empty() ? "." : std::string(default_dir);
-            std::string title     = message.empty() ? "Select a file" : std::string(message);
-
-            std::string cmd;
-            if (system("which zenity > /dev/null 2>&1") == 0)
-            {
-                cmd = "zenity --file-selection --title='" + title + "'";
-                if (!default_dir.empty())
-                    cmd += " --filename='" + start_dir + "/'";
-                if (!filter.empty())
-                    cmd += " --file-filter='" + filter + "'";
-            }
-            else if (system("which kdialog > /dev/null 2>&1") == 0)
-            {
-                cmd = "kdialog --getopenfilename " + start_dir + " '";
-                for (auto& f : type_filters)
-                    cmd += '*' + std::string(f) + ' ';
-                if (!cmd.empty() && cmd.back() == ' ')
-                    cmd.pop_back();
-                cmd += "'";
-            }
-
-            if (!cmd.empty())
-            {
-                FILE* pipe = popen(cmd.c_str(), "r");
-                if (pipe)
+            std::string              default_dir_copy(default_dir);
+            std::string              message_copy(message);
+            std::future<std::string> result = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy)] {
+                std::string filter;
+                for (const std::string& extension : extensions)
                 {
-                    char buf[4096] = {};
-                    if (fgets(buf, sizeof(buf), pipe))
-                    {
-                        path = buf;
-                        if (!path.empty() && path.back() == '\n')
-                            path.pop_back();
-                    }
-                    pclose(pipe);
+                    if (!filter.empty())
+                        filter += ' ';
+                    filter += '*';
+                    filter += extension;
                 }
-            }
+
+                const std::string start_dir = default_dir.empty() ? "." : default_dir;
+                const std::string title     = message.empty() ? "Select a file" : message;
+
+                std::string       cmd;
+                if (system("which zenity > /dev/null 2>&1") == 0)
+                {
+                    cmd = "zenity --file-selection --title='" + title + "'";
+                    if (!default_dir.empty())
+                        cmd += " --filename='" + start_dir + "/'";
+                    if (!filter.empty())
+                        cmd += " --file-filter='" + filter + "'";
+                }
+                else if (system("which kdialog > /dev/null 2>&1") == 0)
+                {
+                    cmd = "kdialog --getopenfilename " + start_dir + " '";
+                    for (const std::string& extension : extensions)
+                        cmd += '*' + extension + ' ';
+                    if (!cmd.empty() && cmd.back() == ' ')
+                        cmd.pop_back();
+                    cmd += "'";
+                }
+
+                std::string selected_path;
+                if (cmd.empty())
+                    return selected_path;
+
+                FILE* pipe = popen(cmd.c_str(), "r");
+                if (!pipe)
+                    return selected_path;
+
+                char buf[4096] = {};
+                if (fgets(buf, sizeof(buf), pipe))
+                {
+                    selected_path = buf;
+                    if (!selected_path.empty() && selected_path.back() == '\n')
+                        selected_path.pop_back();
+                }
+                pclose(pipe);
+                return selected_path;
+            });
+            path                            = co_await result;
         }
 #endif
 

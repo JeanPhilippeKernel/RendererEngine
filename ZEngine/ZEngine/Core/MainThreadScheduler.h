@@ -1,6 +1,5 @@
 #pragma once
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <atomic>
 #include <cstdint>
 
 namespace ZEngine::Core
@@ -20,7 +19,7 @@ namespace ZEngine::Core
     public:
         static constexpr uint32_t MAX_TASKS = 512;
 
-        // Called once in Engine::Initialize() — carves the slot array from the arena.
+        // Called once in Engine::Initialize() — creates the queue in the arena.
         static void               Initialize(Memory::ArenaAllocator* arena);
 
         // Thread-safe, lock-free — may be called from any thread.
@@ -30,8 +29,7 @@ namespace ZEngine::Core
         // Called once per frame inside Engine::MainThreadRun().
         static void               Drain();
 
-        // Called in Engine::Deinitialize() — resets the write cursor;
-        // any tasks not yet drained are discarded.
+        // Called in Engine::Deinitialize() — discards tasks not yet drained.
         static void               Shutdown();
 
         MainThreadScheduler()  = delete;

@@ -37,8 +37,8 @@ See also: [Engine Architecture](engine-architecture.md) · [Asset Manager](asset
 
 ## Philosophy
 
-1. **One up-front allocation.** `MemoryManager` reserves 8 GB of virtual address space at startup as `MainArena`. Individual objects never call `malloc`/`new` outside of third-party libraries.
-2. **Sub-arenas carve fixed budgets.** Each subsystem gets a dedicated sub-arena sized to its worst-case working set. Running out of a sub-arena is a budgeting error to fix at design time, not a runtime failure to handle.
+1. **Named up-front reservations.** A configured `MemoryManager` independently reserves each named CPU owner. The 8 GiB value passed by `Obelisk` is a profile-capacity validation limit, not one `MainArena` mapping. Individual objects never call `malloc`/`new` outside of third-party libraries.
+2. **Owners and child arenas have fixed budgets.** Each subsystem gets a dedicated owner sized to its worst-case working set; short-lived consumers carve child arenas from that owner. Running out of either is a budgeting error to fix at design time, not a runtime failure to handle.
 3. **Lifetime = scope.** Objects allocated from an arena are freed by `ArenaAllocator::Clear()` (cursor reset). There is no per-object free. Pick the allocator whose lifetime matches the object's lifetime.
 4. **No destructor guarantee.** `ZPushStructCtor` places objects via placement-new, but arena release does **not** call destructors. Any object that owns an OS or GPU resource must have its destructor called explicitly before the arena is cleared.
 5. **Zero hot-path touches.** Alloc/free on the render thread or in inner simulation loops is off the table.
@@ -254,19 +254,20 @@ sequenceDiagram
 ## Memory Budget
 
 `MemoryBudgetConfig` in `ZEngine/ZEngine/Core/Memory/MemoryManager.h` defines the profile.
-`Obelisk` reserves 8 GiB and validates the sum before initialization. The actual configured
-totals are 7,060 MiB (`Default`), 6,932 MiB (`Editor`), and 5,780 MiB (`Server`); the largest
-live slots are `ImportPipeline` (3,584 MiB), `AssetManager` (1,024 MiB), `VulkanDevice`
-(1,024 MiB), and `ECSScene` (512 MiB). `UIContext` is 64 MiB by default and 128 MiB for the
-editor. Not every declared budget slot is materialized as a separate live arena yet.
+`Obelisk` validates that profile against an 8 GiB configured-capacity limit before initialization.
+The actual configured totals are 7,604 MiB (`Default`), 7,868 MiB (`Editor`), and 6,324 MiB
+(`Server`); the largest slots are `ImportPipeline` (4,096 MiB), `AssetManager` (1,024 MiB by
+default and 1,280 MiB for the calibrated editor profile), `VulkanDevice` (1,024 MiB), and
+`ECSScene` (512 MiB). `UIContext` is 64 MiB by default and 128 MiB for the editor. Not every
+declared slot is materialized by every runtime mode.
 
-**Linux startup limitation:** Windows reserves the root range and commits pages as allocations
-advance. Current macOS/Linux code maps the full 8 GiB root with writable anonymous `mmap` and
-relies on permissive overcommit for low initial RSS. Linux strict-overcommit configurations,
-address-space limits, and cgroup memory limits can reject that mapping before startup. A
-production POSIX backend must reserve with `PROT_NONE` and commit only each allocation's page
-range, while retaining enough commit tracking for discontiguous sub-arenas. Do not use
-`MAP_NORESERVE` alone as the fix: it can defer the failure to an unrecoverable page fault.
+Configured owners are separate virtual reservations: Windows starts them `PAGE_NOACCESS`, while
+macOS/Linux start them `PROT_NONE`. The allocator promotes only the required page range on each
+allocation (`VirtualAlloc(MEM_COMMIT)` or `mprotect`), with owner-local page tracking for nested
+child arenas. Consequently, configured Linux startup does not need one writable 8 GiB mapping;
+the test suite exercises it below a constrained `RLIMIT_AS` limit. Do not use `MAP_NORESERVE`
+alone as a replacement for explicit commit admission, because it can defer failure to a later
+uncontrolled write.
 
 The GPU allocator's domains and the 384 MiB persistent environment-lighting gate are separate
 GPU policies, not deductions from this CPU profile. See
@@ -429,10 +430,9 @@ the old cross-thread slab-free data-race warning was resolved by that lock.
 
 ### Linux — Transparent Huge Pages
 
-The current writable whole-root mapping depends on permissive overcommit and is not a portable
-startup contract. The pending POSIX reserve/commit redesign is documented in
-[`ZEngine/docs/future-plan/memory-budget.md`](../ZEngine/docs/future-plan/memory-budget.md).
-Only after that change should an arena call `madvise` for the committed ranges below.
+Configured owners use `PROT_NONE` reservations and promote allocation page ranges with
+`mprotect`, so startup does not depend on permissive overcommit for one whole-root mapping.
+`madvise` for already committed hot ranges remains a separate optimization opportunity.
 
 On Linux with `THP = madvise`, calling `madvise(ptr, size, MADV_HUGEPAGE)` on hot arenas promotes pages to 2 MB huge pages. TLB coverage improves from 4 KB × 512 entries = 2 MB to 2 MB × 512 = 1 GB per miss. Measurable win for dense ECS archetype iteration. No code change required beyond one `madvise` call in `ArenaAllocator::Initialize` for arenas larger than 2 MB.
 
@@ -447,10 +447,11 @@ On Windows, `VirtualAlloc(MEM_COMMIT)` reserves pagefile space immediately (not 
 **File:** `ZEngine/ZEngine/Profiling/MemoryProfiler.h`
 
 ```cpp
-Profiling::MemoryProfiler::TrackArena("MainArena", &MainArena);
+Profiling::MemoryProfiler::TrackArena("AssetManager", &AssetArena);
 ```
 
 `MemoryProfiler` records tracked-arena current and peak offsets and warns above 80% with a
-60-second cooldown. A budgeted arena is registered only if profiling is enabled. The engine loop
-does not currently call `MemoryProfiler::Update()` or `ProfilerBuffer::BeginFrame()`, so these
-facilities are implemented but not yet producing an automatic per-frame runtime feed.
+60-second cooldown. A budgeted arena is registered only if profiling is enabled. The main-thread
+frame boundary calls `MemoryProfiler::Update()`, so the editor profiler shows a live current and
+peak feed for named CPU owners. These values do not represent VMA/driver memory, persistent
+environment resources, or render-graph transients; those are separate accounting domains.

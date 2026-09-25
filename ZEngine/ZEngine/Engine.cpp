@@ -18,6 +18,7 @@
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 #include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Windows/GameWindow.h>
@@ -118,7 +119,7 @@ namespace ZEngine
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::IsInitialized(), "Engine::Initialize: ThreadPool not initialized — Obelisk must call ThreadPoolHelper::Initialize first")
 
-        auto& arena  = memory->MainArena;
+        auto& arena  = memory->BootstrapArena;
 
         g_engine_ctx = ZPushStructCtor(&arena, EngineContext);
 
@@ -129,7 +130,7 @@ namespace ZEngine
 
         // Device-owned CPU state (command buffers, shaders, render graph, and
         // swapchain state) must consume the declared VulkanDevice budget rather
-        // than silently taking unbounded capacity from MainArena.
+        // than silently taking unbounded capacity from the bootstrap owner.
         memory->CreateBudgetedArena(memory->Budget.VulkanDevice, &g_engine_ctx->VulkanDeviceArena);
         g_engine_ctx->Device         = ZPushStructCtor(&g_engine_ctx->VulkanDeviceArena, Hardwares::VulkanDevice);
         uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
@@ -196,10 +197,14 @@ namespace ZEngine
         ECS::Components::RegisterBuiltInComponentReflection();
 
         // ImportPipeline owns importer sub-arenas and the bounded CPU decode slabs used
-        // by RenderResourceManager. The 4 GiB profile capacity covers their simultaneous
-        // reservation at the maximum 16-worker configuration.
+        // by RenderResourceManager. Decode reservation is fixed by the four-job policy,
+        // not by the machine's worker count.
         memory->CreateBudgetedArena(memory->Budget.ImportPipeline, &g_engine_ctx->ImportPipelineArena);
         memory->CreateBudgetedArena(memory->Budget.UIContext, &g_engine_ctx->UIContextArena);
+        if (memory->Budget.EditorSceneLoadA.SizeBytes > 0)
+            memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadA, &g_engine_ctx->EditorSceneLoadArenaA);
+        if (memory->Budget.EditorSceneLoadB.SizeBytes > 0)
+            memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadB, &g_engine_ctx->EditorSceneLoadArenaB);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
@@ -386,6 +391,13 @@ namespace ZEngine
                 g_engine_ctx->ImportCoordinator->Tick();
 
             Core::MainThreadScheduler::Drain();
+
+#if ZENGINE_PROFILING
+            // Sample named CPU owners at a single main-thread frame boundary so
+            // the editor profiler's current and peak values represent workload
+            // usage rather than only arena registration capacity.
+            Profiling::MemoryProfiler::Update();
+#endif
 
             // Application update (non-ECS game logic)
             g_engine_ctx->App->Update(raw_dt);

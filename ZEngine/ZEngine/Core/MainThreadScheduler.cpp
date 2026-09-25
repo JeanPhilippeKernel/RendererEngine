@@ -1,58 +1,53 @@
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/ZEngineDef.h>
 #include <new>
 
 namespace ZEngine::Core
 {
-    // MPSC (multi-producer, single-consumer) slot-claim protocol:
-    //   Post  : fetch_add claims a slot → write Context/Fn → store(ready=true, release)
-    //   Drain : exchange(write_cursor, 0) claims all pending → per-slot acquire spin → execute → reset
-    //
-    // The acquire spin on ready terminates immediately in practice: the producer sets
-    // ready=true in the same Post() call, and Drain() runs at the next frame boundary.
-    struct Slot
+    struct MainThreadTask
     {
         void* Context     = nullptr;
         void (*Fn)(void*) = nullptr;
-        PaddedAtomic<bool> ready{};
     };
 
-    static Slot*                  s_slots        = nullptr;
-    static PaddedAtomic<uint32_t> s_write_cursor = {};
+    using MainThreadTaskQueue           = Containers::MPSCQueue<MainThreadTask, MainThreadScheduler::MAX_TASKS>;
 
-    void                          MainThreadScheduler::Initialize(Memory::ArenaAllocator* arena)
+    static MainThreadTaskQueue* s_queue = nullptr;
+
+    void                        MainThreadScheduler::Initialize(Memory::ArenaAllocator* arena)
     {
-        void* mem = arena->Allocate(MAX_TASKS * sizeof(Slot), alignof(Slot));
-        s_slots   = static_cast<Slot*>(mem);
-        for (uint32_t i = 0; i < MAX_TASKS; ++i)
-            new (&s_slots[i]) Slot{};
-        s_write_cursor.value.store(0, std::memory_order_relaxed);
+        void* storage = arena->Allocate(sizeof(MainThreadTaskQueue), alignof(MainThreadTaskQueue));
+        s_queue       = new (storage) MainThreadTaskQueue{};
     }
 
     void MainThreadScheduler::Post(void* context, void (*fn)(void*))
     {
-        uint32_t idx = s_write_cursor.value.fetch_add(1, std::memory_order_relaxed);
-        ZENGINE_VALIDATE_ASSERT(idx < MAX_TASKS, "MainThreadScheduler::Post — slot array full; increase MAX_TASKS")
-        s_slots[idx].Context = context;
-        s_slots[idx].Fn      = fn;
-        s_slots[idx].ready.value.store(true, std::memory_order_release);
+        ZENGINE_VALIDATE_ASSERT(s_queue && s_queue->push({context, fn}), "MainThreadScheduler::Post — queue full; increase MAX_TASKS")
     }
 
     void MainThreadScheduler::Drain()
     {
-        uint32_t count = s_write_cursor.value.exchange(0, std::memory_order_acq_rel);
+        // Snapshot the current contiguous queue prefix. Work posted by a callback
+        // is enqueued for the next frame instead of extending this drain forever.
+        MainThreadTask batch[MAX_TASKS] = {};
+        uint32_t       count            = 0;
+        while (count < MAX_TASKS && s_queue->pop(batch[count]))
+            ++count;
+
         for (uint32_t i = 0; i < count; ++i)
         {
-            while (!s_slots[i].ready.value.load(std::memory_order_acquire))
-                ;
-            s_slots[i].Fn(s_slots[i].Context);
-            s_slots[i].ready.value.store(false, std::memory_order_relaxed);
+            batch[i].Fn(batch[i].Context);
         }
     }
 
     void MainThreadScheduler::Shutdown()
     {
-        s_write_cursor.value.store(0, std::memory_order_relaxed);
+        if (s_queue)
+        {
+            s_queue->clear();
+            s_queue = nullptr;
+        }
     }
 
 } // namespace ZEngine::Core
