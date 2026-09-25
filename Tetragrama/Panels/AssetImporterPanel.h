@@ -9,13 +9,16 @@
 #include <uuid.h>
 #include <future>
 #include <mutex>
+#include <string>
+#include <vector>
 
 namespace Tetragrama::Panels
 {
+    struct ProjectViewPanel;
+
     /// @brief Three-state asset importer panel (Idle → Options → Importing).
     ///        Supports glTF/GLB, FBX, and Assimp-backed formats.  Import runs
-    ///        on a background thread; ECS actor creation is posted back to the
-    ///        main thread via TriggerScan().
+    ///        on a background thread; completion is finalized on the main thread.
     struct AssetImporterPanel : ZEngine::UI::ZUIPanelView
     {
         AssetImporterPanel()
@@ -25,7 +28,8 @@ namespace Tetragrama::Panels
 
         /// @brief Allocates importers and arenas; must be called once before first use.
         /// @param layer Owning ZUI layer (provides arena and app pointers).
-        void Initialize(Tetragrama::Layers::ZUILayer* layer);
+        /// @param project_view Content browser refreshed after a successful import.
+        void Initialize(Tetragrama::Layers::ZUILayer* layer, ProjectViewPanel* project_view);
 
         /// @brief Dispatches to BuildIdle/BuildOptions/BuildImporting based on current state.
         /// @param ctx ZUI context for the current frame.
@@ -34,6 +38,7 @@ namespace Tetragrama::Panels
 
     private:
         Tetragrama::Layers::ZUILayer*         m_layer                 = nullptr;
+        ProjectViewPanel*                     m_project_view          = nullptr;
 
         // Scratch arena for ImportConfiguration strings (cleared before each import)
         ZEngine::Core::Memory::ArenaAllocator m_local_arena           = {};
@@ -53,12 +58,24 @@ namespace Tetragrama::Panels
             Assimp,
         };
 
+        enum class ImportTaskOutcome : uint8_t
+        {
+            Pending,
+            Completed,
+            Failed,
+        };
+
         struct ImportTask
         {
-            AssetImporterPanel*                                 Panel                           = nullptr;
-            ZEngine::Importers::AssetCodec::ImportConfiguration Configuration                   = {};
-            ImporterKind                                        Kind                            = ImporterKind::Gltf;
-            char                                                SourcePath[MAX_FILE_PATH_COUNT] = {};
+            AssetImporterPanel*                                  Panel                           = nullptr;
+            ZEngine::Importers::AssetCodec::ImportConfiguration  Configuration                   = {};
+            ImporterKind                                         Kind                            = ImporterKind::Gltf;
+            char                                                 SourcePath[MAX_FILE_PATH_COUNT] = {};
+            // The importer releases its scratch arena after it calls its callback.
+            // Retain the small output list until the main thread consumes it.
+            std::vector<ZEngine::Importers::AssetImporterOutput> Outputs                         = {};
+            std::string                                          Error                           = {};
+            ImportTaskOutcome                                    Outcome                         = ImportTaskOutcome::Pending;
         };
         ImportTask m_import_task = {};
 
@@ -87,17 +104,8 @@ namespace Tetragrama::Panels
         bool                        m_same_settings      = false;
         int                         m_options_filter     = 5; // 0=General 1=Mesh 2=Material 3=Anim 4=LOD 5=All
 
-        // Pending ECS actor creation — written on bg thread, consumed on main thread
-        struct PendingActor
-        {
-            uuids::uuid uuid      = {};
-            uint32_t    render_id = UINT32_MAX;
-            char        name[128] = {};
-            bool        valid     = false;
-        } m_pending_actor             = {};
-
         // Import history ring buffer (Idle state, newest first)
-        static constexpr int kHistMax = 16;
+        static constexpr int        kHistMax             = 16;
         struct HistEntry
         {
             char name[256]    = {};
@@ -117,7 +125,6 @@ namespace Tetragrama::Panels
         LogEntry          m_log[kLogMax] = {};
         int               m_log_head     = 0;
         int               m_log_count    = 0;
-        bool              m_scroll_log   = false;
         std::mutex        m_log_mutex;
 
         // Build helpers
@@ -134,25 +141,28 @@ namespace Tetragrama::Panels
         std::future<void> BrowseFileAsync();
         /// @brief Begin the import process with the current settings.
         void              StartImport();
-        /// @brief Trigger a directory scan for importable assets.
-        void              TriggerScan(); // main-thread only
+        /// @brief Add an imported mesh instance to the ECS scene on the main thread.
+        void              CreateMeshActor(uuids::uuid mesh_uuid, uint32_t render_instance_id, const char* name);
         /// @brief Append a log message to the import log.
         void              PushLog(const char* text, float r, float g, float b);
         /// @brief Record the completed import in the history list.
         void              PushHistory(const char* name, bool ok, const char* msg);
 
-        /// @brief Runs one import on a worker through the allocation-free task API.
+        /// @brief Runs one import on a worker through the C-style task API.
         static void       RunImportTask(void* context);
+        /// @brief Consumes a completed worker task on the main thread.
+        static void       FinalizeImportTask(void* context);
 
-        // Static callbacks for ImportFile (called from background thread)
-        /// @brief Callback invoked when the import file step finishes.
+        // Static callbacks for ImportFile. They execute on a worker, so they only
+        // copy the result into ImportTask; FinalizeImportTask performs editor work.
         static void       OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
-        /// @brief Callback invoked with progress updates during import.
         static void       OnImportProgress(void* ctx, float pct);
-        /// @brief Callback invoked when an import error occurs.
         static void       OnImportError(void* ctx, std::string_view err);
-        /// @brief Callback invoked for each import log message.
         static void       OnImportLog(void* ctx, std::string_view msg);
+
+        // Main-thread-only completion handlers.
+        static void       CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        static void       CompleteImportErrorOnMainThread(void* ctx, std::string_view err);
     };
 
 } // namespace Tetragrama::Panels

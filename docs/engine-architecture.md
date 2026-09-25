@@ -468,7 +468,7 @@ the render thread resets global buffer cursors to 0 so new geometry starts fresh
 ```mermaid
 graph TD
     ctx["VFSContext"]
-    m1["Mount /ZodiacEngine\n→ VFSDiskBackend\n→ cwd/ZodiacEngine/\npriority = -1"]
+    m1["Mount /ZodiacEngine\n→ VFSDiskBackend\n→ executable-dir/ZodiacEngine/\npriority = -1"]
     m2["Mount /\n→ VFSDiskBackend\n→ project root\npriority = 0"]
     path["VFSPath\nnormalized, immutable\nno-alloc value type"]
     scanner["VFSScanner\nasync directory walker\npopulates content browser cache"]
@@ -528,6 +528,20 @@ sequenceDiagram
 ```
 
 Hard dependencies: Device before VFS (surface), RRM before fallback texture, watcher after working directory.
+
+### Packaged engine assets
+
+Engine-owned files are resolved from `ZodiacEngine/` beside the executable, not
+from the process working directory. This keeps a Debug or installed package
+relocatable: it may be launched from the repository root, its output directory,
+or any other directory. Startup validates the package root before mounting it
+at `/ZodiacEngine`; all files under that directory then use the ordinary VFS
+lookup path, including shaders.
+
+Development tools and package tests may explicitly set `ZENGINE_ASSET_ROOT` to
+an alternate `ZodiacEngine` directory. The override takes precedence over the
+executable-relative package location; normal application launches should not
+need it.
 
 ---
 

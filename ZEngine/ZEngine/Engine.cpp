@@ -1,5 +1,6 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/EngineAssetRoot.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
@@ -13,6 +14,7 @@
 #include <ZEngine/Engine/FixedTimestepAccumulator.h>
 #include <ZEngine/Engine/FrameRateCap.h>
 #include <ZEngine/Engine/FrameTimer.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
@@ -119,11 +121,22 @@ namespace ZEngine
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::IsInitialized(), "Engine::Initialize: ThreadPool not initialized — Obelisk must call ThreadPoolHelper::Initialize first")
 
-        auto& arena  = memory->BootstrapArena;
+        const Core::EngineAssetRootResolution resolved_asset_root  = Core::ResolveEngineAssetRoot();
+        const Core::EngineAssetRootResolution validated_asset_root = resolved_asset_root.Succeeded() ? Core::ValidateEngineAssetRoot(resolved_asset_root.Root) : resolved_asset_root;
+        if (!validated_asset_root.Succeeded())
+        {
+            ZENGINE_CORE_CRITICAL("Engine startup aborted: {}", validated_asset_root.Diagnostic)
+            ZENGINE_EXIT_FAILURE()
+        }
 
-        g_engine_ctx = ZPushStructCtor(&arena, EngineContext);
+        auto& arena                          = memory->BootstrapArena;
 
-        auto window  = ZPushStructCtor(&arena, Windows::GameWindow);
+        g_engine_ctx                         = ZPushStructCtor(&arena, EngineContext);
+        const std::string engine_assets_path = validated_asset_root.Root.string();
+        g_engine_ctx->EngineAssetsNativeRoot = ZPushString(&arena, engine_assets_path.size() + 1);
+        ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(g_engine_ctx->EngineAssetsNativeRoot, engine_assets_path.size() + 1, engine_assets_path.c_str(), engine_assets_path.size() + 1) == Helpers::MEMORY_OP_SUCCESS, "Engine::Initialize: failed to persist engine asset root")
+
+        auto window = ZPushStructCtor(&arena, Windows::GameWindow);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
         window->Initialize(&arena, *window_cfg_ptr);
         g_engine_ctx->Window = window;
@@ -142,13 +155,12 @@ namespace ZEngine
         g_engine_ctx->VFS = vfs_ctx;
 
         {
-            const std::string engine_dir = std::filesystem::current_path().string() + "/ZodiacEngine";
-            g_engine_ctx->EngineAssetsBackend.Initialize(engine_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
+            g_engine_ctx->EngineAssetsBackend.Initialize(g_engine_ctx->EngineAssetsNativeRoot, Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
             auto mount_path = Core::VFS::VFSPath::Parse("/ZodiacEngine");
-            if (mount_path.Succeeded())
+            if (mount_path.Failed() || vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1).Failed())
             {
-                auto res = vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
-                (void) res;
+                ZENGINE_CORE_CRITICAL("Engine startup aborted: failed to mount engine assets at /ZodiacEngine from {}", g_engine_ctx->EngineAssetsNativeRoot)
+                ZENGINE_EXIT_FAILURE()
             }
 
             const bool has_writable_workspace = app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0' && app->VFSBackend && Core::VFS::HasCap(app->VFSBackend->Capabilities(), Core::VFS::VFSBackendCaps::Write);
@@ -263,6 +275,11 @@ namespace ZEngine
         {
             g_engine_ctx->RenderThread.join();
         }
+
+        // Import and VFS work run on this pool. Join it while the scheduler and
+        // every engine-owned service are still valid, so an in-flight import cannot
+        // publish a completion into torn-down state.
+        Helpers::ThreadPoolHelper::Shutdown();
 
         Core::MainThreadScheduler::Shutdown();
 

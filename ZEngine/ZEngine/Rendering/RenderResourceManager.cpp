@@ -2,6 +2,7 @@
 // stbi_load pixel buffers stay on the slab rather than the system heap.
 // Falls back to malloc/free/realloc on the main thread (slab = nullptr).
 #include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <cstdlib>
 #define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
@@ -56,7 +57,7 @@ namespace ZEngine::Rendering
         uint16_t           FloatToHalf(float value)
         {
             uint32_t bits = 0;
-            std::memcpy(&bits, &value, sizeof(bits));
+            ZENGINE_VALIDATE_ASSERT(secure_memcpy(&bits, sizeof(bits), &value, sizeof(value)) == MEMORY_OP_SUCCESS, "FloatToHalf: failed to copy float bits")
 
             const uint16_t sign     = static_cast<uint16_t>((bits >> 16) & 0x8000u);
             const int32_t  exponent = static_cast<int32_t>((bits >> 23) & 0xFFu) - 127 + 15;
@@ -2091,11 +2092,20 @@ namespace ZEngine::Rendering
 
     Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackTexture()
     {
-        static constexpr const char* kFallbackPath = "ZodiacEngine/Settings/FallbackTexture.png";
+        static constexpr const char* kFallbackRelativePath = "Settings/FallbackTexture.png";
 
-        if (!std::filesystem::exists(kFallbackPath))
+        const auto*                  engine_context        = Engine::GetContext();
+        if (!engine_context || !engine_context->EngineAssetsNativeRoot)
         {
-            // 4×4 (255, 20, 147, 255) fallback color for missing textures
+            ZENGINE_CORE_ERROR("Fallback texture cannot be loaded because the engine asset root is unavailable")
+            return {};
+        }
+
+        const std::string fallback_path = (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / kFallbackRelativePath).string();
+        if (!std::filesystem::exists(fallback_path))
+        {
+            // Keep GetOrCreateFallbackTexture's recovery behavior for development
+            // packages that were produced without the bundled fallback image.
             static constexpr int     W = 4, H = 4;
             static constexpr uint8_t R = 255, G = 20, B = 147, A = 255;
             uint8_t                  pixels[W * H * 4];
@@ -2106,10 +2116,14 @@ namespace ZEngine::Rendering
                 pixels[i * 4 + 2] = B;
                 pixels[i * 4 + 3] = A;
             }
-            stbi_write_png(kFallbackPath, W, H, 4, pixels, W * 4);
+            if (!stbi_write_png(fallback_path.c_str(), W, H, 4, pixels, W * 4))
+            {
+                ZENGINE_CORE_ERROR("Failed to create fallback texture: {}", fallback_path)
+                return {};
+            }
         }
 
-        auto result = SubmitTextureFile(kFallbackPath);
+        auto result = SubmitTextureFile(fallback_path.c_str());
         if (result.Valid())
         {
             auto texture = m_device->GlobalTextures.Access(result);
