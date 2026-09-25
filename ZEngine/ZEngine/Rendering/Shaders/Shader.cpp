@@ -33,7 +33,7 @@ namespace ZEngine::Rendering::Shaders
     {
         ZENGINE_VALIDATE_ASSERT(device != nullptr, "Shader::Initialize requires a Vulkan device")
         ZENGINE_VALIDATE_ASSERT(LocalArena.m_memory == nullptr, "Shader::Initialize called on an initialized shader")
-        device->Arena->CreateSubArena(ZMega(5), &LocalArena);
+        device->Arena->CreateSubArena(ZMega(5), &LocalArena, "VulkanDevice/Shader");
 
         m_device        = device;
         m_specification = spec;

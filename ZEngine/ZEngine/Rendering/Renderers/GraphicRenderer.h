@@ -24,21 +24,56 @@ namespace ZEngine::Rendering::Renderers
 
 namespace ZEngine::Rendering::Renderers
 {
+    // Render-thread snapshot published for the editor. Its fields remain separate
+    // because CPU arenas, VMA/driver accounting, environment policy, and graph
+    // transients do not share an enforced capacity.
+    struct RendererMemoryStatistics
+    {
+        Core::Memory::GpuMemoryStatistics Vma                          = {};
+        uint64_t                          EnvironmentReservedBytes     = 0;
+        uint64_t                          EnvironmentBudgetBytes       = 0;
+        VkDeviceSize                      TransientVirtualImageBytes   = 0;
+        VkDeviceSize                      TransientPhysicalImageBytes  = 0;
+        VkDeviceSize                      TransientVirtualBufferBytes  = 0;
+        VkDeviceSize                      TransientPhysicalBufferBytes = 0;
+        uint32_t                          TransientImageBackingCount   = 0;
+        uint32_t                          TransientBufferBackingCount  = 0;
+
+        [[nodiscard]] VkDeviceSize        TransientVirtualBytes() const
+        {
+            return TransientVirtualImageBytes + TransientVirtualBufferBytes;
+        }
+
+        [[nodiscard]] VkDeviceSize TransientPhysicalBytes() const
+        {
+            return TransientPhysicalImageBytes + TransientPhysicalBufferBytes;
+        }
+
+        [[nodiscard]] VkDeviceSize TransientAliasingSavings() const
+        {
+            const VkDeviceSize virtual_bytes  = TransientVirtualBytes();
+            const VkDeviceSize physical_bytes = TransientPhysicalBytes();
+            return virtual_bytes > physical_bytes ? virtual_bytes - physical_bytes : 0;
+        }
+    };
+
     struct GraphicRenderer : public IRenderer
     {
         GraphicRenderer();
         ~GraphicRenderer();
 
-        void                      Initialize(Hardwares::VulkanDevicePtr device) override;
-        void                      Deinitialize() override;
-        Hardwares::CommandBuffer* DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera);
+        void                                   Initialize(Hardwares::VulkanDevicePtr device) override;
+        void                                   Deinitialize() override;
+        Hardwares::CommandBuffer*              DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera);
         /// @brief Accepts an immutable main-thread sky snapshot carried by the frame mailbox.
-        void                      ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision);
+        void                                   ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision);
         /// @brief Pins the published environment and selects it for this immutable camera frame.
-        void                      BeginSkyFrame(const Cameras::CameraFrameData& camera);
-        void                      ApplyGridConfig(const Scenes::GridConfig& cfg);
+        void                                   BeginSkyFrame(const Cameras::CameraFrameData& camera);
+        void                                   ApplyGridConfig(const Scenes::GridConfig& cfg);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
-        Textures::TextureHandle   GetFrameOutput();
+        Textures::TextureHandle                GetFrameOutput();
+        /// @brief Returns a coherent renderer-memory snapshot for a non-render-thread UI reader.
+        [[nodiscard]] RendererMemoryStatistics GetMemoryStatistics() const;
 
     private:
         void                                            PublishFrameOutput(Textures::TextureHandle output);
@@ -47,6 +82,7 @@ namespace ZEngine::Rendering::Renderers
         void                                            CollectRetiredSkySnapshots();
         void                                            DiscardSkyTexture(Textures::TextureHandle texture);
         void                                            DiscardSkyResources(const Scenes::SkyEnvironmentResources& resources);
+        void                                            PublishMemoryStatistics();
         /// @brief Verifies the shared RGBA16F cubemap contract used by IBL.
         [[nodiscard]] bool                              SupportsEnvironmentLightingResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason = nullptr) const;
         /// @brief Verifies the additional LUT and source-radiance requirements of atmosphere baking.
@@ -69,6 +105,21 @@ namespace ZEngine::Rendering::Renderers
         PaddedAtomic<uint64_t>                          m_frame_output_sequence                    = {};
         PaddedAtomic<uint64_t>                          m_frame_output_index                       = {.value = UINT64_MAX};
         PaddedAtomic<uint64_t>                          m_frame_output_generation                  = {};
+        PaddedAtomic<uint64_t>                          m_memory_statistics_sequence               = {};
+        PaddedAtomic<uint64_t>                          m_vma_allocation_bytes                     = {};
+        PaddedAtomic<uint64_t>                          m_vma_block_bytes                          = {};
+        PaddedAtomic<uint64_t>                          m_vma_heap_usage_bytes                     = {};
+        PaddedAtomic<uint64_t>                          m_vma_heap_budget_bytes                    = {};
+        PaddedAtomic<uint64_t>                          m_vma_heap_count                           = {};
+        PaddedAtomic<uint64_t>                          m_vma_uses_driver_budget                   = {};
+        PaddedAtomic<uint64_t>                          m_environment_reserved_bytes               = {};
+        PaddedAtomic<uint64_t>                          m_environment_budget_bytes                 = {};
+        PaddedAtomic<uint64_t>                          m_transient_virtual_image_bytes            = {};
+        PaddedAtomic<uint64_t>                          m_transient_physical_image_bytes           = {};
+        PaddedAtomic<uint64_t>                          m_transient_virtual_buffer_bytes           = {};
+        PaddedAtomic<uint64_t>                          m_transient_physical_buffer_bytes          = {};
+        PaddedAtomic<uint64_t>                          m_transient_image_backing_count            = {};
+        PaddedAtomic<uint64_t>                          m_transient_buffer_backing_count           = {};
         Scenes::SkyEnvironment                          m_sky_environment                          = {};
         LightingPass*                                   m_lighting_pass                            = nullptr;
         GridPass*                                       m_grid_pass                                = nullptr;

@@ -33,6 +33,7 @@ namespace Tetragrama
         // InstanceArena is carved from LocalArena. Tear it down while its
         // parent is still alive; base-class destruction happens afterwards.
         InstanceArena.Shutdown();
+        ReleaseDeserializedArena();
     }
 
     void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name, const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
@@ -40,17 +41,18 @@ namespace Tetragrama
         // The caller supplies the bounded Editor owner. This child arena covers
         // asset lists, scene graph data, seqlock instance buffers, reload paths,
         // and the 4 MiB InstanceArena sub-arena.
-        arena->CreateSubArena(ZMega(200), &LocalArena);
+        arena->CreateSubArena(ZMega(200), &LocalArenaStorage, "EditorContext/EditorScene");
+        LocalArena = &LocalArenaStorage;
 
-        Name = name;
-        Sky  = sky_defaults;
+        Name       = name;
+        Sky        = sky_defaults;
         Sky.Sanitize();
 
-        AssetFiles.init(&LocalArena, 500);
-        HashToAssetFile.init(&LocalArena, 500);
+        AssetFiles.init(LocalArena, 500);
+        HashToAssetFile.init(LocalArena, 500);
 
         // Allocate a sub-arena for the instance list.
-        LocalArena.CreateSubArena(ZMega(4), &InstanceArena);
+        LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "EditorContext/EditorScene/Instances");
         Instances.init(&InstanceArena, 64);
 
         // Spawn a default directional light so new scenes are not dark.
@@ -58,7 +60,7 @@ namespace Tetragrama
         auto* ctx = ZEngine::Engine::GetContext();
         if (ctx && ctx->ActorManager)
         {
-            ZEngine::Rendering::RegisterBuiltinMeshes(&LocalArena);
+            ZEngine::Rendering::RegisterBuiltinMeshes(LocalArena);
 
             const uuids::uuid light_uuid = ZEngine::Rendering::BuiltinMeshUUIDParsed(ZEngine::Rendering::BuiltinMeshID::DirectionalLightIcon);
             if (light_uuid.is_nil())
@@ -104,23 +106,59 @@ namespace Tetragrama
         MarkSkyDirty();
     }
 
-    bool EditorScene::InitializeDeserialized(size_t page_size)
+    bool EditorScene::InitializeDeserialized()
     {
-        // This allocation belongs to the deserialized scene, not to the
-        // serializer's worker scratch arena. It therefore remains valid after
-        // the worker returns and after the next serializer job rewinds scratch.
-        LocalArena.Initialize(ZMega(200), page_size);
-        if (!LocalArena.m_memory)
+        // A scene must outlive serializer scratch, but it cannot create a new root
+        // mapping for every load. Claim one of the two pre-reserved, profiled slots.
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context)
             return false;
 
-        LocalArena.CreateSubArena(ZMega(4), &InstanceArena);
-        if (!InstanceArena.m_memory)
-            return false;
+        struct SceneLoadSlot
+        {
+            ZEngine::Core::Memory::ArenaAllocator* Arena = nullptr;
+            PaddedAtomic<bool>*                    InUse = nullptr;
+        };
+        const SceneLoadSlot slots[] = {
+            {&context->EditorSceneLoadArenaA, &context->EditorSceneLoadArenaAInUse},
+            {&context->EditorSceneLoadArenaB, &context->EditorSceneLoadArenaBInUse},
+        };
 
-        AssetFiles.init(&LocalArena, 500);
-        HashToAssetFile.init(&LocalArena, 500);
-        Instances.init(&InstanceArena, 64);
-        return true;
+        for (const SceneLoadSlot& slot : slots)
+        {
+            bool available = false;
+            if (!slot.Arena->m_memory || !slot.InUse->value.compare_exchange_strong(available, true, std::memory_order_acq_rel))
+                continue;
+
+            LocalArena        = slot.Arena;
+            DeserializedInUse = slot.InUse;
+            LocalArena->Clear();
+            LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "EditorSceneLoad/Instances");
+            if (!InstanceArena.m_memory)
+            {
+                ReleaseDeserializedArena();
+                return false;
+            }
+
+            AssetFiles.init(LocalArena, 500);
+            HashToAssetFile.init(LocalArena, 500);
+            Instances.init(&InstanceArena, 64);
+            return true;
+        }
+
+        ZENGINE_CORE_WARN("[EditorScene] Both bounded deserialization slots are in use")
+        return false;
+    }
+
+    void EditorScene::ReleaseDeserializedArena()
+    {
+        if (!DeserializedInUse)
+            return;
+
+        LocalArena->Clear();
+        DeserializedInUse->value.store(false, std::memory_order_release);
+        DeserializedInUse = nullptr;
+        LocalArena        = nullptr;
     }
 
     bool EditorScene::HasPendingChange() const
@@ -139,8 +177,8 @@ namespace Tetragrama
         EditorAssetSceneFiles asset_file = {};
         asset_file.Type                  = data.Type;
         asset_file.Hash                  = ZEngine::Core::Containers::hash_compute(data.Path.c_str());
-        asset_file.Path.init(&LocalArena, data.Path.c_str());
-        asset_file.RootPath.init(&LocalArena, data.RootPath.c_str());
+        asset_file.Path.init(LocalArena, data.Path.c_str());
+        asset_file.RootPath.init(LocalArena, data.RootPath.c_str());
 
         if (HashToAssetFile.contains(asset_file.Hash))
         {
@@ -237,8 +275,8 @@ namespace Tetragrama
             auto& f = AssetFiles.push_use({});
             f.Hash  = file.Hash;
             f.Type  = file.Type;
-            f.Path.init(&LocalArena, file.Path.c_str());
-            f.RootPath.init(&LocalArena, file.RootPath.c_str());
+            f.Path.init(LocalArena, file.Path.c_str());
+            f.RootPath.init(LocalArena, file.RootPath.c_str());
         }
 
         // Re-ingest cooked assets on scene load.
@@ -252,19 +290,19 @@ namespace Tetragrama
                 auto                              path                            = ZEngine::Core::Containers::String{};
                 char                              native_buf[MAX_FILE_PATH_COUNT] = {};
                 VFSPath::Parse(file.Path.c_str()).Value().ResolveNative(file.RootPath.c_str(), native_buf, sizeof(native_buf));
-                path.init(&LocalArena, native_buf);
-                ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(&LocalArena, path.c_str(), mat);
+                path.init(LocalArena, native_buf);
+                ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(LocalArena, path.c_str(), mat);
 
                 // Reconstruct AssetTexture entries from the inline path fields so
                 // IngestTextures can upload them to the GPU.
                 ZEngine::Core::Containers::Array<ZEngine::Importers::AssetTexture> textures{};
-                textures.init(&LocalArena, 5);
+                textures.init(LocalArena, 5);
                 auto add_tex = [&](const uuids::uuid& uuid, const ZEngine::Core::Containers::String& tex_path) {
                     if (!uuid.is_nil() && !tex_path.empty())
                     {
                         auto& t       = textures.push_use({});
                         t.TextureUUID = uuid;
-                        t.Path.init(&LocalArena, tex_path.c_str());
+                        t.Path.init(LocalArena, tex_path.c_str());
                     }
                 };
                 add_tex(mat.AlbedoTexUUID, mat.AlbedoTexPath);
@@ -287,8 +325,8 @@ namespace Tetragrama
                 auto                                   path                            = ZEngine::Core::Containers::String{};
                 char                                   native_buf[MAX_FILE_PATH_COUNT] = {};
                 VFSPath::Parse(file.Path.c_str()).Value().ResolveNative(file.RootPath.c_str(), native_buf, sizeof(native_buf));
-                path.init(&LocalArena, native_buf);
-                ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(&LocalArena, path.c_str(), mesh, hier);
+                path.init(LocalArena, native_buf);
+                ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(LocalArena, path.c_str(), mesh, hier);
                 AssetManager::IngestMesh(std::move(mesh), std::move(hier));
             }
         }

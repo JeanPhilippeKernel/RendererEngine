@@ -12,7 +12,7 @@ namespace ZEngine::Applications
     {
         Memory = memory;
 
-        State  = ZPushStructCtor(&Memory->MainArena, ApplicationState);
+        State  = ZPushStructCtor(&Memory->BootstrapArena, ApplicationState);
 
         OnInitializing();
         OverrideWindowConfiguration();
@@ -34,7 +34,7 @@ namespace ZEngine::Applications
             }
         }
 
-        RenderPipeline = ZPushStructCtor(&Memory->MainArena, AppRenderPipeline);
+        RenderPipeline = ZPushStructCtor(&Memory->BootstrapArena, AppRenderPipeline);
         RenderPipeline->Initialize(Engine::GetContext()->Device);
 
         OnInitialized();

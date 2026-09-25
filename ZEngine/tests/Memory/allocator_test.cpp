@@ -3,6 +3,19 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 
+#if defined(__linux__)
+#include <spawn.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <vector>
+
+extern char** environ;
+#endif
+
 using namespace ZEngine;
 using namespace ZEngine::Core::Memory;
 
@@ -19,14 +32,69 @@ TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
     const MemoryBudgetConfig budget         = MemoryBudgetConfig::Editor();
     const MemoryBudgetConfig server_budget  = MemoryBudgetConfig::Server();
 
-    EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(256));
+    EXPECT_EQ(budget.AssetManager.SizeBytes, ZMega(1280));
+    EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(320));
+    EXPECT_EQ(budget.EditorSceneLoadA.SizeBytes, ZMega(200));
+    EXPECT_EQ(budget.EditorSceneLoadB.SizeBytes, ZMega(200));
+    EXPECT_EQ(budget.AnimationManager.SizeBytes, 0);
+    EXPECT_EQ(budget.Swapchain.SizeBytes, 0);
+    EXPECT_EQ(budget.ShaderCache.SizeBytes, 0);
+    EXPECT_EQ(budget.Serializer.SizeBytes, 0);
+    EXPECT_EQ(default_budget.Bootstrap.SizeBytes, ZMega(32));
     EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
-    EXPECT_EQ(default_budget.TotalCommitted(), ZMega(7572));
-    EXPECT_EQ(budget.TotalCommitted(), ZMega(7700));
-    EXPECT_EQ(server_budget.TotalCommitted(), ZMega(6292));
+    EXPECT_EQ(default_budget.TotalCapacity(), ZMega(7604));
+    EXPECT_EQ(budget.TotalCapacity(), ZMega(7868));
+    EXPECT_EQ(server_budget.TotalCapacity(), ZMega(6324));
     EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
     EXPECT_TRUE(budget.Validate(ZGiga(8)));
     EXPECT_TRUE(server_budget.Validate(ZGiga(8)));
+}
+
+TEST(MemoryBudgetConfigTest, CapacityOverrunIdentifiesEveryConfiguredOwner)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap    = {"BootstrapOwner", ZMega(2)};
+    config.AssetManager = {"AssetsOwner", ZMega(1)};
+
+    EXPECT_DEATH_IF_SUPPORTED((void) config.Validate(ZMega(1)), "Bootstrap.*BootstrapOwner.*AssetsOwner");
+}
+
+TEST(MemoryManagerTest, MaterializesBootstrapOwner)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap = {"Bootstrap", ZKilo(64)};
+
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(128), config);
+
+    EXPECT_NE(manager.BootstrapArena.m_memory, nullptr);
+    EXPECT_FALSE(manager.BootstrapArena.m_is_sub_arena);
+    EXPECT_EQ(manager.BootstrapArena.m_total_size, ZKilo(64));
+    EXPECT_STREQ(manager.BootstrapArena.m_owner_name, "Bootstrap");
+    EXPECT_EQ(manager.MainArena.m_memory, nullptr);
+
+    manager.Shutdown();
+}
+
+TEST(MemoryManagerTest, ConfiguredOwnersAreIndependentlyReserved)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap    = {"Bootstrap", ZKilo(64)};
+    config.AssetManager = {"AssetManager", ZKilo(64)};
+
+    MemoryManager manager{};
+    manager.Initialize(ZMega(1), config);
+
+    ArenaAllocator asset_arena{};
+    manager.CreateBudgetedArena(config.AssetManager, &asset_arena);
+
+    EXPECT_EQ(manager.MainArena.m_memory, nullptr);
+    EXPECT_FALSE(asset_arena.m_is_sub_arena);
+    EXPECT_NE(asset_arena.m_memory, nullptr);
+    EXPECT_NE(manager.BootstrapArena.m_memory, asset_arena.m_memory);
+    EXPECT_NE(asset_arena.Allocate(1), nullptr);
+
+    manager.Shutdown();
 }
 
 TEST(AllocatorTest, ArenaAllocate)
@@ -220,6 +288,24 @@ TEST(AllocatorTest, ArenaAllocateOOM)
     manager.Shutdown();
 }
 
+TEST(AllocatorTest, ArenaCapacityFailureIdentifiesOwnerAndRequest)
+{
+    ArenaAllocator arena{};
+    arena.Initialize(64, 4096, "TinyArena");
+
+    ASSERT_NE(arena.Allocate(64), nullptr);
+    EXPECT_EQ(arena.Allocate(1), nullptr);
+
+    const ArenaAllocationFailure& failure = arena.LastFailure();
+    EXPECT_EQ(failure.Kind, ArenaAllocationFailureKind::CapacityExceeded);
+    EXPECT_STREQ(failure.OwnerName, "TinyArena");
+    EXPECT_EQ(failure.RequestedSize, 1u);
+    EXPECT_EQ(failure.CurrentUsage, 64u);
+    EXPECT_EQ(failure.Capacity, 64u);
+
+    arena.Shutdown();
+}
+
 TEST(AllocatorTest, ArenaResizeSlowPath)
 {
     MemoryManager manager{};
@@ -290,16 +376,13 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
     EXPECT_TRUE(sub.m_is_sub_arena);
     EXPECT_EQ(sub.m_total_size, ZKilo(4));
 
-    // Platform contract: Windows defers commit (m_committed_size = 0, lazy VirtualAlloc);
-    // macOS/Linux pre-marks the whole range as accessible via mmap overcommit.
-#ifdef _WIN32
+    // All platforms reserve child address space without making it writable. The first
+    // allocation promotes only its first page.
     EXPECT_EQ(sub.m_committed_size, 0u);
-#else
-    EXPECT_EQ(sub.m_committed_size, ZKilo(4));
-#endif
 
     int* val = reinterpret_cast<int*>(sub.Allocate(sizeof(int)));
     ASSERT_NE(val, nullptr);
+    EXPECT_EQ(sub.m_committed_size, sub.m_mem_page_size);
     *val = 77;
     EXPECT_EQ(*val, 77);
 
@@ -311,6 +394,148 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
 
     manager.Shutdown();
 }
+
+TEST(AllocatorTest, ParentAndChildCommitOnlyOwnedPages)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto* parent = &manager.MainArena;
+
+    ASSERT_NE(parent->Allocate(1), nullptr);
+    EXPECT_EQ(parent->m_committed_size, parent->m_mem_page_size);
+
+    ArenaAllocator child{};
+    parent->CreateSubArena(ZMega(1), &child, "ChildArena");
+    EXPECT_EQ(child.m_committed_size, 0u);
+
+    ASSERT_NE(child.Allocate(1), nullptr);
+    EXPECT_EQ(child.m_committed_size, child.m_mem_page_size);
+    EXPECT_EQ(parent->m_committed_size, parent->m_mem_page_size);
+
+    // This allocation follows the child arena in the root range. It must promote a
+    // single parent page, not the child's entire unused reservation.
+    ASSERT_NE(parent->Allocate(1), nullptr);
+    EXPECT_EQ(parent->m_committed_size, 2 * parent->m_mem_page_size);
+    EXPECT_EQ(child.m_committed_size, child.m_mem_page_size);
+
+    child.Shutdown();
+    manager.Shutdown();
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+TEST(AllocatorTest, PosixReservationLeavesUnallocatedPagesProtected)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(1), {});
+    ArenaAllocator& arena = manager.MainArena;
+
+    ASSERT_NE(arena.Allocate(1), nullptr);
+    ASSERT_EQ(arena.m_committed_size, arena.m_mem_page_size);
+
+    // The second page remains PROT_NONE until an allocation reaches it. This guards
+    // against regressing to a full read/write mmap on macOS or Linux.
+    EXPECT_DEATH(
+        {
+            volatile uint8_t* uncommitted_page = arena.m_memory + arena.m_mem_page_size;
+            *uncommitted_page                  = 1;
+        },
+        "");
+
+    manager.Shutdown();
+}
+#endif
+
+#if defined(__linux__)
+namespace
+{
+    constexpr const char* LinuxAddressLimitChildEnvironment = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD";
+
+    uint64_t              CurrentLinuxAddressSpaceBytes()
+    {
+        FILE* file = fopen("/proc/self/statm", "r");
+        if (!file)
+            return 0;
+
+        unsigned long pages = 0;
+        const int     read  = fscanf(file, "%lu", &pages);
+        fclose(file);
+        if (read != 1)
+            return 0;
+
+        const long page_size = sysconf(_SC_PAGESIZE);
+        if (page_size <= 0 || pages > std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(page_size))
+            return 0;
+        return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size);
+    }
+} // namespace
+
+TEST(MemoryManagerTest, LinuxConfiguredOwnersStartBelowRootAddressLimit)
+{
+    if (std::getenv(LinuxAddressLimitChildEnvironment))
+    {
+        const uint64_t current_address_space = CurrentLinuxAddressSpaceBytes();
+        if (current_address_space == 0)
+            GTEST_SKIP() << "unable to read /proc/self/statm";
+
+        struct rlimit previous_limit = {};
+        if (getrlimit(RLIMIT_AS, &previous_limit) != 0)
+            GTEST_SKIP() << "RLIMIT_AS is unavailable";
+
+        constexpr rlim_t headroom = static_cast<rlim_t>(ZMega(128));
+        if (current_address_space > std::numeric_limits<rlim_t>::max() - headroom)
+            GTEST_SKIP() << "current address space is too large for an RLIMIT_AS test";
+
+        const rlim_t constrained_limit = static_cast<rlim_t>(current_address_space) + headroom;
+        if (previous_limit.rlim_cur != RLIM_INFINITY && previous_limit.rlim_cur < constrained_limit)
+            GTEST_SKIP() << "inherited RLIMIT_AS is already more restrictive";
+
+        struct rlimit limit = previous_limit;
+        limit.rlim_cur      = constrained_limit;
+        if (setrlimit(RLIMIT_AS, &limit) != 0)
+            GTEST_SKIP() << "unable to set constrained RLIMIT_AS";
+
+        MemoryBudgetConfig config{};
+        config.Bootstrap    = {"Bootstrap", ZMega(4)};
+        config.AssetManager = {"ConstrainedAsset", ZMega(32)};
+
+        MemoryManager manager{};
+        manager.Initialize(ZGiga(8), config);
+
+        ArenaAllocator asset_arena{};
+        manager.CreateBudgetedArena(config.AssetManager, &asset_arena);
+
+        ASSERT_EQ(manager.MainArena.m_memory, nullptr);
+        ASSERT_NE(manager.BootstrapArena.m_memory, nullptr);
+        ASSERT_NE(asset_arena.m_memory, nullptr);
+        ASSERT_NE(asset_arena.Allocate(1), nullptr);
+        EXPECT_EQ(asset_arena.m_committed_size, asset_arena.m_mem_page_size);
+
+        manager.Shutdown();
+        return;
+    }
+
+    std::vector<char*> child_environment;
+    for (char** entry = environ; *entry; ++entry)
+        child_environment.push_back(*entry);
+
+    char child_marker[] = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD=1";
+    child_environment.push_back(child_marker);
+    child_environment.push_back(nullptr);
+
+    char  child_path[]   = "/proc/self/exe";
+    char  child_filter[] = "--gtest_filter=MemoryManagerTest.LinuxConfiguredOwnersStartBelowRootAddressLimit";
+    char  child_brief[]  = "--gtest_brief=1";
+    char* child_argv[]   = {child_path, child_filter, child_brief, nullptr};
+
+    pid_t child_pid      = 0;
+    ASSERT_EQ(posix_spawn(&child_pid, child_path, nullptr, nullptr, child_argv, child_environment.data()), 0);
+
+    int status = 0;
+    ASSERT_EQ(waitpid(child_pid, &status, 0), child_pid);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+#endif
 
 // Regression: multiple large sub-arenas carved from one parent must all succeed and be
 // independently usable. This reproduces the Windows UIContext failure where eager commit

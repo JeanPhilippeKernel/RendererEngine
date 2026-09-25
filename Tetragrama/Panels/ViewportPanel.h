@@ -3,6 +3,7 @@
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <ZEngine/UI/ZUIPanel.h>
+#include <atomic>
 #include <cstdint>
 
 namespace Tetragrama::Panels
@@ -19,6 +20,11 @@ namespace Tetragrama::Panels
         }
 
         Tetragrama::Layers::ZUILayer* m_layer = nullptr;
+
+        // Carves the fixed dropped-mesh workspace from ImportPipeline while the
+        // engine is single-threaded. A task leases it until its main-thread
+        // completion callback consumes or discards the decoded mesh.
+        void                          Initialize(Tetragrama::Layers::ZUILayer* layer);
 
         /// @brief Builds the viewport image, overlay toolbar, and FPS counter.
         /// @param ctx ZUI context for the current frame.
@@ -43,5 +49,9 @@ namespace Tetragrama::Panels
         // Gizmo operation: -1=none, 0=translate, 1=rotate, 2=scale
         int                                         m_gizmo_op                = -1;
         bool                                        m_grid_enabled            = true;
+
+        static constexpr size_t                     DroppedMeshTaskArenaBytes = ZMega(256);
+        ZEngine::Core::Memory::ArenaAllocator       m_dropped_mesh_task_arena = {};
+        std::atomic_bool                            m_dropped_mesh_task_in_flight{false};
     };
 } // namespace Tetragrama::Panels

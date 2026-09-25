@@ -30,6 +30,7 @@ namespace Tetragrama::Panels
     struct MeshLoadPayload
     {
         ZEngine::Core::Memory::ArenaAllocator* Arena                         = nullptr;
+        std::atomic_bool*                      InFlight                      = nullptr;
         ZEngine::Importers::AssetMesh          Mesh                          = {};
         ZEngine::Importers::AssetNodeHierarchy Hierarchy                     = {};
         uuids::uuid                            MeshId                        = {};
@@ -42,9 +43,20 @@ namespace Tetragrama::Panels
     {
         if (!payload)
             return;
-        payload->Arena->Shutdown();
-        delete payload->Arena;
+        payload->Arena->Clear();
+        payload->InFlight->store(false, std::memory_order_release);
         delete payload;
+    }
+
+    void ViewportPanel::Initialize(Tetragrama::Layers::ZUILayer* layer)
+    {
+        m_layer       = layer;
+
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ImportPipelineArena.m_memory)
+            return;
+
+        context->ImportPipelineArena.CreateSubArena(DroppedMeshTaskArenaBytes, &m_dropped_mesh_task_arena, "ImportPipeline/EditorDroppedMeshTask");
     }
 
     void CompleteDroppedMeshLoad(void* context)
@@ -343,6 +355,11 @@ namespace Tetragrama::Panels
         auto* ctx   = ZEngine::Engine::GetContext();
         if (!scene || !ctx || !ctx->ActorManager || !app->Configuration)
             return;
+        if (!m_dropped_mesh_task_arena.m_memory)
+        {
+            ZENGINE_CORE_ERROR("[Viewport] Dropped-mesh task arena was not initialized")
+            return;
+        }
 
         // m_pending_mesh_drop is a VFS-style path — resolve to native before file I/O.
         char native_path[MAX_FILE_PATH_COUNT] = {};
@@ -355,23 +372,44 @@ namespace Tetragrama::Panels
         if (!ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_path, header))
             return;
 
-        // Deserialize + material ingest on a worker thread — both are synchronous file
-        // reads that block the render loop. A dedicated arena (4× file size + 8 MB)
-        // outlives the worker task; the main-thread callback owns and shuts it down after use.
+        // Deserialize + material ingest run on a worker thread. A single, fixed
+        // ImportPipeline lease outlives the task until its main-thread callback
+        // consumes or discards the decoded mesh. This deliberately permits one
+        // dropped mesh at a time rather than reserving an unbounded root arena.
 
         uint64_t file_bytes = 0;
         if (FILE* f = fopen(native_path, "rb"))
         {
             fseek(f, 0, SEEK_END);
-            file_bytes = static_cast<uint64_t>(ftell(f));
+            const long bytes = ftell(f);
             fclose(f);
+            if (bytes < 0)
+                return;
+            file_bytes = static_cast<uint64_t>(bytes);
         }
 
-        auto* payload  = new MeshLoadPayload();
-        payload->Arena = new ZEngine::Core::Memory::ArenaAllocator{};
-        payload->Arena->Initialize(file_bytes * 4 + (8u << 20), 0);
-        payload->MeshId = header.Id;
-        payload->Layer  = m_layer;
+        constexpr uint64_t task_overhead_bytes = ZMega(8);
+        constexpr uint64_t task_multiplier     = 4;
+        if (file_bytes > (DroppedMeshTaskArenaBytes - task_overhead_bytes) / task_multiplier)
+        {
+            ZENGINE_CORE_WARN("[Viewport] Dropped mesh is too large for the {} MiB ImportPipeline task budget: {}", DroppedMeshTaskArenaBytes / ZMega(1), native_path)
+            return;
+        }
+
+        bool expected = false;
+        if (!m_dropped_mesh_task_in_flight.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+        {
+            ZENGINE_CORE_WARN("[Viewport] A dropped-mesh task is already in flight; wait for it to finish before dropping another mesh")
+            return;
+        }
+
+        m_dropped_mesh_task_arena.Clear();
+
+        auto* payload     = new MeshLoadPayload();
+        payload->Arena    = &m_dropped_mesh_task_arena;
+        payload->InFlight = &m_dropped_mesh_task_in_flight;
+        payload->MeshId   = header.Id;
+        payload->Layer    = m_layer;
         secure_strncpy(payload->MeshPath, sizeof(payload->MeshPath), native_path, secure_strlen(native_path));
         secure_strncpy(payload->DropPath, sizeof(payload->DropPath), m_pending_mesh_drop, secure_strlen(m_pending_mesh_drop));
 

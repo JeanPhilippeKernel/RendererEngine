@@ -32,8 +32,8 @@ int applicationEntryPoint(int argc, char* argv[])
     MemoryManager manager = {};
     manager.Initialize(ZGiga(8ULL), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
 #if ZENGINE_PROFILING
-    ZEngine::Profiling::MemoryProfiler::Initialize(&manager.MainArena);
-    ZEngine::Profiling::MemoryProfiler::TrackArena("MainArena", &manager.MainArena);
+    ZEngine::Profiling::MemoryProfiler::Initialize(&manager.BootstrapArena);
+    ZEngine::Profiling::MemoryProfiler::TrackArena("Bootstrap", &manager.BootstrapArena);
 #endif
 
     Helpers::ThreadPoolHelper::Initialize();
@@ -47,7 +47,7 @@ int applicationEntryPoint(int argc, char* argv[])
         Logger::Flush();
     });
 
-    auto arena                = &(manager.MainArena);
+    auto arena                = &(manager.BootstrapArena);
     auto config_file_str_size = config_file.size() + 1;
     auto config_file_str      = ZPushString(arena, config_file_str_size);
     Helpers::secure_strncpy(config_file_str, config_file_str_size, config_file.c_str(), config_file.size());

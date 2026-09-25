@@ -240,7 +240,7 @@ namespace Tetragrama::Serializers
         }
 
         auto scene = std::make_unique<EditorScene>();
-        if (!scene->InitializeDeserialized(Arena.m_mem_page_size))
+        if (!scene->InitializeDeserialized())
         {
             if (m_error_callback)
                 m_error_callback(Context, "Error: unable to allocate persistent scene storage.");
@@ -264,7 +264,7 @@ namespace Tetragrama::Serializers
         for (size_t i = 0; i < asset_file_count; ++i)
         {
             EditorAssetSceneFiles file = {};
-            if (!ReadBinary(in_stream, file.Type) || !ReadBinary(in_stream, file.Hash) || !ReadBinaryString(&scene->LocalArena, in_stream, file.Path, kMaxSceneStringLength) || !ReadBinaryString(&scene->LocalArena, in_stream, file.RootPath, kMaxSceneStringLength) || file.Type > ZEngine::Importers::AssetFileType::ENVIRONMENT_MAP)
+            if (!ReadBinary(in_stream, file.Type) || !ReadBinary(in_stream, file.Hash) || !ReadBinaryString(scene->LocalArena, in_stream, file.Path, kMaxSceneStringLength) || !ReadBinaryString(scene->LocalArena, in_stream, file.RootPath, kMaxSceneStringLength) || file.Type > ZEngine::Importers::AssetFileType::ENVIRONMENT_MAP)
             {
                 reject_file("Error: Invalid or truncated scene file.");
                 return;
@@ -276,7 +276,7 @@ namespace Tetragrama::Serializers
         REPORT_LOG(Context, "Extracting scene name...")
 
         String scene_name = {};
-        if (!ReadBinaryCString(&scene->LocalArena, in_stream, scene_name, kMaxSceneStringLength))
+        if (!ReadBinaryCString(scene->LocalArena, in_stream, scene_name, kMaxSceneStringLength))
         {
             reject_file("Error: Invalid or truncated scene file.");
             return;

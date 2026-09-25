@@ -89,6 +89,29 @@ namespace
     };
 } // namespace
 
+TEST(GpuAllocatorStatisticsTest, SeparatesVmaAndHeapAccounting)
+{
+    GpuAllocator allocator{};
+    allocator.HeapCount                                 = 2;
+    allocator.HasBudgetExt                              = true;
+    allocator.HeapBudgets[0].statistics.allocationBytes = 10;
+    allocator.HeapBudgets[0].statistics.blockBytes      = 16;
+    allocator.HeapBudgets[0].usage                      = 20;
+    allocator.HeapBudgets[0].budget                     = 40;
+    allocator.HeapBudgets[1].statistics.allocationBytes = 30;
+    allocator.HeapBudgets[1].statistics.blockBytes      = 48;
+    allocator.HeapBudgets[1].usage                      = 50;
+    allocator.HeapBudgets[1].budget                     = 80;
+
+    const GpuMemoryStatistics stats                     = allocator.GetMemoryStatistics();
+    EXPECT_EQ(stats.AllocationBytes, 40u);
+    EXPECT_EQ(stats.BlockBytes, 64u);
+    EXPECT_EQ(stats.HeapUsageBytes, 70u);
+    EXPECT_EQ(stats.HeapBudgetBytes, 120u);
+    EXPECT_EQ(stats.HeapCount, 2u);
+    EXPECT_TRUE(stats.UsesDriverBudgetTelemetry);
+}
+
 TEST(StagingRingBufferTest, RefusesAllocationWhenAllRetirementRecordsAreReserved)
 {
     StagingRingBuffer                                  ring    = {};

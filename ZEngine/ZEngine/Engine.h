@@ -61,6 +61,12 @@ namespace ZEngine
         Core::Memory::ArenaAllocator      ImportPipelineArena             = {};
         Core::Memory::ArenaAllocator      UIContextArena                  = {};
         Core::Memory::ArenaAllocator      VulkanDeviceArena               = {};
+        // Leased by EditorScene deserialization. Slots are independent so a loaded
+        // scene stays valid while a serializer worker prepares its replacement.
+        Core::Memory::ArenaAllocator      EditorSceneLoadArenaA           = {};
+        Core::Memory::ArenaAllocator      EditorSceneLoadArenaB           = {};
+        PaddedAtomic<bool>                EditorSceneLoadArenaAInUse      = {};
+        PaddedAtomic<bool>                EditorSceneLoadArenaBInUse      = {};
 
         // Pointers (8 bytes each — grouped to pack cleanly)
         Hardwares::VulkanDevicePtr        Device                          = nullptr;

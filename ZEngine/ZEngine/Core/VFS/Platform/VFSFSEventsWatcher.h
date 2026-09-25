@@ -47,6 +47,8 @@ namespace ZEngine::Core::VFS
         void                                                  RebuildStream();
         void                                                  TeardownStream();
         void                                                  PushEvent(const VFSWatchEvent& ev);
+        void                                                  DropEventsOutsideActiveWatchesLocked();
+        bool                                                  IsPathWatchedLocked(const char* path) const;
 
         static VFSWatchEvent                                  MakeEvent(const char* path, WatchEventKind kind, bool is_directory);
         static size_t                                         ClampedLength(const char* text);

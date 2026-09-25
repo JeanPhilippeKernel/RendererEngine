@@ -1,5 +1,6 @@
 #include <Tetragrama/Panels/MemoryProfilerPanel.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
 #include <cstring>
@@ -50,9 +51,10 @@ namespace Tetragrama::Panels
     {
         static const float kBg[4] = {0.09f, 0.09f, 0.095f, 1.f};
 
-        // Outer scroll-able column
+        // Keep the summary and reset action fixed while the detailed memory
+        // report below occupies the remaining vertical space.
         ZUIBox*            bg     = ZUIBeginColumn(ctx, "##mp_bg", ZFill(), ZFill());
-        bg->Flags                 = bg->Flags | ZUI_DrawBackground | ZUI_Scrollable;
+        bg->Flags                 = bg->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bg, kBg);
         bg->EdgeSoftness                                       = 0.f;
 
@@ -64,22 +66,21 @@ namespace Tetragrama::Panels
         stats.init(&ctx->FrameArena, 32);
         MemoryProfiler::GetStats(stats);
 
-        uint32_t arena_count = (uint32_t) stats.size();
-
-        // Sync history count
-        if ((int) arena_count > m_history_count)
-            m_history_count = (int) arena_count;
-
-        // HOT PATH — runs every frame, no heap allocation allowed.
-        // Update history ring buffers
-        for (uint32_t i = 0; i < arena_count && i < (uint32_t) kMaxArenas; ++i)
+        uint32_t arena_count  = (uint32_t) stats.size();
+        uint64_t cpu_current  = 0;
+        uint64_t cpu_capacity = 0;
+        for (const ArenaStats& stat : stats)
         {
-            ArenaHistory& h   = m_history[i];
-            float         mb  = (stats[i].Capacity > 0) ? (float) stats[i].CurrentOffset / (1024.f * 1024.f) : 0.f;
-            h.samples[h.head] = mb;
-            h.head            = (h.head + 1) % kHistorySize;
-            if (h.count < kHistorySize)
-                h.count++;
+            cpu_current  += stat.CurrentOffset;
+            cpu_capacity += stat.Capacity;
+        }
+
+        ZEngine::Rendering::Renderers::RendererMemoryStatistics renderer_memory     = {};
+        bool                                                    has_renderer_memory = false;
+        if (auto* const engine = ZEngine::Engine::GetContext(); engine && engine->App && engine->App->RenderPipeline && engine->App->RenderPipeline->SceneRenderer)
+        {
+            renderer_memory     = engine->App->RenderPipeline->SceneRenderer->GetMemoryStatistics();
+            has_renderer_memory = true;
         }
 
         // Header
@@ -88,17 +89,14 @@ namespace Tetragrama::Panels
             ZUIBeginRow(ctx, "##mp_hdr", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 10.f);
 
-            // Total = root arena (MainArena, first registered) — its offset IS the
-            // real physical memory in use; sub-arenas are slices of it, not additional.
             if (arena_count > 0)
             {
-                const ArenaStats& root = stats[0];
-                char              buf_used[32], buf_cap[32];
-                FormatBytes(buf_used, sizeof(buf_used), root.CurrentOffset);
-                FormatBytes(buf_cap, sizeof(buf_cap), root.Capacity);
-                float root_pct = (root.Capacity > 0) ? (float) root.CurrentOffset / (float) root.Capacity * 100.f : 0.f;
+                char buf_used[32], buf_cap[32];
+                FormatBytes(buf_used, sizeof(buf_used), cpu_current);
+                FormatBytes(buf_cap, sizeof(buf_cap), cpu_capacity);
+                float cpu_pct = (cpu_capacity > 0) ? (float) cpu_current / (float) cpu_capacity * 100.f : 0.f;
                 char  hdr[96];
-                snprintf(hdr, sizeof(hdr), "Total: %s / %s  (%.0f%%)", buf_used, buf_cap, root_pct);
+                snprintf(hdr, sizeof(hdr), "Named CPU owners: %s / %s  (%.0f%%)", buf_used, buf_cap, cpu_pct);
                 ZUILabel(ctx, hdr, ctx->Theme.TextDefault);
             }
             else
@@ -124,6 +122,16 @@ namespace Tetragrama::Panels
         ZUISeparator(ctx);
         ZUISpacer(ctx, 6.f);
 
+        ZUIBeginScrollRegion(ctx, "##mp_scroll", ZFill(), ZFill());
+
+        // Configured production runs have no shared root mapping. Bootstrap is one
+        // ordinary named owner and carries the process-lifetime engine objects.
+        ZUIBeginRow(ctx, "##mp_cpu_scope", ZFill(), ZPx(fh));
+        ZUISpacer(ctx, 10.f);
+        ZUILabel(ctx, "CPU only — no shared root/direct allocation in configured runs; Bootstrap is tracked below.", ctx->Theme.TextDim);
+        ZUIEndRow(ctx);
+        ZUISpacer(ctx, 6.f);
+
         if (arena_count == 0)
         {
             ZUILabel(ctx, "No arenas tracked.", ctx->Theme.TextDim);
@@ -134,8 +142,6 @@ namespace Tetragrama::Panels
         for (uint32_t i = 0; i < arena_count && i < (uint32_t) kMaxArenas; ++i)
         {
             const ArenaStats& s        = stats[i];
-            ArenaHistory&     h        = m_history[i];
-
             float             fraction = (s.Capacity > 0) ? fminf(1.f, (float) s.CurrentOffset / (float) s.Capacity) : 0.f;
             float             col[4];
             UsageColor(fraction, col);
@@ -202,7 +208,62 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, 6.f); // gap between arenas
         }
 
+        ZUISeparator(ctx);
+        ZUISpacer(ctx, 6.f);
+
+        // These are deliberately separate accounting domains. Do not add them to
+        // the CPU rows above: their ownership and policy are independent.
+        ZUIBeginRow(ctx, "##mp_gpu_title", ZFill(), ZPx(fh));
+        ZUISpacer(ctx, 10.f);
+        ZUILabel(ctx, "Renderer memory (separate from CPU arena capacity)", ctx->Theme.TextDefault);
+        ZUIEndRow(ctx);
+        ZUISpacer(ctx, 3.f);
+
+        if (!has_renderer_memory)
+        {
+            ZUIBeginRow(ctx, "##mp_gpu_unavailable", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, "Renderer telemetry is unavailable.", ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+        }
+        else
+        {
+            char vma_allocated[32], vma_blocks[32], heap_usage[32], heap_budget[32];
+            FormatBytes(vma_allocated, sizeof(vma_allocated), renderer_memory.Vma.AllocationBytes);
+            FormatBytes(vma_blocks, sizeof(vma_blocks), renderer_memory.Vma.BlockBytes);
+            FormatBytes(heap_usage, sizeof(heap_usage), renderer_memory.Vma.HeapUsageBytes);
+            FormatBytes(heap_budget, sizeof(heap_budget), renderer_memory.Vma.HeapBudgetBytes);
+            char vma_text[192];
+            snprintf(vma_text, sizeof(vma_text), "VMA allocations: %s; VMA blocks: %s; %s heap use: %s / %s (%u heap%s)", vma_allocated, vma_blocks, renderer_memory.Vma.UsesDriverBudgetTelemetry ? "driver" : "VMA fallback", heap_usage, heap_budget, renderer_memory.Vma.HeapCount, renderer_memory.Vma.HeapCount == 1 ? "" : "s");
+            ZUIBeginRow(ctx, "##mp_vma", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, vma_text, ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+
+            char environment_reserved[32], environment_budget[32];
+            FormatBytes(environment_reserved, sizeof(environment_reserved), renderer_memory.EnvironmentReservedBytes);
+            FormatBytes(environment_budget, sizeof(environment_budget), renderer_memory.EnvironmentBudgetBytes);
+            char environment_text[160];
+            snprintf(environment_text, sizeof(environment_text), "Persistent environment resources: %s / %s policy cap", environment_reserved, environment_budget);
+            ZUIBeginRow(ctx, "##mp_environment", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, environment_text, ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+
+            char transient_virtual[32], transient_physical[32], transient_saving[32];
+            FormatBytes(transient_virtual, sizeof(transient_virtual), renderer_memory.TransientVirtualBytes());
+            FormatBytes(transient_physical, sizeof(transient_physical), renderer_memory.TransientPhysicalBytes());
+            FormatBytes(transient_saving, sizeof(transient_saving), renderer_memory.TransientAliasingSavings());
+            char transient_text[192];
+            snprintf(transient_text, sizeof(transient_text), "Render-graph transients: virtual %s; physical %s; aliasing saved %s (%u image, %u buffer backing%s)", transient_virtual, transient_physical, transient_saving, renderer_memory.TransientImageBackingCount, renderer_memory.TransientBufferBackingCount, renderer_memory.TransientImageBackingCount + renderer_memory.TransientBufferBackingCount == 1 ? "" : "s");
+            ZUIBeginRow(ctx, "##mp_transients", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 10.f);
+            ZUILabel(ctx, transient_text, ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+        }
+
         ZUISpacer(ctx, 8.f);
+        ZUIEndScrollRegion(ctx);
         ZUIEndColumn(ctx);
     }
 

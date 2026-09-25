@@ -1698,7 +1698,7 @@ namespace ZEngine::Hardwares
     CommandBuffer::CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool primary, Core::Memory::ArenaAllocator* parent_arena) : Device(device), QueueType(type), m_command_pool(command_pool)
     {
         Core::Memory::ArenaAllocator* const arena = parent_arena ? parent_arena : Device->Arena;
-        arena->CreateSubArena(ZKilo(120), &LocalArena);
+        arena->CreateSubArena(ZKilo(120), &LocalArena, "VulkanDevice/CommandBuffer");
         BufferType = primary ? CommandBufferType::Primary : CommandBufferType::Secondary;
         Create();
     }
