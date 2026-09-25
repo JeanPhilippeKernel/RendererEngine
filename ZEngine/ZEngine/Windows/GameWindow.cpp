@@ -133,7 +133,8 @@ namespace ZEngine::Windows
         }
 
         {
-            auto           icon_path = (std::filesystem::current_path() / "ZodiacEngine/Settings/Icons/AppIconBadge.png").string();
+            const auto*    engine_context = Engine::GetContext();
+            const auto     icon_path      = engine_context && engine_context->EngineAssetsNativeRoot ? (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / "Settings/Icons/AppIconBadge.png").string() : std::string{};
             int            w = 0, h = 0, channels = 0;
             unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
             if (pixels)

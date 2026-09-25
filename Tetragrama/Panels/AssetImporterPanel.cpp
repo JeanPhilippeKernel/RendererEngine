@@ -1,6 +1,7 @@
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/EditorScene.h>
 #include <Tetragrama/Panels/AssetImporterPanel.h>
+#include <Tetragrama/Panels/ProjectViewPanel.h>
 #include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileData.h>
@@ -32,9 +33,10 @@ namespace Tetragrama::Panels
 
     // Initialize
 
-    void                   AssetImporterPanel::Initialize(Tetragrama::Layers::ZUILayer* layer)
+    void                   AssetImporterPanel::Initialize(Tetragrama::Layers::ZUILayer* layer, ProjectViewPanel* project_view)
     {
-        m_layer = layer;
+        m_layer        = layer;
+        m_project_view = project_view;
         if (!layer)
             return;
 
@@ -81,9 +83,6 @@ namespace Tetragrama::Panels
             m_add_to_scene                           = true;
             StartImport();
         }
-
-        // Consume TriggerScan posted by background thread (actor creation on main thread)
-        TriggerScan();
 
         ZUIBox* bg = ZUIBeginColumn(ctx, "##imp_bg", ZFill(), ZFill());
         bg->Flags  = bg->Flags | ZUI_DrawBackground | ZUI_Scrollable;
@@ -595,6 +594,9 @@ namespace Tetragrama::Panels
 
     void AssetImporterPanel::StartImport()
     {
+        if (m_state.value.load(std::memory_order_acquire) == ImporterState::Importing)
+            return;
+
         if (!m_gltf_importer || !m_fbx_importer || !m_assimp_importer)
             return;
 
@@ -672,7 +674,10 @@ namespace Tetragrama::Panels
 
     void AssetImporterPanel::RunImportTask(void* context)
     {
-        auto* task  = static_cast<ImportTask*>(context);
+        auto* task = static_cast<ImportTask*>(context);
+        if (!task)
+            return;
+
         auto* panel = task->Panel;
         if (!panel)
             return;
@@ -681,29 +686,49 @@ namespace Tetragrama::Panels
         switch (task->Kind)
         {
             case ImporterKind::Gltf:
-                panel->m_gltf_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, panel, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                panel->m_gltf_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, task, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
                 break;
             case ImporterKind::Fbx:
-                panel->m_fbx_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, panel, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                panel->m_fbx_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, task, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
                 break;
             case ImporterKind::Assimp:
-                panel->m_assimp_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, panel, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                panel->m_assimp_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, task, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
                 break;
         }
+
+        if (task->Outcome == ImportTaskOutcome::Pending)
+        {
+            task->Error   = "Importer returned without reporting a result";
+            task->Outcome = ImportTaskOutcome::Failed;
+        }
+
+        // ImportFile's local scratch storage is gone once it returns. The worker
+        // callbacks have already copied the required output paths into ImportTask.
+        ZEngine::Core::MainThreadScheduler::Post(task, &AssetImporterPanel::FinalizeImportTask);
     }
 
-    // TriggerScan (main-thread only)
-
-    void AssetImporterPanel::TriggerScan()
+    void AssetImporterPanel::FinalizeImportTask(void* context)
     {
-        if (!m_pending_actor.valid)
+        auto* task = static_cast<ImportTask*>(context);
+        if (!task || !task->Panel)
             return;
 
-        auto* app   = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
-        auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
-        auto* ctx   = ZEngine::Engine::GetContext();
+        auto* panel = task->Panel;
+        if (task->Outcome == ImportTaskOutcome::Completed)
+        {
+            ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs(task->Outputs.data(), task->Outputs.size());
+            CompleteImportOnMainThread(panel, outputs);
+            return;
+        }
 
-        if (scene && ctx && ctx->ActorManager)
+        CompleteImportErrorOnMainThread(panel, task->Error.empty() ? "Importer returned without an error message" : task->Error);
+    }
+
+    void AssetImporterPanel::CreateMeshActor(uuids::uuid mesh_uuid, uint32_t render_instance_id, const char* name)
+    {
+        auto* ctx = ZEngine::Engine::GetContext();
+
+        if (ctx && ctx->ActorManager)
         {
             using namespace ZEngine::ECS::Components;
             ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
@@ -711,16 +736,15 @@ namespace Tetragrama::Panels
             if (actor)
             {
                 NameComponent nc = {};
-                secure_strncpy(nc.Value, sizeof(nc.Value), m_pending_actor.name, secure_strlen(m_pending_actor.name));
+                secure_strncpy(nc.Value, sizeof(nc.Value), name, secure_strlen(name));
                 actor->AddComponent<NameComponent>(nc);
                 actor->AddComponent<TransformComponent>({});
                 MeshComponent mc    = {};
-                mc.MeshUUID         = m_pending_actor.uuid;
-                mc.RenderInstanceId = m_pending_actor.render_id;
+                mc.MeshUUID         = mesh_uuid;
+                mc.RenderInstanceId = render_instance_id;
                 actor->AddComponent<MeshComponent>(mc);
             }
         }
-        m_pending_actor = {};
     }
 
     // PushLog / PushHistory
@@ -737,7 +761,6 @@ namespace Tetragrama::Panels
         m_log_head = (m_log_head + 1) % kLogMax;
         if (m_log_count < kLogMax)
             ++m_log_count;
-        m_scroll_log = true;
     }
 
     void AssetImporterPanel::PushHistory(const char* name, bool ok, const char* msg)
@@ -765,7 +788,23 @@ namespace Tetragrama::Panels
 
     void AssetImporterPanel::OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
     {
-        auto*   self      = reinterpret_cast<AssetImporterPanel*>(ctx);
+        auto* task = static_cast<ImportTask*>(ctx);
+        if (!task)
+            return;
+
+        task->Outputs.clear();
+        if (outputs.size() > 0)
+            task->Outputs.assign(outputs.data(), outputs.data() + outputs.size());
+        task->Error.clear();
+        task->Outcome = ImportTaskOutcome::Completed;
+    }
+
+    void AssetImporterPanel::CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
+    {
+        auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
+
+        if (self->m_project_view)
+            self->m_project_view->RequestRefresh();
 
         bool    has_mesh  = false;
         cstring mesh_path = nullptr;
@@ -882,11 +921,7 @@ namespace Tetragrama::Panels
                             snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
                         }
                     }
-                    uint32_t render_id              = scene->AddMeshInstance(header.Id, iname);
-                    self->m_pending_actor.uuid      = header.Id;
-                    self->m_pending_actor.render_id = render_id;
-                    self->m_pending_actor.valid     = true;
-                    secure_strncpy(self->m_pending_actor.name, sizeof(self->m_pending_actor.name), iname, sizeof(self->m_pending_actor.name) - 1);
+                    self->CreateMeshActor(header.Id, scene->AddMeshInstance(header.Id, iname), iname);
                 }
             }
             self->m_add_to_scene     = false;
@@ -923,19 +958,33 @@ namespace Tetragrama::Panels
 
         self->m_progress.value.store(1.f, std::memory_order_relaxed);
         self->m_state.value.store(ImporterState::Idle, std::memory_order_release);
-        ZEngine::Core::MainThreadScheduler::Post(self, [](void* c) { reinterpret_cast<AssetImporterPanel*>(c)->TriggerScan(); });
     }
 
     void AssetImporterPanel::OnImportProgress(void* ctx, float pct)
     {
-        auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
-        char  msg[128];
+        auto* task = static_cast<ImportTask*>(ctx);
+        auto* self = task ? task->Panel : nullptr;
+        if (!self)
+            return;
+
+        char msg[128];
         snprintf(msg, sizeof(msg), "Processing... %.0f%%", pct * 100.f);
         self->PushLog(msg, kWhite[0], kWhite[1], kWhite[2]);
         self->m_progress.value.store(pct, std::memory_order_relaxed);
     }
 
     void AssetImporterPanel::OnImportError(void* ctx, std::string_view err)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        if (!task)
+            return;
+
+        task->Outputs.clear();
+        task->Error.assign(err.data(), err.size());
+        task->Outcome = ImportTaskOutcome::Failed;
+    }
+
+    void AssetImporterPanel::CompleteImportErrorOnMainThread(void* ctx, std::string_view err)
     {
         auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
         char  msg[512];
@@ -952,13 +1001,16 @@ namespace Tetragrama::Panels
         }
         self->PushHistory(fn, false, msg);
         self->m_state.value.store(ImporterState::Idle, std::memory_order_release);
-        ZEngine::Core::MainThreadScheduler::Post(self, [](void* c) { reinterpret_cast<AssetImporterPanel*>(c)->TriggerScan(); });
     }
 
     void AssetImporterPanel::OnImportLog(void* ctx, std::string_view msg)
     {
-        auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
-        char  buf[256];
+        auto* task = static_cast<ImportTask*>(ctx);
+        auto* self = task ? task->Panel : nullptr;
+        if (!self)
+            return;
+
+        char buf[256];
         snprintf(buf, sizeof(buf), "%.*s", (int) msg.size(), msg.data());
         self->PushLog(buf, kWhite[0], kWhite[1], kWhite[2]);
     }

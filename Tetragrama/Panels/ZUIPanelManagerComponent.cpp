@@ -64,12 +64,14 @@ namespace Tetragrama::Panels
         auto* p_proj = Manager.AddPanel(ZUIDockHashName("Project"));
         Manager.AddView(p_proj, &project);
 
-        importer.Initialize(parent); // allocate importers from ImportPipeline budget
+        importer.Initialize(parent, &project); // allocate importers from ImportPipeline budget
 
-        // EngineAssetsBackend is rooted at <cwd>/ZodiacEngine (mounted at /ZodiacEngine).
+        // EngineAssetsBackend is rooted at the packaged ZodiacEngine directory
+        // beside the executable (mounted at /ZodiacEngine).
         // Settings/ is created by the engine build. Verify it exists via the backend,
         // then use VFSPath::ResolveNative to produce the correct native path — no
-        // manual string concatenation. Falls back to the working directory if absent.
+        // manual string concatenation. A missing settings directory uses the local
+        // layout filename so the editor can still start with its default layout.
         char  layout_path[512] = {};
         bool  settings_ok      = false;
         auto* eng              = ZEngine::Engine::GetContext();

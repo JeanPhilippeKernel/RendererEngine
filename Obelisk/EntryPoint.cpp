@@ -66,9 +66,6 @@ int applicationEntryPoint(int argc, char* argv[])
     app->Run();
     app->Shutdown();
 
-    // Step 15 — join worker threads before logger/memory teardown
-    Helpers::ThreadPoolHelper::Shutdown();
-
     // Step 16 — flush and dispose logger
     Logger::Flush();
     Logger::Dispose();

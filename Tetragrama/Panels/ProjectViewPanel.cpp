@@ -211,6 +211,12 @@ namespace Tetragrama::Panels
         Title = "Project";
     }
 
+    void ProjectViewPanel::RequestRefresh()
+    {
+        m_needs_refresh    = true;
+        m_tree_cache_count = 0;
+    }
+
     // VFS listing
     void ProjectViewPanel::RefreshListing(IVFSContext* vfs)
     {
