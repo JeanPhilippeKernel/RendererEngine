@@ -10,7 +10,7 @@ namespace ZEngine::Core
 
     // C-style coroutine action — zero allocation, fits in a queue slot.
     // ReadyCallback: optional predicate; nullptr means always ready.
-    // ActionCallback: continuation dispatched to the thread pool when ready.
+    // ActionCallback: continuation dispatched on the main thread when ready.
     struct CoroutineAction
     {
         void*          ReadyCtx  = nullptr;
