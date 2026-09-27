@@ -626,6 +626,17 @@ TEST(RenderGraphSynchronizationTest, StorageWriteUsesPassPipelineStages)
     EXPECT_EQ(graphics_state.Layout, VK_IMAGE_LAYOUT_GENERAL);
 }
 
+TEST(RenderGraphSynchronizationTest, BufferAccessUsesPassPipelineStages)
+{
+    const RGResourceState graphics_state = GetRGAccessState(RGAccess::BufferRead, ZEngine::Rendering::Specifications::RenderPassType::GRAPHIC);
+    const RGResourceState compute_state  = GetRGAccessState(RGAccess::BufferWrite, ZEngine::Rendering::Specifications::RenderPassType::COMPUTE);
+
+    EXPECT_EQ(graphics_state.Stage, VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+    EXPECT_EQ(compute_state.Stage, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+    EXPECT_EQ(graphics_state.Access, VK_ACCESS_2_SHADER_READ_BIT);
+    EXPECT_EQ(compute_state.Access, VK_ACCESS_2_SHADER_WRITE_BIT);
+}
+
 TEST(RenderGraphSynchronizationTest, ColorAttachmentLoadUsesReadWriteState)
 {
     const RGResourceState state = GetRGAccessState(RGAccess::ColorReadWrite);
