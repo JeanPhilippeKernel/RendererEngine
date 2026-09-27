@@ -304,20 +304,16 @@ namespace ZEngine::Hardwares
                     ZENGINE_VALIDATE_ASSERT(false, "Intel HD/UHD Windows proprietary Vulkan driver is not supported — see engine log.")
                 }
 
-                VkPhysicalDeviceVulkan12Features vulkan_1_2_features                           = {};
-                vulkan_1_2_features.sType                                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+                VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
+                vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
-                VkPhysicalDeviceVulkan13Features vulkan_1_3_features                           = {};
-                vulkan_1_3_features.sType                                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-                vulkan_1_2_features.pNext                                                      = &vulkan_1_3_features;
+                VkPhysicalDeviceVulkan13Features vulkan_1_3_features = {};
+                vulkan_1_3_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+                vulkan_1_2_features.pNext                            = &vulkan_1_3_features;
 
-                VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering_features = {};
-                conditional_rendering_features.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT;
-                vulkan_1_3_features.pNext                                                      = &conditional_rendering_features;
-
-                VkPhysicalDeviceFeatures2 physical_device_feature                              = {};
-                physical_device_feature.sType                                                  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-                physical_device_feature.pNext                                                  = &vulkan_1_2_features;
+                VkPhysicalDeviceFeatures2 physical_device_feature    = {};
+                physical_device_feature.sType                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+                physical_device_feature.pNext                        = &vulkan_1_2_features;
                 vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
                 if (physical_device_properties.properties.deviceType != preferred_type)
@@ -358,15 +354,18 @@ namespace ZEngine::Hardwares
 
                 PhysicalDevice                             = physical_device;
                 PhysicalDeviceProperties                   = physical_device_properties;
+                PhysicalDeviceProperties.pNext             = nullptr;
                 PhysicalDeviceVulkan12Properties           = vulkan_1_2_properties;
+                PhysicalDeviceVulkan12Properties.pNext     = nullptr;
                 PhysicalDeviceFeature                      = physical_device_feature;
+                PhysicalDeviceFeature.pNext                = nullptr;
                 PhysicalDeviceSupportSampledImageBindless  = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE && vulkan_1_2_features.descriptorBindingUpdateUnusedWhilePending == VK_TRUE);
                 PhysicalDeviceSupportStorageBufferBindless = (vulkan_1_2_features.runtimeDescriptorArray == VK_TRUE && vulkan_1_2_features.descriptorBindingPartiallyBound == VK_TRUE);
                 vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &PhysicalDeviceMemoryProperties);
                 PhysicalDeviceSupportTimelineSemaphore    = true;
                 PhysicalDeviceSupportDynamicRendering     = vulkan_1_3_features.dynamicRendering == VK_TRUE;
                 PhysicalDeviceSupportHostQueryReset       = vulkan_1_2_features.hostQueryReset == VK_TRUE;
-                PhysicalDeviceSupportConditionalRendering = conditional_rendering_features.conditionalRendering == VK_TRUE;
+                PhysicalDeviceSupportConditionalRendering = false;
                 return true;
             }
             return false;
@@ -384,62 +383,67 @@ namespace ZEngine::Hardwares
         }
         ZENGINE_VALIDATE_ASSERT(selected_device, "No Vulkan 1.3 device with timeline semaphores and Synchronization2 is available")
 
-        Array<const char*> requested_device_enabled_layer_name_collection;
-        Array<const char*> requested_device_extension_layer_name_collection;
-        requested_device_enabled_layer_name_collection.init(scratch.Arena, 5);
-        requested_device_extension_layer_name_collection.init(scratch.Arena, 6);
+        uint32_t device_extension_count      = 0;
+        VkResult enumerate_extensions_result = vkEnumerateDeviceExtensionProperties(PhysicalDevice, nullptr, &device_extension_count, nullptr);
+        ZENGINE_VALIDATE_ASSERT(enumerate_extensions_result == VK_SUCCESS, "Failed to enumerate device extension count")
 
-        requested_device_extension_layer_name_collection.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-        requested_device_extension_layer_name_collection.push(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME);
+        Array<VkExtensionProperties> supported_device_extensions = {};
+        supported_device_extensions.init(scratch.Arena, device_extension_count, device_extension_count);
+        if (device_extension_count > 0)
+        {
+            enumerate_extensions_result = vkEnumerateDeviceExtensionProperties(PhysicalDevice, nullptr, &device_extension_count, supported_device_extensions.data());
+            ZENGINE_VALIDATE_ASSERT(enumerate_extensions_result == VK_SUCCESS, "Failed to enumerate device extensions")
+        }
+
+        Array<const char*> requested_device_extension_collection = {};
+        requested_device_extension_collection.init(scratch.Arena, 4);
+
+        auto device_extension_is_supported = [&](const char* extension_name) {
+            for (const VkExtensionProperties& extension : supported_device_extensions)
+            {
+                if (Helpers::secure_strcmp(extension.extensionName, extension_name) == 0)
+                    return true;
+            }
+            return false;
+        };
+
+        auto request_device_extension = [&](const char* extension_name) {
+            if (!device_extension_is_supported(extension_name))
+                return false;
+
+            for (const char* requested_extension : requested_device_extension_collection)
+                if (Helpers::secure_strcmp(requested_extension, extension_name) == 0)
+                    return true;
+            requested_device_extension_collection.push(extension_name);
+            return true;
+        };
+
+        // Vulkan 1.3 promotes shader draw parameters to core, so only request
+        // extensions that remain required by this device creation path.  Device
+        // layers are deliberately not forwarded: instance-enabled validation
+        // layers are inserted by the loader and their extension lists are not a
+        // portable device-extension request.
+        ZENGINE_VALIDATE_ASSERT(request_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME), "Selected GPU does not support VK_KHR_swapchain")
 #ifdef __APPLE__
-        requested_device_extension_layer_name_collection.push("VK_KHR_portability_subset");
+        ZENGINE_VALIDATE_ASSERT(request_device_extension("VK_KHR_portability_subset"), "Selected GPU does not support VK_KHR_portability_subset")
 #endif
 
-        // Conditional rendering remains optional. Query the selected device rather
-        // than assuming the feature struct implies extension availability.
-        uint32_t device_extension_count = 0;
-        if (PhysicalDeviceSupportConditionalRendering && vkEnumerateDeviceExtensionProperties(PhysicalDevice, nullptr, &device_extension_count, nullptr) == VK_SUCCESS && device_extension_count > 0)
+        // Query and enable optional extension features together. Their feature
+        // structures must not enter a query or creation pNext chain unless the
+        // selected device exposes the matching extension.
+        if (device_extension_is_supported(VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME))
         {
-            Array<VkExtensionProperties> device_extensions = {};
-            device_extensions.init(scratch.Arena, device_extension_count, device_extension_count);
-            if (vkEnumerateDeviceExtensionProperties(PhysicalDevice, nullptr, &device_extension_count, device_extensions.data()) == VK_SUCCESS)
-            {
-                bool extension_available = false;
-                for (const VkExtensionProperties& extension : device_extensions)
-                {
-                    if (Helpers::secure_strcmp(extension.extensionName, VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME) == 0)
-                    {
-                        extension_available = true;
-                        break;
-                    }
-                }
-                if (extension_available)
-                    requested_device_extension_layer_name_collection.push(VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME);
-                else
-                    PhysicalDeviceSupportConditionalRendering = false;
-            }
-            else
-            {
-                PhysicalDeviceSupportConditionalRendering = false;
-            }
-        }
-        else
-        {
-            PhysicalDeviceSupportConditionalRendering = false;
-        }
+            VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering_features = {};
+            conditional_rendering_features.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT;
 
-        for (LayerProperty* const layer : selected_layer_property_collection)
-        {
-            m_layer.GetExtensionProperties(scratch.Arena, *layer, &PhysicalDevice);
+            VkPhysicalDeviceFeatures2 conditional_rendering_query                          = {};
+            conditional_rendering_query.sType                                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            conditional_rendering_query.pNext                                              = &conditional_rendering_features;
+            vkGetPhysicalDeviceFeatures2(PhysicalDevice, &conditional_rendering_query);
 
-            if (!layer->DeviceExtensionCollection.empty())
-            {
-                requested_device_enabled_layer_name_collection.push(layer->Properties.layerName);
-                for (const auto& extension_property : layer->DeviceExtensionCollection)
-                {
-                    requested_device_extension_layer_name_collection.push(extension_property.extensionName);
-                }
-            }
+            PhysicalDeviceSupportConditionalRendering = conditional_rendering_features.conditionalRendering == VK_TRUE;
+            if (PhysicalDeviceSupportConditionalRendering)
+                ZENGINE_VALIDATE_ASSERT(request_device_extension(VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME), "Failed to enable VK_EXT_conditional_rendering")
         }
 
         uint32_t physical_device_queue_family_count{0};
@@ -600,8 +604,8 @@ namespace ZEngine::Hardwares
         device_create_info.sType                                                       = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_create_info.queueCreateInfoCount                                        = queue_create_info_collection.size();
         device_create_info.pQueueCreateInfos                                           = queue_create_info_collection.data();
-        device_create_info.enabledExtensionCount                                       = static_cast<uint32_t>(requested_device_extension_layer_name_collection.size());
-        device_create_info.ppEnabledExtensionNames                                     = (requested_device_extension_layer_name_collection.size() > 0) ? requested_device_extension_layer_name_collection.data() : nullptr;
+        device_create_info.enabledExtensionCount                                       = static_cast<uint32_t>(requested_device_extension_collection.size());
+        device_create_info.ppEnabledExtensionNames                                     = requested_device_extension_collection.empty() ? nullptr : requested_device_extension_collection.data();
 
         VkPhysicalDeviceVulkan12Features vulkan_1_2_features                           = {};
         vulkan_1_2_features.sType                                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
@@ -617,17 +621,18 @@ namespace ZEngine::Hardwares
         VkPhysicalDeviceConditionalRenderingFeaturesEXT conditional_rendering_features = {};
         conditional_rendering_features.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT;
         conditional_rendering_features.conditionalRendering                            = PhysicalDeviceSupportConditionalRendering ? VK_TRUE : VK_FALSE;
-        vulkan_1_2_features.pNext                                                      = &conditional_rendering_features;
+        if (PhysicalDeviceSupportConditionalRendering)
+            vulkan_1_2_features.pNext = &conditional_rendering_features;
 
-        VkPhysicalDeviceFeatures2 device_features_2                                    = {};
-        device_features_2.sType                                                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        device_features_2.features.drawIndirectFirstInstance                           = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
-        device_features_2.features.multiDrawIndirect                                   = PhysicalDeviceFeature.features.multiDrawIndirect;
-        device_features_2.features.samplerAnisotropy                                   = PhysicalDeviceFeature.features.samplerAnisotropy;
+        VkPhysicalDeviceFeatures2 device_features_2          = {};
+        device_features_2.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        device_features_2.features.drawIndirectFirstInstance = PhysicalDeviceFeature.features.drawIndirectFirstInstance;
+        device_features_2.features.multiDrawIndirect         = PhysicalDeviceFeature.features.multiDrawIndirect;
+        device_features_2.features.samplerAnisotropy         = PhysicalDeviceFeature.features.samplerAnisotropy;
         // Required for MaterialData.AlbedoMap / NormalMap etc. (uint64_t handles in g_buffer.frag)
         // shaderInt64 no longer required — material map indices use uint32 in shader and CPU struct.
 
-        device_features_2.pNext                                                        = &vulkan_1_3_features;
+        device_features_2.pNext                              = &vulkan_1_3_features;
 
         if (PhysicalDeviceSupportSampledImageBindless || PhysicalDeviceSupportStorageBufferBindless)
         {
@@ -642,9 +647,18 @@ namespace ZEngine::Hardwares
             vulkan_1_2_features.runtimeDescriptorArray          = VK_TRUE;
         }
 
-        device_create_info.pNext = &device_features_2;
+        device_create_info.pNext            = &device_features_2;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice) == VK_SUCCESS, "Failed to create GPU logical device")
+        const VkResult create_device_result = vkCreateDevice(PhysicalDevice, &device_create_info, nullptr, &LogicalDevice);
+        if (create_device_result != VK_SUCCESS)
+        {
+            ZENGINE_CORE_CRITICAL("[GPU] vkCreateDevice failed for '{}' with VkResult {}", PhysicalDeviceProperties.properties.deviceName, static_cast<int32_t>(create_device_result))
+            ZENGINE_CORE_CRITICAL("[GPU] Enabled features: timelineSemaphore={}, synchronization2={}, dynamicRendering={}, sampledImageBindless={}, storageBufferBindless={}, hostQueryReset={}, conditionalRendering={}", vulkan_1_2_features.timelineSemaphore == VK_TRUE, vulkan_1_3_features.synchronization2 == VK_TRUE, vulkan_1_3_features.dynamicRendering == VK_TRUE, PhysicalDeviceSupportSampledImageBindless, PhysicalDeviceSupportStorageBufferBindless, vulkan_1_2_features.hostQueryReset == VK_TRUE, conditional_rendering_features.conditionalRendering == VK_TRUE)
+            for (const char* extension : requested_device_extension_collection)
+                ZENGINE_CORE_CRITICAL("[GPU] Requested device extension: {}", extension)
+            ZEngine::Logging::Logger::Flush();
+        }
+        ZENGINE_VALIDATE_ASSERT(create_device_result == VK_SUCCESS, "Failed to create GPU logical device")
 
         // Debug labels are optional tooling. Loading the commands after device
         // creation lets callers use one portable no-op wrapper on all platforms.
@@ -744,9 +758,9 @@ namespace ZEngine::Hardwares
 
         bool has_budget = false;
         bool has_bda    = false;
-        for (uint32_t ext_i = 0; ext_i < requested_device_extension_layer_name_collection.size(); ++ext_i)
+        for (uint32_t ext_i = 0; ext_i < requested_device_extension_collection.size(); ++ext_i)
         {
-            const char* ext = requested_device_extension_layer_name_collection[ext_i];
+            const char* ext = requested_device_extension_collection[ext_i];
             if (strcmp(ext, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0)
                 has_budget = true;
             if (strcmp(ext, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0)
