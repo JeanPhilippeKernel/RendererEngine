@@ -1335,7 +1335,10 @@ namespace ZEngine::Rendering
             release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
             release.DestinationAccessMask                    = VK_ACCESS_NONE;
             release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            release.DestinationStageMask                     = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            // This is the producer half of a queue-family transfer, recorded
+            // on a transfer-only queue. The render graph records the matching
+            // graphics-side acquire with the actual consumer stage.
+            release.DestinationStageMask                     = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
             release.LayerCount                               = texture->Specification.LayerCount;
             const uint32_t producer_family                   = m_device->GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex;
             const bool     transfers_ownership               = producer_family != m_device->GraphicFamilyIndex;

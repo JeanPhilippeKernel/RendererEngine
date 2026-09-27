@@ -146,7 +146,6 @@ namespace ZEngine::Hardwares
         {
             ImageInFlights.init(&Arena, SwapchainImageCount);
             RenderCompletes.init(&Arena, SwapchainImageCount);
-            PresentCompletes.init(&Arena, SwapchainImageCount);
         }
         else if (ImageInFlights.size() != SwapchainImageCount)
         {
@@ -155,17 +154,10 @@ namespace ZEngine::Hardwares
                 if (RenderCompletes[i])
                     RenderCompletes[i]->~Semaphore();
             }
-            for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
-            {
-                if (PresentCompletes[i])
-                    PresentCompletes[i]->~Fence();
-            }
             ImageInFlights.clear();
             ImageInFlights.reserve(SwapchainImageCount);
             RenderCompletes.clear();
             RenderCompletes.reserve(SwapchainImageCount);
-            PresentCompletes.clear();
-            PresentCompletes.reserve(SwapchainImageCount);
         }
 
         if (ImageInFlights.size() != SwapchainImageCount)
@@ -174,7 +166,6 @@ namespace ZEngine::Hardwares
             {
                 ImageInFlights.push(nullptr);
                 RenderCompletes.push(ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device));
-                PresentCompletes.push(ZPushStructCtorArgs(&Arena, Primitives::Fence, Device));
             }
         }
 
@@ -248,11 +239,6 @@ namespace ZEngine::Hardwares
             if (RenderCompletes[i])
                 RenderCompletes[i]->~Semaphore();
         }
-        for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
-        {
-            if (PresentCompletes[i])
-                PresentCompletes[i]->~Fence();
-        }
         if (RenderTimeline)
         {
             RenderTimeline->~Semaphore();
@@ -268,24 +254,14 @@ namespace ZEngine::Hardwares
     {
         if (Recreation != RecreationState::None)
         {
-            // ImageInFlights covers submit_1 (render), PresentCompletes covers submit_2
-            // (present bridge). Together they drain the full in-flight GPU pipeline.
+            // Every submitted render command buffer is covered by its frame fence.
             for (uint32_t i = 0; i < ImageInFlights.size(); ++i)
             {
                 if (ImageInFlights[i] != nullptr)
                     ImageInFlights[i]->Wait(UINT64_MAX);
             }
 
-            for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
-            {
-                if (PresentCompletes[i]->GetState() == Rendering::Primitives::FenceState::Submitted)
-                {
-                    PresentCompletes[i]->Wait(UINT64_MAX);
-                    PresentCompletes[i]->Reset();
-                }
-            }
-
-            // Defense-in-depth: ImageInFlights/PresentCompletes are sized SwapchainImageCount,
+            // Defense-in-depth: ImageInFlights is sized SwapchainImageCount,
             // but the engine allows up to FrameContextPoolSize (BufferredFrameCount * 4) frames'
             // command buffers to be concurrently in-flight — more than those two arrays track.
             // Wait on every frame context's own fence too, so recreation never proceeds while a
@@ -315,8 +291,8 @@ namespace ZEngine::Hardwares
             // RenderTimelineNextValue is a CPU-side counter incremented exactly once per real
             // submission (see the ++RenderTimelineNextValue call sites) — it is already correct
             // and monotonic on its own. Do NOT resync it to vkGetSemaphoreCounterValue here: that
-            // "completed" value only reflects the fence slots waited on above (ImageInFlights /
-            // PresentCompletes, sized SwapchainImageCount), which can be smaller than the actual
+            // "completed" value only reflects the fence slots waited on above (ImageInFlights,
+            // sized SwapchainImageCount), which can be smaller than the actual
             // in-flight depth the engine allows (FrameContextPoolSize = BufferedFrameCount * 4).
             // Rewinding this counter backward stamps every DeferFree call made afterward (by this
             // Clear() and by unrelated callers like RenderGraph::Resize for viewport render
@@ -373,12 +349,6 @@ namespace ZEngine::Hardwares
             CurrentFrame     = &frame;
             Recreation       = RecreationState::FrameAborted;
             return;
-        }
-
-        if (PresentCompletes[image_idx]->GetState() == Rendering::Primitives::FenceState::Submitted)
-        {
-            PresentCompletes[image_idx]->Wait(UINT64_MAX);
-            PresentCompletes[image_idx]->Reset();
         }
 
         if (ImageInFlights[image_idx] != nullptr && !ImageInFlights[image_idx]->IsSignaled())
@@ -473,8 +443,7 @@ namespace ZEngine::Hardwares
             };
         }
 
-        auto render_complete  = RenderCompletes[CurrentFrame->ImageIndex];
-        auto present_complete = PresentCompletes[CurrentFrame->ImageIndex];
+        auto render_complete = RenderCompletes[CurrentFrame->ImageIndex];
 
         if (render_complete->GetState() == Rendering::Primitives::SemaphoreState::Submitted)
             render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
@@ -483,9 +452,8 @@ namespace ZEngine::Hardwares
 
         QueueView queue = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
-        // Two-submit Synchronization2 pattern:
-        //   1 - Render work: acquired binary semaphore + async timeline waits → RenderTimeline
-        //   2 - Present bridge: RenderTimeline → binary render_complete
+        // The render submission waits for acquisition and asynchronous producers,
+        // then signals both its timeline and the binary present semaphore.
         // The acquired-image semaphore must wait in the submission containing the
         // image transition and writes. A wait in an empty earlier submission does
         // not make the later command buffers' stages wait for WSI image ownership.
@@ -544,14 +512,26 @@ namespace ZEngine::Hardwares
             .value     = work_complete_value,
             .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
-        VkSubmitInfo2 submit_info_1 = {
+        // vkQueuePresentKHR must wait on a semaphore signalled by the submission
+        // that performs the swapchain transition.  Relaying the binary semaphore
+        // through an empty RenderTimeline wait/signal submission loses that
+        // transition's access scope for synchronization validation (and on real
+        // multi-queue drivers).  Signal it beside RenderTimeline instead.
+        VkSemaphoreSubmitInfo render_complete_signal = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = render_complete->GetHandle(),
+            .value     = 0,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        VkSemaphoreSubmitInfo work_signal_infos[] = {work_complete_signal, render_complete_signal};
+        VkSubmitInfo2         submit_info_1       = {
             .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
             .waitSemaphoreInfoCount   = (uint32_t) wait_sem_infos.size(),
             .pWaitSemaphoreInfos      = wait_sem_infos.data(),
             .commandBufferInfoCount   = (uint32_t) cmd_infos.size(),
             .pCommandBufferInfos      = cmd_infos.data(),
-            .signalSemaphoreInfoCount = 1,
-            .pSignalSemaphoreInfos    = &work_complete_signal,
+            .signalSemaphoreInfoCount = 2,
+            .pSignalSemaphoreInfos    = work_signal_infos,
         };
 
         Device->FrameHeaps[CurrentFrame->Index].Flush(&Device->GpuMem);
@@ -577,39 +557,7 @@ namespace ZEngine::Hardwares
         Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
         CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
 
-        VkSemaphoreSubmitInfo present_wait_info = {
-            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = RenderTimeline->GetHandle(),
-            .value     = work_complete_value,
-            // This bridge has no command buffers.  Waiting at color-output
-            // permits the binary present semaphore to be signalled before a
-            // preceding layout transition has completed.  Cover the complete
-            // producer submission so vkQueuePresentKHR observes both rendering
-            // and the COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR transition.
-            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        };
-        VkSemaphoreSubmitInfo present_signal_info = {
-            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = render_complete->GetHandle(),
-            .value     = 0,
-            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-        };
-        VkSubmitInfo2 submit2 = {
-            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-            .waitSemaphoreInfoCount   = 1,
-            .pWaitSemaphoreInfos      = &present_wait_info,
-            .commandBufferInfoCount   = 0,
-            .signalSemaphoreInfoCount = 1,
-            .pSignalSemaphoreInfos    = &present_signal_info,
-        };
-
-        VkResult r2 = vkQueueSubmit2(queue.Handle, 1, &submit2, present_complete->GetHandle());
-        if (Device->CheckDeviceLost(r2, "Present: present bridge submit"))
-            return;
-        ZENGINE_VALIDATE_ASSERT(r2 == VK_SUCCESS, "Failed to submit present bridge")
-
         render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
-        present_complete->SetState(Rendering::Primitives::FenceState::Submitted);
 
         VkSwapchainKHR   swapchains[] = {SwapchainHandle};
         uint32_t         frames[]     = {CurrentFrame->ImageIndex};
@@ -632,18 +580,9 @@ namespace ZEngine::Hardwares
 
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
-            // render_complete was not consumed by present (spec). Drain it before reuse.
-            VkPipelineStageFlags drain_stage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-            VkSemaphore          drain_wait[] = {render_complete->GetHandle()};
-            VkSubmitInfo         drain        = {
-                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .waitSemaphoreCount   = 1,
-                .pWaitSemaphores      = drain_wait,
-                .pWaitDstStageMask    = &drain_stage,
-                .commandBufferCount   = 0,
-                .signalSemaphoreCount = 0,
-            };
-            vkQueueSubmit(queue.Handle, 1, &drain, VK_NULL_HANDLE);
+            // Present consumes its binary wait semaphore even when it reports an
+            // out-of-date swapchain. Submitting another wait would have no signal
+            // operation to wait on (VUID-vkQueueSubmit-pWaitSemaphores-03238).
             render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
             Recreation = RecreationState::Pending;
