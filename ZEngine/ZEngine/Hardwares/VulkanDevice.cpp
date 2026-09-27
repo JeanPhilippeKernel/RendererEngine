@@ -1958,8 +1958,12 @@ namespace ZEngine::Hardwares
 
         VkImageMemoryBarrier2 transition = {};
         transition.sType                  = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        transition.srcStageMask           = layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-        transition.srcAccessMask          = layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR ? 0 : VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+        // The acquire semaphore makes the presentation engine's final read
+        // available to this submission.  Keep that read in the transition's
+        // source scope so PRESENT_SRC_KHR -> attachment is also a memory
+        // dependency, not merely an execution dependency.
+        transition.srcStageMask           = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        transition.srcAccessMask          = layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR ? VK_ACCESS_2_MEMORY_READ_BIT : VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
         transition.dstStageMask           = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         transition.dstAccessMask          = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
         transition.oldLayout              = layout;
@@ -2003,8 +2007,11 @@ namespace ZEngine::Hardwares
         transition.sType                  = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
         transition.srcStageMask           = layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL ? VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_2_NONE;
         transition.srcAccessMask          = layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL ? VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT : 0;
-        transition.dstStageMask           = VK_PIPELINE_STAGE_2_NONE;
-        transition.dstAccessMask          = 0;
+        // vkQueuePresentKHR waits on the binary semaphore signalled by this
+        // submission.  Give the layout transition a destination memory scope
+        // so that semaphore wait also makes PRESENT_SRC_KHR visible to WSI.
+        transition.dstStageMask           = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        transition.dstAccessMask          = VK_ACCESS_2_MEMORY_READ_BIT;
         transition.oldLayout              = layout;
         transition.newLayout              = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         transition.srcQueueFamilyIndex    = VK_QUEUE_FAMILY_IGNORED;

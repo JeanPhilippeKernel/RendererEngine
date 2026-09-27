@@ -1646,14 +1646,15 @@ namespace ZEngine::Rendering::Renderers
         // A semaphore signal only covers commands in its own submission.  Keep
         // the direct producer signals from the preceding frame: relaying a
         // compute signal through RenderTimeline orders execution, but does not
-        // carry the compute access scope to the next frame.  TOP_OF_PIPE covers
-        // the first consumer operation, including a layout transition.
+        // carry the compute access scope to the next frame.  The consumer's
+        // first operation can be a layout transition or a compute dispatch, so
+        // retain the producer writes for the complete destination scope.
         if (Device->SwapchainPtr->RenderTimelineNextValue != 0)
-            Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, Device->SwapchainPtr->RenderTimelineNextValue, Device->SwapchainPtr->RenderTimeline});
+            Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, Device->SwapchainPtr->RenderTimelineNextValue, Device->SwapchainPtr->RenderTimeline});
         for (uint32_t queue_index = 0; queue_index < QueueTimelineCount; ++queue_index)
         {
             if (QueueTimelineValues[queue_index] != 0)
-                Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, QueueTimelineValues[queue_index], QueueTimelines[queue_index]});
+                Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, QueueTimelineValues[queue_index], QueueTimelines[queue_index]});
         }
         const uint32_t external_async_operation_count = static_cast<uint32_t>(Device->SwapchainPtr->FrameAsyncOperations.size());
         const uint32_t final_batch_index              = static_cast<uint32_t>(QueueBatches.size() - 1);
