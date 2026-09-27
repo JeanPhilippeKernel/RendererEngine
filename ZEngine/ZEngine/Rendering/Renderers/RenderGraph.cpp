@@ -1643,13 +1643,18 @@ namespace ZEngine::Rendering::Renderers
 
         ZENGINE_VALIDATE_ASSERT(QueueBatches.size() <= Device->CommandBufferMgr->MaxGraphBatchesPerPool, "Render graph batch command buffer capacity exceeded")
 
-        // Transient render targets are reused by the next graph execution rather
-        // than allocated per frame. RenderTimeline is signalled only after
-        // Present() has waited for every batch of the preceding graph, making it
-        // the one fence that covers graphics, compute, and transfer work together.
-        // The next graph must wait at TOP_OF_PIPE: its first operations are image
-        // layout transitions, which run before the later pass-access stages.
-        const uint64_t prior_frame_render_value       = Device->SwapchainPtr->RenderTimelineNextValue;
+        // A semaphore signal only covers commands in its own submission.  Keep
+        // the direct producer signals from the preceding frame: relaying a
+        // compute signal through RenderTimeline orders execution, but does not
+        // carry the compute access scope to the next frame.  TOP_OF_PIPE covers
+        // the first consumer operation, including a layout transition.
+        if (Device->SwapchainPtr->RenderTimelineNextValue != 0)
+            Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, Device->SwapchainPtr->RenderTimelineNextValue, Device->SwapchainPtr->RenderTimeline});
+        for (uint32_t queue_index = 0; queue_index < QueueTimelineCount; ++queue_index)
+        {
+            if (QueueTimelineValues[queue_index] != 0)
+                Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, QueueTimelineValues[queue_index], QueueTimelines[queue_index]});
+        }
         const uint32_t external_async_operation_count = static_cast<uint32_t>(Device->SwapchainPtr->FrameAsyncOperations.size());
         const uint32_t final_batch_index              = static_cast<uint32_t>(QueueBatches.size() - 1);
         const uint8_t  frame_index                    = static_cast<uint8_t>(Device->SwapchainPtr->CurrentFrame->Index);
@@ -2215,8 +2220,6 @@ namespace ZEngine::Rendering::Renderers
 
             if (retain_for_overlay)
             {
-                if (prior_frame_render_value != 0)
-                    Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, prior_frame_render_value, Device->SwapchainPtr->RenderTimeline});
                 for (uint32_t order_index = batch.FirstPassOrder; order_index < batch.FirstPassOrder + batch.PassCount && order_index < SortedPassIndices.size(); ++order_index)
                 {
                     const RGPass& pass = Passes[SortedPassIndices[order_index]];
@@ -2239,8 +2242,6 @@ namespace ZEngine::Rendering::Renderers
                 const auto& operation = Device->SwapchainPtr->FrameAsyncOperations[operation_index];
                 add_wait(wait_infos, operation.Timeline, operation.SignalValue, operation.StageFlags);
             }
-            if (prior_frame_render_value != 0)
-                add_wait(wait_infos, Device->SwapchainPtr->RenderTimeline, prior_frame_render_value, VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT);
             for (const auto& dependency : QueueDependencies)
             {
                 if (dependency.ToBatch != batch_index || dependency.FromBatch >= batch_signal_values.size())
