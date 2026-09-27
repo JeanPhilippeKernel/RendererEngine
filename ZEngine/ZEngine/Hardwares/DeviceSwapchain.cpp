@@ -581,7 +581,12 @@ namespace ZEngine::Hardwares
             .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
             .semaphore = RenderTimeline->GetHandle(),
             .value     = work_complete_value,
-            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            // This bridge has no command buffers.  Waiting at color-output
+            // permits the binary present semaphore to be signalled before a
+            // preceding layout transition has completed.  Cover the complete
+            // producer submission so vkQueuePresentKHR observes both rendering
+            // and the COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR transition.
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         };
         VkSemaphoreSubmitInfo present_signal_info = {
             .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
