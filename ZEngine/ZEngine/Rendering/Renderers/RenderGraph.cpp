@@ -661,7 +661,7 @@ namespace ZEngine::Rendering::Renderers
     RGResourceState GetRGAccessState(RGAccess access, Specifications::RenderPassType pipeline_type)
     {
         RGResourceState state = GetRGAccessState(access);
-        if (access != RGAccess::ShaderRead && access != RGAccess::ShaderReadWrite && access != RGAccess::StorageWrite && access != RGAccess::BufferRead && access != RGAccess::BufferWrite && access != RGAccess::BufferReadWrite)
+        if (access != RGAccess::ShaderRead && access != RGAccess::ShaderReadWrite && access != RGAccess::StorageWrite)
             return state;
 
         switch (pipeline_type)
@@ -1647,6 +1647,8 @@ namespace ZEngine::Rendering::Renderers
         // than allocated per frame. RenderTimeline is signalled only after
         // Present() has waited for every batch of the preceding graph, making it
         // the one fence that covers graphics, compute, and transfer work together.
+        // The next graph must wait at TOP_OF_PIPE: its first operations are image
+        // layout transitions, which run before the later pass-access stages.
         const uint64_t prior_frame_render_value       = Device->SwapchainPtr->RenderTimelineNextValue;
         const uint32_t external_async_operation_count = static_cast<uint32_t>(Device->SwapchainPtr->FrameAsyncOperations.size());
         const uint32_t final_batch_index              = static_cast<uint32_t>(QueueBatches.size() - 1);
@@ -1797,34 +1799,6 @@ namespace ZEngine::Rendering::Renderers
                 .value     = value,
                 .stageMask = stages,
             });
-        };
-
-        auto get_batch_wait_stages = [&](const RGQueueBatch& batch) {
-            VkPipelineStageFlags2 stages    = VK_PIPELINE_STAGE_2_NONE;
-            const uint32_t        batch_end = std::min(batch.FirstPassOrder + batch.PassCount, static_cast<uint32_t>(SortedPassIndices.size()));
-            for (uint32_t order_index = batch.FirstPassOrder; order_index < batch_end; ++order_index)
-            {
-                const RGPass& pass = Passes[SortedPassIndices[order_index]];
-                if (!pass.IsActive())
-                    continue;
-
-                for (const RGPassResource& read : pass.Reads)
-                    stages |= GetPassResourceState(pass, read).Stage;
-                for (const RGPassResource& write : pass.Writes)
-                    stages |= GetPassResourceState(pass, write).Stage;
-
-                if (pass.ReadsBindless)
-                    stages |= GetRGAccessState(RGAccess::ShaderRead, pass.Callback ? pass.Callback->GetPipelineType() : pass.Handle ? pass.Handle->Specification.Type : Specifications::RenderPassType::GRAPHIC).Stage;
-                if (!pass.QueryWrites.empty())
-                    stages |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-                if (pass.InternalOperation == RGInternalPassOperation::Readback || pass.InternalOperation == RGInternalPassOperation::QueryReadback)
-                    stages |= VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-            }
-
-            // A batch without declared resource work can still contain commands
-            // such as timestamps. Keep its semaphore wait valid without widening
-            // the resource-bearing batches to ALL_COMMANDS.
-            return stages != VK_PIPELINE_STAGE_2_NONE ? stages : VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
         };
 
         auto emit_ownership_barriers = [&](uint32_t batch_index, bool release, Hardwares::CommandBuffer* target) {
@@ -2242,7 +2216,7 @@ namespace ZEngine::Rendering::Renderers
             if (retain_for_overlay)
             {
                 if (prior_frame_render_value != 0)
-                    Device->SwapchainPtr->FrameAsyncOperations.push({get_batch_wait_stages(batch), prior_frame_render_value, Device->SwapchainPtr->RenderTimeline});
+                    Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, prior_frame_render_value, Device->SwapchainPtr->RenderTimeline});
                 for (uint32_t order_index = batch.FirstPassOrder; order_index < batch.FirstPassOrder + batch.PassCount && order_index < SortedPassIndices.size(); ++order_index)
                 {
                     const RGPass& pass = Passes[SortedPassIndices[order_index]];
@@ -2266,7 +2240,7 @@ namespace ZEngine::Rendering::Renderers
                 add_wait(wait_infos, operation.Timeline, operation.SignalValue, operation.StageFlags);
             }
             if (prior_frame_render_value != 0)
-                add_wait(wait_infos, Device->SwapchainPtr->RenderTimeline, prior_frame_render_value, get_batch_wait_stages(batch));
+                add_wait(wait_infos, Device->SwapchainPtr->RenderTimeline, prior_frame_render_value, VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT);
             for (const auto& dependency : QueueDependencies)
             {
                 if (dependency.ToBatch != batch_index || dependency.FromBatch >= batch_signal_values.size())
