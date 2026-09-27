@@ -304,27 +304,30 @@ namespace ZEngine::Hardwares
                     ZENGINE_VALIDATE_ASSERT(false, "Intel HD/UHD Windows proprietary Vulkan driver is not supported — see engine log.")
                 }
 
+                VkPhysicalDeviceVulkan11Features vulkan_1_1_features = {};
+                vulkan_1_1_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+
                 VkPhysicalDeviceVulkan12Features vulkan_1_2_features = {};
                 vulkan_1_2_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 
                 VkPhysicalDeviceVulkan13Features vulkan_1_3_features = {};
                 vulkan_1_3_features.sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+                vulkan_1_1_features.pNext                            = &vulkan_1_2_features;
                 vulkan_1_2_features.pNext                            = &vulkan_1_3_features;
 
                 VkPhysicalDeviceFeatures2 physical_device_feature    = {};
                 physical_device_feature.sType                        = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-                physical_device_feature.pNext                        = &vulkan_1_2_features;
+                physical_device_feature.pNext                        = &vulkan_1_1_features;
                 vkGetPhysicalDeviceFeatures2(physical_device, &physical_device_feature);
 
                 if (physical_device_properties.properties.deviceType != preferred_type)
                     continue;
 
                 // vkQueueSubmit2, deferred retirement, render-graph queue edges,
-                // and asynchronous uploads all use this baseline. Selecting a device
-                // without it would create invalid timeline semaphores later.
-                if (physical_device_properties.properties.apiVersion < VK_API_VERSION_1_3 || vulkan_1_2_features.timelineSemaphore != VK_TRUE || vulkan_1_3_features.synchronization2 != VK_TRUE)
+                // asynchronous uploads, and the engine shaders all use this baseline.
+                if (physical_device_properties.properties.apiVersion < VK_API_VERSION_1_3 || vulkan_1_1_features.shaderDrawParameters != VK_TRUE || vulkan_1_2_features.timelineSemaphore != VK_TRUE || vulkan_1_3_features.synchronization2 != VK_TRUE)
                 {
-                    ZENGINE_CORE_WARN("[GPU] Skipping '{}' because Vulkan 1.3, timeline semaphores, and Synchronization2 are required", physical_device_properties.properties.deviceName)
+                    ZENGINE_CORE_WARN("[GPU] Skipping '{}' because Vulkan 1.3, shader draw parameters, timeline semaphores, and Synchronization2 are required", physical_device_properties.properties.deviceName)
                     continue;
                 }
 
@@ -381,7 +384,7 @@ namespace ZEngine::Hardwares
                 selected_device = try_select_device(VK_PHYSICAL_DEVICE_TYPE_CPU);
             }
         }
-        ZENGINE_VALIDATE_ASSERT(selected_device, "No Vulkan 1.3 device with timeline semaphores and Synchronization2 is available")
+        ZENGINE_VALIDATE_ASSERT(selected_device, "No Vulkan 1.3 device with shader draw parameters, timeline semaphores, and Synchronization2 is available")
 
         uint32_t device_extension_count      = 0;
         VkResult enumerate_extensions_result = vkEnumerateDeviceExtensionProperties(PhysicalDevice, nullptr, &device_extension_count, nullptr);
@@ -418,11 +421,10 @@ namespace ZEngine::Hardwares
             return true;
         };
 
-        // Vulkan 1.3 promotes shader draw parameters to core, so only request
-        // extensions that remain required by this device creation path.  Device
-        // layers are deliberately not forwarded: instance-enabled validation
-        // layers are inserted by the loader and their extension lists are not a
-        // portable device-extension request.
+        // Shader draw parameters are core since Vulkan 1.1 and enabled through
+        // VkPhysicalDeviceVulkan11Features below. Device layers are deliberately
+        // not forwarded: instance-enabled validation layers are inserted by the
+        // loader and their extension lists are not portable device requests.
         ZENGINE_VALIDATE_ASSERT(request_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME), "Selected GPU does not support VK_KHR_swapchain")
 #ifdef __APPLE__
         ZENGINE_VALIDATE_ASSERT(request_device_extension("VK_KHR_portability_subset"), "Selected GPU does not support VK_KHR_portability_subset")
@@ -607,6 +609,10 @@ namespace ZEngine::Hardwares
         device_create_info.enabledExtensionCount                                       = static_cast<uint32_t>(requested_device_extension_collection.size());
         device_create_info.ppEnabledExtensionNames                                     = requested_device_extension_collection.empty() ? nullptr : requested_device_extension_collection.data();
 
+        VkPhysicalDeviceVulkan11Features vulkan_1_1_features                           = {};
+        vulkan_1_1_features.sType                                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+        vulkan_1_1_features.shaderDrawParameters                                       = VK_TRUE;
+
         VkPhysicalDeviceVulkan12Features vulkan_1_2_features                           = {};
         vulkan_1_2_features.sType                                                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
         vulkan_1_2_features.timelineSemaphore                                          = VK_TRUE;
@@ -622,7 +628,8 @@ namespace ZEngine::Hardwares
         conditional_rendering_features.sType                                           = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONDITIONAL_RENDERING_FEATURES_EXT;
         conditional_rendering_features.conditionalRendering                            = PhysicalDeviceSupportConditionalRendering ? VK_TRUE : VK_FALSE;
         if (PhysicalDeviceSupportConditionalRendering)
-            vulkan_1_2_features.pNext = &conditional_rendering_features;
+            vulkan_1_1_features.pNext = &conditional_rendering_features;
+        vulkan_1_2_features.pNext                            = &vulkan_1_1_features;
 
         VkPhysicalDeviceFeatures2 device_features_2          = {};
         device_features_2.sType                              = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -653,7 +660,16 @@ namespace ZEngine::Hardwares
         if (create_device_result != VK_SUCCESS)
         {
             ZENGINE_CORE_CRITICAL("[GPU] vkCreateDevice failed for '{}' with VkResult {}", PhysicalDeviceProperties.properties.deviceName, static_cast<int32_t>(create_device_result))
-            ZENGINE_CORE_CRITICAL("[GPU] Enabled features: timelineSemaphore={}, synchronization2={}, dynamicRendering={}, sampledImageBindless={}, storageBufferBindless={}, hostQueryReset={}, conditionalRendering={}", vulkan_1_2_features.timelineSemaphore == VK_TRUE, vulkan_1_3_features.synchronization2 == VK_TRUE, vulkan_1_3_features.dynamicRendering == VK_TRUE, PhysicalDeviceSupportSampledImageBindless, PhysicalDeviceSupportStorageBufferBindless, vulkan_1_2_features.hostQueryReset == VK_TRUE, conditional_rendering_features.conditionalRendering == VK_TRUE)
+            ZENGINE_CORE_CRITICAL(
+                "[GPU] Enabled features: shaderDrawParameters={}, timelineSemaphore={}, synchronization2={}, dynamicRendering={}, sampledImageBindless={}, storageBufferBindless={}, hostQueryReset={}, conditionalRendering={}",
+                vulkan_1_1_features.shaderDrawParameters == VK_TRUE,
+                vulkan_1_2_features.timelineSemaphore == VK_TRUE,
+                vulkan_1_3_features.synchronization2 == VK_TRUE,
+                vulkan_1_3_features.dynamicRendering == VK_TRUE,
+                PhysicalDeviceSupportSampledImageBindless,
+                PhysicalDeviceSupportStorageBufferBindless,
+                vulkan_1_2_features.hostQueryReset == VK_TRUE,
+                conditional_rendering_features.conditionalRendering == VK_TRUE)
             for (const char* extension : requested_device_extension_collection)
                 ZENGINE_CORE_CRITICAL("[GPU] Requested device extension: {}", extension)
             ZEngine::Logging::Logger::Flush();
