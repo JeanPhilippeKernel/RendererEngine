@@ -580,18 +580,9 @@ namespace ZEngine::Hardwares
 
         if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
-            // render_complete was not consumed by present (spec). Drain it before reuse.
-            VkPipelineStageFlags drain_stage  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-            VkSemaphore          drain_wait[] = {render_complete->GetHandle()};
-            VkSubmitInfo         drain        = {
-                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .waitSemaphoreCount   = 1,
-                .pWaitSemaphores      = drain_wait,
-                .pWaitDstStageMask    = &drain_stage,
-                .commandBufferCount   = 0,
-                .signalSemaphoreCount = 0,
-            };
-            vkQueueSubmit(queue.Handle, 1, &drain, VK_NULL_HANDLE);
+            // Present consumes its binary wait semaphore even when it reports an
+            // out-of-date swapchain. Submitting another wait would have no signal
+            // operation to wait on (VUID-vkQueueSubmit-pWaitSemaphores-03238).
             render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
             Recreation = RecreationState::Pending;
