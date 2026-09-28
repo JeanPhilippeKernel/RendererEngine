@@ -147,13 +147,21 @@ namespace ZEngine::Windows
             const auto* engine_context = Engine::GetContext();
             const auto  icon_path      = engine_context && engine_context->EngineAssetsNativeRoot ? (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / "Settings/Icons/AppIconBadge.png").string() : std::string{};
 #if !defined(__APPLE__)
-            int            w = 0, h = 0, channels = 0;
-            unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
-            if (pixels)
+#if defined(__linux__)
+            // GLFW reports this as an error on Wayland, and this application's GLFW
+            // error callback is intentionally fatal. Wayland has no window-icon API;
+            // the compositor selects the application icon instead.
+            if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND)
+#endif
             {
-                GLFWimage icon{w, h, pixels};
-                glfwSetWindowIcon(m_native_window, 1, &icon);
-                stbi_image_free(pixels);
+                int            w = 0, h = 0, channels = 0;
+                unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
+                if (pixels)
+                {
+                    GLFWimage icon{w, h, pixels};
+                    glfwSetWindowIcon(m_native_window, 1, &icon);
+                    stbi_image_free(pixels);
+                }
             }
 #else
             ZEngineSetDockIcon(icon_path.c_str());
