@@ -1273,6 +1273,11 @@ namespace ZEngine::Rendering::Renderers
         SceneData    = data;
         RenderWidth  = Device && Device->SwapchainPtr ? Device->SwapchainPtr->SwapchainImageWidth : 0;
         RenderHeight = Device && Device->SwapchainPtr ? Device->SwapchainPtr->SwapchainImageHeight : 0;
+        if (Device && Device->SwapchainPtr)
+        {
+            Device->SwapchainPtr->DirectGraphicsTimeline      = nullptr;
+            Device->SwapchainPtr->DirectGraphicsTimelineValue = 0;
+        }
 
         // RenderGraph has a bounded number of virtual passes/resources per frame.
         // Persistent pipelines, framebuffers, and transient images stay in the
@@ -1606,6 +1611,18 @@ namespace ZEngine::Rendering::Renderers
     {
         Register({.Scene = SceneData, .FrameIndex = static_cast<uint8_t>(Device->SwapchainPtr->CurrentFrame->Index), .RenderWidth = RenderWidth, .RenderHeight = RenderHeight});
         Compile();
+
+        // Register() can append deferred copies (notably the UI upload), and scene
+        // uploads were already recorded before Execute(). Close that single batch now:
+        // immediate graph batches below must wait for it just like the Present-owned
+        // final batch. Closing later would let direct graphics read new mesh data before
+        // the copy submission is visible.
+        if (Device->RRM)
+        {
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
+            Device->SwapchainPtr->CollectAsyncGPUOperations();
+        }
+
         if (!m_compile_valid)
         {
             CancelUnsubmittedReadbacks();
@@ -2269,6 +2286,11 @@ namespace ZEngine::Rendering::Renderers
 
             batch_timelines[batch_index]     = timeline;
             batch_signal_values[batch_index] = signal_value;
+            if (batch.Queue == Rendering::QueueType::GRAPHIC_QUEUE)
+            {
+                Device->SwapchainPtr->DirectGraphicsTimeline      = timeline;
+                Device->SwapchainPtr->DirectGraphicsTimelineValue = signal_value;
+            }
             AcknowledgeStreamingAcquires(batch.FirstPassOrder, batch.PassCount);
             SubmitReadbacks(batch.FirstPassOrder, batch.PassCount, timeline, signal_value);
             // RenderGraph and DeviceSwapchain run on the render thread. Appending
@@ -2377,6 +2399,13 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Dispose()
     {
+        constexpr uint32_t graphics_timeline_index = static_cast<uint32_t>(Rendering::QueueType::GRAPHIC_QUEUE);
+        if (Device && Device->SwapchainPtr && Device->SwapchainPtr->DirectGraphicsTimeline == QueueTimelines[graphics_timeline_index])
+        {
+            Device->SwapchainPtr->DirectGraphicsTimeline      = nullptr;
+            Device->SwapchainPtr->DirectGraphicsTimelineValue = 0;
+        }
+
         ReadbackRing.Dispose();
         DisposeQueryPools();
         DisposeTimestampFrames();

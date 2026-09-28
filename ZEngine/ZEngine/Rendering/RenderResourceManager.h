@@ -101,8 +101,9 @@ namespace ZEngine::Rendering
         /// @param frame_index Current swapchain frame index (0 .. FRAMES_IN_FLIGHT-1).
         void                                BeginFrame(uint32_t frame_index);
 
-        /// @brief Closes this frame's deferred upload batch, if anything joined it.
-        /// @details Called by AppRenderPipeline::EndFrame before Present().
+        /// @brief Closes the current deferred upload batch, if anything joined it.
+        /// @details Called by RenderGraph after its declaration phase and by
+        ///          AppRenderPipeline::EndFrame as an idempotent fallback.
         void                                EndFrame();
 
         /// @brief Ingest a texture file, uploading (existing invalid) or reloading it in
@@ -219,8 +220,9 @@ namespace ZEngine::Rendering
         /// @param thread_index Thread index within the per-frame pool.
         void                                                             RetireTextureSlots(uint8_t frame_index, uint8_t thread_index);
 
-        /// @brief Cancel all queued async upload jobs without submitting them.
-        /// @details Called on swapchain resize or recreate to discard stale uploads.
+        /// @brief Cancel queued texture upload jobs without submitting them.
+        /// @details Called on swapchain recreation. Already-submitted geometry batches
+        ///          remain published through their timeline semaphore.
         void                                                             ClearAsyncUploads();
 
         /// @brief Reset all texture timeline semaphore counters after a swapchain recreate.
@@ -473,7 +475,6 @@ namespace ZEngine::Rendering
         struct BatchFrameState
         {
             uint64_t                 LastSignal                      = 0;
-            uint64_t                 SafeRetireAfterRenderValue      = 0; // RenderTimeline value after which stagings are safe to free
             Core::Memory::BufferView StagingBuffers[MAX_PENDING * 2] = {};
             uint32_t                 StagingCount                    = 0;
         };

@@ -224,6 +224,9 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Dispose()
     {
+        DirectGraphicsTimeline      = nullptr;
+        DirectGraphicsTimelineValue = 0;
+
         // Destroy frame-context and swapchain-image Vulkan objects.
         // All destructors use Device->DeferFree — the second PendingFree.Drain()
         // at the end of VulkanDevice::Deinitialize() drains them before vkDestroyDevice.
@@ -275,6 +278,13 @@ namespace ZEngine::Hardwares
                     FrameContexts[i].Fence->Reset();
                 }
             }
+
+            // Frame fences do not cover independently submitted uploads. Drain every
+            // queue before clearing their frame waits or resetting texture timeline
+            // counters; this is especially important after an OUT_OF_DATE acquire,
+            // where Present() deliberately submits no fence-backed work.
+            if (!Device->IsDeviceLost.load(std::memory_order_acquire))
+                Device->QueueWaitAll();
 
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {

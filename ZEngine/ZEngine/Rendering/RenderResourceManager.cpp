@@ -690,11 +690,8 @@ namespace ZEngine::Rendering
         if (frame.LastSignal != 0)
             m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
 
-        // RetireBatchStagings (called earlier in BeginFrame) handles staging cleanup via
-        // the RenderTimeline gate — it always runs before this point. If stagings remain
-        // here it means RetireBatchStagings hasn't confirmed GPU completion yet (render
-        // timeline hasn't reached SafeRetireAfterRenderValue). Leave them for the next poll
-        // rather than freeing while the command buffer may still be tracked as in-use.
+        // RetireBatchStagings polls the batch timeline each frame. Any staging buffers
+        // still owned by this frame index are released only after its prior batch signal.
         m_batch_cmd->ResetState();
         vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
         m_batch_cmd->Begin();
@@ -714,15 +711,45 @@ namespace ZEngine::Rendering
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
 
         // The global geometry buffers are bound as whole-buffer storage descriptors.
-        // A fresh copy therefore needs to wait for the previous render submission before
+        // A fresh copy therefore needs to wait for every prior graphics read before
         // writing, even when its byte range is newly allocated: validation cannot infer
         // the shader's per-draw subrange, and separate graphics queues may overlap.
-        auto* const    swapchain                       = m_device->SwapchainPtr;
-        const uint64_t previous_render                 = swapchain->RenderTimelineNextValue;
-        auto* const    render_timeline                 = swapchain->RenderTimeline;
-        constexpr auto copy_wait_stage                 = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-        constexpr auto consumer_wait_stage             = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, copy_wait_stage, signal_value, previous_render, previous_render != 0 ? render_timeline : nullptr);
+        //
+        // RenderTimeline covers the previous frame's final Present() submission. Earlier
+        // graphics batches are submitted directly by RenderGraph, however. Relaying those
+        // batches through RenderTimeline preserves execution order but not their shader
+        // access scope, so the copy must wait on their direct timeline as well.
+        auto* const           swapchain                = m_device->SwapchainPtr;
+        constexpr auto        copy_wait_stage          = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        // A batch can contain generic UpdateBuffer copies as well as mesh data. Its
+        // consumer queue is therefore not known here: it can be graphics or a
+        // dedicated compute queue. ALL_COMMANDS is valid for either queue and keeps
+        // every possible consumer behind the copy.
+        constexpr auto        consumer_wait_stage      = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+        VkSemaphoreSubmitInfo copy_waits[2]            = {};
+        uint32_t              copy_wait_count          = 0;
+        if (swapchain->RenderTimelineNextValue != 0)
+        {
+            copy_waits[copy_wait_count++] = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = swapchain->RenderTimeline->GetHandle(),
+                .value     = swapchain->RenderTimelineNextValue,
+                .stageMask = copy_wait_stage,
+            };
+        }
+
+        if (swapchain->DirectGraphicsTimeline && swapchain->DirectGraphicsTimelineValue != 0)
+        {
+            copy_waits[copy_wait_count++] = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = swapchain->DirectGraphicsTimeline->GetHandle(),
+                .value     = swapchain->DirectGraphicsTimelineValue,
+                .stageMask = copy_wait_stage,
+            };
+        }
+
+        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, signal_value, copy_waits, copy_wait_count);
         m_device->EnqueueAsyncGPUOperation({consumer_wait_stage, signal_value, m_batch_timeline});
 
         // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
@@ -1700,6 +1727,14 @@ namespace ZEngine::Rendering
     {
         m_async_uploads.Clear();
         m_device->AsyncGPUOperations.clear();
+
+        // Geometry batches are submitted immediately, unlike the cancellable
+        // texture jobs above. Keep their semaphore dependency across recreation:
+        // an OUT_OF_DATE acquire has no Present() submission to relay it to the
+        // next frame's graph.
+        if (m_batch_timeline && m_batch_next_value != 0)
+            m_device->EnqueueAsyncGPUOperation({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, m_batch_next_value, m_batch_timeline});
+
         m_streaming_upload_tickets.clear();
     }
 

@@ -78,6 +78,12 @@ namespace ZEngine::Hardwares
         VkSwapchainKHR                                             SwapchainHandle                = VK_NULL_HANDLE;
         FrameContextPtr                                            CurrentFrame                   = nullptr;
         Rendering::Primitives::Semaphore*                          RenderTimeline                 = nullptr;
+        // Latest graphics work submitted directly by RenderGraph rather than through
+        // Present(). A later upload must wait on this semaphore directly: relaying it
+        // through RenderTimeline preserves execution order but loses the draw access
+        // scope needed for a subsequent buffer write.
+        Rendering::Primitives::Semaphore*                          DirectGraphicsTimeline         = nullptr;
+        uint64_t                                                   DirectGraphicsTimelineValue    = 0;
         Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = nullptr;
         Core::Containers::Array<FrameContext>                      FrameContexts                  = {};
         Core::Containers::Array<VkImage>                           SwapchainImages                = {};
