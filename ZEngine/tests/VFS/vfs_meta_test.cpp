@@ -3,6 +3,7 @@
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <gtest/gtest.h>
 #include <cstring>
 
@@ -173,7 +174,25 @@ TEST_F(MetaFileIOTest, GetOrCreateChangedHashReturnsStale)
     EXPECT_EQ(second.Value().AssetUUID, original_uuid);
 }
 
-// Test 9 — Truncated key/value strings do not overflow buffers
+// Generated asset data is published by rename, so watchers never see a partial file.
+TEST_F(MetaFileIOTest, AtomicWritePublishesDestinationWithoutTemporaryFile)
+{
+    constexpr char content[] = "texture-bytes";
+    ASSERT_TRUE(ZEngine::Importers::AssetCodec::WriteFileAtomically(m_ctx, P("/generated/diffuse.png"), Bytes(content, sizeof(content) - 1)).Succeeded());
+
+    EXPECT_TRUE(FileExists("/generated/diffuse.png"));
+    EXPECT_FALSE(FileExists("/generated/diffuse.png.tmp"));
+
+    auto open = m_ctx.Open(P("/generated/diffuse.png"), VFSOpenFlags::Read);
+    ASSERT_TRUE(open.Succeeded());
+    uint8_t bytes[sizeof(content)] = {};
+    ASSERT_TRUE(open.Value()->ReadAll({bytes, sizeof(content) - 1}).Succeeded());
+    m_ctx.Close(open.Value());
+
+    EXPECT_STREQ(reinterpret_cast<const char*>(bytes), content);
+}
+
+// Test 10 — Truncated key/value strings do not overflow buffers
 TEST_F(MetaFileIOTest, OverlongSettingsAreTruncated)
 {
     char long_key[201];
@@ -196,7 +215,7 @@ TEST_F(MetaFileIOTest, OverlongSettingsAreTruncated)
     EXPECT_EQ(result.Value().Settings[0].Key[63], '\0');
 }
 
-// Test 10 — Settings count is capped at META_MAX_SETTINGS
+// Test 11 — Settings count is capped at META_MAX_SETTINGS
 TEST_F(MetaFileIOTest, SettingsCountCappedAtMax)
 {
     char json[8192];

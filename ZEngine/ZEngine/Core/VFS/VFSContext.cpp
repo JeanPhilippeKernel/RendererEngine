@@ -156,11 +156,21 @@ namespace ZEngine::Core::VFS
             // Notify AssetRegistry and ImportCoordinator for file (non-directory) events
             // Skip .meta sidecar files — they are written by the coordinator itself and must
             // not be fed back into the import queue.
+            auto is_temporary = [](const VFSPath& p) -> bool {
+                auto ext = p.Extension();
+                return ext.Data && ext.Length == 4 && // ".tmp"
+                       ext.Data[0] == '.' && ext.Data[1] == 't' && ext.Data[2] == 'm' && ext.Data[3] == 'p';
+            };
             auto is_meta = [](const VFSPath& p) -> bool {
                 auto ext = p.Extension();
                 return ext.Data && ext.Length == 5 && // ".meta"
                        ext.Data[0] == '.' && ext.Data[1] == 'm' && ext.Data[2] == 'e' && ext.Data[3] == 't' && ext.Data[4] == 'a';
             };
+            // All generated assets use an atomic .tmp -> rename write. The temporary
+            // file is not an importable project source and must not enter the import
+            // queue (or trigger a directory scan) before publication completes.
+            if (!ev.IsDirectory && !full_rescan && is_temporary(file_path))
+                return;
             if (!ev.IsDirectory && !full_rescan && !is_meta(file_path))
             {
                 switch (ev.Kind)

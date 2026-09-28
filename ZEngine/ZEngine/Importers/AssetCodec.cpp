@@ -34,33 +34,54 @@ namespace ZEngine::Importers::AssetCodec
         }
     } // namespace
 
+    Core::VFS::VFSResult<void> WriteFileAtomically(Core::VFS::IVFSContext& ctx, const VFSPath& out_path, ArrayView<const uint8_t> data)
+    {
+        constexpr char   tmp_suffix[] = ".tmp";
+        constexpr size_t suffix_len   = sizeof(tmp_suffix) - 1;
+        if (out_path.Length() + suffix_len >= MAX_FILE_PATH_COUNT)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+
+        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
+        const char* raw                          = out_path.CStr();
+        size_t      copy_len                     = out_path.Length();
+        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
+        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
+        auto tmp_result = VFSPath::Parse(tmp_buf);
+        if (tmp_result.Failed())
+            return Core::VFS::VFSResult<void>::Fail(tmp_result.Error());
+        auto tmp_path    = tmp_result.Value();
+
+        auto open_result = ctx.Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
+        if (open_result.Failed())
+            return Core::VFS::VFSResult<void>::Fail(open_result.Error());
+
+        Core::VFS::IVFSFile* file  = open_result.Value();
+        auto                 w     = file->Write(data, 0);
+        auto                 flush = file->Flush();
+        file->Close();
+        ctx.Close(file);
+
+        auto fail = [&ctx, &tmp_path](Core::VFS::VFSError error) {
+            ctx.Remove(tmp_path);
+            return Core::VFS::VFSResult<void>::Fail(error);
+        };
+        if (w.Failed())
+            return fail(w.Error());
+        if (w.Value() != data.size())
+            return fail(Core::VFS::VFSError::IOError);
+        if (flush.Failed())
+            return fail(flush.Error());
+
+        return ctx.Rename(tmp_path, out_path);
+    }
+
     // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
     static bool WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
     {
-        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
-        const char* raw                          = out_path.CStr();
-        size_t      raw_len                      = secure_strlen(raw);
-        size_t      copy_len                     = raw_len < MAX_FILE_PATH_COUNT - 5 ? raw_len : MAX_FILE_PATH_COUNT - 5;
-        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
-        const char tmp_suffix[] = ".tmp";
-        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
-        auto tmp_path    = VFSPath::Parse(tmp_buf).Value();
-
-        auto open_result = vfs->Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
-        if (open_result.Failed())
+        if (!vfs)
             return false;
-
-        Core::VFS::IVFSFile* file  = open_result.Value();
-        const auto*          bytes = reinterpret_cast<const uint8_t*>(data.data());
-        auto                 w     = file->Write({bytes, data.size()}, 0);
-        auto                 flush = file->Flush();
-        file->Close();
-        vfs->Close(file);
-
-        if (w.Failed() || flush.Failed())
-            return false;
-
-        return !vfs->Rename(tmp_path, out_path).Failed();
+        const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
+        return WriteFileAtomically(*vfs, out_path, {bytes, data.size()}).Succeeded();
     }
 
     AssetImporterOutput SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)

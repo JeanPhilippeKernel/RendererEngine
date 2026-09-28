@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 using namespace ZEngine::Helpers;
 using ZEngine::Core::VFS::VFSPath;
@@ -583,88 +584,47 @@ namespace ZEngine::Importers
         }
     }
 
-    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
+    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* /*arena*/, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
     {
-        /*
-         * Normalize file naming
-         */
-        char dst_dir_buf[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dst_dir_buf, sizeof(dst_dir_buf));
-        std::string dst_dir               = dst_dir_buf;
+        if (!config.VFS)
+            return;
 
-        auto        CreateBaseDirectoryFn = [](std::string_view filename) -> void {
-            auto            base_dir = fs::absolute(filename).parent_path();
-
-            std::error_code err      = {};
-            if (!fs::exists(base_dir))
-            {
-                fs::create_directories(base_dir, err);
-            }
-        };
-
-        auto          scratch       = ZGetScratch(arena);
-        Array<String> src_tex_files = {};
-        Array<String> dst_tex_files = {};
-        src_tex_files.init(scratch.Arena, textures.size());
-        dst_tex_files.init(scratch.Arena, textures.size());
+        auto texture_dir = VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str();
+        auto create_dir  = config.VFS->CreateDir(texture_dir);
+        if (create_dir.Failed() && create_dir.Error() != Core::VFS::VFSError::AlreadyExists)
+            return;
 
         for (auto& tex : textures)
         {
             if (tex.Path.empty())
+                continue;
+
+            fs::path      tex_path(tex.Path.c_str());
+            fs::path      src = tex_path.is_absolute() ? tex_path : fs::path(config.InputBaseAssetFilePath.c_str()) / tex_path;
+            std::ifstream in(src, std::ios::binary | std::ios::ate);
+            if (!in.is_open())
             {
+                ZENGINE_CORE_WARN("[AssimpImporter] Texture not found: {}", src.string())
                 continue;
             }
 
-            fs::path tex_path(tex.Path.c_str());
-            auto     src_file = (tex_path.is_absolute() ? tex_path : fs::path(config.InputBaseAssetFilePath.c_str()) / tex_path).string();
-            auto     dst_file = (fs::path(dst_dir) / tex_path.filename()).string();
+            const std::streamsize byte_count = in.tellg();
+            if (byte_count <= 0)
+                continue;
+            std::vector<uint8_t> bytes(static_cast<size_t>(byte_count));
+            in.seekg(0, std::ios::beg);
+            if (!in.read(reinterpret_cast<char*>(bytes.data()), byte_count))
+                continue;
 
-            CreateBaseDirectoryFn(dst_file);
-
-            auto& sf = src_tex_files.push_use({});
-            auto& df = dst_tex_files.push_use({});
-
-            sf.init(scratch.Arena, src_file.c_str());
-            df.init(scratch.Arena, dst_file.c_str());
-        }
-        /*
-         * Texture files processing
-         *  (1) Ensuring Scene sub-dir is created
-         *  (2) Copying files to destination
-         */
-
-        ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
-        for (int i = 0; i < src_tex_files.size(); ++i)
-        {
-            auto          src = fs::absolute(src_tex_files[i].c_str());
-            auto          dst = fs::absolute(dst_tex_files[i].c_str());
-
-            std::ifstream in(src.c_str(), std::ios::binary);
-            std::ofstream out(dst.c_str(), std::ios::binary);
-
-            if (!in.is_open() || !out.is_open())
+            auto filename = src.filename().string();
+            auto new_path = texture_dir / filename.c_str();
+            if (AssetCodec::WriteFileAtomically(*config.VFS, new_path, {bytes.data(), bytes.size()}).Failed())
             {
-                in.close();
-                out.close();
+                ZENGINE_CORE_WARN("[AssimpImporter] Failed to copy texture: {}", src.string())
                 continue;
             }
-
-            out << in.rdbuf();
-
-            in.close();
-            out.close();
-        }
-
-        ZReleaseScratch(scratch);
-
-        /*
-         * Update texture path
-         */
-        for (auto& tex : textures)
-        {
-            auto new_path = std::string((VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str() / tex.Path.c_str()).CStr());
             tex.Path.clear();
-            tex.Path.append(new_path.c_str());
+            tex.Path.append(new_path.CStr());
         }
     }
 

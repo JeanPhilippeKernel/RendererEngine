@@ -11,6 +11,7 @@
 #include <fstream>
 #include <random>
 #include <unordered_map>
+#include <vector>
 
 using ZEngine::Core::VFS::VFSPath;
 using namespace ZEngine::Core::Containers;
@@ -529,15 +530,15 @@ namespace ZEngine::Importers
         ZReleaseScratch(scratch);
     }
 
-    void FbxImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
+    void FbxImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* /*arena*/, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
     {
-        if (textures.empty())
+        if (textures.empty() || !config.VFS)
             return;
 
-        char dst_dir_buf[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dst_dir_buf, sizeof(dst_dir_buf));
-        if (config.VFS)
-            config.VFS->CreateDir(VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str());
+        auto texture_dir = VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str();
+        auto create_dir  = config.VFS->CreateDir(texture_dir);
+        if (create_dir.Failed() && create_dir.Error() != Core::VFS::VFSError::AlreadyExists)
+            return;
 
         for (auto& tex : textures)
         {
@@ -546,20 +547,30 @@ namespace ZEngine::Importers
 
             fs::path      tex_path(tex.Path.c_str());
             fs::path      src = tex_path.is_absolute() ? tex_path : fs::path(config.InputBaseAssetFilePath.c_str()) / tex_path;
-            fs::path      dst = fs::path(dst_dir_buf) / tex_path.filename();
-
-            std::ifstream in(src, std::ios::binary);
+            std::ifstream in(src, std::ios::binary | std::ios::ate);
             if (!in.is_open())
             {
                 ZENGINE_CORE_WARN("[FbxImporter] Texture not found: {}", src.string())
                 continue;
             }
-            std::ofstream out(dst, std::ios::binary);
-            out << in.rdbuf();
 
-            auto new_path = std::string((VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str() / tex_path.filename().string().c_str()).CStr());
+            const std::streamsize byte_count = in.tellg();
+            if (byte_count <= 0)
+                continue;
+            std::vector<uint8_t> bytes(static_cast<size_t>(byte_count));
+            in.seekg(0, std::ios::beg);
+            if (!in.read(reinterpret_cast<char*>(bytes.data()), byte_count))
+                continue;
+
+            auto filename = tex_path.filename().string();
+            auto new_path = texture_dir / filename.c_str();
+            if (AssetCodec::WriteFileAtomically(*config.VFS, new_path, {bytes.data(), bytes.size()}).Failed())
+            {
+                ZENGINE_CORE_WARN("[FbxImporter] Failed to copy texture: {}", src.string())
+                continue;
+            }
             tex.Path.clear();
-            tex.Path.append(new_path.c_str());
+            tex.Path.append(new_path.CStr());
         }
     }
 } // namespace ZEngine::Importers
