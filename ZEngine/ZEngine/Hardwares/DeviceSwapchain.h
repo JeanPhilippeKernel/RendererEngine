@@ -85,7 +85,6 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
         Core::Containers::Array<VkImageLayout>                     SwapchainImageLayouts          = {};
         Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
-        Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
         // Render-thread-owned snapshot of asynchronous GPU work relevant to the
         // current frame. Both graph batches and Present() consume this list.

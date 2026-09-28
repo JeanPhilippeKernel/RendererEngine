@@ -387,11 +387,18 @@ namespace ZEngine::Core::Memory
 
         for (uint32_t i = 0; i < HeapCount; ++i)
         {
-            float p = (float) HeapBudgets[i].usage / (float) HeapBudgets[i].budget;
-            if (p > WarnPressure)
+            const float pressure = HeapBudgets[i].budget == 0 ? 0.0f : static_cast<float>(HeapBudgets[i].usage) / static_cast<float>(HeapBudgets[i].budget);
+            if (pressure > WarnPressure)
             {
-                ZENGINE_LOG_ENGINE_WARN("[GPU] Heap %u at %.0f%% (%zu / %zu MB)", i, p * 100.0f, HeapBudgets[i].usage >> 20, HeapBudgets[i].budget >> 20);
+                if (!HeapPressureReported[i])
+                {
+                    ZENGINE_LOG_ENGINE_WARN("[GPU] Heap {} at {:.0f}% ({} / {} MB)", i, pressure * 100.0f, HeapBudgets[i].usage >> 20, HeapBudgets[i].budget >> 20);
+                    HeapPressureReported[i] = true;
+                }
+                continue;
             }
+
+            HeapPressureReported[i] = false;
         }
     }
 
