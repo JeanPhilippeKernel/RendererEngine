@@ -42,7 +42,6 @@ namespace ZEngine::Hardwares
         /// @brief Returns the instant-submit command pool for a frame, thread, and queue role.
         Rendering::Pools::CommandPool*                          GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
         void                                                    ResetPool(uint8_t frame_index, uint8_t thread_index);
-        void                                                    IncreaseBuffers();
         void                                                    EnqueueBuffer(CommandBufferPtr const buffer);
         void                                                    EndEnqueuedBuffers();
         void                                                    ResetEnqueuedBufferIndex();

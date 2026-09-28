@@ -540,9 +540,8 @@ namespace ZEngine::Hardwares
         }
 
         HasSeperateTransfertQueueFamily                                           = GraphicFamilyIndex != TransferFamilyIndex;
-        HasSeparateComputeQueueFamily                                             = GraphicFamilyIndex != ComputeFamilyIndex;
         HasSeparateTransferQueue                                                  = HasSeperateTransfertQueueFamily;
-        HasSeparateComputeQueue                                                   = HasSeparateComputeQueueFamily;
+        HasSeparateComputeQueue                                                   = GraphicFamilyIndex != ComputeFamilyIndex;
 
         QueueTimestampValidBits[static_cast<uint32_t>(QueueType::GRAPHIC_QUEUE)]  = physical_device_queue_family_collection[GraphicFamilyIndex].timestampValidBits;
         QueueTimestampValidBits[static_cast<uint32_t>(QueueType::TRANSFER_QUEUE)] = physical_device_queue_family_collection[TransferFamilyIndex].timestampValidBits;

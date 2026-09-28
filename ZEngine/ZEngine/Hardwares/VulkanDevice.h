@@ -294,7 +294,6 @@ namespace ZEngine::Hardwares
     struct VulkanDevice
     {
         bool                                                                                                                         HasSeperateTransfertQueueFamily                                             = false;
-        bool                                                                                                                         HasSeparateComputeQueueFamily                                               = false;
         /// @brief True when transfer work has a distinct VkQueue handle.
         bool                                                                                                                         HasSeparateTransferQueue                                                    = false;
         /// @brief True when compute work has a distinct VkQueue handle.
