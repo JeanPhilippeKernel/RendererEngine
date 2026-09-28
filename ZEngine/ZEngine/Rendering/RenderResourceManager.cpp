@@ -265,6 +265,7 @@ namespace ZEngine::Rendering
         while (m_pending_texture_decodes.value.load(std::memory_order_acquire) > 0)
             std::this_thread::yield();
 
+        DiscardQueuedTextureDecodes();
         m_device->QueueWaitAll();
         ShutdownTextureTimelines();
         DiscardTextureDeferrals();
@@ -318,6 +319,7 @@ namespace ZEngine::Rendering
     {
         m_active_frame_index = static_cast<uint8_t>(frame_index);
         RetireBatchStagings();
+        DispatchQueuedTextureDecodes();
         m_streaming_mgr.Tick(frame_index);
         if (m_streaming_mgr.IsCompactionRequested())
             RunCompaction();
@@ -703,17 +705,25 @@ namespace ZEngine::Rendering
     {
         m_batch_cmd->End();
 
-        // Submission is deferred to SubmitAsyncUploads (AppRenderPipeline::EndFrame) instead
-        // of submitted-and-blocked-on here, so a mesh drop never stalls the render thread.
+        // Submit without blocking so a mesh drop never stalls the render thread. Present()
+        // consumes the resulting timeline operation in the graphics submission below.
         // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
         // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
         // drives independently.
         uint64_t signal_value                          = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
 
-        VkPipelineStageFlags2 wait_flag                = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, wait_flag, signal_value, UINT64_MAX, nullptr);
-        m_device->EnqueueAsyncGPUOperation({wait_flag, signal_value, m_batch_timeline});
+        // The global geometry buffers are bound as whole-buffer storage descriptors.
+        // A fresh copy therefore needs to wait for the previous render submission before
+        // writing, even when its byte range is newly allocated: validation cannot infer
+        // the shader's per-draw subrange, and separate graphics queues may overlap.
+        auto* const    swapchain                       = m_device->SwapchainPtr;
+        const uint64_t previous_render                 = swapchain->RenderTimelineNextValue;
+        auto* const    render_timeline                 = swapchain->RenderTimeline;
+        constexpr auto copy_wait_stage                 = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        constexpr auto consumer_wait_stage             = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, copy_wait_stage, signal_value, previous_render, previous_render != 0 ? render_timeline : nullptr);
+        m_device->EnqueueAsyncGPUOperation({consumer_wait_stage, signal_value, m_batch_timeline});
 
         // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
         // BeginBatchUpload for this same frame index) to free once m_batch_timeline proves
@@ -1583,6 +1593,8 @@ namespace ZEngine::Rendering
             if (!ProcessTextureDeferral(frame_index, deferral))
                 m_tex_deferral_retry.push(deferral);
         }
+
+        DispatchQueuedTextureDecodes();
     }
 
     void RenderResourceManager::SubmitAsyncUploads()
@@ -1894,38 +1906,63 @@ namespace ZEngine::Rendering
         if (!tex_handle.Valid())
             return {};
 
-        uint8_t decode_slab_index = UINT8_MAX;
-        if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
-        {
-            if (track_decode)
-                PublishTextureDecodeCompletion(tex_handle, false);
-            if (!existing.Valid())
-                m_device->DestroyTexture(tex_handle);
-            ZENGINE_CORE_WARN("[RRM] Texture decode capacity ({}) reached — rejecting {}", MAX_CONCURRENT_TEXTURE_DECODES, filename)
-            return existing;
-        }
-
         auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
         ZConstruct(task, TextureDecodeTask);
         task->Owner            = this;
         task->Specification    = spec;
         task->Texture          = tex_handle;
-        task->DecodeSlabIndex  = decode_slab_index;
         task->IsEnvironmentMap = is_environment_map;
         task->TrackCompletion  = track_decode;
         Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
 
-        m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
-        if (!Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+        if (!m_queued_texture_decodes.push(task))
         {
             if (task->TrackCompletion)
                 PublishTextureDecodeCompletion(tex_handle, false);
-            ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
-            CompleteTextureDecodeTask(task);
-            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+            if (!existing.Valid())
+                m_device->DestroyTexture(tex_handle);
+            m_texture_task_slab.Free(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode queue full — rejecting {}", filename)
+            return existing;
         }
 
         return tex_handle;
+    }
+
+    void RenderResourceManager::DispatchQueuedTextureDecodes()
+    {
+        for (;;)
+        {
+            uint8_t decode_slab_index = UINT8_MAX;
+            if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
+                return;
+
+            TextureDecodeTask* task = nullptr;
+            if (!m_queued_texture_decodes.pop(task))
+            {
+                ReleaseTextureDecodeSlab(decode_slab_index);
+                return;
+            }
+
+            task->DecodeSlabIndex = decode_slab_index;
+            m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
+            if (Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+                continue;
+
+            if (task->TrackCompletion)
+                PublishTextureDecodeCompletion(task->Texture, false);
+            ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
+            CompleteTextureDecodeTask(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+            return;
+        }
+    }
+
+    void RenderResourceManager::DiscardQueuedTextureDecodes()
+    {
+        TextureDecodeTask* task = nullptr;
+        while (m_queued_texture_decodes.pop(task))
+            m_texture_task_slab.Free(task);
     }
 
     void RenderResourceManager::RunTextureDecodeTask(void* context)

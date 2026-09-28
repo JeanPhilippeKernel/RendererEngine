@@ -102,7 +102,7 @@ namespace ZEngine::Rendering
         void                                BeginFrame(uint32_t frame_index);
 
         /// @brief Closes this frame's deferred upload batch, if anything joined it.
-        /// @details Called by AppRenderPipeline::EndFrame, before SubmitAsyncUploads.
+        /// @details Called by AppRenderPipeline::EndFrame before Present().
         void                                EndFrame();
 
         /// @brief Ingest a texture file, uploading (existing invalid) or reloading it in
@@ -195,8 +195,7 @@ namespace ZEngine::Rendering
         /// @param frame_index Render frame index to upload against.
         void                                                             CompleteDeferrals(uint8_t frame_index);
 
-        /// @brief Submit all pending async upload jobs (texture uploads and mesh batch
-        ///        uploads) to their resolved GPU queues.
+        /// @brief Submit all pending asynchronous texture uploads to their resolved GPU queues.
         /// @details Called from AppRenderPipeline::EndFrame. Processes m_async_uploads.
         void                                                             SubmitAsyncUploads();
 
@@ -464,6 +463,7 @@ namespace ZEngine::Rendering
         static constexpr uint32_t MAX_UUID_MAP          = 4096;
         static constexpr uint32_t MAX_PENDING           = 1024;
         static constexpr uint32_t MAX_TEXTURE_DEFERRALS = 8192;
+        static constexpr uint32_t MAX_TEXTURE_TASKS     = 4096;
 
         // Per-frame-index batch state: the m_batch_timeline value last signalled for that
         // frame index's batch, and the staging buffers still owned by it. Retired
@@ -524,6 +524,8 @@ namespace ZEngine::Rendering
             Core::Containers::MPSCQueue<TextureDecodeCompletion, MAX_TEXTURE_DEFERRALS> Completions         = {};
         };
 
+        using TextureDecodeTaskQueue = Core::Containers::MPSCQueue<TextureDecodeTask*, MAX_TEXTURE_TASKS>;
+
         /// @brief Append one mesh asset's vertex/index data to the global buffers.
         /// @details Shared by DoUploadMesh (new slot) and FlushPendingSwaps (reuse slot).
         ///          Returns a zero-VtxCount MeshSlot on failure.
@@ -567,13 +569,18 @@ namespace ZEngine::Rendering
         ///        Called once per frame from BeginFrame.
         void                    RetireBatchStagings();
 
+        /// @brief Start queued texture decodes while a bounded decode slab is available.
+        /// @details Render-thread only. Queued requests preserve their texture handles;
+        ///          they wait here rather than being replaced with the fallback texture.
+        void                    DispatchQueuedTextureDecodes();
+        void                    DiscardQueuedTextureDecodes();
+
         void                    ResetGeometryBuffersInternal();
         /// @brief Re-pack all Resident mesh regions from offset 0, eliminating fragmentation holes.
         /// @details Resets the pool and re-uploads every Resident mesh's CPU asset data into
         ///          fresh batch regions using the existing AppendMeshData path. Slot regions are
-        ///          updated in place before RenderScene runs. The batch is submitted by
-        ///          EndFrame/SubmitAsyncUploads; Present()'s m_batch_timeline wait ensures the
-        ///          render submission sees the new data before drawing.
+        ///          updated in place before RenderScene runs. EndFrame submits the batch, and
+        ///          Present() waits on m_batch_timeline before drawing the new data.
         void                    RunCompaction();
         void                    InitUploadPool();
         void                    InitGlobalBuffers();
@@ -597,8 +604,7 @@ namespace ZEngine::Rendering
         // Dedicated command buffer manager for geometry/font-atlas uploads, separate from
         // Device->CommandBufferMgr. Regular pool slot 0 serves the two remaining
         // synchronous callers (UploadFontAtlas, UpdateBuffer's ring path); the instant
-        // pool serves BeginBatchUpload/EndBatchUpload, whose submission is deferred to
-        // SubmitAsyncUploads instead of blocked on.
+        // pool serves BeginBatchUpload/EndBatchUpload, submitted without a CPU wait.
         Hardwares::CommandBufferManagerPtr                                         m_upload_cmd_mgr                               = {};
         // The only two remaining synchronous, fence-blocking uploads (UploadFontAtlas and
         // UpdateBuffer's ring path) are both render-thread-only and always fully block
@@ -641,6 +647,11 @@ namespace ZEngine::Rendering
         Core::Memory::TLSFSlab                                                     m_texture_task_slab                            = {};
         PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                      = {};
         PaddedAtomic<bool>                                                         m_accept_texture_decodes                       = {};
+
+        // SubmitTextureFile can be called by importer threads. The render thread drains
+        // this queue whenever a decode slab becomes available, preserving backpressure
+        // without dropping texture requests from large imports.
+        TextureDecodeTaskQueue                                                     m_queued_texture_decodes                       = {};
 
         TextureDecodeTracker                                                       m_texture_decode_tracker                       = {};
         Rendering::Textures::TextureHandle                                         m_fallback_cubemap                             = {};
