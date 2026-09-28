@@ -485,7 +485,7 @@ namespace ZEngine::Windows
 
             std::future<Platform::PortalFileDialogResult> portal_result = std::async(std::launch::async, [extensions, default_dir = default_dir_copy, message = message_copy, portal_parent] { return Platform::OpenPortalFileDialog(portal_parent, extensions, default_dir, message); });
             auto                                          result        = co_await portal_result;
-            if (result.Status != Platform::PortalFileDialogStatus::Failed)
+            if (result.Outcome != Platform::PortalFileDialogStatus::Failed)
                 path = std::move(result.Path);
             else
             {

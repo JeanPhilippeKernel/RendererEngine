@@ -25,7 +25,7 @@ namespace ZEngine::Windows::Platform
 
     struct PortalFileDialogResult
     {
-        PortalFileDialogStatus Status = PortalFileDialogStatus::Failed;
+        PortalFileDialogStatus Outcome = PortalFileDialogStatus::Failed;
         std::string            Path;
     };
 
