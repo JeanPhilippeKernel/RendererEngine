@@ -261,9 +261,9 @@ namespace ZEngine::Windows::Platform
         g_object_unref(connection);
         g_main_context_pop_thread_default(context);
         g_main_context_unref(context);
-        if (request.Response == 0 && !request.SelectedPath.empty())
+        if (static_cast<PortalFileDialogStatus>(request.Response) == PortalFileDialogStatus::Selected && !request.SelectedPath.empty())
             return {PortalFileDialogStatus::Selected, std::move(request.SelectedPath)};
-        if (request.Response == 1)
+        if (static_cast<PortalFileDialogStatus>(request.Response) == PortalFileDialogStatus::Cancelled)
             return {PortalFileDialogStatus::Cancelled, {}};
 
         ZENGINE_CORE_ERROR("[FileDialog] Desktop portal returned an error response ({})", request.Response)

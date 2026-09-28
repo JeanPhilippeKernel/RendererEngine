@@ -16,11 +16,11 @@ struct zxdg_exporter_v2;
 
 namespace ZEngine::Windows::Platform
 {
-    enum class PortalFileDialogStatus : uint8_t
+    enum class PortalFileDialogStatus : uint32_t
     {
-        Selected,
-        Cancelled,
-        Failed,
+        Selected  = 0,
+        Cancelled = 1,
+        Failed    = 2,
     };
 
     struct PortalFileDialogResult
