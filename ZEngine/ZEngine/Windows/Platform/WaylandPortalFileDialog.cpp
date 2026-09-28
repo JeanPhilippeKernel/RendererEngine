@@ -9,7 +9,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
 #include "xdg-foreign-unstable-v2-client-protocol.h"
 
@@ -29,6 +32,7 @@ namespace ZEngine::Windows::Platform
             GMainLoop*  Loop = nullptr;
             std::string Path;
             std::string SelectedPath;
+            uint32_t    Response = 2;
         };
 
         std::atomic_uint64_t s_portal_token = 0;
@@ -87,6 +91,7 @@ namespace ZEngine::Windows::Platform
             guint32   response = 1;
             GVariant* results  = nullptr;
             g_variant_get(parameters, "(u@a{sv})", &response, &results);
+            request->Response = response;
 
             if (response == 0)
             {
@@ -111,6 +116,20 @@ namespace ZEngine::Windows::Platform
 
             g_variant_unref(results);
             g_main_loop_quit(request->Loop);
+        }
+
+        std::string ShellQuote(std::string_view value)
+        {
+            std::string quoted("'");
+            for (char character : value)
+            {
+                if (character == '\'')
+                    quoted += "'\"'\"'";
+                else
+                    quoted += character;
+            }
+            quoted += '\'';
+            return quoted;
         }
     } // namespace
 
@@ -196,7 +215,7 @@ namespace ZEngine::Windows::Platform
         return parent;
     }
 
-    std::string OpenWaylandPortalFileDialog(std::string_view parent_handle, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title)
+    PortalFileDialogResult OpenPortalFileDialog(std::string_view parent_handle, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title)
     {
         GMainContext* context = g_main_context_new();
         g_main_context_push_thread_default(context);
@@ -228,9 +247,13 @@ namespace ZEngine::Windows::Platform
         {
             const gchar* request_path = nullptr;
             g_variant_get(reply, "(&o)", &request_path);
-            request.Path = request_path;
+            if (request_path)
+                request.Path = request_path;
             g_variant_unref(reply);
-            g_main_loop_run(request.Loop);
+            if (!request.Path.empty())
+                g_main_loop_run(request.Loop);
+            else
+                ZENGINE_CORE_ERROR("[FileDialog] Desktop portal returned an invalid request path")
         }
 
         g_dbus_connection_signal_unsubscribe(connection, subscription);
@@ -238,7 +261,73 @@ namespace ZEngine::Windows::Platform
         g_object_unref(connection);
         g_main_context_pop_thread_default(context);
         g_main_context_unref(context);
-        return request.SelectedPath;
+        if (request.Response == 0 && !request.SelectedPath.empty())
+            return {PortalFileDialogStatus::Selected, std::move(request.SelectedPath)};
+        if (request.Response == 1)
+            return {PortalFileDialogStatus::Cancelled, {}};
+
+        ZENGINE_CORE_ERROR("[FileDialog] Desktop portal returned an error response ({})", request.Response)
+        return {};
+    }
+
+    std::string OpenLinuxFallbackFileDialog(unsigned long x11_parent_window, bool use_x11, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title)
+    {
+        std::string filter;
+        for (const std::string& extension : extensions)
+        {
+            if (!filter.empty())
+                filter += ' ';
+            filter += '*';
+            filter += extension;
+        }
+
+        const std::string start_dir = default_directory.empty() ? "." : std::string(default_directory);
+        const std::string dialog_title(title.empty() ? "Select a file" : title);
+
+        std::string       command;
+        if (system("command -v zenity >/dev/null 2>&1") == 0)
+        {
+            command  = use_x11 ? "GDK_BACKEND=x11 " : "";
+            command += "zenity --file-selection --modal --title=" + ShellQuote(dialog_title);
+            if (use_x11 && x11_parent_window != 0)
+                command += " --attach=" + std::to_string(x11_parent_window);
+            if (!default_directory.empty())
+                command += " --filename=" + ShellQuote(start_dir + "/");
+            if (!filter.empty())
+                command += " --file-filter=" + ShellQuote(filter);
+        }
+        else if (system("command -v kdialog >/dev/null 2>&1") == 0)
+        {
+            command = "kdialog";
+            if (use_x11 && x11_parent_window != 0)
+                command += " --attach " + std::to_string(x11_parent_window);
+            command += " --getopenfilename " + ShellQuote(start_dir);
+            if (!filter.empty())
+                command += " " + ShellQuote(filter);
+        }
+        else
+        {
+            ZENGINE_CORE_ERROR("[FileDialog] No Linux picker is available. Install xdg-desktop-portal, zenity, or kdialog")
+            return {};
+        }
+
+        FILE* pipe = popen(command.c_str(), "r");
+        if (!pipe)
+        {
+            ZENGINE_CORE_ERROR("[FileDialog] Unable to launch the fallback picker")
+            return {};
+        }
+
+        char        buffer[4096] = {};
+        std::string selected_path;
+        if (fgets(buffer, sizeof(buffer), pipe))
+        {
+            selected_path = buffer;
+            if (!selected_path.empty() && selected_path.back() == '\n')
+                selected_path.pop_back();
+        }
+        pclose(pipe);
+        return selected_path;
     }
 } // namespace ZEngine::Windows::Platform
 

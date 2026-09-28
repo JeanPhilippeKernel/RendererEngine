@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <future>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -447,87 +448,43 @@ namespace ZEngine::Windows
             for (std::string_view filter : type_filters)
                 extensions.emplace_back(filter);
 
-            std::string default_dir_copy(default_dir);
-            std::string message_copy(message);
-            if (glfwGetPlatform() == GLFW_PLATFORM_WAYLAND)
+            std::string                                    default_dir_copy(default_dir);
+            std::string                                    message_copy(message);
+            const int                                      platform = glfwGetPlatform();
+
+            std::unique_ptr<Platform::WaylandPortalParent> wayland_parent;
+            std::string                                    portal_parent;
+            unsigned long                                  x11_parent_window = 0;
+            if (platform == GLFW_PLATFORM_WAYLAND)
             {
                 // The exported object remains alive in this coroutine frame until
                 // the portal response arrives, keeping the dialog parent valid.
-                auto parent = Platform::CreateWaylandPortalParent(m_native_window);
-                if (!parent)
+                wayland_parent = Platform::CreateWaylandPortalParent(m_native_window);
+                if (!wayland_parent)
                     ZENGINE_CORE_WARN("[FileDialog] Wayland compositor does not support xdg-foreign; opening the portal without a transient parent")
-
-                const std::string        parent_handle = parent ? parent->Handle() : std::string{};
-                std::future<std::string> result        = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy), parent_handle] { return Platform::OpenWaylandPortalFileDialog(parent_handle, extensions, default_dir, message); });
-                path                                   = co_await result;
+                else
+                    portal_parent = wayland_parent->Handle();
             }
+            else if (platform == GLFW_PLATFORM_X11)
+            {
+                x11_parent_window = glfwGetX11Window(m_native_window);
+                if (x11_parent_window != 0)
+                {
+                    char parent_buffer[32] = {};
+                    std::snprintf(parent_buffer, sizeof(parent_buffer), "x11:0x%lx", x11_parent_window);
+                    portal_parent = parent_buffer;
+                }
+            }
+
+            std::future<Platform::PortalFileDialogResult> portal_result = std::async(std::launch::async, [extensions, default_dir = default_dir_copy, message = message_copy, portal_parent] { return Platform::OpenPortalFileDialog(portal_parent, extensions, default_dir, message); });
+            auto                                          result        = co_await portal_result;
+            if (result.Status != Platform::PortalFileDialogStatus::Failed)
+                path = std::move(result.Path);
             else
             {
-                // Zenity and kdialog block until the picker closes. Run them off
-                // the UI thread, then resume this coroutine on the main thread.
-                const unsigned long      parent_window = glfwGetX11Window(m_native_window);
-                std::future<std::string> result        = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy), parent_window] {
-                    std::string filter;
-                    for (const std::string& extension : extensions)
-                    {
-                        if (!filter.empty())
-                            filter += ' ';
-                        filter += '*';
-                        filter += extension;
-                    }
-
-                    const std::string start_dir = default_dir.empty() ? "." : default_dir;
-                    const std::string title     = message.empty() ? "Select a file" : message;
-
-                    std::string       cmd;
-                    // `command` is provided by the POSIX shell used by system(), unlike
-                    // the optional `which` utility.  Some minimal Linux installations
-                    // have Zenity but do not ship `which`, which previously made a click
-                    // appear to do nothing.
-                    if (system("command -v zenity >/dev/null 2>&1") == 0)
-                    {
-                        // Zenity needs to use the same X11 server as GLFW for
-                        // --attach to produce a valid transient parent.
-                        cmd = "GDK_BACKEND=x11 zenity --file-selection --modal --title='" + title + "'";
-                        if (parent_window != 0)
-                            cmd += " --attach=" + std::to_string(parent_window);
-                        if (!default_dir.empty())
-                            cmd += " --filename='" + start_dir + "/'";
-                        if (!filter.empty())
-                            cmd += " --file-filter='" + filter + "'";
-                    }
-                    else if (system("command -v kdialog >/dev/null 2>&1") == 0)
-                    {
-                        cmd = "kdialog";
-                        if (parent_window != 0)
-                            cmd += " --attach " + std::to_string(parent_window);
-                        cmd += " --getopenfilename " + start_dir + " '";
-                        for (const std::string& extension : extensions)
-                            cmd += '*' + extension + ' ';
-                        if (!cmd.empty() && cmd.back() == ' ')
-                            cmd.pop_back();
-                        cmd += "'";
-                    }
-
-                    std::string selected_path;
-                    if (cmd.empty())
-                        return selected_path;
-
-                    FILE* pipe = popen(cmd.c_str(), "r");
-                    if (!pipe)
-                        return selected_path;
-
-                    char buf[4096] = {};
-                    if (fgets(buf, sizeof(buf), pipe))
-                    {
-                        selected_path = buf;
-                        if (!selected_path.empty() && selected_path.back() == '\n')
-                            selected_path.pop_back();
-                    }
-                    pclose(pipe);
-                    return selected_path;
-                });
-                path                                   = co_await result;
+                ZENGINE_CORE_WARN("[FileDialog] Desktop portal failed; trying the Linux fallback picker")
+                std::future<std::string> fallback_result = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy), x11_parent_window, use_x11 = platform == GLFW_PLATFORM_X11] { return Platform::OpenLinuxFallbackFileDialog(x11_parent_window, use_x11, extensions, default_dir, message); });
+                path                                     = co_await fallback_result;
             }
         }
 #endif

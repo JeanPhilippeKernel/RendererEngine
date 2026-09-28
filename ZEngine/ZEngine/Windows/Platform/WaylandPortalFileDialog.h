@@ -2,6 +2,7 @@
 
 #if defined(__linux__)
 
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
@@ -15,6 +16,19 @@ struct zxdg_exporter_v2;
 
 namespace ZEngine::Windows::Platform
 {
+    enum class PortalFileDialogStatus : uint8_t
+    {
+        Selected,
+        Cancelled,
+        Failed,
+    };
+
+    struct PortalFileDialogResult
+    {
+        PortalFileDialogStatus Status = PortalFileDialogStatus::Failed;
+        std::string            Path;
+    };
+
     // Owns the xdg-foreign export for as long as the portal dialog is open.
     // Wayland invalidates the parent relation as soon as this object is destroyed.
     class WaylandPortalParent
@@ -46,9 +60,11 @@ namespace ZEngine::Windows::Platform
 
     [[nodiscard]] std::unique_ptr<WaylandPortalParent> CreateWaylandPortalParent(GLFWwindow* window);
 
-    // Blocks the worker thread until the user accepts or cancels the portal.
-    // The coroutine caller resumes on the engine's main thread afterwards.
-    [[nodiscard]] std::string                          OpenWaylandPortalFileDialog(std::string_view parent_handle, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title);
+    // Blocks the worker thread until the user accepts, cancels, or the portal fails.
+    [[nodiscard]] PortalFileDialogResult               OpenPortalFileDialog(std::string_view parent_handle, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title);
+
+    // Used only when the portal service is unavailable or rejects the request.
+    [[nodiscard]] std::string                          OpenLinuxFallbackFileDialog(unsigned long x11_parent_window, bool use_x11, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title);
 } // namespace ZEngine::Windows::Platform
 
 #endif
