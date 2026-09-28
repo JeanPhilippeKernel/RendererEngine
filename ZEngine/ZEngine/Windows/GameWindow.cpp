@@ -115,7 +115,13 @@ namespace ZEngine::Windows
         m_property.Title  = cfg.Title.c_str();
         m_property.VSync  = cfg.EnableVsync;
 
-        int glfw_init     = glfwInit();
+#if defined(__APPLE__)
+        // GLFW otherwise tries to dlopen the release Vulkan loader name, while
+        // Debug builds link the debug loader directly.
+        glfwInitVulkanLoader(vkGetInstanceProcAddr);
+#endif
+
+        int glfw_init = glfwInit();
         if (glfw_init == GLFW_FALSE)
         {
             ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
@@ -138,8 +144,9 @@ namespace ZEngine::Windows
         }
 
         {
-            const auto*    engine_context = Engine::GetContext();
-            const auto     icon_path      = engine_context && engine_context->EngineAssetsNativeRoot ? (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / "Settings/Icons/AppIconBadge.png").string() : std::string{};
+            const auto* engine_context = Engine::GetContext();
+            const auto  icon_path      = engine_context && engine_context->EngineAssetsNativeRoot ? (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / "Settings/Icons/AppIconBadge.png").string() : std::string{};
+#if !defined(__APPLE__)
             int            w = 0, h = 0, channels = 0;
             unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
             if (pixels)
@@ -148,7 +155,7 @@ namespace ZEngine::Windows
                 glfwSetWindowIcon(m_native_window, 1, &icon);
                 stbi_image_free(pixels);
             }
-#if defined(__APPLE__)
+#else
             ZEngineSetDockIcon(icon_path.c_str());
 #endif
         }
