@@ -270,11 +270,25 @@ namespace ZEngine::Hardwares
 #endif
         if (Recreation != RecreationState::None)
         {
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation begin state={}", static_cast<uint32_t>(Recreation))
+#endif
             // Every submitted render command buffer is covered by its frame fence.
             for (uint32_t i = 0; i < ImageInFlights.size(); ++i)
             {
                 if (ImageInFlights[i] != nullptr)
+                {
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation image-fence wait begin image={}", i)
+#endif
                     ImageInFlights[i]->Wait(UINT64_MAX);
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation image-fence wait complete image={}", i)
+#endif
+                }
             }
 
             // Defense-in-depth: ImageInFlights is sized SwapchainImageCount,
@@ -287,7 +301,15 @@ namespace ZEngine::Hardwares
             {
                 if (FrameContexts[i].Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
                 {
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation frame-fence wait begin frame={}", i)
+#endif
                     FrameContexts[i].Fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation frame-fence wait complete frame={}", i)
+#endif
                     FrameContexts[i].Fence->Reset();
                 }
             }
@@ -297,7 +319,17 @@ namespace ZEngine::Hardwares
             // counters; this is especially important after an OUT_OF_DATE acquire,
             // where Present() deliberately submits no fence-backed work.
             if (!Device->IsDeviceLost.load(std::memory_order_acquire))
+            {
+#ifndef NDEBUG
+                if (TraceSubmission)
+                    ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation queue-wait-all begin")
+#endif
                 Device->QueueWaitAll();
+#ifndef NDEBUG
+                if (TraceSubmission)
+                    ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation queue-wait-all complete")
+#endif
+            }
 
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
@@ -342,6 +374,11 @@ namespace ZEngine::Hardwares
             Recreation = RecreationState::None;
             ZENGINE_CORE_WARN("Swapchain recreated: {}x{}", SwapchainImageWidth, SwapchainImageHeight)
 
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation complete")
+#endif
+
             if (OnSwapchainResized)
                 OnSwapchainResized(SwapchainImageWidth, SwapchainImageHeight, OnSwapchainResizedCtx);
         }
@@ -353,12 +390,24 @@ namespace ZEngine::Hardwares
             trace_fence_wait("frame", frame);
 #endif
             frame.Fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire frame-fence wait complete frame={}", frame.Index)
+#endif
         }
         frame.Fence->Reset();
         frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
 
-        uint32_t image_idx            = 0;
+        uint32_t image_idx = 0;
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire call frame={} semaphore={}", frame.Index, static_cast<const void*>(frame.Acquired->GetHandle()))
+#endif
         VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire returned frame={} result={} image={}", frame.Index, static_cast<int32_t>(acquire_image_result), image_idx)
+#endif
         frame.Acquired->SetState(Primitives::SemaphoreState::Submitted);
         Device->TickMemory();
 
@@ -385,6 +434,10 @@ namespace ZEngine::Hardwares
             trace_fence_wait("image", frame);
 #endif
             ImageInFlights[image_idx]->Wait(UINT64_MAX);
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire image-fence wait complete frame={} image={}", frame.Index, image_idx)
+#endif
         }
 
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
@@ -481,7 +534,17 @@ namespace ZEngine::Hardwares
         if (render_complete->GetState() == Rendering::Primitives::SemaphoreState::Submitted)
             render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
         if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+        {
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-fence wait begin frame={}", CurrentFrame->Index)
+#endif
             CurrentFrame->Fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-fence wait complete frame={}", CurrentFrame->Index)
+#endif
+        }
 
         QueueView queue = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
@@ -581,9 +644,25 @@ namespace ZEngine::Hardwares
             .pSignalSemaphoreInfos    = work_signal_infos,
         };
 
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-heap flush begin frame={}", CurrentFrame->Index)
+#endif
         Device->FrameHeaps[CurrentFrame->Index].Flush(&Device->GpuMem);
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-heap flush complete frame={}", CurrentFrame->Index)
+#endif
 
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present submit begin frame={} render_value={} queue={}", CurrentFrame->Index, work_complete_value, static_cast<const void*>(queue.Handle))
+#endif
         auto submit = vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present submit returned frame={} result={}", CurrentFrame->Index, static_cast<int32_t>(submit))
+#endif
         if (Device->CheckDeviceLost(submit, "Present: render work submit"))
         {
             ZReleaseScratch(scratch);
@@ -625,7 +704,15 @@ namespace ZEngine::Hardwares
             .pSwapchains        = swapchains,
             .pImageIndices      = frames,
         };
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present WSI begin frame={} image={} queue={}", CurrentFrame->Index, CurrentFrame->ImageIndex, static_cast<const void*>(queue.Handle))
+#endif
         VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present WSI returned frame={} image={} result={}", CurrentFrame->Index, CurrentFrame->ImageIndex, static_cast<int32_t>(present_result))
+#endif
 
         IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
 

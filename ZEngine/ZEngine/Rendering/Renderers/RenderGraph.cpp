@@ -2335,6 +2335,7 @@ namespace ZEngine::Rendering::Renderers
                     const VkResult result    = vkGetSemaphoreCounterValue(Device->LogicalDevice, wait.semaphore, &completed);
                     ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph batch={} waits timeline={} value={} completed={} query_result={} stages={}", batch_index, static_cast<const void*>(wait.semaphore), wait.value, completed, static_cast<int32_t>(result), static_cast<uint64_t>(wait.stageMask))
                 }
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph submit begin batch={} queue={} signal_value={}", batch_index, QueueName(batch.Queue), signal_value)
             }
 #endif
             if (!Device->QueueSubmit(target, timeline, signal_value, wait_infos.data(), static_cast<uint32_t>(wait_infos.size())))
