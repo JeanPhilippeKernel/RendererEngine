@@ -99,6 +99,10 @@ namespace ZEngine::Hardwares
         // vkQueueSubmit2 has accepted this frame's graphics command buffers.
         Core::Containers::Array<RenderWorkSubmissionCallback>      RenderWorkSubmittedCallbacks   = {};
 
+        // Debug-only, opt-in render-graph diagnostic state. It is reset at the
+        // beginning of every frame and set only for a traced graph submission.
+        bool                                                       TraceSubmission                = false;
+
         // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
         // zero-size surface). Callers must skip all rendering work for that frame.
         bool                                                       IsFrameValid() const

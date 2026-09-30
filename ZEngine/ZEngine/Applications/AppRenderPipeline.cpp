@@ -136,6 +136,7 @@ namespace ZEngine::Applications
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
         swapchain->FrameAsyncOperations.clear();
+        swapchain->TraceSubmission = false;
         swapchain->CollectAsyncGPUOperations();
         Managers::AssetManager::FlushTextureReleases();
 

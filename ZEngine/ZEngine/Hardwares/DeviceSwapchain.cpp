@@ -255,6 +255,20 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::AcquireNextImage(uint32_t frame_context_idx)
     {
+#ifndef NDEBUG
+        auto trace_fence_wait = [this](cstring reason, const FrameContext& frame) {
+            if (!TraceSubmission)
+                return;
+
+            uint64_t render_completed = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &render_completed);
+            uint64_t direct_completed = 0;
+            if (DirectGraphicsTimeline)
+                vkGetSemaphoreCounterValue(Device->LogicalDevice, DirectGraphicsTimeline->GetHandle(), &direct_completed);
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire wait={} frame={} render_completed={} render_submitted={} direct_timeline={} direct_completed={} direct_submitted={}", reason, frame.Index, render_completed, RenderTimelineNextValue, static_cast<const void*>(DirectGraphicsTimeline ? DirectGraphicsTimeline->GetHandle() : VK_NULL_HANDLE), direct_completed, DirectGraphicsTimelineValue)
+            ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
+        };
+#endif
         if (Recreation != RecreationState::None)
         {
             // Every submitted render command buffer is covered by its frame fence.
@@ -335,7 +349,12 @@ namespace ZEngine::Hardwares
 
         FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
         if (frame.Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+        {
+#ifndef NDEBUG
+            trace_fence_wait("frame", frame);
+#endif
             frame.Fence->Wait(UINT64_MAX);
+        }
         frame.Fence->Reset();
         frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
 
@@ -362,7 +381,12 @@ namespace ZEngine::Hardwares
         }
 
         if (ImageInFlights[image_idx] != nullptr && !ImageInFlights[image_idx]->IsSignaled())
+        {
+#ifndef NDEBUG
+            trace_fence_wait("image", frame);
+#endif
             ImageInFlights[image_idx]->Wait(UINT64_MAX);
+        }
 
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
@@ -514,7 +538,24 @@ namespace ZEngine::Hardwares
             });
         }
 
-        uint64_t              work_complete_value  = ++RenderTimelineNextValue;
+        uint64_t work_complete_value = ++RenderTimelineNextValue;
+
+#ifndef NDEBUG
+        if (TraceSubmission)
+        {
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame={} image={} command_buffers={} waits={} signal_render_value={}", CurrentFrame->Index, CurrentFrame->ImageIndex, cmd_infos.size(), wait_sem_infos.size(), work_complete_value)
+            for (uint32_t wait_index = 0; wait_index < wait_sem_infos.size(); ++wait_index)
+            {
+                const VkSemaphoreSubmitInfo& wait      = wait_sem_infos[wait_index];
+                uint64_t                     completed = 0;
+                const VkResult               result    = wait.value == 0 ? VK_SUCCESS : vkGetSemaphoreCounterValue(Device->LogicalDevice, wait.semaphore, &completed);
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] present wait={} semaphore={} value={} completed={} query_result={} stages={}", wait_index, static_cast<const void*>(wait.semaphore), wait.value, completed, static_cast<int32_t>(result), static_cast<uint64_t>(wait.stageMask))
+            }
+            // The normal file sink is asynchronous. Persist the synchronous ring
+            // buffer before submitting, so a GPU stall cannot lose this frame.
+            ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
+        }
+#endif
 
         VkSemaphoreSubmitInfo work_complete_signal = {
             .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -554,6 +595,14 @@ namespace ZEngine::Hardwares
             return;
         }
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
+
+#ifndef NDEBUG
+        if (TraceSubmission)
+        {
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present accepted frame={} render_value={}", CurrentFrame->Index, work_complete_value)
+            ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
+        }
+#endif
 
         // The graphics command buffers are now owned by Vulkan. Deliver callbacks
         // before presentation: a later WSI error cannot undo this submission.
