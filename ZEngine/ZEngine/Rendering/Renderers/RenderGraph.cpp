@@ -500,7 +500,7 @@ namespace ZEngine::Rendering::Renderers
         }
     } // namespace
 
-    void BuildQueueBatches(ArrayView<RGPass> passes, ArrayView<uint32_t> order, bool has_separate_transfer_queue, bool has_separate_compute_queue, bool isolate_atmosphere_view_passes, Array<RGQueueBatch>& out_batches)
+    static void BuildQueueBatchesForTrace(ArrayView<RGPass> passes, ArrayView<uint32_t> order, bool has_separate_transfer_queue, bool has_separate_compute_queue, bool isolate_atmosphere_view_passes, Array<RGQueueBatch>& out_batches)
     {
         out_batches.clear();
 
@@ -528,6 +528,11 @@ namespace ZEngine::Rendering::Renderers
             batch.FirstPassOrder = order_index;
             batch.PassCount      = 1;
         }
+    }
+
+    void BuildQueueBatches(ArrayView<RGPass> passes, ArrayView<uint32_t> order, bool has_separate_transfer_queue, bool has_separate_compute_queue, Array<RGQueueBatch>& out_batches)
+    {
+        BuildQueueBatchesForTrace(passes, order, has_separate_transfer_queue, has_separate_compute_queue, false, out_batches);
     }
 
     void BuildQueueDependencies(Core::Memory::ArenaAllocator* scratch_arena, ArrayView<RGPass> passes, ArrayView<uint32_t> order, ArrayView<RGQueueBatch> batches, ArrayView<RGPassDependency> pass_dependencies, Array<RGQueueDependency>& out_dependencies)
@@ -4285,7 +4290,7 @@ namespace ZEngine::Rendering::Renderers
 #ifndef NDEBUG
         isolate_atmosphere_view_passes = IsAtmosphereSubmissionTraceEnabled();
 #endif
-        BuildQueueBatches(Passes, SortedPassIndices, Device->HasSeparateTransferQueue, Device->HasSeparateComputeQueue, isolate_atmosphere_view_passes, QueueBatches);
+        BuildQueueBatchesForTrace(Passes, SortedPassIndices, Device->HasSeparateTransferQueue, Device->HasSeparateComputeQueue, isolate_atmosphere_view_passes, QueueBatches);
         auto scratch = ZGetScratch(Device->Arena);
         BuildQueueDependencies(scratch.Arena, Passes, SortedPassIndices, QueueBatches, PassDependencies, QueueDependencies);
 
