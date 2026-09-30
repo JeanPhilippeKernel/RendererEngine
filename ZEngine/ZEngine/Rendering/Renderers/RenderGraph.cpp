@@ -2281,7 +2281,6 @@ namespace ZEngine::Rendering::Renderers
                     const RGPass& first_pass = Passes[SortedPassIndices[batch.FirstPassOrder]];
                     const RGPass& last_pass  = Passes[SortedPassIndices[batch.FirstPassOrder + batch.PassCount - 1]];
                     ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph final batch={} queue={} passes={} first_pass='{}' last_pass='{}'", batch_index, QueueName(batch.Queue), batch.PassCount, first_pass.Name, last_pass.Name)
-                    ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
                 }
 #endif
                 for (uint32_t order_index = batch.FirstPassOrder; order_index < batch.FirstPassOrder + batch.PassCount && order_index < SortedPassIndices.size(); ++order_index)
@@ -2336,9 +2335,6 @@ namespace ZEngine::Rendering::Renderers
                     const VkResult result    = vkGetSemaphoreCounterValue(Device->LogicalDevice, wait.semaphore, &completed);
                     ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph batch={} waits timeline={} value={} completed={} query_result={} stages={}", batch_index, static_cast<const void*>(wait.semaphore), wait.value, completed, static_cast<int32_t>(result), static_cast<uint64_t>(wait.stageMask))
                 }
-                // The normal file sink is asynchronous. Persist the synchronous ring
-                // buffer before submitting, so a GPU stall cannot lose this batch.
-                ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
             }
 #endif
             if (!Device->QueueSubmit(target, timeline, signal_value, wait_infos.data(), static_cast<uint32_t>(wait_infos.size())))
@@ -2350,7 +2346,6 @@ namespace ZEngine::Rendering::Renderers
             if (Device->SwapchainPtr->TraceSubmission)
             {
                 ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph batch={} accepted", batch_index)
-                ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
             }
 #endif
 

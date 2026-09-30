@@ -266,7 +266,6 @@ namespace ZEngine::Hardwares
             if (DirectGraphicsTimeline)
                 vkGetSemaphoreCounterValue(Device->LogicalDevice, DirectGraphicsTimeline->GetHandle(), &direct_completed);
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire wait={} frame={} render_completed={} render_submitted={} direct_timeline={} direct_completed={} direct_submitted={}", reason, frame.Index, render_completed, RenderTimelineNextValue, static_cast<const void*>(DirectGraphicsTimeline ? DirectGraphicsTimeline->GetHandle() : VK_NULL_HANDLE), direct_completed, DirectGraphicsTimelineValue)
-            ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
         };
 #endif
         if (Recreation != RecreationState::None)
@@ -551,9 +550,6 @@ namespace ZEngine::Hardwares
                 const VkResult               result    = wait.value == 0 ? VK_SUCCESS : vkGetSemaphoreCounterValue(Device->LogicalDevice, wait.semaphore, &completed);
                 ZENGINE_CORE_INFO("[VulkanSubmitTrace] present wait={} semaphore={} value={} completed={} query_result={} stages={}", wait_index, static_cast<const void*>(wait.semaphore), wait.value, completed, static_cast<int32_t>(result), static_cast<uint64_t>(wait.stageMask))
             }
-            // The normal file sink is asynchronous. Persist the synchronous ring
-            // buffer before submitting, so a GPU stall cannot lose this frame.
-            ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
         }
 #endif
 
@@ -600,7 +596,6 @@ namespace ZEngine::Hardwares
         if (TraceSubmission)
         {
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] present accepted frame={} render_value={}", CurrentFrame->Index, work_complete_value)
-            ZEngine::Logging::Logger::FlushRingBufferToCrashLog();
         }
 #endif
 
