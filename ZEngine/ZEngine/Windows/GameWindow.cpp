@@ -121,7 +121,7 @@ namespace ZEngine::Windows
 
         glfwSetErrorCallback([](int error, const char* description) {
             ZENGINE_CORE_CRITICAL("{}", description)
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         });
 
         m_native_window = glfwCreateWindow(m_property.Width, m_property.Height, m_property.Title, NULL, NULL);
@@ -129,7 +129,7 @@ namespace ZEngine::Windows
         if (!m_native_window)
         {
             ZENGINE_CORE_CRITICAL("Failed to create GLFW Window")
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         {

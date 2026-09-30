@@ -309,7 +309,7 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
         }
-        VFSDiskFile* file = ZConstruct(mem, VFSDiskFile);
+        VFSDiskFile* file = ZConstruct<VFSDiskFile>(mem);
         file->Owner       = this;
         file->m_path      = relative_path;
         file->m_writable  = wants_write;

@@ -39,7 +39,7 @@ namespace ZEngine::UI
         }
 
         uint64_t           sz   = size_res.Value();
-        uint8_t*           data = ZPushArray(temp_arena, uint8_t, (uint32_t) sz);
+        uint8_t*           data = ZPushArray<uint8_t>(temp_arena, (uint32_t) sz);
         ArrayView<uint8_t> view{data, sz};
         file->ReadAll(view);
         vfs->Close(file);
@@ -87,7 +87,7 @@ namespace ZEngine::UI
         //    Pass A: render each glyph to measure its bitmap dimensions.
         //    Pass B: render again into the atlas at stb_rect_pack positions.
         const uint32_t kTotalGlyphs = 3 * codepoint_count;
-        stbrp_rect*    rects        = ZPushArray(temp_arena, stbrp_rect, kTotalGlyphs);
+        stbrp_rect*    rects        = ZPushArray<stbrp_rect>(temp_arena, kTotalGlyphs);
 
         // Pass A — measure
         for (int fi = 0; fi < 3; ++fi)
@@ -112,12 +112,12 @@ namespace ZEngine::UI
         const uint32_t kAtlasW    = 1024;
         const uint32_t kAtlasH    = 2048;
         stbrp_context  pack_ctx   = {};
-        stbrp_node*    pack_nodes = ZPushArray(temp_arena, stbrp_node, kAtlasW);
+        stbrp_node*    pack_nodes = ZPushArray<stbrp_node>(temp_arena, kAtlasW);
         stbrp_init_target(&pack_ctx, (int) kAtlasW, (int) kAtlasH, pack_nodes, (int) kAtlasW);
         stbrp_pack_rects(&pack_ctx, rects, (int) kTotalGlyphs);
 
         // Pass B — render into atlas
-        uint8_t* atlas_px = ZPushArray(temp_arena, uint8_t, kAtlasW* kAtlasH);
+        uint8_t* atlas_px = ZPushArray<uint8_t>(temp_arena, kAtlasW * kAtlasH);
         // White texel at (0,0) — used by solid-color draws
         atlas_px[0]       = 255u;
 
@@ -150,7 +150,7 @@ namespace ZEngine::UI
         }
 
         // 4. Expand single-channel → RGBA8 (white text, alpha-masked)
-        uint8_t* rgba = ZPushArray(temp_arena, uint8_t, kAtlasW * kAtlasH * 4);
+        uint8_t* rgba = ZPushArray<uint8_t>(temp_arena, kAtlasW * kAtlasH * 4);
         for (uint32_t i = 0; i < kAtlasW * kAtlasH; ++i)
         {
             rgba[i * 4 + 0] = 255;
@@ -169,7 +169,7 @@ namespace ZEngine::UI
         device->RequestDescriptorUpdate(gpu_handle);
 
         // 6. Build ZUIFontAtlas
-        ZUIFontAtlas* atlas = ZPushStruct(persistent_arena, ZUIFontAtlas);
+        ZUIFontAtlas* atlas = ZPushStruct<ZUIFontAtlas>(persistent_arena);
         atlas->Handle       = gpu_handle;
         atlas->Width        = kAtlasW;
         atlas->Height       = kAtlasH;
@@ -185,8 +185,8 @@ namespace ZEngine::UI
         {
             FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
 
-            ZUIFont* font        = ZPushStruct(persistent_arena, ZUIFont);
-            font->Glyphs         = ZPushArray(persistent_arena, ZUIGlyph, codepoint_count);
+            ZUIFont* font        = ZPushStruct<ZUIFont>(persistent_arena);
+            font->Glyphs         = ZPushArray<ZUIGlyph>(persistent_arena, codepoint_count);
             font->GlyphCount     = codepoint_count;
             font->FirstCodepoint = first_codepoint;
             font->FontSize       = kSizes[fi];

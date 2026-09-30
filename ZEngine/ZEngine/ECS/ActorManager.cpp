@@ -85,7 +85,7 @@ namespace ZEngine::ECS
     ActorHandle ActorManager::CreateWithExistingEntityID(EntityID id)
     {
         ZENGINE_VALIDATE_ASSERT(m_arena != nullptr, "ActorManager::CreateWithExistingEntityID: not initialized")
-        Actor* actor       = ZPushStructCtor(m_arena, Actor);
+        Actor* actor       = ZPushStructCtor<Actor>(m_arena);
         actor->m_entity_id = id;
         actor->m_scene     = m_scene;
         AssertUniqueEntityID(actor->m_entity_id);

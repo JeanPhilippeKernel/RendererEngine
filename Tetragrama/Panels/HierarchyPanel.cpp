@@ -157,9 +157,9 @@ namespace Tetragrama::Panels
             EntityID    EID;
             EntityID    Parent;
         };
-        OutlinerNode* nodes       = ZPushArray(&ctx->FrameArena, OutlinerNode, cap);
-        uint32_t*     first_child = ZPushArray(&ctx->FrameArena, uint32_t, cap);
-        uint32_t*     next_sib    = ZPushArray(&ctx->FrameArena, uint32_t, cap);
+        OutlinerNode* nodes       = ZPushArray<OutlinerNode>(&ctx->FrameArena, cap);
+        uint32_t*     first_child = ZPushArray<uint32_t>(&ctx->FrameArena, cap);
+        uint32_t*     next_sib    = ZPushArray<uint32_t>(&ctx->FrameArena, cap);
         uint32_t      node_count  = 0;
 
         for (uint32_t i = 0; i < cap; ++i)
@@ -196,7 +196,7 @@ namespace Tetragrama::Panels
             uint32_t idx;
             int      depth;
         };
-        DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, node_count * 2 + 2);
+        DFSEntry* stk = ZPushArray<DFSEntry>(&ctx->FrameArena, node_count * 2 + 2);
         int       sp  = 0;
         for (int i = (int) node_count - 1; i >= 0; --i)
             if (nodes[i].Parent == INVALID_ENTITY)

@@ -184,7 +184,7 @@ namespace ZEngine::Core::VFS
 
     MemNode* VFSMemoryBackend::CreateNode(const VFSPath& path, MemNode::Kind kind)
     {
-        MemNode* node  = ZPushStructCtor(m_arena, MemNode);
+        MemNode* node  = ZPushStructCtor<MemNode>(m_arena);
         node->NodeKind = kind;
         node->Path     = path;
         m_nodes.insert(node->Path.CStr(), node);
@@ -199,7 +199,7 @@ namespace ZEngine::Core::VFS
         {
             return nullptr;
         }
-        return ZConstruct(mem, VFSMemoryFile);
+        return ZConstruct<VFSMemoryFile>(mem);
     }
 
     void VFSMemoryBackend::FreeFile(IVFSFile* file)

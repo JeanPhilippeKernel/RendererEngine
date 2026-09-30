@@ -18,7 +18,7 @@ namespace ZEngine::UI
 
         uint32_t max             = ctx->MaxBoxesPerFrame;
         auto     scratch         = ZGetScratch(&ctx->FrameArena);
-        ZUIBox** stack           = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
+        ZUIBox** stack           = ZPushArray<ZUIBox*>(&ctx->FrameArena, max);
         uint32_t stack_top       = 0;
 
         uint64_t new_hot         = 0;

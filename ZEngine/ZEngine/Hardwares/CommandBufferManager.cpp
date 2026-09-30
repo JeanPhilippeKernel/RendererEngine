@@ -45,23 +45,23 @@ namespace ZEngine::Hardwares
 
         for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
-            InstantGraphicsPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
+            InstantGraphicsPools[i] = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, QueueType::GRAPHIC_QUEUE);
 
             for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
             {
                 uint32_t buffer_idx                       = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
-                InstantGraphicsCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantGraphicsPools[i]->Handle, InstantGraphicsPools[i]->QueueType, true);
+                InstantGraphicsCommandBuffers[buffer_idx] = ZPushStructCtorArgs<CommandBuffer>(Device->Arena, std::source_location::current(), Device, InstantGraphicsPools[i]->Handle, InstantGraphicsPools[i]->QueueType, true);
             }
         }
 
         for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
-            CommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
+            CommandPools[i] = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, QueueType::GRAPHIC_QUEUE);
             for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
             {
                 uint32_t buffer_idx        = (i * MaxBufferPerPool) + buf_idx;
                 bool     is_primary        = (buffer_idx % 2) == 0;
-                CommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, CommandPools[i]->Handle, CommandPools[i]->QueueType, is_primary);
+                CommandBuffers[buffer_idx] = ZPushStructCtorArgs<CommandBuffer>(Device->Arena, std::source_location::current(), Device, CommandPools[i]->Handle, CommandPools[i]->QueueType, is_primary);
             }
         }
 
@@ -79,7 +79,7 @@ namespace ZEngine::Hardwares
         for (uint32_t i = 0; i < TotalPoolCount; ++i)
         {
             auto& worker_pool = WorkerSecondaryGraphics[i];
-            worker_pool.Pool  = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::GRAPHIC_QUEUE);
+            worker_pool.Pool  = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, QueueType::GRAPHIC_QUEUE);
             worker_pool.Buffers.init(&m_render_graph_command_buffer_arena, 4);
         }
 
@@ -92,20 +92,20 @@ namespace ZEngine::Hardwares
 
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
-                InstantTransferPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
+                InstantTransferPools[i] = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, Rendering::QueueType::TRANSFER_QUEUE);
                 for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
                 {
                     uint32_t buffer_idx                       = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
-                    InstantTransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantTransferPools[i]->Handle, InstantTransferPools[i]->QueueType, true);
+                    InstantTransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs<CommandBuffer>(Device->Arena, std::source_location::current(), Device, InstantTransferPools[i]->Handle, InstantTransferPools[i]->QueueType, true);
                 }
             }
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
-                TransferCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::TRANSFER_QUEUE);
+                TransferCommandPools[i] = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, Rendering::QueueType::TRANSFER_QUEUE);
                 for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
                 {
                     uint32_t buffer_idx                = (i * MaxBufferPerPool) + buf_idx;
-                    TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, TransferCommandPools[i]->Handle, TransferCommandPools[i]->QueueType, true);
+                    TransferCommandBuffers[buffer_idx] = ZPushStructCtorArgs<CommandBuffer>(Device->Arena, std::source_location::current(), Device, TransferCommandPools[i]->Handle, TransferCommandPools[i]->QueueType, true);
                 }
             }
             GraphTransferCommandBuffers.init(Device->Arena, TotalGraphCommandBufferCount, TotalGraphCommandBufferCount);
@@ -117,7 +117,7 @@ namespace ZEngine::Hardwares
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
                 auto& worker_pool = WorkerSecondaryTransfers[i];
-                worker_pool.Pool  = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::TRANSFER_QUEUE);
+                worker_pool.Pool  = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, QueueType::TRANSFER_QUEUE);
                 worker_pool.Buffers.init(&m_render_graph_command_buffer_arena, 4);
             }
         }
@@ -131,18 +131,18 @@ namespace ZEngine::Hardwares
 
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
-                InstantComputePools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::COMPUTE_QUEUE);
+                InstantComputePools[i] = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, Rendering::QueueType::COMPUTE_QUEUE);
                 for (uint32_t buf_idx = 0; buf_idx < (MaxBufferPerPool * MaxBufferPerPool); ++buf_idx)
                 {
                     uint32_t buffer_idx                      = (i * (MaxBufferPerPool * MaxBufferPerPool)) + buf_idx;
-                    InstantComputeCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, InstantComputePools[i]->Handle, InstantComputePools[i]->QueueType, true);
+                    InstantComputeCommandBuffers[buffer_idx] = ZPushStructCtorArgs<CommandBuffer>(Device->Arena, std::source_location::current(), Device, InstantComputePools[i]->Handle, InstantComputePools[i]->QueueType, true);
                 }
 
-                ComputeCommandPools[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, Rendering::QueueType::COMPUTE_QUEUE);
+                ComputeCommandPools[i] = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, Rendering::QueueType::COMPUTE_QUEUE);
                 for (uint32_t buf_idx = 0; buf_idx < MaxBufferPerPool; ++buf_idx)
                 {
                     uint32_t buffer_idx               = (i * MaxBufferPerPool) + buf_idx;
-                    ComputeCommandBuffers[buffer_idx] = ZPushStructCtorArgs(Device->Arena, CommandBuffer, Device, ComputeCommandPools[i]->Handle, ComputeCommandPools[i]->QueueType, true);
+                    ComputeCommandBuffers[buffer_idx] = ZPushStructCtorArgs<CommandBuffer>(Device->Arena, std::source_location::current(), Device, ComputeCommandPools[i]->Handle, ComputeCommandPools[i]->QueueType, true);
                 }
             }
             GraphComputeCommandBuffers.init(Device->Arena, TotalGraphCommandBufferCount, TotalGraphCommandBufferCount);
@@ -154,7 +154,7 @@ namespace ZEngine::Hardwares
             for (uint32_t i = 0; i < TotalPoolCount; ++i)
             {
                 auto& worker_pool = WorkerSecondaryComputes[i];
-                worker_pool.Pool  = ZPushStructCtorArgs(Device->Arena, Rendering::Pools::CommandPool, Device, QueueType::COMPUTE_QUEUE);
+                worker_pool.Pool  = ZPushStructCtorArgs<Rendering::Pools::CommandPool>(Device->Arena, std::source_location::current(), Device, QueueType::COMPUTE_QUEUE);
                 worker_pool.Buffers.init(&m_render_graph_command_buffer_arena, 4);
             }
         }
@@ -269,7 +269,7 @@ namespace ZEngine::Hardwares
         }
 
         if (!*slot)
-            *slot = ZPushStructCtorArgs(&m_render_graph_command_buffer_arena, CommandBuffer, Device, command_pool, resolved_type, true, &m_render_graph_command_buffer_arena);
+            *slot = ZPushStructCtorArgs<CommandBuffer>(&m_render_graph_command_buffer_arena, std::source_location::current(), Device, command_pool, resolved_type, true, &m_render_graph_command_buffer_arena);
         CommandBuffer* buffer = *slot;
         if (begin)
         {
@@ -302,7 +302,7 @@ namespace ZEngine::Hardwares
         WorkerSecondaryPool& pool = ResolveWorkerSecondaryPool(this, type, frame_index * TotalThreadCount + worker_index);
         while (pool.Buffers.size() < count)
         {
-            CommandBuffer* buffer = ZPushStructCtorArgs(&m_render_graph_command_buffer_arena, CommandBuffer, Device, pool.Pool->Handle, pool.Pool->QueueType, false, &m_render_graph_command_buffer_arena);
+            CommandBuffer* buffer = ZPushStructCtorArgs<CommandBuffer>(&m_render_graph_command_buffer_arena, std::source_location::current(), Device, pool.Pool->Handle, pool.Pool->QueueType, false, &m_render_graph_command_buffer_arena);
             pool.Buffers.push(buffer);
         }
     }

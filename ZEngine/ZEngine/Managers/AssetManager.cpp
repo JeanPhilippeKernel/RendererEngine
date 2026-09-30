@@ -37,7 +37,7 @@ namespace ZEngine::Managers
 
     void AssetManager::Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path)
     {
-        s_Instance                          = ZPushStructCtor(arena, AssetManager);
+        s_Instance                          = ZPushStructCtor<AssetManager>(arena);
         s_Instance->Arena                   = arena;
 
         s_Instance->Device                  = device;

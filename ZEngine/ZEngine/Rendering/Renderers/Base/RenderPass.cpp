@@ -163,7 +163,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         if (Specification.SwapchainAsRenderTarget)
         {
             Attachment = m_device->SwapchainPtr->SwapchainAttachment;
-            Pipeline   = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
+            Pipeline   = ZPushStructCtor<Pipelines::GraphicPipeline>(m_device->Arena, std::source_location::current());
             Pipeline->Initialize(m_device, std::move(Specification.PipelineDescription), Attachment);
         }
         else
@@ -216,8 +216,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 color_map_index++;
             }
 
-            Attachment = ZPushStructCtorArgs(m_device->Arena, RenderPasses::Attachment, m_device, std::move(attachment_specification));
-            Pipeline   = ZPushStructCtorArgs(m_device->Arena, Pipelines::GraphicPipeline);
+            Attachment = ZPushStructCtorArgs<RenderPasses::Attachment>(m_device->Arena, std::source_location::current(), m_device, std::move(attachment_specification));
+            Pipeline   = ZPushStructCtor<Pipelines::GraphicPipeline>(m_device->Arena);
             Pipeline->Initialize(m_device, std::move(Specification.PipelineDescription), Attachment);
 
             UpdateRenderTargets();
@@ -793,7 +793,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         Specification = std::move(specification);
         InitializeDescriptorBindings(device);
 
-        Pipeline = ZPushStructCtorArgs(m_device->Arena, Pipelines::ComputePipeline);
+        Pipeline = ZPushStructCtor<Pipelines::ComputePipeline>(m_device->Arena, std::source_location::current());
         Pipeline->Initialize(m_device, Specification.ComputeShaderName, Specification.ComputePushConstantSize);
         Pipeline->ReplayDescriptors       = &DescriptorBoundPass::ReplayDescriptorBindings;
         Pipeline->DescriptorReplayContext = static_cast<DescriptorBoundPass*>(this);

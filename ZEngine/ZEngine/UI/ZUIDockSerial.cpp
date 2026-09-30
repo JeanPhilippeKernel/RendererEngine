@@ -224,7 +224,7 @@ namespace ZEngine::UI
         ZUIDockNode*    new_nodes[kMaxSerialNodes] = {};
         for (uint32_t i = 0; i < node_count; ++i)
         {
-            new_nodes[i] = ZPushStructCtor(arena, ZUIDockNode);
+            new_nodes[i] = ZPushStructCtor<ZUIDockNode>(arena);
             if (!new_nodes[i])
             {
                 return false;

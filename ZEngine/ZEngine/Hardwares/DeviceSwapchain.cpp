@@ -23,7 +23,7 @@ namespace ZEngine::Hardwares
         BufferredFrameCount                                              = buffered_frame_size;
         FrameContextPoolSize                                             = BufferredFrameCount * FrameContextPoolSizeFactor;
 
-        RenderTimeline                                                   = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device, true);
+        RenderTimeline                                                   = ZPushStructCtorArgs<Primitives::Semaphore>(&Arena, std::source_location::current(), Device, true);
 
         Specifications::AttachmentSpecification attachment_specification = {.BindPoint = Specifications::PipelineBindPoint::GRAPHIC};
         attachment_specification.ColorsMap.init(&Arena, 2);
@@ -34,7 +34,7 @@ namespace ZEngine::Hardwares
         attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
         attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
         attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, std::move(attachment_specification));
+        SwapchainAttachment                                   = ZPushStructCtorArgs<RenderPasses::Attachment>(&Arena, std::source_location::current(), Device, std::move(attachment_specification));
 
         IdleFrameThreshold                                    = (BufferredFrameCount * 3 * 3 * 3);
         FrameContexts.init(&Arena, FrameContextPoolSize, FrameContextPoolSize);
@@ -46,8 +46,8 @@ namespace ZEngine::Hardwares
             auto& frame    = FrameContexts[i];
 
             frame.Index    = (i % BufferredFrameCount);
-            frame.Acquired = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device);
-            frame.Fence    = ZPushStructCtorArgs(&Arena, Primitives::Fence, Device, true);
+            frame.Acquired = ZPushStructCtorArgs<Primitives::Semaphore>(&Arena, std::source_location::current(), Device);
+            frame.Fence    = ZPushStructCtorArgs<Primitives::Fence>(&Arena, std::source_location::current(), Device, true);
         }
 
         Create();
@@ -165,7 +165,7 @@ namespace ZEngine::Hardwares
             for (uint32_t i = 0; i < SwapchainImageCount; ++i)
             {
                 ImageInFlights.push(nullptr);
-                RenderCompletes.push(ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device));
+                RenderCompletes.push(ZPushStructCtorArgs<Primitives::Semaphore>(&Arena, std::source_location::current(), Device));
             }
         }
 

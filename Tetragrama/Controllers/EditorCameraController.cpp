@@ -123,7 +123,7 @@ namespace Tetragrama::Controllers
         settings.MinOrbitDistance    = 0.5f;
         settings.MaxOrbitDistance    = 10000.0f;
 
-        m_camera                     = ZPushStructCtorArgs(arena, FlyCamera, logicalW / logicalH, settings);
+        m_camera                     = ZPushStructCtorArgs<FlyCamera>(arena, std::source_location::current(), logicalW / logicalH, settings);
         m_camera->SetViewportSize(logicalW, logicalH);
 
         m_camera->Hooks.Context             = app;

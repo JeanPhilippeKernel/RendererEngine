@@ -62,8 +62,8 @@ namespace ZEngine::Applications
     {
         Device                  = device;
         RenderWorkerThreadCount = Device->CommandBufferMgr->TotalThreadCount > 0u ? Device->CommandBufferMgr->TotalThreadCount - 1u : 0u;
-        SceneRenderer           = ZPushStructCtor(Device->Arena, Rendering::Renderers::GraphicRenderer);
-        ZUIRenderPass           = ZPushStructCtor(Device->Arena, Rendering::Renderers::ZUIPass);
+        SceneRenderer           = ZPushStructCtor<Rendering::Renderers::GraphicRenderer>(Device->Arena);
+        ZUIRenderPass           = ZPushStructCtor<Rendering::Renderers::ZUIPass>(Device->Arena);
 
         ZUIRenderPass->Initialize(Device);
         SceneRenderer->Initialize(Device);
@@ -87,7 +87,7 @@ namespace ZEngine::Applications
         // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
         // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
         auto* ui_arena = &Engine::GetContext()->UIContextArena;
-        ZUICtx         = ZPushStructCtor(ui_arena, ZEngine::UI::ZUIContext);
+        ZUICtx         = ZPushStructCtor<ZEngine::UI::ZUIContext>(ui_arena);
         ZEngine::UI::ZUIContextInit(ZUICtx, ui_arena, ZMega(32), ZMega(1), 8192, 8192);
         for (uint32_t i = 0; i < MaxOverlayBufferCount; ++i)
         {

@@ -22,8 +22,8 @@ namespace ZEngine::UI
 
         uint32_t max           = ctx->MaxBoxesPerFrame;
 
-        ZUIBox** nodes         = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
-        ZUIBox** dfs_stack     = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
+        ZUIBox** nodes         = ZPushArray<ZUIBox*>(&ctx->FrameArena, max);
+        ZUIBox** dfs_stack     = ZPushArray<ZUIBox*>(&ctx->FrameArena, max);
         uint32_t node_count    = 0;
         uint32_t stack_top     = 0;
 

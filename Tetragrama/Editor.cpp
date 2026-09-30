@@ -28,7 +28,7 @@ namespace Tetragrama
         // Reserve the editor owner before creating configuration and workspace
         // state. EditorScene will later carve its 200 MiB local arena from here.
         Memory->CreateBudgetedArena(Memory->Budget.EditorContext, &EditorArena);
-        Configuration = ZPushStructCtor(&EditorArena, EditorConfiguration);
+        Configuration = ZPushStructCtor<EditorConfiguration>(&EditorArena);
 
         if (ZEngine::Helpers::secure_strlen(ConfigFile))
         {
@@ -61,26 +61,26 @@ namespace Tetragrama
 
     void Editor::OnInitialized()
     {
-        auto editor_scene          = ZPushStructCtor(&EditorArena, EditorScene);
-        auto editor_cam_controller = ZPushStructCtor(&EditorArena, Controllers::EditorCameraController);
-        ZUIUILayer                 = ZPushStructCtor(&EditorArena, ZUILayer);
+        auto editor_scene          = ZPushStructCtor<EditorScene>(&EditorArena);
+        auto editor_cam_controller = ZPushStructCtor<Controllers::EditorCameraController>(&EditorArena);
+        ZUIUILayer                 = ZPushStructCtor<ZUILayer>(&EditorArena);
 
         ZUIUILayer->Initialize(&EditorArena, this);
 
         // Single panel-manager component replaces all old per-panel components.
         // It owns the dock tree, tab bars, and all panel views.
-        auto* pm = ZPushStructCtor(&EditorArena, Tetragrama::Panels::ZUIPanelManagerComponent);
+        auto* pm = ZPushStructCtor<Tetragrama::Panels::ZUIPanelManagerComponent>(&EditorArena);
         pm->Initialize(ZUIUILayer, "PanelManager");
         ZUIUILayer->AddComponent(pm);
 
         // Editor shell: menu bar + floating overlays (settings, etc.)
         // Registered after PanelManager so it renders on top.
-        auto* shell = ZPushStructCtor(&EditorArena, Tetragrama::Components::ZUIDockspaceComponent);
+        auto* shell = ZPushStructCtor<Tetragrama::Components::ZUIDockspaceComponent>(&EditorArena);
         shell->Initialize(ZUIUILayer, "EditorShell");
         shell->ShellPanelManager = &pm->Manager;
         ZUIUILayer->AddComponent(shell);
 
-        auto* sbar              = ZPushStructCtor(&EditorArena, Tetragrama::Components::ZUIStatusBarComponent);
+        auto* sbar              = ZPushStructCtor<Tetragrama::Components::ZUIStatusBarComponent>(&EditorArena);
         sbar->ShellPanelManager = &pm->Manager;
         sbar->Initialize(ZUIUILayer, "StatusBar");
         ZUIUILayer->AddComponent(sbar);

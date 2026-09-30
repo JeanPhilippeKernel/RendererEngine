@@ -234,10 +234,10 @@ namespace ZEngine::Rendering
     {
         // Pre-signaled so the first Wait() before a submit returns immediately.
         uint32_t frame_count = m_device->SwapchainPtr->BufferredFrameCount;
-        m_sync_upload_fence  = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Fence, m_device, true);
+        m_sync_upload_fence  = ZPushStructCtorArgs<Rendering::Primitives::Fence>(m_device->Arena, std::source_location::current(), m_device, true);
 
         // LastSignal == 0 means "never used yet" for a given frame index.
-        m_batch_timeline     = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+        m_batch_timeline     = ZPushStructCtorArgs<Rendering::Primitives::Semaphore>(m_device->Arena, std::source_location::current(), m_device, true);
         m_batch_frames.init(m_device->Arena, frame_count, frame_count);
         for (uint32_t i = 0; i < frame_count; ++i)
             m_batch_frames[i] = BatchFrameState{};
@@ -246,7 +246,7 @@ namespace ZEngine::Rendering
         // command buffers instead of resetting and resubmitting the same one every call (see
         // issue #764 follow-up: reusing a single command buffer across many upload cycles was
         // suspected as a factor in an otherwise-unexplained GPU stall).
-        m_upload_cmd_mgr = ZPushStructCtor(m_device->Arena, CommandBufferManager);
+        m_upload_cmd_mgr = ZPushStructCtor<CommandBufferManager>(m_device->Arena);
         m_upload_cmd_mgr->Initialize(m_device, m_device->SwapchainPtr->BufferredFrameCount, 1);
 
         m_async_uploads.Initialize(m_device);
@@ -1167,7 +1167,7 @@ namespace ZEngine::Rendering
 
         for (uint32_t i = 0; i < total_pool_count; ++i)
         {
-            m_tex_timelines[i] = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+            m_tex_timelines[i] = ZPushStructCtorArgs<Rendering::Primitives::Semaphore>(m_device->Arena, std::source_location::current(), m_device, true);
             m_tex_retire_values[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
             m_tex_retire_staging[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
             m_tex_next_values[i].store(1, std::memory_order_release);
@@ -1182,7 +1182,7 @@ namespace ZEngine::Rendering
 
             for (uint32_t i = 0; i < total_pool_count; ++i)
             {
-                m_tex_transfer_timelines[i] = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+                m_tex_transfer_timelines[i] = ZPushStructCtorArgs<Rendering::Primitives::Semaphore>(m_device->Arena, std::source_location::current(), m_device, true);
                 m_tex_transfer_retire[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
                 m_tex_transfer_staging[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
                 m_tex_transfer_next_values[i].store(1, std::memory_order_release);
@@ -1905,7 +1905,7 @@ namespace ZEngine::Rendering
         }
 
         auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
-        ZConstruct(task, TextureDecodeTask);
+        ZConstruct<TextureDecodeTask>(task);
         task->Owner            = this;
         task->Specification    = spec;
         task->Texture          = tex_handle;

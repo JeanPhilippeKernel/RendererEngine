@@ -12,7 +12,6 @@
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <cstdlib>
-#include <filesystem>
 #include <limits>
 
 using namespace std::chrono_literals;
@@ -41,7 +40,7 @@ namespace ZEngine::Hardwares
     void AsyncGPUOperation::Initialize(VulkanDevice* device, uint32_t total_buffer_count)
     {
         NextValue = 0;
-        Timeline  = ZPushStructCtorArgs(device->Arena, Semaphore, device, true);
+        Timeline  = ZPushStructCtorArgs<Semaphore>(device->Arena, std::source_location::current(), device, true);
         RetireValues.init(device->Arena, total_buffer_count, total_buffer_count);
     }
 
@@ -53,8 +52,8 @@ namespace ZEngine::Hardwares
         BindlessTextureSlotRequests.init(Arena, 64);
         ShaderReservedBindingSets.init(Arena, 4);
         ShaderReservedBindingSets.insert(1);
-        CommandBufferMgr = ZPushStructCtor(Arena, CommandBufferManager);
-        SwapchainPtr     = ZPushStructCtor(Arena, DeviceSwapchain);
+        CommandBufferMgr = ZPushStructCtor<CommandBufferManager>(Arena);
+        SwapchainPtr     = ZPushStructCtor<DeviceSwapchain>(Arena);
 
         DefaultDepthFormats.init(Arena, 3);
         DefaultDepthFormats.push(VK_FORMAT_D32_SFLOAT);
@@ -239,13 +238,13 @@ namespace ZEngine::Hardwares
         if (result == VK_ERROR_INCOMPATIBLE_DRIVER)
         {
             ZENGINE_CORE_CRITICAL("Failed to create Vulkan Instance. Incompatible driver")
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         if (result == VK_INCOMPLETE)
         {
             ZENGINE_CORE_CRITICAL("Failed to create Vulkan Instance. Confugration incomplete!")
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         /*Create Message Callback*/
@@ -811,7 +810,7 @@ namespace ZEngine::Hardwares
             FrameHeaps[i].Initialize(&GpuMem, name);
         }
 
-        PipelineStateCache = ZPushStructCtor(Arena, Rendering::Renderers::Pipelines::PSOCache);
+        PipelineStateCache = ZPushStructCtor<Rendering::Renderers::Pipelines::PSOCache>(Arena);
         PipelineStateCache->Initialize(this);
 
         /*
@@ -3048,11 +3047,11 @@ namespace ZEngine::Hardwares
     {
         if (spec.Type == Rendering::Specifications::RenderPassType::COMPUTE)
         {
-            auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::ComputePass);
+            auto pass = ZPushStructCtor<Rendering::Renderers::RenderPasses::ComputePass>(Arena);
             pass->Initialize(this, std::move(spec));
             return pass;
         }
-        auto pass = ZPushStructCtorArgs(Arena, Rendering::Renderers::RenderPasses::GraphicPass);
+        auto pass = ZPushStructCtor<Rendering::Renderers::RenderPasses::GraphicPass>(Arena);
         pass->Initialize(this, std::move(spec));
         return pass;
     }

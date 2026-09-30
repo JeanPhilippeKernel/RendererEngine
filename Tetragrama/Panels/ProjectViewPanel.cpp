@@ -395,7 +395,7 @@ namespace Tetragrama::Panels
             int         depth;
         };
         static constexpr int kMaxStack  = 512;
-        StackEntry*          stk        = ZPushArray(&ctx->FrameArena, StackEntry, kMaxStack);
+        StackEntry*          stk        = ZPushArray<StackEntry>(&ctx->FrameArena, kMaxStack);
         int                  sp         = 0;
 
         // Seed the stack with top-level directories (pushed in reverse for L-to-R order)
