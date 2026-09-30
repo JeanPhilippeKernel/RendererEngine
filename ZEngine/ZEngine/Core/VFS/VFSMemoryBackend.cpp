@@ -191,8 +191,8 @@ namespace ZEngine::Core::VFS
         ZENGINE_VALIDATE_ASSERT(arena != nullptr, "VFSMemoryBackend requires a valid arena")
         m_arena = arena;
         m_nodes.init(arena, 64);
-        const size_t file_stride = Helpers::memory_align_size_t(sizeof(VFSMemoryFile), ZAlignof(VFSMemoryFile));
-        m_file_pool.Initialize(arena, file_stride * kVFSMaxOpenMemoryFiles, file_stride, ZAlignof(VFSMemoryFile));
+        const size_t file_stride = Helpers::memory_align_size_t(sizeof(VFSMemoryFile), ZAlignof<VFSMemoryFile>());
+        m_file_pool.Initialize(arena, file_stride * kVFSMaxOpenMemoryFiles, file_stride, ZAlignof<VFSMemoryFile>());
     }
 
     MemNode* VFSMemoryBackend::FindNode(const VFSPath& path)
@@ -209,7 +209,7 @@ namespace ZEngine::Core::VFS
 
     MemNode* VFSMemoryBackend::CreateNode(const VFSPath& path, MemNode::Kind kind)
     {
-        MemNode* node  = ZPushStructCtor(m_arena, MemNode);
+        MemNode* node  = ZPushStructCtor<MemNode>(m_arena);
         node->NodeKind = kind;
         node->Path     = path;
         m_nodes.insert(node->Path.CStr(), node);
@@ -226,7 +226,7 @@ namespace ZEngine::Core::VFS
         {
             return nullptr;
         }
-        return ZConstruct(mem, VFSMemoryFile);
+        return ZConstruct<VFSMemoryFile>(mem);
     }
 
     void VFSMemoryBackend::FreeFile(IVFSFile* file)

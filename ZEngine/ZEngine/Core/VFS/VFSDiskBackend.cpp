@@ -271,8 +271,8 @@ namespace ZEngine::Core::VFS
         m_arena                  = arena;
         m_case_sensitive         = ProbeCaseSensitivity(m_native_root);
 
-        const size_t file_stride = Helpers::memory_align_size_t(sizeof(VFSDiskFile), ZAlignof(VFSDiskFile));
-        m_file_pool.Initialize(m_arena, file_stride * max_open_files, file_stride, ZAlignof(VFSDiskFile));
+        const size_t file_stride = Helpers::memory_align_size_t(sizeof(VFSDiskFile), ZAlignof<VFSDiskFile>());
+        m_file_pool.Initialize(m_arena, file_stride * max_open_files, file_stride, ZAlignof<VFSDiskFile>());
     }
 
     bool VFSDiskBackend::ResolveNativePath(const VFSPath& relative, NativePathChar* out_buf) const
@@ -386,7 +386,7 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
         }
-        VFSDiskFile* file = ZConstruct(mem, VFSDiskFile);
+        VFSDiskFile* file = ZConstruct<VFSDiskFile>(mem);
         file->Owner       = this;
         file->m_path      = relative_path;
         file->m_writable  = wants_write;

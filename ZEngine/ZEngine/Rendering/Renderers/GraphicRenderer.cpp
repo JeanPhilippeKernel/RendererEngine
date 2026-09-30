@@ -113,8 +113,8 @@ namespace ZEngine::Rendering::Renderers
     void GraphicRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
         Device          = device;
-        RenderGraph     = ZPushStructCtorArgs(Device->Arena, Renderers::RenderGraph);
-        RenderSceneData = ZPushStructCtor(Device->Arena, Scenes::SceneData);
+        RenderGraph     = ZPushStructCtor<Renderers::RenderGraph>(Device->Arena);
+        RenderSceneData = ZPushStructCtor<Scenes::SceneData>(Device->Arena);
         ZENGINE_VALIDATE_ASSERT(Device->SwapchainPtr->BufferredFrameCount <= Scenes::SceneData::MAX_FRAMES_IN_FLIGHT, "SceneData buffers must cover every buffered frame")
         constexpr const char*  transform_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]       = {"TransformStorageBuffer[0]", "TransformStorageBuffer[1]", "TransformStorageBuffer[2]"};
         constexpr const char*  render_data_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]     = {"RenderDataStorageBuffer[0]", "RenderDataStorageBuffer[1]", "RenderDataStorageBuffer[2]"};
@@ -139,23 +139,23 @@ namespace ZEngine::Rendering::Renderers
         /*
          * Renderer Passes
          */
-        auto scene_depth_prepass         = ZPushStructCtor(Device->Arena, DepthPrePass);
-        auto frustum_culling_pass        = ZPushStructCtor(Device->Arena, FrustumCullingPass);
-        auto gbuffer_pass                = ZPushStructCtor(Device->Arena, GbufferPass);
-        auto lighting_pass               = ZPushStructCtor(Device->Arena, LightingPass);
-        auto environment_background_pass = ZPushStructCtor(Device->Arena, EnvironmentBackgroundPass);
-        auto sky_sphere_pass             = ZPushStructCtor(Device->Arena, SkySpherePass);
-        auto sky_view_lut_pass           = ZPushStructCtor(Device->Arena, SkyViewLutPass);
-        auto aerial_pass                 = ZPushStructCtor(Device->Arena, AerialPerspectivePass);
-        auto sky_composite_pass          = ZPushStructCtor(Device->Arena, SkyCompositePass);
-        auto grid_pass                   = ZPushStructCtor(Device->Arena, GridPass);
-        auto grid_label_pass             = ZPushStructCtor(Device->Arena, GridLabelPass);
+        auto scene_depth_prepass         = ZPushStructCtor<DepthPrePass>(Device->Arena);
+        auto frustum_culling_pass        = ZPushStructCtor<FrustumCullingPass>(Device->Arena);
+        auto gbuffer_pass                = ZPushStructCtor<GbufferPass>(Device->Arena);
+        auto lighting_pass               = ZPushStructCtor<LightingPass>(Device->Arena);
+        auto environment_background_pass = ZPushStructCtor<EnvironmentBackgroundPass>(Device->Arena);
+        auto sky_sphere_pass             = ZPushStructCtor<SkySpherePass>(Device->Arena);
+        auto sky_view_lut_pass           = ZPushStructCtor<SkyViewLutPass>(Device->Arena);
+        auto aerial_pass                 = ZPushStructCtor<AerialPerspectivePass>(Device->Arena);
+        auto sky_composite_pass          = ZPushStructCtor<SkyCompositePass>(Device->Arena);
+        auto grid_pass                   = ZPushStructCtor<GridPass>(Device->Arena);
+        auto tone_mapping_pass           = ZPushStructCtor<ToneMappingPass>(Device->Arena);
+        auto grid_label_pass             = ZPushStructCtor<GridLabelPass>(Device->Arena);
         m_grid_label_pass                = grid_label_pass;
-        auto gizmo_pass                  = ZPushStructCtor(Device->Arena, GizmoPass);
+        auto gizmo_pass                  = ZPushStructCtor<GizmoPass>(Device->Arena);
         gizmo_pass->Initialize(Device);
         m_gizmo_pass                = gizmo_pass;
-        auto tone_mapping_pass      = ZPushStructCtor(Device->Arena, ToneMappingPass);
-        auto selection_outline_pass = ZPushStructCtor(Device->Arena, SelectionOutlinePass);
+        auto selection_outline_pass = ZPushStructCtor<SelectionOutlinePass>(Device->Arena);
 
         RenderGraph->Initialize(Device, RenderSceneData);
         RenderGraph->ImportBuffer(RendererBufferName::Transform, &RenderSceneData->TransformBuffers[0]);
@@ -196,13 +196,13 @@ namespace ZEngine::Rendering::Renderers
             ZENGINE_CORE_WARN("[SkyEnvironment] Atmosphere baking is disabled: {}", m_atmosphere_bake_unavailable_reason)
         if (!m_atmosphere_view_resources_supported)
             ZENGINE_CORE_WARN("[SkyEnvironment] Per-view atmosphere composition is disabled: {}", m_atmosphere_view_unavailable_reason)
-        m_sky_atmosphere_transmittance_pass   = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereTransmittancePass, &m_sky_environment);
-        m_sky_atmosphere_multiscattering_pass = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereMultiscatteringPass, &m_sky_environment);
-        m_sky_atmosphere_source_radiance_pass = ZPushStructCtorArgs(Device->Arena, SkyAtmosphereSourceRadiancePass, &m_sky_environment);
-        m_sky_hdri_mip_generation_pass        = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentMipGenerationPass, &m_sky_environment, "sky_environment_mip_generation", false);
-        m_sky_atmosphere_mip_generation_pass  = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentMipGenerationPass, &m_sky_environment, "sky_atmosphere_mip_generation", true);
-        m_sky_diffuse_irradiance_pass         = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentDiffuseIrradiancePass, &m_sky_environment);
-        m_sky_specular_prefilter_pass         = ZPushStructCtorArgs(Device->Arena, SkyEnvironmentSpecularPrefilterPass, &m_sky_environment);
+        m_sky_atmosphere_transmittance_pass   = ZPushStructCtorArgs<SkyAtmosphereTransmittancePass>(Device->Arena, &m_sky_environment);
+        m_sky_atmosphere_multiscattering_pass = ZPushStructCtorArgs<SkyAtmosphereMultiscatteringPass>(Device->Arena, &m_sky_environment);
+        m_sky_atmosphere_source_radiance_pass = ZPushStructCtorArgs<SkyAtmosphereSourceRadiancePass>(Device->Arena, &m_sky_environment);
+        m_sky_hdri_mip_generation_pass        = ZPushStructCtorArgs<SkyEnvironmentMipGenerationPass>(Device->Arena, &m_sky_environment, "sky_environment_mip_generation", false);
+        m_sky_atmosphere_mip_generation_pass  = ZPushStructCtorArgs<SkyEnvironmentMipGenerationPass>(Device->Arena, &m_sky_environment, "sky_atmosphere_mip_generation", true);
+        m_sky_diffuse_irradiance_pass         = ZPushStructCtorArgs<SkyEnvironmentDiffuseIrradiancePass>(Device->Arena, &m_sky_environment);
+        m_sky_specular_prefilter_pass         = ZPushStructCtorArgs<SkyEnvironmentSpecularPrefilterPass>(Device->Arena, &m_sky_environment);
         m_lighting_pass->SetEnvironmentLighting(fallback_lighting, m_sky_environment.GetPresentationConfig());
         m_environment_background_pass->SetEnvironment(fallback_environment, m_sky_environment.GetPresentationConfig());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalVertex, rrm->GetGlobalVertexBuffer());

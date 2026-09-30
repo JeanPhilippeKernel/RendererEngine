@@ -128,17 +128,17 @@ namespace ZEngine
         if (!validated_asset_root.Succeeded())
         {
             ZENGINE_CORE_CRITICAL("Engine startup aborted: {}", validated_asset_root.Diagnostic)
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         auto& arena                          = memory->BootstrapArena;
 
-        g_engine_ctx                         = ZPushStructCtor(&arena, EngineContext);
+        g_engine_ctx                         = ZPushStructCtor<EngineContext>(&arena);
         const std::string engine_assets_path = validated_asset_root.Root.string();
         g_engine_ctx->EngineAssetsNativeRoot = ZPushString(&arena, engine_assets_path.size() + 1);
         ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(g_engine_ctx->EngineAssetsNativeRoot, engine_assets_path.size() + 1, engine_assets_path.c_str(), engine_assets_path.size() + 1) == Helpers::MEMORY_OP_SUCCESS, "Engine::Initialize: failed to persist engine asset root")
 
-        auto window = ZPushStructCtor(&arena, Windows::GameWindow);
+        auto window = ZPushStructCtor<Windows::GameWindow>(&arena);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
         window->Initialize(&arena, *window_cfg_ptr);
         g_engine_ctx->Window = window;
@@ -147,12 +147,12 @@ namespace ZEngine
         // swapchain state) must consume the declared VulkanDevice budget rather
         // than silently taking unbounded capacity from the bootstrap owner.
         memory->CreateBudgetedArena(memory->Budget.VulkanDevice, &g_engine_ctx->VulkanDeviceArena);
-        g_engine_ctx->Device         = ZPushStructCtor(&g_engine_ctx->VulkanDeviceArena, Hardwares::VulkanDevice);
+        g_engine_ctx->Device         = ZPushStructCtor<Hardwares::VulkanDevice>(&g_engine_ctx->VulkanDeviceArena);
         uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
         g_engine_ctx->Device->Initialize(&g_engine_ctx->VulkanDeviceArena, window, worker_thread_count);
 
         memory->CreateBudgetedArena(memory->Budget.VirtualFS, &g_engine_ctx->VFSArena);
-        auto vfs_ctx = ZPushStructCtor(&g_engine_ctx->VFSArena, Core::VFS::VFSContext);
+        auto vfs_ctx = ZPushStructCtor<Core::VFS::VFSContext>(&g_engine_ctx->VFSArena);
         vfs_ctx->Initialize(&g_engine_ctx->VFSArena);
         g_engine_ctx->VFS = vfs_ctx;
 
@@ -162,7 +162,7 @@ namespace ZEngine
             if (mount_path.Failed() || vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1).Failed())
             {
                 ZENGINE_CORE_CRITICAL("Engine startup aborted: failed to mount engine assets at /ZodiacEngine from {}", g_engine_ctx->EngineAssetsNativeRoot)
-                ZENGINE_EXIT_FAILURE()
+                ZENGINE_EXIT_FAILURE();
             }
 
             const bool has_writable_workspace = app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0' && app->VFSBackend && Core::VFS::HasCap(app->VFSBackend->Capabilities(), Core::VFS::VFSBackendCaps::Write);
@@ -190,20 +190,20 @@ namespace ZEngine
         Managers::AssetManager::Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->Device, app->WorkingSpacePath);
 
         memory->CreateBudgetedArena(memory->Budget.Input, &g_engine_ctx->InputArena);
-        g_engine_ctx->InputManager = ZPushStructCtor(&arena, Input::InputManager);
+        g_engine_ctx->InputManager = ZPushStructCtor<Input::InputManager>(&arena);
         g_engine_ctx->InputManager->Initialize(&g_engine_ctx->InputArena);
 
         memory->CreateBudgetedArena(memory->Budget.ECSScene, &g_engine_ctx->ECSArena);
-        g_engine_ctx->Scene = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::Scene);
+        g_engine_ctx->Scene = ZPushStructCtor<ECS::Scene>(&g_engine_ctx->ECSArena);
         g_engine_ctx->Scene->Initialize(&g_engine_ctx->ECSArena);
-        g_engine_ctx->ActorManager = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::ActorManager);
+        g_engine_ctx->ActorManager = ZPushStructCtor<ECS::ActorManager>(&g_engine_ctx->ECSArena);
         g_engine_ctx->ActorManager->Initialize(&g_engine_ctx->ECSArena, *g_engine_ctx->Scene);
-        g_engine_ctx->WorldCommands = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldCommands);
+        g_engine_ctx->WorldCommands = ZPushStructCtor<ECS::WorldCommands>(&g_engine_ctx->ECSArena);
         g_engine_ctx->WorldCommands->Initialize(&g_engine_ctx->ECSArena);
-        g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
+        g_engine_ctx->WorldTick = ZPushStructCtor<ECS::WorldTick>(&g_engine_ctx->ECSArena);
         g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
 
-        g_engine_ctx->SceneSchemas = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::SceneComponentSchemaRegistry);
+        g_engine_ctx->SceneSchemas = ZPushStructCtor<ECS::SceneComponentSchemaRegistry>(&g_engine_ctx->ECSArena);
         g_engine_ctx->SceneSchemas->Initialize(&g_engine_ctx->ECSArena);
         ZENGINE_VALIDATE_ASSERT(g_engine_ctx->SceneSchemas->IsInitialized(), "Engine::Initialize: scene schema registry could not be initialized")
         ZENGINE_VALIDATE_ASSERT(ECS::RegisterBuiltInSceneComponentSchemas(*g_engine_ctx->SceneSchemas), "Engine::Initialize: built-in scene codecs could not be registered")
@@ -220,7 +220,7 @@ namespace ZEngine
             memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadA, &g_engine_ctx->EditorSceneLoadArenaA);
         if (memory->Budget.EditorSceneLoadB.SizeBytes > 0)
             memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadB, &g_engine_ctx->EditorSceneLoadArenaB);
-        g_engine_ctx->ImportCoordinator = ZPushStructCtor(&g_engine_ctx->AssetArena, Importers::ImportCoordinator);
+        g_engine_ctx->ImportCoordinator = ZPushStructCtor<Importers::ImportCoordinator>(&g_engine_ctx->AssetArena);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
 
         g_engine_ctx->GltfImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
@@ -242,7 +242,7 @@ namespace ZEngine
         g_engine_ctx->Device->EnvironmentLightingMemoryBudget = ReadEnvironmentLightingMemoryBudget(app->ConfigFile);
 
         // RenderResourceManager — GPU lifetime authority, bridges asset layer and VulkanDevice
-        g_engine_ctx->RenderResourceManager                   = ZPushStructCtor(&g_engine_ctx->AssetArena, Rendering::RenderResourceManager);
+        g_engine_ctx->RenderResourceManager                   = ZPushStructCtor<Rendering::RenderResourceManager>(&g_engine_ctx->AssetArena);
         g_engine_ctx->RenderResourceManager->Initialize(g_engine_ctx->Device, Managers::AssetManager::Instance()->Registry, &g_engine_ctx->ImportPipelineArena);
         g_engine_ctx->Device->RRM = g_engine_ctx->RenderResourceManager;
 

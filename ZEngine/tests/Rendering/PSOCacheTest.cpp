@@ -92,7 +92,7 @@ namespace
         PSOCacheTestStorage()
         {
             Manager.Initialize(ZMega(16), {});
-            Cache = ZPushStructCtor(&Manager.MainArena, PSOCache);
+            Cache = ZPushStructCtor<PSOCache>(&Manager.MainArena);
         }
 
         ~PSOCacheTestStorage()
@@ -173,7 +173,7 @@ namespace
             if (DeviceArena && !PersistentValue && HasFlag(flags, VFSOpenFlags::Read) && path.Extension().Equals(".spv"))
             {
                 DeviceArena->CreateSubArena(ZKilo(4), &ShaderArena, "PSOCacheTest/Shader");
-                PersistentValue        = ZPushStruct(&ShaderArena, uint64_t);
+                PersistentValue        = ZPushStruct<uint64_t>(&ShaderArena);
                 *PersistentValue       = kPersistentValue;
                 ExpectedCurrentOffset  = DeviceArena->m_current_offset;
                 ExpectedPreviousOffset = DeviceArena->m_previous_offset;
@@ -214,9 +214,9 @@ protected:
     {
         Memory.Initialize(ZMega(64), {});
         Memory.MainArena.CreateSubArena(ZMega(4), &DeviceArena, "PSOCacheTest/Device");
-        Device        = ZPushStructCtor(&Memory.MainArena, ZEngine::Hardwares::VulkanDevice);
+        Device        = ZPushStructCtor<ZEngine::Hardwares::VulkanDevice>(&Memory.MainArena);
         Device->Arena = &DeviceArena;
-        Cache         = ZPushStructCtor(&Memory.MainArena, PSOCache);
+        Cache         = ZPushStructCtor<PSOCache>(&Memory.MainArena);
         PSOCacheTestAccess::SetDevice(*Cache, Device);
         Backend.Initialize(&Memory.MainArena);
         Context.Initialize(&Memory.MainArena, 4);

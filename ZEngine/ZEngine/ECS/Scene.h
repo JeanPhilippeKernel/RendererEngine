@@ -177,7 +177,7 @@ namespace ZEngine::ECS
             }
 
             // Arena-allocate the storage object
-            auto* storage = ZPushStructCtor(m_arena, ComponentStorage<T>);
+            auto* storage = ZPushStructCtor<ComponentStorage<T>>(m_arena);
             storage->Initialize(m_arena, EntityRegistry::MAX_ENTITIES);
             auto* iface = static_cast<IComponentStorage*>(storage);
             m_storages.insert(type_id, iface);

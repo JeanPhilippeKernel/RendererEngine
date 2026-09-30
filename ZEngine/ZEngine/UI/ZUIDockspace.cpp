@@ -9,7 +9,7 @@ namespace ZEngine::UI
 
     static ZUIDockNode* AllocNode(ZUIDockTree* tree)
     {
-        return ZPushStructCtor(tree->Arena, ZUIDockNode);
+        return ZPushStructCtor<ZUIDockNode>(tree->Arena);
     }
 
     static void AppendChild(ZUIDockNode* parent, ZUIDockNode* child)
@@ -96,7 +96,7 @@ namespace ZEngine::UI
 
     ZUIDockTree* ZUIDockTreeCreate(ArenaAllocator* persistent_arena)
     {
-        auto* tree              = ZPushStructCtor(persistent_arena, ZUIDockTree);
+        auto* tree              = ZPushStructCtor<ZUIDockTree>(persistent_arena);
         tree->Arena             = persistent_arena;
         tree->Root              = AllocNode(tree);
         tree->Root->PctOfParent = 1.f;

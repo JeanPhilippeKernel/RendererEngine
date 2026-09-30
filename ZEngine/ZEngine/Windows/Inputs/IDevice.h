@@ -32,7 +32,7 @@ namespace ZEngine::Windows::Inputs
                 return reinterpret_cast<T*>(it->second);
             }
 
-            IDevice* device = ZPushStructCtor(Arena, T);
+            IDevice* device = ZPushStructCtor<T>(Arena);
             auto     pair   = Devices.emplace(std::make_pair(type.name(), device));
             return reinterpret_cast<T*>(pair.first->second);
         }

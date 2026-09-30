@@ -185,12 +185,12 @@ namespace ZEngine::Core::VFS
         // Inline open-addressing visited set backed by scratch arena.
         uint32_t     visited_cap   = 256;
         uint32_t     visited_count = 0;
-        uuids::uuid* visited       = ZPushArray(scratch, uuids::uuid, visited_cap);
+        uuids::uuid* visited       = ZPushArray<uuids::uuid>(scratch, visited_cap);
         std::memset(visited, 0, visited_cap * sizeof(uuids::uuid));
 
         auto visited_rehash = [&]() {
             uint32_t     new_cap   = visited_cap * 2;
-            uuids::uuid* new_table = ZPushArray(scratch, uuids::uuid, new_cap);
+            uuids::uuid* new_table = ZPushArray<uuids::uuid>(scratch, new_cap);
             std::memset(new_table, 0, new_cap * sizeof(uuids::uuid));
             for (uint32_t i = 0; i < visited_cap; ++i)
             {

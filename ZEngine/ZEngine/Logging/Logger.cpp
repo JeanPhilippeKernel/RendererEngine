@@ -74,7 +74,7 @@ namespace ZEngine::Logging
             if (!dir_created)
             {
                 ZENGINE_CORE_CRITICAL("Failed to create log directory at : {}", log_directory_path.string())
-                ZENGINE_EXIT_FAILURE()
+                ZENGINE_EXIT_FAILURE();
             }
         }
 
