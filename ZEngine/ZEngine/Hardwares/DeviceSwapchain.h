@@ -90,6 +90,8 @@ namespace ZEngine::Hardwares
         Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
         Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
         Core::Containers::Array<VkImageLayout>                     SwapchainImageLayouts          = {};
+        // Fence from the accepted graphics submission that last rendered each
+        // swapchain image. Reset fences are never retained here.
         Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
         // Render-thread-owned snapshot of asynchronous GPU work relevant to the
@@ -132,6 +134,9 @@ namespace ZEngine::Hardwares
             Recreation = state;
         }
 #endif
+
+    private:
+        void ClearImageInFlightReferences(Rendering::Primitives::Fence* fence, uint32_t frame_index);
     };
     ZDEFINE_PTR(DeviceSwapchain);
 } // namespace ZEngine::Hardwares

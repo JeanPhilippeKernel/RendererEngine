@@ -395,6 +395,11 @@ namespace ZEngine::Hardwares
                 ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire frame-fence wait complete frame={}", frame.Index)
 #endif
         }
+
+        // A reset fence must not remain associated with any swapchain image.
+        // Besides the normal completed submission, this clears a stale reference
+        // left by an aborted frame before it can become an unsignaled self-wait.
+        ClearImageInFlightReferences(frame.Fence, frame.Index);
         frame.Fence->Reset();
         frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
 
@@ -428,12 +433,15 @@ namespace ZEngine::Hardwares
             return;
         }
 
-        if (ImageInFlights[image_idx] != nullptr && !ImageInFlights[image_idx]->IsSignaled())
+        auto* const image_fence              = ImageInFlights[image_idx];
+        const bool  current_frame_owns_image = image_fence == frame.Fence;
+        ZENGINE_VALIDATE_ASSERT(!current_frame_owns_image, "An acquired image cannot wait on the frame fence being reset")
+        if (!current_frame_owns_image && image_fence != nullptr && !image_fence->IsSignaled())
         {
 #ifndef NDEBUG
             trace_fence_wait("image", frame);
 #endif
-            ImageInFlights[image_idx]->Wait(UINT64_MAX);
+            image_fence->Wait(UINT64_MAX);
 #ifndef NDEBUG
             if (TraceSubmission)
                 ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire image-fence wait complete frame={} image={}", frame.Index, image_idx)
@@ -442,9 +450,8 @@ namespace ZEngine::Hardwares
 
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
-        ImageInFlights[image_idx] = frame.Fence;
-        frame.ImageIndex          = image_idx;
-        CurrentFrame              = &frame;
+        frame.ImageIndex = image_idx;
+        CurrentFrame     = &frame;
         // SUBOPTIMAL: image is valid; Present() schedules recreation after vkQueuePresentKHR.
     }
 
@@ -544,6 +551,8 @@ namespace ZEngine::Hardwares
             if (TraceSubmission)
                 ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-fence wait complete frame={}", CurrentFrame->Index)
 #endif
+            ClearImageInFlightReferences(CurrentFrame->Fence, CurrentFrame->Index);
+            CurrentFrame->Fence->Reset();
         }
 
         QueueView queue = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
@@ -671,6 +680,11 @@ namespace ZEngine::Hardwares
         }
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
 
+        // Associate an image only with a fence that Vulkan accepted for
+        // submission. Aborted frames therefore leave no unsignaled association.
+        CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
+        ImageInFlights[CurrentFrame->ImageIndex] = CurrentFrame->Fence;
+
 #ifndef NDEBUG
         if (TraceSubmission)
         {
@@ -688,7 +702,6 @@ namespace ZEngine::Hardwares
         ZReleaseScratch(scratch);
 
         Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
-        CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
 
         render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
 
@@ -740,5 +753,19 @@ namespace ZEngine::Hardwares
     {
         if (fn)
             RenderWorkSubmittedCallbacks.push({.Function = fn, .Cancel = cancel_fn, .Context = context});
+    }
+
+    void DeviceSwapchain::ClearImageInFlightReferences(Rendering::Primitives::Fence* fence, uint32_t frame_index)
+    {
+        for (uint32_t image_index = 0; image_index < ImageInFlights.size(); ++image_index)
+        {
+            if (ImageInFlights[image_index] != fence)
+                continue;
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] cleared frame-fence reference frame={} image={}", frame_index, image_index)
+#endif
+            ImageInFlights[image_index] = nullptr;
+        }
     }
 } // namespace ZEngine::Hardwares
