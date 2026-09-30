@@ -27,14 +27,14 @@ namespace ZEngine::Rendering::Shaders
         if (path_res.Failed())
         {
             ZENGINE_CORE_ERROR("====== Shader file : {} — invalid VFS path ======", filename)
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         auto file_res = vfs->Open(path_res.Value(), Core::VFS::VFSOpenFlags::Read);
         if (file_res.Failed())
         {
             ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename)
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         auto* file     = file_res.Value();
@@ -43,7 +43,7 @@ namespace ZEngine::Rendering::Shaders
         {
             vfs->Close(file);
             ZENGINE_CORE_ERROR("====== Shader file : {} cannot get size ======", filename)
-            ZENGINE_EXIT_FAILURE()
+            ZENGINE_EXIT_FAILURE();
         }
 
         const uint64_t byte_size = size_res.Value();

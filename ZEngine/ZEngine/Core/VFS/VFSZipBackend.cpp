@@ -302,7 +302,7 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
         }
-        VFSZipFile* file = ZConstruct(mem, VFSZipFile);
+        VFSZipFile* file = ZConstruct<VFSZipFile>(mem);
         file->Owner      = this;
         file->m_entry    = entry;
         file->m_backend  = this;

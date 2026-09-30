@@ -124,7 +124,7 @@ namespace ZEngine::Core::VFS
 
         std::lock_guard<std::mutex> lock(m_watch_mutex);
 
-        void*                       storage = ZAlloc(m_arena, sizeof(WatchEntry), ZAlignof(WatchEntry));
+        void*                       storage = ZAlloc(m_arena, sizeof(WatchEntry), ZAlignof<WatchEntry>());
         if (!storage)
         {
             CloseHandle(dir);

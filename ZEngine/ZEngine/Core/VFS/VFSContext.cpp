@@ -47,7 +47,7 @@ namespace ZEngine::Core::VFS
 
 #if defined(__APPLE__)
         {
-            void* storage = ZAlloc(m_arena, sizeof(VFSFSEventsWatcher), ZAlignof(VFSFSEventsWatcher));
+            void* storage = ZAlloc(m_arena, sizeof(VFSFSEventsWatcher), ZAlignof<VFSFSEventsWatcher>());
             if (!storage)
             {
                 ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSFSEventsWatcher");
@@ -65,7 +65,7 @@ namespace ZEngine::Core::VFS
         }
 #elif defined(__linux__)
         {
-            void* storage = ZAlloc(m_arena, sizeof(VFSInotifyWatcher), ZAlignof(VFSInotifyWatcher));
+            void* storage = ZAlloc(m_arena, sizeof(VFSInotifyWatcher), ZAlignof<VFSInotifyWatcher>());
             if (!storage)
             {
                 ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSInotifyWatcher");
@@ -83,7 +83,7 @@ namespace ZEngine::Core::VFS
         }
 #elif defined(_WIN32)
         {
-            void* storage = ZAlloc(m_arena, sizeof(VFSRDCWatcher), ZAlignof(VFSRDCWatcher));
+            void* storage = ZAlloc(m_arena, sizeof(VFSRDCWatcher), ZAlignof<VFSRDCWatcher>());
             if (!storage)
             {
                 ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSRDCWatcher");
@@ -104,7 +104,7 @@ namespace ZEngine::Core::VFS
         return;
 #endif
 
-        void* fw_storage = ZAlloc(m_arena, sizeof(VFSFileWatcher), ZAlignof(VFSFileWatcher));
+        void* fw_storage = ZAlloc(m_arena, sizeof(VFSFileWatcher), ZAlignof<VFSFileWatcher>());
         if (!fw_storage)
         {
             ZENGINE_LOG_VFS_ERR("InitWatcher: arena allocation failed for VFSFileWatcher");

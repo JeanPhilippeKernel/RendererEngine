@@ -212,8 +212,8 @@ namespace ZEngine::Rendering::Renderers
 
         // DFS walk (identical traversal order to old PreparePayload)
         // HOT PATH — runs every frame, no heap allocation allowed.
-        ZUIBox** nodes      = ZPushArray(&ctx->FrameArena, ZUIBox*, max_boxes);
-        ZUIBox** dfs_stack  = ZPushArray(&ctx->FrameArena, ZUIBox*, max_boxes);
+        ZUIBox** nodes      = ZPushArray<ZUIBox*>(&ctx->FrameArena, max_boxes);
+        ZUIBox** dfs_stack  = ZPushArray<ZUIBox*>(&ctx->FrameArena, max_boxes);
         uint32_t node_count = 0, stack_top = 0;
 
         dfs_stack[stack_top++] = ctx->Root;

@@ -24,7 +24,7 @@ namespace ZEngine::Input
         m_max_actions  = max_actions;
         m_action_count = 0;
 
-        m_actions      = ZPushArray(arena, InputAction, max_actions);
+        m_actions      = ZPushArray<InputAction>(arena, max_actions);
         memset(m_actions, 0, sizeof(InputAction) * max_actions);
         memset(m_scroll_scale, 0, sizeof(m_scroll_scale));
         m_current               = {};

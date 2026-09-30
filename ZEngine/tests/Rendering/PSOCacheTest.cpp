@@ -72,7 +72,7 @@ namespace
         PSOCacheTestStorage()
         {
             Manager.Initialize(ZMega(16), {});
-            Cache = ZPushStructCtor(&Manager.MainArena, PSOCache);
+            Cache = ZPushStructCtor<PSOCache>(&Manager.MainArena);
         }
 
         ~PSOCacheTestStorage()

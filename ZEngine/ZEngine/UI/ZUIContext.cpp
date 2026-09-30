@@ -14,7 +14,7 @@ namespace ZEngine::UI
         parent->CreateSubArena(FrameArenaBytes, &ctx->FrameArena, "UIContext/Frame");
         parent->CreateSubArena(PersistentArenaBytes, &ctx->PersistentArena, "UIContext/Persistent");
 
-        ctx->StateStore.Slots    = ZPushArray(&ctx->PersistentArena, ZUIPersistentSlot, StateCapacity);
+        ctx->StateStore.Slots    = ZPushArray<ZUIPersistentSlot>(&ctx->PersistentArena, StateCapacity);
         ctx->StateStore.Capacity = StateCapacity;
         ctx->StateStore.Count    = 0;
         ctx->MaxBoxesPerFrame    = MaxBoxesPerFrame;
@@ -200,7 +200,7 @@ namespace ZEngine::UI
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)
     {
-        ZUIBox* box = ZPushStructCtor(&ctx->FrameArena, ZUIBox);
+        ZUIBox* box = ZPushStructCtor<ZUIBox>(&ctx->FrameArena);
         ZENGINE_VALIDATE_ASSERT(box != nullptr, "ZUI FrameArena exhausted — increase FrameArenaBytes");
         box->Flags             = flags;
 

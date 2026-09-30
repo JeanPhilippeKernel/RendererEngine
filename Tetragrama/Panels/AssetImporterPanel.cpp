@@ -48,9 +48,9 @@ namespace Tetragrama::Panels
         import_arena->CreateSubArena(ZMega(64), &m_gltf_importer_arena, "ImportPipeline/EditorGltfImporter");
         import_arena->CreateSubArena(ZMega(128), &m_assimp_importer_arena, "ImportPipeline/EditorAssimpImporter");
 
-        m_gltf_importer   = ZPushStructCtor(import_arena, ZEngine::Importers::GltfImporter);
-        m_fbx_importer    = ZPushStructCtor(import_arena, ZEngine::Importers::FbxImporter);
-        m_assimp_importer = ZPushStructCtor(import_arena, ZEngine::Importers::AssimpImporter);
+        m_gltf_importer   = ZPushStructCtor<ZEngine::Importers::GltfImporter>(import_arena);
+        m_fbx_importer    = ZPushStructCtor<ZEngine::Importers::FbxImporter>(import_arena);
+        m_assimp_importer = ZPushStructCtor<ZEngine::Importers::AssimpImporter>(import_arena);
 
         m_gltf_importer->Initialize(&m_gltf_importer_arena);
         m_fbx_importer->Initialize(import_arena);
@@ -615,7 +615,7 @@ namespace Tetragrama::Panels
 
         m_local_arena.Clear();
 
-        auto*       config = ZPushStruct(&m_local_arena, ZEngine::Importers::AssetCodec::ImportConfiguration);
+        auto*       config = ZPushStruct<ZEngine::Importers::AssetCodec::ImportConfiguration>(&m_local_arena);
         const auto& cfg    = *app->Configuration;
         config->OutputWorkingSpacePath.init(&m_local_arena, cfg.WorkingSpacePath.c_str());
         config->OutputTextureFilesPath.init(&m_local_arena, cfg.TexturePath.c_str());

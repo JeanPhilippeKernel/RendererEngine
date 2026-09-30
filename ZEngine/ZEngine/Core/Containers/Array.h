@@ -284,7 +284,7 @@ namespace ZEngine::Core::Containers
             if (m_slab)
                 m_data = static_cast<pointer>(m_slab->Realloc(m_data, new_alloc_size));
             else
-                m_data = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof(value_type)));
+                m_data = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof<value_type>()));
 
             m_capacity = new_capacity;
         }

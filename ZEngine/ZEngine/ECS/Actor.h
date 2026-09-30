@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/ECS/EntityID.h>
 #include <ZEngine/ECS/Scene.h>
+#include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::ECS
 {
@@ -9,6 +10,7 @@ namespace ZEngine::ECS
     class Actor
     {
     public:
+        Actor()          = default;
         virtual ~Actor() = default;
 
         [[nodiscard]] EntityID GetEntityID() const
@@ -66,9 +68,6 @@ namespace ZEngine::ECS
         virtual void OnCreate() {}
         virtual void OnDestroy() {}
         virtual void OnTick(float dt) {}
-
-    protected:
-        Actor() = default;
 
     private:
         friend class ActorManager;

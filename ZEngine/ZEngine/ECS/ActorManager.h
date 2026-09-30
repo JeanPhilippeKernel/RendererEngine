@@ -28,7 +28,7 @@ namespace ZEngine::ECS
 
             ZENGINE_VALIDATE_ASSERT(m_arena != nullptr, "ActorManager::Create: not initialized")
 
-            T* actor           = ZPushStructCtor(m_arena, T);
+            T* actor           = ZPushStructCtor<T>(m_arena);
             actor->m_entity_id = m_scene->CreateEntity();
             actor->m_scene     = m_scene;
 

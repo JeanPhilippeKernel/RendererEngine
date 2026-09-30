@@ -116,7 +116,7 @@ TEST(MaterialSystemTest, PrewarmReportsMissingAndRejectedRecipeProviders)
     const PassContext context[]         = {PassContext::Lit};
     MemoryManager     manager           = {};
     manager.Initialize(ZMega(16), {});
-    auto*                 cache  = ZPushStructCtor(&manager.MainArena, ZEngine::Rendering::Renderers::Pipelines::PSOCache);
+    auto*                 cache  = ZPushStructCtor<ZEngine::Rendering::Renderers::Pipelines::PSOCache>(&manager.MainArena);
 
     MaterialPrewarmResult result = system.PrewarmForMaterials({&material, 1}, {context, 1}, *cache, {});
     EXPECT_EQ(result.CandidateCount, 1u);

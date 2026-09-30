@@ -52,7 +52,7 @@ namespace ZEngine::UI
         uint32_t new_cap = dl->VtxCapacity ? dl->VtxCapacity * 2 : 4096;
         while (new_cap < dl->VtxCount + needed)
             new_cap *= 2;
-        ZUIDrawVtx* nb = ZPushArray(arena, ZUIDrawVtx, new_cap);
+        ZUIDrawVtx* nb = ZPushArray<ZUIDrawVtx>(arena, new_cap);
         if (dl->Vtx)
             memcpy(nb, dl->Vtx, dl->VtxCount * sizeof(ZUIDrawVtx));
         dl->Vtx         = nb;
@@ -66,7 +66,7 @@ namespace ZEngine::UI
         uint32_t new_cap = dl->IdxCapacity ? dl->IdxCapacity * 2 : 8192;
         while (new_cap < dl->IdxCount + needed)
             new_cap *= 2;
-        uint16_t* nb = ZPushArray(arena, uint16_t, new_cap);
+        uint16_t* nb = ZPushArray<uint16_t>(arena, new_cap);
         if (dl->Idx)
             memcpy(nb, dl->Idx, dl->IdxCount * sizeof(uint16_t));
         dl->Idx         = nb;
@@ -80,8 +80,8 @@ namespace ZEngine::UI
         uint32_t new_cap = dl->PathCap ? dl->PathCap * 2 : 256;
         while (new_cap < dl->PathCount + needed)
             new_cap *= 2;
-        float* nx = ZPushArray(arena, float, new_cap);
-        float* ny = ZPushArray(arena, float, new_cap);
+        float* nx = ZPushArray<float>(arena, new_cap);
+        float* ny = ZPushArray<float>(arena, new_cap);
         if (dl->PathX)
         {
             memcpy(nx, dl->PathX, dl->PathCount * sizeof(float));
@@ -104,13 +104,13 @@ namespace ZEngine::UI
         s_Arena         = frame_arena;
         dl->VtxCapacity = vtx_cap;
         dl->IdxCapacity = idx_cap;
-        dl->Vtx         = vtx_cap ? ZPushArray(frame_arena, ZUIDrawVtx, vtx_cap) : nullptr;
-        dl->Idx         = idx_cap ? ZPushArray(frame_arena, uint16_t, idx_cap) : nullptr;
+        dl->Vtx         = vtx_cap ? ZPushArray<ZUIDrawVtx>(frame_arena, vtx_cap) : nullptr;
+        dl->Idx         = idx_cap ? ZPushArray<uint16_t>(frame_arena, idx_cap) : nullptr;
         dl->CmdCapacity = 512;
-        dl->Cmds        = ZPushArray(frame_arena, ZUIDrawListCmd, dl->CmdCapacity);
+        dl->Cmds        = ZPushArray<ZUIDrawListCmd>(frame_arena, dl->CmdCapacity);
         dl->PathCap     = 256;
-        dl->PathX       = ZPushArray(frame_arena, float, dl->PathCap);
-        dl->PathY       = ZPushArray(frame_arena, float, dl->PathCap);
+        dl->PathX       = ZPushArray<float>(frame_arena, dl->PathCap);
+        dl->PathY       = ZPushArray<float>(frame_arena, dl->PathCap);
         dl->WhiteU      = white_u;
         dl->WhiteV      = white_v;
         dl->AtlasTexIdx = atlas_idx;

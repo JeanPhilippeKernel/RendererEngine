@@ -1340,7 +1340,7 @@ namespace ZEngine::UI
         ctx->TableRowBox     = nullptr;
 
         // Allocate per-column widths in FrameArena
-        ctx->TableColWidths  = ZPushArray(&ctx->FrameArena, float, columns);
+        ctx->TableColWidths  = ZPushArray<float>(&ctx->FrameArena, columns);
         for (int i = 0; i < columns; ++i)
             ctx->TableColWidths[i] = widths ? widths[i] : 0.f;
 
@@ -3316,7 +3316,7 @@ namespace ZEngine::UI
         }
 
         // Copy values to FrameArena so they survive until PreparePayload
-        float* data = ZPushArray(&ctx->FrameArena, float, (uint32_t) count);
+        float* data = ZPushArray<float>(&ctx->FrameArena, (uint32_t) count);
         for (int i = 0; i < count; ++i)
             data[i] = values[i];
 
@@ -3663,7 +3663,7 @@ namespace ZEngine::UI
         // sum changes when the panel resizes. Compare with the last stored total
         // and scale all stored widths by the same ratio to keep user resize ratios.
         static constexpr uint64_t kTotalWSuffix = 0x544F54574944ULL;
-        ctx->DT_ColWidths                       = ZPushArray(&ctx->FrameArena, float, col_count);
+        ctx->DT_ColWidths                       = ZPushArray<float>(&ctx->FrameArena, col_count);
 
         float total_init                        = 0.f;
         for (int i = 0; i < col_count; ++i)
@@ -3728,7 +3728,7 @@ namespace ZEngine::UI
         // Store cols in FrameArena for HeadersRow
         if (cols)
         {
-            auto* copy = ZPushArray(&ctx->FrameArena, ZUIDataTableColumn, col_count);
+            auto* copy = ZPushArray<ZUIDataTableColumn>(&ctx->FrameArena, col_count);
             for (int i = 0; i < col_count; ++i)
                 copy[i] = cols[i];
             ctx->DT_Cols = copy;
