@@ -24,6 +24,7 @@
 // Forward declaration for the test-only helper that accesses RRM private members.
 struct RRMTestHelper;
 struct RRMDecodeTestHelper;
+struct RRMUploadBatchTestHelper;
 
 namespace ZEngine::Hardwares
 {
@@ -561,9 +562,8 @@ namespace ZEngine::Rendering
         void                    BeginBatchUpload(uint8_t frame_index);
         void                    EndBatchUpload();
 
-        /// @brief Open the batch if not already open this frame. Idempotent — every join
-        ///        point (mesh uploads, hot-reload swaps, UpdateBuffer staging, builtin
-        ///        registration) calls this before recording so only the first one opens it.
+        /// @brief Reuse this slot's open batch, or submit the previous slot's batch
+        ///        before opening a new one. Every upload joins through this method.
         void                    EnsureBatchOpen(uint8_t frame_index);
 
         /// @brief Free frame-index batch stagings once m_batch_timeline reaches LastSignal.
@@ -598,6 +598,7 @@ namespace ZEngine::Rendering
         friend class GeometryStreamingManager;
         friend struct ::RRMTestHelper; // test-only — grants slot state access to streaming manager tests
         friend struct ::RRMDecodeTestHelper;
+        friend struct ::RRMUploadBatchTestHelper;
 
         Hardwares::VulkanDevice*                                                   m_device                                       = nullptr;
         Core::VFS::AssetRegistry*                                                  m_registry                                     = nullptr;

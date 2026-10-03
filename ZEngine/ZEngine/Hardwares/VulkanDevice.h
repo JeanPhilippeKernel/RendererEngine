@@ -1,6 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.h>
 
+struct RRMUploadBatchTestHelper;
+
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
     struct IPipeline;
@@ -477,6 +479,7 @@ namespace ZEngine::Hardwares
 
     private:
         friend struct CommandBuffer;
+        friend struct ::RRMUploadBatchTestHelper;
 
         VulkanLayer                                                       m_layer     = {};
         Core::Containers::UnorderedHashMap<Rendering::QueueType, VkQueue> m_queue_map = {};

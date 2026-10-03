@@ -1,10 +1,13 @@
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerConfiguration.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <gtest/gtest.h>
 #include <array>
 #include <filesystem>
+#include <memory>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Logging;
@@ -64,11 +67,15 @@ namespace
             device_extension_count = 1;
 #endif
 
-            VkDeviceCreateInfo device_info      = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-            device_info.queueCreateInfoCount    = 1;
-            device_info.pQueueCreateInfos       = &queue_info;
-            device_info.enabledExtensionCount   = device_extension_count;
-            device_info.ppEnabledExtensionNames = device_extension_count > 0 ? device_extensions : nullptr;
+            VkDeviceCreateInfo device_info              = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+            device_info.queueCreateInfoCount            = 1;
+            device_info.pQueueCreateInfos               = &queue_info;
+            device_info.enabledExtensionCount           = device_extension_count;
+            device_info.ppEnabledExtensionNames         = device_extension_count > 0 ? device_extensions : nullptr;
+
+            VkPhysicalDeviceVulkan13Features features13 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, .synchronization2 = VK_TRUE};
+            VkPhysicalDeviceVulkan12Features features12 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &features13, .timelineSemaphore = VK_TRUE};
+            device_info.pNext                           = &features12;
 
             return vkCreateDevice(PhysicalDevice, &device_info, nullptr, &Device) == VK_SUCCESS;
         }
@@ -300,4 +307,182 @@ TEST_F(GpuAllocatorTest, StagingRingSharesDeclaredPool)
     EXPECT_GE(stats.allocationCount, 2u); // the ring's own buffer + this one-shot buffer
 
     allocator().FreeBuffer(one_shot);
+}
+
+// Reuse the headless Vulkan fixture to exercise real upload submissions without
+// creating a window, swapchain images, or the rest of the resource manager.
+struct RRMUploadBatchTestHelper
+{
+    static void Initialize(ZEngine::Rendering::RenderResourceManager& manager, ZEngine::Hardwares::VulkanDevice& device, ZEngine::Hardwares::CommandBufferManager& commands, ZEngine::Rendering::Primitives::Semaphore* timeline, ArenaAllocator& arena, VkQueue queue)
+    {
+        device.m_queue_map.init(&arena, 2);
+        device.m_queue_map.insert(ZEngine::Rendering::QueueType::GRAPHIC_QUEUE, queue);
+        manager.m_device         = &device;
+        manager.m_upload_cmd_mgr = &commands;
+        manager.m_batch_timeline = timeline;
+        manager.m_batch_frames.init(&arena, 3, 3);
+        for (auto& frame : manager.m_batch_frames)
+            frame = {};
+    }
+
+    static void Append(ZEngine::Rendering::RenderResourceManager& manager, BufferView& target, uint8_t frame_index, uint32_t value, VkDeviceSize offset)
+    {
+        manager.EnsureBatchOpen(frame_index);
+        manager.AppendToGlobalBuffer(target, &value, sizeof(value), offset, frame_index);
+    }
+
+    static bool IsOpen(const ZEngine::Rendering::RenderResourceManager& manager)
+    {
+        return manager.m_batch_mode;
+    }
+
+    static uint32_t StagingCount(const ZEngine::Rendering::RenderResourceManager& manager, uint32_t frame_index)
+    {
+        return manager.m_batch_frames[frame_index].StagingCount;
+    }
+
+    static uint64_t LastSignal(const ZEngine::Rendering::RenderResourceManager& manager, uint32_t frame_index)
+    {
+        return manager.m_batch_frames[frame_index].LastSignal;
+    }
+};
+
+class RenderResourceManagerBatchTest : public GpuAllocatorTest
+{
+protected:
+    MemoryManager                                                     Memory{};
+    std::unique_ptr<ZEngine::Hardwares::VulkanDevice>                 Device  = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    std::unique_ptr<ZEngine::Rendering::RenderResourceManager>        Manager = std::make_unique<ZEngine::Rendering::RenderResourceManager>();
+    ZEngine::Hardwares::DeviceSwapchain                               Swapchain{};
+    ZEngine::Hardwares::CommandBufferManager                          UploadCommands{};
+    std::array<std::unique_ptr<ZEngine::Hardwares::CommandBuffer>, 3> Commands{};
+    std::unique_ptr<ZEngine::Rendering::Primitives::Semaphore>        Timeline{};
+    VkCommandPool                                                     Pool = VK_NULL_HANDLE;
+    BufferView                                                        Target{};
+    bool                                                              Initialized = false;
+
+    void                                                              SetUp() override
+    {
+        ASSERT_NE(s_allocator, nullptr);
+        Memory.Initialize(ZMega(4), {});
+        auto& arena                = Memory.MainArena;
+        Device->Arena              = &arena;
+        Device->LogicalDevice      = s_vk->Device;
+        Device->GraphicFamilyIndex = 0;
+        Device->SwapchainPtr       = &Swapchain;
+        Device->GpuMem.Allocator   = s_allocator->Allocator;
+
+        VkQueue queue              = VK_NULL_HANDLE;
+        vkGetDeviceQueue(s_vk->Device, 0, 0, &queue);
+        VkCommandPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, .queueFamilyIndex = 0};
+        ASSERT_EQ(vkCreateCommandPool(s_vk->Device, &pool_info, nullptr, &Pool), VK_SUCCESS);
+        UploadCommands.Device           = Device.get();
+        UploadCommands.TotalThreadCount = 1;
+        const uint32_t stride           = UploadCommands.MaxBufferPerPool * UploadCommands.MaxBufferPerPool;
+        UploadCommands.InstantGraphicsCommandBuffers.init(&arena, 3 * stride, 3 * stride);
+        for (uint32_t frame = 0; frame < Commands.size(); ++frame)
+        {
+            Commands[frame]                                              = std::make_unique<ZEngine::Hardwares::CommandBuffer>(Device.get(), Pool, ZEngine::Rendering::QueueType::GRAPHIC_QUEUE, true);
+            UploadCommands.InstantGraphicsCommandBuffers[frame * stride] = Commands[frame].get();
+        }
+        Timeline = std::make_unique<ZEngine::Rendering::Primitives::Semaphore>(Device.get(), true);
+        RRMUploadBatchTestHelper::Initialize(*Manager, *Device, UploadCommands, Timeline.get(), arena, queue);
+        Target      = allocator().AllocateBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "batch_test_target");
+        Initialized = true;
+    }
+
+    void TearDown() override
+    {
+        if (Initialized)
+        {
+            Manager->EndFrame();
+            vkDeviceWaitIdle(s_vk->Device);
+            Manager->BeginFrame(0); // Retire all submitted staging allocations.
+            allocator().FreeBuffer(Target);
+        }
+        for (auto& command : Commands)
+            command.reset();
+        Timeline.reset();
+        if (Device->LogicalDevice)
+            Device->PendingFree.Drain(&Device->GpuMem, Device->LogicalDevice, UINT64_MAX);
+        if (Pool)
+            vkDestroyCommandPool(s_vk->Device, Pool, nullptr);
+    }
+
+    void Append(uint8_t frame, uint32_t value, VkDeviceSize offset = 0)
+    {
+        RRMUploadBatchTestHelper::Append(*Manager, Target, frame, value, offset);
+    }
+
+    uint32_t Read(uint64_t signal_value, VkDeviceSize offset = 0)
+    {
+        Timeline->Wait(signal_value);
+        uint32_t value = 0;
+        EXPECT_EQ(vmaCopyAllocationToMemory(allocator().Allocator, Target.Allocation, offset, &value, sizeof(value)), VK_SUCCESS);
+        return value;
+    }
+};
+
+TEST_F(RenderResourceManagerBatchTest, StartupResizeSubmitsInitializationBeforeSwitchingSlots)
+{
+    Append(0, 42);
+    Manager->BeginFrame(1); // First acquired slot changes after startup recreation.
+    ASSERT_FALSE(RRMUploadBatchTestHelper::IsOpen(*Manager));
+    EXPECT_EQ(RRMUploadBatchTestHelper::LastSignal(*Manager, 0), 1u);
+
+    ZEngine::Hardwares::AsyncGPUOperationHandle operation{};
+    ASSERT_TRUE(Device->AsyncGPUOperations.pop(operation));
+    EXPECT_EQ(operation.Timeline, Timeline.get());
+    EXPECT_EQ(operation.SignalValue, 1u);
+    EXPECT_EQ(operation.StageFlags, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+
+    Append(1, 99, sizeof(uint32_t));
+    Manager->EndFrame();
+    EXPECT_EQ(RRMUploadBatchTestHelper::LastSignal(*Manager, 1), 2u);
+    EXPECT_EQ(Read(2), 42u);
+    EXPECT_EQ(Read(2, sizeof(uint32_t)), 99u);
+}
+
+TEST_F(RenderResourceManagerBatchTest, SameSlotInitializationJoinsTheFirstFrame)
+{
+    Append(0, 42);
+    Manager->BeginFrame(0);
+    EXPECT_TRUE(RRMUploadBatchTestHelper::IsOpen(*Manager));
+    EXPECT_EQ(RRMUploadBatchTestHelper::StagingCount(*Manager, 0), 1u);
+    EXPECT_EQ(RRMUploadBatchTestHelper::LastSignal(*Manager, 0), 0u);
+
+    Append(0, 99, sizeof(uint32_t));
+    Manager->EndFrame();
+    EXPECT_EQ(RRMUploadBatchTestHelper::LastSignal(*Manager, 0), 1u);
+    EXPECT_EQ(Read(1), 42u);
+    EXPECT_EQ(Read(1, sizeof(uint32_t)), 99u);
+}
+
+TEST_F(RenderResourceManagerBatchTest, UploadJoinSubmitsThePreviousSlotsBatch)
+{
+    Append(0, 42);
+    Append(2, 99, sizeof(uint32_t));
+    EXPECT_EQ(RRMUploadBatchTestHelper::LastSignal(*Manager, 0), 1u);
+    EXPECT_EQ(RRMUploadBatchTestHelper::StagingCount(*Manager, 2), 1u);
+    Manager->EndFrame();
+    EXPECT_EQ(RRMUploadBatchTestHelper::LastSignal(*Manager, 2), 2u);
+    EXPECT_EQ(Read(2), 42u);
+    EXPECT_EQ(Read(2, sizeof(uint32_t)), 99u);
+}
+
+TEST_F(RenderResourceManagerBatchTest, PreviousSignalNeverRetiresAnOpenBatchsStaging)
+{
+    Append(0, 42);
+    Manager->EndFrame();
+    EXPECT_EQ(Read(1), 42u);
+    Manager->BeginFrame(0);
+    EXPECT_EQ(RRMUploadBatchTestHelper::StagingCount(*Manager, 0), 0u);
+
+    Append(0, 99);
+    Manager->BeginFrame(0); // LastSignal=1 is complete, but the new copy is not submitted.
+    ASSERT_EQ(RRMUploadBatchTestHelper::StagingCount(*Manager, 0), 1u);
+    Manager->EndFrame();
+    EXPECT_EQ(Read(2), 99u);
+    Manager->BeginFrame(2);
+    EXPECT_EQ(RRMUploadBatchTestHelper::StagingCount(*Manager, 0), 0u);
 }

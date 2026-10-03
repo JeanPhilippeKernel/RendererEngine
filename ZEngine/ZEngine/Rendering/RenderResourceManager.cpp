@@ -317,6 +317,11 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::BeginFrame(uint32_t frame_index)
     {
+        // Initialization may leave a builtin-geometry batch open for slot 0.
+        // A resize or skipped acquire can make the first rendered slot different.
+        // Submit its copies before changing slots or retiring their staging data.
+        if (m_batch_mode && m_batch_frame_index != frame_index)
+            EndBatchUpload();
         m_active_frame_index = static_cast<uint8_t>(frame_index);
         RetireBatchStagings();
         DispatchQueuedTextureDecodes();
@@ -556,8 +561,8 @@ namespace ZEngine::Rendering
         ZENGINE_VALIDATE_ASSERT(m_builtin_idx_cursor + idx_bytes <= BUILTIN_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: builtin index buffer out of space")
 
         // Called pre-render-thread (single-threaded init) — the batch this opens stays
-        // open until the first real frame's RRM::EndFrame, where any mesh uploads from
-        // that frame join it too. Builtin data goes into the pinned builtin buffers, not
+        // open until the first real frame joins it or submits it before switching
+        // frame slots. Builtin data goes into the pinned builtin buffers, not
         // the streaming global buffers, so a ResetGeometryBuffers never corrupts it.
         EnsureBatchOpen(static_cast<uint8_t>(m_active_frame_index));
         AppendToGlobalBuffer(m_builtin_vertex_buf, vtx_data, vtx_bytes, m_builtin_vtx_cursor, m_active_frame_index);
@@ -656,6 +661,9 @@ namespace ZEngine::Rendering
 
         for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
         {
+            // LastSignal covers the previous submission, not newly recorded copies.
+            if (m_batch_mode && i == m_batch_frame_index)
+                continue;
             BatchFrameState& frame = m_batch_frames[i];
             if (frame.StagingCount == 0)
                 continue;
@@ -670,6 +678,8 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::EnsureBatchOpen(uint8_t frame_index)
     {
+        if (m_batch_mode && m_batch_frame_index != frame_index)
+            EndBatchUpload();
         if (!m_batch_mode)
             BeginBatchUpload(frame_index);
     }
