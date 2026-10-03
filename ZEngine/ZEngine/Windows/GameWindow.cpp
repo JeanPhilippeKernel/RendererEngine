@@ -168,13 +168,12 @@ namespace ZEngine::Windows
 #endif
         }
 
-        int window_width = 0, window_height = 0;
-        glfwGetWindowSize(m_native_window, &window_width, &window_height);
-        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
-        {
-            m_property.SetWidth(window_width);
-            m_property.SetHeight(window_height);
-        }
+        // GetWidth/GetHeight describe physical framebuffer pixels, including before
+        // the first resize callback (Retina and Wayland can already be scaled).
+        int framebuffer_width = 0, framebuffer_height = 0;
+        glfwGetFramebufferSize(m_native_window, &framebuffer_width, &framebuffer_height);
+        m_property.SetWidth(static_cast<uint32_t>(framebuffer_width));
+        m_property.SetHeight(static_cast<uint32_t>(framebuffer_height));
 
         uint32_t     count                  = 0;
         const char** extensions_layer_names = glfwGetRequiredInstanceExtensions(&count);

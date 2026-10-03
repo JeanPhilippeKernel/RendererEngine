@@ -12,6 +12,8 @@ TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapsh
     first.ResizeSequence           = 1;
     first.RenderTargetW            = 1280;
     first.RenderTargetH            = 720;
+    first.FramebufferW             = 1500;
+    first.FramebufferH             = 800;
     first.SkyRevision              = 4;
     first.Sky.EnvironmentIntensity = 1.0f;
     pipeline.PublishFrameState(first);
@@ -21,6 +23,8 @@ TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapsh
     latest.ResizeSequence           = 2;
     latest.RenderTargetW            = 1920;
     latest.RenderTargetH            = 1080;
+    latest.FramebufferW             = 2478;
+    latest.FramebufferH             = 1514;
     latest.SkyRevision              = 5;
     latest.Sky.EnvironmentIntensity = 2.0f;
     pipeline.PublishFrameState(latest);
@@ -31,6 +35,8 @@ TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapsh
     EXPECT_EQ(read.ResizeSequence, 2u);
     EXPECT_EQ(read.RenderTargetW, 1920u);
     EXPECT_EQ(read.RenderTargetH, 1080u);
+    EXPECT_EQ(read.FramebufferW, 2478u);
+    EXPECT_EQ(read.FramebufferH, 1514u);
     EXPECT_EQ(read.SkyRevision, 5u);
     EXPECT_FLOAT_EQ(read.Sky.EnvironmentIntensity, 2.0f);
 }

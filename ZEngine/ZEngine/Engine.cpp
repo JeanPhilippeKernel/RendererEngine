@@ -373,7 +373,13 @@ namespace ZEngine
             static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->Tick();
 
             if (window->IsMinimized())
+            {
+                // Publish a zero-size snapshot so the render thread pauses too;
+                // retaining the last visible extent is not sufficient on Wayland.
+                g_engine_ctx->App->RenderPipeline->PublishFrameState({});
+                frame_cap.WaitForFrameBudget();
                 continue;
+            }
 
             //  Measure raw delta
             float raw_dt = frame_timer.End();
@@ -443,6 +449,8 @@ namespace ZEngine
 
             Applications::RenderFrameState state = {};
             g_engine_ctx->App->PrepareScene(state);
+            state.FramebufferW = window->GetWidth();
+            state.FramebufferH = window->GetHeight();
             if (state.Scene)
             {
                 // Scene mutation happens on this thread. Send an immutable
@@ -491,7 +499,7 @@ namespace ZEngine
 
         while (true)
         {
-            if (g_engine_ctx->RequestTerminate.value.load(std::memory_order_acquire))
+            if (g_engine_ctx->RequestTerminate.value.load(std::memory_order_acquire) || g_engine_ctx->CloseRequested.value.load(std::memory_order_acquire))
             {
                 break;
             }
@@ -531,6 +539,7 @@ namespace ZEngine
                 applied_resize_sequence = state.ResizeSequence;
             }
 
+            pipeline->Device->SwapchainPtr->UpdateFramebufferExtent(state.FramebufferW, state.FramebufferH);
             const bool frame_valid = pipeline->BeginFrame();
             if (frame_valid && state.Scene)
             {
@@ -538,6 +547,8 @@ namespace ZEngine
                 pipeline->RenderScene(state.Camera, state.Scene, state.Sky, state.CelestialLight, state.SkyRevision, overlay);
             }
             pipeline->EndFrame();
+            if (!frame_valid)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
             // Update SmoothedDeltaTime with the render thread's smoothed frame time.
             // End() is called after EndFrame() so the vsync wait is included in the sample.

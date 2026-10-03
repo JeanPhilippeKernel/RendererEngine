@@ -133,6 +133,8 @@ namespace ZEngine::Applications
         auto swapchain = Device->SwapchainPtr;
 
         swapchain->AcquireNextImage(CurrentFrameContextIndex);
+        if (!swapchain->IsFrameValid())
+            return false;
 
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
@@ -161,6 +163,11 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::EndFrame()
     {
+        if (!Device->SwapchainPtr->IsFrameValid())
+        {
+            Device->SwapchainPtr->Present();
+            return;
+        }
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
 
@@ -320,6 +327,9 @@ namespace ZEngine::Applications
     {
         if (ZUICtx)
         {
+            const uint32_t previous_screen_w = ZUICtx->ScreenW;
+            const uint32_t previous_screen_h = ZUICtx->ScreenH;
+            const float    previous_scale    = ZUICtx->UIScale;
             // ZUI uses DPI-independent coordinates.  The render pass projects them into
             // the physical swapchain, while input is converted to the same UI space.
             if (Device->CurrentWindow)
@@ -364,9 +374,9 @@ namespace ZEngine::Applications
                 ZUICtx->UIScale                 = (float) fb_w / (float) ZUICtx->ScreenW;
                 ZUICtx->InputScale[0]           = (float) ZUICtx->ScreenW / (float) win_w;
                 ZUICtx->InputScale[1]           = (float) ZUICtx->ScreenH / (float) win_h;
-                if (!ZUICtx->UIScaleLogged)
+                if (!ZUICtx->UIScaleLogged || previous_screen_w != ZUICtx->ScreenW || previous_screen_h != ZUICtx->ScreenH || previous_scale != ZUICtx->UIScale)
                 {
-                    ZENGINE_CORE_INFO("[ZUI] UIScale={:.2f} Screen={}x{} ContentScale={:.2f} InputScale={:.2f}x{:.2f}", ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, content_scale, ZUICtx->InputScale[0], ZUICtx->InputScale[1]);
+                    ZENGINE_CORE_INFO("[ZUI] UIScale={:.2f} Screen={}x{} Window={}x{} Framebuffer={}x{} ContentScale={:.2f} InputScale={:.2f}x{:.2f}", ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, win_w, win_h, fb_w, fb_h, content_scale, ZUICtx->InputScale[0], ZUICtx->InputScale[1]);
                     ZUICtx->UIScaleLogged = true;
                 }
             }

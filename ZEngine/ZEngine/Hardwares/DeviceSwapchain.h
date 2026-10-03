@@ -13,8 +13,8 @@ namespace ZEngine::Hardwares
     struct VulkanDevice;
 
     // None: normal. Pending: recreate at start of next AcquireNextImage (set by
-    // SUBOPTIMAL/OOD at present or zero-size surface). FrameAborted: OOD at acquire —
-    // semaphore not signalled, no GPU work submitted, BeginFrame returns false.
+    // framebuffer resize, SUBOPTIMAL at acquire/present, OOD at present or zero-size
+    // surface). FrameAborted: failed acquire — no image, no GPU work submitted.
     enum class RecreationState : uint8_t
     {
         None         = 0,
@@ -57,6 +57,10 @@ namespace ZEngine::Hardwares
 
     struct DeviceSwapchain
     {
+        // Leave the render thread able to consume resize/minimize/close requests
+        // even when the compositor stops making presentation progress.
+        static constexpr uint64_t                                  ImageAcquireTimeoutNs          = 100'000'000;
+
         Core::Memory::ArenaAllocator                               Arena                          = {};
         VulkanDevice*                                              Device                         = nullptr;
         RecreationState                                            Recreation                     = RecreationState::None;
@@ -69,6 +73,8 @@ namespace ZEngine::Hardwares
 
         uint32_t                                                   SwapchainImageWidth            = std::numeric_limits<uint32_t>::max();
         uint32_t                                                   SwapchainImageHeight           = std::numeric_limits<uint32_t>::max();
+        // Render-thread-owned copy of the main thread's physical framebuffer size.
+        VkExtent2D                                                 FramebufferExtent              = {};
         uint32_t                                                   FrameContextOffset             = 0;
         uint32_t                                                   FrameContextPoolSize           = 0;
         const uint32_t                                             FrameContextPoolSizeFactor     = 4;
@@ -105,25 +111,29 @@ namespace ZEngine::Hardwares
         // beginning of every frame and set only for a traced graph submission.
         bool                                                       TraceSubmission                = false;
 
-        // Returns false when the frame was aborted (OUT_OF_DATE at acquire or
+        // Returns false when no image was acquired (timeout, failed acquire, or
         // zero-size surface). Callers must skip all rendering work for that frame.
         bool                                                       IsFrameValid() const
         {
             return Recreation != RecreationState::FrameAborted && CurrentFrame != nullptr && CurrentFrame->ImageIndex != std::numeric_limits<uint32_t>::max();
         }
 
-        void Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
-        void Create();
-        void Clear();
-        void Dispose();
+        void              Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
+        void              UpdateFramebufferExtent(uint32_t width, uint32_t height);
+        static VkExtent2D ResolveExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D framebuffer_extent);
+        void              Create();
+        void              Clear();
+        void              Dispose();
 
-        void AcquireNextImage(uint32_t frame_context_idx);
-        void CollectAsyncGPUOperations();
+        void              AcquireNextImage(uint32_t frame_context_idx);
+        /// @brief Updates the frame's acquired-image state; only success/suboptimal have an image.
+        bool              ApplyAcquireResult(FrameContext& frame, VkResult result, uint32_t image_index);
+        void              CollectAsyncGPUOperations();
         /// @brief Delivers `fn` after this frame's graphics work has been accepted by Vulkan.
         /// @details The caller owns `context` until delivery or cancellation. `cancel_fn`
         /// releases any CPU-side frame state when the graphics submission is rejected.
-        void EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context, RenderWorkCancelledFn cancel_fn = nullptr);
-        void Present();
+        void              EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context, RenderWorkCancelledFn cancel_fn = nullptr);
+        void              Present();
 
 #if !defined(NDEBUG)
         // Test-only: inject a recreation state without going through the Vulkan

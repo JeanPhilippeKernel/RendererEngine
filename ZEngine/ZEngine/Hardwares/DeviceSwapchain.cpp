@@ -1,4 +1,5 @@
 
+#include <ZEngine/Engine.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
@@ -6,6 +7,7 @@
 #include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <algorithm>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Rendering;
@@ -19,6 +21,7 @@ namespace ZEngine::Hardwares
         device->Arena->CreateSubArena(ZMega(3), &Arena, "VulkanDevice/Swapchain");
 
         Device                                                           = device;
+        FramebufferExtent                                                = {Device->CurrentWindow->GetWidth(), Device->CurrentWindow->GetHeight()};
 
         BufferredFrameCount                                              = buffered_frame_size;
         FrameContextPoolSize                                             = BufferredFrameCount * FrameContextPoolSizeFactor;
@@ -53,25 +56,42 @@ namespace ZEngine::Hardwares
         Create();
     }
 
+    void DeviceSwapchain::UpdateFramebufferExtent(uint32_t width, uint32_t height)
+    {
+        if (FramebufferExtent.width == width && FramebufferExtent.height == height)
+            return;
+
+        FramebufferExtent = {width, height};
+        // Wayland may keep returning VK_SUCCESS after a resize, so do not rely
+        // exclusively on OUT_OF_DATE/SUBOPTIMAL to recreate the swapchain.
+        Recreation        = RecreationState::Pending;
+    }
+
+    VkExtent2D DeviceSwapchain::ResolveExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D framebuffer_extent)
+    {
+        if (framebuffer_extent.width == 0 || framebuffer_extent.height == 0)
+            return {};
+        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+            return capabilities.currentExtent;
+
+        return {
+            std::clamp(framebuffer_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+            std::clamp(framebuffer_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
+        };
+    }
+
     void DeviceSwapchain::Create()
     {
         VkSurfaceCapabilitiesKHR capabilities{};
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Device->PhysicalDevice, Device->Surface, &capabilities);
-        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-        {
-            SwapchainImageWidth  = capabilities.currentExtent.width;
-            SwapchainImageHeight = capabilities.currentExtent.height;
-        }
-        else
-        {
-            // Surface does not report a concrete extent (Wayland, headless) — ask the window.
-            SwapchainImageWidth  = Device->CurrentWindow->GetWidth();
-            SwapchainImageHeight = Device->CurrentWindow->GetHeight();
-        }
+        const VkExtent2D extent = ResolveExtent(capabilities, FramebufferExtent);
+        SwapchainImageWidth     = extent.width;
+        SwapchainImageHeight    = extent.height;
 
         // {0,0} extent is a spec violation; destroy stale swapchain and retry next frame.
         if (SwapchainImageWidth == 0 || SwapchainImageHeight == 0)
         {
+            Recreation = RecreationState::Pending;
             if (SwapchainHandle != VK_NULL_HANDLE)
             {
                 vkDestroySwapchainKHR(Device->LogicalDevice, SwapchainHandle, nullptr);
@@ -185,6 +205,8 @@ namespace ZEngine::Hardwares
         if (previous_image_count != SwapchainImageCount)
             ++SwapchainImageCountChangeCount;
 
+        ZENGINE_CORE_INFO("Swapchain created: {}x{} (framebuffer={}x{})", SwapchainImageWidth, SwapchainImageHeight, FramebufferExtent.width, FramebufferExtent.height)
+
         if (old_swapchain != VK_NULL_HANDLE)
         {
             ZENGINE_DESTROY_VULKAN_HANDLE(Device->LogicalDevice, vkDestroySwapchainKHR, old_swapchain, nullptr)
@@ -255,6 +277,14 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::AcquireNextImage(uint32_t frame_context_idx)
     {
+        // Do not reset fences or command pools while a minimized/zero-size
+        // window cannot acquire an image. Restore recreates through the normal path.
+        if (FramebufferExtent.width == 0 || FramebufferExtent.height == 0)
+        {
+            CurrentFrame = nullptr;
+            Recreation   = RecreationState::Pending;
+            return;
+        }
 #ifndef NDEBUG
         auto trace_fence_wait = [this](cstring reason, const FrameContext& frame) {
             if (!TraceSubmission)
@@ -408,30 +438,23 @@ namespace ZEngine::Hardwares
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire call frame={} semaphore={}", frame.Index, static_cast<const void*>(frame.Acquired->GetHandle()))
 #endif
-        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
+        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, ImageAcquireTimeoutNs, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
 #ifndef NDEBUG
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire returned frame={} result={} image={}", frame.Index, static_cast<int32_t>(acquire_image_result), image_idx)
 #endif
+        if (!ApplyAcquireResult(frame, acquire_image_result, image_idx))
+        {
+            // Timeout/not-ready signal no semaphore and need no recreation. The
+            // next render-loop iteration can consume a resize/minimize/close request.
+            if (acquire_image_result != VK_TIMEOUT && acquire_image_result != VK_NOT_READY && acquire_image_result != VK_ERROR_OUT_OF_DATE_KHR && !Device->CheckDeviceLost(acquire_image_result, "AcquireNextImage"))
+            {
+                ZENGINE_CORE_ERROR("vkAcquireNextImageKHR did not yield a valid image: result={} image={} image_count={}", static_cast<int32_t>(acquire_image_result), image_idx, SwapchainImageCount)
+                Engine::RequestClose();
+            }
+            return;
+        }
         frame.Acquired->SetState(Primitives::SemaphoreState::Submitted);
-        Device->TickMemory();
-
-        if (acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            // Semaphore not signalled (spec) — image_idx invalid, skip all GPU work.
-            frame.ImageIndex = std::numeric_limits<uint32_t>::max();
-            CurrentFrame     = &frame;
-            Recreation       = RecreationState::FrameAborted;
-            return;
-        }
-
-        if (Device->CheckDeviceLost(acquire_image_result, "AcquireNextImage"))
-        {
-            frame.ImageIndex = std::numeric_limits<uint32_t>::max();
-            CurrentFrame     = &frame;
-            Recreation       = RecreationState::FrameAborted;
-            return;
-        }
 
         auto* const image_fence              = ImageInFlights[image_idx];
         const bool  current_frame_owns_image = image_fence == frame.Fence;
@@ -449,10 +472,26 @@ namespace ZEngine::Hardwares
         }
 
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        // Tick only after a valid acquisition and the image fence wait. On a
+        // failed acquire (especially DEVICE_LOST), no further Vulkan work is safe.
+        Device->TickMemory();
+    }
 
-        frame.ImageIndex = image_idx;
+    bool DeviceSwapchain::ApplyAcquireResult(FrameContext& frame, VkResult result, uint32_t image_index)
+    {
         CurrentFrame     = &frame;
-        // SUBOPTIMAL: image is valid; Present() schedules recreation after vkQueuePresentKHR.
+        frame.ImageIndex = std::numeric_limits<uint32_t>::max();
+        if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) && image_index < SwapchainImageCount)
+        {
+            frame.ImageIndex = image_index;
+            if (result == VK_SUBOPTIMAL_KHR)
+                Recreation = RecreationState::Pending;
+            return true;
+        }
+
+        if (result != VK_TIMEOUT && result != VK_NOT_READY)
+            Recreation = RecreationState::FrameAborted;
+        return false;
     }
 
     void DeviceSwapchain::CollectAsyncGPUOperations()
@@ -476,9 +515,9 @@ namespace ZEngine::Hardwares
             RenderWorkSubmittedCallbacks.clear();
         };
 
-        if (Recreation == RecreationState::FrameAborted)
+        if (!IsFrameValid())
         {
-            // OOD at acquire: semaphore not signalled, no GPU work submitted.
+            // Failed/zero-size acquire: no GPU work was recorded for this frame.
             IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
             discard_submission_callbacks();
