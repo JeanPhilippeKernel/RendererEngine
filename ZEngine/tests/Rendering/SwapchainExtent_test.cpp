@@ -3,6 +3,7 @@
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <gtest/gtest.h>
 #include <limits>
+#include <memory>
 
 using namespace ZEngine::Hardwares;
 
@@ -109,14 +110,15 @@ TEST(SwapchainExtentTest, UnchangedExtentDoesNotClearAnAbortedAcquire)
 
 TEST(SwapchainExtentTest, InvalidFrameSkipsRecordingAndPresentation)
 {
-    VulkanDevice                             device{};
+    // Device-owned queues exceed the default 1 MB Windows stack.
+    auto                                     device = std::make_unique<VulkanDevice>();
     CommandBufferManager                     command_buffers{};
     DeviceSwapchain                          swapchain{};
     ZEngine::Applications::AppRenderPipeline pipeline{};
-    device.CommandBufferMgr = &command_buffers;
-    device.SwapchainPtr     = &swapchain;
-    swapchain.Device        = &device;
-    pipeline.Device         = &device;
+    device->CommandBufferMgr = &command_buffers;
+    device->SwapchainPtr     = &swapchain;
+    swapchain.Device         = device.get();
+    pipeline.Device          = device.get();
 
     // A zero-size framebuffer must not dereference GPU resources, including
     // command pools, the render timeline, or CurrentCmdBuf.
@@ -199,14 +201,14 @@ TEST(SwapchainExtentTest, TimeoutSkipsGpuSubmissionAndCancelsPendingCallbacks)
 {
     ZEngine::Core::Memory::MemoryManager memory{};
     memory.Initialize(ZMega(4ULL), {});
-    VulkanDevice                             device{};
+    auto                                     device = std::make_unique<VulkanDevice>();
     CommandBufferManager                     command_buffers{};
     DeviceSwapchain                          swapchain{};
     ZEngine::Applications::AppRenderPipeline pipeline{};
-    device.CommandBufferMgr = &command_buffers;
-    device.SwapchainPtr     = &swapchain;
-    swapchain.Device        = &device;
-    pipeline.Device         = &device;
+    device->CommandBufferMgr = &command_buffers;
+    device->SwapchainPtr     = &swapchain;
+    swapchain.Device         = device.get();
+    pipeline.Device          = device.get();
     swapchain.RenderWorkSubmittedCallbacks.init(&memory.MainArena, 1);
     uint32_t cancelled = 0;
     swapchain.EnqueueRenderWorkSubmittedCallback([](void*, ZEngine::Rendering::Primitives::Semaphore*, uint64_t) { ADD_FAILURE() << "A timeout must not submit GPU work"; }, &cancelled, [](void* context) { ++*static_cast<uint32_t*>(context); });
