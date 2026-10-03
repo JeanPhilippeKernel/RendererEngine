@@ -97,6 +97,10 @@ namespace ZEngine::Importers::AssetCodec
 
     AssetImporterOutput        SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
 
+    /// @brief Atomically publishes a file through the VFS using a temporary sibling and rename.
+    /// @details Use for generated project assets so file watchers never observe a partially written file.
+    Core::VFS::VFSResult<void> WriteFileAtomically(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, Core::Containers::ArrayView<const uint8_t> data);
+
     [[nodiscard]] uint32_t     GetEnvironmentMapFullMipCount(uint32_t face_size);
     [[nodiscard]] bool         IsEnvironmentMapFileHeaderValid(const EnvironmentMapFileHeader& header);
     [[nodiscard]] bool         DoesEnvironmentMapHeaderMatchSource(const EnvironmentMapFileHeader& header, uint64_t source_hash);

@@ -35,7 +35,7 @@ jobs:
       run: sudo apt-get update
 
     - name: Install Dependencies
-      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libdbus-1-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev cmake apt-transport-https software-properties-common gcc g++ powershell clang-format-22 glslang-tools libwayland-dev libxkbcommon-dev
+      run: sudo apt-get install libasound2-dev libgl1-mesa-dev libpulse-dev libdbus-1-dev libglib2.0-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev cmake apt-transport-https software-properties-common gcc g++ powershell clang-format-22 glslang-tools libwayland-dev libxkbcommon-dev pkg-config
 
     - name: CMake Build
       run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}}

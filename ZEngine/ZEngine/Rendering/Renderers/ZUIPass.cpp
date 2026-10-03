@@ -5,7 +5,9 @@
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/UI/ZUIFont.h>
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 
 using namespace ZEngine::Core::Memory;
@@ -14,6 +16,29 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
+    static_assert(offsetof(ZUIDrawPushConstant, FbScale) == 16);
+    static_assert(offsetof(ZUIDrawPushConstant, TexIdx) == 24);
+    static_assert(sizeof(ZUIDrawPushConstant) == 28);
+
+    VkRect2D ZUIRenderPayload::GetScissorRect(const UI::ZUIDrawListCmd& cmd, VkExtent2D render_extent) const
+    {
+        if (!(Scale[0] > 0.f) || !(Scale[1] > 0.f) || !(cmd.ClipW > 0.f) || !(cmd.ClipH > 0.f))
+            return {};
+
+        const float scale_x = 0.5f * (float) render_extent.width * Scale[0];
+        const float scale_y = 0.5f * (float) render_extent.height * Scale[1];
+        // Round outward and clamp both endpoints before converting to unsigned
+        // extents. This also handles partially off-screen and empty clip regions.
+        const float x0      = std::clamp(floorf(cmd.ClipX * scale_x), 0.f, (float) render_extent.width);
+        const float y0      = std::clamp(floorf(cmd.ClipY * scale_y), 0.f, (float) render_extent.height);
+        const float x1      = std::clamp(ceilf((cmd.ClipX + cmd.ClipW) * scale_x), x0, (float) render_extent.width);
+        const float y1      = std::clamp(ceilf((cmd.ClipY + cmd.ClipH) * scale_y), y0, (float) render_extent.height);
+        return {
+            {        (int32_t) x0,         (int32_t) y0},
+            {(uint32_t) (x1 - x0), (uint32_t) (y1 - y0)}
+        };
+    }
+
     // Initialize / Deinitialize
 
     void ZUIPass::Initialize(Hardwares::VulkanDevicePtr device)
@@ -142,14 +167,13 @@ namespace ZEngine::Rendering::Renderers
         const uint32_t kMaxIdx   = 131072;
         const uint32_t max_boxes = ctx->MaxBoxesPerFrame;
 
-        float          fb_w      = ctx->ScreenW > 0 ? (float) ctx->ScreenW : (float) Device->SwapchainPtr->SwapchainImageWidth;
-        float          fb_h      = ctx->ScreenH > 0 ? (float) ctx->ScreenH : (float) Device->SwapchainPtr->SwapchainImageHeight;
+        const float    screen_w  = ctx->ScreenW > 0 ? (float) ctx->ScreenW : 1.f;
+        const float    screen_h  = ctx->ScreenH > 0 ? (float) ctx->ScreenH : 1.f;
 
-        out->Scale[0]            = 2.f / fb_w;
-        out->Scale[1]            = 2.f / fb_h;
+        out->Scale[0]            = 2.f / screen_w;
+        out->Scale[1]            = 2.f / screen_h;
         out->Translate[0]        = -1.f;
         out->Translate[1]        = -1.f;
-        out->FramebufferScale    = ctx->UIScale > 0.f ? ctx->UIScale : 1.f;
 
         uint32_t atlas_idx       = ctx->Atlas ? static_cast<uint32_t>(ctx->Atlas->Handle.Index) : 0;
         float    wu              = ctx->Atlas ? ctx->Atlas->WhiteU : 0.f;
@@ -157,7 +181,7 @@ namespace ZEngine::Rendering::Renderers
 
         // Init draw list into payload_arena
         ZUIDrawListInit(&ctx->DrawList, payload_arena, kMaxVtx, kMaxIdx, wu, wv, atlas_idx);
-        ZUIDrawListPushClipRect(&ctx->DrawList, 0.f, 0.f, fb_w, fb_h, false);
+        ZUIDrawListPushClipRect(&ctx->DrawList, 0.f, 0.f, screen_w, screen_h, false);
 
         // Helpers
 
@@ -797,13 +821,20 @@ namespace ZEngine::Rendering::Renderers
         const uint32_t          frame_index = device->SwapchainPtr->CurrentFrame->Index;
         const uint32_t          fi          = frame_index % FRAMES_IN_FLIGHT;
         {
-            auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
-            command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+            auto*            gp            = static_cast<RenderPasses::GraphicPass*>(pass);
+            const VkExtent2D render_extent = {gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight()};
+            command_buffer->SetViewport(render_extent.width, render_extent.height);
             command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindVertexBuffer(VtxBHandles[fi]);
             command_buffer->BindIndexBuffer(IdxBHandles[fi], VK_INDEX_TYPE_UINT16);
 
-            float fs = payload.FramebufferScale;
+            ZUIDrawPushConstant pc = {};
+            pc.Scale[0]            = payload.Scale[0];
+            pc.Scale[1]            = payload.Scale[1];
+            pc.Translate[0]        = payload.Translate[0];
+            pc.Translate[1]        = payload.Translate[1];
+            pc.FbScale[0]          = 0.5f * (float) render_extent.width * payload.Scale[0];
+            pc.FbScale[1]          = 0.5f * (float) render_extent.height * payload.Scale[1];
 
             for (uint32_t i = 0; i < payload.CmdCount; ++i)
             {
@@ -818,16 +849,11 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
 
-                // Logical → physical pixel scissor
-                command_buffer->SetScissor((uint32_t) (cmd.ClipW * fs), (uint32_t) (cmd.ClipH * fs), (int32_t) (cmd.ClipX * fs), (int32_t) (cmd.ClipY * fs));
-
-                ZUIDrawPushConstant pc = {};
-                pc.Scale[0]            = payload.Scale[0];
-                pc.Scale[1]            = payload.Scale[1];
-                pc.Translate[0]        = payload.Translate[0];
-                pc.Translate[1]        = payload.Translate[1];
-                pc.TexIdx              = cmd.TexIdx;
-                pc.FbScale             = payload.FramebufferScale;
+                const VkRect2D scissor = payload.GetScissorRect(cmd, render_extent);
+                if (scissor.extent.width == 0 || scissor.extent.height == 0)
+                    continue;
+                command_buffer->SetScissor(scissor.extent.width, scissor.extent.height, scissor.offset.x, scissor.offset.y);
+                pc.TexIdx = cmd.TexIdx;
 
                 command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ZUIDrawPushConstant), &pc);
                 command_buffer->BindDescriptorSets(frame_index);

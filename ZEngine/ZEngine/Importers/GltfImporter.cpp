@@ -624,9 +624,14 @@ namespace ZEngine::Importers
         // Extract texture image bytes to disk and record project-relative paths
         if (config.Options.ImportTextures && config.Options.ImportMaterials)
         {
-            char dest_dir_buf[MAX_FILE_PATH_COUNT] = {};
-            (ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dest_dir_buf, sizeof(dest_dir_buf));
-            config.VFS->CreateDir(ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str());
+            auto texture_dir = ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str();
+            auto create_dir  = config.VFS->CreateDir(texture_dir);
+            if (create_dir.Failed() && create_dir.Error() != ZEngine::Core::VFS::VFSError::AlreadyExists)
+            {
+                if (on_error)
+                    on_error(context, "Unable to create the texture output directory");
+                return;
+            }
 
             // Pre-resolve base pointers for every buffer — for a GLB all images share
             // buffer 0 (the binary chunk). Resolving once avoids repeated get_if per texture.
@@ -767,19 +772,17 @@ namespace ZEngine::Importers
                     snprintf(stem_buf, sizeof(stem_buf), "tex_%zu", tex_idx);
                 }
 
-                char out_path_buf[MAX_FILE_PATH_COUNT] = {};
-                snprintf(out_path_buf, sizeof(out_path_buf), "%s/%s%s", dest_dir_buf, stem_buf, ext);
-
-                // fwrite is faster than std::ofstream for plain binary blobs
-                if (FILE* f = fopen(out_path_buf, "wb"))
+                char output_name[sizeof(stem_buf) + 5] = {};
+                snprintf(output_name, sizeof(output_name), "%s%s", stem_buf, ext);
+                auto output_path = texture_dir / output_name;
+                if (AssetCodec::WriteFileAtomically(*config.VFS, output_path, {bytes, nbytes}).Succeeded())
                 {
-                    fwrite(bytes, 1, nbytes, f);
-                    fclose(f);
-                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", out_path_buf, nbytes)
-
-                    char rel_buf[MAX_FILE_PATH_COUNT] = {};
-                    snprintf(rel_buf, sizeof(rel_buf), "%s/%s/%s%s", config.OutputTextureFilesPath.c_str(), config.AssetName.c_str(), stem_buf, ext);
-                    textures[tex_idx].Path.init(&scratch, rel_buf);
+                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", output_path.CStr(), nbytes)
+                    textures[tex_idx].Path.init(&scratch, output_path.CStr());
+                }
+                else
+                {
+                    ZENGINE_LOG_ASSET_WARN("GltfImporter: unable to write extracted texture '{}'", output_path.CStr())
                 }
             }
 

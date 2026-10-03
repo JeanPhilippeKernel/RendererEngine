@@ -79,7 +79,7 @@ namespace ZEngine::Logging
         }
 
         spdlog::init_thread_pool(8192, 2);
-        spdlog::flush_every(std::chrono::duration_cast<std::chrono::seconds>(configuration.PeriodicFlush));
+        spdlog::flush_every(configuration.PeriodicFlush);
         spdlog::flush_on(spdlog::level::critical);
 
         s_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>((log_directory_path / configuration.LogFilename).string(), 1024 * 1024, 5, false);

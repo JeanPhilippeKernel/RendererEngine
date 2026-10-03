@@ -185,7 +185,32 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     target_compile_definitions(zEngineLib PUBLIC NOMINMAX GLFW_EXPOSE_NATIVE_WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(zEngineLib PUBLIC stdc++fs dl)
-    target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_WAYLAND)
+    # GLFW 3.5 includes both backends and selects the active session at runtime.
+    # The file-dialog layer needs both native window types for correct parenting.
+    target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_X11 GLFW_EXPOSE_NATIVE_WAYLAND)
+
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+    pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
+    target_link_libraries(zEngineLib PRIVATE PkgConfig::GIO PkgConfig::WAYLAND_CLIENT)
+
+    set(ZENGINE_XDG_FOREIGN_PROTOCOL ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/xdg-foreign-unstable-v2.xml)
+    set(ZENGINE_XDG_FOREIGN_HEADER ${CMAKE_CURRENT_BINARY_DIR}/xdg-foreign-unstable-v2-client-protocol.h)
+    set(ZENGINE_XDG_FOREIGN_CODE ${CMAKE_CURRENT_BINARY_DIR}/xdg-foreign-unstable-v2-client-protocol.c)
+
+    find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner REQUIRED)
+    add_custom_command(
+        OUTPUT ${ZENGINE_XDG_FOREIGN_HEADER} ${ZENGINE_XDG_FOREIGN_CODE}
+        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header ${ZENGINE_XDG_FOREIGN_PROTOCOL} ${ZENGINE_XDG_FOREIGN_HEADER}
+        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} private-code ${ZENGINE_XDG_FOREIGN_PROTOCOL} ${ZENGINE_XDG_FOREIGN_CODE}
+        DEPENDS ${ZENGINE_XDG_FOREIGN_PROTOCOL}
+        VERBATIM
+    )
+    target_sources(zEngineLib PRIVATE
+        ${ZENGINE_XDG_FOREIGN_HEADER}
+        ${ZENGINE_XDG_FOREIGN_CODE}
+    )
+    target_include_directories(zEngineLib PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(zEngineLib PRIVATE "-lobjc" "-framework AppKit" "-framework CoreGraphics" "-framework CoreServices")
     target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_COCOA)
