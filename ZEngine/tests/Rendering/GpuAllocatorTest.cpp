@@ -322,7 +322,7 @@ struct RRMUploadBatchTestHelper
         manager.m_batch_timeline = timeline;
         manager.m_batch_frames.init(&arena, 3, 3);
         for (auto& frame : manager.m_batch_frames)
-            frame = {};
+            frame = ZEngine::Rendering::RenderResourceManager::BatchFrameState{};
     }
 
     static void Append(ZEngine::Rendering::RenderResourceManager& manager, BufferView& target, uint8_t frame_index, uint32_t value, VkDeviceSize offset)
