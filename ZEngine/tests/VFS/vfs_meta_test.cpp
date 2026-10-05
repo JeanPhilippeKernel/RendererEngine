@@ -1,9 +1,9 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
-#include <ZEngine/Importers/AssetCodec.h>
 #include <gtest/gtest.h>
 #include <cstring>
 
@@ -65,8 +65,9 @@ protected:
 TEST_F(MetaFileIOTest, MetaPathForAppendsMetaSuffix)
 {
     VFSPath asset = P("/project/textures/diffuse.png");
-    VFSPath meta  = MetaFileIO::MetaPathFor(asset);
-    EXPECT_STREQ(meta.CStr(), "/project/textures/diffuse.png.meta");
+    auto    meta  = MetaFileIO::MetaPathFor(asset);
+    ASSERT_TRUE(meta.Succeeded());
+    EXPECT_STREQ(meta.Value().CStr(), "/project/textures/diffuse.png.meta");
 }
 
 // Test 2 — Read returns Fail when file does not exist
@@ -83,6 +84,29 @@ TEST_F(MetaFileIOTest, MalformedJSONReturnsError)
     auto result = MetaFileIO::Read(m_ctx, P("/x.glb"));
     EXPECT_TRUE(result.Failed());
     EXPECT_EQ(result.Error(), VFSError::Corrupted);
+}
+
+TEST_F(MetaFileIOTest, InvalidIdentitiesAreCorruptAndGetOrCreateRepairsThem)
+{
+    for (const auto* document : {"{}", "{\"uuid\":42}", "{\"uuid\":\"invalid\"}", "{\"uuid\":\"00000000-0000-0000-0000-000000000000\"}"})
+    {
+        SCOPED_TRACE(document);
+        WriteRaw("/x.glb.meta", document);
+        EXPECT_EQ(MetaFileIO::Read(m_ctx, P("/x.glb")).Error(), VFSError::Corrupted);
+        auto repaired = MetaFileIO::GetOrCreate(m_ctx, P("/x.glb"), "Test", 0);
+        ASSERT_TRUE(repaired.Succeeded());
+        EXPECT_FALSE(repaired.Value().AssetUUID.is_nil());
+        EXPECT_EQ(repaired.Value().Status, ImportStatus::New);
+        auto persisted = MetaFileIO::Read(m_ctx, P("/x.glb"));
+        ASSERT_TRUE(persisted.Succeeded());
+        EXPECT_EQ(persisted.Value().AssetUUID, repaired.Value().AssetUUID);
+    }
+}
+
+TEST_F(MetaFileIOTest, WritingNilIdentityIsRejected)
+{
+    EXPECT_EQ(MetaFileIO::Write(m_ctx, P("/x.glb"), {}).Error(), VFSError::Corrupted);
+    EXPECT_FALSE(FileExists("/x.glb.meta"));
 }
 
 // Test 4 — Round-trip: Write then Read returns identical data
@@ -120,7 +144,7 @@ TEST_F(MetaFileIOTest, StatusNotSerialised)
     d.Status    = ImportStatus::Stale;
     ASSERT_TRUE(MetaFileIO::Write(m_ctx, P("/x.glb"), d).Succeeded());
 
-    auto open = m_ctx.Open(MetaFileIO::MetaPathFor(P("/x.glb")), VFSOpenFlags::Read);
+    auto open = m_ctx.Open(MetaFileIO::MetaPathFor(P("/x.glb")).Value(), VFSOpenFlags::Read);
     ASSERT_TRUE(open.Succeeded());
     auto*   file      = open.Value();
     uint8_t raw[4096] = {};
@@ -178,7 +202,7 @@ TEST_F(MetaFileIOTest, GetOrCreateChangedHashReturnsStale)
 TEST_F(MetaFileIOTest, AtomicWritePublishesDestinationWithoutTemporaryFile)
 {
     constexpr char content[] = "texture-bytes";
-    ASSERT_TRUE(ZEngine::Importers::AssetCodec::WriteFileAtomically(m_ctx, P("/generated/diffuse.png"), Bytes(content, sizeof(content) - 1)).Succeeded());
+    ASSERT_TRUE(WriteFileAtomically(m_ctx, P("/generated/diffuse.png"), Bytes(content, sizeof(content) - 1)).Succeeded());
 
     EXPECT_TRUE(FileExists("/generated/diffuse.png"));
     EXPECT_FALSE(FileExists("/generated/diffuse.png.tmp"));
@@ -239,4 +263,26 @@ TEST_F(MetaFileIOTest, SettingsCountCappedAtMax)
     auto result = MetaFileIO::Read(m_ctx, P("/x.glb"));
     ASSERT_TRUE(result.Succeeded());
     EXPECT_EQ(result.Value().SettingsCount, META_MAX_SETTINGS);
+}
+
+TEST_F(MetaFileIOTest, SidecarPathBoundaryNeverOverwritesTheAsset)
+{
+    const std::string longest = "/" + std::string(MAX_FILE_PATH_COUNT - 2 - std::string_view(".meta").size(), 'x');
+    auto              sidecar = MetaFileIO::MetaPathFor(P(longest.c_str()));
+    ASSERT_TRUE(sidecar.Succeeded());
+    EXPECT_EQ(sidecar.Value().Length(), MAX_FILE_PATH_COUNT - 1);
+    const auto invalid = longest + "x";
+    WriteRaw(invalid.c_str(), "original asset bytes");
+    MetaFileData data;
+    EXPECT_EQ(MetaFileIO::Write(m_ctx, P(invalid.c_str()), data).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(MetaFileIO::Read(m_ctx, P(invalid.c_str())).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(MetaFileIO::GetOrCreate(m_ctx, P(invalid.c_str()), "Test", 0).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(MetaFileIO::MetaPathFor(VFSPath{}).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(MetaFileIO::MetaPathFor(VFSPath::Root()).Error(), VFSError::InvalidPath);
+    auto file = m_ctx.Open(P(invalid.c_str()), VFSOpenFlags::Read);
+    ASSERT_TRUE(file.Succeeded());
+    uint8_t bytes[32] = {};
+    ASSERT_TRUE(file.Value()->ReadAll({bytes, sizeof(bytes) - 1}).Succeeded());
+    m_ctx.Close(file.Value());
+    EXPECT_STREQ(reinterpret_cast<const char*>(bytes), "original asset bytes");
 }

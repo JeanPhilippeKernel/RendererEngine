@@ -3,6 +3,7 @@
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <mutex>
 
 namespace ZEngine::Importers
 {
@@ -18,6 +19,6 @@ namespace ZEngine::Importers
         void                         ImportFile(const char* filename, const AssetCodec::ImportConfiguration& config, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log);
 
     private:
-        void CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config);
+        std::mutex m_import_mutex;
     };
 } // namespace ZEngine::Importers

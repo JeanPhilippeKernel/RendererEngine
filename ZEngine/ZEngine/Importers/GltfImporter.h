@@ -3,13 +3,14 @@
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <mutex>
 #include <string_view>
 
 namespace ZEngine::Importers
 {
     // Handles GLB and GLTF import via fastgltf.
-    // Stateless across concurrent imports — each Import() call carves a scratch
-    // sub-arena from the importer's own Arena for intermediate geometry data.
+    // Shared scratch is serialized across runtime and editor imports to preserve
+    // the bounded arena budget without allowing one import to rewind another.
     class GltfImporter : public IAssetImporter
     {
     public:
@@ -25,5 +26,8 @@ namespace ZEngine::Importers
         void                         ImportFile(const char* filename, const AssetCodec::ImportConfiguration& config, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log);
 
         Core::Memory::ArenaAllocator Arena = {};
+
+    private:
+        std::mutex m_import_mutex;
     };
 } // namespace ZEngine::Importers

@@ -1,4 +1,3 @@
-#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/FbxImporter.h>
@@ -7,8 +6,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <fmt/format.h>
 #include <ufbx.h>
-#include <filesystem>
-#include <fstream>
+#include <algorithm>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -18,8 +16,6 @@ using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
 using namespace ZEngine::Importers;
 using namespace uuids;
-
-namespace fs = std::filesystem;
 
 namespace ZEngine::Importers
 {
@@ -55,8 +51,9 @@ namespace ZEngine::Importers
 
     Core::VFS::VFSResult<void> FbxImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {
-        char        native[MAX_FILE_PATH_COUNT] = {};
-        const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        std::lock_guard import_lock(m_import_mutex);
+        char            native[MAX_FILE_PATH_COUNT] = {};
+        const char*     working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (working_space && working_space[0] != '\0')
             path.ResolveNative(working_space, native, sizeof(native));
         else
@@ -216,6 +213,14 @@ namespace ZEngine::Importers
 
     void FbxImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
+        std::lock_guard import_lock(m_import_mutex);
+        auto            mesh_path = AssetCodec::ValidateImportConfiguration(cfg);
+        if (mesh_path.Failed() || !filename || !filename[0])
+        {
+            if (on_error)
+                on_error(context, fmt::format("Invalid import configuration (VFS error {})", static_cast<uint32_t>(mesh_path.Failed() ? mesh_path.Error() : Core::VFS::VFSError::InvalidPath)));
+            return;
+        }
         // The caller's arena is sized only for a few short path strings (#760) — route
         // everything through this importer's own, generously-sized private Arena instead.
         Arena.Clear();
@@ -274,11 +279,15 @@ namespace ZEngine::Importers
         // update to an existing mesh" — every re-cook would otherwise mint a fresh
         // random UUID and look like a brand new, unrelated asset.
         {
-            auto mesh_dir    = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
-            auto mesh_path   = mesh_dir / config.OutputAssetFile.c_str();
-            auto meta_result = Core::VFS::MetaFileIO::Read(*config.VFS, mesh_path);
-            if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
-                mesh.MeshUUID = meta_result.Value().AssetUUID;
+            auto identity = AssetCodec::RestoreAssetUUID(*config.VFS, mesh_path.Value(), mesh.MeshUUID);
+            if (identity.Failed())
+            {
+                if (on_error)
+                    on_error(context, fmt::format("Failed to read mesh metadata (VFS error {})", static_cast<uint32_t>(identity.Error())));
+                ufbx_free_scene(scene);
+                ZReleaseScratch(scratch);
+                return;
+            }
         }
 
         mesh.Vertices.init(scratch.Arena, (size_t) total_tris * 3 * 8);
@@ -433,56 +442,55 @@ namespace ZEngine::Importers
         {
             for (size_t m = 0; m < materials.size(); ++m)
             {
-                auto        mat_dir      = VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
-                std::string mat_filename = fmt::format("{}{}", materials[m].Name.c_str(), ".zematerial");
-                auto        mat_path     = mat_dir / mat_filename.c_str();
-                auto        meta_result  = Core::VFS::MetaFileIO::Read(*config.VFS, mat_path);
-                if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
+                std::string mat_filename = AssetCodec::MaterialOutputFilename(materials[m], m);
+                auto        mat_path     = AssetCodec::MaterialOutputPath(materials[m], config, m);
+                if (mat_path.Failed())
                 {
-                    uuids::uuid old_uuid      = materials[m].MaterialUUID;
-                    uuids::uuid new_uuid      = meta_result.Value().AssetUUID;
-                    materials[m].MaterialUUID = new_uuid;
+                    if (on_error)
+                        on_error(context, fmt::format("Invalid material output '{}' (VFS error {})", mat_filename, static_cast<uint32_t>(mat_path.Error())));
+                    ufbx_free_scene(scene);
+                    ZReleaseScratch(scratch);
+                    return;
+                }
+                const auto old_uuid = materials[m].MaterialUUID;
+                auto       identity = AssetCodec::RestoreAssetUUID(*config.VFS, mat_path.Value(), materials[m].MaterialUUID);
+                if (identity.Failed())
+                {
+                    if (on_error)
+                        on_error(context, fmt::format("Failed to read material metadata (VFS error {})", static_cast<uint32_t>(identity.Error())));
+                    ufbx_free_scene(scene);
+                    ZReleaseScratch(scratch);
+                    return;
+                }
+                if (old_uuid != materials[m].MaterialUUID)
+                {
                     for (size_t s = 0; s < mesh.SubMeshes.size(); ++s)
                         if (mesh.SubMeshes[s].MaterialUUID == old_uuid)
-                            mesh.SubMeshes[s].MaterialUUID = new_uuid;
+                            mesh.SubMeshes[s].MaterialUUID = materials[m].MaterialUUID;
                 }
             }
         }
 
         if (config.Options.ImportMaterials && config.Options.ImportTextures)
         {
-            CopyTextureFiles(arena, textures, config);
-
-            // Fbx never synced texture paths into materials (pre-existing gap), and
-            // push_tex assigned throwaway random UUIDs (#755) — fix both here,
-            // matched by the original UUID before it's replaced.
-            for (size_t m = 0; m < materials.size(); ++m)
+            auto copy = AssetCodec::CopyTextureFiles(ArrayView{textures}, config);
+            if (copy.Failed())
             {
-                auto sync_texture = [&](uuids::uuid& uuid_field, Core::Containers::String& path_out) {
-                    for (size_t t = 0; t < textures.size(); ++t)
-                    {
-                        if (textures[t].TextureUUID == uuid_field && !textures[t].Path.empty())
-                        {
-                            path_out.init(arena, textures[t].Path.c_str());
+                if (on_error)
+                    on_error(context, fmt::format("Failed to copy texture files (VFS error {})", static_cast<uint32_t>(copy.Error())));
+                ufbx_free_scene(scene);
+                ZReleaseScratch(scratch);
+                return;
+            }
 
-                            auto vfs_path = VFSPath::Parse(textures[t].Path.c_str());
-                            if (vfs_path.Succeeded() && config.VFS)
-                            {
-                                auto hash_result = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, vfs_path.Value());
-                                auto meta_result = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, vfs_path.Value(), "FbxImporter", hash_result.Succeeded() ? hash_result.Value() : 0);
-                                if (meta_result.Succeeded())
-                                {
-                                    textures[t].TextureUUID = meta_result.Value().AssetUUID;
-                                    uuid_field              = meta_result.Value().AssetUUID;
-                                }
-                            }
-                            return;
-                        }
-                    }
-                };
-                sync_texture(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
-                sync_texture(materials[m].NormalTexUUID, materials[m].NormalTexPath);
-                sync_texture(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+            auto metadata = AssetCodec::SynchronizeTextureMetadata(arena, ArrayView{textures}, ArrayView{materials}, config, "FbxImporter");
+            if (metadata.Failed())
+            {
+                if (on_error)
+                    on_error(context, fmt::format("Failed to persist texture metadata (VFS error {})", static_cast<uint32_t>(metadata.Error())));
+                ufbx_free_scene(scene);
+                ZReleaseScratch(scratch);
+                return;
             }
         }
 
@@ -504,12 +512,35 @@ namespace ZEngine::Importers
         hier.LocalTransforms.push(Identity<Mat4f>());
         hier.GlobalTransforms.push(Identity<Mat4f>());
 
-        Array<AssetImporterOutput> outputs = {};
-        outputs.init(scratch.Arena, 16);
-        outputs.push(AssetCodec::SerializeMeshAssetFile(scratch.Arena, mesh, hier, config));
+        std::vector<AssetImporterOutput> outputs;
+        outputs.reserve(1 + materials.size());
+        auto append_output = [&](Core::VFS::VFSResult<AssetImporterOutput> result, const char* directory, const std::string& filename) {
+            if (result.Failed())
+            {
+                const auto message = fmt::format("Failed to write '{}/{}' (VFS error {})", directory, filename, static_cast<uint32_t>(result.Error()));
+                ZENGINE_CORE_ERROR("[FbxImporter] {}", message)
+                if (on_error)
+                    on_error(context, message);
+                return false;
+            }
+            outputs.push_back(std::move(result.Value()));
+            return true;
+        };
         if (config.Options.ImportMaterials)
             for (size_t i = 0; i < materials.size(); ++i)
-                outputs.push(AssetCodec::SerializeMaterialAssetFile(scratch.Arena, materials[i], config));
+                if (!append_output(AssetCodec::SerializeMaterialAssetFile(scratch.Arena, materials[i], config, i), config.OutputMaterialPath.c_str(), fmt::format("{}/{}", config.AssetName.c_str(), AssetCodec::MaterialOutputFilename(materials[i], i))))
+                {
+                    ZReleaseScratch(scratch);
+                    return;
+                }
+
+        // Dependencies first; publish the mesh last while keeping callback order.
+        if (!append_output(AssetCodec::SerializeMeshAssetFile(scratch.Arena, mesh, hier, config), config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str()))
+        {
+            ZReleaseScratch(scratch);
+            return;
+        }
+        std::rotate(outputs.begin(), outputs.end() - 1, outputs.end());
 
         auto* mgr = Managers::AssetManager::Instance();
         if (mgr)
@@ -525,52 +556,9 @@ namespace ZEngine::Importers
         if (on_progress)
             on_progress(context, 1.0f);
         if (on_complete)
-            on_complete(context, ArrayView{outputs});
+            on_complete(context, {outputs.data(), outputs.size()});
 
         ZReleaseScratch(scratch);
     }
 
-    void FbxImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* /*arena*/, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
-    {
-        if (textures.empty() || !config.VFS)
-            return;
-
-        auto texture_dir = VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str();
-        auto create_dir  = config.VFS->CreateDir(texture_dir);
-        if (create_dir.Failed() && create_dir.Error() != Core::VFS::VFSError::AlreadyExists)
-            return;
-
-        for (auto& tex : textures)
-        {
-            if (tex.Path.empty())
-                continue;
-
-            fs::path      tex_path(tex.Path.c_str());
-            fs::path      src = tex_path.is_absolute() ? tex_path : fs::path(config.InputBaseAssetFilePath.c_str()) / tex_path;
-            std::ifstream in(src, std::ios::binary | std::ios::ate);
-            if (!in.is_open())
-            {
-                ZENGINE_CORE_WARN("[FbxImporter] Texture not found: {}", src.string())
-                continue;
-            }
-
-            const std::streamsize byte_count = in.tellg();
-            if (byte_count <= 0)
-                continue;
-            std::vector<uint8_t> bytes(static_cast<size_t>(byte_count));
-            in.seekg(0, std::ios::beg);
-            if (!in.read(reinterpret_cast<char*>(bytes.data()), byte_count))
-                continue;
-
-            auto filename = tex_path.filename().string();
-            auto new_path = texture_dir / filename.c_str();
-            if (AssetCodec::WriteFileAtomically(*config.VFS, new_path, {bytes.data(), bytes.size()}).Failed())
-            {
-                ZENGINE_CORE_WARN("[FbxImporter] Failed to copy texture: {}", src.string())
-                continue;
-            }
-            tex.Path.clear();
-            tex.Path.append(new_path.CStr());
-        }
-    }
 } // namespace ZEngine::Importers

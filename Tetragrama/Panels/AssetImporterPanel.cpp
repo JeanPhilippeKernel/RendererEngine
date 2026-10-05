@@ -15,6 +15,7 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <fmt/format.h>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -846,13 +847,23 @@ namespace Tetragrama::Panels
                     if (material.MaterialUUID.is_nil())
                         continue;
 
-                    auto                             meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
-                    ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
-                    meta.AssetUUID                               = material.MaterialUUID;
+                    auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
+                    if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read metadata for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(meta_result.Error())));
+                        return;
+                    }
+                    ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                    meta.AssetUUID                        = material.MaterialUUID;
                     secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
                     secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mat_path, sizeof(meta.ArtifactPath) - 1);
                     secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
-                    ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                    auto write = ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                    if (write.Failed())
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to persist metadata for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(write.Error())));
+                        return;
+                    }
                 }
             }
         }
@@ -889,8 +900,13 @@ namespace Tetragrama::Panels
                 auto  rel = VFSPath::Parse(mesh_path);
                 if (rel.Succeeded())
                 {
-                    auto                             meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
-                    ZEngine::Core::VFS::MetaFileData meta        = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                    auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
+                    if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read metadata for '{}' (VFS error {})", mesh_path, static_cast<uint32_t>(meta_result.Error())));
+                        return;
+                    }
+                    ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
                     // Sync to the file's own embedded UUID — otherwise a nil
                     // AssetUUID gets locked in forever (#755).
                     if (has_header)
@@ -898,7 +914,12 @@ namespace Tetragrama::Panels
                     secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
                     secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
                     secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
-                    ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                    auto write = ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                    if (write.Failed())
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to persist metadata for '{}' (VFS error {})", mesh_path, static_cast<uint32_t>(write.Error())));
+                        return;
+                    }
                 }
             }
 
@@ -986,8 +1007,10 @@ namespace Tetragrama::Panels
 
     void AssetImporterPanel::CompleteImportErrorOnMainThread(void* ctx, std::string_view err)
     {
-        auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
-        char  msg[512];
+        auto* self               = reinterpret_cast<AssetImporterPanel*>(ctx);
+        self->m_add_to_scene     = false;
+        self->m_instance_name[0] = '\0';
+        char msg[512];
         snprintf(msg, sizeof(msg), "Error: %.*s", (int) err.size(), err.data());
         self->PushLog(msg, kRed[0], kRed[1], kRed[2]);
         char fn[256] = {};

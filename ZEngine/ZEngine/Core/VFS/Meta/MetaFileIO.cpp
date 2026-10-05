@@ -1,10 +1,11 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <nlohmann/json.hpp>
 #include <rapidhash.h>
 #include <uuid.h>
 #include <chrono>
-#include <cstring>
+#include <mutex>
 #include <random>
 
 namespace ZEngine::Core::VFS
@@ -22,33 +23,26 @@ namespace ZEngine::Core::VFS
         static void CopyStr(const std::string& src, char* dst, size_t cap)
         {
             size_t n = src.size() < cap - 1 ? src.size() : cap - 1;
-            std::memcpy(dst, src.data(), n);
+            Helpers::secure_memcpy(dst, cap, src.data(), n);
             dst[n] = '\0';
         }
     } // namespace
 
     // MetaFileIO
 
-    VFSPath MetaFileIO::MetaPathFor(const VFSPath& asset_path)
+    VFSResult<VFSPath> MetaFileIO::MetaPathFor(const VFSPath& asset_path)
     {
-        char        buf[MAX_FILE_PATH_COUNT] = {};
-        const char* raw                      = asset_path.CStr();
-        size_t      len                      = Helpers::secure_strlen(raw);
-        size_t      avail                    = MAX_FILE_PATH_COUNT - 1;
-        size_t      copy                     = len < avail ? len : avail;
-        Helpers::secure_memcpy(buf, MAX_FILE_PATH_COUNT, raw, copy);
-        const char suffix[] = ".meta";
-        size_t     suf_len  = sizeof(suffix) - 1;
-        if (copy + suf_len < MAX_FILE_PATH_COUNT)
-            Helpers::secure_memcpy(buf + copy, MAX_FILE_PATH_COUNT - copy, suffix, suf_len + 1);
-        return VFSPath::Parse(buf).Value();
+        if (!asset_path.IsValid() || asset_path.IsRoot())
+            return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        return VFSPath::Parse((std::string(asset_path.CStr()) + ".meta").c_str());
     }
 
     VFSResult<MetaFileData> MetaFileIO::Read(IVFSContext& ctx, const VFSPath& asset_path)
     {
-        VFSPath meta_path   = MetaPathFor(asset_path);
-
-        auto    open_result = ctx.Open(meta_path, VFSOpenFlags::Read);
+        auto meta_path = MetaPathFor(asset_path);
+        if (meta_path.Failed())
+            return VFSResult<MetaFileData>::Fail(meta_path.Error());
+        auto open_result = ctx.Open(meta_path.Value(), VFSOpenFlags::Read);
         if (open_result.Failed())
             return VFSResult<MetaFileData>::Fail(open_result.Error());
 
@@ -74,21 +68,23 @@ namespace ZEngine::Core::VFS
 
         if (read_result.Failed())
             return VFSResult<MetaFileData>::Fail(read_result.Error());
+        if (read_result.Value() != size)
+            return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
 
         buf[size] = '\0';
 
         auto j    = nlohmann::json::parse(reinterpret_cast<const char*>(buf), nullptr, /*allow_exceptions=*/false);
-        if (j.is_discarded())
+        if (j.is_discarded() || !j.is_object())
             return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
 
         MetaFileData out{};
 
-        if (j.contains("uuid") && j["uuid"].is_string())
-        {
-            auto parsed = uuids::uuid::from_string(j["uuid"].get<std::string>());
-            if (parsed.has_value())
-                out.AssetUUID = parsed.value();
-        }
+        if (!j.contains("uuid") || !j["uuid"].is_string())
+            return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+        const auto parsed = uuids::uuid::from_string(j["uuid"].get<std::string>());
+        if (!parsed.has_value() || parsed->is_nil())
+            return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+        out.AssetUUID = *parsed;
 
         if (j.contains("importer") && j["importer"].is_string())
             CopyStr(j["importer"].get<std::string>(), out.ImporterName, sizeof(out.ImporterName));
@@ -111,7 +107,7 @@ namespace ZEngine::Core::VFS
             {
                 if (out.SettingsCount >= META_MAX_SETTINGS)
                     break;
-                if (!s.contains("key") || !s.contains("value"))
+                if (!s.contains("key") || !s.contains("value") || !s["key"].is_string() || !s["value"].is_string())
                     continue;
                 auto& kv = out.Settings[out.SettingsCount++];
                 CopyStr(s["key"].get<std::string>(), kv.Key, sizeof(kv.Key));
@@ -125,6 +121,11 @@ namespace ZEngine::Core::VFS
 
     VFSResult<void> MetaFileIO::Write(IVFSContext& ctx, const VFSPath& asset_path, const MetaFileData& data)
     {
+        auto meta_path = MetaPathFor(asset_path);
+        if (meta_path.Failed())
+            return VFSResult<void>::Fail(meta_path.Error());
+        if (data.AssetUUID.is_nil() || data.SettingsCount > META_MAX_SETTINGS)
+            return VFSResult<void>::Fail(VFSError::Corrupted);
         nlohmann::json j;
         j["uuid"]           = uuids::to_string(data.AssetUUID);
         j["importer"]       = data.ImporterName;
@@ -142,44 +143,17 @@ namespace ZEngine::Core::VFS
             });
         }
 
-        std::string serialized                   = j.dump(4);
-
-        // Build tmp path: <meta_path>.tmp
-        VFSPath     meta_path                    = MetaPathFor(asset_path);
-        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
-        const char* meta_raw                     = meta_path.CStr();
-        size_t      meta_len                     = Helpers::secure_strlen(meta_raw);
-        size_t      avail                        = MAX_FILE_PATH_COUNT - 1;
-        size_t      copy                         = meta_len < avail ? meta_len : avail;
-        Helpers::secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, meta_raw, copy);
-        const char tmp_suffix[] = ".tmp";
-        size_t     suf_len      = sizeof(tmp_suffix) - 1;
-        if (copy + suf_len < MAX_FILE_PATH_COUNT)
-            Helpers::secure_memcpy(tmp_buf + copy, MAX_FILE_PATH_COUNT - copy, tmp_suffix, suf_len + 1);
-        VFSPath tmp_path    = VFSPath::Parse(tmp_buf).Value();
-
-        auto    open_result = ctx.Open(tmp_path, VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Truncate);
-        if (open_result.Failed())
-            return VFSResult<void>::Fail(open_result.Error());
-
-        IVFSFile*   file         = open_result.Value();
-        const auto* bytes        = reinterpret_cast<const uint8_t*>(serialized.data());
-        auto        write_result = file->Write({bytes, serialized.size()}, 0);
-        auto        flush_result = file->Flush();
-        file->Close();
-        ctx.Close(file);
-
-        if (write_result.Failed())
-            return VFSResult<void>::Fail(write_result.Error());
-        if (flush_result.Failed())
-            return VFSResult<void>::Fail(flush_result.Error());
-
-        return ctx.Rename(tmp_path, meta_path);
+        const std::string serialized = j.dump(4);
+        return WriteFileAtomically(ctx, meta_path.Value(), {reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size()});
     }
 
     VFSResult<MetaFileData> MetaFileIO::GetOrCreate(IVFSContext& ctx, const VFSPath& asset_path, const char* importer_name, uint64_t current_hash)
     {
-        auto read_result = Read(ctx, asset_path);
+        // Scanner and importer callers must not mint different identities for
+        // the same absent sidecar. Writes remain atomic; serialize this RMW.
+        static std::mutex identity_mutex;
+        std::lock_guard   identity_lock(identity_mutex);
+        auto              read_result = Read(ctx, asset_path);
 
         if (read_result.Succeeded())
         {
@@ -194,9 +168,14 @@ namespace ZEngine::Core::VFS
             existing.SourceHash       = current_hash;
             existing.LastImportTimeNs = NowNs();
             existing.Status           = ImportStatus::Stale;
-            Write(ctx, asset_path, existing); // best-effort; ignore failure
+            auto write                = Write(ctx, asset_path, existing);
+            if (write.Failed())
+                return VFSResult<MetaFileData>::Fail(write.Error());
             return VFSResult<MetaFileData>::Ok(existing);
         }
+
+        if (read_result.Error() != VFSError::NotFound && read_result.Error() != VFSError::Corrupted)
+            return VFSResult<MetaFileData>::Fail(read_result.Error());
 
         // No .meta or corrupt .meta — generate a fresh UUID.
         MetaFileData fresh{};
@@ -210,7 +189,9 @@ namespace ZEngine::Core::VFS
         fresh.SourceHash       = current_hash;
         fresh.LastImportTimeNs = NowNs();
         fresh.Status           = ImportStatus::New;
-        Write(ctx, asset_path, fresh);
+        auto write             = Write(ctx, asset_path, fresh);
+        if (write.Failed())
+            return VFSResult<MetaFileData>::Fail(write.Error());
         return VFSResult<MetaFileData>::Ok(fresh);
     }
 

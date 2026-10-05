@@ -304,7 +304,7 @@ namespace ZEngine::Managers
             return;
 
         auto slot = static_cast<uint32_t>(s_Instance->Materials.size());
-        s_Instance->Materials.push(mat);
+        s_Instance->Materials.push(mat.Clone(s_Instance->Arena));
         RegisterAsset(AssetType::MATERIAL, mat.MaterialUUID, slot);
         s_Instance->UUIDToMaterialSlot.insert(mat.MaterialUUID, slot);
 

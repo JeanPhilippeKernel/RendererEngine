@@ -9,7 +9,7 @@ namespace ZEngine::Core::VFS
     struct MetaFileIO
     {
         // Returns the sidecar path for an asset: "/project/mesh.glb" -> "/project/mesh.glb.meta"
-        static VFSPath                 MetaPathFor(const VFSPath& asset_path);
+        static VFSResult<VFSPath>      MetaPathFor(const VFSPath& asset_path);
 
         // Reads the .meta sidecar from the VFS. Returns Fail if the file is absent or malformed.
         // Status on the returned MetaFileData is always ImportStatus::Unknown — caller sets it.

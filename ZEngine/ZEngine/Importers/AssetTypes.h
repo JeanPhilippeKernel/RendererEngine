@@ -46,27 +46,40 @@ namespace ZEngine::Importers
 
     struct AssetMaterial
     {
-        Core::Containers::String Name              = {};
-        uuids::uuid              MaterialUUID      = {};
+        Core::Containers::String    Name              = {};
+        uuids::uuid                 MaterialUUID      = {};
         // Texture UUIDs — runtime lookup key into AssetManager
-        uuids::uuid              AlbedoTexUUID     = {};
-        uuids::uuid              EmissiveTexUUID   = {};
-        uuids::uuid              NormalTexUUID     = {};
-        uuids::uuid              OpacityTexUUID    = {};
-        uuids::uuid              SpecularTexUUID   = {};
+        uuids::uuid                 AlbedoTexUUID     = {};
+        uuids::uuid                 EmissiveTexUUID   = {};
+        uuids::uuid                 NormalTexUUID     = {};
+        uuids::uuid                 OpacityTexUUID    = {};
+        uuids::uuid                 SpecularTexUUID   = {};
         // Texture paths — project-relative VFS path to the extracted image file
         // Stored in .zematerial so no separate .zetextures file is needed
-        Core::Containers::String AlbedoTexPath     = {};
-        Core::Containers::String EmissiveTexPath   = {};
-        Core::Containers::String NormalTexPath     = {};
-        Core::Containers::String OpacityTexPath    = {};
-        Core::Containers::String SpecularTexPath   = {};
-        float                    AmbientColor[4]   = {0};
-        float                    AlbedoColor[4]    = {0};
-        float                    EmissiveColor[4]  = {0};
-        float                    RoughnessColor[4] = {0};
-        float                    SpecularColor[4]  = {0};
-        float                    Factors[4]        = {0};
+        Core::Containers::String    AlbedoTexPath     = {};
+        Core::Containers::String    EmissiveTexPath   = {};
+        Core::Containers::String    NormalTexPath     = {};
+        Core::Containers::String    OpacityTexPath    = {};
+        Core::Containers::String    SpecularTexPath   = {};
+        float                       AmbientColor[4]   = {0};
+        float                       AlbedoColor[4]    = {0};
+        float                       EmissiveColor[4]  = {0};
+        float                       RoughnessColor[4] = {0};
+        float                       SpecularColor[4]  = {0};
+        float                       Factors[4]        = {0};
+
+        // Copy string storage as well as values when crossing an arena lifetime boundary.
+        [[nodiscard]] AssetMaterial Clone(Core::Memory::ArenaAllocator* arena) const
+        {
+            AssetMaterial copy = *this;
+            copy.Name.init(arena, Name.c_str());
+            copy.AlbedoTexPath.init(arena, AlbedoTexPath.c_str());
+            copy.EmissiveTexPath.init(arena, EmissiveTexPath.c_str());
+            copy.NormalTexPath.init(arena, NormalTexPath.c_str());
+            copy.OpacityTexPath.init(arena, OpacityTexPath.c_str());
+            copy.SpecularTexPath.init(arena, SpecularTexPath.c_str());
+            return copy;
+        }
     };
 
     struct AssetTexture
@@ -118,6 +131,8 @@ namespace ZEngine::Importers
         std::string   RootPath = "";
     };
 
+    // Callbacks run synchronously during ImportFile; do not re-enter the same importer.
+    // The output view is borrowed for the duration of the callback; copy it before deferring work.
     using ImportCompleteCallback = void (*)(void* ctx, Core::Containers::ArrayView<AssetImporterOutput> outputs);
     using ImportProgressCallback = void (*)(void* ctx, float progress);
     using ImportErrorCallback    = void (*)(void* ctx, std::string_view message);
