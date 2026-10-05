@@ -4,18 +4,17 @@
 #include <nlohmann/json.hpp>
 #include <rapidhash.h>
 #include <uuid.h>
+#include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
+#include <vector>
 
 namespace ZEngine::Core::VFS
 {
     namespace
     {
-        // .meta files are small JSON — 8 KB is a generous upper bound.
-        static constexpr size_t k_meta_read_cap = 8192;
-
-        static int64_t          NowNs()
+        static int64_t NowNs()
         {
             return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         }
@@ -56,24 +55,22 @@ namespace ZEngine::Core::VFS
         }
 
         uint64_t size = size_result.Value();
-        if (size >= k_meta_read_cap)
+        if (size > MaxFileSize)
         {
             ctx.Close(file);
-            return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+            return VFSResult<MetaFileData>::Fail(VFSError::SizeLimitExceeded);
         }
 
-        uint8_t buf[k_meta_read_cap];
-        auto    read_result = file->ReadAll({buf, (size_t) size});
+        std::vector<uint8_t> buf(static_cast<size_t>(size));
+        auto                 read_result = file->ReadAll({buf.data(), buf.size()});
         ctx.Close(file);
 
         if (read_result.Failed())
             return VFSResult<MetaFileData>::Fail(read_result.Error());
         if (read_result.Value() != size)
-            return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+            return VFSResult<MetaFileData>::Fail(VFSError::IOError);
 
-        buf[size] = '\0';
-
-        auto j    = nlohmann::json::parse(reinterpret_cast<const char*>(buf), nullptr, /*allow_exceptions=*/false);
+        auto j = nlohmann::json::parse(buf.begin(), buf.end(), nullptr, /*allow_exceptions=*/false);
         if (j.is_discarded() || !j.is_object())
             return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
 
@@ -144,10 +141,12 @@ namespace ZEngine::Core::VFS
         }
 
         const std::string serialized = j.dump(4);
+        if (serialized.size() > MaxFileSize)
+            return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
         return WriteFileAtomically(ctx, meta_path.Value(), {reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size()});
     }
 
-    VFSResult<MetaFileData> MetaFileIO::GetOrCreate(IVFSContext& ctx, const VFSPath& asset_path, const char* importer_name, uint64_t current_hash)
+    VFSResult<MetaFileData> MetaFileIO::GetOrCreate(IVFSContext& ctx, const VFSPath& asset_path, const char* importer_name, uint64_t current_hash, bool use_embedded_identity)
     {
         // Scanner and importer callers must not mint different identities for
         // the same absent sidecar. Writes remain atomic; serialize this RMW.
@@ -177,8 +176,17 @@ namespace ZEngine::Core::VFS
         if (read_result.Error() != VFSError::NotFound && read_result.Error() != VFSError::Corrupted)
             return VFSResult<MetaFileData>::Fail(read_result.Error());
 
-        // No .meta or corrupt .meta — generate a fresh UUID.
+        // Resolve and persist identity under the same lock; scanners must not seed
+        // sidecars separately or mint random identities for unreadable cooked assets.
         MetaFileData fresh{};
+        if (use_embedded_identity && (asset_path.Extension().Equals(".zemesh") || asset_path.Extension().Equals(".zematerial")))
+        {
+            auto embedded = ReadEmbeddedAssetUUID(ctx, asset_path);
+            if (embedded.Failed())
+                return VFSResult<MetaFileData>::Fail(embedded.Error());
+            fresh.AssetUUID = embedded.Value();
+        }
+        else
         {
             std::random_device           rd;
             std::mt19937                 generator(rd());
@@ -201,26 +209,37 @@ namespace ZEngine::Core::VFS
         if (open_result.Failed())
             return VFSResult<uint64_t>::Fail(open_result.Error());
 
-        IVFSFile* file = open_result.Value();
+        IVFSFile* file        = open_result.Value();
+
+        auto      size_result = file->Size();
+        if (size_result.Failed())
+        {
+            ctx.Close(file);
+            return VFSResult<uint64_t>::Fail(size_result.Error());
+        }
 
         // Stream through the file in 4 KB chunks, chaining rapidhash via the seed parameter.
-        uint8_t   chunk[4096];
-        uint64_t  hash   = 0;
-        uint64_t  offset = 0;
+        uint8_t  chunk[4096];
+        uint64_t hash   = 0;
+        uint64_t offset = 0;
 
-        while (true)
+        while (offset < size_result.Value())
         {
-            auto read_result = file->Read({chunk, sizeof(chunk)}, offset);
-            if (read_result.Failed())
+            const size_t count  = static_cast<size_t>(std::min<uint64_t>(sizeof(chunk), size_result.Value() - offset));
+            size_t       filled = 0;
+            while (filled < count)
             {
-                ctx.Close(file);
-                return VFSResult<uint64_t>::Fail(read_result.Error());
+                auto read = file->Read({chunk + filled, count - filled}, offset + filled);
+                if (read.Failed() || read.Value() == 0 || read.Value() > count - filled)
+                {
+                    ctx.Close(file);
+                    return VFSResult<uint64_t>::Fail(read.Failed() ? read.Error() : VFSError::IOError);
+                }
+                filled += read.Value();
             }
-            size_t n = read_result.Value();
-            if (n == 0)
-                break;
-            hash    = rapidhash_withSeed(chunk, n, hash);
-            offset += (uint64_t) n;
+            // Keep chunk boundaries stable even when the backend returns partial reads.
+            hash    = rapidhash_withSeed(chunk, count, hash);
+            offset += count;
         }
         ctx.Close(file);
         return VFSResult<uint64_t>::Ok(hash);

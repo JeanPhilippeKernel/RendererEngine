@@ -286,3 +286,51 @@ TEST_F(MetaFileIOTest, SidecarPathBoundaryNeverOverwritesTheAsset)
     m_ctx.Close(file.Value());
     EXPECT_STREQ(reinterpret_cast<const char*>(bytes), "original asset bytes");
 }
+
+TEST_F(MetaFileIOTest, MaximumEscapedFieldsRoundTrip)
+{
+    MetaFileData data{};
+    data.AssetUUID = uuids::uuid::from_string("550e8400-e29b-41d4-a716-446655440000").value();
+    auto fill      = [](auto& field) { std::memset(field, '\x01', sizeof(field) - 1); };
+    fill(data.ImporterName);
+    fill(data.SourcePath);
+    fill(data.ArtifactPath);
+    data.SettingsCount = META_MAX_SETTINGS;
+    for (auto& setting : data.Settings)
+    {
+        fill(setting.Key);
+        fill(setting.Value);
+    }
+    ASSERT_TRUE(MetaFileIO::Write(m_ctx, P("/max.glb"), data).Succeeded());
+    auto result = MetaFileIO::Read(m_ctx, P("/max.glb"));
+    ASSERT_TRUE(result.Succeeded());
+    EXPECT_EQ(result.Value().AssetUUID, data.AssetUUID);
+    EXPECT_STREQ(result.Value().ImporterName, data.ImporterName);
+    EXPECT_STREQ(result.Value().SourcePath, data.SourcePath);
+    EXPECT_STREQ(result.Value().ArtifactPath, data.ArtifactPath);
+    EXPECT_EQ(result.Value().SettingsCount, META_MAX_SETTINGS);
+    for (uint32_t i = 0; i < META_MAX_SETTINGS; ++i)
+    {
+        EXPECT_STREQ(result.Value().Settings[i].Key, data.Settings[i].Key);
+        EXPECT_STREQ(result.Value().Settings[i].Value, data.Settings[i].Value);
+    }
+}
+
+TEST_F(MetaFileIOTest, SizeBoundaryAcceptsLimitAndPreservesOversizedMetadata)
+{
+    std::string json = "{\"uuid\":\"550e8400-e29b-41d4-a716-446655440000\"}";
+    json.resize(MetaFileIO::MaxFileSize, ' ');
+    WriteRaw("/large.glb.meta", json.c_str());
+    ASSERT_TRUE(MetaFileIO::Read(m_ctx, P("/large.glb")).Succeeded());
+    json.push_back(' ');
+    WriteRaw("/large.glb.meta", json.c_str());
+    EXPECT_EQ(MetaFileIO::Read(m_ctx, P("/large.glb")).Error(), VFSError::SizeLimitExceeded);
+    EXPECT_EQ(MetaFileIO::GetOrCreate(m_ctx, P("/large.glb"), "Test", 123).Error(), VFSError::SizeLimitExceeded);
+    auto open = m_ctx.Open(P("/large.glb.meta"), VFSOpenFlags::Read);
+    ASSERT_TRUE(open.Succeeded());
+    std::string retained(json.size(), '\0');
+    auto        read = open.Value()->ReadAll({reinterpret_cast<uint8_t*>(retained.data()), retained.size()});
+    m_ctx.Close(open.Value());
+    ASSERT_TRUE(read.Succeeded());
+    EXPECT_EQ(retained, json);
+}

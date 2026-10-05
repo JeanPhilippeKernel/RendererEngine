@@ -6,6 +6,7 @@
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileData.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
@@ -839,13 +840,12 @@ namespace Tetragrama::Panels
                     if (!rel.Succeeded())
                         continue;
 
-                    char native_mat_path[MAX_FILE_PATH_COUNT] = {};
-                    rel.Value().ResolveNative(ws, native_mat_path, sizeof(native_mat_path));
-
-                    ZEngine::Importers::AssetMaterial material{};
-                    ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(&self->m_local_arena, native_mat_path, material);
-                    if (material.MaterialUUID.is_nil())
-                        continue;
+                    auto material_uuid = ReadEmbeddedAssetUUID(*vfs, rel.Value());
+                    if (material_uuid.Failed())
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read material identity for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(material_uuid.Error())));
+                        return;
+                    }
 
                     auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
                     if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
@@ -854,7 +854,7 @@ namespace Tetragrama::Panels
                         return;
                     }
                     ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
-                    meta.AssetUUID                        = material.MaterialUUID;
+                    meta.AssetUUID                        = material_uuid.Value();
                     secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
                     secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mat_path, sizeof(meta.ArtifactPath) - 1);
                     secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
