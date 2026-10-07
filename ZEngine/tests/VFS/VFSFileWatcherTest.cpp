@@ -425,3 +425,44 @@ TEST_F(VFSFileWatcherTest, TrailingSlashRootStillMatches)
 
     EXPECT_EQ(fired, 1);
 }
+
+#if defined(_WIN32)
+TEST_F(VFSFileWatcherTest, WindowsNativePathsRespectBoundariesAndNestedRoots)
+{
+    MockPlatformWatcher mock;
+    VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{0});
+    watcher.Initialize(&m_manager.MainArena);
+
+    int project_events = 0, sibling_events = 0, nested_events = 0;
+    watcher.Watch("C:\\project", true, [&](const VFSWatchEvent&) { ++project_events; });
+    watcher.Watch("C:\\project2", true, [&](const VFSWatchEvent&) { ++sibling_events; });
+    watcher.Watch("C:\\project\\assets", true, [&](const VFSWatchEvent&) { ++nested_events; });
+
+    mock.InjectEvent(MakeEvent("C:\\project\\model.glb", WatchEventKind::Created));
+    mock.InjectEvent(MakeEvent("C:\\project2\\model.glb", WatchEventKind::Created));
+    mock.InjectEvent(MakeEvent("C:\\project\\assets\\model.glb", WatchEventKind::Created));
+    mock.InjectEvent(MakeEvent("C:\\project3\\model.glb", WatchEventKind::Created));
+    watcher.Tick();
+
+    EXPECT_EQ(project_events, 1);
+    EXPECT_EQ(sibling_events, 1);
+    EXPECT_EQ(nested_events, 1);
+}
+
+TEST_F(VFSFileWatcherTest, WindowsRootsAcceptForwardSlashesAndTrailingBackslashes)
+{
+    for (const char* root : {"C:/project/", "C:\\project\\"})
+    {
+        SCOPED_TRACE(root);
+        MockPlatformWatcher mock;
+        VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{0});
+        watcher.Initialize(&m_manager.MainArena);
+
+        int fired = 0;
+        watcher.Watch(root, true, [&](const VFSWatchEvent&) { ++fired; });
+        mock.InjectEvent(MakeEvent("C:\\project\\model.glb", WatchEventKind::Created));
+        watcher.Tick();
+        EXPECT_EQ(fired, 1);
+    }
+}
+#endif

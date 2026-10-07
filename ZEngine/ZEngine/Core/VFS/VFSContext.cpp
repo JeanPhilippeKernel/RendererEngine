@@ -51,6 +51,15 @@ namespace ZEngine::Core::VFS
         const size_t length    = Helpers::secure_strlen(project_root_native);
         Helpers::secure_strncpy(m_project_root_native, sizeof(m_project_root_native), project_root_native, length < MAX_FILE_PATH_COUNT ? length : MAX_FILE_PATH_COUNT - 1);
 
+#if defined(_WIN32)
+        // Match the native backslash-separated paths emitted by VFSRDCWatcher.
+        for (char* c = m_project_root_native; *c != '\0'; ++c)
+        {
+            if (*c == '/')
+                *c = '\\';
+        }
+#endif
+
 #if defined(__APPLE__)
         {
             void* storage = ZAlloc(m_arena, sizeof(VFSFSEventsWatcher), ZAlignof(VFSFSEventsWatcher));

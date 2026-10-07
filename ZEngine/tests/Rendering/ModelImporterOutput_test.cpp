@@ -230,7 +230,14 @@ protected:
         std::random_device           rd;
         std::mt19937                 random(rd());
         uuids::uuid_random_generator uuid(random);
-        TempDirectory = std::filesystem::temp_directory_path() / ("zengine_import_output_" + uuids::to_string(uuid()));
+#if defined(_WIN32)
+        // With no project root configured, runtime imports resolve drive-less VFS
+        // paths on the current drive. CI's system temp directory may be on another.
+        const auto input_root = std::filesystem::current_path();
+#else
+        const auto input_root = std::filesystem::temp_directory_path();
+#endif
+        TempDirectory = input_root / ("zengine_import_output_" + uuids::to_string(uuid()));
         ASSERT_TRUE(std::filesystem::create_directory(TempDirectory));
         Config.InputBaseAssetFilePath.init(&Arena, TempDirectory.string().c_str());
     }
@@ -503,6 +510,14 @@ TEST_F(ModelImporterOutputTest, MeshOnlyGltfOwnsShortAndEmptyOutputStringsAfterI
     EXPECT_TRUE(Exists("/m/x.zemesh"));
     EXPECT_FLOAT_EQ(Callbacks.Progress, 1.0f);
     EXPECT_EQ(Importer.Arena.m_current_offset, Importer.Arena.m_initial_current_offset);
+}
+
+TEST_F(ModelImporterOutputTest, RuntimeSourcePathResolvesGeneratedInput)
+{
+    const auto filename                    = WriteGltf();
+    char       native[MAX_FILE_PATH_COUNT] = {};
+    Path(filename.c_str()).ToNative(native, sizeof(native));
+    EXPECT_TRUE(std::filesystem::equivalent(filename, native));
 }
 
 TEST_F(ModelImporterOutputTest, InvalidGltfNodeGraphsFailInEditorAndRuntimeWithoutPublication)
