@@ -4,6 +4,31 @@
 
 namespace ZEngine::Core::VFS
 {
+    namespace
+    {
+        bool IsNativeSeparator(char c)
+        {
+#if defined(_WIN32)
+            return c == '/' || c == '\\';
+#else
+            return c == '/';
+#endif
+        }
+
+        bool MatchesNativePrefix(const char* path, const char* root, size_t root_length)
+        {
+#if defined(_WIN32)
+            for (size_t i = 0; i < root_length; ++i)
+            {
+                if (path[i] != root[i] && !(IsNativeSeparator(path[i]) && IsNativeSeparator(root[i])))
+                    return false;
+            }
+            return true;
+#else
+            return Helpers::secure_memcmp(path, root_length, root, root_length, root_length) == 0;
+#endif
+        }
+    } // namespace
 
     VFSFileWatcher::VFSFileWatcher(IVFSPlatformWatcher* platform, std::chrono::milliseconds debounce_window) : m_platform(platform), m_window(debounce_window) {}
 
@@ -54,7 +79,7 @@ namespace ZEngine::Core::VFS
         Helpers::secure_memcpy(entry.Root, MAX_FILE_PATH_COUNT, native_path, entry.RootLength);
         entry.Root[entry.RootLength] = '\0';
 
-        while (entry.RootLength > 1 && entry.Root[entry.RootLength - 1] == '/')
+        while (entry.RootLength > 1 && IsNativeSeparator(entry.Root[entry.RootLength - 1]))
         {
             entry.Root[--entry.RootLength] = '\0';
         }
@@ -182,11 +207,11 @@ namespace ZEngine::Core::VFS
 
         for (const auto& [handle, entry] : m_callbacks)
         {
-            if (entry.RootLength > path_length || Helpers::secure_memcmp(native_path, path_length, entry.Root, entry.RootLength, entry.RootLength) != 0)
+            if (entry.RootLength > path_length || !MatchesNativePrefix(native_path, entry.Root, entry.RootLength))
             {
                 continue;
             }
-            const bool boundary_ok = (path_length == entry.RootLength) || (native_path[entry.RootLength] == '/') || (entry.RootLength == 1 && entry.Root[0] == '/');
+            const bool boundary_ok = (path_length == entry.RootLength) || IsNativeSeparator(native_path[entry.RootLength]) || (entry.RootLength == 1 && IsNativeSeparator(entry.Root[0]));
             if (boundary_ok && (best == INVALID_WATCH_HANDLE || entry.RootLength > best_length))
             {
                 best        = handle;

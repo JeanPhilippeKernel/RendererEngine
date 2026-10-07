@@ -33,6 +33,7 @@ namespace ZEngine
         // Mounted at /ZodiacEngine with priority -1 so the workspace backend
         // (priority 0) takes precedence for any overlapping paths.
         Core::VFS::VFSDiskBackend         EngineAssetsBackend             = {};
+        char*                             EngineAssetsNativeRoot          = nullptr;
 
         // Writable project-owned backend mounted specifically at /cache/pso.
         // It resolves to <WorkingSpacePath>/.zodiacengine/cache/pso and is distinct

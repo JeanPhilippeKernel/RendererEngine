@@ -32,6 +32,9 @@ namespace ZEngine::Applications
         uint32_t                             RenderTargetW  = 0;
         uint32_t                             RenderTargetH  = 0;
         uint64_t                             ResizeSequence = 0;
+        // Physical window size, captured on the main thread with platform events.
+        uint32_t                             FramebufferW   = 0;
+        uint32_t                             FramebufferH   = 0;
         bool                                 RenderOverlay  = false;
     };
 

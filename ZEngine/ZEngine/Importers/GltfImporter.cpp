@@ -1,5 +1,4 @@
 #include <ZEngine/Core/Maths/Matrix.h>
-#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssetTypes.h>
@@ -16,8 +15,10 @@
 #include <fastgltf/types.hpp>
 #include <fmt/format.h>
 #include <uuid.h>
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -78,7 +79,224 @@ namespace ZEngine::Importers
             node.transform);
     }
 
-    static void ExtractMeshes(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, AssetMesh& out)
+    static bool HasTriangleGeometry(const fastgltf::Primitive& primitive)
+    {
+        return primitive.type == fastgltf::PrimitiveType::Triangles && primitive.findAttribute("POSITION") != primitive.attributes.end();
+    }
+
+    static ArrayView<const uint8_t> BufferViewBytes(const fastgltf::Asset& asset, size_t index)
+    {
+        if (index >= asset.bufferViews.size())
+            return {};
+        const auto& view = asset.bufferViews[index];
+        if (view.bufferIndex >= asset.buffers.size())
+            return {};
+        const auto&              buffer = asset.buffers[view.bufferIndex];
+        ArrayView<const uint8_t> bytes;
+        if (const auto* array = std::get_if<fastgltf::sources::Array>(&buffer.data))
+            bytes = {reinterpret_cast<const uint8_t*>(array->bytes.data()), array->bytes.size()};
+        else if (const auto* byte_view = std::get_if<fastgltf::sources::ByteView>(&buffer.data))
+            bytes = {reinterpret_cast<const uint8_t*>(byte_view->bytes.data()), byte_view->bytes.size()};
+        const size_t available = std::min(bytes.size(), buffer.byteLength);
+        if (!bytes.data() || view.byteOffset > available || view.byteLength > available - view.byteOffset)
+            return {};
+        return {bytes.data() + view.byteOffset, view.byteLength};
+    }
+
+    static bool HasAccessorRange(const fastgltf::Asset& asset, size_t view_index, size_t offset, size_t count, size_t element_size, size_t stride)
+    {
+        const auto bytes = BufferViewBytes(asset, view_index);
+        if (!count || !element_size || stride < element_size || offset > bytes.size() || element_size > bytes.size() - offset)
+            return false;
+        // Division avoids overflow in offset + (count - 1) * stride + size.
+        return count - 1 <= (bytes.size() - offset - element_size) / stride;
+    }
+
+    static bool HasValidAccessor(const fastgltf::Asset& asset, size_t index, fastgltf::AccessorType type)
+    {
+        if (index >= asset.accessors.size())
+            return false;
+        const auto& accessor     = asset.accessors[index];
+        const auto  element_size = fastgltf::getElementByteSize(accessor.type, accessor.componentType);
+        if (accessor.type != type || !accessor.count || !element_size || accessor.count > std::numeric_limits<uint32_t>::max())
+            return false;
+        if (accessor.bufferViewIndex)
+        {
+            const auto view = *accessor.bufferViewIndex;
+            if (view >= asset.bufferViews.size() || !HasAccessorRange(asset, view, accessor.byteOffset, accessor.count, element_size, asset.bufferViews[view].byteStride.value_or(element_size)))
+                return false;
+        }
+        else if (accessor.byteOffset != 0)
+            return false;
+        if (accessor.sparse)
+        {
+            const auto& sparse = *accessor.sparse;
+            if (sparse.count > accessor.count || (sparse.indexComponentType != fastgltf::ComponentType::UnsignedByte && sparse.indexComponentType != fastgltf::ComponentType::UnsignedShort && sparse.indexComponentType != fastgltf::ComponentType::UnsignedInt))
+                return false;
+            const auto index_size = fastgltf::getComponentByteSize(sparse.indexComponentType);
+            if (!HasAccessorRange(asset, sparse.indicesBufferView, sparse.indicesByteOffset, sparse.count, index_size, index_size) || !HasAccessorRange(asset, sparse.valuesBufferView, sparse.valuesByteOffset, sparse.count, element_size, element_size))
+                return false;
+        }
+        return true;
+    }
+
+    static bool HasValidGltfData(const fastgltf::Asset& asset)
+    {
+        size_t vertex_count = 0, index_count = 0;
+        for (const auto& mesh : asset.meshes)
+            for (const auto& primitive : mesh.primitives)
+            {
+                if (!HasTriangleGeometry(primitive))
+                    continue;
+                const auto position = primitive.findAttribute("POSITION")->accessorIndex;
+                if (!HasValidAccessor(asset, position, fastgltf::AccessorType::Vec3))
+                    return false;
+                const auto count = asset.accessors[position].count;
+                for (const auto& attribute : primitive.attributes)
+                {
+                    const auto type = attribute.name == "NORMAL" ? fastgltf::AccessorType::Vec3 : fastgltf::AccessorType::Vec2;
+                    if (attribute.name != "NORMAL" && attribute.name != "TEXCOORD_0")
+                        continue;
+                    if (!HasValidAccessor(asset, attribute.accessorIndex, type) || asset.accessors[attribute.accessorIndex].count != count)
+                        return false;
+                }
+                size_t indices = count;
+                if (primitive.indicesAccessor)
+                {
+                    if (!HasValidAccessor(asset, *primitive.indicesAccessor, fastgltf::AccessorType::Scalar))
+                        return false;
+                    const auto& accessor = asset.accessors[*primitive.indicesAccessor];
+                    if (accessor.componentType != fastgltf::ComponentType::UnsignedByte && accessor.componentType != fastgltf::ComponentType::UnsignedShort && accessor.componentType != fastgltf::ComponentType::UnsignedInt)
+                        return false;
+                    indices = accessor.count;
+                }
+                if (indices % 3 != 0 || count > std::numeric_limits<uint32_t>::max() / 8 - vertex_count || indices > std::numeric_limits<uint32_t>::max() - index_count)
+                    return false;
+                vertex_count += count;
+                index_count  += indices;
+            }
+        for (const auto& texture : asset.textures)
+            if (texture.imageIndex)
+            {
+                if (*texture.imageIndex >= asset.images.size())
+                    return false;
+                if (const auto* view = std::get_if<fastgltf::sources::BufferView>(&asset.images[*texture.imageIndex].data); view && BufferViewBytes(asset, view->bufferViewIndex).size() == 0)
+                    return false;
+            }
+        return true;
+    }
+
+    static bool HasValidNodeGraph(const fastgltf::Asset& asset)
+    {
+        if (asset.defaultScene && *asset.defaultScene >= asset.scenes.size())
+            return false;
+        std::vector<size_t> parents(asset.nodes.size());
+        for (const auto& node : asset.nodes)
+        {
+            if (node.meshIndex && *node.meshIndex >= asset.meshes.size())
+                return false;
+            for (auto child : node.children)
+                if (child >= asset.nodes.size() || ++parents[child] > 1)
+                    return false; // glTF nodes form trees, not shared-child DAGs.
+        }
+        for (const auto& scene : asset.scenes)
+        {
+            std::vector<bool> roots(asset.nodes.size());
+            for (auto root : scene.nodeIndices)
+            {
+                if (root >= asset.nodes.size() || parents[root] != 0 || roots[root])
+                    return false;
+                roots[root] = true;
+            }
+        }
+        // Topological traversal detects cycles, including disconnected nodes,
+        // without recursing on untrusted scene depth.
+        std::vector<size_t> nodes;
+        for (size_t i = 0; i < parents.size(); ++i)
+            if (parents[i] == 0)
+                nodes.push_back(i);
+        for (size_t i = 0; i < nodes.size(); ++i)
+            for (auto child : asset.nodes[nodes[i]].children)
+                if (--parents[child] == 0)
+                    nodes.push_back(child);
+        return nodes.size() == asset.nodes.size();
+    }
+
+    static bool FitsScratch(const fastgltf::Asset& asset, size_t available, bool import_materials, bool import_textures, size_t& hierarchy_capacity)
+    {
+        // Upper bound every arena allocation, including hash-table rounding and
+        // copied strings. Keep the existing bounded scratch policy, but fail
+        // before custom containers can dereference a failed allocation.
+        auto consume = [&](size_t count, size_t width) {
+            if (count > available / width)
+                return false;
+            available -= count * width;
+            return true;
+        };
+        using NodeMap = UnorderedHashMap<uint32_t, uint32_t>;
+        if (!consume(1, 1024 + 3 * 16 * sizeof(NodeMap::Entry)))
+            return false; // minimum map capacities and allocation alignment
+        for (const auto& mesh : asset.meshes)
+            for (const auto& primitive : mesh.primitives)
+                if (HasTriangleGeometry(primitive))
+                {
+                    const auto vertices = asset.accessors[primitive.findAttribute("POSITION")->accessorIndex].count;
+                    const auto indices  = primitive.indicesAccessor ? asset.accessors[*primitive.indicesAccessor].count : vertices;
+                    if (!consume(vertices, 8 * sizeof(float)) || !consume(indices, sizeof(uint32_t)) || !consume(1, sizeof(AssetSubMesh)))
+                        return false;
+                }
+        if (import_materials)
+        {
+            if (!consume(asset.materials.size(), sizeof(AssetMaterial) + sizeof(String) + (import_textures ? 5 * MAX_FILE_PATH_COUNT : 0)))
+                return false;
+            for (const auto& material : asset.materials)
+                if (!consume(2, std::max(material.name.size(), size_t(8)) + 1))
+                    return false;
+            if (import_textures)
+            {
+                if (!consume(asset.textures.size(), sizeof(AssetTexture) + MAX_FILE_PATH_COUNT + 512))
+                    return false;
+                for (const auto& texture : asset.textures)
+                    if (texture.imageIndex && !consume(1, asset.images[*texture.imageIndex].name.size() + 1))
+                        return false;
+            }
+        }
+        const size_t node_bytes = sizeof(Helpers::NodeHierarchy) + 2 * sizeof(Mat4f) + sizeof(String) + 3 * 4 * sizeof(NodeMap::Entry);
+        hierarchy_capacity      = 0;
+        std::vector<size_t> pending;
+        auto                count_scene = [&](const fastgltf::Scene& scene) {
+            pending.assign(scene.nodeIndices.begin(), scene.nodeIndices.end());
+            while (!pending.empty())
+            {
+                const auto& node = asset.nodes[pending.back()];
+                pending.pop_back();
+                if (!consume(1, node_bytes) || !consume(1, std::max(node.name.size(), size_t(6)) + 1))
+                    return false;
+                ++hierarchy_capacity;
+                if (node.meshIndex)
+                {
+                    const auto& mesh = asset.meshes[*node.meshIndex];
+                    for (const auto& primitive : mesh.primitives)
+                        if (HasTriangleGeometry(primitive))
+                        {
+                            if (!consume(1, node_bytes) || !consume(1, std::max(mesh.name.size(), size_t(6)) + 1))
+                                return false;
+                            ++hierarchy_capacity;
+                        }
+                }
+                pending.insert(pending.end(), node.children.begin(), node.children.end());
+            }
+            return true;
+        };
+        if (asset.defaultScene)
+            return count_scene(asset.scenes[*asset.defaultScene]);
+        for (const auto& scene : asset.scenes)
+            if (!count_scene(scene))
+                return false;
+        return true;
+    }
+
+    static bool ExtractMeshes(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, AssetMesh& out)
     {
         uint32_t total_verts   = 0;
         uint32_t total_indices = 0;
@@ -88,7 +306,7 @@ namespace ZEngine::Importers
         {
             for (const auto& prim : mesh.primitives)
             {
-                if (prim.type != fastgltf::PrimitiveType::Triangles)
+                if (!HasTriangleGeometry(prim))
                     continue;
                 auto it = prim.findAttribute("POSITION");
                 if (it != prim.attributes.end())
@@ -113,7 +331,7 @@ namespace ZEngine::Importers
         {
             for (const auto& prim : mesh.primitives)
             {
-                if (prim.type != fastgltf::PrimitiveType::Triangles)
+                if (!HasTriangleGeometry(prim))
                     continue;
 
                 auto pos_it = prim.findAttribute("POSITION");
@@ -165,7 +383,13 @@ namespace ZEngine::Importers
                 {
                     const auto& idx_acc = asset.accessors[prim.indicesAccessor.value()];
                     ic                  = (uint32_t) idx_acc.count;
-                    fastgltf::iterateAccessorWithIndex<uint32_t>(asset, idx_acc, [&](uint32_t idx, std::size_t) { out.Indices.push(idx); });
+                    bool valid_indices  = true;
+                    fastgltf::iterateAccessorWithIndex<uint32_t>(asset, idx_acc, [&](uint32_t idx, std::size_t) {
+                        valid_indices = valid_indices && idx < vc;
+                        out.Indices.push(idx);
+                    });
+                    if (!valid_indices)
+                        return false;
                 }
                 else
                 {
@@ -189,6 +413,7 @@ namespace ZEngine::Importers
                 index_offset             += ic;
             }
         }
+        return true;
     }
 
     static void ExtractMaterials(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, uuid_random_generator& gen, Array<AssetMaterial>& out)
@@ -286,87 +511,90 @@ namespace ZEngine::Importers
         }
     }
 
-    static void TraverseNode(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, std::size_t node_index, AssetNodeHierarchy& hier, const Array<AssetMaterial>& mats, int parent_id, int depth)
+    static void TraverseNodes(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, const fastgltf::Scene& scene, AssetNodeHierarchy& hier, const Array<AssetMaterial>& mats, const std::vector<uint32_t>& mesh_offsets)
     {
-        const fastgltf::Node& node = asset.nodes[node_index];
-        int                   id   = AddNode(hier, parent_id, depth);
-        hier.NodeNames[id]         = (uint32_t) hier.Names.size();
-        auto& name                 = hier.Names.push_use({});
-        name.init(arena, node.name.empty() ? "<node>" : node.name.c_str());
-
-        hier.LocalTransforms[id]  = NodeLocalTransform(node);
-        hier.GlobalTransforms[id] = Identity<Mat4f>();
-
-        if (node.meshIndex.has_value())
+        struct PendingNode
         {
-            std::size_t mesh_idx = node.meshIndex.value();
-            const auto& mesh     = asset.meshes[mesh_idx];
-            for (std::size_t p = 0; p < mesh.primitives.size(); ++p)
+            size_t Index;
+            int    Parent;
+            int    Depth;
+        };
+        std::vector<PendingNode> pending;
+        for (auto root = scene.nodeIndices.rbegin(); root != scene.nodeIndices.rend(); ++root)
+            pending.push_back({*root, -1, 0});
+        while (!pending.empty())
+        {
+            const auto [node_index, parent_id, depth] = pending.back();
+            pending.pop_back();
+            const fastgltf::Node& node = asset.nodes[node_index];
+            int                   id   = AddNode(hier, parent_id, depth);
+            hier.NodeNames[id]         = (uint32_t) hier.Names.size();
+            auto& name                 = hier.Names.push_use({});
+            name.init(arena, node.name.empty() ? "<node>" : node.name.c_str());
+
+            hier.LocalTransforms[id]  = NodeLocalTransform(node);
+            hier.GlobalTransforms[id] = Identity<Mat4f>();
+
+            if (node.meshIndex.has_value())
             {
-                int sub_id             = AddNode(hier, id, depth + 1);
-                hier.NodeNames[sub_id] = (uint32_t) hier.Names.size();
-                auto& sub_name         = hier.Names.push_use({});
-                sub_name.init(arena, mesh.name.empty() ? "<mesh>" : mesh.name.c_str());
-
-                hier.NodeMeshes[sub_id]       = (uint32_t) mesh_idx;
-                hier.LocalTransforms[sub_id]  = Identity<Mat4f>();
-                hier.GlobalTransforms[sub_id] = Identity<Mat4f>();
-
-                if (mesh.primitives[p].materialIndex.has_value())
+                std::size_t mesh_idx      = node.meshIndex.value();
+                const auto& mesh          = asset.meshes[mesh_idx];
+                uint32_t    submesh_index = mesh_offsets[mesh_idx];
+                for (std::size_t p = 0; p < mesh.primitives.size(); ++p)
                 {
-                    uint32_t mat_idx           = (uint32_t) mesh.primitives[p].materialIndex.value();
-                    hier.NodeMaterials[sub_id] = mat_idx;
-                    if (mat_idx < mats.size())
+                    if (!HasTriangleGeometry(mesh.primitives[p]))
+                        continue;
+                    int sub_id             = AddNode(hier, id, depth + 1);
+                    hier.NodeNames[sub_id] = (uint32_t) hier.Names.size();
+                    auto& sub_name         = hier.Names.push_use({});
+                    sub_name.init(arena, mesh.name.empty() ? "<mesh>" : mesh.name.c_str());
+
+                    hier.NodeMeshes[sub_id]       = submesh_index++;
+                    hier.LocalTransforms[sub_id]  = Identity<Mat4f>();
+                    hier.GlobalTransforms[sub_id] = Identity<Mat4f>();
+
+                    if (mesh.primitives[p].materialIndex.has_value())
                     {
-                        AssetMesh dummy{};
-                        // wire material UUID into the corresponding sub-mesh
-                        // (done outside traverse in BuildHierarchy below)
-                        (void) dummy;
+                        uint32_t mat_idx = (uint32_t) mesh.primitives[p].materialIndex.value();
+                        if (mat_idx < mats.size())
+                            hier.NodeMaterials[sub_id] = mat_idx;
                     }
                 }
             }
-        }
 
-        for (std::size_t child : node.children)
-            TraverseNode(arena, asset, child, hier, mats, id, depth + 1);
+            for (auto child = node.children.rbegin(); child != node.children.rend(); ++child)
+                pending.push_back({*child, id, depth + 1});
+        }
     }
 
-    static void BuildHierarchy(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, uuid_random_generator& gen, AssetNodeHierarchy& hier, AssetMesh& mesh, const Array<AssetMaterial>& mats)
+    static void BuildHierarchy(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, uuid_random_generator& gen, AssetNodeHierarchy& hier, AssetMesh& mesh, const Array<AssetMaterial>& mats, size_t capacity)
     {
         hier.NodeHierarchyUUID = gen();
         hier.MeshUUID          = mesh.MeshUUID;
 
-        uint32_t cap           = 3000;
-        hier.Hierarchies.init(arena, cap);
-        hier.LocalTransforms.init(arena, cap);
-        hier.GlobalTransforms.init(arena, cap);
-        hier.Names.init(arena, cap);
-        hier.NodeNames.init(arena, cap);
-        hier.NodeMeshes.init(arena, cap);
-        hier.NodeMaterials.init(arena, cap);
+        hier.Hierarchies.init(arena, capacity);
+        hier.LocalTransforms.init(arena, capacity);
+        hier.GlobalTransforms.init(arena, capacity);
+        hier.Names.init(arena, capacity);
+        hier.NodeNames.init(arena, 2 * capacity);
+        hier.NodeMeshes.init(arena, 2 * capacity);
+        hier.NodeMaterials.init(arena, 2 * capacity);
         hier.MaterialNames.init(arena, (uint32_t) mats.size(), (uint32_t) mats.size());
         for (uint32_t m = 0; m < (uint32_t) mats.size(); ++m)
             hier.MaterialNames[m].init(arena, mats[m].Name.c_str());
 
-        if (asset.defaultScene.has_value())
-        {
-            for (std::size_t n : asset.scenes[asset.defaultScene.value()].nodeIndices)
-                TraverseNode(arena, asset, n, hier, mats, -1, 0);
-        }
-        else
-        {
-            for (const auto& scene : asset.scenes)
-                for (std::size_t n : scene.nodeIndices)
-                    TraverseNode(arena, asset, n, hier, mats, -1, 0);
-        }
-
-        // Wire material UUIDs into sub-meshes
-        uint32_t sub_idx = 0;
+        // Use the same primitive filtering as extraction. These offsets also map
+        // hierarchy nodes to flattened submeshes across multi-primitive meshes.
+        std::vector<uint32_t> mesh_offsets(asset.meshes.size());
+        uint32_t              sub_idx = 0;
         for (std::size_t mi = 0; mi < asset.meshes.size(); ++mi)
         {
             const auto& fmesh = asset.meshes[mi];
+            mesh_offsets[mi]  = sub_idx;
             for (std::size_t p = 0; p < fmesh.primitives.size(); ++p)
             {
+                if (!HasTriangleGeometry(fmesh.primitives[p]))
+                    continue;
                 if (sub_idx >= mesh.SubMeshes.size())
                     break;
                 if (fmesh.primitives[p].materialIndex.has_value())
@@ -377,6 +605,15 @@ namespace ZEngine::Importers
                 }
                 ++sub_idx;
             }
+        }
+        if (asset.defaultScene.has_value())
+        {
+            TraverseNodes(arena, asset, asset.scenes[*asset.defaultScene], hier, mats, mesh_offsets);
+        }
+        else
+        {
+            for (const auto& scene : asset.scenes)
+                TraverseNodes(arena, asset, scene, hier, mats, mesh_offsets);
         }
     }
 
@@ -394,9 +631,10 @@ namespace ZEngine::Importers
 
     Core::VFS::VFSResult<void> GltfImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {
+        std::lock_guard import_lock(m_import_mutex);
         // Resolve VFS path to native filesystem path
-        char        native[MAX_FILE_PATH_COUNT] = {};
-        const char* ws                          = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        char            native[MAX_FILE_PATH_COUNT] = {};
+        const char*     ws                          = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (ws && ws[0] != '\0')
             path.ResolveNative(ws, native, sizeof(native));
         else
@@ -411,7 +649,7 @@ namespace ZEngine::Importers
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
         }
 
-        auto result = parser.loadGltf(buf.get(), fs_path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages | fastgltf::Options::GenerateMeshIndices);
+        auto result = parser.loadGltf(buf.get(), fs_path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages);
 
         if (result.error() != fastgltf::Error::None)
         {
@@ -419,10 +657,21 @@ namespace ZEngine::Importers
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
         }
 
-        fastgltf::Asset&             asset = result.get();
+        fastgltf::Asset& asset = result.get();
+        if (!HasValidGltfData(asset) || !HasValidNodeGraph(asset))
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::Corrupted);
 
+        size_t hierarchy_capacity = 0;
+        if (!FitsScratch(asset, ZMega(32), true, true, hierarchy_capacity))
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::OutOfMemory);
         Core::Memory::ArenaAllocator scratch{};
         Arena.CreateSubArena(ZMega(32), &scratch, "ImportPipeline/GltfImporter/RuntimeScratch");
+        if (!scratch.Allocate(ZMega(32)))
+        {
+            Arena.Clear();
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::OutOfMemory);
+        }
+        scratch.Clear();
 
         std::random_device    rd;
         std::mt19937          generator(rd());
@@ -433,12 +682,16 @@ namespace ZEngine::Importers
         Array<AssetMaterial>  materials = {};
         Array<AssetTexture>   textures  = {};
 
-        ExtractMeshes(&scratch, asset, mesh);
+        if (!ExtractMeshes(&scratch, asset, mesh))
+        {
+            Arena.Clear();
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::Corrupted);
+        }
         mesh.MeshUUID = meta.AssetUUID;
 
         ExtractMaterials(&scratch, asset, gen, materials);
         ExtractTextures(&scratch, asset, gen, textures, materials);
-        BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials);
+        BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials, hierarchy_capacity);
 
         auto* mgr = Managers::AssetManager::Instance();
         if (mgr)
@@ -467,34 +720,33 @@ namespace ZEngine::Importers
 
     void GltfImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
+        std::lock_guard import_lock(m_import_mutex);
+        auto            mesh_path = AssetCodec::ValidateImportConfiguration(cfg);
+        if (mesh_path.Failed() || !filename || !filename[0])
+        {
+            if (on_error)
+                on_error(context, fmt::format("Invalid import configuration (VFS error {})", static_cast<uint32_t>(mesh_path.Failed() ? mesh_path.Error() : Core::VFS::VFSError::InvalidPath)));
+            return;
+        }
         // The caller's arena is sized only for a few short path strings (#760) — carve a
         // scratch sub-arena from this importer's own, generously-sized private Arena
-        // instead, matching the pattern Import() already uses for hot-reload. Declared
-        // once here (rather than down at the old ExtractMeshes call site) so the config
-        // copy below and the final serialized outputs share the same backing memory
-        // instead of each getting an independent, aliasing CreateSubArena carve-out.
+        // instead, matching the pattern Import() already uses for hot-reload.
+        // Intermediate geometry uses this scratch arena; output paths own their
+        // strings independently and remain valid throughout the completion callback.
         Core::Memory::ArenaAllocator scratch{};
         Arena.CreateSubArena(ZMega(32), &scratch, "ImportPipeline/GltfImporter/EditorScratch");
-        arena                                  = &scratch;
+        arena               = &scratch;
 
-        // Build arena-allocated config copy (same pattern as AssimpImporter::ImportFile)
-        AssetCodec::ImportConfiguration config = {};
-        config.OutputWorkingSpacePath.init(arena, cfg.OutputWorkingSpacePath.c_str());
-        config.OutputTextureFilesPath.init(arena, cfg.OutputTextureFilesPath.c_str());
-        config.OutputAssetsPath.init(arena, cfg.OutputAssetsPath.c_str());
-        config.OutputMaterialPath.init(arena, cfg.OutputMaterialPath.c_str());
-        config.AssetName.init(arena, cfg.AssetName.c_str());
-        config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
-        config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
-        config.VFS     = cfg.VFS;
-        config.Options = cfg.Options;
+        // Config remains borrowed throughout this synchronous call; no scratch copy.
+        const auto& config  = cfg;
 
-        auto fs_path   = std::filesystem::path(filename);
-        auto buf       = fastgltf::GltfDataBuffer::FromPath(fs_path);
+        auto        fs_path = std::filesystem::path(filename);
+        auto        buf     = fastgltf::GltfDataBuffer::FromPath(fs_path);
         if (buf.error() != fastgltf::Error::None)
         {
             if (on_error)
                 on_error(context, fastgltf::getErrorMessage(buf.error()));
+            Arena.Clear();
             return;
         }
 
@@ -502,19 +754,37 @@ namespace ZEngine::Importers
             on_progress(context, 0.1f);
 
         fastgltf::Parser parser;
-        auto             result = parser.loadGltf(buf.get(), fs_path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages | fastgltf::Options::GenerateMeshIndices);
+        auto             result = parser.loadGltf(buf.get(), fs_path.parent_path(), fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages);
 
         if (result.error() != fastgltf::Error::None)
         {
             if (on_error)
                 on_error(context, fastgltf::getErrorMessage(result.error()));
+            Arena.Clear();
             return;
         }
 
         if (on_progress)
             on_progress(context, 0.3f);
 
-        fastgltf::Asset&      asset = result.get();
+        fastgltf::Asset& asset = result.get();
+        if (!HasValidGltfData(asset) || !HasValidNodeGraph(asset))
+        {
+            if (on_error)
+                on_error(context, "Invalid glTF buffer range, accessor, triangle count, or node graph");
+            Arena.Clear();
+            return;
+        }
+
+        size_t hierarchy_capacity = 0;
+        if (!FitsScratch(asset, scratch.m_total_size, config.Options.ImportMaterials, config.Options.ImportMaterials && config.Options.ImportTextures, hierarchy_capacity) || !scratch.Allocate(scratch.m_total_size))
+        {
+            if (on_error)
+                on_error(context, "glTF exceeds the importer scratch memory budget or memory could not be committed");
+            Arena.Clear();
+            return;
+        }
+        scratch.Clear();
 
         std::random_device    rd;
         std::mt19937          gen_mt(rd());
@@ -525,7 +795,13 @@ namespace ZEngine::Importers
         Array<AssetMaterial>  materials = {};
         Array<AssetTexture>   textures  = {};
 
-        ExtractMeshes(&scratch, asset, mesh);
+        if (!ExtractMeshes(&scratch, asset, mesh))
+        {
+            if (on_error)
+                on_error(context, "Invalid glTF triangle vertex index");
+            Arena.Clear();
+            return;
+        }
         mesh.MeshUUID = gen();
 
         // Stabilize the mesh UUID (#762): re-importing the same destination path must
@@ -533,11 +809,14 @@ namespace ZEngine::Importers
         // update to an existing mesh" — every re-cook would otherwise mint a fresh
         // random UUID and look like a brand new, unrelated asset.
         {
-            auto mesh_dir    = Core::VFS::VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
-            auto mesh_path   = mesh_dir / config.OutputAssetFile.c_str();
-            auto meta_result = Core::VFS::MetaFileIO::Read(*config.VFS, mesh_path);
-            if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
-                mesh.MeshUUID = meta_result.Value().AssetUUID;
+            auto identity = AssetCodec::RestoreAssetUUID(*config.VFS, mesh_path.Value(), mesh.MeshUUID);
+            if (identity.Failed())
+            {
+                if (on_error)
+                    on_error(context, fmt::format("Failed to read mesh metadata (VFS error {})", static_cast<uint32_t>(identity.Error())));
+                Arena.Clear();
+                return;
+            }
         }
 
         // Apply per-vertex transform options
@@ -575,26 +854,12 @@ namespace ZEngine::Importers
         // Optimize each submesh: vertex cache, overdraw, vertex fetch.
         for (uint32_t si = 0; si < mesh.SubMeshes.size(); ++si)
         {
-            auto&     sub      = mesh.SubMeshes[si];
-            uint32_t* sub_idx  = mesh.Indices.data() + sub.IndexOffset;
+            auto&     sub     = mesh.SubMeshes[si];
+            uint32_t* sub_idx = mesh.Indices.data() + sub.IndexOffset;
 
-            // Cross-primitive index contamination or a malformed GLTF can leave an index
-            // outside this submesh's own vertex range. Rebasing such an index underflows
-            // (uint32_t subtraction), which meshopt::buildTriangleAdjacency asserts on.
-            // Skip optimization for this submesh rather than crash — indices are left
-            // untouched (still correct against the unmodified vertex buffer).
-            bool      in_range = true;
-            for (uint32_t j = 0; j < sub.IndexCount && in_range; ++j)
-                if (sub_idx[j] < sub.VertexOffset || sub_idx[j] >= sub.VertexOffset + sub.VertexCount)
-                    in_range = false;
-            if (!in_range)
-                continue;
-
-            for (uint32_t j = 0; j < sub.IndexCount; ++j)
-                sub_idx[j] -= sub.VertexOffset;
+            // glTF indices are already local to the primitive's vertex slice.
+            // Extraction validated both the range and triangle count.
             Importers::OptimizeMeshSubmesh(mesh.Vertices.data() + sub.VertexOffset * 8, sub.VertexCount, sub_idx, sub.IndexCount);
-            for (uint32_t j = 0; j < sub.IndexCount; ++j)
-                sub_idx[j] += sub.VertexOffset;
         }
 
         if (config.Options.ImportMaterials)
@@ -608,36 +873,41 @@ namespace ZEngine::Importers
             // which reads MaterialUUID by reference off this same materials array.
             for (size_t m = 0; m < materials.size(); ++m)
             {
-                auto        mat_dir      = Core::VFS::VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
-                std::string mat_filename = fmt::format("{}{}", materials[m].Name.c_str(), ".zematerial");
-                auto        mat_path     = mat_dir / mat_filename.c_str();
-                auto        meta_result  = Core::VFS::MetaFileIO::Read(*config.VFS, mat_path);
-                if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
-                    materials[m].MaterialUUID = meta_result.Value().AssetUUID;
+                std::string mat_filename = AssetCodec::MaterialOutputFilename(materials[m], m);
+                auto        mat_path     = AssetCodec::MaterialOutputPath(materials[m], config, m);
+                if (mat_path.Failed())
+                {
+                    if (on_error)
+                        on_error(context, fmt::format("Invalid material output '{}' (VFS error {})", mat_filename, static_cast<uint32_t>(mat_path.Error())));
+                    Arena.Clear();
+                    return;
+                }
+                auto identity = AssetCodec::RestoreAssetUUID(*config.VFS, mat_path.Value(), materials[m].MaterialUUID);
+                if (identity.Failed())
+                {
+                    if (on_error)
+                        on_error(context, fmt::format("Failed to read material metadata (VFS error {})", static_cast<uint32_t>(identity.Error())));
+                    Arena.Clear();
+                    return;
+                }
             }
 
             if (config.Options.ImportTextures)
                 ExtractTextures(&scratch, asset, gen, textures, materials);
         }
-        BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials);
+        BuildHierarchy(&scratch, asset, gen, hierarchy, mesh, materials, hierarchy_capacity);
 
         // Extract texture image bytes to disk and record project-relative paths
         if (config.Options.ImportTextures && config.Options.ImportMaterials)
         {
-            char dest_dir_buf[MAX_FILE_PATH_COUNT] = {};
-            (ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dest_dir_buf, sizeof(dest_dir_buf));
-            config.VFS->CreateDir(ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str());
-
-            // Pre-resolve base pointers for every buffer — for a GLB all images share
-            // buffer 0 (the binary chunk). Resolving once avoids repeated get_if per texture.
-            std::vector<const uint8_t*> buf_ptrs(asset.buffers.size(), nullptr);
-            for (size_t i = 0; i < asset.buffers.size(); ++i)
+            auto texture_dir = ZEngine::Core::VFS::VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str();
+            auto create_dir  = config.VFS->CreateDir(texture_dir);
+            if (create_dir.Failed() && create_dir.Error() != ZEngine::Core::VFS::VFSError::AlreadyExists)
             {
-                const auto& bd = asset.buffers[i].data;
-                if (const auto* arr = std::get_if<fastgltf::sources::Array>(&bd))
-                    buf_ptrs[i] = reinterpret_cast<const uint8_t*>(arr->bytes.data());
-                else if (const auto* bvd = std::get_if<fastgltf::sources::ByteView>(&bd))
-                    buf_ptrs[i] = reinterpret_cast<const uint8_t*>(bvd->bytes.data());
+                if (on_error)
+                    on_error(context, "Unable to create the texture output directory");
+                Arena.Clear();
+                return;
             }
 
             for (size_t tex_idx = 0; tex_idx < textures.size() && tex_idx < asset.textures.size(); ++tex_idx)
@@ -669,15 +939,11 @@ namespace ZEngine::Importers
                 }
                 else if (const auto* bv_src = std::get_if<fastgltf::sources::BufferView>(&img.data))
                 {
-                    const auto&    bv   = asset.bufferViews[bv_src->bufferViewIndex];
-                    const uint8_t* base = bv.bufferIndex < buf_ptrs.size() ? buf_ptrs[bv.bufferIndex] : nullptr;
-                    if (base)
-                    {
-                        bytes  = base + bv.byteOffset;
-                        nbytes = bv.byteLength;
-                        if (bv_src->mimeType == fastgltf::MimeType::JPEG)
-                            ext = ".jpg";
-                    }
+                    const auto view = BufferViewBytes(asset, bv_src->bufferViewIndex);
+                    bytes           = view.data();
+                    nbytes          = view.size();
+                    if (bv_src->mimeType == fastgltf::MimeType::JPEG)
+                        ext = ".jpg";
                 }
                 else if (const auto* uri_src = std::get_if<fastgltf::sources::URI>(&img.data))
                 {
@@ -696,9 +962,11 @@ namespace ZEngine::Importers
                             if (file_sz > 0)
                             {
                                 uri_file_buf.resize(static_cast<size_t>(file_sz));
-                                fread(uri_file_buf.data(), 1, uri_file_buf.size(), src_file);
-                                bytes  = uri_file_buf.data();
-                                nbytes = uri_file_buf.size();
+                                if (fread(uri_file_buf.data(), 1, uri_file_buf.size(), src_file) == uri_file_buf.size())
+                                {
+                                    bytes  = uri_file_buf.data();
+                                    nbytes = uri_file_buf.size();
+                                }
                                 // Derive extension from URI path
                                 if (path_sv.size() >= 4)
                                 {
@@ -743,8 +1011,10 @@ namespace ZEngine::Importers
 
                 if (!bytes || nbytes == 0)
                 {
-                    ZENGINE_LOG_ASSET_WARN("GltfImporter: tex {} image data not accessible (unsupported source variant)", tex_idx)
-                    continue;
+                    if (on_error)
+                        on_error(context, fmt::format("Unable to read texture {} image data", tex_idx));
+                    Arena.Clear();
+                    return;
                 }
 
                 // Build output filename — prefer image name, then URI filename, then tex_N
@@ -764,57 +1034,36 @@ namespace ZEngine::Importers
                 }
                 else
                 {
-                    snprintf(stem_buf, sizeof(stem_buf), "tex_%zu", tex_idx);
+                    Helpers::secure_strcpy(stem_buf, sizeof(stem_buf), "image");
                 }
 
-                char out_path_buf[MAX_FILE_PATH_COUNT] = {};
-                snprintf(out_path_buf, sizeof(out_path_buf), "%s/%s%s", dest_dir_buf, stem_buf, ext);
-
-                // fwrite is faster than std::ofstream for plain binary blobs
-                if (FILE* f = fopen(out_path_buf, "wb"))
+                // Image names are optional/non-unique. The source image index
+                // preserves identity while textures sharing an image share a file.
+                const auto output_name = fmt::format("{}_{}{}", stem_buf, *fgltf_tex.imageIndex, ext);
+                auto       output_path = AssetCodec::MakeOutputPath(texture_dir.CStr(), output_name.c_str());
+                auto       write       = output_path.Succeeded() ? Core::VFS::WriteFileAtomically(*config.VFS, output_path.Value(), {bytes, nbytes}) : Core::VFS::VFSResult<void>::Fail(output_path.Error());
+                if (write.Succeeded())
                 {
-                    fwrite(bytes, 1, nbytes, f);
-                    fclose(f);
-                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", out_path_buf, nbytes)
-
-                    char rel_buf[MAX_FILE_PATH_COUNT] = {};
-                    snprintf(rel_buf, sizeof(rel_buf), "%s/%s/%s%s", config.OutputTextureFilesPath.c_str(), config.AssetName.c_str(), stem_buf, ext);
-                    textures[tex_idx].Path.init(&scratch, rel_buf);
+                    ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", output_path.Value().CStr(), nbytes)
+                    AssetCodec::ReportPublishedArtifact(config, AssetFileType::TEXTURES, output_path.Value());
+                    textures[tex_idx].Path.init(&scratch, output_path.Value().CStr());
+                }
+                else
+                {
+                    if (on_error)
+                        on_error(context, fmt::format("Failed to write '{}/{}' (VFS error {})", texture_dir.CStr(), output_name, static_cast<uint32_t>(write.Error())));
+                    Arena.Clear();
+                    return;
                 }
             }
 
-            // Propagate tex.Path → material.*TexPath by UUID match, replacing
-            // ExtractTextures' throwaway random UUID (#755) with a stable,
-            // content-hashed one.
-            for (size_t m = 0; m < materials.size(); ++m)
+            auto metadata = AssetCodec::SynchronizeTextureMetadata(arena, ArrayView{textures}, ArrayView{materials}, config, "GltfImporter");
+            if (metadata.Failed())
             {
-                auto sync_texture = [&](uuids::uuid& uuid_field, Core::Containers::String& path_out) {
-                    for (size_t t = 0; t < textures.size(); ++t)
-                    {
-                        if (textures[t].TextureUUID == uuid_field && !textures[t].Path.empty())
-                        {
-                            path_out.init(&scratch, textures[t].Path.c_str());
-
-                            auto vfs_path = Core::VFS::VFSPath::Parse(textures[t].Path.c_str());
-                            if (vfs_path.Succeeded() && config.VFS)
-                            {
-                                auto hash_result = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, vfs_path.Value());
-                                auto meta_result = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, vfs_path.Value(), "GltfImporter", hash_result.Succeeded() ? hash_result.Value() : 0);
-                                if (meta_result.Succeeded())
-                                {
-                                    textures[t].TextureUUID = meta_result.Value().AssetUUID;
-                                    uuid_field              = meta_result.Value().AssetUUID;
-                                }
-                            }
-                            return;
-                        }
-                    }
-                };
-                sync_texture(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
-                sync_texture(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
-                sync_texture(materials[m].NormalTexUUID, materials[m].NormalTexPath);
-                sync_texture(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
-                sync_texture(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+                if (on_error)
+                    on_error(context, fmt::format("Failed to persist texture metadata (VFS error {})", static_cast<uint32_t>(metadata.Error())));
+                Arena.Clear();
+                return;
             }
         }
 
@@ -822,12 +1071,37 @@ namespace ZEngine::Importers
             on_progress(context, 0.7f);
 
         // Serialize to disk — .zemesh + .zematerial (no .zetextures: paths are inline in material)
-        Array<AssetImporterOutput> outputs = {};
-        outputs.init(arena, 16);
-        outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchy, config));
+        // AssetImporterOutput owns std::strings and must use constructed storage.
+        std::vector<AssetImporterOutput> outputs;
+        outputs.reserve(1 + materials.size());
+        auto append_output = [&](Core::VFS::VFSResult<AssetImporterOutput> result, const char* directory, const std::string& filename) {
+            if (result.Failed())
+            {
+                const auto message = fmt::format("Failed to write '{}/{}' (VFS error {})", directory, filename, static_cast<uint32_t>(result.Error()));
+                ZENGINE_CORE_ERROR("[GltfImporter] {}", message)
+                if (on_error)
+                    on_error(context, message);
+                return false;
+            }
+            outputs.push_back(std::move(result.Value()));
+            return true;
+        };
         if (config.Options.ImportMaterials)
             for (size_t i = 0; i < materials.size(); ++i)
-                outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+                if (!append_output(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config, i), config.OutputMaterialPath.c_str(), fmt::format("{}/{}", config.AssetName.c_str(), AssetCodec::MaterialOutputFilename(materials[i], i))))
+                {
+                    Arena.Clear();
+                    return;
+                }
+
+        // Publish the mesh only after all referenced dependencies were written.
+        // Preserve the mesh-first completion callback ordering.
+        if (!append_output(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchy, config), config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str()))
+        {
+            Arena.Clear();
+            return;
+        }
+        std::rotate(outputs.begin(), outputs.end() - 1, outputs.end());
 
         auto* mgr = Managers::AssetManager::Instance();
         if (mgr)
@@ -844,7 +1118,7 @@ namespace ZEngine::Importers
             on_progress(context, 1.0f);
 
         if (on_complete)
-            on_complete(context, ArrayView{outputs});
+            on_complete(context, {outputs.data(), outputs.size()});
 
         Arena.Clear();
     }

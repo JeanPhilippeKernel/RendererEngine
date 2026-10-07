@@ -7,6 +7,7 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/SkyConfigSerialization.h>
 #include <fmt/format.h>
@@ -106,12 +107,16 @@ namespace Tetragrama::Serializers
                 cook_cfg.VFS = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
 
                 auto output  = ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(scratch.Arena, *mesh, *hierarchy, cook_cfg);
-                if (!output.Path.empty())
+                if (output.Succeeded())
                 {
                     // Register the artifact path so future saves don't re-cook
-                    ZEngine::Helpers::secure_strncpy(const_cast<ZEngine::Core::VFS::AssetRecord*>(rec)->Meta.ArtifactPath, MAX_FILE_PATH_COUNT, output.Path.c_str(), output.Path.size());
+                    ZEngine::Helpers::secure_strncpy(const_cast<ZEngine::Core::VFS::AssetRecord*>(rec)->Meta.ArtifactPath, MAX_FILE_PATH_COUNT, output.Value().Path.c_str(), output.Value().Path.size());
 
-                    scene->PushAssetFile(output);
+                    scene->PushAssetFile(output.Value());
+                }
+                else
+                {
+                    ZENGINE_CORE_ERROR("Failed to cook '{}/{}' (VFS error {})", cook_cfg.OutputAssetsPath.c_str(), output_file, static_cast<uint32_t>(output.Error()))
                 }
             }
             ZReleaseScratch(scratch);

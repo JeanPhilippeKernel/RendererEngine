@@ -4,10 +4,6 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/ZEngineDef.h>
-#include <nlohmann/json.hpp>
-#include <uuid.h>
-#include <cstring>
-#include <optional>
 #include <thread>
 
 namespace ZEngine::Core::VFS
@@ -22,69 +18,6 @@ namespace ZEngine::Core::VFS
                 if (ext.Equals(candidate))
                     return true;
             return false;
-        }
-
-        // .zemesh/.zematerial embed their own UUID at cook time. Peeking it here
-        // lets the caller pre-seed a .meta instead of GetOrCreate minting an
-        // unrelated random one (#755). Duplicated rather than depending on
-        // Importers from Core::VFS — ZEMESH_MAGIC/ASSET_FILE_VERSION are already
-        // shared, low-level constants (ZEngineDef.h).
-        static std::optional<uuids::uuid> PeekEmbeddedUUID(IVFSContext& ctx, const VFSPath& path, Managers::AssetType type)
-        {
-            if (type != Managers::AssetType::MESH && type != Managers::AssetType::MATERIAL)
-                return std::nullopt;
-
-            auto open_result = ctx.Open(path, VFSOpenFlags::Read);
-            if (open_result.Failed())
-                return std::nullopt;
-            IVFSFile*                  file = open_result.Value();
-
-            std::optional<uuids::uuid> result;
-
-            if (type == Managers::AssetType::MESH)
-            {
-                // Layout matches AssetCodec::AssetMeshFileHeader: uint32 magic, uint32 version, 16-byte uuid.
-                uint8_t buf[24];
-                auto    read_result = file->Read({buf, sizeof(buf)}, 0);
-                if (read_result.Succeeded() && read_result.Value() == sizeof(buf))
-                {
-                    uint32_t magic = 0, version = 0;
-                    std::memcpy(&magic, buf, sizeof(magic));
-                    std::memcpy(&version, buf + sizeof(magic), sizeof(version));
-                    if (magic == ZEMESH_MAGIC && version == ASSET_FILE_VERSION)
-                    {
-                        uuids::uuid id;
-                        std::memcpy(&id, buf + sizeof(magic) + sizeof(version), sizeof(id));
-                        if (!id.is_nil())
-                            result = id;
-                    }
-                }
-            }
-            else // MATERIAL — JSON, top-level "uuid" field (matches AssetCodec::SerializeMaterialAssetFile)
-            {
-                static constexpr size_t kReadCap    = 16384;
-                auto                    size_result = file->Size();
-                if (size_result.Succeeded() && size_result.Value() < kReadCap)
-                {
-                    uint8_t buf[kReadCap];
-                    size_t  size        = (size_t) size_result.Value();
-                    auto    read_result = file->ReadAll({buf, size});
-                    if (read_result.Succeeded())
-                    {
-                        buf[size] = '\0';
-                        auto j    = nlohmann::json::parse(reinterpret_cast<const char*>(buf), nullptr, /*allow_exceptions=*/false);
-                        if (!j.is_discarded() && j.contains("uuid") && j["uuid"].is_string())
-                        {
-                            auto parsed = uuids::uuid::from_string(j["uuid"].get<std::string>());
-                            if (parsed.has_value() && !parsed.value().is_nil())
-                                result = parsed.value();
-                        }
-                    }
-                }
-            }
-
-            ctx.Close(file);
-            return result;
         }
     } // namespace
 
@@ -189,6 +122,7 @@ namespace ZEngine::Core::VFS
         m_metas_created.value.store(0, std::memory_order_relaxed);
         m_metas_updated.value.store(0, std::memory_order_relaxed);
         m_metas_up_to_date.value.store(0, std::memory_order_relaxed);
+        m_errors.value.store(0, std::memory_order_relaxed);
         m_pending_tasks.value.store(0, std::memory_order_relaxed);
         m_is_scanning.value.store(true, std::memory_order_release);
         m_scan_start = std::chrono::steady_clock::now();
@@ -216,7 +150,10 @@ namespace ZEngine::Core::VFS
         m_dir_semaphore.release();
 
         if (result.Failed())
+        {
+            ReportError(dir, "list directory", result.Error());
             return;
+        }
 
         Containers::Array<VFSDirEntry>& entries = result.Value();
 
@@ -238,51 +175,54 @@ namespace ZEngine::Core::VFS
 
                 if (IsAssetExtension(entries[i].Path))
                 {
-                    ZEngine::Managers::AssetType type = ZEngine::Core::VFS::AssetRegistry::InferTypeFromExtension(entries[i].Path);
+                    ZEngine::Managers::AssetType type        = ZEngine::Core::VFS::AssetRegistry::InferTypeFromExtension(entries[i].Path);
 
-                    // Pre-seed .meta from the embedded UUID before GetOrCreate mints an
-                    // unrelated random one (#755).
-                    if (MetaFileIO::Read(*ctx.Context, entries[i].Path).Failed())
+                    // Never write metadata using a fabricated hash after an I/O failure.
+                    auto                         hash_result = MetaFileIO::ComputeHash(*ctx.Context, entries[i].Path);
+                    if (hash_result.Failed())
                     {
-                        auto embedded = PeekEmbeddedUUID(*ctx.Context, entries[i].Path, type);
-                        if (embedded.has_value())
-                        {
-                            MetaFileData seed = {};
-                            seed.AssetUUID    = *embedded;
-                            Helpers::secure_strncpy(seed.ImporterName, sizeof(seed.ImporterName), "VFSScanner", sizeof(seed.ImporterName) - 1);
-                            MetaFileIO::Write(*ctx.Context, entries[i].Path, seed);
-                        }
+                        ReportError(entries[i].Path, "hash asset", hash_result.Error());
+                        continue;
                     }
 
-                    auto hash_result = MetaFileIO::ComputeHash(*ctx.Context, entries[i].Path);
-                    auto meta        = MetaFileIO::GetOrCreate(*ctx.Context, entries[i].Path, "VFSScanner", hash_result.Succeeded() ? hash_result.Value() : 0);
-                    if (meta.Succeeded())
+                    // GetOrCreate reads and, if necessary, seeds the embedded identity
+                    // under its lock, avoiding redundant metadata reads and unchecked writes.
+                    auto meta = MetaFileIO::GetOrCreate(*ctx.Context, entries[i].Path, "VFSScanner", hash_result.Value(), /*use_embedded_identity=*/true);
+                    if (meta.Failed())
                     {
-                        switch (meta.Value().Status)
-                        {
-                            case ImportStatus::New:
-                                m_metas_created.value.fetch_add(1, std::memory_order_relaxed);
-                                break;
-                            case ImportStatus::Stale:
-                                m_metas_updated.value.fetch_add(1, std::memory_order_relaxed);
-                                break;
-                            case ImportStatus::UpToDate:
-                                m_metas_up_to_date.value.fetch_add(1, std::memory_order_relaxed);
-                                break;
-                            default:
-                                break;
-                        }
+                        ReportError(entries[i].Path, "resolve metadata", meta.Error());
+                        continue;
+                    }
+                    switch (meta.Value().Status)
+                    {
+                        case ImportStatus::New:
+                            m_metas_created.value.fetch_add(1, std::memory_order_relaxed);
+                            break;
+                        case ImportStatus::Stale:
+                            m_metas_updated.value.fetch_add(1, std::memory_order_relaxed);
+                            break;
+                        case ImportStatus::UpToDate:
+                            m_metas_up_to_date.value.fetch_add(1, std::memory_order_relaxed);
+                            break;
+                        default:
+                            break;
+                    }
 
-                        if (m_registry != nullptr)
-                        {
-                            m_registry->OnScanFileDiscovered(*ctx.Context, entries[i].Path, type);
-                        }
+                    if (m_registry != nullptr)
+                    {
+                        m_registry->OnScanFileDiscovered(*ctx.Context, entries[i].Path, type);
                     }
                 }
             }
         }
 
         ctx.Cache->SetListing(dir, std::move(entries));
+    }
+
+    void VFSScanner::ReportError(const VFSPath& path, const char* operation, VFSError error)
+    {
+        m_errors.value.fetch_add(1, std::memory_order_relaxed);
+        ZENGINE_LOG_VFS_WARN("VFS scan failed to {} for '{}' (VFS error {})", operation, path.CStr(), static_cast<uint32_t>(error))
     }
 
     void VFSScanner::OnTaskComplete(bool cancelled)
@@ -302,6 +242,7 @@ namespace ZEngine::Core::VFS
             stats.MetasCreated  = m_metas_created.value.load(std::memory_order_relaxed);
             stats.MetasUpdated  = m_metas_updated.value.load(std::memory_order_relaxed);
             stats.MetasUpToDate = m_metas_up_to_date.value.load(std::memory_order_relaxed);
+            stats.Errors        = m_errors.value.load(std::memory_order_relaxed);
             m_complete_callback(m_complete_callback_ctx, stats);
         }
     }

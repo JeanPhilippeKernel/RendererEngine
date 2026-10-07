@@ -298,10 +298,10 @@ namespace Tetragrama::Layers
         {
             return false;
         }
-        // GLFW cursor callback reports in logical screen coords (same space as
-        // glfwGetWindowSize / ScreenW). No division needed on any platform.
-        m_ctx->MousePos[0] = (float) e.GetPosX();
-        m_ctx->MousePos[1] = (float) e.GetPosY();
+        // GLFW cursor positions are in window coordinates.  Convert them into
+        // the DPI-independent coordinate space used by ZUI layout and rendering.
+        m_ctx->MousePos[0] = (float) e.GetPosX() * m_ctx->InputScale[0];
+        m_ctx->MousePos[1] = (float) e.GetPosY() * m_ctx->InputScale[1];
         return false;
     }
 

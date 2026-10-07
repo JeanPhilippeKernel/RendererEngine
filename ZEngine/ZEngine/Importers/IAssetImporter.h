@@ -10,7 +10,8 @@ namespace ZEngine::Importers
     int AddNode(AssetNodeHierarchy& hierarchy, int parent, int depth);
 
     // Lightweight per-format importer interface used by ImportCoordinator.
-    // Implementations must be stateless — a single instance handles concurrent imports.
+    // A single instance handles concurrent calls. Implementations with shared scratch
+    // storage must serialize its use; different importer instances remain independent.
     // UUID must NOT be generated inside Import(); read it from meta.AssetUUID which was
     // assigned by MetaFileIO at scan time and is stable across reimports.
     struct IAssetImporter

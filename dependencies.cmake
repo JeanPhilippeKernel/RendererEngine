@@ -1,5 +1,14 @@
 include(FetchContent)
 
+# GLFW 3.5 can include both native Linux backends and selects the active one
+# at runtime.  Clear the pre-3.4 cache option so an existing build directory
+# can upgrade without GLFW rejecting its old GLFW_USE_WAYLAND entry.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  unset(GLFW_USE_WAYLAND CACHE)
+  set(GLFW_BUILD_X11 ON CACHE BOOL "Build GLFW X11 backend" FORCE)
+  set(GLFW_BUILD_WAYLAND ON CACHE BOOL "Build GLFW Wayland backend" FORCE)
+endif()
+
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
@@ -26,7 +35,7 @@ FetchContent_Declare(
   glfw3
   GIT_REPOSITORY https://github.com/glfw/glfw.git
   GIT_SHALLOW TRUE
-  GIT_TAG 3.3.10
+  GIT_TAG 3.5.1
   )
 
 FetchContent_Declare(

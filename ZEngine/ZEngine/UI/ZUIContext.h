@@ -383,13 +383,17 @@ namespace ZEngine::UI
         // Vector draw list — populated by PreparePayload each frame (FrameArena-backed)
         ZUIDrawList               DrawList             = {};
 
-        // current swapchain dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame
+        // Logical UI dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame.
         uint32_t                  ScreenW              = 1280;
         uint32_t                  ScreenH              = 720;
-        // display content scale (glfwGetWindowContentScale); 1.0=standard, 2.0=Retina.
-        // Widgets multiply logical pixel sizes by this to stay readable at any DPI.
+        // Physical framebuffer pixels per ZUI coordinate.  This incorporates the GLFW
+        // content scale on platforms where the framebuffer/window ratio remains 1:1.
         float                     UIScale              = 1.f;
-        // guard against per-frame ContentScale log spam — log only once
+        // Converts GLFW cursor coordinates into ZUI coordinates.  GLFW reports
+        // positions in window coordinates, which may be larger than ZUI's
+        // DPI-independent coordinate space.
+        float                     InputScale[2]        = {1.f, 1.f};
+        // Log dimensions initially and on changes, never on every frame.
         bool                      UIScaleLogged        = false;
 
         // drag-and-drop — source is set by ZUIBeginDragSource while a box is held+moving;

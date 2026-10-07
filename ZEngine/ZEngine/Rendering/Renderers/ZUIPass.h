@@ -15,18 +15,19 @@ namespace ZEngine::Rendering::Renderers
     /// @brief Frame-local draw data consumed by ZUIPass.
     struct ZUIRenderPayload
     {
-        UI::ZUIDrawVtx*     Vtx              = nullptr;
-        uint32_t            VtxCount         = 0;
-        uint16_t*           Idx              = nullptr;
-        uint32_t            IdxCount         = 0;
-        UI::ZUIDrawListCmd* Cmds             = nullptr;
-        uint32_t            CmdCount         = 0;
-        /// @brief Physical-to-logical scale used for scissor rectangles.
-        float               FramebufferScale = 1.f;
-        /// @brief NDC scale: 2 / framebuffer extent.
-        float               Scale[2]         = {};
+        UI::ZUIDrawVtx*     Vtx          = nullptr;
+        uint32_t            VtxCount     = 0;
+        uint16_t*           Idx          = nullptr;
+        uint32_t            IdxCount     = 0;
+        UI::ZUIDrawListCmd* Cmds         = nullptr;
+        uint32_t            CmdCount     = 0;
+        /// @brief NDC scale: 2 / logical UI extent.
+        float               Scale[2]     = {};
         /// @brief NDC origin offset.
-        float               Translate[2]     = {};
+        float               Translate[2] = {};
+
+        /// @brief Projects a logical clip rectangle into the actual render target.
+        VkRect2D            GetScissorRect(const UI::ZUIDrawListCmd& cmd, VkExtent2D render_extent) const;
     };
 
     /// @brief Push-constant layout shared with zui_draw.vert.
@@ -34,9 +35,9 @@ namespace ZEngine::Rendering::Renderers
     {
         float    Scale[2]     = {};
         float    Translate[2] = {};
+        /// @brief Logical-to-physical scale consumed by uFbScale.
+        float    FbScale[2]   = {1.f, 1.f};
         uint32_t TexIdx       = 0;
-        /// @brief Physical-to-logical scale consumed by uFbScale.
-        float    FbScale      = 1.f;
     };
 
     /// @brief Final graphics pass that uploads and draws the ZUI draw list.

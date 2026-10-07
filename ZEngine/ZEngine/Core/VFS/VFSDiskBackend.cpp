@@ -1,5 +1,6 @@
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -328,10 +329,12 @@ namespace ZEngine::Core::VFS
         file->m_handle = CreateFileA(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file->m_handle == INVALID_HANDLE_VALUE)
         {
+            const DWORD native_error = GetLastError();
+            const auto  error        = native_error == ERROR_FILE_NOT_FOUND || native_error == ERROR_PATH_NOT_FOUND ? VFSError::NotFound : native_error == ERROR_ACCESS_DENIED ? VFSError::PermissionDenied : VFSError::IOError;
             file->~VFSDiskFile();
             std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             m_file_pool.Free(file);
-            return VFSResult<IVFSFile*>::Fail(VFSError::NotFound);
+            return VFSResult<IVFSFile*>::Fail(error);
         }
         LARGE_INTEGER sz;
         if (GetFileSizeEx(file->m_handle, &sz))
@@ -349,10 +352,12 @@ namespace ZEngine::Core::VFS
         file->m_fd = ::open(native, oflags, 0644);
         if (file->m_fd < 0)
         {
+            const int  native_error = errno;
+            const auto error        = native_error == ENOENT ? VFSError::NotFound : native_error == EACCES || native_error == EPERM ? VFSError::PermissionDenied : native_error == ENOTDIR ? VFSError::NotADirectory : native_error == EISDIR ? VFSError::NotAFile : VFSError::IOError;
             file->~VFSDiskFile();
             std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             m_file_pool.Free(file);
-            return VFSResult<IVFSFile*>::Fail(VFSError::NotFound);
+            return VFSResult<IVFSFile*>::Fail(error);
         }
         struct stat st;
         if (::fstat(file->m_fd, &st) == 0)

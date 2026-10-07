@@ -27,6 +27,9 @@ namespace Tetragrama::Panels
         /// @param rect Panel bounding rect [x0, y0, x1, y1].
         void                          BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
 
+        /// @brief Invalidates cached listings after a main-thread file operation.
+        void                          RequestRefresh();
+
     private:
         // Navigation
         ZEngine::Core::VFS::VFSPath m_current_dir = {};

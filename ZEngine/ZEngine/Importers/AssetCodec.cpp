@@ -1,23 +1,29 @@
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/VFS/IVFSFile.h>
+#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/SerializerCommonHelper.h>
 #include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <uuid.h>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <vector>
 
 using namespace uuids;
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
+using ZEngine::Core::VFS::VFSError;
 using ZEngine::Core::VFS::VFSPath;
+using ZEngine::Core::VFS::VFSResult;
 
 namespace ZEngine::Importers::AssetCodec
 {
@@ -34,44 +40,146 @@ namespace ZEngine::Importers::AssetCodec
         }
     } // namespace
 
-    // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
-    static bool WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
+    VFSResult<VFSPath> MakeOutputPath(const char* directory, const char* filename)
     {
-        char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
-        const char* raw                          = out_path.CStr();
-        size_t      raw_len                      = secure_strlen(raw);
-        size_t      copy_len                     = raw_len < MAX_FILE_PATH_COUNT - 5 ? raw_len : MAX_FILE_PATH_COUNT - 5;
-        secure_memcpy(tmp_buf, MAX_FILE_PATH_COUNT, raw, copy_len);
-        const char tmp_suffix[] = ".tmp";
-        secure_memcpy(tmp_buf + copy_len, MAX_FILE_PATH_COUNT - copy_len, tmp_suffix, sizeof(tmp_suffix));
-        auto tmp_path    = VFSPath::Parse(tmp_buf).Value();
-
-        auto open_result = vfs->Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
-        if (open_result.Failed())
-            return false;
-
-        Core::VFS::IVFSFile* file  = open_result.Value();
-        const auto*          bytes = reinterpret_cast<const uint8_t*>(data.data());
-        auto                 w     = file->Write({bytes, data.size()}, 0);
-        auto                 flush = file->Flush();
-        file->Close();
-        vfs->Close(file);
-
-        if (w.Failed() || flush.Failed())
-            return false;
-
-        return !vfs->Rename(tmp_path, out_path).Failed();
+        if (!filename || !filename[0])
+            return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        auto dir = VFSPath::Parse(directory);
+        if (dir.Failed())
+            return VFSResult<VFSPath>::Fail(dir.Error());
+        auto path = dir.Value().Append(filename);
+        if (path.Failed())
+            return path;
+        if (path.Value().Parent() != dir.Value())
+            return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        // Cooked assets also receive a .meta sidecar.
+        constexpr size_t metadata_suffix_size = sizeof(".meta") - 1;
+        if (path.Value().Length() + metadata_suffix_size >= MAX_FILE_PATH_COUNT)
+            return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        // Account for the unique temporary sibling, even when the destination
+        // has a shorter name. Check without generating a UUID or touching VFS.
+        auto temporary = dir.Value().Append(".00000000-0000-0000-0000-000000000000.tmp");
+        if (temporary.Failed())
+            return temporary;
+        return path;
     }
 
-    AssetImporterOutput SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)
+    VFSResult<VFSPath> ValidateImportConfiguration(const ImportConfiguration& config)
     {
-        AssetImporterOutput output = {};
-        if (config.OutputAssetFile.empty())
-            return output;
+        if (!config.VFS)
+            return VFSResult<VFSPath>::Fail(VFSError::Unsupported);
+        auto mesh_path = MakeOutputPath(config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str());
+        if (mesh_path.Failed())
+            return mesh_path;
+        if (config.Options.ImportMaterials)
+        {
+            auto materials = MakeOutputPath(config.OutputMaterialPath.c_str(), config.AssetName.c_str());
+            if (materials.Failed())
+                return materials;
+            if (config.Options.ImportTextures)
+            {
+                auto textures = MakeOutputPath(config.OutputTextureFilesPath.c_str(), config.AssetName.c_str());
+                if (textures.Failed())
+                    return textures;
+            }
+        }
+        return mesh_path;
+    }
 
-        auto mesh_dir  = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
-        auto mesh_path = mesh_dir / config.OutputAssetFile.c_str();
-        config.VFS->CreateDir(mesh_dir);
+    static VFSResult<VFSPath> PrepareOutputPath(Core::VFS::IVFSContext* vfs, VFSResult<VFSPath> path)
+    {
+        if (!vfs)
+            return VFSResult<VFSPath>::Fail(VFSError::Unsupported);
+        if (path.Failed())
+            return path;
+        const auto dir    = path.Value().Parent();
+        auto       create = vfs->CreateDir(dir);
+        if (create.Failed() && create.Error() != VFSError::AlreadyExists)
+            return VFSResult<VFSPath>::Fail(create.Error());
+        return path;
+    }
+
+    void ReportPublishedArtifact(const ImportConfiguration& config, AssetFileType type, const VFSPath& path)
+    {
+        if (config.OnArtifactPublished && path.IsValid())
+            config.OnArtifactPublished(config.ArtifactContext, type, path.CStr());
+    }
+
+    VFSResult<void> CopyTextureFiles(ArrayView<AssetTexture> textures, const ImportConfiguration& config)
+    {
+        if (textures.size() == 0)
+            return VFSResult<void>::Ok();
+        if (!config.VFS)
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        auto directory = MakeOutputPath(config.OutputTextureFilesPath.c_str(), config.AssetName.c_str());
+        if (directory.Failed())
+            return VFSResult<void>::Fail(directory.Error());
+        auto create = config.VFS->CreateDir(directory.Value());
+        if (create.Failed() && create.Error() != VFSError::AlreadyExists)
+            return create;
+        for (size_t index = 0; index < textures.size(); ++index)
+        {
+            auto& texture = textures[index];
+            if (texture.Path.empty())
+                return VFSResult<void>::Fail(VFSError::InvalidPath);
+            const std::filesystem::path source_path(texture.Path.c_str());
+            const auto                  source = source_path.is_absolute() ? source_path : std::filesystem::path(config.InputBaseAssetFilePath.empty() ? "" : config.InputBaseAssetFilePath.c_str()) / source_path;
+            std::ifstream               input(source, std::ios::binary | std::ios::ate);
+            if (!input.is_open())
+            {
+                ZENGINE_CORE_ERROR("Texture not found: {}", source.string())
+                return VFSResult<void>::Fail(VFSError::NotFound);
+            }
+            const auto size = input.tellg();
+            if (size <= 0)
+                return VFSResult<void>::Fail(VFSError::IOError);
+            std::vector<uint8_t> bytes(static_cast<size_t>(size));
+            input.seekg(0, std::ios::beg);
+            if (!input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size)))
+                return VFSResult<void>::Fail(VFSError::IOError);
+            // Source basenames are not unique (e.g. two folders with albedo.png).
+            const auto output_name = fmt::format("{}_{}{}", source.stem().string(), index, source.extension().string());
+            auto       destination = MakeOutputPath(directory.Value().CStr(), output_name.c_str());
+            if (destination.Failed())
+                return VFSResult<void>::Fail(destination.Error());
+            auto write = Core::VFS::WriteFileAtomically(*config.VFS, destination.Value(), {bytes.data(), bytes.size()});
+            if (write.Failed())
+            {
+                ZENGINE_CORE_ERROR("Failed to copy texture '{}' to '{}' (VFS error {})", source.string(), destination.Value().CStr(), static_cast<uint32_t>(write.Error()))
+                return write;
+            }
+            ReportPublishedArtifact(config, AssetFileType::TEXTURES, destination.Value());
+            texture.Path.clear();
+            texture.Path.append(destination.Value().CStr());
+        }
+        return VFSResult<void>::Ok();
+    }
+
+    // Write data atomically via VFS: open .tmp, write, flush, close, rename to out_path.
+    static VFSResult<void> WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
+    {
+        if (!vfs)
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
+        return Core::VFS::WriteFileAtomically(*vfs, out_path, {bytes, data.size()});
+    }
+
+    VFSResult<void> RestoreAssetUUID(Core::VFS::IVFSContext& ctx, const VFSPath& path, uuids::uuid& id)
+    {
+        auto meta = Core::VFS::MetaFileIO::Read(ctx, path);
+        if (meta.Succeeded())
+            id = meta.Value().AssetUUID;
+        else if (meta.Error() != VFSError::NotFound && meta.Error() != VFSError::Corrupted)
+            return VFSResult<void>::Fail(meta.Error());
+        return VFSResult<void>::Ok();
+    }
+
+    VFSResult<AssetImporterOutput> SerializeMeshAssetFile(Core::Memory::ArenaAllocator* /*arena*/, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config)
+    {
+        auto path = PrepareOutputPath(config.VFS, MakeOutputPath(config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str()));
+        if (path.Failed())
+            return VFSResult<AssetImporterOutput>::Fail(path.Error());
+        const auto&        mesh_path = path.Value();
 
         std::ostringstream buf(std::ios::binary);
         WriteBinary(buf, ZEMESH_MAGIC);
@@ -100,22 +208,77 @@ namespace ZEngine::Importers::AssetCodec
         WriteBinaryHashMap(buf, hierarchies.NodeMeshes);
         WriteBinaryHashMap(buf, hierarchies.NodeMaterials);
 
-        if (!WriteVFS(config.VFS, mesh_path, buf.str()))
-            return output;
+        auto write = WriteVFS(config.VFS, mesh_path, buf.str());
+        if (write.Failed())
+            return VFSResult<AssetImporterOutput>::Fail(write.Error());
 
-        output = {.Type = AssetFileType::MESH, .Path = mesh_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
-        return output;
+        ReportPublishedArtifact(config, AssetFileType::MESH, mesh_path);
+
+        return VFSResult<AssetImporterOutput>::Ok({.Type = AssetFileType::MESH, .Path = mesh_path.CStr(), .RootPath = config.OutputWorkingSpacePath.empty() ? "" : config.OutputWorkingSpacePath.c_str()});
     }
 
-    AssetImporterOutput SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* /*arena*/, AssetMaterial& material, const ImportConfiguration& config)
+    std::string MaterialOutputFilename(const AssetMaterial& material, size_t index)
     {
-        AssetImporterOutput output             = {};
-        std::string         asset_mat_filename = fmt::format("{}{}", material.Name.c_str(), ".zematerial");
-        auto                mat_dir            = VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
-        config.VFS->CreateDir(mat_dir);
-        auto mat_path = mat_dir / asset_mat_filename.c_str();
+        // Names are optional/non-unique in source formats. The source index keeps
+        // duplicate and unnamed materials distinct and stable across recooks.
+        return fmt::format("{}_{}.zematerial", material.Name.empty() ? "material" : material.Name.c_str(), index);
+    }
 
-        auto tex_obj  = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
+    VFSResult<VFSPath> MaterialOutputPath(const AssetMaterial& material, const ImportConfiguration& config, size_t index)
+    {
+        auto directory = MakeOutputPath(config.OutputMaterialPath.c_str(), config.AssetName.c_str());
+        if (directory.Failed())
+            return directory;
+        return MakeOutputPath(directory.Value().CStr(), MaterialOutputFilename(material, index).c_str());
+    }
+
+    VFSResult<void> SynchronizeTextureMetadata(Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, ArrayView<AssetMaterial> materials, const ImportConfiguration& config, const char* importer)
+    {
+        if (!config.VFS)
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        for (size_t t = 0; t < textures.size(); ++t)
+        {
+            auto& texture = textures[t];
+            auto  path    = VFSPath::Parse(texture.Path.c_str());
+            if (path.Failed())
+                return VFSResult<void>::Fail(path.Error());
+            auto hash = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, path.Value());
+            if (hash.Failed())
+                return VFSResult<void>::Fail(hash.Error());
+            auto meta = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, path.Value(), importer, hash.Value());
+            if (meta.Failed())
+                return VFSResult<void>::Fail(meta.Error());
+
+            const auto original_uuid = texture.TextureUUID;
+            texture.TextureUUID      = meta.Value().AssetUUID;
+            for (size_t m = 0; m < materials.size(); ++m)
+            {
+                auto& material = materials[m];
+                auto  sync     = [&](uuids::uuid& id, String& destination) {
+                    if (!original_uuid.is_nil() && id == original_uuid)
+                    {
+                        id = texture.TextureUUID;
+                        destination.init(arena, texture.Path.c_str());
+                    }
+                };
+                sync(material.AlbedoTexUUID, material.AlbedoTexPath);
+                sync(material.EmissiveTexUUID, material.EmissiveTexPath);
+                sync(material.NormalTexUUID, material.NormalTexPath);
+                sync(material.OpacityTexUUID, material.OpacityTexPath);
+                sync(material.SpecularTexUUID, material.SpecularTexPath);
+            }
+        }
+        return VFSResult<void>::Ok();
+    }
+
+    VFSResult<AssetImporterOutput> SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* /*arena*/, AssetMaterial& material, const ImportConfiguration& config, size_t material_index)
+    {
+        auto path = PrepareOutputPath(config.VFS, MaterialOutputPath(material, config, material_index));
+        if (path.Failed())
+            return VFSResult<AssetImporterOutput>::Fail(path.Error());
+        const auto& mat_path = path.Value();
+
+        auto        tex_obj  = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
             nlohmann::json t;
             t["uuid"] = uuids::to_string(uuid);
             t["path"] = path.empty() ? "" : path.c_str();
@@ -137,20 +300,24 @@ namespace ZEngine::Importers::AssetCodec
         j["specular_color"]       = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
         j["factors"]              = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
 
-        if (!WriteVFS(config.VFS, mat_path, j.dump(4)))
-            return output;
+        auto write                = WriteVFS(config.VFS, mat_path, j.dump(4));
+        if (write.Failed())
+            return VFSResult<AssetImporterOutput>::Fail(write.Error());
 
-        output = {.Type = AssetFileType::MATERIAL, .Path = mat_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
-        return output;
+        ReportPublishedArtifact(config, AssetFileType::MATERIAL, mat_path);
+
+        return VFSResult<AssetImporterOutput>::Ok({.Type = AssetFileType::MATERIAL, .Path = mat_path.CStr(), .RootPath = config.OutputWorkingSpacePath.empty() ? "" : config.OutputWorkingSpacePath.c_str()});
     }
 
-    AssetImporterOutput SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
+    VFSResult<AssetImporterOutput> SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* /*arena*/, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
-        AssetImporterOutput output             = {};
-        std::string         asset_tex_filename = fmt::format("{}{}", config.AssetName.c_str(), ".zetextures");
-        auto                tex_dir            = VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
-        auto                tex_path           = tex_dir / asset_tex_filename.c_str();
-        config.VFS->CreateDir(tex_dir);
+        if (config.AssetName.empty())
+            return VFSResult<AssetImporterOutput>::Fail(VFSError::InvalidPath);
+        std::string asset_tex_filename = fmt::format("{}.zetextures", config.AssetName.c_str());
+        auto        path               = PrepareOutputPath(config.VFS, MakeOutputPath(config.OutputAssetsPath.c_str(), asset_tex_filename.c_str()));
+        if (path.Failed())
+            return VFSResult<AssetImporterOutput>::Fail(path.Error());
+        const auto&        tex_path = path.Value();
 
         std::ostringstream buf(std::ios::binary);
         WriteBinary(buf, ZETEXTURES_MAGIC);
@@ -163,11 +330,13 @@ namespace ZEngine::Importers::AssetCodec
             WriteBinaryString(buf, textures[i].Path);
         }
 
-        if (!WriteVFS(config.VFS, tex_path, buf.str()))
-            return output;
+        auto write = WriteVFS(config.VFS, tex_path, buf.str());
+        if (write.Failed())
+            return VFSResult<AssetImporterOutput>::Fail(write.Error());
 
-        output = {.Type = AssetFileType::TEXTURES, .Path = tex_path.CStr(), .RootPath = config.OutputWorkingSpacePath.c_str()};
-        return output;
+        ReportPublishedArtifact(config, AssetFileType::TEXTURES, tex_path);
+
+        return VFSResult<AssetImporterOutput>::Ok({.Type = AssetFileType::TEXTURES, .Path = tex_path.CStr(), .RootPath = config.OutputWorkingSpacePath.empty() ? "" : config.OutputWorkingSpacePath.c_str()});
     }
 
     void DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies)
