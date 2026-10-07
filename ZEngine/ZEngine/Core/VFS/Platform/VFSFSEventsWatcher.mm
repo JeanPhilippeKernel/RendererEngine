@@ -21,6 +21,7 @@ namespace ZEngine::Core::VFS
         Helpers::secure_strncpy(ev.Path, sizeof(ev.Path), path, ClampedLength(path));
         ev.Kind        = kind;
         ev.IsDirectory = is_directory;
+        ev.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
         return ev;
     }
 
@@ -103,6 +104,7 @@ namespace ZEngine::Core::VFS
             {
                 VFSWatchEvent overflow{};
                 overflow.Kind = WatchEventKind::Overflow;
+                overflow.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
                 self->PushEvent(overflow);
                 continue;
             }

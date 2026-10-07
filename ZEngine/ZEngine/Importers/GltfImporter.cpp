@@ -1045,6 +1045,7 @@ namespace ZEngine::Importers
                 if (write.Succeeded())
                 {
                     ZENGINE_LOG_ASSET_INFO("GltfImporter: extracted texture '{}' ({} bytes)", output_path.Value().CStr(), nbytes)
+                    AssetCodec::ReportPublishedArtifact(config, AssetFileType::TEXTURES, output_path.Value());
                     textures[tex_idx].Path.init(&scratch, output_path.Value().CStr());
                 }
                 else

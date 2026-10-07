@@ -59,7 +59,8 @@ namespace ZEngine::Core::VFS
     {
         VFSWatchEvent ev{};
         Helpers::secure_strncpy(ev.Path, sizeof(ev.Path), path, ClampedLength(path));
-        ev.Kind = kind;
+        ev.Kind                  = kind;
+        ev.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
         return ev;
     }
 
@@ -172,7 +173,8 @@ namespace ZEngine::Core::VFS
         if (bytes == 0)
         {
             VFSWatchEvent overflow{};
-            overflow.Kind = WatchEventKind::Overflow;
+            overflow.Kind                  = WatchEventKind::Overflow;
+            overflow.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
             PushEvent(overflow);
             return;
         }

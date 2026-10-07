@@ -248,6 +248,26 @@ TEST_F(VFSFileWatcherTest, RenamePreservesOldPath)
     EXPECT_EQ(received.Kind, WatchEventKind::Renamed);
 }
 
+TEST_F(VFSFileWatcherTest, DebouncePreservesObservationTimestamp)
+{
+    MockPlatformWatcher mock;
+    VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{10});
+    watcher.Initialize(&m_manager.MainArena);
+
+    uint64_t observed_at = 0;
+    watcher.Watch("/project", true, [&](const VFSWatchEvent& event) { observed_at = event.ObservedAtNanoseconds; });
+
+    VFSWatchEvent event         = MakeEvent("/project/imported.zemesh", WatchEventKind::Renamed);
+    event.ObservedAtNanoseconds = 123456789;
+    mock.InjectEvent(event);
+
+    watcher.Tick();
+    std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    watcher.Tick();
+
+    EXPECT_EQ(observed_at, 123456789u);
+}
+
 TEST_F(VFSFileWatcherTest, MultipleWatchesRouteCorrectly)
 {
     MockPlatformWatcher mock;

@@ -235,6 +235,8 @@ namespace ZEngine::Importers
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
         config.VFS                    = cfg.VFS;
+        config.ArtifactContext        = cfg.ArtifactContext;
+        config.OnArtifactPublished    = cfg.OnArtifactPublished;
         config.Options                = cfg.Options;
 
         ufbx_load_opts opts           = {};

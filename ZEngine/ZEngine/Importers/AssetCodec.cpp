@@ -99,6 +99,12 @@ namespace ZEngine::Importers::AssetCodec
         return path;
     }
 
+    void ReportPublishedArtifact(const ImportConfiguration& config, AssetFileType type, const VFSPath& path)
+    {
+        if (config.OnArtifactPublished && path.IsValid())
+            config.OnArtifactPublished(config.ArtifactContext, type, path.CStr());
+    }
+
     VFSResult<void> CopyTextureFiles(ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
         if (textures.size() == 0)
@@ -142,6 +148,7 @@ namespace ZEngine::Importers::AssetCodec
                 ZENGINE_CORE_ERROR("Failed to copy texture '{}' to '{}' (VFS error {})", source.string(), destination.Value().CStr(), static_cast<uint32_t>(write.Error()))
                 return write;
             }
+            ReportPublishedArtifact(config, AssetFileType::TEXTURES, destination.Value());
             texture.Path.clear();
             texture.Path.append(destination.Value().CStr());
         }
@@ -204,6 +211,8 @@ namespace ZEngine::Importers::AssetCodec
         auto write = WriteVFS(config.VFS, mesh_path, buf.str());
         if (write.Failed())
             return VFSResult<AssetImporterOutput>::Fail(write.Error());
+
+        ReportPublishedArtifact(config, AssetFileType::MESH, mesh_path);
 
         return VFSResult<AssetImporterOutput>::Ok({.Type = AssetFileType::MESH, .Path = mesh_path.CStr(), .RootPath = config.OutputWorkingSpacePath.empty() ? "" : config.OutputWorkingSpacePath.c_str()});
     }
@@ -295,6 +304,8 @@ namespace ZEngine::Importers::AssetCodec
         if (write.Failed())
             return VFSResult<AssetImporterOutput>::Fail(write.Error());
 
+        ReportPublishedArtifact(config, AssetFileType::MATERIAL, mat_path);
+
         return VFSResult<AssetImporterOutput>::Ok({.Type = AssetFileType::MATERIAL, .Path = mat_path.CStr(), .RootPath = config.OutputWorkingSpacePath.empty() ? "" : config.OutputWorkingSpacePath.c_str()});
     }
 
@@ -322,6 +333,8 @@ namespace ZEngine::Importers::AssetCodec
         auto write = WriteVFS(config.VFS, tex_path, buf.str());
         if (write.Failed())
             return VFSResult<AssetImporterOutput>::Fail(write.Error());
+
+        ReportPublishedArtifact(config, AssetFileType::TEXTURES, tex_path);
 
         return VFSResult<AssetImporterOutput>::Ok({.Type = AssetFileType::TEXTURES, .Path = tex_path.CStr(), .RootPath = config.OutputWorkingSpacePath.empty() ? "" : config.OutputWorkingSpacePath.c_str()});
     }

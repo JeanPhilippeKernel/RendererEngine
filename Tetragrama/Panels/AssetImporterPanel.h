@@ -1,7 +1,11 @@
 #pragma once
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
+#include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Importers/AssimpImporter.h>
 #include <ZEngine/Importers/FbxImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
@@ -42,6 +46,10 @@ namespace Tetragrama::Panels
 
         // Scratch arena for ImportConfiguration strings (cleared before each import)
         ZEngine::Core::Memory::ArenaAllocator m_local_arena           = {};
+        // Task results must outlive the worker callback, but must not consume the
+        // 64 KiB configuration scratch arena. TLSF reuses and reclaims Array growth
+        // between imports without a per-import arena leak.
+        ZEngine::Core::Memory::TLSFSlab       m_import_result_slab    = {};
         // Importer-dedicated arenas carved from the engine ImportPipeline budget
         ZEngine::Core::Memory::ArenaAllocator m_gltf_importer_arena   = {};
         ZEngine::Core::Memory::ArenaAllocator m_assimp_importer_arena = {};
@@ -67,15 +75,17 @@ namespace Tetragrama::Panels
 
         struct ImportTask
         {
-            AssetImporterPanel*                                  Panel                           = nullptr;
-            ZEngine::Importers::AssetCodec::ImportConfiguration  Configuration                   = {};
-            ImporterKind                                         Kind                            = ImporterKind::Gltf;
-            char                                                 SourcePath[MAX_FILE_PATH_COUNT] = {};
+            AssetImporterPanel*                                           Panel                           = nullptr;
+            ZEngine::Importers::AssetCodec::ImportConfiguration           Configuration                   = {};
+            ImporterKind                                                  Kind                            = ImporterKind::Gltf;
+            char                                                          SourcePath[MAX_FILE_PATH_COUNT] = {};
             // The importer releases its scratch arena after it calls its callback.
             // Retain the small output list until the main thread consumes it.
-            std::vector<ZEngine::Importers::AssetImporterOutput> Outputs                         = {};
-            std::string                                          Error                           = {};
-            ImportTaskOutcome                                    Outcome                         = ImportTaskOutcome::Pending;
+            std::vector<ZEngine::Importers::AssetImporterOutput>          Outputs                         = {};
+            ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSPath> PublishedPaths                  = {};
+            ZEngine::Core::VFS::VFSImportPublication                      Publication                     = {};
+            std::string                                                   Error                           = {};
+            ImportTaskOutcome                                             Outcome                         = ImportTaskOutcome::Pending;
         };
         ImportTask m_import_task = {};
 
@@ -156,6 +166,7 @@ namespace Tetragrama::Panels
         // Static callbacks for ImportFile. They execute on a worker, so they only
         // copy the result into ImportTask; FinalizeImportTask performs editor work.
         static void       OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        static void       OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType type, const char* path);
         static void       OnImportProgress(void* ctx, float pct);
         static void       OnImportError(void* ctx, std::string_view err);
         static void       OnImportLog(void* ctx, std::string_view msg);
@@ -163,6 +174,8 @@ namespace Tetragrama::Panels
         // Main-thread-only completion handlers.
         static void       CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
         static void       CompleteImportErrorOnMainThread(void* ctx, std::string_view err);
+        static void       RecordPublishedPath(ImportTask& task, const char* path);
+        static void       EndImportPublication(ImportTask& task);
     };
 
 } // namespace Tetragrama::Panels

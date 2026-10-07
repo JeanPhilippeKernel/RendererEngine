@@ -53,14 +53,19 @@ namespace ZEngine::Importers::AssetCodec
         Core::Containers::String InputBaseAssetFilePath;
         Core::Containers::String OutputWorkingSpacePath;
         Core::Containers::String OutputTextureFilesPath;
-        Core::VFS::IVFSContext*  VFS     = nullptr;
-        ImportOptions            Options = {};
+        Core::VFS::IVFSContext*  VFS                                                     = nullptr;
+        // Called synchronously after an artifact commits. This remains separate from
+        // the completion callback so a failed import can still report partial output.
+        void*                    ArtifactContext                                         = nullptr;
+        void (*OnArtifactPublished)(void* context, AssetFileType type, const char* path) = nullptr;
+        ImportOptions Options                                                            = {};
     };
 
     // Validate before parsing a source or accessing VFS metadata; returns the mesh destination.
     [[nodiscard]] Core::VFS::VFSResult<Core::VFS::VFSPath> ValidateImportConfiguration(const ImportConfiguration& config);
     [[nodiscard]] Core::VFS::VFSResult<Core::VFS::VFSPath> MakeOutputPath(const char* directory, const char* filename);
     [[nodiscard]] Core::VFS::VFSResult<void>               CopyTextureFiles(Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
+    void                                                   ReportPublishedArtifact(const ImportConfiguration& config, AssetFileType type, const Core::VFS::VFSPath& path);
     std::string                                            MaterialOutputFilename(const AssetMaterial& material, size_t index);
     [[nodiscard]] Core::VFS::VFSResult<Core::VFS::VFSPath> MaterialOutputPath(const AssetMaterial& material, const ImportConfiguration& config, size_t index);
     [[nodiscard]] Core::VFS::VFSResult<void>               SynchronizeTextureMetadata(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, Core::Containers::ArrayView<AssetMaterial> materials, const ImportConfiguration& config, const char* importer);

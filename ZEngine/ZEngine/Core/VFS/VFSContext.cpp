@@ -20,6 +20,12 @@ namespace ZEngine::Core::VFS
     {
         m_arena = arena;
         m_mount_table.Initialize(m_arena, mount_table_capacity);
+
+        m_active_import_publication.Artifacts.init(m_arena, 16);
+        m_active_import_publication.DirtyDirectories.init(m_arena, 8);
+        m_active_import_publication.DeferredEvents.init(m_arena, 32);
+        for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
+            m_completed_import_publications[i].Artifacts.init(m_arena, 16);
     }
 
     void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry, Importers::ImportCoordinator* coordinator, FileChangeListener file_change_listener, void* file_change_context)
@@ -119,95 +125,7 @@ namespace ZEngine::Core::VFS
         // simultaneous pending debounce entries than that before any flush.
         m_file_watcher->Initialize(m_arena, 256);
 
-        // ev.Path/ev.OldPath are native absolute paths from the OS watcher, but every
-        // downstream consumer expects a workspace-relative VFSPath and prepends the
-        // workspace root itself — VFSPath::FromNative is just Parse, so it wouldn't strip
-        // that root. Do it here, once, instead of double-prefixing everywhere downstream.
-        auto to_relative_vfs_path = [this](cstring native) -> VFSResult<VFSPath> {
-            const size_t root_len   = Helpers::secure_strlen(m_project_root_native);
-            const size_t native_len = Helpers::secure_strlen(native);
-            if (native_len >= root_len && strncmp(native, m_project_root_native, root_len) == 0 && (native[root_len] == '\0' || native[root_len] == PLATFORM_OS_BACKSLASH))
-                return VFSPath::Parse(native[root_len] != '\0' ? native + root_len : "/");
-            return VFSPath::FromNative(native);
-        };
-
-        const WatchHandle root_handle = m_file_watcher->Watch(m_project_root_native, /*recursive=*/true, [this, to_relative_vfs_path](const VFSWatchEvent& ev) {
-            const bool         full_rescan = (ev.Kind == WatchEventKind::Overflow);
-
-            VFSResult<VFSPath> path        = full_rescan ? to_relative_vfs_path(m_project_root_native) : to_relative_vfs_path(ev.Path);
-            if (path.Failed())
-                return;
-
-            const VFSPath target    = (ev.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
-            const VFSPath file_path = path.Value();
-
-            // Invalidate directory cache
-            if (m_directory_cache)
-            {
-                m_directory_cache->Invalidate(target);
-                if (ev.Kind == WatchEventKind::Renamed && ev.OldPath[0] != '\0')
-                {
-                    VFSResult<VFSPath> old_path = to_relative_vfs_path(ev.OldPath);
-                    if (old_path.Succeeded())
-                        m_directory_cache->Invalidate(ev.IsDirectory ? old_path.Value() : old_path.Value().Parent());
-                }
-            }
-
-            // Notify AssetRegistry and ImportCoordinator for file (non-directory) events
-            // Skip .meta sidecar files — they are written by the coordinator itself and must
-            // not be fed back into the import queue.
-            auto is_temporary = [](const VFSPath& p) -> bool {
-                auto ext = p.Extension();
-                return ext.Data && ext.Length == 4 && // ".tmp"
-                       ext.Data[0] == '.' && ext.Data[1] == 't' && ext.Data[2] == 'm' && ext.Data[3] == 'p';
-            };
-            auto is_meta = [](const VFSPath& p) -> bool {
-                auto ext = p.Extension();
-                return ext.Data && ext.Length == 5 && // ".meta"
-                       ext.Data[0] == '.' && ext.Data[1] == 'm' && ext.Data[2] == 'e' && ext.Data[3] == 't' && ext.Data[4] == 'a';
-            };
-            // All generated assets use an atomic .tmp -> rename write. The temporary
-            // file is not an importable project source and must not enter the import
-            // queue (or trigger a directory scan) before publication completes.
-            if (!ev.IsDirectory && !full_rescan && is_temporary(file_path))
-                return;
-            if (!ev.IsDirectory && !full_rescan && !is_meta(file_path))
-            {
-                switch (ev.Kind)
-                {
-                    case WatchEventKind::Modified:
-                        if (m_registry)
-                            m_registry->OnAssetModified(file_path);
-                        if (m_coordinator)
-                            m_coordinator->Enqueue(file_path, Importers::ImportPriority::Immediate);
-                        break;
-
-                    case WatchEventKind::Deleted:
-                        if (m_registry)
-                            m_registry->OnAssetDeleted(file_path);
-                        break;
-
-                    case WatchEventKind::Renamed:
-                        if (m_registry && ev.OldPath[0] != '\0')
-                        {
-                            VFSResult<VFSPath> old_path = to_relative_vfs_path(ev.OldPath);
-                            if (old_path.Succeeded())
-                                m_registry->OnAssetRenamed(old_path.Value(), file_path);
-                        }
-                        break;
-
-                    default:
-                        break;
-                }
-
-                if (m_file_change_listener)
-                    m_file_change_listener(m_file_change_context, file_path, ev.Kind);
-            }
-
-            // Rescan directory
-            if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
-                m_scanner->Scan(this, target, m_directory_cache);
-        });
+        const WatchHandle root_handle = m_file_watcher->Watch(m_project_root_native, /*recursive=*/true, [this](const VFSWatchEvent& event) { HandleWatchEvent(event); });
 
         if (root_handle == INVALID_WATCH_HANDLE)
         {
@@ -222,6 +140,258 @@ namespace ZEngine::Core::VFS
         m_platform_watcher->StartThread();
     }
 
+    VFSImportPublication VFSContext::BeginImportPublication()
+    {
+        if (m_active_import_publication.Publication.IsValid())
+        {
+            ++m_active_import_publication.Depth;
+            return m_active_import_publication.Publication;
+        }
+
+        m_active_import_publication.Publication  = {.Id = m_next_import_publication_id++};
+        m_active_import_publication.StartedAtNs  = VFSWatchTimestampNowNanoseconds();
+        m_active_import_publication.Depth        = 1;
+        m_active_import_publication.RequiresScan = false;
+        m_active_import_publication.Artifacts.clear();
+        m_active_import_publication.DirtyDirectories.clear();
+        m_active_import_publication.DeferredEvents.clear();
+        return m_active_import_publication.Publication;
+    }
+
+    void VFSContext::RecordImportPublicationArtifact(VFSImportPublication publication, const VFSPath& path)
+    {
+        if (!publication.IsValid() || publication.Id != m_active_import_publication.Publication.Id || !path.IsValid())
+            return;
+
+        for (size_t i = 0; i < m_active_import_publication.Artifacts.size(); ++i)
+            if (m_active_import_publication.Artifacts[i] == path)
+                return;
+
+        m_active_import_publication.Artifacts.push(path);
+
+        const VFSPath parent = path.Parent();
+        for (size_t i = 0; i < m_active_import_publication.DirtyDirectories.size(); ++i)
+            if (m_active_import_publication.DirtyDirectories[i] == parent)
+                return;
+        m_active_import_publication.DirtyDirectories.push(parent);
+    }
+
+    void VFSContext::EndImportPublication(VFSImportPublication publication)
+    {
+        if (!publication.IsValid() || publication.Id != m_active_import_publication.Publication.Id)
+            return;
+        if (m_active_import_publication.Depth > 1)
+        {
+            --m_active_import_publication.Depth;
+            return;
+        }
+
+        const uint64_t ended_at_ns = VFSWatchTimestampNowNanoseconds();
+
+        // Events arriving during a publication are held until all artifact paths are
+        // known. Generated paths are coalesced into the deferred scan; unrelated
+        // paths retain the normal registry/coordinator behavior.
+        for (size_t i = 0; i < m_active_import_publication.DeferredEvents.size(); ++i)
+        {
+            const VFSWatchEvent& event = m_active_import_publication.DeferredEvents[i];
+            if (event.Kind == WatchEventKind::Overflow || IsPublicationEvent(m_active_import_publication.StartedAtNs, m_active_import_publication.Artifacts, event))
+            {
+                m_active_import_publication.RequiresScan = true;
+                continue;
+            }
+            ProcessWatchEvent(event);
+        }
+        m_active_import_publication.DeferredEvents.clear();
+
+        if (!m_active_import_publication.Artifacts.empty())
+        {
+            for (size_t i = 0; i < m_active_import_publication.DirtyDirectories.size(); ++i)
+                if (m_directory_cache)
+                    m_directory_cache->Invalidate(m_active_import_publication.DirtyDirectories[i]);
+            m_active_import_publication.RequiresScan = true;
+        }
+
+        // Retain the exact output set until watcher delivery has settled. A raw
+        // inotify/FSEvents event may arrive after the importer returns, so using
+        // EndImportPublication's timestamp as a causal boundary is not reliable.
+        CompletedImportPublication& completed = m_completed_import_publications[m_next_completed_import_publication];
+        completed.StartedAtNs                 = m_active_import_publication.StartedAtNs;
+        completed.SettleUntilNs               = ended_at_ns + IMPORT_PUBLICATION_SETTLE_NS;
+        completed.RequiresScan                = m_active_import_publication.RequiresScan;
+        completed.Artifacts.clear();
+        for (size_t i = 0; i < m_active_import_publication.Artifacts.size(); ++i)
+            completed.Artifacts.push(m_active_import_publication.Artifacts[i]);
+        m_next_completed_import_publication      = (m_next_completed_import_publication + 1) % COMPLETED_IMPORT_PUBLICATION_COUNT;
+
+        m_active_import_publication.Publication  = {};
+        m_active_import_publication.StartedAtNs  = 0;
+        m_active_import_publication.Depth        = 0;
+        m_active_import_publication.RequiresScan = false;
+        m_active_import_publication.Artifacts.clear();
+        m_active_import_publication.DirtyDirectories.clear();
+    }
+
+    VFSResult<VFSPath> VFSContext::ToRelativeVFSPath(cstring native) const
+    {
+        if (!native)
+            return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+
+        const size_t root_len   = Helpers::secure_strlen(m_project_root_native);
+        const size_t native_len = Helpers::secure_strlen(native);
+        if (native_len >= root_len && strncmp(native, m_project_root_native, root_len) == 0 && (native[root_len] == '\0' || native[root_len] == PLATFORM_OS_BACKSLASH))
+            return VFSPath::Parse(native[root_len] != '\0' ? native + root_len : "/");
+        return VFSPath::FromNative(native);
+    }
+
+    bool VFSContext::IsPublicationArtifact(const Containers::Array<VFSPath>& artifacts, const VFSPath& path) const
+    {
+        for (size_t i = 0; i < artifacts.size(); ++i)
+        {
+            const VFSPath& artifact = artifacts[i];
+            if (artifact == path)
+                return true;
+            // Metadata is stored beside its registered artifact as <artifact>.meta.
+            if (path.Length() == artifact.Length() + 5 && strncmp(path.CStr(), artifact.CStr(), artifact.Length()) == 0 && strncmp(path.CStr() + artifact.Length(), ".meta", 5) == 0)
+                return true;
+        }
+        return false;
+    }
+
+    bool VFSContext::IsPublicationEvent(uint64_t started_at_ns, const Containers::Array<VFSPath>& artifacts, const VFSWatchEvent& event) const
+    {
+        if (event.Kind == WatchEventKind::Overflow || event.ObservedAtNanoseconds == 0 || event.ObservedAtNanoseconds < started_at_ns)
+            return false;
+
+        VFSResult<VFSPath> path = ToRelativeVFSPath(event.Path);
+        return path.Succeeded() && IsPublicationArtifact(artifacts, path.Value());
+    }
+
+    void VFSContext::HandleWatchEvent(const VFSWatchEvent& event)
+    {
+        if (m_active_import_publication.Publication.IsValid() && event.ObservedAtNanoseconds >= m_active_import_publication.StartedAtNs)
+        {
+            m_active_import_publication.DeferredEvents.push(event);
+            return;
+        }
+
+        for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
+        {
+            CompletedImportPublication& completed = m_completed_import_publications[i];
+            if (completed.SettleUntilNs != 0 && VFSWatchTimestampNowNanoseconds() <= completed.SettleUntilNs && IsPublicationEvent(completed.StartedAtNs, completed.Artifacts, event))
+            {
+                completed.RequiresScan = true;
+                return;
+            }
+        }
+
+        ProcessWatchEvent(event);
+    }
+
+    void VFSContext::ProcessWatchEvent(const VFSWatchEvent& event)
+    {
+        const bool         full_rescan = (event.Kind == WatchEventKind::Overflow);
+        VFSResult<VFSPath> path        = full_rescan ? ToRelativeVFSPath(m_project_root_native) : ToRelativeVFSPath(event.Path);
+        if (path.Failed())
+            return;
+
+        const VFSPath target    = (event.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
+        const VFSPath file_path = path.Value();
+
+        if (m_directory_cache)
+        {
+            m_directory_cache->Invalidate(target);
+            if (event.Kind == WatchEventKind::Renamed && event.OldPath[0] != '\0')
+            {
+                VFSResult<VFSPath> old_path = ToRelativeVFSPath(event.OldPath);
+                if (old_path.Succeeded())
+                    m_directory_cache->Invalidate(event.IsDirectory ? old_path.Value() : old_path.Value().Parent());
+            }
+        }
+
+        auto is_temporary = [](const VFSPath& path) -> bool {
+            const VFSPathComponent extension = path.Extension();
+            return extension.Data && extension.Length == 4 && extension.Data[0] == '.' && extension.Data[1] == 't' && extension.Data[2] == 'm' && extension.Data[3] == 'p';
+        };
+        auto is_meta = [](const VFSPath& path) -> bool {
+            const VFSPathComponent extension = path.Extension();
+            return extension.Data && extension.Length == 5 && extension.Data[0] == '.' && extension.Data[1] == 'm' && extension.Data[2] == 'e' && extension.Data[3] == 't' && extension.Data[4] == 'a';
+        };
+
+        if (!event.IsDirectory && !full_rescan && is_temporary(file_path))
+            return;
+        if (!event.IsDirectory && !full_rescan && !is_meta(file_path))
+        {
+            switch (event.Kind)
+            {
+                case WatchEventKind::Modified:
+                    if (m_registry)
+                        m_registry->OnAssetModified(file_path);
+                    if (m_coordinator)
+                        m_coordinator->Enqueue(file_path, Importers::ImportPriority::Immediate);
+                    break;
+
+                case WatchEventKind::Deleted:
+                    if (m_registry)
+                        m_registry->OnAssetDeleted(file_path);
+                    break;
+
+                case WatchEventKind::Renamed:
+                    if (m_registry && event.OldPath[0] != '\0')
+                    {
+                        VFSResult<VFSPath> old_path = ToRelativeVFSPath(event.OldPath);
+                        if (old_path.Succeeded())
+                            m_registry->OnAssetRenamed(old_path.Value(), file_path);
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+
+            if (m_file_change_listener)
+                m_file_change_listener(m_file_change_context, file_path, event.Kind);
+        }
+
+        if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
+            m_scanner->Scan(this, target, m_directory_cache);
+    }
+
+    void VFSContext::FlushDeferredImportScan()
+    {
+        if (!m_scanner || !m_directory_cache)
+            return;
+
+        const uint64_t now_ns      = VFSWatchTimestampNowNanoseconds();
+        bool           should_scan = false;
+        for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
+        {
+            const CompletedImportPublication& completed = m_completed_import_publications[i];
+            if (completed.SettleUntilNs != 0 && completed.RequiresScan && now_ns >= completed.SettleUntilNs)
+            {
+                should_scan = true;
+                break;
+            }
+        }
+        if (!should_scan || m_scanner->IsScanning())
+            return;
+
+        // Start one scan for every completed publication whose watcher grace period
+        // elapsed. The scan observes the final filesystem state, including a real
+        // external edit that happened during the grace period.
+        ScanProject();
+        for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
+        {
+            CompletedImportPublication& completed = m_completed_import_publications[i];
+            if (completed.SettleUntilNs != 0 && now_ns >= completed.SettleUntilNs)
+            {
+                completed.StartedAtNs   = 0;
+                completed.SettleUntilNs = 0;
+                completed.RequiresScan  = false;
+                completed.Artifacts.clear();
+            }
+        }
+    }
+
     void VFSContext::ScanProject()
     {
         if (m_scanner && m_directory_cache)
@@ -234,6 +404,7 @@ namespace ZEngine::Core::VFS
         {
             m_file_watcher->Tick();
         }
+        FlushDeferredImportScan();
     }
 
     void VFSContext::ShutdownWatcher()
@@ -252,8 +423,19 @@ namespace ZEngine::Core::VFS
             m_platform_watcher->~IVFSPlatformWatcher();
             m_platform_watcher = nullptr;
         }
-        m_directory_cache = nullptr;
-        m_scanner         = nullptr;
+        m_directory_cache                       = nullptr;
+        m_scanner                               = nullptr;
+        m_active_import_publication.Publication = {};
+        m_active_import_publication.Artifacts.clear();
+        m_active_import_publication.DirtyDirectories.clear();
+        m_active_import_publication.DeferredEvents.clear();
+        for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
+        {
+            m_completed_import_publications[i].StartedAtNs   = 0;
+            m_completed_import_publications[i].SettleUntilNs = 0;
+            m_completed_import_publications[i].RequiresScan  = false;
+            m_completed_import_publications[i].Artifacts.clear();
+        }
     }
 
     VFSResult<IVFSFile*> VFSContext::Open(const VFSPath& absolute_path, VFSOpenFlags flags)

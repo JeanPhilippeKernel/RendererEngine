@@ -45,10 +45,15 @@ namespace Tetragrama::Panels
         // Scratch arena for ImportConfiguration strings — carved from layer arena
         // ZKilo(64): ~8 path strings × ≤512 bytes each — a few KB is all we need
         layer->LocalArena.CreateSubArena(ZKilo(64), &m_local_arena, "EditorContext/AssetImporterPanelScratch");
-
         // Importer arenas carved from the engine's ImportPipeline budget so all
         // import memory — engine importers and editor importers — is budget-tracked.
         auto* import_arena = &ZEngine::Engine::GetContext()->ImportPipelineArena;
+        // Publication results can contain one entry per material and texture. Keep
+        // them outside the 64 KiB configuration scratch arena and reuse storage on
+        // the next import. The layer's shared local arena is only 4 MiB, so use the
+        // import budget for this bounded 8 MiB result slab.
+        m_import_result_slab.Init(import_arena, ZMega(8));
+        m_import_task.PublishedPaths.init(&m_import_result_slab, 32);
         import_arena->CreateSubArena(ZMega(64), &m_gltf_importer_arena, "ImportPipeline/EditorGltfImporter");
         import_arena->CreateSubArena(ZMega(128), &m_assimp_importer_arena, "ImportPipeline/EditorAssimpImporter");
 
@@ -647,9 +652,17 @@ namespace Tetragrama::Panels
         m_state.value.store(ImporterState::Importing, std::memory_order_release);
         m_progress.value.store(0.f, std::memory_order_relaxed);
 
-        m_import_task               = {};
-        m_import_task.Panel         = this;
-        m_import_task.Configuration = *config;
+        m_import_task.Outputs.clear();
+        m_import_task.PublishedPaths.clear();
+        m_import_task.Error.clear();
+        m_import_task.Outcome                           = ImportTaskOutcome::Pending;
+        m_import_task.Publication                       = {};
+        m_import_task.Panel                             = this;
+        m_import_task.Configuration                     = *config;
+        m_import_task.Configuration.ArtifactContext     = &m_import_task;
+        m_import_task.Configuration.OnArtifactPublished = &AssetImporterPanel::OnImportArtifactPublished;
+        if (m_import_task.Configuration.VFS)
+            m_import_task.Publication = m_import_task.Configuration.VFS->BeginImportPublication();
         secure_strncpy(m_import_task.SourcePath, sizeof(m_import_task.SourcePath), m_path_buf, secure_strlen(m_path_buf));
 
         const auto ext = vfs_value.Extension();
@@ -669,6 +682,7 @@ namespace Tetragrama::Panels
 
         if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&m_import_task, &AssetImporterPanel::RunImportTask))
         {
+            EndImportPublication(m_import_task);
             m_state.value.store(ImporterState::Options, std::memory_order_release);
             PushLog("Import task rejected because the thread pool is shutting down", kRed[0], kRed[1], kRed[2]);
         }
@@ -682,7 +696,10 @@ namespace Tetragrama::Panels
 
         auto* panel = task->Panel;
         if (!panel)
+        {
+            EndImportPublication(*task);
             return;
+        }
 
         const auto& config = task->Configuration;
         switch (task->Kind)
@@ -712,18 +729,28 @@ namespace Tetragrama::Panels
     void AssetImporterPanel::FinalizeImportTask(void* context)
     {
         auto* task = static_cast<ImportTask*>(context);
-        if (!task || !task->Panel)
+        if (!task)
             return;
 
         auto* panel = task->Panel;
-        if (task->Outcome == ImportTaskOutcome::Completed)
+        if (panel)
         {
-            ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs(task->Outputs.data(), task->Outputs.size());
-            CompleteImportOnMainThread(panel, outputs);
-            return;
+            if (task->Outcome == ImportTaskOutcome::Completed)
+            {
+                ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs(task->Outputs.data(), task->Outputs.size());
+                CompleteImportOnMainThread(panel, outputs);
+            }
+            else
+            {
+                CompleteImportErrorOnMainThread(panel, task->Error.empty() ? "Importer returned without an error message" : task->Error);
+            }
         }
 
-        CompleteImportErrorOnMainThread(panel, task->Error.empty() ? "Importer returned without an error message" : task->Error);
+        // CompleteImportOnMainThread can return early on metadata errors. Release the
+        // publication afterwards in every case so watcher processing cannot remain
+        // deferred after an import failure.
+        EndImportPublication(*task);
+        task->PublishedPaths.clear();
     }
 
     void AssetImporterPanel::CreateMeshActor(uuids::uuid mesh_uuid, uint32_t render_instance_id, const char* name)
@@ -793,12 +820,55 @@ namespace Tetragrama::Panels
         auto* task = static_cast<ImportTask*>(ctx);
         if (!task)
             return;
+        // An importer may have published some artifacts before reporting an error.
+        // Once it reports that error, completion must not turn the task into a
+        // success and hide it from the editor.
+        if (task->Outcome == ImportTaskOutcome::Failed)
+            return;
 
         task->Outputs.clear();
         if (outputs.size() > 0)
+        {
             task->Outputs.assign(outputs.data(), outputs.data() + outputs.size());
+            for (const auto& output : task->Outputs)
+                RecordPublishedPath(*task, output.Path.c_str());
+        }
         task->Error.clear();
         task->Outcome = ImportTaskOutcome::Completed;
+    }
+
+    void AssetImporterPanel::OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType, const char* path)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        if (task)
+            RecordPublishedPath(*task, path);
+    }
+
+    void AssetImporterPanel::RecordPublishedPath(ImportTask& task, const char* path)
+    {
+        if (!path || path[0] == '\0')
+            return;
+        auto parsed = VFSPath::Parse(path);
+        if (parsed.Failed())
+            return;
+
+        for (const ZEngine::Core::VFS::VFSPath& existing : task.PublishedPaths)
+            if (existing == parsed.Value())
+                return;
+
+        task.PublishedPaths.push(parsed.Value());
+    }
+
+    void AssetImporterPanel::EndImportPublication(ImportTask& task)
+    {
+        auto* vfs = task.Configuration.VFS;
+        if (!vfs || !task.Publication.IsValid())
+            return;
+
+        for (const ZEngine::Core::VFS::VFSPath& published : task.PublishedPaths)
+            vfs->RecordImportPublicationArtifact(task.Publication, published);
+        vfs->EndImportPublication(task.Publication);
+        task.Publication = {};
     }
 
     void AssetImporterPanel::CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)

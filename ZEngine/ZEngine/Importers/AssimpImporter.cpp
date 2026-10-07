@@ -117,10 +117,12 @@ namespace ZEngine::Importers
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
-        config.VFS     = cfg.VFS;
-        config.Options = cfg.Options;
+        config.VFS                 = cfg.VFS;
+        config.ArtifactContext     = cfg.ArtifactContext;
+        config.OnArtifactPublished = cfg.OnArtifactPublished;
+        config.Options             = cfg.Options;
 
-        uint32_t flags = aiProcess_Triangulate | aiProcess_SortByPType;
+        uint32_t flags             = aiProcess_Triangulate | aiProcess_SortByPType;
         if (config.Options.MergeVertices)
             flags |= aiProcess_JoinIdenticalVertices;
         if (config.Options.FlipUVs)
