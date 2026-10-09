@@ -2,6 +2,7 @@
 // stbi_load pixel buffers stay on the slab rather than the system heap.
 // Falls back to malloc/free/realloc on the main thread (slab = nullptr).
 #include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <cstdlib>
 #define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
@@ -56,7 +57,7 @@ namespace ZEngine::Rendering
         uint16_t           FloatToHalf(float value)
         {
             uint32_t bits = 0;
-            std::memcpy(&bits, &value, sizeof(bits));
+            ZENGINE_VALIDATE_ASSERT(secure_memcpy(&bits, sizeof(bits), &value, sizeof(value)) == MEMORY_OP_SUCCESS, "FloatToHalf: failed to copy float bits")
 
             const uint16_t sign     = static_cast<uint16_t>((bits >> 16) & 0x8000u);
             const int32_t  exponent = static_cast<int32_t>((bits >> 23) & 0xFFu) - 127 + 15;
@@ -264,6 +265,7 @@ namespace ZEngine::Rendering
         while (m_pending_texture_decodes.value.load(std::memory_order_acquire) > 0)
             std::this_thread::yield();
 
+        DiscardQueuedTextureDecodes();
         m_device->QueueWaitAll();
         ShutdownTextureTimelines();
         DiscardTextureDeferrals();
@@ -315,8 +317,14 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::BeginFrame(uint32_t frame_index)
     {
+        // Initialization may leave a builtin-geometry batch open for slot 0.
+        // A resize or skipped acquire can make the first rendered slot different.
+        // Submit its copies before changing slots or retiring their staging data.
+        if (m_batch_mode && m_batch_frame_index != frame_index)
+            EndBatchUpload();
         m_active_frame_index = static_cast<uint8_t>(frame_index);
         RetireBatchStagings();
+        DispatchQueuedTextureDecodes();
         m_streaming_mgr.Tick(frame_index);
         if (m_streaming_mgr.IsCompactionRequested())
             RunCompaction();
@@ -553,8 +561,8 @@ namespace ZEngine::Rendering
         ZENGINE_VALIDATE_ASSERT(m_builtin_idx_cursor + idx_bytes <= BUILTIN_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: builtin index buffer out of space")
 
         // Called pre-render-thread (single-threaded init) — the batch this opens stays
-        // open until the first real frame's RRM::EndFrame, where any mesh uploads from
-        // that frame join it too. Builtin data goes into the pinned builtin buffers, not
+        // open until the first real frame joins it or submits it before switching
+        // frame slots. Builtin data goes into the pinned builtin buffers, not
         // the streaming global buffers, so a ResetGeometryBuffers never corrupts it.
         EnsureBatchOpen(static_cast<uint8_t>(m_active_frame_index));
         AppendToGlobalBuffer(m_builtin_vertex_buf, vtx_data, vtx_bytes, m_builtin_vtx_cursor, m_active_frame_index);
@@ -653,6 +661,9 @@ namespace ZEngine::Rendering
 
         for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
         {
+            // LastSignal covers the previous submission, not newly recorded copies.
+            if (m_batch_mode && i == m_batch_frame_index)
+                continue;
             BatchFrameState& frame = m_batch_frames[i];
             if (frame.StagingCount == 0)
                 continue;
@@ -667,6 +678,8 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::EnsureBatchOpen(uint8_t frame_index)
     {
+        if (m_batch_mode && m_batch_frame_index != frame_index)
+            EndBatchUpload();
         if (!m_batch_mode)
             BeginBatchUpload(frame_index);
     }
@@ -687,11 +700,8 @@ namespace ZEngine::Rendering
         if (frame.LastSignal != 0)
             m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
 
-        // RetireBatchStagings (called earlier in BeginFrame) handles staging cleanup via
-        // the RenderTimeline gate — it always runs before this point. If stagings remain
-        // here it means RetireBatchStagings hasn't confirmed GPU completion yet (render
-        // timeline hasn't reached SafeRetireAfterRenderValue). Leave them for the next poll
-        // rather than freeing while the command buffer may still be tracked as in-use.
+        // RetireBatchStagings polls the batch timeline each frame. Any staging buffers
+        // still owned by this frame index are released only after its prior batch signal.
         m_batch_cmd->ResetState();
         vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
         m_batch_cmd->Begin();
@@ -702,17 +712,55 @@ namespace ZEngine::Rendering
     {
         m_batch_cmd->End();
 
-        // Submission is deferred to SubmitAsyncUploads (AppRenderPipeline::EndFrame) instead
-        // of submitted-and-blocked-on here, so a mesh drop never stalls the render thread.
+        // Submit without blocking so a mesh drop never stalls the render thread. Present()
+        // consumes the resulting timeline operation in the graphics submission below.
         // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
         // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
         // drives independently.
         uint64_t signal_value                          = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
 
-        VkPipelineStageFlags2 wait_flag                = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, wait_flag, signal_value, UINT64_MAX, nullptr);
-        m_device->EnqueueAsyncGPUOperation({wait_flag, signal_value, m_batch_timeline});
+        // The global geometry buffers are bound as whole-buffer storage descriptors.
+        // A fresh copy therefore needs to wait for every prior graphics read before
+        // writing, even when its byte range is newly allocated: validation cannot infer
+        // the shader's per-draw subrange, and separate graphics queues may overlap.
+        //
+        // RenderTimeline covers the previous frame's final Present() submission. Earlier
+        // graphics batches are submitted directly by RenderGraph, however. Relaying those
+        // batches through RenderTimeline preserves execution order but not their shader
+        // access scope, so the copy must wait on their direct timeline as well.
+        auto* const           swapchain                = m_device->SwapchainPtr;
+        constexpr auto        copy_wait_stage          = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        // A batch can contain generic UpdateBuffer copies as well as mesh data. Its
+        // consumer queue is therefore not known here: it can be graphics or a
+        // dedicated compute queue. ALL_COMMANDS is valid for either queue and keeps
+        // every possible consumer behind the copy.
+        constexpr auto        consumer_wait_stage      = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+        VkSemaphoreSubmitInfo copy_waits[2]            = {};
+        uint32_t              copy_wait_count          = 0;
+        if (swapchain->RenderTimelineNextValue != 0)
+        {
+            copy_waits[copy_wait_count++] = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = swapchain->RenderTimeline->GetHandle(),
+                .value     = swapchain->RenderTimelineNextValue,
+                .stageMask = copy_wait_stage,
+            };
+        }
+
+        if (swapchain->DirectGraphicsTimeline && swapchain->DirectGraphicsTimelineValue != 0)
+        {
+            copy_waits[copy_wait_count++] = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = swapchain->DirectGraphicsTimeline->GetHandle(),
+                .value     = swapchain->DirectGraphicsTimelineValue,
+                .stageMask = copy_wait_stage,
+            };
+        }
+
+        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, signal_value, copy_waits, copy_wait_count);
+        m_device->EnqueueAsyncGPUOperation({consumer_wait_stage, signal_value, m_batch_timeline});
 
         // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
         // BeginBatchUpload for this same frame index) to free once m_batch_timeline proves
@@ -1335,7 +1383,10 @@ namespace ZEngine::Rendering
             release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
             release.DestinationAccessMask                    = VK_ACCESS_NONE;
             release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            release.DestinationStageMask                     = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            // This is the producer half of a queue-family transfer, recorded
+            // on a transfer-only queue. The render graph records the matching
+            // graphics-side acquire with the actual consumer stage.
+            release.DestinationStageMask                     = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
             release.LayerCount                               = texture->Specification.LayerCount;
             const uint32_t producer_family                   = m_device->GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex;
             const bool     transfers_ownership               = producer_family != m_device->GraphicFamilyIndex;
@@ -1579,6 +1630,8 @@ namespace ZEngine::Rendering
             if (!ProcessTextureDeferral(frame_index, deferral))
                 m_tex_deferral_retry.push(deferral);
         }
+
+        DispatchQueuedTextureDecodes();
     }
 
     void RenderResourceManager::SubmitAsyncUploads()
@@ -1684,6 +1737,14 @@ namespace ZEngine::Rendering
     {
         m_async_uploads.Clear();
         m_device->AsyncGPUOperations.clear();
+
+        // Geometry batches are submitted immediately, unlike the cancellable
+        // texture jobs above. Keep their semaphore dependency across recreation:
+        // an OUT_OF_DATE acquire has no Present() submission to relay it to the
+        // next frame's graph.
+        if (m_batch_timeline && m_batch_next_value != 0)
+            m_device->EnqueueAsyncGPUOperation({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, m_batch_next_value, m_batch_timeline});
+
         m_streaming_upload_tickets.clear();
     }
 
@@ -1890,38 +1951,63 @@ namespace ZEngine::Rendering
         if (!tex_handle.Valid())
             return {};
 
-        uint8_t decode_slab_index = UINT8_MAX;
-        if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
-        {
-            if (track_decode)
-                PublishTextureDecodeCompletion(tex_handle, false);
-            if (!existing.Valid())
-                m_device->DestroyTexture(tex_handle);
-            ZENGINE_CORE_WARN("[RRM] Texture decode capacity ({}) reached — rejecting {}", MAX_CONCURRENT_TEXTURE_DECODES, filename)
-            return existing;
-        }
-
         auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
         ZConstruct(task, TextureDecodeTask);
         task->Owner            = this;
         task->Specification    = spec;
         task->Texture          = tex_handle;
-        task->DecodeSlabIndex  = decode_slab_index;
         task->IsEnvironmentMap = is_environment_map;
         task->TrackCompletion  = track_decode;
         Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
 
-        m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
-        if (!Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+        if (!m_queued_texture_decodes.push(task))
         {
             if (task->TrackCompletion)
                 PublishTextureDecodeCompletion(tex_handle, false);
-            ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
-            CompleteTextureDecodeTask(task);
-            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+            if (!existing.Valid())
+                m_device->DestroyTexture(tex_handle);
+            m_texture_task_slab.Free(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode queue full — rejecting {}", filename)
+            return existing;
         }
 
         return tex_handle;
+    }
+
+    void RenderResourceManager::DispatchQueuedTextureDecodes()
+    {
+        for (;;)
+        {
+            uint8_t decode_slab_index = UINT8_MAX;
+            if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
+                return;
+
+            TextureDecodeTask* task = nullptr;
+            if (!m_queued_texture_decodes.pop(task))
+            {
+                ReleaseTextureDecodeSlab(decode_slab_index);
+                return;
+            }
+
+            task->DecodeSlabIndex = decode_slab_index;
+            m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
+            if (Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+                continue;
+
+            if (task->TrackCompletion)
+                PublishTextureDecodeCompletion(task->Texture, false);
+            ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
+            CompleteTextureDecodeTask(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+            return;
+        }
+    }
+
+    void RenderResourceManager::DiscardQueuedTextureDecodes()
+    {
+        TextureDecodeTask* task = nullptr;
+        while (m_queued_texture_decodes.pop(task))
+            m_texture_task_slab.Free(task);
     }
 
     void RenderResourceManager::RunTextureDecodeTask(void* context)
@@ -2091,11 +2177,20 @@ namespace ZEngine::Rendering
 
     Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackTexture()
     {
-        static constexpr const char* kFallbackPath = "ZodiacEngine/Settings/FallbackTexture.png";
+        static constexpr const char* kFallbackRelativePath = "Settings/FallbackTexture.png";
 
-        if (!std::filesystem::exists(kFallbackPath))
+        const auto*                  engine_context        = Engine::GetContext();
+        if (!engine_context || !engine_context->EngineAssetsNativeRoot)
         {
-            // 4×4 (255, 20, 147, 255) fallback color for missing textures
+            ZENGINE_CORE_ERROR("Fallback texture cannot be loaded because the engine asset root is unavailable")
+            return {};
+        }
+
+        const std::string fallback_path = (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / kFallbackRelativePath).string();
+        if (!std::filesystem::exists(fallback_path))
+        {
+            // Keep GetOrCreateFallbackTexture's recovery behavior for development
+            // packages that were produced without the bundled fallback image.
             static constexpr int     W = 4, H = 4;
             static constexpr uint8_t R = 255, G = 20, B = 147, A = 255;
             uint8_t                  pixels[W * H * 4];
@@ -2106,10 +2201,14 @@ namespace ZEngine::Rendering
                 pixels[i * 4 + 2] = B;
                 pixels[i * 4 + 3] = A;
             }
-            stbi_write_png(kFallbackPath, W, H, 4, pixels, W * 4);
+            if (!stbi_write_png(fallback_path.c_str(), W, H, 4, pixels, W * 4))
+            {
+                ZENGINE_CORE_ERROR("Failed to create fallback texture: {}", fallback_path)
+                return {};
+            }
         }
 
-        auto result = SubmitTextureFile(kFallbackPath);
+        auto result = SubmitTextureFile(fallback_path.c_str());
         if (result.Valid())
         {
             auto texture = m_device->GlobalTextures.Access(result);

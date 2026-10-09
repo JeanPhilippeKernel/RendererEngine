@@ -21,6 +21,7 @@ namespace ZEngine::Core::VFS
         Helpers::secure_strncpy(ev.Path, sizeof(ev.Path), path, ClampedLength(path));
         ev.Kind        = kind;
         ev.IsDirectory = is_directory;
+        ev.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
         return ev;
     }
 
@@ -103,6 +104,7 @@ namespace ZEngine::Core::VFS
             {
                 VFSWatchEvent overflow{};
                 overflow.Kind = WatchEventKind::Overflow;
+                overflow.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
                 self->PushEvent(overflow);
                 continue;
             }
@@ -264,6 +266,11 @@ namespace ZEngine::Core::VFS
             {
                 std::lock_guard<std::mutex> lock(m_watch_mutex);
                 m_run_loop = CFRunLoopGetCurrent();
+                // The final watch can be removed while the thread is running,
+                // leaving the run loop with no sources. CFRunLoopRun then returns
+                // before StopThread joins us, so keep an owned reference until the
+                // joining thread has finished using it.
+                CFRetain(m_run_loop);
                 RebuildStream();
             }
             // Signal that FSEventStreamStart has been called and the run loop
@@ -299,6 +306,8 @@ namespace ZEngine::Core::VFS
             m_thread.join();
         }
         std::lock_guard<std::mutex> lock(m_watch_mutex);
+        if (m_run_loop)
+            CFRelease(m_run_loop);
         m_run_loop = nullptr;
     }
 

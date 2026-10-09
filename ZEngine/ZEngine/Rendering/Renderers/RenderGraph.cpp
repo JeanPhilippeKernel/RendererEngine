@@ -4,6 +4,8 @@
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Helpers;
@@ -22,6 +24,19 @@ namespace ZEngine::Rendering::Renderers
 
     namespace
     {
+#ifndef NDEBUG
+        bool IsAtmosphereSubmissionTraceEnabled()
+        {
+            const char* const value = std::getenv("ZENGINE_TRACE_ATMOSPHERE_SUBMISSIONS");
+            return value && value[0] == '1' && value[1] == '\0';
+        }
+#endif
+
+        bool IsAtmosphereViewPass(cstring name)
+        {
+            return name && (std::strcmp(name, "Sky View LUT Pass") == 0 || std::strcmp(name, "Aerial Perspective Pass") == 0 || std::strcmp(name, "Sky Composite Pass") == 0);
+        }
+
         // Register() callbacks may decline a pass after making declarations. Keep a
         // snapshot of every declaration-owned mutation so a declined callback is
         // indistinguishable from one that was never registered.
@@ -485,7 +500,7 @@ namespace ZEngine::Rendering::Renderers
         }
     } // namespace
 
-    void BuildQueueBatches(ArrayView<RGPass> passes, ArrayView<uint32_t> order, bool has_separate_transfer_queue, bool has_separate_compute_queue, Array<RGQueueBatch>& out_batches)
+    static void BuildQueueBatchesForTrace(ArrayView<RGPass> passes, ArrayView<uint32_t> order, bool has_separate_transfer_queue, bool has_separate_compute_queue, bool isolate_atmosphere_view_passes, Array<RGQueueBatch>& out_batches)
     {
         out_batches.clear();
 
@@ -500,7 +515,9 @@ namespace ZEngine::Rendering::Renderers
             if ((pass.Queue == Rendering::QueueType::TRANSFER_QUEUE && !has_separate_transfer_queue) || (pass.Queue == Rendering::QueueType::COMPUTE_QUEUE && !has_separate_compute_queue))
                 pass.Queue = Rendering::QueueType::GRAPHIC_QUEUE;
 
-            if (!out_batches.empty() && out_batches.back().Queue == pass.Queue && out_batches.back().FirstPassOrder + out_batches.back().PassCount == order_index)
+            const bool isolate_current_pass  = isolate_atmosphere_view_passes && IsAtmosphereViewPass(pass.Name);
+            const bool isolate_previous_pass = !out_batches.empty() && isolate_atmosphere_view_passes && IsAtmosphereViewPass(passes[order[out_batches.back().FirstPassOrder + out_batches.back().PassCount - 1]].Name);
+            if (!isolate_current_pass && !isolate_previous_pass && !out_batches.empty() && out_batches.back().Queue == pass.Queue && out_batches.back().FirstPassOrder + out_batches.back().PassCount == order_index)
             {
                 ++out_batches.back().PassCount;
                 continue;
@@ -511,6 +528,11 @@ namespace ZEngine::Rendering::Renderers
             batch.FirstPassOrder = order_index;
             batch.PassCount      = 1;
         }
+    }
+
+    void BuildQueueBatches(ArrayView<RGPass> passes, ArrayView<uint32_t> order, bool has_separate_transfer_queue, bool has_separate_compute_queue, Array<RGQueueBatch>& out_batches)
+    {
+        BuildQueueBatchesForTrace(passes, order, has_separate_transfer_queue, has_separate_compute_queue, false, out_batches);
     }
 
     void BuildQueueDependencies(Core::Memory::ArenaAllocator* scratch_arena, ArrayView<RGPass> passes, ArrayView<uint32_t> order, ArrayView<RGQueueBatch> batches, ArrayView<RGPassDependency> pass_dependencies, Array<RGQueueDependency>& out_dependencies)
@@ -1273,6 +1295,11 @@ namespace ZEngine::Rendering::Renderers
         SceneData    = data;
         RenderWidth  = Device && Device->SwapchainPtr ? Device->SwapchainPtr->SwapchainImageWidth : 0;
         RenderHeight = Device && Device->SwapchainPtr ? Device->SwapchainPtr->SwapchainImageHeight : 0;
+        if (Device && Device->SwapchainPtr)
+        {
+            Device->SwapchainPtr->DirectGraphicsTimeline      = nullptr;
+            Device->SwapchainPtr->DirectGraphicsTimelineValue = 0;
+        }
 
         // RenderGraph has a bounded number of virtual passes/resources per frame.
         // Persistent pipelines, framebuffers, and transient images stay in the
@@ -1606,6 +1633,33 @@ namespace ZEngine::Rendering::Renderers
     {
         Register({.Scene = SceneData, .FrameIndex = static_cast<uint8_t>(Device->SwapchainPtr->CurrentFrame->Index), .RenderWidth = RenderWidth, .RenderHeight = RenderHeight});
         Compile();
+
+#ifndef NDEBUG
+        {
+            bool has_atmosphere_view_passes = false;
+            for (const RGPass& pass : Passes)
+            {
+                if (pass.IsActive() && IsAtmosphereViewPass(pass.Name))
+                {
+                    has_atmosphere_view_passes = true;
+                    break;
+                }
+            }
+            Device->SwapchainPtr->TraceSubmission = IsAtmosphereSubmissionTraceEnabled() && has_atmosphere_view_passes;
+        }
+#endif
+
+        // Register() can append deferred copies (notably the UI upload), and scene
+        // uploads were already recorded before Execute(). Close that single batch now:
+        // immediate graph batches below must wait for it just like the Present-owned
+        // final batch. Closing later would let direct graphics read new mesh data before
+        // the copy submission is visible.
+        if (Device->RRM)
+        {
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
+            Device->SwapchainPtr->CollectAsyncGPUOperations();
+        }
+
         if (!m_compile_valid)
         {
             CancelUnsubmittedReadbacks();
@@ -1643,6 +1697,19 @@ namespace ZEngine::Rendering::Renderers
 
         ZENGINE_VALIDATE_ASSERT(QueueBatches.size() <= Device->CommandBufferMgr->MaxGraphBatchesPerPool, "Render graph batch command buffer capacity exceeded")
 
+        // A semaphore signal only covers commands in its own submission.  Keep
+        // the direct producer signals from the preceding frame: relaying a
+        // compute signal through RenderTimeline orders execution, but does not
+        // carry the compute access scope to the next frame.  The consumer's
+        // first operation can be a layout transition or a compute dispatch, so
+        // retain the producer writes for the complete destination scope.
+        if (Device->SwapchainPtr->RenderTimelineNextValue != 0)
+            Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, Device->SwapchainPtr->RenderTimelineNextValue, Device->SwapchainPtr->RenderTimeline});
+        for (uint32_t queue_index = 0; queue_index < QueueTimelineCount; ++queue_index)
+        {
+            if (QueueTimelineValues[queue_index] != 0)
+                Device->SwapchainPtr->FrameAsyncOperations.push({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, QueueTimelineValues[queue_index], QueueTimelines[queue_index]});
+        }
         const uint32_t external_async_operation_count = static_cast<uint32_t>(Device->SwapchainPtr->FrameAsyncOperations.size());
         const uint32_t final_batch_index              = static_cast<uint32_t>(QueueBatches.size() - 1);
         const uint8_t  frame_index                    = static_cast<uint8_t>(Device->SwapchainPtr->CurrentFrame->Index);
@@ -2208,6 +2275,14 @@ namespace ZEngine::Rendering::Renderers
 
             if (retain_for_overlay)
             {
+#ifndef NDEBUG
+                if (Device->SwapchainPtr->TraceSubmission)
+                {
+                    const RGPass& first_pass = Passes[SortedPassIndices[batch.FirstPassOrder]];
+                    const RGPass& last_pass  = Passes[SortedPassIndices[batch.FirstPassOrder + batch.PassCount - 1]];
+                    ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph final batch={} queue={} passes={} first_pass='{}' last_pass='{}'", batch_index, QueueName(batch.Queue), batch.PassCount, first_pass.Name, last_pass.Name)
+                }
+#endif
                 for (uint32_t order_index = batch.FirstPassOrder; order_index < batch.FirstPassOrder + batch.PassCount && order_index < SortedPassIndices.size(); ++order_index)
                 {
                     const RGPass& pass = Passes[SortedPassIndices[order_index]];
@@ -2248,14 +2323,40 @@ namespace ZEngine::Rendering::Renderers
             ZENGINE_VALIDATE_ASSERT(timeline_index < QueueTimelineCount, "Invalid render graph queue type")
             auto* const    timeline     = QueueTimelines[timeline_index];
             const uint64_t signal_value = ++QueueTimelineValues[timeline_index];
+#ifndef NDEBUG
+            if (Device->SwapchainPtr->TraceSubmission)
+            {
+                const RGPass& first_pass = Passes[SortedPassIndices[batch.FirstPassOrder]];
+                const RGPass& last_pass  = Passes[SortedPassIndices[batch.FirstPassOrder + batch.PassCount - 1]];
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph batch={} queue={} passes={} first_pass='{}' last_pass='{}' waits={} signal_timeline={} signal_value={}", batch_index, QueueName(batch.Queue), batch.PassCount, first_pass.Name, last_pass.Name, wait_infos.size(), static_cast<const void*>(timeline), signal_value)
+                for (const VkSemaphoreSubmitInfo& wait : wait_infos)
+                {
+                    uint64_t       completed = 0;
+                    const VkResult result    = vkGetSemaphoreCounterValue(Device->LogicalDevice, wait.semaphore, &completed);
+                    ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph batch={} waits timeline={} value={} completed={} query_result={} stages={}", batch_index, static_cast<const void*>(wait.semaphore), wait.value, completed, static_cast<int32_t>(result), static_cast<uint64_t>(wait.stageMask))
+                }
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph submit begin batch={} queue={} signal_value={}", batch_index, QueueName(batch.Queue), signal_value)
+            }
+#endif
             if (!Device->QueueSubmit(target, timeline, signal_value, wait_infos.data(), static_cast<uint32_t>(wait_infos.size())))
             {
                 graph_submission_failed = true;
                 break;
             }
+#ifndef NDEBUG
+            if (Device->SwapchainPtr->TraceSubmission)
+            {
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph batch={} accepted", batch_index)
+            }
+#endif
 
             batch_timelines[batch_index]     = timeline;
             batch_signal_values[batch_index] = signal_value;
+            if (batch.Queue == Rendering::QueueType::GRAPHIC_QUEUE)
+            {
+                Device->SwapchainPtr->DirectGraphicsTimeline      = timeline;
+                Device->SwapchainPtr->DirectGraphicsTimelineValue = signal_value;
+            }
             AcknowledgeStreamingAcquires(batch.FirstPassOrder, batch.PassCount);
             SubmitReadbacks(batch.FirstPassOrder, batch.PassCount, timeline, signal_value);
             // RenderGraph and DeviceSwapchain run on the render thread. Appending
@@ -2364,6 +2465,13 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Dispose()
     {
+        constexpr uint32_t graphics_timeline_index = static_cast<uint32_t>(Rendering::QueueType::GRAPHIC_QUEUE);
+        if (Device && Device->SwapchainPtr && Device->SwapchainPtr->DirectGraphicsTimeline == QueueTimelines[graphics_timeline_index])
+        {
+            Device->SwapchainPtr->DirectGraphicsTimeline      = nullptr;
+            Device->SwapchainPtr->DirectGraphicsTimelineValue = 0;
+        }
+
         ReadbackRing.Dispose();
         DisposeQueryPools();
         DisposeTimestampFrames();
@@ -4174,7 +4282,11 @@ namespace ZEngine::Rendering::Renderers
             if (!pass.QueryWrites.empty())
                 pass.RequestedQueue = Rendering::QueueType::GRAPHIC_QUEUE;
         }
-        BuildQueueBatches(Passes, SortedPassIndices, Device->HasSeparateTransferQueue, Device->HasSeparateComputeQueue, QueueBatches);
+        bool isolate_atmosphere_view_passes = false;
+#ifndef NDEBUG
+        isolate_atmosphere_view_passes = IsAtmosphereSubmissionTraceEnabled();
+#endif
+        BuildQueueBatchesForTrace(Passes, SortedPassIndices, Device->HasSeparateTransferQueue, Device->HasSeparateComputeQueue, isolate_atmosphere_view_passes, QueueBatches);
         auto scratch = ZGetScratch(Device->Arena);
         BuildQueueDependencies(scratch.Arena, Passes, SortedPassIndices, QueueBatches, PassDependencies, QueueDependencies);
 

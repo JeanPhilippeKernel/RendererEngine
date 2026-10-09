@@ -24,6 +24,7 @@
 // Forward declaration for the test-only helper that accesses RRM private members.
 struct RRMTestHelper;
 struct RRMDecodeTestHelper;
+struct RRMUploadBatchTestHelper;
 
 namespace ZEngine::Hardwares
 {
@@ -101,8 +102,9 @@ namespace ZEngine::Rendering
         /// @param frame_index Current swapchain frame index (0 .. FRAMES_IN_FLIGHT-1).
         void                                BeginFrame(uint32_t frame_index);
 
-        /// @brief Closes this frame's deferred upload batch, if anything joined it.
-        /// @details Called by AppRenderPipeline::EndFrame, before SubmitAsyncUploads.
+        /// @brief Closes the current deferred upload batch, if anything joined it.
+        /// @details Called by RenderGraph after its declaration phase and by
+        ///          AppRenderPipeline::EndFrame as an idempotent fallback.
         void                                EndFrame();
 
         /// @brief Ingest a texture file, uploading (existing invalid) or reloading it in
@@ -195,8 +197,7 @@ namespace ZEngine::Rendering
         /// @param frame_index Render frame index to upload against.
         void                                                             CompleteDeferrals(uint8_t frame_index);
 
-        /// @brief Submit all pending async upload jobs (texture uploads and mesh batch
-        ///        uploads) to their resolved GPU queues.
+        /// @brief Submit all pending asynchronous texture uploads to their resolved GPU queues.
         /// @details Called from AppRenderPipeline::EndFrame. Processes m_async_uploads.
         void                                                             SubmitAsyncUploads();
 
@@ -220,8 +221,9 @@ namespace ZEngine::Rendering
         /// @param thread_index Thread index within the per-frame pool.
         void                                                             RetireTextureSlots(uint8_t frame_index, uint8_t thread_index);
 
-        /// @brief Cancel all queued async upload jobs without submitting them.
-        /// @details Called on swapchain resize or recreate to discard stale uploads.
+        /// @brief Cancel queued texture upload jobs without submitting them.
+        /// @details Called on swapchain recreation. Already-submitted geometry batches
+        ///          remain published through their timeline semaphore.
         void                                                             ClearAsyncUploads();
 
         /// @brief Reset all texture timeline semaphore counters after a swapchain recreate.
@@ -464,6 +466,7 @@ namespace ZEngine::Rendering
         static constexpr uint32_t MAX_UUID_MAP          = 4096;
         static constexpr uint32_t MAX_PENDING           = 1024;
         static constexpr uint32_t MAX_TEXTURE_DEFERRALS = 8192;
+        static constexpr uint32_t MAX_TEXTURE_TASKS     = 4096;
 
         // Per-frame-index batch state: the m_batch_timeline value last signalled for that
         // frame index's batch, and the staging buffers still owned by it. Retired
@@ -473,7 +476,6 @@ namespace ZEngine::Rendering
         struct BatchFrameState
         {
             uint64_t                 LastSignal                      = 0;
-            uint64_t                 SafeRetireAfterRenderValue      = 0; // RenderTimeline value after which stagings are safe to free
             Core::Memory::BufferView StagingBuffers[MAX_PENDING * 2] = {};
             uint32_t                 StagingCount                    = 0;
         };
@@ -524,6 +526,8 @@ namespace ZEngine::Rendering
             Core::Containers::MPSCQueue<TextureDecodeCompletion, MAX_TEXTURE_DEFERRALS> Completions         = {};
         };
 
+        using TextureDecodeTaskQueue = Core::Containers::MPSCQueue<TextureDecodeTask*, MAX_TEXTURE_TASKS>;
+
         /// @brief Append one mesh asset's vertex/index data to the global buffers.
         /// @details Shared by DoUploadMesh (new slot) and FlushPendingSwaps (reuse slot).
         ///          Returns a zero-VtxCount MeshSlot on failure.
@@ -558,22 +562,26 @@ namespace ZEngine::Rendering
         void                    BeginBatchUpload(uint8_t frame_index);
         void                    EndBatchUpload();
 
-        /// @brief Open the batch if not already open this frame. Idempotent — every join
-        ///        point (mesh uploads, hot-reload swaps, UpdateBuffer staging, builtin
-        ///        registration) calls this before recording so only the first one opens it.
+        /// @brief Reuse this slot's open batch, or submit the previous slot's batch
+        ///        before opening a new one. Every upload joins through this method.
         void                    EnsureBatchOpen(uint8_t frame_index);
 
         /// @brief Free frame-index batch stagings once m_batch_timeline reaches LastSignal.
         ///        Called once per frame from BeginFrame.
         void                    RetireBatchStagings();
 
+        /// @brief Start queued texture decodes while a bounded decode slab is available.
+        /// @details Render-thread only. Queued requests preserve their texture handles;
+        ///          they wait here rather than being replaced with the fallback texture.
+        void                    DispatchQueuedTextureDecodes();
+        void                    DiscardQueuedTextureDecodes();
+
         void                    ResetGeometryBuffersInternal();
         /// @brief Re-pack all Resident mesh regions from offset 0, eliminating fragmentation holes.
         /// @details Resets the pool and re-uploads every Resident mesh's CPU asset data into
         ///          fresh batch regions using the existing AppendMeshData path. Slot regions are
-        ///          updated in place before RenderScene runs. The batch is submitted by
-        ///          EndFrame/SubmitAsyncUploads; Present()'s m_batch_timeline wait ensures the
-        ///          render submission sees the new data before drawing.
+        ///          updated in place before RenderScene runs. EndFrame submits the batch, and
+        ///          Present() waits on m_batch_timeline before drawing the new data.
         void                    RunCompaction();
         void                    InitUploadPool();
         void                    InitGlobalBuffers();
@@ -590,6 +598,7 @@ namespace ZEngine::Rendering
         friend class GeometryStreamingManager;
         friend struct ::RRMTestHelper; // test-only — grants slot state access to streaming manager tests
         friend struct ::RRMDecodeTestHelper;
+        friend struct ::RRMUploadBatchTestHelper;
 
         Hardwares::VulkanDevice*                                                   m_device                                       = nullptr;
         Core::VFS::AssetRegistry*                                                  m_registry                                     = nullptr;
@@ -597,8 +606,7 @@ namespace ZEngine::Rendering
         // Dedicated command buffer manager for geometry/font-atlas uploads, separate from
         // Device->CommandBufferMgr. Regular pool slot 0 serves the two remaining
         // synchronous callers (UploadFontAtlas, UpdateBuffer's ring path); the instant
-        // pool serves BeginBatchUpload/EndBatchUpload, whose submission is deferred to
-        // SubmitAsyncUploads instead of blocked on.
+        // pool serves BeginBatchUpload/EndBatchUpload, submitted without a CPU wait.
         Hardwares::CommandBufferManagerPtr                                         m_upload_cmd_mgr                               = {};
         // The only two remaining synchronous, fence-blocking uploads (UploadFontAtlas and
         // UpdateBuffer's ring path) are both render-thread-only and always fully block
@@ -641,6 +649,11 @@ namespace ZEngine::Rendering
         Core::Memory::TLSFSlab                                                     m_texture_task_slab                            = {};
         PaddedAtomic<uint32_t>                                                     m_pending_texture_decodes                      = {};
         PaddedAtomic<bool>                                                         m_accept_texture_decodes                       = {};
+
+        // SubmitTextureFile can be called by importer threads. The render thread drains
+        // this queue whenever a decode slab becomes available, preserving backpressure
+        // without dropping texture requests from large imports.
+        TextureDecodeTaskQueue                                                     m_queued_texture_decodes                       = {};
 
         TextureDecodeTracker                                                       m_texture_decode_tracker                       = {};
         Rendering::Textures::TextureHandle                                         m_fallback_cubemap                             = {};

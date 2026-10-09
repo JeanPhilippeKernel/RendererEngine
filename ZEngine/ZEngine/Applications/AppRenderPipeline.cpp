@@ -12,6 +12,7 @@
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <cmath>
 #include <limits>
 
 using namespace ZEngine::Core::Containers;
@@ -132,10 +133,13 @@ namespace ZEngine::Applications
         auto swapchain = Device->SwapchainPtr;
 
         swapchain->AcquireNextImage(CurrentFrameContextIndex);
+        if (!swapchain->IsFrameValid())
+            return false;
 
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
         swapchain->FrameAsyncOperations.clear();
+        swapchain->TraceSubmission = false;
         swapchain->CollectAsyncGPUOperations();
         Managers::AssetManager::FlushTextureReleases();
 
@@ -159,6 +163,11 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::EndFrame()
     {
+        if (!Device->SwapchainPtr->IsFrameValid())
+        {
+            Device->SwapchainPtr->Present();
+            return;
+        }
         if (Device->RRM)
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
 
@@ -318,9 +327,11 @@ namespace ZEngine::Applications
     {
         if (ZUICtx)
         {
-            // Use the logical window size (glfwGetWindowSize) not the physical swapchain
-            // size. Mouse positions from GLFW cursor callbacks are also in logical pixels,
-            // so panel positions and hit-testing must use the same coordinate space.
+            const uint32_t previous_screen_w = ZUICtx->ScreenW;
+            const uint32_t previous_screen_h = ZUICtx->ScreenH;
+            const float    previous_scale    = ZUICtx->UIScale;
+            // ZUI uses DPI-independent coordinates.  The render pass projects them into
+            // the physical swapchain, while input is converted to the same UI space.
             if (Device->CurrentWindow)
             {
                 auto* native        = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
@@ -334,46 +345,48 @@ namespace ZEngine::Applications
                         content_scale = 1.f;
                 }
 
-                // Exact ImGui approach (imgui_impl_glfw.cpp GetWindowSizeAndFramebufferScale):
-                //   ScreenW/H = glfwGetWindowSize  → logical screen coords (1512 on Retina)
-                //   UIScale   = glfwGetFramebufferSize / glfwGetWindowSize → physical/logical ratio (2.0 on Retina)
-                //   Cursor from GLFW callback is already in logical space — no division needed.
-                // This is identical on all platforms; macOS just happens to have UIScale=2 on Retina.
+                // GLFW's content scale is the UI-metric scale.  On Wayland and macOS it
+                // normally matches framebuffer/window, while X11 can report a scaled
+                // desktop with a 1:1 framebuffer.  Build one DPI-independent ZUI space
+                // from the larger factor so text and controls remain readable on all
+                // three platforms.
+                int win_w = (int) Device->CurrentWindow->GetWidth();
+                int win_h = (int) Device->CurrentWindow->GetHeight();
+                int fb_w  = win_w;
+                int fb_h  = win_h;
                 if (native)
                 {
-                    int win_w = 0, win_h = 0, fb_w = 0, fb_h = 0;
                     glfwGetWindowSize(native, &win_w, &win_h);
                     glfwGetFramebufferSize(native, &fb_w, &fb_h);
-                    if (win_w > 0 && win_h > 0)
-                    {
-                        ZUICtx->ScreenW = (uint32_t) win_w;
-                        ZUICtx->ScreenH = (uint32_t) win_h;
-                        float s         = (fb_w > 0) ? (float) fb_w / (float) win_w : 1.f;
-                        ZUICtx->UIScale = (s > 0.5f) ? s : 1.f;
-                    }
-                    else
-                    {
-                        ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
-                        ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
-                        ZUICtx->UIScale = content_scale;
-                    }
                 }
-                else
+
+                win_w                           = win_w > 0 ? win_w : 1;
+                win_h                           = win_h > 0 ? win_h : 1;
+                fb_w                            = fb_w > 0 ? fb_w : win_w;
+                fb_h                            = fb_h > 0 ? fb_h : win_h;
+
+                const float framebuffer_scale_x = (float) fb_w / (float) win_w;
+                const float framebuffer_scale_y = (float) fb_h / (float) win_h;
+                const float ui_scale            = fmaxf(0.5f, fmaxf(content_scale, fmaxf(framebuffer_scale_x, framebuffer_scale_y)));
+
+                ZUICtx->ScreenW                 = (uint32_t) fmaxf(1.f, roundf((float) fb_w / ui_scale));
+                ZUICtx->ScreenH                 = (uint32_t) fmaxf(1.f, roundf((float) fb_h / ui_scale));
+                ZUICtx->UIScale                 = (float) fb_w / (float) ZUICtx->ScreenW;
+                ZUICtx->InputScale[0]           = (float) ZUICtx->ScreenW / (float) win_w;
+                ZUICtx->InputScale[1]           = (float) ZUICtx->ScreenH / (float) win_h;
+                if (!ZUICtx->UIScaleLogged || previous_screen_w != ZUICtx->ScreenW || previous_screen_h != ZUICtx->ScreenH || previous_scale != ZUICtx->UIScale)
                 {
-                    ZUICtx->ScreenW = Device->CurrentWindow->GetWidth();
-                    ZUICtx->ScreenH = Device->CurrentWindow->GetHeight();
-                    ZUICtx->UIScale = content_scale;
-                }
-                if (!ZUICtx->UIScaleLogged)
-                {
-                    ZENGINE_CORE_INFO("[ZUI] UIScale={:.2f} Screen={}x{} (logical) ContentScale={:.2f}", ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, content_scale);
+                    ZENGINE_CORE_INFO("[ZUI] UIScale={:.2f} Screen={}x{} Window={}x{} Framebuffer={}x{} ContentScale={:.2f} InputScale={:.2f}x{:.2f}", ZUICtx->UIScale, ZUICtx->ScreenW, ZUICtx->ScreenH, win_w, win_h, fb_w, fb_h, content_scale, ZUICtx->InputScale[0], ZUICtx->InputScale[1]);
                     ZUICtx->UIScaleLogged = true;
                 }
             }
             else
             {
-                ZUICtx->ScreenW = Device->SwapchainPtr->SwapchainImageWidth;
-                ZUICtx->ScreenH = Device->SwapchainPtr->SwapchainImageHeight;
+                ZUICtx->ScreenW       = Device->SwapchainPtr->SwapchainImageWidth;
+                ZUICtx->ScreenH       = Device->SwapchainPtr->SwapchainImageHeight;
+                ZUICtx->UIScale       = 1.f;
+                ZUICtx->InputScale[0] = 1.f;
+                ZUICtx->InputScale[1] = 1.f;
             }
             ZEngine::UI::ZUIBeginFrame(ZUICtx, dt);
         }

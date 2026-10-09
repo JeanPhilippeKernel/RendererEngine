@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <future>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,10 @@ extern "C" void ZEngineSetDockIcon(const char* path);
 #include <ZEngine/Windows/GameWindow.h>
 #include <ZEngine/Windows/Inputs/IDevice.h>
 #include <ZEngine/Windows/Inputs/KeyCode.h>
+
+#if defined(__linux__)
+#include <ZEngine/Windows/Platform/WaylandPortalFileDialog.h>
+#endif
 
 #ifdef _WIN32
 
@@ -110,7 +115,13 @@ namespace ZEngine::Windows
         m_property.Title  = cfg.Title.c_str();
         m_property.VSync  = cfg.EnableVsync;
 
-        int glfw_init     = glfwInit();
+#if defined(__APPLE__)
+        // GLFW otherwise tries to dlopen the release Vulkan loader name, while
+        // Debug builds link the debug loader directly.
+        glfwInitVulkanLoader(vkGetInstanceProcAddr);
+#endif
+
+        int glfw_init = glfwInit();
         if (glfw_init == GLFW_FALSE)
         {
             ZENGINE_CORE_CRITICAL("Unable to initialize glfw..")
@@ -133,27 +144,36 @@ namespace ZEngine::Windows
         }
 
         {
-            auto           icon_path = (std::filesystem::current_path() / "ZodiacEngine/Settings/Icons/AppIconBadge.png").string();
-            int            w = 0, h = 0, channels = 0;
-            unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
-            if (pixels)
+            const auto* engine_context = Engine::GetContext();
+            const auto  icon_path      = engine_context && engine_context->EngineAssetsNativeRoot ? (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / "Settings/Icons/AppIconBadge.png").string() : std::string{};
+#if !defined(__APPLE__)
+#if defined(__linux__)
+            // GLFW reports this as an error on Wayland, and this application's GLFW
+            // error callback is intentionally fatal. Wayland has no window-icon API;
+            // the compositor selects the application icon instead.
+            if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND)
+#endif
             {
-                GLFWimage icon{w, h, pixels};
-                glfwSetWindowIcon(m_native_window, 1, &icon);
-                stbi_image_free(pixels);
+                int            w = 0, h = 0, channels = 0;
+                unsigned char* pixels = stbi_load(icon_path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
+                if (pixels)
+                {
+                    GLFWimage icon{w, h, pixels};
+                    glfwSetWindowIcon(m_native_window, 1, &icon);
+                    stbi_image_free(pixels);
+                }
             }
-#if defined(__APPLE__)
+#else
             ZEngineSetDockIcon(icon_path.c_str());
 #endif
         }
 
-        int window_width = 0, window_height = 0;
-        glfwGetWindowSize(m_native_window, &window_width, &window_height);
-        if ((window_width > 0) && (window_height > 0) && (m_property.Width != window_width) && (m_property.Height != window_height))
-        {
-            m_property.SetWidth(window_width);
-            m_property.SetHeight(window_height);
-        }
+        // GetWidth/GetHeight describe physical framebuffer pixels, including before
+        // the first resize callback (Retina and Wayland can already be scaled).
+        int framebuffer_width = 0, framebuffer_height = 0;
+        glfwGetFramebufferSize(m_native_window, &framebuffer_width, &framebuffer_height);
+        m_property.SetWidth(static_cast<uint32_t>(framebuffer_width));
+        m_property.SetHeight(static_cast<uint32_t>(framebuffer_height));
 
         uint32_t     count                  = 0;
         const char** extensions_layer_names = glfwGetRequiredInstanceExtensions(&count);
@@ -437,66 +457,49 @@ namespace ZEngine::Windows
 
 #elif defined(__linux__)
         {
-            // Zenity and kdialog block until the picker closes. Run them off
-            // the UI thread, then resume this coroutine on the main thread.
             std::vector<std::string> extensions;
             extensions.reserve(type_filters.size());
             for (std::string_view filter : type_filters)
                 extensions.emplace_back(filter);
 
-            std::string              default_dir_copy(default_dir);
-            std::string              message_copy(message);
-            std::future<std::string> result = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy)] {
-                std::string filter;
-                for (const std::string& extension : extensions)
+            std::string                                    default_dir_copy(default_dir);
+            std::string                                    message_copy(message);
+            const int                                      platform = glfwGetPlatform();
+
+            std::unique_ptr<Platform::WaylandPortalParent> wayland_parent;
+            std::string                                    portal_parent;
+            unsigned long                                  x11_parent_window = 0;
+            if (platform == GLFW_PLATFORM_WAYLAND)
+            {
+                // The exported object remains alive in this coroutine frame until
+                // the portal response arrives, keeping the dialog parent valid.
+                wayland_parent = Platform::CreateWaylandPortalParent(m_native_window);
+                if (!wayland_parent)
+                    ZENGINE_CORE_WARN("[FileDialog] Wayland compositor does not support xdg-foreign; opening the portal without a transient parent")
+                else
+                    portal_parent = wayland_parent->Handle();
+            }
+            else if (platform == GLFW_PLATFORM_X11)
+            {
+                x11_parent_window = glfwGetX11Window(m_native_window);
+                if (x11_parent_window != 0)
                 {
-                    if (!filter.empty())
-                        filter += ' ';
-                    filter += '*';
-                    filter += extension;
+                    char parent_buffer[32] = {};
+                    std::snprintf(parent_buffer, sizeof(parent_buffer), "x11:0x%lx", x11_parent_window);
+                    portal_parent = parent_buffer;
                 }
+            }
 
-                const std::string start_dir = default_dir.empty() ? "." : default_dir;
-                const std::string title     = message.empty() ? "Select a file" : message;
-
-                std::string       cmd;
-                if (system("which zenity > /dev/null 2>&1") == 0)
-                {
-                    cmd = "zenity --file-selection --title='" + title + "'";
-                    if (!default_dir.empty())
-                        cmd += " --filename='" + start_dir + "/'";
-                    if (!filter.empty())
-                        cmd += " --file-filter='" + filter + "'";
-                }
-                else if (system("which kdialog > /dev/null 2>&1") == 0)
-                {
-                    cmd = "kdialog --getopenfilename " + start_dir + " '";
-                    for (const std::string& extension : extensions)
-                        cmd += '*' + extension + ' ';
-                    if (!cmd.empty() && cmd.back() == ' ')
-                        cmd.pop_back();
-                    cmd += "'";
-                }
-
-                std::string selected_path;
-                if (cmd.empty())
-                    return selected_path;
-
-                FILE* pipe = popen(cmd.c_str(), "r");
-                if (!pipe)
-                    return selected_path;
-
-                char buf[4096] = {};
-                if (fgets(buf, sizeof(buf), pipe))
-                {
-                    selected_path = buf;
-                    if (!selected_path.empty() && selected_path.back() == '\n')
-                        selected_path.pop_back();
-                }
-                pclose(pipe);
-                return selected_path;
-            });
-            path                            = co_await result;
+            std::future<Platform::PortalFileDialogResult> portal_result = std::async(std::launch::async, [extensions, default_dir = default_dir_copy, message = message_copy, portal_parent] { return Platform::OpenPortalFileDialog(portal_parent, extensions, default_dir, message); });
+            auto                                          result        = co_await portal_result;
+            if (result.Outcome != Platform::PortalFileDialogStatus::Failed)
+                path = std::move(result.Path);
+            else
+            {
+                ZENGINE_CORE_WARN("[FileDialog] Desktop portal failed; trying the Linux fallback picker")
+                std::future<std::string> fallback_result = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy), x11_parent_window, use_x11 = platform == GLFW_PLATFORM_X11] { return Platform::OpenLinuxFallbackFileDialog(x11_parent_window, use_x11, extensions, default_dir, message); });
+                path                                     = co_await fallback_result;
+            }
         }
 #endif
 

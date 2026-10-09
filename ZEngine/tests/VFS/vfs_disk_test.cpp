@@ -80,6 +80,34 @@ TEST_F(VFSDiskBackendTest, OpenMissingFileFailsWithNotFound)
     EXPECT_EQ(r.Error(), VFSError::NotFound);
 }
 
+TEST_F(VFSDiskBackendTest, DirectoryOpenFailureIsNotReportedAsMissing)
+{
+    ASSERT_TRUE(std::filesystem::create_directory(std::filesystem::path(m_root.c_str()) / "existing"));
+    auto opened = m_backend.Open(VFSPath::Parse("/existing").Value(), VFSOpenFlags::Write);
+    ASSERT_TRUE(opened.Failed());
+    EXPECT_NE(opened.Error(), VFSError::NotFound);
+}
+
+#if !defined(_WIN32)
+TEST_F(VFSDiskBackendTest, UnreadableExistingFileReturnsPermissionDenied)
+{
+    WriteFile("/restricted.meta", "existing metadata");
+    const auto      path = std::filesystem::path(m_root.c_str()) / "restricted.meta";
+    std::error_code error;
+    std::filesystem::permissions(path, std::filesystem::perms::none, error);
+    ASSERT_FALSE(error);
+    auto opened = m_backend.Open(VFSPath::Parse("/restricted.meta").Value(), VFSOpenFlags::Read);
+    std::filesystem::permissions(path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write, error);
+    ASSERT_FALSE(error);
+    if (opened.Succeeded())
+    {
+        m_backend.Close(opened.Value());
+        GTEST_SKIP() << "This user can bypass filesystem permission checks";
+    }
+    EXPECT_EQ(opened.Error(), VFSError::PermissionDenied);
+}
+#endif
+
 TEST_F(VFSDiskBackendTest, WriteThenReadBack)
 {
     cstring contents = "hello vfs world";

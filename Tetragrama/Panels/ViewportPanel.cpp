@@ -163,13 +163,11 @@ namespace Tetragrama::Panels
         ZUISignal img_sig     = ZUISignalFromBox(ctx, img);
         ZUIPopBox(ctx);
 
-        // Feed the viewport rect to the camera controller every frame so it can
-        // self-gate on cursor position without depending on the ZUI hit-test chain.
+        // The camera consumes raw GLFW cursor positions, not UI-space positions.
+        // Convert both the hover bounds and the extent used by camera rays/panning.
         if (app->CameraController)
         {
-            app->CameraController->SetViewportRect(rect[0], rect[1], rect[2], rect[3]);
-            if (sw > 0.0f && sh > 0.0f)
-                app->CameraController->SetViewport(sw, sh);
+            app->CameraController->SetViewportFromUI(rect, ctx->InputScale);
         }
 
         // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).

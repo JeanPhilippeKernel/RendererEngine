@@ -138,6 +138,7 @@ namespace ZEngine::Core::Memory
         VmaPool                           Pools[static_cast<uint8_t>(GpuMemoryDomain::Count)] = {nullptr};
         StagingRingBuffer                 Ring                                                = {};
         VmaBudget                         HeapBudgets[VK_MAX_MEMORY_HEAPS]                    = {};
+        bool                              HeapPressureReported[VK_MAX_MEMORY_HEAPS]           = {};
         uint32_t                          HeapCount                                           = 0;
         bool                              HasBudgetExt                                        = false;
 

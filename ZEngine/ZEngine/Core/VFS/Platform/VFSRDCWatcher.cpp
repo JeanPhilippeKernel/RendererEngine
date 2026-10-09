@@ -23,9 +23,9 @@ namespace ZEngine::Core::VFS
 
         for (char* c = narrow; *c != '\0'; ++c)
         {
-            if (*c == '\\')
+            if (*c == '/')
             {
-                *c = '/';
+                *c = '\\';
             }
         }
 
@@ -43,7 +43,7 @@ namespace ZEngine::Core::VFS
         size_t pos = Helpers::secure_strlen(out);
         if (!has_separator && pos + 1 < out_size)
         {
-            out[pos++] = '/';
+            out[pos++] = '\\';
             out[pos]   = '\0';
         }
 
@@ -59,7 +59,8 @@ namespace ZEngine::Core::VFS
     {
         VFSWatchEvent ev{};
         Helpers::secure_strncpy(ev.Path, sizeof(ev.Path), path, ClampedLength(path));
-        ev.Kind = kind;
+        ev.Kind                  = kind;
+        ev.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
         return ev;
     }
 
@@ -137,6 +138,11 @@ namespace ZEngine::Core::VFS
         entry->Handle            = handle;
         entry->Recursive         = recursive;
         Helpers::secure_strncpy(entry->Root, sizeof(entry->Root), native_path, ClampedLength(native_path));
+        for (char* c = entry->Root; *c != '\0'; ++c)
+        {
+            if (*c == '/')
+                *c = '\\';
+        }
 
         if (!CreateIoCompletionPort(dir, m_iocp, reinterpret_cast<ULONG_PTR>(entry), 0) || !ReissueRead(entry))
         {
@@ -172,7 +178,8 @@ namespace ZEngine::Core::VFS
         if (bytes == 0)
         {
             VFSWatchEvent overflow{};
-            overflow.Kind = WatchEventKind::Overflow;
+            overflow.Kind                  = WatchEventKind::Overflow;
+            overflow.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
             PushEvent(overflow);
             return;
         }

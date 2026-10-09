@@ -6,18 +6,19 @@ namespace ZEngine::Core::VFS
 {
     enum class VFSError : uint32_t
     {
-        OK               = 0,
-        NotFound         = 1,
-        PermissionDenied = 2,
-        AlreadyExists    = 3,
-        NotADirectory    = 4,
-        NotAFile         = 5,
-        InvalidPath      = 6,
-        Unsupported      = 7,
-        IOError          = 8,
-        OutOfMemory      = 9,
-        Corrupted        = 10,
-        Cancelled        = 11,
+        OK                = 0,
+        NotFound          = 1,
+        PermissionDenied  = 2,
+        AlreadyExists     = 3,
+        NotADirectory     = 4,
+        NotAFile          = 5,
+        InvalidPath       = 6,
+        Unsupported       = 7,
+        IOError           = 8,
+        OutOfMemory       = 9,
+        Corrupted         = 10,
+        Cancelled         = 11,
+        SizeLimitExceeded = 12,
     };
 
     template <typename T>
