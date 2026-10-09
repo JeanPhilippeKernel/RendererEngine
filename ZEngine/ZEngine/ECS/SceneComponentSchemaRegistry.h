@@ -19,16 +19,16 @@ namespace ZEngine::ECS
 
     enum class SceneFieldClass : uint8_t
     {
-        Authored,
-        RuntimeDerived,
-        EditorOnly,
-        Forbidden,
+        Authored       = 0,
+        RuntimeDerived = 1,
+        EditorOnly     = 2,
+        Forbidden      = 3,
     };
 
     enum class SceneReferenceKind : uint8_t
     {
-        Entity,
-        Asset,
+        Entity = 0,
+        Asset  = 1,
     };
 
     struct SceneFieldSchema
