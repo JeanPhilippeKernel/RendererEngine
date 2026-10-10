@@ -128,13 +128,6 @@ body:has(.ze-home) .md-main {
   stroke-width: 3 !important;
 }
 
-.ze-zodiac-wheel__glyphs text {
-  fill: #415fd0;
-  font-family: var(--md-text-font-family), sans-serif;
-  font-size: 1.25rem;
-  opacity: 0.88;
-}
-
 .ze-engine-wireframe {
   animation: ze-engine-wireframe 20s ease-in-out infinite;
   opacity: 0;
@@ -182,10 +175,6 @@ body:has(.ze-home) .md-main {
 [data-md-color-scheme="slate"] .ze-engine-wireframe path,
 [data-md-color-scheme="slate"] .ze-engine-wireframe__label {
   stroke: #bdcaff;
-}
-
-[data-md-color-scheme="slate"] .ze-zodiac-wheel__glyphs text {
-  fill: #d7deff;
 }
 
 @keyframes ze-constellation-drift {

@@ -49,20 +49,6 @@
       <circle cx="600" cy="240" r="92" />
       <path d="M 600 108 L 600 148 M 666 126 L 646 161 M 714 174 L 679 194 M 732 240 L 692 240 M 714 306 L 679 286 M 666 354 L 646 319 M 600 372 L 600 332 M 534 354 L 554 319 M 486 306 L 521 286 M 468 240 L 508 240 M 486 174 L 521 194 M 534 126 L 554 161" />
       <path class="ze-zodiac-wheel__mark" d="M 558 188 L 642 188 L 558 292 L 642 292" />
-      <g class="ze-zodiac-wheel__glyphs">
-        <text x="593" y="132">♈</text>
-        <text x="664" y="151">♉</text>
-        <text x="711" y="203">♊</text>
-        <text x="722" y="248">♋</text>
-        <text x="705" y="306">♌</text>
-        <text x="654" y="351">♍</text>
-        <text x="592" y="368">♎</text>
-        <text x="523" y="351">♏</text>
-        <text x="476" y="306">♐</text>
-        <text x="464" y="248">♑</text>
-        <text x="474" y="203">♒</text>
-        <text x="523" y="151">♓</text>
-      </g>
     </g>
     <g class="ze-engine-wireframe">
       <path d="M 600 92 L 726 166 L 726 314 L 600 388 L 474 314 L 474 166 Z" />
