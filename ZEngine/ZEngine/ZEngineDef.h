@@ -70,8 +70,7 @@
 #define MAX_FILE_PATH_COUNT 256
 #define DEFAULT_STR_BUFFER  256
 
-#define ZRawPtr(X)          X*
-#define ZDEFINE_PTR(X)      typedef ZRawPtr(X) X##Ptr
+#define ZDEFINE_PTR(X)      typedef X* X##Ptr
 
 #define CHECK_AND_ESCAPE_NULL(handle) \
     if (!handle)                      \
@@ -86,9 +85,9 @@
 #define DEFAULT_ALIGNMENT (2 * sizeof(void*))
 #endif // !DEFAULT_ALIGNMENT
 
-#define ZKilo(size)                    (size * 1024)
-#define ZMega(size)                    (ZKilo(size) * 1024)
-#define ZGiga(size)                    (ZMega(size) * 1024)
+#define ZKilo(size)                    (static_cast<uint64_t>(size) * 1024ULL)
+#define ZMega(size)                    (static_cast<uint64_t>(size) * 1024ULL * 1024ULL)
+#define ZGiga(size)                    (static_cast<uint64_t>(size) * 1024ULL * 1024ULL * 1024ULL)
 
 #define ZPush(allocator, type, size)   ((type*) (allocator)->Allocate(size, DEFAULT_ALIGNMENT, __FILE__, __LINE__))
 
@@ -121,7 +120,7 @@
 #define ZESCENE_MAGIC                                          MAKE_MAGIC('Z', 'S', 'C', 'N')
 #define ZENVMAP_MAGIC                                          MAKE_MAGIC('Z', 'E', 'N', 'V')
 #define ASSET_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
-#define SCENE_FILE_VERSION                                     MAKE_VERSION(1, 0, 0)
+#define SCENE_FILE_VERSION                                     MAKE_VERSION(2, 1, 0)
 
 typedef const char* cstring;
 

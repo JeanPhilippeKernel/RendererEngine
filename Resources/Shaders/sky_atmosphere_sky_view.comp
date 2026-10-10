@@ -1,0 +1,84 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 2, binding = 0) uniform texture2D Transmittance;
+layout(set = 2, binding = 1) uniform texture2D Multiscattering;
+layout(set = 2, binding = 2) uniform sampler LinearClampToEdgeSampler;
+layout(set = 2, binding = 3, rgba16f) uniform writeonly image2D Destination;
+
+layout(push_constant) uniform AtmosphereViewPushConstants
+{
+    vec4 PlanetCenterRelativeAndMaxDistance;
+    vec4 RadiiAndScaleHeights;
+    vec4 RayleighScatteringAndGroundAlbedoR;
+    vec4 MieAndOzone;
+    vec4 OzoneAbsorption;
+    vec4 SunDirectionAndRadius;
+    vec4 SunRadianceAvailabilityAndGroundAlbedoGB;
+    vec4 PresentationTintIntensityAndGroundAmbient;
+}
+Push;
+
+#define SKY_ATMOSPHERE_TRANSMITTANCE_LUT   sampler2D(Transmittance, LinearClampToEdgeSampler)
+#define SKY_ATMOSPHERE_MULTISCATTERING_LUT sampler2D(Multiscattering, LinearClampToEdgeSampler)
+#include "sky_atmosphere_integrator.glsl"
+
+vec3 make_tangent_reference(vec3 up, vec3 sun_direction)
+{
+    vec3 reference = sun_direction - up * dot(sun_direction, up);
+    if (dot(reference, reference) < 1.0e-8)
+    {
+        const vec3 fallback = abs(up.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+        reference           = cross(fallback, up);
+    }
+    return normalize(reference);
+}
+
+// This world-space parameterization makes the per-view LUT independent of the
+// viewport extent and concentrates samples around the horizon.
+vec3 decode_sky_view_direction(vec2 uv, vec3 up, vec3 sun_direction)
+{
+    const float encoded_mu = uv.y * 2.0 - 1.0;
+    const float mu         = sign(encoded_mu) * encoded_mu * encoded_mu;
+    const float azimuth    = (uv.x - 0.5) * (2.0 * SKY_ATMOSPHERE_PI);
+    const vec3  tangent    = make_tangent_reference(up, sun_direction);
+    const vec3  bitangent  = normalize(cross(up, tangent));
+    const float horizontal = sqrt(max(1.0 - mu * mu, 0.0));
+    return tangent * (cos(azimuth) * horizontal) + bitangent * (sin(azimuth) * horizontal) + up * mu;
+}
+
+void main()
+{
+    const uvec2 pixel  = gl_GlobalInvocationID.xy;
+    const ivec2 extent = imageSize(Destination);
+    if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y))
+        return;
+
+    const vec2  uv              = (vec2(pixel) + vec2(0.5)) / vec2(extent);
+    const vec3  to_planet       = Push.PlanetCenterRelativeAndMaxDistance.xyz;
+    const float center_distance = length(to_planet);
+    if (center_distance <= Push.RadiiAndScaleHeights.x)
+    {
+        imageStore(Destination, ivec2(pixel), vec4(0.0));
+        return;
+    }
+
+    const vec3              camera_position = -to_planet;
+    const vec3              up              = camera_position / center_distance;
+    const float             sun_length      = length(Push.SunDirectionAndRadius.xyz);
+    const bool              has_sun         = Push.SunRadianceAvailabilityAndGroundAlbedoGB.y > 0.5 && sun_length > 1.0e-6;
+    const vec3              sun_direction   = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
+    const float             sun_radiance    = has_sun ? max(Push.SunRadianceAvailabilityAndGroundAlbedoGB.x, 0.0) : 0.0;
+    const vec3              direction       = decode_sky_view_direction(uv, up, sun_direction);
+    SkyAtmosphereParameters parameters;
+    parameters.RadiiAndScaleHeights               = Push.RadiiAndScaleHeights;
+    parameters.RayleighScatteringAndGroundAlbedoR = Push.RayleighScatteringAndGroundAlbedoR;
+    parameters.MieAndOzone                        = Push.MieAndOzone;
+    parameters.OzoneAbsorption                    = Push.OzoneAbsorption;
+    parameters.GroundAlbedoAndAmbient             = vec4(Push.RayleighScatteringAndGroundAlbedoR.w, Push.SunRadianceAvailabilityAndGroundAlbedoGB.zw, Push.PresentationTintIntensityAndGroundAmbient.w);
+    vec3       transmittance_to_boundary;
+    const vec3 radiance = sky_integrate_radiance_segment(parameters, camera_position, direction, sun_direction, sun_radiance, -1.0, transmittance_to_boundary);
+    imageStore(Destination, ivec2(pixel), vec4(clamp(radiance * Push.PresentationTintIntensityAndGroundAmbient.rgb, vec3(0.0), vec3(65000.0)), 1.0));
+}

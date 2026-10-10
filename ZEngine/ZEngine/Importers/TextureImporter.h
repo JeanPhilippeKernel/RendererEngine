@@ -1,0 +1,27 @@
+#pragma once
+#include <ZEngine/Importers/IAssetImporter.h>
+#include <mutex>
+
+namespace ZEngine::Importers
+{
+    /// @brief Imports flat 2D raster textures (png/jpg/jpeg/bmp/tga/gif/psd/pic).
+    /// @details Does not claim HDR environment sources or ktx/ktx2, which are
+    ///          not flat stb_image texture inputs.
+    class TextureImporter : public IAssetImporter
+    {
+    public:
+        TextureImporter()  = default;
+        ~TextureImporter() = default;
+
+        void                         Initialize(Core::Memory::ArenaAllocator* arena);
+
+        // IAssetImporter
+        bool                         CanImport(const char* extension) const override;
+        Core::VFS::VFSResult<void>   Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta) override;
+
+        Core::Memory::ArenaAllocator Arena = {};
+
+    private:
+        std::mutex m_import_mutex;
+    };
+} // namespace ZEngine::Importers

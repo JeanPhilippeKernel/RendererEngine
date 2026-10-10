@@ -1,0 +1,435 @@
+#include <Tetragrama/Editor.h>
+#include <Tetragrama/Panels/PanelHelpers.h>
+#include <Tetragrama/Panels/ViewportPanel.h>
+#include <ZEngine/Applications/AppRenderPipeline.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/UI/ZUIWidgets.h>
+#include <cstdio>
+#include <cstring>
+
+using namespace ZEngine::UI;
+using namespace ZEngine::Helpers;
+using namespace ZEngine::Core::VFS;
+
+namespace Tetragrama::Panels
+{
+    static constexpr int kGizmoNone      = -1;
+    static constexpr int kGizmoTranslate = 0;
+    static constexpr int kGizmoRotate    = 1;
+    static constexpr int kGizmoScale     = 2;
+
+    struct MeshLoadPayload
+    {
+        ZEngine::Core::Memory::ArenaAllocator* Arena                         = nullptr;
+        std::atomic_bool*                      InFlight                      = nullptr;
+        ZEngine::Importers::AssetMesh          Mesh                          = {};
+        ZEngine::Importers::AssetNodeHierarchy Hierarchy                     = {};
+        uuids::uuid                            MeshId                        = {};
+        char                                   DropPath[MAX_FILE_PATH_COUNT] = {};
+        char                                   MeshPath[MAX_FILE_PATH_COUNT] = {};
+        void*                                  Layer                         = nullptr;
+    };
+
+    void DestroyMeshLoadPayload(MeshLoadPayload* payload)
+    {
+        if (!payload)
+            return;
+        payload->Arena->Clear();
+        payload->InFlight->store(false, std::memory_order_release);
+        delete payload;
+    }
+
+    void ViewportPanel::Initialize(Tetragrama::Layers::ZUILayer* layer)
+    {
+        m_layer       = layer;
+
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ImportPipelineArena.m_memory)
+            return;
+
+        context->ImportPipelineArena.CreateSubArena(DroppedMeshTaskArenaBytes, &m_dropped_mesh_task_arena, "ImportPipeline/EditorDroppedMeshTask");
+    }
+
+    void CompleteDroppedMeshLoad(void* context)
+    {
+        auto* payload = static_cast<MeshLoadPayload*>(context);
+        auto* ctx     = ZEngine::Engine::GetContext();
+        auto* app     = payload->Layer ? reinterpret_cast<EditorPtr>(reinterpret_cast<Tetragrama::Layers::ZUILayer*>(payload->Layer)->CurrentApp) : nullptr;
+        auto* scene   = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+
+        if (ctx && scene && ctx->ActorManager)
+        {
+            ZEngine::Managers::AssetManager::IngestMesh(std::move(payload->Mesh), std::move(payload->Hierarchy));
+
+            char iname[256] = {};
+            auto path       = VFSPath::Parse(payload->DropPath);
+            if (path.Succeeded())
+            {
+                const auto stem = path.Value().Stem();
+                snprintf(iname, sizeof(iname), "%.*s", static_cast<int>(stem.Length), stem.Data);
+            }
+
+            const uint32_t render_id = scene->AddMeshInstance(payload->MeshId, iname);
+
+            using namespace ZEngine::ECS::Components;
+            const ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
+            ZEngine::ECS::Actor* const      actor  = ctx->ActorManager->Access(handle);
+            if (actor)
+            {
+                NameComponent name = {};
+                secure_strncpy(name.Value, sizeof(name.Value), iname, secure_strlen(iname));
+                actor->AddComponent<NameComponent>(name);
+                actor->AddComponent<TransformComponent>({});
+
+                MeshComponent mesh    = {};
+                mesh.MeshUUID         = payload->MeshId;
+                mesh.RenderInstanceId = render_id;
+                actor->AddComponent<MeshComponent>(mesh);
+            }
+        }
+
+        DestroyMeshLoadPayload(payload);
+    }
+
+    void DeserializeDroppedMeshLoad(void* context)
+    {
+        auto* payload = static_cast<MeshLoadPayload*>(context);
+        ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(payload->Arena, payload->MeshPath, payload->Mesh, payload->Hierarchy);
+
+        // Ingest material files with the mesh on the worker, then create the scene
+        // objects on the main thread once all asset data is ready.
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (ctx)
+        {
+            auto scratch = ZGetScratch(&ctx->AssetArena);
+            for (uint32_t index = 0; index < payload->Mesh.SubMeshes.size(); ++index)
+            {
+                const uuids::uuid& material_id = payload->Mesh.SubMeshes[index].MaterialUUID;
+                if (!material_id.is_nil())
+                    ZEngine::Managers::AssetManager::IngestMaterialFromUUID(scratch.Arena, material_id);
+            }
+            ZReleaseScratch(scratch);
+        }
+
+        ZEngine::Core::MainThreadScheduler::Post(payload, &CompleteDroppedMeshLoad);
+    }
+
+    // HOT PATH — runs every frame, no heap allocation allowed.
+    void ViewportPanel::BuildContent(ZUIContext* ctx, float rect[4])
+    {
+        static const float kDarkBg[4] = {0.09f, 0.09f, 0.095f, 1.f};
+
+        if (!m_layer || !m_layer->CurrentApp)
+        {
+            EmptyPanelBg(ctx, "##vp_bg", kDarkBg, nullptr);
+            return;
+        }
+
+        auto* app = reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp);
+        if (!app->RenderPipeline || !app->RenderPipeline->SceneRenderer)
+        {
+            EmptyPanelBg(ctx, "##vp_bg", kDarkBg, nullptr);
+            return;
+        }
+
+        m_scene_texture = app->RenderPipeline->SceneRenderer->GetFrameOutput();
+
+        float   sw      = rect[2] - rect[0];
+        float   sh      = rect[3] - rect[1];
+
+        // Outer fill column — scene image fills the whole docked area, no chrome
+        ZUIBox* bg      = ZUIBeginColumn(ctx, "##vp_bg", ZFill(), ZFill());
+        bg->Flags       = bg->Flags | ZUI_DrawBackground;
+        ZUIBoxSetColorArr(bg, kDarkBg);
+        bg->EdgeSoftness  = 0.f;
+
+        // Scene image — fills the column, drag-drop target
+        ZUIBox* img       = ZUIPushBox(ctx, "##vp_img", 8, ZUI_DrawBackground | ZUI_Clickable);
+        img->Size[0]      = ZFill();
+        img->Size[1]      = ZFill();
+        img->TextureIndex = m_scene_texture.Valid() ? (uint32_t) m_scene_texture.Index : 0xFFFFFFFFu;
+        ZUIBoxSetColor(img, 1.f, 1.f, 1.f, m_scene_texture.Valid() ? 1.f : 0.f);
+        ctx->ViewportInputKey = img->Key;
+
+        ZUISignal img_sig     = ZUISignalFromBox(ctx, img);
+        ZUIPopBox(ctx);
+
+        // The camera consumes raw GLFW cursor positions, not UI-space positions.
+        // Convert both the hover bounds and the extent used by camera rays/panning.
+        if (app->CameraController)
+        {
+            app->CameraController->SetViewportFromUI(rect, ctx->InputScale);
+        }
+
+        // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).
+        ctx->ViewportHovered = (img_sig.Flags & ZUI_SignalHovered) != 0;
+
+        // Drag-drop: accept scene files and raw mesh formats
+        char drop_buf[512]   = {};
+        if (ZUIAcceptDrop(ctx, img, drop_buf, (uint32_t) sizeof(drop_buf)) && secure_strlen(drop_buf) > 0)
+        {
+            const char* dot = strrchr(drop_buf, '.');
+            if (dot && strcmp(dot, ".zescene") == 0)
+            {
+                secure_strncpy(m_pending_scene_drop, sizeof(m_pending_scene_drop), drop_buf, sizeof(m_pending_scene_drop) - 1);
+                ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<ViewportPanel*>(ctx)->OpenDroppedScene(); });
+            }
+            else if (dot && strcmp(dot, ".zemesh") == 0)
+            {
+                secure_strncpy(m_pending_mesh_drop, sizeof(m_pending_mesh_drop), drop_buf, sizeof(m_pending_mesh_drop) - 1);
+                ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<ViewportPanel*>(ctx)->SpawnDroppedMesh(); });
+            }
+            else if (app->Configuration && dot && (strcmp(dot, ".glb") == 0 || strcmp(dot, ".gltf") == 0 || strcmp(dot, ".fbx") == 0 || strcmp(dot, ".obj") == 0))
+            {
+                secure_strncpy(app->Configuration->PendingImportPath, sizeof(app->Configuration->PendingImportPath), drop_buf, sizeof(app->Configuration->PendingImportPath) - 1);
+                const char* fname = strrchr(drop_buf, '/');
+                fname             = fname ? fname + 1 : drop_buf;
+                secure_strncpy(app->Configuration->PendingImportName, sizeof(app->Configuration->PendingImportName), fname, sizeof(app->Configuration->PendingImportName) - 1);
+                app->Configuration->ShowImporter  = true;
+                app->Configuration->FocusImporter = true;
+            }
+        }
+
+        // Resize: emit a resize request whenever the docked area changes
+        const uint32_t requested_width  = static_cast<uint32_t>(sw);
+        const uint32_t requested_height = static_cast<uint32_t>(sh);
+        if (requested_width > 0 && requested_height > 0 && (requested_width != m_last_w || requested_height != m_last_h) && app->State)
+        {
+            if (app->State->RenderTargetResizeRequests.push({.Width = requested_width, .Height = requested_height}))
+            {
+                m_last_w = requested_width;
+                m_last_h = requested_height;
+            }
+        }
+
+        // Overlay toolbar: vertical, floated top-left at (8, 8)
+        {
+            static constexpr float kBtnSz  = 28.f; // button height (also min draw size)
+            static constexpr float kTbW    = 36.f; // toolbar width — 4px padding each side
+            static constexpr float kSepH   = 1.f;
+            static constexpr float kPad    = 5.f; // top / bottom inner padding
+            static constexpr float kGap    = 4.f; // gap between buttons
+            static constexpr float kSepGap = 4.f; // gap on each side of separator
+            float                  tb_h    = kPad + kBtnSz + kSepGap + kSepH + kSepGap + kBtnSz + kGap + kBtnSz + kGap + kBtnSz + kPad;
+
+            ZUIBox*                tb      = ZUIBeginColumn(ctx, "##vp_tb", ZPx(kTbW), ZPx(tb_h));
+            tb->Flags                      = tb->Flags | ZUI_FloatX | ZUI_FloatY;
+            tb->FloatPos[0]                = 8.f;
+            tb->FloatPos[1]                = 8.f;
+
+            ZUISpacer(ctx, kPad);
+
+            // Grid toggle button — cyan theme
+            {
+                static const float kCol[4] = {0.78f, 0.78f, 0.80f, 1.f};
+                bool               act     = m_grid_enabled;
+                ZUIBox*            b       = ZUIPushBox(ctx, "##vp_bg0", 8, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
+                b->Size[0]                 = ZFill(); // fills toolbar width — icon renderer uses sz=min(w,h)=kBtnSz
+                b->Size[1]                 = ZPx(kBtnSz);
+                bool hov                   = (ctx->HotKey == b->Key);
+                bool pressing              = !act && (ctx->ActiveKey == b->Key);
+                if (act)
+                    ZUIBoxSetColor(b, kCol[0] * 0.25f, kCol[1] * 0.25f, kCol[2] * 0.25f, 0.92f);
+                else if (pressing)
+                    ZUIBoxSetColor(b, 0.20f, 0.20f, 0.20f, 0.95f);
+                else if (hov)
+                    ZUIBoxSetColor(b, 0.30f, 0.30f, 0.30f, 0.90f);
+                else
+                    ZUIBoxSetColor(b, 0.12f, 0.12f, 0.12f, 0.70f);
+                float dim       = (act || hov || pressing) ? 1.f : 0.55f;
+                b->TextColor[0] = kCol[0] * dim;
+                b->TextColor[1] = kCol[1] * dim;
+                b->TextColor[2] = kCol[2] * dim;
+                b->TextColor[3] = 1.f;
+                ZUIBoxSetCornerRadius(b, 3.f);
+                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, b->Key);
+                if (ps)
+                    ps->UserData = ZUI_ICON_GRID;
+                ZUISignal sig = ZUISignalFromBox(ctx, b);
+                ZUIPopBox(ctx);
+                if (sig.Flags & ZUI_SignalClicked)
+                    m_grid_enabled = !m_grid_enabled;
+            }
+
+            // Separator with breathing room
+            ZUISpacer(ctx, kSepGap);
+            {
+                ZUIBox* sep  = ZUIPushBox(ctx, "##vp_sep", 8, ZUI_DrawBackground);
+                sep->Size[0] = ZFill();
+                sep->Size[1] = ZPx(kSepH);
+                ZUIBoxSetColor(sep, 0.30f, 0.30f, 0.32f, 0.50f);
+                ZUIPopBox(ctx);
+            }
+            ZUISpacer(ctx, kSepGap);
+
+            // Translate / Rotate / Scale buttons
+            struct BtnDef
+            {
+                const char* key;
+                int         op;
+                float       col[4];
+                float       icon;
+            };
+            static const BtnDef kBtns[3] = {
+                {"##vp_bt", kGizmoTranslate, {0.33f, 0.60f, 1.00f, 1.f}, ZUI_ICON_TRANSLATE},
+                {"##vp_br",    kGizmoRotate, {1.00f, 0.60f, 0.20f, 1.f},    ZUI_ICON_ROTATE},
+                {"##vp_bs",     kGizmoScale, {0.30f, 0.85f, 0.40f, 1.f},     ZUI_ICON_SCALE},
+            };
+
+            for (int i = 0; i < 3; ++i)
+            {
+                if (i > 0)
+                    ZUISpacer(ctx, kGap);
+                const BtnDef& d   = kBtns[i];
+                bool          act = (m_gizmo_op == d.op);
+                ZUIBox*       b   = ZUIPushBox(ctx, d.key, (uint32_t) strlen(d.key), ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
+                b->Size[0]        = ZFill(); // fills toolbar width
+                b->Size[1]        = ZPx(kBtnSz);
+                bool hov          = (ctx->HotKey == b->Key);
+                bool pressing     = !act && (ctx->ActiveKey == b->Key);
+                if (act)
+                    ZUIBoxSetColor(b, d.col[0] * 0.25f, d.col[1] * 0.25f, d.col[2] * 0.25f, 0.92f);
+                else if (pressing)
+                    ZUIBoxSetColor(b, 0.20f, 0.20f, 0.20f, 0.95f);
+                else if (hov)
+                    ZUIBoxSetColor(b, 0.30f, 0.30f, 0.30f, 0.90f);
+                else
+                    ZUIBoxSetColor(b, 0.12f, 0.12f, 0.12f, 0.70f);
+                float dim       = (act || hov || pressing) ? 1.f : 0.55f;
+                b->TextColor[0] = d.col[0] * dim;
+                b->TextColor[1] = d.col[1] * dim;
+                b->TextColor[2] = d.col[2] * dim;
+                b->TextColor[3] = 1.f;
+                ZUIBoxSetCornerRadius(b, 3.f);
+                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, b->Key);
+                if (ps)
+                    ps->UserData = d.icon;
+                ZUISignal sig = ZUISignalFromBox(ctx, b);
+                ZUIPopBox(ctx);
+                if (sig.Flags & ZUI_SignalClicked)
+                    m_gizmo_op = act ? kGizmoNone : d.op;
+            }
+
+            ZUISpacer(ctx, kPad);
+            ZUIEndColumn(ctx);
+        }
+
+        // FPS overlay: floated top-right — uses render-thread SmoothedDeltaTime
+        // (same source as the status bar counter, includes vsync wait).
+        {
+            const float smooth_dt = ZEngine::Engine::GetContext()->SmoothedDeltaTime;
+            const float fps       = smooth_dt > 0.f ? 1.f / smooth_dt : 0.f;
+            char        fps_buf[32];
+            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double) fps);
+
+            static constexpr float kFpsW   = 64.f;
+            ZUIBox*                fps_row = ZUIBeginRow(ctx, "##vp_fps", ZPx(kFpsW), ZPx(22.f));
+            fps_row->Flags                 = fps_row->Flags | ZUI_FloatX | ZUI_FloatY;
+            fps_row->FloatPos[0]           = sw - kFpsW - 8.f;
+            fps_row->FloatPos[1]           = 8.f;
+            ZUIBoxSetColor(fps_row, 0.f, 0.f, 0.f, 0.f);
+            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+        }
+
+        ZUIEndColumn(ctx);
+    }
+
+    // SpawnDroppedMesh (main-thread only)
+
+    void ViewportPanel::SpawnDroppedMesh()
+    {
+        auto* app   = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+        auto* ctx   = ZEngine::Engine::GetContext();
+        if (!scene || !ctx || !ctx->ActorManager || !app->Configuration)
+            return;
+        if (!m_dropped_mesh_task_arena.m_memory)
+        {
+            ZENGINE_CORE_ERROR("[Viewport] Dropped-mesh task arena was not initialized")
+            return;
+        }
+
+        // m_pending_mesh_drop is a VFS-style path — resolve to native before file I/O.
+        char native_path[MAX_FILE_PATH_COUNT] = {};
+        auto vfs_pr                           = VFSPath::Parse(m_pending_mesh_drop);
+        if (!vfs_pr.Succeeded())
+            return;
+        vfs_pr.Value().ResolveNative(app->Configuration->WorkingSpacePath.c_str(), native_path, sizeof(native_path));
+
+        ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
+        if (!ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_path, header))
+            return;
+
+        // Deserialize + material ingest run on a worker thread. A single, fixed
+        // ImportPipeline lease outlives the task until its main-thread callback
+        // consumes or discards the decoded mesh. This deliberately permits one
+        // dropped mesh at a time rather than reserving an unbounded root arena.
+
+        uint64_t file_bytes = 0;
+        if (FILE* f = fopen(native_path, "rb"))
+        {
+            fseek(f, 0, SEEK_END);
+            const long bytes = ftell(f);
+            fclose(f);
+            if (bytes < 0)
+                return;
+            file_bytes = static_cast<uint64_t>(bytes);
+        }
+
+        constexpr uint64_t task_overhead_bytes = ZMega(8);
+        constexpr uint64_t task_multiplier     = 4;
+        if (file_bytes > (DroppedMeshTaskArenaBytes - task_overhead_bytes) / task_multiplier)
+        {
+            ZENGINE_CORE_WARN("[Viewport] Dropped mesh is too large for the {} MiB ImportPipeline task budget: {}", DroppedMeshTaskArenaBytes / ZMega(1), native_path)
+            return;
+        }
+
+        bool expected = false;
+        if (!m_dropped_mesh_task_in_flight.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+        {
+            ZENGINE_CORE_WARN("[Viewport] A dropped-mesh task is already in flight; wait for it to finish before dropping another mesh")
+            return;
+        }
+
+        m_dropped_mesh_task_arena.Clear();
+
+        auto* payload     = new MeshLoadPayload();
+        payload->Arena    = &m_dropped_mesh_task_arena;
+        payload->InFlight = &m_dropped_mesh_task_in_flight;
+        payload->MeshId   = header.Id;
+        payload->Layer    = m_layer;
+        secure_strncpy(payload->MeshPath, sizeof(payload->MeshPath), native_path, secure_strlen(native_path));
+        secure_strncpy(payload->DropPath, sizeof(payload->DropPath), m_pending_mesh_drop, secure_strlen(m_pending_mesh_drop));
+
+        if (!ZEngine::Helpers::ThreadPoolHelper::Submit(payload, &DeserializeDroppedMeshLoad))
+            DestroyMeshLoadPayload(payload);
+    }
+
+    // OpenDroppedScene (main-thread only)
+
+    void ViewportPanel::OpenDroppedScene()
+    {
+        auto* app = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        if (!app || !app->Configuration)
+            return;
+
+        // Resolve to native so OpenScene's contract matches the dialog call site.
+        char native_path[MAX_FILE_PATH_COUNT] = {};
+        auto vfs_pr                           = VFSPath::Parse(m_pending_scene_drop);
+        if (!vfs_pr.Succeeded())
+            return;
+        vfs_pr.Value().ResolveNative(app->Configuration->WorkingSpacePath.c_str(), native_path, sizeof(native_path));
+        app->OpenScene(native_path);
+    }
+
+} // namespace Tetragrama::Panels

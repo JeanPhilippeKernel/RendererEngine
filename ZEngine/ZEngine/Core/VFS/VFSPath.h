@@ -54,7 +54,11 @@ namespace ZEngine::Core::VFS
 
         VFSPathComponent Stem() const;
 
+        // Returns extension including the leading dot, e.g. ".glb".
         VFSPathComponent Extension() const;
+
+        // Returns extension without the leading dot, e.g. "glb".
+        VFSPathComponent ExtensionNoDot() const;
 
         VFSPath          Parent() const;
 

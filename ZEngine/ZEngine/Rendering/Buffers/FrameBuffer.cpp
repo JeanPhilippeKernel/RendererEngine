@@ -6,15 +6,12 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Buffers
 {
-    FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device, const Specifications::FrameBufferSpecificationVNext& specification) : m_device(device), m_specification(specification)
-    {
-        Create();
-    }
-
     FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device, Specifications::FrameBufferSpecificationVNext&& specification) : m_device(device), m_specification(std::move(specification))
     {
         Create();
     }
+
+    FramebufferVNext::FramebufferVNext(Hardwares::VulkanDevice* device) : m_device(device) {}
 
     FramebufferVNext::~FramebufferVNext()
     {
@@ -55,7 +52,7 @@ namespace ZEngine::Rendering::Buffers
             auto handle   = m_device->GlobalTextures.ToHandle(index);
 
             auto resource = m_device->GlobalTextures.Access(handle);
-            auto img_buf  = m_device->Image2DBufferManager.Access(resource->BufferHandle);
+            auto img_buf  = m_device->ImageBufferManager.Access(resource->BufferHandle);
             views[i]      = img_buf->GetImageViewHandle();
         }
         Handle = m_device->CreateFramebuffer(views, m_specification.Attachment->GetHandle(), m_specification.Width, m_specification.Height, m_specification.Layers);
@@ -71,11 +68,25 @@ namespace ZEngine::Rendering::Buffers
         Create();
     }
 
+    void FramebufferVNext::Reset(VkFramebuffer handle, uint32_t width, uint32_t height)
+    {
+        Handle                 = handle;
+        m_specification.Width  = width;
+        m_specification.Height = height;
+    }
+
     void FramebufferVNext::Dispose()
     {
         if (Handle)
         {
-            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::FRAMEBUFFER, Handle);
+            // Deferred: Dispose() is called during resize while the render thread
+            // may still be recording commands that reference this framebuffer.
+            // DeferFree queues the handle for destruction at the next safe drain
+            // in RRM::EndFrame or the final VulkanDevice::Dispose drain.
+            Hardwares::DeferredFreeEntry e = {};
+            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+            e.Data.Vk                      = {Handle, Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
+            m_device->DeferFree(e);
             Handle = VK_NULL_HANDLE;
         }
     }

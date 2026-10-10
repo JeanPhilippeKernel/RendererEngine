@@ -1,0 +1,321 @@
+#include <ZEngine/Core/VFS/Platform/VFSFSEventsWatcher.h>
+#if defined(__APPLE__)
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <cstring>
+#include <sys/stat.h>
+
+namespace ZEngine::Core::VFS
+{
+
+    static constexpr CFAbsoluteTime STREAM_LATENCY_SECONDS = 0.05;
+
+    size_t                   VFSFSEventsWatcher::ClampedLength(const char* text)
+    {
+        const size_t length = Helpers::secure_strlen(text);
+        return length < MAX_FILE_PATH_COUNT ? length : MAX_FILE_PATH_COUNT - 1;
+    }
+
+    VFSWatchEvent VFSFSEventsWatcher::MakeEvent(const char* path, WatchEventKind kind, bool is_directory)
+    {
+        VFSWatchEvent ev{};
+        Helpers::secure_strncpy(ev.Path, sizeof(ev.Path), path, ClampedLength(path));
+        ev.Kind        = kind;
+        ev.IsDirectory = is_directory;
+        ev.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
+        return ev;
+    }
+
+    VFSFSEventsWatcher::VFSFSEventsWatcher() = default;
+
+    VFSFSEventsWatcher::~VFSFSEventsWatcher()
+    {
+        StopThread();
+
+        std::lock_guard<std::mutex> lock(m_watch_mutex);
+        TeardownStream();
+    }
+
+    void VFSFSEventsWatcher::Initialize(Memory::ArenaAllocator* arena, size_t capacity)
+    {
+        m_arena = arena;
+        m_watches.init(arena, capacity);
+        m_queue.init(arena, capacity);
+        m_drain.init(arena, capacity);
+    }
+
+    void VFSFSEventsWatcher::PushEvent(const VFSWatchEvent& ev)
+    {
+        // Keep the watch lock until the event is in the queue. RemoveWatch uses
+        // the same lock to remove stale queued events, so no event from a removed
+        // root can be published after RemoveWatch returns.
+        std::lock_guard<std::mutex> watch_lock(m_watch_mutex);
+        if (m_watches.empty() || (ev.Kind != WatchEventKind::Overflow && !IsPathWatchedLocked(ev.Path)))
+            return;
+
+        std::lock_guard<std::mutex> queue_lock(m_queue_mutex);
+        m_queue.push(ev);
+    }
+
+    bool VFSFSEventsWatcher::IsPathWatchedLocked(const char* path) const
+    {
+        if (!path || path[0] == '\0')
+            return false;
+
+        for (auto it = m_watches.begin(); it != m_watches.end(); ++it)
+        {
+            const char* root       = (*it).second.Path;
+            const size_t root_size = Helpers::secure_strlen(root);
+            if (root_size == 0 || std::strncmp(path, root, root_size) != 0)
+                continue;
+
+            if (root[root_size - 1] == '/' || path[root_size] == '\0' || path[root_size] == '/')
+                return true;
+        }
+        return false;
+    }
+
+    void VFSFSEventsWatcher::DropEventsOutsideActiveWatchesLocked()
+    {
+        std::lock_guard<std::mutex> queue_lock(m_queue_mutex);
+        size_t                      kept = 0;
+        for (size_t index = 0; index < m_queue.size(); ++index)
+        {
+            const VFSWatchEvent& event = m_queue[index];
+            if (event.Kind != WatchEventKind::Overflow && !IsPathWatchedLocked(event.Path))
+                continue;
+            if (event.Kind == WatchEventKind::Overflow && m_watches.empty())
+                continue;
+            m_queue[kept++] = event;
+        }
+        while (m_queue.size() > kept)
+            m_queue.erase(m_queue.size() - 1);
+    }
+
+    void VFSFSEventsWatcher::FSEventsCallback(ConstFSEventStreamRef, void* context, size_t count, void* paths, const FSEventStreamEventFlags* flags, const FSEventStreamEventId*)
+    {
+        VFSFSEventsWatcher* self       = static_cast<VFSFSEventsWatcher*>(context);
+        const char**        path_array = static_cast<const char**>(paths);
+
+        for (size_t i = 0; i < count; ++i)
+        {
+            const FSEventStreamEventFlags flag = flags[i];
+
+            if (flag & (kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagMustScanSubDirs))
+            {
+                VFSWatchEvent overflow{};
+                overflow.Kind = WatchEventKind::Overflow;
+                overflow.ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds();
+                self->PushEvent(overflow);
+                continue;
+            }
+
+            const bool     is_directory = (flag & kFSEventStreamEventFlagItemIsDir) != 0;
+
+            struct stat    st           = {};
+            WatchEventKind kind;
+            if (stat(path_array[i], &st) != 0)
+            {
+                kind = WatchEventKind::Deleted;
+            }
+            else if (flag & kFSEventStreamEventFlagItemCreated)
+            {
+                kind = WatchEventKind::Created;
+            }
+            else
+            {
+                kind = WatchEventKind::Modified;
+            }
+
+            self->PushEvent(MakeEvent(path_array[i], kind, is_directory));
+        }
+    }
+
+    void VFSFSEventsWatcher::TeardownStream()
+    {
+        if (!m_stream)
+        {
+            return;
+        }
+
+        if (m_stream_started)
+        {
+            FSEventStreamStop(m_stream);
+            FSEventStreamInvalidate(m_stream);
+            m_stream_started = false;
+        }
+        FSEventStreamRelease(m_stream);
+        m_stream = nullptr;
+    }
+
+    void VFSFSEventsWatcher::RebuildStream()
+    {
+        TeardownStream();
+
+        if (m_watches.size() == 0)
+        {
+            return;
+        }
+
+        CFMutableArrayRef path_list = CFArrayCreateMutable(nullptr, 0, &kCFTypeArrayCallBacks);
+        for (auto it = m_watches.begin(); it != m_watches.end(); ++it)
+        {
+            CFStringRef path = CFStringCreateWithCString(nullptr, (*it).second.Path, kCFStringEncodingUTF8);
+            CFArrayAppendValue(path_list, path);
+            CFRelease(path);
+        }
+
+        FSEventStreamContext context = {0, this, nullptr, nullptr, nullptr};
+        m_stream                     = FSEventStreamCreate(nullptr, &FSEventsCallback, &context, path_list, kFSEventStreamEventIdSinceNow, STREAM_LATENCY_SECONDS,
+                                                           kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer);
+        CFRelease(path_list);
+
+        if (m_stream && m_run_loop)
+        {
+            FSEventStreamScheduleWithRunLoop(m_stream, m_run_loop, kCFRunLoopDefaultMode);
+            FSEventStreamStart(m_stream);
+            m_stream_started = true;
+        }
+    }
+
+    WatchHandle VFSFSEventsWatcher::AddWatch(const char* native_path, bool recursive)
+    {
+        if (!IsValid() || !native_path || native_path[0] == '\0')
+        {
+            return INVALID_WATCH_HANDLE;
+        }
+
+        std::lock_guard<std::mutex> lock(m_watch_mutex);
+
+        const WatchHandle handle = m_next_handle++;
+        WatchEntry        entry;
+        Helpers::secure_strncpy(entry.Path, sizeof(entry.Path), native_path, ClampedLength(native_path));
+        entry.Recursive = recursive;
+
+        m_watches[handle] = entry;
+        if (m_run_loop)
+        {
+            CFRunLoopRef run_loop = m_run_loop;
+            CFRunLoopPerformBlock(run_loop, kCFRunLoopDefaultMode, ^{
+                std::lock_guard<std::mutex> rebuild_lock(m_watch_mutex);
+                RebuildStream();
+            });
+            CFRunLoopWakeUp(run_loop);
+        }
+        return handle;
+    }
+
+    void VFSFSEventsWatcher::RemoveWatch(WatchHandle handle)
+    {
+        std::lock_guard<std::mutex> lock(m_watch_mutex);
+
+        if (!m_watches.find(handle))
+            return;
+
+        m_watches.remove(handle);
+        // Purging alongside PushEvent's watch lock makes removal a completion
+        // boundary, even while the old FSEvent stream awaits its rebuild.
+        DropEventsOutsideActiveWatchesLocked();
+
+        if (m_run_loop)
+        {
+            CFRunLoopRef run_loop = m_run_loop;
+            CFRunLoopPerformBlock(run_loop, kCFRunLoopDefaultMode, ^{
+                std::lock_guard<std::mutex> rebuild_lock(m_watch_mutex);
+                RebuildStream();
+            });
+            CFRunLoopWakeUp(run_loop);
+        }
+    }
+
+    void VFSFSEventsWatcher::Poll(RawEventCallback cb, void* ctx)
+    {
+        if (!m_arena)
+        {
+            return;
+        }
+
+        m_drain.clear();
+        {
+            std::lock_guard<std::mutex> lock(m_queue_mutex);
+            for (size_t i = 0; i < m_queue.size(); ++i)
+            {
+                m_drain.push(m_queue[i]);
+            }
+            m_queue.clear();
+        }
+
+        for (size_t i = 0; i < m_drain.size(); ++i)
+        {
+            cb(ctx, m_drain[i]);
+        }
+    }
+
+    void VFSFSEventsWatcher::StartThread()
+    {
+        if (!IsValid() || m_running.value.exchange(true, std::memory_order_acq_rel))
+        {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(m_ready_mutex);
+            m_thread_ready = false;
+        }
+
+        m_thread = std::thread([this] {
+            {
+                std::lock_guard<std::mutex> lock(m_watch_mutex);
+                m_run_loop = CFRunLoopGetCurrent();
+                // The final watch can be removed while the thread is running,
+                // leaving the run loop with no sources. CFRunLoopRun then returns
+                // before StopThread joins us, so keep an owned reference until the
+                // joining thread has finished using it.
+                CFRetain(m_run_loop);
+                RebuildStream();
+            }
+            // Signal that FSEventStreamStart has been called and the run loop
+            // is about to enter — callers of StartThread() can safely write
+            // files and expect events to be captured from this point on.
+            {
+                std::lock_guard<std::mutex> lk(m_ready_mutex);
+                m_thread_ready = true;
+                m_ready_cv.notify_one();
+            }
+            CFRunLoopRun();
+        });
+
+        std::unique_lock<std::mutex> lk(m_ready_mutex);
+        m_ready_cv.wait(lk, [this] { return m_thread_ready; });
+    }
+
+    void VFSFSEventsWatcher::StopThread()
+    {
+        if (!m_running.value.exchange(false, std::memory_order_acq_rel))
+        {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_watch_mutex);
+            if (m_run_loop)
+            {
+                CFRunLoopStop(m_run_loop);
+            }
+        }
+        if (m_thread.joinable())
+        {
+            m_thread.join();
+        }
+        std::lock_guard<std::mutex> lock(m_watch_mutex);
+        if (m_run_loop)
+            CFRelease(m_run_loop);
+        m_run_loop = nullptr;
+    }
+
+    size_t VFSFSEventsWatcher::WatchCount() const
+    {
+        std::lock_guard<std::mutex> lock(m_watch_mutex);
+        return m_watches.size();
+    }
+
+} // namespace ZEngine::Core::VFS
+#endif // __APPLE__

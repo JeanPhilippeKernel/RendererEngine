@@ -1,8 +1,8 @@
 # Cook / Package Pipeline
 
-**Priority:** P4 — Implement after import pipeline and asset registry are stable  
-**Status:** Design  
-**Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `render-resource-manager.md`  
+**Priority:** P4 — Implement after import pipeline and asset registry are stable
+**Status:** Design
+**Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `render-resource-manager.md`
 **Blocks:** Shipping / release builds
 
 **Goal**: Transform raw source assets (imported, meta-file-tracked) into platform-optimised,
@@ -612,9 +612,9 @@ project platform and configuration. The editor streams cook progress to the log 
 
 ```
 User clicks [Cook] in Tetragrama:
-  1. Editor reads projectConfig.json to determine workingSpace and platform
+  1. Editor reads generated project.json to determine workingSpace and platform
   2. Editor spawns ZCook headlessly:
-       ZCook --project path/projectConfig.json --platform PC_Vulkan --config Release
+       ZCook --project path/project.json --platform PC_Vulkan --config Release
   3. ZCook runs CookCoordinator:
        - Reads cook.manifest (SHA256 gates)
        - Only re-cooks changed assets (incremental)
@@ -643,7 +643,7 @@ User clicks [Ship] in Panzerfaust (or in Tetragrama toolbar shortcut):
     → produces MyGame.dll (Release, optimized, stripped)
 
   Step 2 — Cook
-    ZCook --project projectConfig.json --platform PC_Vulkan --config Release
+    ZCook --project project.json --platform PC_Vulkan --config Release
     → produces CookedAssets/output.pak
 
   Step 3 — Package

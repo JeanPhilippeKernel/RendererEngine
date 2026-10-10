@@ -15,20 +15,36 @@ namespace ZEngine::Rendering::Cameras
     {
         float MinMoveSpeed        = 1.0f;
         float MaxMoveSpeed        = 500.0f;
-        float PanSpeed            = 1.0f; // multiplier
-        float MoveSpeed           = 10.0f;
-        float FastMoveSpeed       = 40.0f;
-        float RotationSpeed       = 0.25f; // degrees per pixel
-        float OrbitSpeed          = 0.25f; // degrees per pixel
-        float FastSpeedMultiplier = 4.0f;  // shift multiplier
-        float ScrollSpeed         = 3.0f;
+        float PanSpeed            = 1.0f;
+        float RotationSpeed       = 0.25f;
+        float OrbitSpeed          = 0.25f;
+        float FastSpeedMultiplier = 4.0f;
+        float ScrollSpeed         = 0.5f;
         float FocusDuration       = 0.25f; // seconds
         float MinOrbitDistance    = 0.5f;
         float MaxOrbitDistance    = 10000.0f;
+        float OrthographicHeight  = 10.0f;
         float FOV                 = 60.0f;
         float NearPlane           = 0.1f;
         float FarPlane            = 10000.0f;
         float SmoothingFactor     = 12.0f; // higher = snappier
+    };
+
+    /// @brief Immutable camera state consumed by one render payload.
+    ///
+    /// The editor camera is updated on the main thread while rendering happens
+    /// asynchronously. Render code must consume this value, never a mutable
+    /// Camera instance owned by the main thread.
+    struct CameraFrameData
+    {
+        ZEngine::Core::Maths::Mat4f View         = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Mat4f Projection   = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+        ZEngine::Core::Maths::Vec3f Position     = {};
+        /// @brief Selects the depth clear convention consumed by depth-aware post effects.
+        /// @details The current editor camera uses standard Vulkan depth. This
+        /// explicit frame value prevents future reverse-Z views from relying on
+        /// projection-matrix heuristics.
+        bool                        UsesReverseZ = false;
     };
 
     struct Camera
@@ -63,6 +79,12 @@ namespace ZEngine::Rendering::Cameras
         virtual ZEngine::Core::Maths::Mat4f GetViewProjection() const
         {
             return Projection * View;
+        }
+
+        /// @brief Capture the state that will be consumed by a render payload.
+        virtual CameraFrameData CaptureFrameData()
+        {
+            return {.View = View, .Projection = Projection, .Position = GetPosition()};
         }
 
         virtual ZEngine::Core::Maths::Vec3f GetPosition() const = 0;

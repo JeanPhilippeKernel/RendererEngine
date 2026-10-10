@@ -1,5 +1,14 @@
 include(FetchContent)
 
+# GLFW 3.5 can include both native Linux backends and selects the active one
+# at runtime.  Clear the pre-3.4 cache option so an existing build directory
+# can upgrade without GLFW rejecting its old GLFW_USE_WAYLAND entry.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  unset(GLFW_USE_WAYLAND CACHE)
+  set(GLFW_BUILD_X11 ON CACHE BOOL "Build GLFW X11 backend" FORCE)
+  set(GLFW_BUILD_WAYLAND ON CACHE BOOL "Build GLFW Wayland backend" FORCE)
+endif()
+
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
@@ -7,21 +16,6 @@ FetchContent_Declare(
   GIT_TAG main
     )
 
-FetchContent_Declare(
-  imgui
-  GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_SHALLOW TRUE
-  GIT_TAG v1.89.9-docking
-  SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/imgui"
-  )
-
-FetchContent_Declare(
-  imguizmo
-  GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
-  GIT_SHALLOW TRUE
-  GIT_TAG 1.83
-  SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/ImGuizmo"
-  )
 
 FetchContent_Declare(
   stb
@@ -31,10 +25,17 @@ FetchContent_Declare(
   )
 
 FetchContent_Declare(
+  tinyexr
+  GIT_REPOSITORY https://github.com/syoyo/tinyexr.git
+  GIT_TAG v1.0.13
+  GIT_SHALLOW TRUE
+  )
+
+FetchContent_Declare(
   glfw3
   GIT_REPOSITORY https://github.com/glfw/glfw.git
   GIT_SHALLOW TRUE
-  GIT_TAG 3.3.10
+  GIT_TAG 3.5.1
   )
 
 FetchContent_Declare(
@@ -42,13 +43,6 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
   GIT_SHALLOW TRUE
   GIT_TAG v1.15.3 
-  )
-
-FetchContent_Declare(
-  EnTT 
-  GIT_REPOSITORY https://github.com/skypjack/entt.git
-  GIT_SHALLOW TRUE 
-  GIT_TAG v3.16.0
   )
 
 FetchContent_Declare(
@@ -69,7 +63,7 @@ FetchContent_Declare(
   yaml-cpp
   GIT_REPOSITORY https://github.com/jbeder/yaml-cpp
   GIT_SHALLOW TRUE
-   
+  GIT_TAG yaml-cpp-0.9.0
   )
 
 
@@ -110,6 +104,7 @@ FetchContent_Declare(
     GIT_TAG vulkan-sdk-1.3.296.0
 )
 
+set(YAML_MSVC_SHARED_RT ON CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 Fetchcontent_Declare(
     GTest
@@ -130,8 +125,13 @@ Fetchcontent_Declare(
     GIT_REPOSITORY https://github.com/mattconte/tlsf
     GIT_SHALLOW TRUE
     SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/tlsf
-    
 )
+FetchContent_GetProperties(tlsf)
+if(NOT tlsf_POPULATED)
+    FetchContent_Populate(tlsf)
+endif()
+add_library(tlsf STATIC ${FETCHCONTENT_BASE_DIR}/tlsf/tlsf.c)
+target_include_directories(tlsf PUBLIC ${FETCHCONTENT_BASE_DIR}/tlsf)
 
 Fetchcontent_Declare(
     CLI11
@@ -168,17 +168,78 @@ FetchContent_Declare(miniz
     GIT_SHALLOW TRUE
 )
 
+FetchContent_Declare(ufbx
+    GIT_REPOSITORY https://github.com/ufbx/ufbx.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v0.14.3
+    SOURCE_DIR     ${FETCHCONTENT_BASE_DIR}/ufbx
+)
+FetchContent_GetProperties(ufbx)
+if(NOT ufbx_POPULATED)
+    FetchContent_Populate(ufbx)
+endif()
+add_library(ufbx STATIC ${FETCHCONTENT_BASE_DIR}/ufbx/ufbx.c)
+target_include_directories(ufbx PUBLIC ${FETCHCONTENT_BASE_DIR}/ufbx)
+
+FetchContent_Declare(meshoptimizer
+    GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v0.22
+    SOURCE_DIR     ${FETCHCONTENT_BASE_DIR}/meshoptimizer
+)
+FetchContent_GetProperties(meshoptimizer)
+if(NOT meshoptimizer_POPULATED)
+    FetchContent_Populate(meshoptimizer)
+endif()
+file(GLOB MESHOPT_SOURCES ${FETCHCONTENT_BASE_DIR}/meshoptimizer/src/*.cpp)
+add_library(meshoptimizer STATIC ${MESHOPT_SOURCES})
+target_include_directories(meshoptimizer PUBLIC ${FETCHCONTENT_BASE_DIR}/meshoptimizer/src)
+
+FetchContent_Declare(simdjson
+    GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v3.12.3
+    SOURCE_DIR     ${FETCHCONTENT_BASE_DIR}/simdjson
+)
+set(SIMDJSON_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        VER-2-13-3
+)
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+
+FetchContent_Declare(fastgltf
+    GIT_REPOSITORY https://github.com/spnda/fastgltf.git
+    GIT_SHALLOW    TRUE
+    GIT_TAG        v0.9.0
+)
+
+FetchContent_Declare(TracyClient
+    GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+    GIT_SHALLOW TRUE
+    GIT_TAG v0.13.1
+)
+
+if(ZENGINE_TRACY)
+    set(TRACY_ENABLE    ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+endif()
 
 FetchContent_MakeAvailable(
+  freetype
   fmt
   Vulkan-Headers
   Vulkan-Loader
-  imgui
-  ImGuizmo
   stb
   glfw3
   spdlog
-  EnTT
   assimp
   stduuid
   yaml-cpp
@@ -186,14 +247,27 @@ FetchContent_MakeAvailable(
   SPIRV-Headers
   spirv_cross_core
   nlohmann_json
-  tlsf
   CLI11
   rapidhash
   SPIRV-Tools
   glslang
   GTest
   miniz
+  TracyClient
+  simdjson
+  fastgltf
   )
+
+# TinyEXR's bundled CMake project declares another target named miniz. Fetch
+# only its source instead, then build it against the Miniz target already used
+# by the engine.
+FetchContent_GetProperties(tinyexr)
+if(NOT tinyexr_POPULATED)
+    FetchContent_Populate(tinyexr)
+endif()
+add_library(tinyexr STATIC ${tinyexr_SOURCE_DIR}/tinyexr.cc)
+target_include_directories(tinyexr PUBLIC ${tinyexr_SOURCE_DIR})
+target_link_libraries(tinyexr PRIVATE miniz ${CMAKE_DL_LIBS})
 
 foreach(_spirv_target IN ITEMS
     SPIRV-Tools SPIRV-Tools-static SPIRV-Tools-shared
@@ -210,39 +284,6 @@ foreach(_spirv_target IN ITEMS
     endif()
 endforeach()
 
-set(IMGUIDIR ${FETCHCONTENT_BASE_DIR}/imgui)
-
-add_library(imgui STATIC)
-
-target_sources(
-  imgui
-  PRIVATE ${IMGUIDIR}/imgui.cpp
-          ${IMGUIDIR}/imgui_demo.cpp
-          ${IMGUIDIR}/imgui_draw.cpp
-          ${IMGUIDIR}/imgui_tables.cpp
-          ${IMGUIDIR}/imgui_widgets.cpp
-          ${IMGUIDIR}/misc/cpp/imgui_stdlib.cpp
-          ${IMGUIDIR}/backends/imgui_impl_glfw.cpp
-          ${IMGUIDIR}/backends/imgui_impl_vulkan.cpp)
-
-      target_include_directories(imgui 
-          PUBLIC ${FETCHCONTENT_BASE_DIR}
-          PUBLIC ${FETCHCONTENT_BASE_DIR}/imgui
-      )
-
-target_compile_definitions(imgui PUBLIC GLFW_INCLUDE_VULKAN IMGUI_DEFINE_MATH_OPERATORS)
-
-target_link_libraries(imgui PRIVATE glfw Vulkan::Headers Vulkan::Loader)
-
-add_library(imguizmo STATIC)
-
-target_sources(imguizmo
-    PRIVATE ${FETCHCONTENT_BASE_DIR}/ImGuizmo/ImGuizmo.cpp)
-
-target_include_directories(imguizmo
-                           PUBLIC ${FETCHCONTENT_BASE_DIR}/imguizmo-src)
-
-target_link_libraries(imguizmo PUBLIC imgui)
 
 add_library(External_libs INTERFACE)
 
@@ -254,6 +295,8 @@ target_include_directories(External_libs
                                 ${FETCHCONTENT_BASE_DIR}/stb
                                 ${FETCHCONTENT_BASE_DIR}/CLI11
                                 ${FETCHCONTENT_BASE_DIR}/tlsf
+                                ${FETCHCONTENT_BASE_DIR}/ufbx
+                                ${FETCHCONTENT_BASE_DIR}/meshoptimizer/src
                        )
 
 
@@ -270,9 +313,7 @@ target_link_libraries(External_libs
          Vulkan::Loader
          glfw
          fmt::fmt
-         imguizmo
          spdlog::spdlog
-         EnTT::EnTT
          assimp::assimp
          stduuid
          yaml-cpp::yaml-cpp
@@ -281,11 +322,20 @@ target_link_libraries(External_libs
          glslang::glslang
          glslang::glslang-default-resource-limits
          glslang::SPIRV
-         GPUOpen::VulkanMemoryAllocator 
+         GPUOpen::VulkanMemoryAllocator
          nlohmann_json::nlohmann_json
          miniz
+         fastgltf::fastgltf
+         tinyexr
+         ufbx
+         meshoptimizer
+         freetype
+         tlsf
 )
 
+if(ZENGINE_TRACY)
+    target_link_libraries(External_libs INTERFACE TracyClient)
+endif()
 
 add_library(imported::ZEngine_External_Dependencies ALIAS External_libs)
 
@@ -299,6 +349,7 @@ add_library(imported::External_obeliskLibs ALIAS External_obeliskLibs)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/NuGet.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/CppWinRT.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/LoggingDefaults.cmake)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     # Install necessary NuGet dependencies

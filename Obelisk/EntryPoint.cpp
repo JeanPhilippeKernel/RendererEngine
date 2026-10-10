@@ -6,6 +6,7 @@
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/Logger.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 
 #ifdef ZENGINE_PLATFORM
 
@@ -29,7 +30,11 @@ int applicationEntryPoint(int argc, char* argv[])
     CLI11_PARSE(cli, argc, argv);
 
     MemoryManager manager = {};
-    manager.Initialize(ZGiga(3u), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+    manager.Initialize(ZGiga(8ULL), launch_editor ? MemoryBudgetConfig::Editor() : MemoryBudgetConfig::Default());
+#if ZENGINE_PROFILING
+    ZEngine::Profiling::MemoryProfiler::Initialize(&manager.BootstrapArena);
+    ZEngine::Profiling::MemoryProfiler::TrackArena("Bootstrap", &manager.BootstrapArena);
+#endif
 
     Helpers::ThreadPoolHelper::Initialize();
 
@@ -37,8 +42,12 @@ int applicationEntryPoint(int argc, char* argv[])
     LoggerConfiguration logger_cfg   = {};
     manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
     Logger::Initialize(&logger_arena, logger_cfg);
+    CrashHandler::SetPreCrashCallback([](void*) {
+        Logger::FlushRingBufferToCrashLog();
+        Logger::Flush();
+    });
 
-    auto arena                = &(manager.MainArena);
+    auto arena                = &(manager.BootstrapArena);
     auto config_file_str_size = config_file.size() + 1;
     auto config_file_str      = ZPushString(arena, config_file_str_size);
     Helpers::secure_strncpy(config_file_str, config_file_str_size, config_file.c_str(), config_file.size());
@@ -57,8 +66,14 @@ int applicationEntryPoint(int argc, char* argv[])
     app->Run();
     app->Shutdown();
 
+    // Step 16 — flush and dispose logger
+    Logger::Flush();
     Logger::Dispose();
 
+    // OnClosed fires -  may only use stack/OS resources
+    app->OnClosed();
+
+    // Step 17 — free the 8 GB arena block
     manager.Shutdown();
 
     CrashHandler::Uninstall();

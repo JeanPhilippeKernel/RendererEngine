@@ -14,10 +14,13 @@ namespace ZEngine::Rendering::Shaders
         ~Shader();
 
         void                                                                                                              Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec);
+        /// @brief Rebuilds the module and reflection state on the render thread.
+        void                                                                                                              Reload();
         void                                                                                                              Dispose();
         Specifications::LayoutBindingSpecification                                                                        GetLayoutBindingSpecification(cstring name);
-
         VkDescriptorPool                                                                                                  m_descriptor_pool              = VK_NULL_HANDLE;
+        /// @brief Render-thread-owned module generation; increments when hot reload replaces this module.
+        uint32_t                                                                                                          Generation                     = 0;
         Specifications::ShaderSpecification                                                                               m_specification                = {};
         Core::Memory::ArenaAllocator                                                                                      LocalArena                     = {};
 
@@ -26,6 +29,7 @@ namespace ZEngine::Rendering::Shaders
         Core::Containers::Array<VkShaderModule>                                                                           ShaderModules                  = {};
         Core::Containers::Array<VkDescriptorSetLayout>                                                                    SetLayouts                     = {};
         Core::Containers::Array<Specifications::LayoutBindingSpecification>                                               LayoutBindingSpecifications    = {};
+        Core::Containers::UnorderedHashMap<const char*, Specifications::LayoutBindingSpecification>                       BindingsByName                 = {};
         Core::Containers::Array<VkPushConstantRange>                                                                      PushConstants                  = {};
         Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                            DescriptorSetMap               = {}; //<set, vec<descriptorSet>>
         Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                               InternalDescriptorSetLayoutMap = {}; // <set, layout>
@@ -35,6 +39,8 @@ namespace ZEngine::Rendering::Shaders
         void CreateModule();
         void CreateDescriptorSetLayouts();
         void CreatePushConstantRange();
+        void DestroyModules();
+        void RetireDescriptorPool();
 
     private:
         Hardwares::VulkanDevice* m_device{nullptr};

@@ -6,6 +6,8 @@
 #include <ZEngine/Helpers/NodeHierarchyHelper.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <uuid.h>
+#include <string>
+#include <string_view>
 
 namespace ZEngine::Importers
 {
@@ -34,27 +36,50 @@ namespace ZEngine::Importers
 
     struct AssetMesh
     {
-        uuids::uuid                           MeshUUID  = {};
-        Core::Containers::Array<float>        Vertices  = {};
-        Core::Containers::Array<uint32_t>     Indices   = {};
-        Core::Containers::Array<AssetSubMesh> SubMeshes = {};
+        uuids::uuid                           MeshUUID     = {};
+        Core::Containers::Array<float>        Vertices     = {};
+        Core::Containers::Array<uint32_t>     Indices      = {};
+        Core::Containers::Array<AssetSubMesh> SubMeshes    = {};
+        Core::Maths::Vec3f                    BoundsCenter = {};
+        float                                 BoundsRadius = 0.f;
     };
 
     struct AssetMaterial
     {
-        Core::Containers::String Name              = {};
-        uuids::uuid              MaterialUUID      = {};
-        uuids::uuid              AlbedoTexUUID     = {};
-        uuids::uuid              EmissiveTexUUID   = {};
-        uuids::uuid              NormalTexUUID     = {};
-        uuids::uuid              OpacityTexUUID    = {};
-        uuids::uuid              SpecularTexUUID   = {};
-        float                    AmbientColor[4]   = {0};
-        float                    AlbedoColor[4]    = {0};
-        float                    EmissiveColor[4]  = {0};
-        float                    RoughnessColor[4] = {0};
-        float                    SpecularColor[4]  = {0};
-        float                    Factors[4]        = {0};
+        Core::Containers::String    Name              = {};
+        uuids::uuid                 MaterialUUID      = {};
+        // Texture UUIDs — runtime lookup key into AssetManager
+        uuids::uuid                 AlbedoTexUUID     = {};
+        uuids::uuid                 EmissiveTexUUID   = {};
+        uuids::uuid                 NormalTexUUID     = {};
+        uuids::uuid                 OpacityTexUUID    = {};
+        uuids::uuid                 SpecularTexUUID   = {};
+        // Texture paths — project-relative VFS path to the extracted image file
+        // Stored in .zematerial so no separate .zetextures file is needed
+        Core::Containers::String    AlbedoTexPath     = {};
+        Core::Containers::String    EmissiveTexPath   = {};
+        Core::Containers::String    NormalTexPath     = {};
+        Core::Containers::String    OpacityTexPath    = {};
+        Core::Containers::String    SpecularTexPath   = {};
+        float                       AmbientColor[4]   = {0};
+        float                       AlbedoColor[4]    = {0};
+        float                       EmissiveColor[4]  = {0};
+        float                       RoughnessColor[4] = {0};
+        float                       SpecularColor[4]  = {0};
+        float                       Factors[4]        = {0};
+
+        // Copy string storage as well as values when crossing an arena lifetime boundary.
+        [[nodiscard]] AssetMaterial Clone(Core::Memory::ArenaAllocator* arena) const
+        {
+            AssetMaterial copy = *this;
+            copy.Name.init(arena, Name.c_str());
+            copy.AlbedoTexPath.init(arena, AlbedoTexPath.c_str());
+            copy.EmissiveTexPath.init(arena, EmissiveTexPath.c_str());
+            copy.NormalTexPath.init(arena, NormalTexPath.c_str());
+            copy.OpacityTexPath.init(arena, OpacityTexPath.c_str());
+            copy.SpecularTexPath.init(arena, SpecularTexPath.c_str());
+            return copy;
+        }
     };
 
     struct AssetTexture
@@ -99,4 +124,18 @@ namespace ZEngine::Importers
         Core::Containers::Array<AssetMaterial> Materials = {};
         Core::Containers::Array<AssetTexture>  Textures  = {};
     };
+    struct AssetImporterOutput
+    {
+        AssetFileType Type     = AssetFileType::UNKNOWN;
+        std::string   Path     = "";
+        std::string   RootPath = "";
+    };
+
+    // Callbacks run synchronously during ImportFile; do not re-enter the same importer.
+    // The output view is borrowed for the duration of the callback; copy it before deferring work.
+    using ImportCompleteCallback = void (*)(void* ctx, Core::Containers::ArrayView<AssetImporterOutput> outputs);
+    using ImportProgressCallback = void (*)(void* ctx, float progress);
+    using ImportErrorCallback    = void (*)(void* ctx, std::string_view message);
+    using ImportLogCallback      = void (*)(void* ctx, std::string_view message);
+
 } // namespace ZEngine::Importers

@@ -45,6 +45,11 @@ _deps/
 # Shader cache file folder
 Resources/Shaders/Cache
 
+# Runtime Vulkan driver pipeline cache and warmup recipes
+.zodiacengine/cache/
+# Legacy location retained to avoid surfacing caches written by older builds.
+ZodiacEngine/cache/
+
 # Tools folder
 __tools/
 
@@ -423,3 +428,12 @@ CMakeSettings.json
 
 # MacOS files
 .DS_Store
+SampleProject/
+
+# Presentation exports
+*.pdf
+*.pptx
+.claude/worktrees/
+
+# MkDocs build output
+site/

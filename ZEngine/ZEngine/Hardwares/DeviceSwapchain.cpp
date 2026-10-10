@@ -1,10 +1,13 @@
-#include <GLFW/glfw3.h>
+
+#include <ZEngine/Engine.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <algorithm>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Rendering;
@@ -15,9 +18,10 @@ namespace ZEngine::Hardwares
 {
     void DeviceSwapchain::Initialize(VulkanDevice* const device, uint32_t buffered_frame_size)
     {
-        device->Arena->CreateSubArena(ZMega(3), &Arena);
+        device->Arena->CreateSubArena(ZMega(3), &Arena, "VulkanDevice/Swapchain");
 
         Device                                                           = device;
+        FramebufferExtent                                                = {Device->CurrentWindow->GetWidth(), Device->CurrentWindow->GetHeight()};
 
         BufferredFrameCount                                              = buffered_frame_size;
         FrameContextPoolSize                                             = BufferredFrameCount * FrameContextPoolSizeFactor;
@@ -33,10 +37,12 @@ namespace ZEngine::Hardwares
         attachment_specification.ColorsMap[0].Initial         = ImageLayout::UNDEFINED;
         attachment_specification.ColorsMap[0].Final           = ImageLayout::PRESENT_SRC;
         attachment_specification.ColorsMap[0].ReferenceLayout = ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-        SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, attachment_specification);
+        SwapchainAttachment                                   = ZPushStructCtorArgs(&Arena, RenderPasses::Attachment, Device, std::move(attachment_specification));
 
         IdleFrameThreshold                                    = (BufferredFrameCount * 3 * 3 * 3);
         FrameContexts.init(&Arena, FrameContextPoolSize, FrameContextPoolSize);
+        FrameAsyncOperations.init(&Arena, 32);
+        RenderWorkSubmittedCallbacks.init(&Arena, 8);
 
         for (uint32_t i = 0; i < FrameContextPoolSize; ++i)
         {
@@ -48,34 +54,50 @@ namespace ZEngine::Hardwares
         }
 
         Create();
+    }
 
-        ImageInFlights.init(&Arena, SwapchainImageCount, SwapchainImageCount);
-        RenderCompletes.init(&Arena, SwapchainImageCount, SwapchainImageCount);
-        PresentCompletes.init(&Arena, SwapchainImageCount, SwapchainImageCount);
-        for (uint32_t i = 0; i < SwapchainImageCount; ++i)
-        {
-            ImageInFlights[i]   = nullptr;
-            RenderCompletes[i]  = ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device);
-            PresentCompletes[i] = ZPushStructCtorArgs(&Arena, Primitives::Fence, Device);
-        }
+    void DeviceSwapchain::UpdateFramebufferExtent(uint32_t width, uint32_t height)
+    {
+        if (FramebufferExtent.width == width && FramebufferExtent.height == height)
+            return;
+
+        FramebufferExtent = {width, height};
+        // Wayland may keep returning VK_SUCCESS after a resize, so do not rely
+        // exclusively on OUT_OF_DATE/SUBOPTIMAL to recreate the swapchain.
+        Recreation        = RecreationState::Pending;
+    }
+
+    VkExtent2D DeviceSwapchain::ResolveExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D framebuffer_extent)
+    {
+        if (framebuffer_extent.width == 0 || framebuffer_extent.height == 0)
+            return {};
+        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+            return capabilities.currentExtent;
+
+        return {
+            std::clamp(framebuffer_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+            std::clamp(framebuffer_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
+        };
     }
 
     void DeviceSwapchain::Create()
     {
         VkSurfaceCapabilitiesKHR capabilities{};
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Device->PhysicalDevice, Device->Surface, &capabilities);
-        if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+        const VkExtent2D extent = ResolveExtent(capabilities, FramebufferExtent);
+        SwapchainImageWidth     = extent.width;
+        SwapchainImageHeight    = extent.height;
+
+        // {0,0} extent is a spec violation; destroy stale swapchain and retry next frame.
+        if (SwapchainImageWidth == 0 || SwapchainImageHeight == 0)
         {
-            SwapchainImageWidth  = capabilities.currentExtent.width;
-            SwapchainImageHeight = capabilities.currentExtent.height;
-        }
-        else
-        {
-            // Wayland does not provide a concrete extent — query the framebuffer size directly.
-            int w = 0, h = 0;
-            glfwGetFramebufferSize(reinterpret_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow()), &w, &h);
-            SwapchainImageWidth  = static_cast<uint32_t>(w);
-            SwapchainImageHeight = static_cast<uint32_t>(h);
+            Recreation = RecreationState::Pending;
+            if (SwapchainHandle != VK_NULL_HANDLE)
+            {
+                vkDestroySwapchainKHR(Device->LogicalDevice, SwapchainHandle, nullptr);
+                SwapchainHandle = VK_NULL_HANDLE;
+            }
+            return;
         }
 
         VkSwapchainKHR           old_swapchain         = (SwapchainHandle != VK_NULL_HANDLE) ? SwapchainHandle : VK_NULL_HANDLE;
@@ -111,36 +133,79 @@ namespace ZEngine::Hardwares
         swapchain_create_info.queueFamilyIndexCount = Device->HasSeperateTransfertQueueFamily ? 2 : 1;
         swapchain_create_info.pQueueFamilyIndices   = family_indice.data();
 
+        const uint32_t previous_image_count         = SwapchainImageCount;
         ZENGINE_VALIDATE_ASSERT(vkCreateSwapchainKHR(Device->LogicalDevice, &swapchain_create_info, nullptr, &SwapchainHandle) == VK_SUCCESS, "Failed to create Swapchain")
         ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(Device->LogicalDevice, SwapchainHandle, &SwapchainImageCount, nullptr) == VK_SUCCESS, "Failed to get Images count from Swapchain")
         ZReleaseScratch(scratch);
 
-        if (SwapchainImageViews.capacity() <= 0)
+        if (SwapchainImages.capacity() == 0)
         {
-            SwapchainImageViews.init(&Arena, SwapchainImageCount, SwapchainImageCount);
+            SwapchainImages.init(&Arena, SwapchainImageCount);
+            SwapchainImageViews.init(&Arena, SwapchainImageCount);
+            SwapchainFramebuffers.init(&Arena, SwapchainImageCount);
+            SwapchainImageLayouts.init(&Arena, SwapchainImageCount);
+        }
+        else
+        {
+            SwapchainImages.clear();
+            SwapchainImages.reserve(SwapchainImageCount);
+            SwapchainImageViews.clear();
+            SwapchainImageViews.reserve(SwapchainImageCount);
+            SwapchainFramebuffers.clear();
+            SwapchainFramebuffers.reserve(SwapchainImageCount);
+            SwapchainImageLayouts.clear();
+            SwapchainImageLayouts.reserve(SwapchainImageCount);
         }
 
-        if (SwapchainFramebuffers.capacity() <= 0)
+        SwapchainImages.clear();
+        for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+            SwapchainImages.push(VK_NULL_HANDLE);
+        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(Device->LogicalDevice, SwapchainHandle, &SwapchainImageCount, SwapchainImages.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
+
+        if (ImageInFlights.capacity() == 0)
         {
-            SwapchainFramebuffers.init(&Arena, SwapchainImageCount, SwapchainImageCount);
+            ImageInFlights.init(&Arena, SwapchainImageCount);
+            RenderCompletes.init(&Arena, SwapchainImageCount);
+        }
+        else if (ImageInFlights.size() != SwapchainImageCount)
+        {
+            for (uint32_t i = 0; i < RenderCompletes.size(); ++i)
+            {
+                if (RenderCompletes[i])
+                    RenderCompletes[i]->~Semaphore();
+            }
+            ImageInFlights.clear();
+            ImageInFlights.reserve(SwapchainImageCount);
+            RenderCompletes.clear();
+            RenderCompletes.reserve(SwapchainImageCount);
         }
 
-        scratch                         = ZGetScratch(&Arena);
-
-        Array<VkImage> swapchain_images = {};
-        swapchain_images.init(scratch.Arena, SwapchainImageCount, SwapchainImageCount);
-        ZENGINE_VALIDATE_ASSERT(vkGetSwapchainImagesKHR(Device->LogicalDevice, SwapchainHandle, &SwapchainImageCount, swapchain_images.data()) == VK_SUCCESS, "Failed to get VkImages from Swapchain")
-        for (int i = 0; i < SwapchainImageCount; ++i)
+        if (ImageInFlights.size() != SwapchainImageCount)
         {
-            SwapchainImageViews[i] = Device->CreateImageView(swapchain_images[i], Device->SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
-
-            Array<VkImageView> fb_images_views;
-            fb_images_views.init(scratch.Arena, 1);
-            fb_images_views.push(SwapchainImageViews[i]);
-            SwapchainFramebuffers[i] = Device->CreateFramebuffer(ArrayView{fb_images_views}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
+            for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+            {
+                ImageInFlights.push(nullptr);
+                RenderCompletes.push(ZPushStructCtorArgs(&Arena, Primitives::Semaphore, Device));
+            }
         }
 
-        ZReleaseScratch(scratch);
+        for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+        {
+            VkImageView image_view = Device->CreateImageView(SwapchainImages[i], Device->SurfaceFormat.format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_COLOR_BIT);
+            SwapchainImageViews.push(image_view);
+            SwapchainImageLayouts.push(VK_IMAGE_LAYOUT_UNDEFINED);
+
+            VkFramebuffer framebuffer = VK_NULL_HANDLE;
+            if (!Device->PhysicalDeviceSupportDynamicRendering)
+                framebuffer = Device->CreateFramebuffer(ArrayView<VkImageView>{&image_view, 1}, SwapchainAttachment->GetHandle(), SwapchainImageWidth, SwapchainImageHeight);
+            SwapchainFramebuffers.push(framebuffer);
+        }
+
+        PreviousSwapchainImageCount = previous_image_count;
+        if (previous_image_count != SwapchainImageCount)
+            ++SwapchainImageCountChangeCount;
+
+        ZENGINE_CORE_INFO("Swapchain created: {}x{} (framebuffer={}x{})", SwapchainImageWidth, SwapchainImageHeight, FramebufferExtent.width, FramebufferExtent.height)
 
         if (old_swapchain != VK_NULL_HANDLE)
         {
@@ -150,15 +215,27 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Clear()
     {
-        for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+        for (uint32_t i = 0; i < SwapchainImageViews.size(); ++i)
         {
-            Device->EnqueueForDeletion(DeviceResourceType::IMAGEVIEW, SwapchainImageViews[i]);
-            Device->EnqueueForDeletion(DeviceResourceType::FRAMEBUFFER, SwapchainFramebuffers[i]);
+            if (SwapchainImageViews[i] != VK_NULL_HANDLE)
+            {
+                DeferredFreeEntry iv = {};
+                iv.EntryKind         = DeferredFreeEntry::Kind::VkHandle;
+                iv.Data.Vk           = {SwapchainImageViews[i], DeviceResourceType::IMAGEVIEW, nullptr};
+                Device->DeferFree(iv);
+            }
+            if (SwapchainFramebuffers[i] != VK_NULL_HANDLE)
+            {
+                DeferredFreeEntry fb = {};
+                fb.EntryKind         = DeferredFreeEntry::Kind::VkHandle;
+                fb.Data.Vk           = {SwapchainFramebuffers[i], DeviceResourceType::FRAMEBUFFER, nullptr};
+                Device->DeferFree(fb);
+            }
             SwapchainImageViews[i]   = VK_NULL_HANDLE;
             SwapchainFramebuffers[i] = VK_NULL_HANDLE;
         }
 
-        for (uint32_t i = 0; i < SwapchainImageCount; ++i)
+        for (uint32_t i = 0; i < ImageInFlights.size(); ++i)
         {
             ImageInFlights[i] = nullptr;
         }
@@ -169,6 +246,30 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Dispose()
     {
+        DirectGraphicsTimeline      = nullptr;
+        DirectGraphicsTimelineValue = 0;
+
+        // Destroy frame-context and swapchain-image Vulkan objects.
+        // All destructors use Device->DeferFree — the second PendingFree.Drain()
+        // at the end of VulkanDevice::Deinitialize() drains them before vkDestroyDevice.
+        for (uint32_t i = 0; i < FrameContexts.size(); ++i)
+        {
+            if (FrameContexts[i].Acquired)
+                FrameContexts[i].Acquired->~Semaphore();
+            if (FrameContexts[i].Fence)
+                FrameContexts[i].Fence->~Fence();
+        }
+        for (uint32_t i = 0; i < RenderCompletes.size(); ++i)
+        {
+            if (RenderCompletes[i])
+                RenderCompletes[i]->~Semaphore();
+        }
+        if (RenderTimeline)
+        {
+            RenderTimeline->~Semaphore();
+            RenderTimeline = nullptr;
+        }
+
         Clear();
         ZENGINE_DESTROY_VULKAN_HANDLE(Device->LogicalDevice, vkDestroySwapchainKHR, SwapchainHandle, nullptr)
         SwapchainAttachment->Dispose();
@@ -176,242 +277,355 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::AcquireNextImage(uint32_t frame_context_idx)
     {
-        if (HasRecreationPending)
+        // Do not reset fences or command pools while a minimized/zero-size
+        // window cannot acquire an image. Restore recreates through the normal path.
+        if (FramebufferExtent.width == 0 || FramebufferExtent.height == 0)
         {
-            /*
-             * On macOS:
-             * Because of ASYNCHRONOUS communication between MoltenVK and Metal:
-             * 1. vkDeviceWaitIdle() only guarantees Vulkan sees GPU idle
-             * 2. Metal's CAMetalLayer may still have pending present operations
-             * 3. Semaphores can appear "stuck" in Submitted state due to Metal async completion
-             *
-             * Pool of BufferredFrameCount * 4 = 12 contexts rotates every resize.
-             * Skipping 3 ensures we land on fully Idle semaphores/fences even under Metal async.
-             *
-             */
-#ifdef __APPLE__
-            vkDeviceWaitIdle(Device->LogicalDevice);
+            CurrentFrame = nullptr;
+            Recreation   = RecreationState::Pending;
+            return;
+        }
+#ifndef NDEBUG
+        auto trace_fence_wait = [this](cstring reason, const FrameContext& frame) {
+            if (!TraceSubmission)
+                return;
+
+            uint64_t render_completed = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &render_completed);
+            uint64_t direct_completed = 0;
+            if (DirectGraphicsTimeline)
+                vkGetSemaphoreCounterValue(Device->LogicalDevice, DirectGraphicsTimeline->GetHandle(), &direct_completed);
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire wait={} frame={} render_completed={} render_submitted={} direct_timeline={} direct_completed={} direct_submitted={}", reason, frame.Index, render_completed, RenderTimelineNextValue, static_cast<const void*>(DirectGraphicsTimeline ? DirectGraphicsTimeline->GetHandle() : VK_NULL_HANDLE), direct_completed, DirectGraphicsTimelineValue)
+        };
 #endif
+        if (Recreation != RecreationState::None)
+        {
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation begin state={}", static_cast<uint32_t>(Recreation))
+#endif
+            // Every submitted render command buffer is covered by its frame fence.
             for (uint32_t i = 0; i < ImageInFlights.size(); ++i)
             {
                 if (ImageInFlights[i] != nullptr)
                 {
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation image-fence wait begin image={}", i)
+#endif
                     ImageInFlights[i]->Wait(UINT64_MAX);
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation image-fence wait complete image={}", i)
+#endif
                 }
             }
 
-            for (uint32_t i = 0; i < PresentCompletes.size(); ++i)
+            // Defense-in-depth: ImageInFlights is sized SwapchainImageCount,
+            // but the engine allows up to FrameContextPoolSize (BufferredFrameCount * 4) frames'
+            // command buffers to be concurrently in-flight — more than those two arrays track.
+            // Wait on every frame context's own fence too, so recreation never proceeds while a
+            // command buffer beyond the swapchain-image-indexed slots is still executing
+            // (issue #736).
+            for (uint32_t i = 0; i < FrameContexts.size(); ++i)
             {
-                if (PresentCompletes[i]->GetState() == Rendering::Primitives::FenceState::Submitted)
+                if (FrameContexts[i].Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
                 {
-                    PresentCompletes[i]->Wait(UINT64_MAX);
-                    PresentCompletes[i]->Reset();
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation frame-fence wait begin frame={}", i)
+#endif
+                    FrameContexts[i].Fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+                    if (TraceSubmission)
+                        ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation frame-fence wait complete frame={}", i)
+#endif
+                    FrameContexts[i].Fence->Reset();
                 }
+            }
+
+            // Frame fences do not cover independently submitted uploads. Drain every
+            // queue before clearing their frame waits or resetting texture timeline
+            // counters; this is especially important after an OUT_OF_DATE acquire,
+            // where Present() deliberately submits no fence-backed work.
+            if (!Device->IsDeviceLost.load(std::memory_order_acquire))
+            {
+#ifndef NDEBUG
+                if (TraceSubmission)
+                    ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation queue-wait-all begin")
+#endif
+                Device->QueueWaitAll();
+#ifndef NDEBUG
+                if (TraceSubmission)
+                    ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation queue-wait-all complete")
+#endif
             }
 
             for (int i = 0; i < FrameContextPoolSizeFactor; ++i)
             {
-                FrameContext& frame = FrameContexts[i + FrameContextOffset];
-                frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
+                FrameContexts[i + FrameContextOffset].Acquired->SetState(Primitives::SemaphoreState::Idle);
             }
 
-            Device->AsyncResLoader->ClearAsyncJobs();
-            Device->AsyncResLoader->Reset();
+            if (Device->RRM)
+            {
+                auto* rrm = static_cast<Rendering::RenderResourceManager*>(Device->RRM);
+                rrm->ClearAsyncUploads();
+                rrm->ResetTextureTimelines();
+            }
 
-            uint64_t timeline_value = 0;
-            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &timeline_value);
-
-            ZENGINE_VALIDATE_ASSERT(timeline_value >= RenderTimelineNextValue, "Render Timeline value is behind the last submitted value, this should never happen.")
-            ZENGINE_VALIDATE_ASSERT(timeline_value < UINT64_MAX, "Render Timeline value is corrupted, this should never happen.")
-            RenderTimelineNextValue = timeline_value;
-
-            FrameContextOffset      = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
-            // CurrentFrame            = nullptr;
+            // RenderTimelineNextValue is a CPU-side counter incremented exactly once per real
+            // submission (see the ++RenderTimelineNextValue call sites) — it is already correct
+            // and monotonic on its own. Do NOT resync it to vkGetSemaphoreCounterValue here: that
+            // "completed" value only reflects the fence slots waited on above (ImageInFlights,
+            // sized SwapchainImageCount), which can be smaller than the actual
+            // in-flight depth the engine allows (FrameContextPoolSize = BufferedFrameCount * 4).
+            // Rewinding this counter backward stamps every DeferFree call made afterward (by this
+            // Clear() and by unrelated callers like RenderGraph::Resize for viewport render
+            // targets) with an already-satisfied timeline value, so Drain() destroys them
+            // immediately — even while a still-executing command buffer from a frame beyond the
+            // waited-on slots is referencing them. This was the root cause of the
+            // vkDestroyFramebuffer/vkDestroyImage "in use by VkCommandBuffer" crash on fast
+            // resize (issue #736).
+            FrameContextOffset = (FrameContextOffset + FrameContextPoolSizeFactor) % FrameContextPoolSize;
 
             Clear();
-            Create();
+            Create(); // may leave SwapchainHandle == VK_NULL_HANDLE on zero-size surface
 
-            HasRecreationPending = false;
-            ZENGINE_CORE_WARN("Swapchain has been re-created")
+            if (SwapchainHandle == VK_NULL_HANDLE)
+            {
+                // Zero-size surface — retry next frame.
+                Recreation            = RecreationState::Pending;
+                FrameContext& aborted = FrameContexts[frame_context_idx + FrameContextOffset];
+                aborted.ImageIndex    = std::numeric_limits<uint32_t>::max();
+                CurrentFrame          = &aborted;
+                return;
+            }
+
+            Recreation = RecreationState::None;
+            ZENGINE_CORE_WARN("Swapchain recreated: {}x{}", SwapchainImageWidth, SwapchainImageHeight)
+
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] swapchain recreation complete")
+#endif
+
+            if (OnSwapchainResized)
+                OnSwapchainResized(SwapchainImageWidth, SwapchainImageHeight, OnSwapchainResizedCtx);
         }
 
         FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
         if (frame.Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
         {
+#ifndef NDEBUG
+            trace_fence_wait("frame", frame);
+#endif
             frame.Fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire frame-fence wait complete frame={}", frame.Index)
+#endif
         }
-        frame.Fence->Reset();
-        frame.Acquired->SetState(Rendering::Primitives::SemaphoreState::Idle);
 
-        uint32_t image_idx            = 0;
-        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, UINT64_MAX, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &(image_idx));
+        // A reset fence must not remain associated with any swapchain image.
+        // Besides the normal completed submission, this clears a stale reference
+        // left by an aborted frame before it can become an unsignaled self-wait.
+        ClearImageInFlightReferences(frame.Fence, frame.Index);
+        frame.Fence->Reset();
+        frame.Acquired->SetState(Primitives::SemaphoreState::Idle);
+
+        uint32_t image_idx = 0;
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire call frame={} semaphore={}", frame.Index, static_cast<const void*>(frame.Acquired->GetHandle()))
+#endif
+        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, ImageAcquireTimeoutNs, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire returned frame={} result={} image={}", frame.Index, static_cast<int32_t>(acquire_image_result), image_idx)
+#endif
+        if (!ApplyAcquireResult(frame, acquire_image_result, image_idx))
+        {
+            // Timeout/not-ready signal no semaphore and need no recreation. The
+            // next render-loop iteration can consume a resize/minimize/close request.
+            if (acquire_image_result != VK_TIMEOUT && acquire_image_result != VK_NOT_READY && acquire_image_result != VK_ERROR_OUT_OF_DATE_KHR && !Device->CheckDeviceLost(acquire_image_result, "AcquireNextImage"))
+            {
+                ZENGINE_CORE_ERROR("vkAcquireNextImageKHR did not yield a valid image: result={} image={} image_count={}", static_cast<int32_t>(acquire_image_result), image_idx, SwapchainImageCount)
+                Engine::RequestClose();
+            }
+            return;
+        }
         frame.Acquired->SetState(Primitives::SemaphoreState::Submitted);
 
-        if (PresentCompletes[image_idx]->GetState() == Rendering::Primitives::FenceState::Submitted)
+        auto* const image_fence              = ImageInFlights[image_idx];
+        const bool  current_frame_owns_image = image_fence == frame.Fence;
+        ZENGINE_VALIDATE_ASSERT(!current_frame_owns_image, "An acquired image cannot wait on the frame fence being reset")
+        if (!current_frame_owns_image && image_fence != nullptr && !image_fence->IsSignaled())
         {
-            PresentCompletes[image_idx]->Wait(UINT64_MAX);
-            PresentCompletes[image_idx]->Reset();
+#ifndef NDEBUG
+            trace_fence_wait("image", frame);
+#endif
+            image_fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire image-fence wait complete frame={} image={}", frame.Index, image_idx)
+#endif
         }
 
-        if (ImageInFlights[image_idx] != nullptr)
-        {
-            if (!(ImageInFlights[image_idx])->IsSignaled())
-            {
-                ImageInFlights[image_idx]->Wait(UINT64_MAX);
-            }
-        }
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        // Tick only after a valid acquisition and the image fence wait. On a
+        // failed acquire (especially DEVICE_LOST), no further Vulkan work is safe.
+        Device->TickMemory();
+    }
 
-        ImageInFlights[image_idx] = frame.Fence;
-        frame.ImageIndex          = image_idx;
-        CurrentFrame              = &frame;
-
-        if (acquire_image_result == VK_SUBOPTIMAL_KHR || acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR)
+    bool DeviceSwapchain::ApplyAcquireResult(FrameContext& frame, VkResult result, uint32_t image_index)
+    {
+        CurrentFrame     = &frame;
+        frame.ImageIndex = std::numeric_limits<uint32_t>::max();
+        if ((result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) && image_index < SwapchainImageCount)
         {
-            ImageInFlights[frame.ImageIndex] = nullptr;
-            HasRecreationPending             = true;
+            frame.ImageIndex = image_index;
+            if (result == VK_SUBOPTIMAL_KHR)
+                Recreation = RecreationState::Pending;
+            return true;
         }
+
+        if (result != VK_TIMEOUT && result != VK_NOT_READY)
+            Recreation = RecreationState::FrameAborted;
+        return false;
+    }
+
+    void DeviceSwapchain::CollectAsyncGPUOperations()
+    {
+        AsyncGPUOperationHandle deferred_op = {};
+        while (Device->DeferredAsyncGPUOperations.pop(deferred_op))
+            ZENGINE_VALIDATE_ASSERT(Device->AsyncGPUOperations.push(deferred_op), "Async GPU operation queue overflow")
+
+        AsyncGPUOperationHandle operation = {};
+        while (Device->AsyncGPUOperations.pop(operation))
+            FrameAsyncOperations.push({operation.StageFlags, operation.SignalValue, operation.Timeline});
     }
 
     void DeviceSwapchain::Present()
     {
-        if (HasRecreationPending)
+
+        auto discard_submission_callbacks = [this]() {
+            for (const RenderWorkSubmissionCallback& callback : RenderWorkSubmittedCallbacks)
+                if (callback.Cancel)
+                    callback.Cancel(callback.Context);
+            RenderWorkSubmittedCallbacks.clear();
+        };
+
+        if (!IsFrameValid())
         {
+            // Failed/zero-size acquire: no GPU work was recorded for this frame.
             IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
             Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
+            discard_submission_callbacks();
             return;
         }
 
+        // The device can go lost mid-frame before Present() runs — continuing into more
+        // Vulkan calls here would just add cascade errors on top of the real failure.
+        if (Device->IsDeviceLost.load(std::memory_order_acquire))
         {
-            Textures::TextureHandle tex_handle = {};
-            while (Device->TextureHandleToUpdates.Pop(tex_handle))
-            {
-                auto texture = Device->GlobalTextures.Access(tex_handle);
+            Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
+            discard_submission_callbacks();
+            return;
+        }
 
-                if (!texture)
+        CollectAsyncGPUOperations();
+
+        {
+            uint64_t completed = 0;
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, RenderTimeline->GetHandle(), &completed);
+
+            TextureDisposeEntry entry = {};
+            while (Device->TextureHandleToDispose.pop(entry))
+            {
+                if (entry.TimelineValue > completed)
                 {
-                    Device->TextureHandleToUpdates.Enqueue(tex_handle);
+                    // Not yet safe — push back and stop rather than skip past it (mirrors the
+                    // TextureHandleToUpdates pattern above; render-thread-only, so no race).
+                    Device->TextureHandleToDispose.push(entry);
                     break;
                 }
-                auto        img_buf    = Device->Image2DBufferManager.Access(texture->BufferHandle);
-                const auto& image_info = img_buf->GetDescriptorImageInfo();
-
-                auto        scratch    = ZGetScratch(&Arena);
-                {
-                    Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-                    write_descriptor_sets.init(scratch.Arena, Device->WriteBindlessDescriptorSetRequests.size());
-
-                    for (auto& req : Device->WriteBindlessDescriptorSetRequests)
-                    {
-                        write_descriptor_sets.push(
-                            VkWriteDescriptorSet{
-                            .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .pNext            = nullptr,
-                            .dstSet           = req.DstSet,
-                            .dstBinding       = req.Binding,
-                            .dstArrayElement  = (uint32_t) tex_handle.Index,
-                            .descriptorCount  = 1,
-                            .descriptorType   = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                            .pImageInfo       = &(image_info),
-                            .pBufferInfo      = nullptr,
-                            .pTexelBufferView = nullptr,
-                            });
-                    }
-                    vkUpdateDescriptorSets(Device->LogicalDevice, (uint32_t) write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
-                }
-                ZReleaseScratch(scratch);
-            }
-        }
-
-        {
-            Textures::TextureHandle tex_to_dispose = {};
-            while (Device->TextureHandleToDispose.Pop(tex_to_dispose))
-            {
-                auto texture = Device->GlobalTextures.Access(tex_to_dispose);
+                auto texture = Device->GlobalTextures.Access(entry.Handle);
                 if (texture)
                 {
-                    auto buf_handle = texture->BufferHandle;
-                    texture->Dispose();
-                    Device->Image2DBufferManager.Remove(buf_handle);
-                    Device->GlobalTextures.Remove(tex_to_dispose);
+                    auto buf = Device->ImageBufferManager.Access(texture->BufferHandle);
+                    if (buf)
+                    {
+                        buf->Dispose();
+                    }
+                    Device->ImageBufferManager.Remove(texture->BufferHandle);
+                    Device->GlobalTextures.Remove(entry.Handle);
                 }
             }
         }
 
-        auto                   scratch = ZGetScratch(&Arena);
+        auto                             scratch   = ZGetScratch(&Arena);
 
-        Array<VkCommandBuffer> buffer  = {};
-        buffer.init(scratch.Arena, Device->CommandBufferMgr->EnqueuedCommandBufferIndex, Device->CommandBufferMgr->EnqueuedCommandBufferIndex);
-        for (int i = 0; i < buffer.size(); ++i)
+        Array<VkCommandBufferSubmitInfo> cmd_infos = {};
+        cmd_infos.init(scratch.Arena, Device->CommandBufferMgr->EnqueuedCommandBufferIndex, Device->CommandBufferMgr->EnqueuedCommandBufferIndex);
+        for (int i = 0; i < cmd_infos.size(); ++i)
         {
-            buffer[i] = Device->CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle();
+            cmd_infos[i] = {
+                .sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .commandBuffer = Device->CommandBufferMgr->EnqueuedCommandBuffers[i]->GetHandle(),
+            };
         }
 
-        auto render_complete  = RenderCompletes[CurrentFrame->ImageIndex];
-        auto present_complete = PresentCompletes[CurrentFrame->ImageIndex];
+        auto render_complete = RenderCompletes[CurrentFrame->ImageIndex];
 
-        ZENGINE_VALIDATE_ASSERT(render_complete->GetState() != Rendering::Primitives::SemaphoreState::Submitted, "Signal semaphore is already in a signaled state.")
-        ZENGINE_VALIDATE_ASSERT(CurrentFrame->Fence->GetState() != Rendering::Primitives::FenceState::Submitted, "Signal fence is already in a signaled state.")
+        if (render_complete->GetState() == Rendering::Primitives::SemaphoreState::Submitted)
+            render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
+        if (CurrentFrame->Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
+        {
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-fence wait begin frame={}", CurrentFrame->Index)
+#endif
+            CurrentFrame->Fence->Wait(UINT64_MAX);
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-fence wait complete frame={}", CurrentFrame->Index)
+#endif
+            ClearImageInFlightReferences(CurrentFrame->Fence, CurrentFrame->Index);
+            CurrentFrame->Fence->Reset();
+        }
 
-        QueueView                     queue             = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
+        QueueView queue = Device->GetQueue(Rendering::QueueType::GRAPHIC_QUEUE);
 
-        // for the rendering and presentation, we use the 3-submit pattern
-        // This is due to Intel drivers bug that deosn't support well the combinaison of Timeline + Binary Semaphore.
-        //
-        // 1 - Acquire bridge
-        // 2 - Rendering work
-        // 3 - Present bridge
-
-        // 1- Binary Acquire to a Timeline value
-        uint64_t                      frame_start_value = ++RenderTimelineNextValue;
-        uint64_t                      ignored_wait_val  = 0;
-        VkTimelineSemaphoreSubmitInfo timeline_info0    = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = 1, // must match waitSemaphoreCount
-            .pWaitSemaphoreValues      = &ignored_wait_val,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &frame_start_value,
-        };
-
-        VkPipelineStageFlags acquire_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSemaphore          acquire_wait_semaphores[]   = {CurrentFrame->Acquired->GetHandle()};
-        VkSemaphore          acquire_signal_semaphores[] = {RenderTimeline->GetHandle()};
-        VkSubmitInfo         submit_0                    = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info0,
-            .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = acquire_wait_semaphores,
-            .pWaitDstStageMask    = &acquire_wait_stage,
-            .commandBufferCount   = 0,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = acquire_signal_semaphores,
-        };
-        VkResult r0 = vkQueueSubmit(queue.Handle, 1, &submit_0, VK_NULL_HANDLE);
-        ZENGINE_VALIDATE_ASSERT(r0 == VK_SUCCESS, "Failed to submit acquire bridge")
+        // The render submission waits for acquisition and asynchronous producers,
+        // then signals both its timeline and the binary present semaphore.
+        // The acquired-image semaphore must wait in the submission containing the
+        // image transition and writes. A wait in an empty earlier submission does
+        // not make the later command buffers' stages wait for WSI image ownership.
 
         struct TimelineAggregate
         {
-            uint64_t             MaxValue  = 0;
-            VkPipelineStageFlags StageMask = 0;
+            uint64_t              MaxValue  = 0;
+            VkPipelineStageFlags2 StageMask = 0;
         };
 
-        Array<VkSemaphore>                                          wait_semaphores             = {};
-        Array<uint64_t>                                             wait_values                 = {};
-        Array<VkPipelineStageFlags>                                 stage_flags                 = {};
+        Array<VkSemaphoreSubmitInfo>                                wait_sem_infos              = {};
         UnorderedHashMap<Primitives::Semaphore*, TimelineAggregate> max_val_timeline_semaphores = {};
 
-        wait_semaphores.init(scratch.Arena, 10);
-        stage_flags.init(scratch.Arena, 10);
-        wait_values.init(scratch.Arena, 10);
+        wait_sem_infos.init(scratch.Arena, 10);
         max_val_timeline_semaphores.init(scratch.Arena);
 
-        wait_semaphores.push(RenderTimeline->GetHandle());
-        wait_values.push(frame_start_value);
-        stage_flags.push(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        wait_sem_infos.push({
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = CurrentFrame->Acquired->GetHandle(),
+            .value     = 0,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        });
+
+        // RenderTimeline is the signal target of this submission, never a wait
+        // source. Async producer timelines are appended below.
 
         {
-            Hardwares::AsyncGPUOperationHandle op;
-            while (Device->AsyncGPUOperations.Pop(op))
+            for (const auto& op : FrameAsyncOperations)
             {
                 if (!max_val_timeline_semaphores.contains(op.Timeline))
                 {
@@ -426,69 +640,109 @@ namespace ZEngine::Hardwares
 
         for (auto [sem, val] : max_val_timeline_semaphores)
         {
-            wait_semaphores.push(sem->GetHandle());
-            wait_values.push(val.MaxValue);
-            stage_flags.push(val.StageMask);
+            wait_sem_infos.push({
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = sem->GetHandle(),
+                .value     = val.MaxValue,
+                .stageMask = val.StageMask,
+            });
         }
 
-        uint64_t                      work_complete_value      = ++RenderTimelineNextValue;
-        VkSemaphore                   work_signal_semaphores[] = {RenderTimeline->GetHandle()};
-        VkTimelineSemaphoreSubmitInfo timeline_info_1          = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = (uint32_t) wait_values.size(),
-            .pWaitSemaphoreValues      = wait_values.data(),
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &work_complete_value,
+        uint64_t work_complete_value = ++RenderTimelineNextValue;
+
+#ifndef NDEBUG
+        if (TraceSubmission)
+        {
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame={} image={} command_buffers={} waits={} signal_render_value={}", CurrentFrame->Index, CurrentFrame->ImageIndex, cmd_infos.size(), wait_sem_infos.size(), work_complete_value)
+            for (uint32_t wait_index = 0; wait_index < wait_sem_infos.size(); ++wait_index)
+            {
+                const VkSemaphoreSubmitInfo& wait      = wait_sem_infos[wait_index];
+                uint64_t                     completed = 0;
+                const VkResult               result    = wait.value == 0 ? VK_SUCCESS : vkGetSemaphoreCounterValue(Device->LogicalDevice, wait.semaphore, &completed);
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] present wait={} semaphore={} value={} completed={} query_result={} stages={}", wait_index, static_cast<const void*>(wait.semaphore), wait.value, completed, static_cast<int32_t>(result), static_cast<uint64_t>(wait.stageMask))
+            }
+        }
+#endif
+
+        VkSemaphoreSubmitInfo work_complete_signal = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = RenderTimeline->GetHandle(),
+            .value     = work_complete_value,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        // vkQueuePresentKHR must wait on a semaphore signalled by the submission
+        // that performs the swapchain transition.  Relaying the binary semaphore
+        // through an empty RenderTimeline wait/signal submission loses that
+        // transition's access scope for synchronization validation (and on real
+        // multi-queue drivers).  Signal it beside RenderTimeline instead.
+        VkSemaphoreSubmitInfo render_complete_signal = {
+            .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = render_complete->GetHandle(),
+            .value     = 0,
+            .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        };
+        VkSemaphoreSubmitInfo work_signal_infos[] = {work_complete_signal, render_complete_signal};
+        VkSubmitInfo2         submit_info_1       = {
+            .sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount   = (uint32_t) wait_sem_infos.size(),
+            .pWaitSemaphoreInfos      = wait_sem_infos.data(),
+            .commandBufferInfoCount   = (uint32_t) cmd_infos.size(),
+            .pCommandBufferInfos      = cmd_infos.data(),
+            .signalSemaphoreInfoCount = 2,
+            .pSignalSemaphoreInfos    = work_signal_infos,
         };
 
-        VkSubmitInfo submit_info_1 = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info_1,
-            .waitSemaphoreCount   = (uint32_t) wait_semaphores.size(),
-            .pWaitSemaphores      = wait_semaphores.data(),
-            .pWaitDstStageMask    = stage_flags.data(),
-            .commandBufferCount   = (uint32_t) buffer.size(),
-            .pCommandBuffers      = buffer.data(),
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = work_signal_semaphores,
-        };
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-heap flush begin frame={}", CurrentFrame->Index)
+#endif
+        Device->FrameHeaps[CurrentFrame->Index].Flush(&Device->GpuMem);
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present frame-heap flush complete frame={}", CurrentFrame->Index)
+#endif
 
-        auto submit = vkQueueSubmit(queue.Handle, 1, &(submit_info_1), CurrentFrame->Fence->GetHandle());
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present submit begin frame={} render_value={} queue={}", CurrentFrame->Index, work_complete_value, static_cast<const void*>(queue.Handle))
+#endif
+        auto submit = vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present submit returned frame={} result={}", CurrentFrame->Index, static_cast<int32_t>(submit))
+#endif
+        if (Device->CheckDeviceLost(submit, "Present: render work submit"))
+        {
+            ZReleaseScratch(scratch);
+            discard_submission_callbacks();
+            return;
+        }
         ZENGINE_VALIDATE_ASSERT(submit == VK_SUCCESS, "Failed to submit queue")
+
+        // Associate an image only with a fence that Vulkan accepted for
+        // submission. Aborted frames therefore leave no unsignaled association.
+        CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
+        ImageInFlights[CurrentFrame->ImageIndex] = CurrentFrame->Fence;
+
+#ifndef NDEBUG
+        if (TraceSubmission)
+        {
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present accepted frame={} render_value={}", CurrentFrame->Index, work_complete_value)
+        }
+#endif
+
+        // The graphics command buffers are now owned by Vulkan. Deliver callbacks
+        // before presentation: a later WSI error cannot undo this submission.
+        for (const RenderWorkSubmissionCallback& callback : RenderWorkSubmittedCallbacks)
+            if (callback.Function)
+                callback.Function(callback.Context, RenderTimeline, work_complete_value);
+        RenderWorkSubmittedCallbacks.clear();
 
         ZReleaseScratch(scratch);
 
         Device->CommandBufferMgr->ResetEnqueuedBufferIndex();
-        CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
-
-        uint64_t                      dummy_signal_val            = 0;
-        VkPipelineStageFlags          present_wait_stage          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSemaphore                   present_wait_semaphores[]   = {RenderTimeline->GetHandle()};
-        VkSemaphore                   present_signal_semaphores[] = {render_complete->GetHandle()};
-        VkTimelineSemaphoreSubmitInfo timeline_info2              = {
-            .sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-            .waitSemaphoreValueCount   = 1,
-            .pWaitSemaphoreValues      = &work_complete_value,
-            .signalSemaphoreValueCount = 1,
-            .pSignalSemaphoreValues    = &dummy_signal_val,
-        };
-
-        VkSubmitInfo submit2 = {
-            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext                = &timeline_info2,
-            .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = present_wait_semaphores,
-            .pWaitDstStageMask    = &present_wait_stage,
-            .commandBufferCount   = 0,
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = present_signal_semaphores,
-        };
-
-        VkResult r2 = vkQueueSubmit(queue.Handle, 1, &submit2, present_complete->GetHandle());
-        ZENGINE_VALIDATE_ASSERT(r2 == VK_SUCCESS, "Failed to submit present bridge")
 
         render_complete->SetState(Rendering::Primitives::SemaphoreState::Submitted);
-        present_complete->SetState(Rendering::Primitives::FenceState::Submitted);
 
         VkSwapchainKHR   swapchains[] = {SwapchainHandle};
         uint32_t         frames[]     = {CurrentFrame->ImageIndex};
@@ -502,19 +756,55 @@ namespace ZEngine::Hardwares
             .pSwapchains        = swapchains,
             .pImageIndices      = frames,
         };
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present WSI begin frame={} image={} queue={}", CurrentFrame->Index, CurrentFrame->ImageIndex, static_cast<const void*>(queue.Handle))
+#endif
         VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
+#ifndef NDEBUG
+        if (TraceSubmission)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] present WSI returned frame={} image={} result={}", CurrentFrame->Index, CurrentFrame->ImageIndex, static_cast<int32_t>(present_result))
+#endif
 
         IdleFrameCount.value.fetch_add(1, std::memory_order_acq_rel);
 
-        if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
+        if (Device->CheckDeviceLost(present_result, "Present: vkQueuePresentKHR"))
+            return;
+
+        if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
         {
-            HasRecreationPending = true;
-            if (present_result == VK_ERROR_OUT_OF_DATE_KHR)
-            {
-                return;
-            }
+            // Present consumes its binary wait semaphore even when it reports an
+            // out-of-date swapchain. Submitting another wait would have no signal
+            // operation to wait on (VUID-vkQueueSubmit-pWaitSemaphores-03238).
+            render_complete->SetState(Rendering::Primitives::SemaphoreState::Idle);
+
+            Recreation = RecreationState::Pending;
+            return;
         }
 
-        ZENGINE_VALIDATE_ASSERT(present_result == VK_SUCCESS || present_result == VK_SUBOPTIMAL_KHR, "Failed to present current frame on Window")
+        if (present_result == VK_SUBOPTIMAL_KHR)
+        {
+            Recreation = RecreationState::Pending;
+        }
+    }
+
+    void DeviceSwapchain::EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context, RenderWorkCancelledFn cancel_fn)
+    {
+        if (fn)
+            RenderWorkSubmittedCallbacks.push({.Function = fn, .Cancel = cancel_fn, .Context = context});
+    }
+
+    void DeviceSwapchain::ClearImageInFlightReferences(Rendering::Primitives::Fence* fence, uint32_t frame_index)
+    {
+        for (uint32_t image_index = 0; image_index < ImageInFlights.size(); ++image_index)
+        {
+            if (ImageInFlights[image_index] != fence)
+                continue;
+#ifndef NDEBUG
+            if (TraceSubmission)
+                ZENGINE_CORE_INFO("[VulkanSubmitTrace] cleared frame-fence reference frame={} image={}", frame_index, image_index)
+#endif
+            ImageInFlights[image_index] = nullptr;
+        }
     }
 } // namespace ZEngine::Hardwares

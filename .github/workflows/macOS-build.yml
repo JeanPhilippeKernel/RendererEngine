@@ -19,56 +19,41 @@ on:
 jobs:
   cmake-build-debug:
     if: ${{ inputs.run_debug }}
-    strategy:
-      matrix:
-        architecture: [x64, arm64]
     uses: ./.github/workflows/job-cmakebuild-macOS.yml
     with:
       configuration: Debug
-      architecture: ${{ matrix.architecture }}
+      architecture: arm64
       targetFramework: ${{ inputs.targetFramework }}
 
   cmake-build-release:
     if: ${{ inputs.run_release || inputs.run_deploy }}
-    strategy:
-      matrix:
-        architecture: [x64, arm64]
     uses: ./.github/workflows/job-cmakebuild-macOS.yml
     with:
       configuration: Release
-      architecture: ${{ matrix.architecture }}
+      architecture: arm64
       targetFramework: ${{ inputs.targetFramework }}
 
   test-debug:
     needs: cmake-build-debug
     if: ${{ inputs.run_debug }}
-    strategy:
-      matrix:
-        architecture: [x64, arm64]
     uses: ./.github/workflows/job-test-macOS.yml
     with:
       configuration: Debug
-      architecture: ${{ matrix.architecture }}
+      architecture: arm64
 
   test-release:
     needs: cmake-build-release
     if: ${{ inputs.run_release || inputs.run_deploy }}
-    strategy:
-      matrix:
-        architecture: [x64, arm64]
     uses: ./.github/workflows/job-test-macOS.yml
     with:
       configuration: Release
-      architecture: ${{ matrix.architecture }}
+      architecture: arm64
 
   deploy:
     needs: test-release
     if: ${{ inputs.run_deploy }}
-    strategy:
-      matrix:
-        architecture: [x64, arm64]
     uses: ./.github/workflows/job-deploy-macOS.yml
     with:
       configuration: Release
-      architecture: ${{ matrix.architecture }}
+      architecture: arm64
       targetFramework: ${{ inputs.targetFramework }}

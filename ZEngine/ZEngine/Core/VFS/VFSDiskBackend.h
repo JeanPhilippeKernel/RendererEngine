@@ -4,6 +4,7 @@
 #include <ZEngine/Core/VFS/IVFSBackend.h>
 #include <ZEngine/Core/VFS/IVFSFile.h>
 #include <ZEngine/ZEngineDef.h>
+#include <mutex>
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -61,9 +62,14 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const override;
         [[nodiscard]] VFSResult<void>                                 CreateDir(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Remove(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<void>                                 RemoveAll(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Rename(const VFSPath& rel_src, const VFSPath& rel_dst) override;
         cstring                                                       BackendType() const override;
         VFSBackendCaps                                                Capabilities() const override;
+        cstring                                                       NativeRoot() const
+        {
+            return m_native_root;
+        }
 
     private:
         bool                    ResolveNativePath(const VFSPath& relative, char* out_buf) const;
@@ -75,6 +81,12 @@ namespace ZEngine::Core::VFS
         VFSBackendCaps          m_caps                             = VFSBackendCaps::Read;
         Memory::ArenaAllocator* m_arena                            = nullptr;
         Memory::PoolAllocator   m_file_pool                        = {};
+        // Guards m_file_pool — VFSScanner runs ScanDirectory concurrently across ThreadPool
+        // workers (one task per subdirectory), and PoolAllocator's free-list has no internal
+        // synchronization of its own; concurrent Open/Close calls corrupt it (issue #764
+        // follow-up investigation — this manifested as unrelated-looking heap corruption
+        // crashes much later, since a corrupted free-list can hand out aliased memory).
+        std::mutex              m_file_pool_mutex                  = {};
         bool                    m_case_sensitive                   = true;
     };
 

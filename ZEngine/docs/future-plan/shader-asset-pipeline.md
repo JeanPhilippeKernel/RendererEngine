@@ -1,9 +1,24 @@
 # Shader Asset Pipeline
 
-**Priority:** P3 — Implement alongside render-resource-manager.md  
-**Status:** Design  
-**Depends on:** `render-resource-manager.md`, `vfs-design.md` (Ticket 1)  
-**Blocks:** `cook-pipeline.md` (SPIR-V artifacts), editor shader hot-reload
+**Priority:** P3 — complete asset identity, include tracking, and cook integration
+**Status:** Build packaging and render-thread reload are implemented; asset-pipeline design
+remains open
+**Depends on:** `render-resource-manager.md`, VFS
+**Blocks:** content-addressed shader artifacts and dependable source-level hot reload
+
+> **Current implementation correction.** CMake's `Resources/CMakeLists.txt` invokes
+> `glslang-standalone` for `.vert`, `.frag`, and `.comp` files, packages the generated SPIR-V
+> under `/ZodiacEngine/Shaders/Cache`, and tracks the sky shader include dependencies that are
+> currently known. `VulkanDevice::CompileShader()` loads those packaged stage files by shader
+> name, `ShaderManager` owns the live modules, and VFS changes to a `.spv` file enqueue a
+> render-thread `Shader::Reload()` request. Reload is path/name based and the PSO cache handles
+> the corresponding pipeline invalidation.
+>
+> There is no `ShaderAsset`, `ShaderImporter`, UUID-keyed shader cache, generic VFS include
+> resolver, source GLSL watcher/compiler, or `PipelineDependencyGraph` in the shipped engine.
+> The API, artifact, and test sections below are the design for those missing pieces, not current
+> interfaces. In particular, the current source APIs use the existing `cstring` alias where
+> engine-owned strings are appropriate.
 
 **Goal**: Implement a fully integrated shader asset pipeline inside `ZEngine::Rendering::Shaders`
 that compiles GLSL source files to SPIR-V artifacts at import time, resolves `#include`
@@ -13,7 +28,7 @@ No exceptions. No `new`/`delete` in hot paths.
 
 ---
 
-## 1. Shader Source Types and Stage Detection
+## 1. Proposed source-asset model
 
 ### Supported source extensions
 
@@ -238,9 +253,9 @@ namespace ZEngine::Rendering::Shaders {
         explicit VFSIncludeResolver(VFS::IVFSContext& ctx,
                                     const VFS::VFSPath& shader_dir);
 
-        shaderc_include_result* GetInclude(const char* requested_source,
+        shaderc_include_result* GetInclude(cstring requested_source,
                                            shaderc_include_type type,
-                                           const char* requesting_source,
+                                           cstring requesting_source,
                                            size_t include_depth) override;
 
         void ReleaseInclude(shaderc_include_result* data) override;
@@ -586,7 +601,7 @@ interface with platform-specific subclasses.
 
 ---
 
-## 9. Unit Tests
+## 9. Proposed tests
 
 File: `ZEngine/tests/Rendering/Shaders/ShaderPipelineTest.cpp`
 
@@ -804,7 +819,7 @@ TEST(ShaderImporter, ReimportPreservesUUIDFromMeta)
 
 ---
 
-## 10. Deliverables Checklist
+## 10. Proposed deliverables
 
 ### Core types
 - [ ] `ZEngine/Rendering/Shaders/ShaderStage.h` — `ShaderStage` enum, `StageFromExtension`, `StageFromPragma`

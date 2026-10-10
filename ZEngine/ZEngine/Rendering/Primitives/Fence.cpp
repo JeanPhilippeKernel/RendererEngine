@@ -23,7 +23,10 @@ namespace ZEngine::Rendering::Primitives
             return;
         }
 
-        Device->EnqueueForDeletion(Rendering::DeviceResourceType::FENCE, m_handle);
+        Hardwares::DeferredFreeEntry e = {};
+        e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        e.Data.Vk                      = {m_handle, Rendering::DeviceResourceType::FENCE, nullptr};
+        Device->DeferFree(e);
         m_handle      = VK_NULL_HANDLE;
         m_fence_state = FenceState::Idle;
     }

@@ -1,0 +1,2409 @@
+// Route STBI allocation through the per-worker TLSFSlab when available so
+// stbi_load pixel buffers stay on the slab rather than the system heap.
+// Falls back to malloc/free/realloc on the main thread (slab = nullptr).
+#include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <cstdlib>
+#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
+#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Realloc(p, newsz) : std::realloc(p, newsz))
+#define STBI_FREE(p)                                    \
+    do                                                  \
+    {                                                   \
+        if (ZEngine::Helpers::GetWorkerSlab())          \
+            ZEngine::Helpers::GetWorkerSlab()->Free(p); \
+        else                                            \
+            std::free(p);                               \
+    } while (0)
+#define STB_IMAGE_IMPLEMENTATION
+#ifdef __GNUC__
+#define STBI_NO_SIMD
+#endif
+#include <stb/stb_image.h>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Buffers/Bitmap.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
+#include <ZEngine/ZEngineDef.h>
+#include <stb/deprecated/stb_image_resize.h>
+#include <stb/stb_image_write.h>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <filesystem>
+#include <limits>
+#include <thread>
+
+using namespace ZEngine::Core::Memory;
+using namespace ZEngine::Core::VFS;
+using namespace ZEngine::Hardwares;
+using namespace ZEngine::Importers;
+using namespace ZEngine::Managers;
+using namespace ZEngine::Helpers;
+
+namespace ZEngine::Rendering
+{
+    namespace
+    {
+        constexpr uint32_t kBrdfLutResolution  = 512;
+        constexpr uint32_t kBrdfLutSampleCount = 64;
+
+        uint16_t           FloatToHalf(float value)
+        {
+            uint32_t bits = 0;
+            ZENGINE_VALIDATE_ASSERT(secure_memcpy(&bits, sizeof(bits), &value, sizeof(value)) == MEMORY_OP_SUCCESS, "FloatToHalf: failed to copy float bits")
+
+            const uint16_t sign     = static_cast<uint16_t>((bits >> 16) & 0x8000u);
+            const int32_t  exponent = static_cast<int32_t>((bits >> 23) & 0xFFu) - 127 + 15;
+            uint32_t       mantissa = bits & 0x007F'FFFFu;
+            if (exponent <= 0)
+            {
+                if (exponent < -10)
+                    return sign;
+
+                mantissa             |= 0x0080'0000u;
+                const uint32_t shift  = static_cast<uint32_t>(14 - exponent);
+                return static_cast<uint16_t>(sign | ((mantissa + (1u << (shift - 1))) >> shift));
+            }
+            if (exponent >= 31)
+                return static_cast<uint16_t>(sign | 0x7C00u);
+
+            return static_cast<uint16_t>(sign | (static_cast<uint32_t>(exponent) << 10) | ((mantissa + 0x0000'1000u) >> 13));
+        }
+
+        float RadicalInverseVdC(uint32_t bits)
+        {
+            bits = (bits << 16u) | (bits >> 16u);
+            bits = ((bits & 0x5555'5555u) << 1u) | ((bits & 0xAAAA'AAAAu) >> 1u);
+            bits = ((bits & 0x3333'3333u) << 2u) | ((bits & 0xCCCC'CCCCu) >> 2u);
+            bits = ((bits & 0x0F0F'0F0Fu) << 4u) | ((bits & 0xF0F0'F0F0u) >> 4u);
+            bits = ((bits & 0x00FF'00FFu) << 8u) | ((bits & 0xFF00'FF00u) >> 8u);
+            return static_cast<float>(bits) * 2.3283064365386963e-10f;
+        }
+
+        float GeometrySchlickGGX(float ndot, float roughness)
+        {
+            const float roughness_plus_one = roughness + 1.0f;
+            const float k                  = (roughness_plus_one * roughness_plus_one) * 0.125f;
+            return ndot / (ndot * (1.0f - k) + k);
+        }
+
+        void IntegrateBrdf(float ndot_view, float roughness, uint32_t sample_count, float& out_scale, float& out_bias)
+        {
+            constexpr float pi     = 3.14159265358979323846f;
+            const float     view_x = std::sqrt(std::max(0.0f, 1.0f - ndot_view * ndot_view));
+            float           scale  = 0.0f;
+            float           bias   = 0.0f;
+
+            for (uint32_t index = 0; index < sample_count; ++index)
+            {
+                const float xi_x       = static_cast<float>(index) / static_cast<float>(sample_count);
+                const float xi_y       = RadicalInverseVdC(index);
+                const float roughness2 = roughness * roughness;
+                const float phi        = 2.0f * pi * xi_x;
+                const float cos_theta  = std::sqrt((1.0f - xi_y) / (1.0f + (roughness2 * roughness2 - 1.0f) * xi_y));
+                const float sin_theta  = std::sqrt(std::max(0.0f, 1.0f - cos_theta * cos_theta));
+                const float half_x     = std::cos(phi) * sin_theta;
+                const float half_y     = std::sin(phi) * sin_theta;
+                const float half_z     = cos_theta;
+                const float vdot_half  = std::max(0.0f, view_x * half_x + ndot_view * half_z);
+                const float light_x    = 2.0f * vdot_half * half_x - view_x;
+                const float light_y    = 2.0f * vdot_half * half_y;
+                const float light_z    = 2.0f * vdot_half * half_z - ndot_view;
+                const float ndot_light = std::max(0.0f, light_z);
+                const float ndot_half  = std::max(0.0f, half_z);
+                if (ndot_light <= 0.0f || ndot_half <= 0.0f)
+                    continue;
+
+                const float geometry    = GeometrySchlickGGX(ndot_view, roughness) * GeometrySchlickGGX(ndot_light, roughness);
+                const float visibility  = (geometry * vdot_half) / std::max(1.0e-5f, ndot_half * ndot_view);
+                const float fresnel     = std::pow(1.0f - vdot_half, 5.0f);
+                scale                  += (1.0f - fresnel) * visibility;
+                bias                   += fresnel * visibility;
+            }
+
+            const float inverse_sample_count = 1.0f / static_cast<float>(sample_count);
+            out_scale                        = scale * inverse_sample_count;
+            out_bias                         = bias * inverse_sample_count;
+        }
+
+        void GenerateBrdfIntegrationLut(uint16_t* pixels, uint32_t resolution, uint32_t sample_count)
+        {
+            for (uint32_t y = 0; y < resolution; ++y)
+            {
+                const float roughness = (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution);
+                for (uint32_t x = 0; x < resolution; ++x)
+                {
+                    const float ndot_view = (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution);
+                    float       scale     = 0.0f;
+                    float       bias      = 0.0f;
+                    IntegrateBrdf(ndot_view, roughness, sample_count, scale, bias);
+
+                    const uint32_t pixel = (y * resolution + x) * 4;
+                    pixels[pixel]        = FloatToHalf(scale);
+                    pixels[pixel + 1]    = FloatToHalf(bias);
+                    pixels[pixel + 2]    = 0;
+                    pixels[pixel + 3]    = FloatToHalf(1.0f);
+                }
+            }
+        }
+    } // namespace
+
+    void RenderResourceManager::Initialize(VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena)
+    {
+        ZENGINE_VALIDATE_ASSERT(device != nullptr, "RenderResourceManager::Initialize: device must not be null")
+        ZENGINE_VALIDATE_ASSERT(registry != nullptr, "RenderResourceManager::Initialize: registry must not be null")
+        ZENGINE_VALIDATE_ASSERT(upload_arena != nullptr, "RenderResourceManager::Initialize: upload arena must not be null")
+
+        m_device       = device;
+        m_registry     = registry;
+        m_upload_arena = upload_arena;
+        m_pending_texture_decodes.value.store(0, std::memory_order_relaxed);
+        m_accept_texture_decodes.value.store(true, std::memory_order_release);
+        m_fallback_cubemap              = {};
+        m_fallback_environment_lighting = {};
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+            tracked = {};
+        m_texture_decode_tracker.Completions.clear();
+
+        InitUploadPool();
+        InitGlobalBuffers();
+        InitTextureTimelines();
+        InitUploadSlabs();
+        m_synchronous_texture_scratch.Init(m_upload_arena, SYNCHRONOUS_TEXTURE_SCRATCH_BYTES);
+        m_texture_task_slab.Init(m_upload_arena, TEXTURE_TASK_SLAB_BYTES);
+
+        registry->SetOnReadyCallback(this, &RenderResourceManager::OnAssetReady);
+        registry->SetOnStaleCallback(this, &RenderResourceManager::OnAssetStale);
+        registry->SetOnRemovedCallback(this, &RenderResourceManager::OnAssetRemoved);
+    }
+
+    void RenderResourceManager::OnAssetReady(void* context, const uuids::uuid& uuid, AssetHandle handle)
+    {
+        auto*              manager = static_cast<RenderResourceManager*>(context);
+        const AssetRecord* record  = manager->m_registry->FindByUUID(uuid);
+        if (!record || record->Type != AssetType::MESH)
+            return;
+
+        std::lock_guard map_lock(manager->m_uuid_map_mutex);
+        std::lock_guard pending_lock(manager->m_pending_mutex);
+        for (uint32_t i = 0; i < manager->m_uuid_to_buffer_count; ++i)
+            if (manager->m_uuid_to_buffer[i].UUID == uuid)
+                return;
+        for (uint32_t i = 0; i < manager->m_pending_count; ++i)
+            if (manager->m_pending[i].UUID == uuid)
+                return;
+
+        if (manager->m_pending_count >= MAX_PENDING)
+        {
+            ZENGINE_CORE_WARN("[RRM] Pending upload queue full — dropping asset")
+            return;
+        }
+        manager->m_pending[manager->m_pending_count++] = {handle, uuid};
+    }
+
+    void RenderResourceManager::OnAssetStale(void* context, const uuids::uuid& uuid)
+    {
+        auto*           manager = static_cast<RenderResourceManager*>(context);
+        std::lock_guard lock(manager->m_uuid_map_mutex);
+        for (uint32_t i = 0; i < manager->m_uuid_to_buffer_count; ++i)
+        {
+            if (manager->m_uuid_to_buffer[i].UUID != uuid)
+                continue;
+
+            AssetHandle new_asset = 0;
+            if (const AssetRecord* record = manager->m_registry->FindByUUID(uuid))
+                new_asset = record->SlotHandle;
+            manager->ScheduleSwap(manager->m_uuid_to_buffer[i].Handle, new_asset);
+            return;
+        }
+    }
+
+    void RenderResourceManager::OnAssetRemoved(void* context, const uuids::uuid& uuid, AssetType type)
+    {
+        if (type == AssetType::TEXTURE)
+            static_cast<RenderResourceManager*>(context)->ReleaseTexture(uuid);
+    }
+
+    void RenderResourceManager::InitUploadPool()
+    {
+        // Pre-signaled so the first Wait() before a submit returns immediately.
+        uint32_t frame_count = m_device->SwapchainPtr->BufferredFrameCount;
+        m_sync_upload_fence  = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Fence, m_device, true);
+
+        // LastSignal == 0 means "never used yet" for a given frame index.
+        m_batch_timeline     = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+        m_batch_frames.init(m_device->Arena, frame_count, frame_count);
+        for (uint32_t i = 0; i < frame_count; ++i)
+            m_batch_frames[i] = BatchFrameState{};
+
+        // RenderThread-only, single thread slot — cycles through BufferedFrameCount distinct
+        // command buffers instead of resetting and resubmitting the same one every call (see
+        // issue #764 follow-up: reusing a single command buffer across many upload cycles was
+        // suspected as a factor in an otherwise-unexplained GPU stall).
+        m_upload_cmd_mgr = ZPushStructCtor(m_device->Arena, CommandBufferManager);
+        m_upload_cmd_mgr->Initialize(m_device, m_device->SwapchainPtr->BufferredFrameCount, 1);
+
+        m_async_uploads.Initialize(m_device);
+    }
+
+    void RenderResourceManager::Shutdown()
+    {
+        if (!m_device)
+            return;
+
+        {
+            std::lock_guard lock(m_pending_mutex);
+            m_accept_texture_decodes.value.store(false, std::memory_order_release);
+        }
+        while (m_pending_texture_decodes.value.load(std::memory_order_acquire) > 0)
+            std::this_thread::yield();
+
+        DiscardQueuedTextureDecodes();
+        m_device->QueueWaitAll();
+        ShutdownTextureTimelines();
+        DiscardTextureDeferrals();
+
+        ZENGINE_VALIDATE_ASSERT(m_active_texture_decode_slabs.value.load(std::memory_order_acquire) == 0, "RenderResourceManager::Shutdown: texture decode slab lease was not released")
+        for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
+            m_upload_slabs[i].Shutdown();
+        m_synchronous_texture_scratch.Shutdown();
+        m_texture_task_slab.Shutdown();
+
+        // Arena-allocated objects have no automatic destructor — explicit calls are required.
+        if (m_upload_cmd_mgr)
+        {
+            m_upload_cmd_mgr->Deinitialize();
+            m_upload_cmd_mgr = nullptr;
+        }
+        m_async_uploads.Deinitialize();
+        if (m_sync_upload_fence)
+        {
+            m_sync_upload_fence->~Fence();
+            m_sync_upload_fence = nullptr;
+        }
+        if (m_batch_timeline)
+        {
+            m_batch_timeline->~Semaphore();
+            m_batch_timeline = nullptr;
+        }
+
+        // Free all live buffer slots
+        if (m_pool.VertexBuffer)
+            m_device->GpuMem.FreeBuffer(m_pool.VertexBuffer);
+        if (m_pool.IndexBuffer)
+            m_device->GpuMem.FreeBuffer(m_pool.IndexBuffer);
+        if (m_builtin_vertex_buf)
+            m_device->GpuMem.FreeBuffer(m_builtin_vertex_buf);
+        if (m_builtin_index_buf)
+            m_device->GpuMem.FreeBuffer(m_builtin_index_buf);
+
+        for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
+        {
+            if (m_gbuf_slots[i].Generation != 0 && m_gbuf_slots[i].Data)
+                m_device->GpuMem.FreeBuffer(m_gbuf_slots[i].Data);
+        }
+
+        m_streaming_mgr.Deinitialize();
+        m_device   = nullptr;
+        m_registry = nullptr;
+    }
+
+    void RenderResourceManager::BeginFrame(uint32_t frame_index)
+    {
+        // Initialization may leave a builtin-geometry batch open for slot 0.
+        // A resize or skipped acquire can make the first rendered slot different.
+        // Submit its copies before changing slots or retiring their staging data.
+        if (m_batch_mode && m_batch_frame_index != frame_index)
+            EndBatchUpload();
+        m_active_frame_index = static_cast<uint8_t>(frame_index);
+        RetireBatchStagings();
+        DispatchQueuedTextureDecodes();
+        m_streaming_mgr.Tick(frame_index);
+        if (m_streaming_mgr.IsCompactionRequested())
+            RunCompaction();
+        FlushPendingUploads(frame_index);
+        FlushPendingSwaps(frame_index);
+        FlushPendingTextureReloads();
+        FlushPendingTextureReleases();
+    }
+
+    void RenderResourceManager::EndFrame()
+    {
+        if (m_batch_mode)
+            EndBatchUpload();
+    }
+
+    void RenderResourceManager::FlushPendingSwaps(uint32_t frame_index)
+    {
+        uint32_t    count = 0;
+        PendingSwap local[MAX_PENDING];
+        {
+            std::lock_guard lock(m_pending_swap_mutex);
+            count = m_pending_swap_count;
+            secure_memcpy(local, sizeof(local), m_pending_swaps, count * sizeof(PendingSwap));
+            m_pending_swap_count = 0;
+        }
+        if (count == 0)
+        {
+            return;
+        }
+
+        // Idempotent — no-op if FlushPendingUploads already opened the batch this frame.
+        EnsureBatchOpen(static_cast<uint8_t>(frame_index));
+
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const PendingSwap& s = local[i];
+            if (s.OldBuffer.Generation & GBUF_GEN_TAG)
+            {
+                // No AssetHandle-driven re-upload path exists for generic buffers today —
+                // every live ScheduleSwap(BufferHandle,...) call carries a mesh handle.
+                ZENGINE_LOG_RENDER_WARN("[RRM] Hot-reload swap for generic buffers is not supported — skipping")
+            }
+            else
+            {
+                if (s.OldBuffer.Index >= m_mesh_slot_count || m_mesh_slots[s.OldBuffer.Index].Generation != s.OldBuffer.Generation)
+                {
+                    continue; // stale handle — asset was released before the swap could apply
+                }
+                MeshSlot new_data = AppendMeshData(s.NewAsset, frame_index);
+                if (new_data.VtxCount == 0)
+                {
+                    ZENGINE_LOG_RENDER_ERR("[RRM] Hot-reload swap failed to re-upload mesh data — old data left in place")
+                    continue;
+                }
+                // Free the old region before repointing the slot — pool is no longer append-only.
+                auto& slot = m_mesh_slots[s.OldBuffer.Index];
+                if (slot.Data.Region.VtxByteSize > 0)
+                    m_pool.Free(slot.Data.Region);
+                slot.Data            = new_data;
+                slot.Data.State      = StreamingState::Resident;
+                slot.Data.Referenced = false;
+            }
+        }
+    }
+
+    // Contexts + C-style record callbacks for RecordAndSubmit (no std::function — matches the
+    // rest of the engine's zero-heap-alloc convention for hot-path callbacks, see ThreadPool's
+    // TaskFn).
+    struct GlobalBufferCopyCtx
+    {
+        VkBuffer     SrcBuffer;
+        VkBuffer     DstBuffer;
+        VkDeviceSize DstOffset;
+        size_t       ByteSize;
+    };
+
+    static void RecordGlobalBufferCopy(VkCommandBuffer cmd, void* ctx_ptr)
+    {
+        auto*        ctx = static_cast<GlobalBufferCopyCtx*>(ctx_ptr);
+        VkBufferCopy region{.srcOffset = 0, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
+
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = ctx->DstBuffer;
+        barrier.offset              = ctx->DstOffset;
+        barrier.size                = ctx->ByteSize;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    struct RingCopyCtx
+    {
+        VkBuffer     SrcBuffer;
+        VkBuffer     DstBuffer;
+        uint32_t     RingOffset;
+        VkDeviceSize DstOffset;
+        size_t       ByteSize;
+    };
+
+    static void RecordRingCopy(VkCommandBuffer cmd, void* ctx_ptr)
+    {
+        auto*        ctx = static_cast<RingCopyCtx*>(ctx_ptr);
+        VkBufferCopy region{.srcOffset = ctx->RingOffset, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
+
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = ctx->DstBuffer;
+        barrier.offset              = ctx->DstOffset;
+        barrier.size                = ctx->ByteSize;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    struct StagingCopyCtx
+    {
+        VkBuffer     SrcBuffer;
+        VkBuffer     DstBuffer;
+        VkDeviceSize DstOffset;
+        size_t       ByteSize;
+    };
+
+    static void RecordStagingCopy(VkCommandBuffer cmd, void* ctx_ptr)
+    {
+        auto*        ctx = static_cast<StagingCopyCtx*>(ctx_ptr);
+        VkBufferCopy region{.srcOffset = 0, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
+
+        // Same fallback destinations as RecordRingCopy (generic SSBOs, ZUI vertex/index
+        // buffers), so the same access/stage transition. Previously relied on the caller
+        // fully blocking on a fence before returning — harmless then, but once this runs
+        // as part of a deferred batch, the cross-submission consumer needs an explicit
+        // barrier, not just ordering.
+        VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer              = ctx->DstBuffer;
+        barrier.offset              = ctx->DstOffset;
+        barrier.size                = ctx->ByteSize;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    }
+
+    static void RecordAndSubmit(CommandBuffer* cmd, Rendering::Primitives::Fence* fence, VkQueue queue, void (*record_fn)(VkCommandBuffer, void*), void* record_ctx)
+    {
+        cmd->ResetState();
+        vkResetCommandBuffer(cmd->GetHandle(), 0);
+        cmd->Begin();
+        record_fn(cmd->GetHandle(), record_ctx);
+        cmd->End();
+
+        VkCommandBuffer raw = cmd->GetHandle();
+        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers    = &raw;
+
+        // Wait before reset — fence may be in-flight under MoltenVK async completion.
+        fence->Wait(UINT64_MAX);
+        fence->Reset();
+        vkQueueSubmit(queue, 1, &submit, fence->GetHandle());
+        fence->Wait(UINT64_MAX);
+        cmd->ResetState();
+    }
+
+    // Derive a per-axis geometry streaming budget from the device's device-local VRAM.
+    // Uses 15% of the largest device-local heap, clamped to [GLOBAL_VTX_MIN, GLOBAL_VTX_CAPACITY].
+    // The same value is used for both vtx and idx axes (split evenly from the total budget).
+    static VkDeviceSize DeriveGeometryBudget(const VkPhysicalDeviceMemoryProperties& props)
+    {
+        VkDeviceSize largest_device_local = 0;
+        for (uint32_t i = 0; i < props.memoryHeapCount; ++i)
+        {
+            if ((props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) && props.memoryHeaps[i].size > largest_device_local)
+                largest_device_local = props.memoryHeaps[i].size;
+        }
+
+        if (largest_device_local == 0)
+            return RenderResourceManager::GLOBAL_VTX_CAPACITY;
+
+        VkDeviceSize half_budget = largest_device_local * 15 / 100 / 2;
+        half_budget              = std::max(half_budget, RenderResourceManager::GLOBAL_VTX_MIN);
+        half_budget              = std::min(half_budget, RenderResourceManager::GLOBAL_VTX_CAPACITY);
+        return half_budget;
+    }
+
+    void RenderResourceManager::InitGlobalBuffers()
+    {
+        VkDeviceSize vtx_capacity = 0;
+        VkDeviceSize idx_capacity = 0;
+
+        if (m_device->GeometryStreamingBudget != 0)
+        {
+            // Explicit project.json override: split evenly, clamp to [min, max].
+            VkDeviceSize half = m_device->GeometryStreamingBudget / 2;
+            half              = std::max(half, GLOBAL_VTX_MIN);
+            half              = std::min(half, GLOBAL_VTX_CAPACITY);
+            vtx_capacity      = half;
+            idx_capacity      = half;
+            ZENGINE_LOG_RENDER_INFO("[RRM] Geometry pool: project override {} MB vtx + {} MB idx", vtx_capacity >> 20, idx_capacity >> 20)
+        }
+        else
+        {
+            vtx_capacity = DeriveGeometryBudget(m_device->PhysicalDeviceMemoryProperties);
+            idx_capacity = vtx_capacity;
+            ZENGINE_LOG_RENDER_INFO("[RRM] Geometry pool: auto-detected {} MB vtx + {} MB idx (15% of largest device-local heap)", vtx_capacity >> 20, idx_capacity >> 20)
+        }
+
+        m_pool.VertexBuffer = m_device->GpuMem.AllocateBuffer(vtx_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalVertexBuffer");
+        m_pool.IndexBuffer  = m_device->GpuMem.AllocateBuffer(idx_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::GlobalIndexBuffer");
+        ZENGINE_VALIDATE_ASSERT(m_pool.VertexBuffer, "RRM: global vertex buffer allocation failed")
+        ZENGINE_VALIDATE_ASSERT(m_pool.IndexBuffer, "RRM: global index buffer allocation failed")
+        m_pool.Initialize(m_device->Arena, vtx_capacity, idx_capacity, MAX_BUFFERS * 2);
+
+        m_builtin_vertex_buf = m_device->GpuMem.AllocateBuffer(BUILTIN_VTX_CAPACITY, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::BuiltinVertexBuffer");
+        m_builtin_index_buf  = m_device->GpuMem.AllocateBuffer(BUILTIN_IDX_CAPACITY, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::DeviceGeometry, "RRM::BuiltinIndexBuffer");
+        m_builtin_vtx_cursor = 0;
+        m_builtin_idx_cursor = 0;
+        ZENGINE_VALIDATE_ASSERT(m_builtin_vertex_buf, "RRM: builtin vertex buffer allocation failed")
+        ZENGINE_VALIDATE_ASSERT(m_builtin_index_buf, "RRM: builtin index buffer allocation failed")
+
+        m_streaming_mgr.Initialize(m_device, this);
+    }
+
+    void RenderResourceManager::RegisterBuiltinGeometry(const void* vtx_data, size_t vtx_bytes, const uint32_t* idx_data, uint32_t idx_count, uint32_t& out_vtx_offset, uint32_t& out_idx_offset)
+    {
+        const size_t idx_bytes = idx_count * sizeof(uint32_t);
+        ZENGINE_VALIDATE_ASSERT(m_builtin_vtx_cursor + vtx_bytes <= BUILTIN_VTX_CAPACITY, "RRM::RegisterBuiltinGeometry: builtin vertex buffer out of space")
+        ZENGINE_VALIDATE_ASSERT(m_builtin_idx_cursor + idx_bytes <= BUILTIN_IDX_CAPACITY, "RRM::RegisterBuiltinGeometry: builtin index buffer out of space")
+
+        // Called pre-render-thread (single-threaded init) — the batch this opens stays
+        // open until the first real frame joins it or submits it before switching
+        // frame slots. Builtin data goes into the pinned builtin buffers, not
+        // the streaming global buffers, so a ResetGeometryBuffers never corrupts it.
+        EnsureBatchOpen(static_cast<uint8_t>(m_active_frame_index));
+        AppendToGlobalBuffer(m_builtin_vertex_buf, vtx_data, vtx_bytes, m_builtin_vtx_cursor, m_active_frame_index);
+        AppendToGlobalBuffer(m_builtin_index_buf, idx_data, idx_bytes, m_builtin_idx_cursor, m_active_frame_index);
+
+        out_vtx_offset        = static_cast<uint32_t>(m_builtin_vtx_cursor / (8 * sizeof(float)));
+        out_idx_offset        = static_cast<uint32_t>(m_builtin_idx_cursor / sizeof(uint32_t));
+        m_builtin_vtx_cursor += vtx_bytes;
+        m_builtin_idx_cursor += idx_bytes;
+    }
+
+    void RenderResourceManager::ResetGeometryBuffers()
+    {
+        m_pending_reset.store(true, std::memory_order_release);
+    }
+
+    void RenderResourceManager::ResetGeometryBuffersInternal()
+    {
+        m_pool.Reset();
+        for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
+            m_mesh_slots[i] = {};
+        m_mesh_slot_count = 0;
+
+        std::lock_guard lock(m_uuid_map_mutex);
+        for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+            m_uuid_to_buffer[i] = {};
+        m_uuid_to_buffer_count = 0;
+    }
+
+    void RenderResourceManager::RunCompaction()
+    {
+        // Snapshot all Resident slots with their AssetHandles before touching the pool.
+        // AssetManager::Meshes is always CPU-resident today (no CPU-side eviction), so
+        // GetAsset<AssetMesh> inside AppendMeshData is guaranteed to succeed for every
+        // Resident slot. If CPU streaming is added later, switch to a GPU self-copy.
+        struct CompactEntry
+        {
+            uint32_t              SlotIdx;
+            Managers::AssetHandle Asset;
+        };
+        CompactEntry entries[MAX_UUID_MAP];
+        uint32_t     entry_count = 0;
+
+        {
+            std::lock_guard lock(m_uuid_map_mutex);
+            for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+            {
+                const UUIDBufferPair& pair = m_uuid_to_buffer[i];
+                if (!pair.Handle.IsValid())
+                    continue;
+                uint32_t slot_idx = pair.Handle.Index;
+                if (slot_idx >= m_mesh_slot_count)
+                    continue;
+                const auto& slot = m_mesh_slots[slot_idx];
+                if (slot.Generation != pair.Handle.Generation)
+                    continue;
+                if (slot.Data.State != StreamingState::Resident)
+                    continue;
+                const AssetRecord* rec = m_registry->FindByUUID(pair.UUID);
+                if (!rec)
+                    continue;
+                entries[entry_count++] = {slot_idx, rec->SlotHandle};
+            }
+        }
+
+        // Reset the pool: zero cursors, clear free lists. VkBuffer content is irrelevant —
+        // every Resident byte will be re-uploaded into the new packed layout below.
+        m_pool.Reset();
+
+        // Clear stale regions so no slot holds a dangling offset after the reset.
+        for (uint32_t i = 0; i < entry_count; ++i)
+            m_mesh_slots[entries[i].SlotIdx].Data.Region = {};
+
+        // Re-upload each mesh into a fresh packed region.  EnsureBatchOpen opens the
+        // batch if nothing else has yet — it will be closed by EndFrame as normal.
+        EnsureBatchOpen(m_active_frame_index);
+        for (uint32_t i = 0; i < entry_count; ++i)
+        {
+            MeshSlot new_data = AppendMeshData(entries[i].Asset, m_active_frame_index);
+            if (new_data.VtxCount > 0)
+            {
+                m_mesh_slots[entries[i].SlotIdx].Data.Region   = new_data.Region;
+                m_mesh_slots[entries[i].SlotIdx].Data.VtxCount = new_data.VtxCount;
+                m_mesh_slots[entries[i].SlotIdx].Data.IdxCount = new_data.IdxCount;
+            }
+        }
+
+        m_streaming_mgr.ClearCompactionRequest();
+        ZENGINE_LOG_RENDER_INFO("[RRM] Geometry compaction complete — {} meshes re-packed, fragmentation now {:.1f}%", entry_count, m_pool.FragmentationRatio() * 100.f)
+    }
+
+    void RenderResourceManager::RetireBatchStagings()
+    {
+        uint64_t completed = 0;
+        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+
+        for (uint32_t i = 0; i < m_batch_frames.size(); ++i)
+        {
+            // LastSignal covers the previous submission, not newly recorded copies.
+            if (m_batch_mode && i == m_batch_frame_index)
+                continue;
+            BatchFrameState& frame = m_batch_frames[i];
+            if (frame.StagingCount == 0)
+                continue;
+            uint64_t gate = frame.LastSignal;
+            if (gate == 0 || gate > completed)
+                continue;
+            for (uint32_t j = 0; j < frame.StagingCount; ++j)
+                m_device->GpuMem.FreeBuffer(frame.StagingBuffers[j]);
+            frame.StagingCount = 0;
+        }
+    }
+
+    void RenderResourceManager::EnsureBatchOpen(uint8_t frame_index)
+    {
+        if (m_batch_mode && m_batch_frame_index != frame_index)
+            EndBatchUpload();
+        if (!m_batch_mode)
+            BeginBatchUpload(frame_index);
+    }
+
+    void RenderResourceManager::BeginBatchUpload(uint8_t frame_index)
+    {
+        m_batch_frame_index    = frame_index;
+        // Instant buffer, not the regular pool's slot 0 — that slot is shared by the two
+        // remaining synchronous callers (UpdateBuffer's ring path, UploadFontAtlas), which
+        // submit and block before returning; this buffer's submission is deferred instead.
+        m_batch_cmd            = m_upload_cmd_mgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, 0, 0, false);
+
+        BatchFrameState& frame = m_batch_frames[frame_index];
+
+        // Wait for this frame index's buffer to be free of its last use before recording
+        // into it again. Almost always a no-op — BufferedFrameCount frames have already
+        // passed by the time this frame index comes back around.
+        if (frame.LastSignal != 0)
+            m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
+
+        // RetireBatchStagings polls the batch timeline each frame. Any staging buffers
+        // still owned by this frame index are released only after its prior batch signal.
+        m_batch_cmd->ResetState();
+        vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
+        m_batch_cmd->Begin();
+        m_batch_mode = true;
+    }
+
+    void RenderResourceManager::EndBatchUpload()
+    {
+        m_batch_cmd->End();
+
+        // Submit without blocking so a mesh drop never stalls the render thread. Present()
+        // consumes the resulting timeline operation in the graphics submission below.
+        // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
+        // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
+        // drives independently.
+        uint64_t signal_value                          = ++m_batch_next_value;
+        m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
+
+        // The global geometry buffers are bound as whole-buffer storage descriptors.
+        // A fresh copy therefore needs to wait for every prior graphics read before
+        // writing, even when its byte range is newly allocated: validation cannot infer
+        // the shader's per-draw subrange, and separate graphics queues may overlap.
+        //
+        // RenderTimeline covers the previous frame's final Present() submission. Earlier
+        // graphics batches are submitted directly by RenderGraph, however. Relaying those
+        // batches through RenderTimeline preserves execution order but not their shader
+        // access scope, so the copy must wait on their direct timeline as well.
+        auto* const           swapchain                = m_device->SwapchainPtr;
+        constexpr auto        copy_wait_stage          = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        // A batch can contain generic UpdateBuffer copies as well as mesh data. Its
+        // consumer queue is therefore not known here: it can be graphics or a
+        // dedicated compute queue. ALL_COMMANDS is valid for either queue and keeps
+        // every possible consumer behind the copy.
+        constexpr auto        consumer_wait_stage      = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+        VkSemaphoreSubmitInfo copy_waits[2]            = {};
+        uint32_t              copy_wait_count          = 0;
+        if (swapchain->RenderTimelineNextValue != 0)
+        {
+            copy_waits[copy_wait_count++] = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = swapchain->RenderTimeline->GetHandle(),
+                .value     = swapchain->RenderTimelineNextValue,
+                .stageMask = copy_wait_stage,
+            };
+        }
+
+        if (swapchain->DirectGraphicsTimeline && swapchain->DirectGraphicsTimelineValue != 0)
+        {
+            copy_waits[copy_wait_count++] = {
+                .sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .semaphore = swapchain->DirectGraphicsTimeline->GetHandle(),
+                .value     = swapchain->DirectGraphicsTimelineValue,
+                .stageMask = copy_wait_stage,
+            };
+        }
+
+        m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, signal_value, copy_waits, copy_wait_count);
+        m_device->EnqueueAsyncGPUOperation({consumer_wait_stage, signal_value, m_batch_timeline});
+
+        // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
+        // BeginBatchUpload for this same frame index) to free once m_batch_timeline proves
+        // this copy has completed.
+        m_batch_mode = false;
+        m_batch_cmd  = nullptr;
+    }
+
+    void RenderResourceManager::AppendToGlobalBuffer(BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)
+    {
+        BufferView staging = m_device->GpuMem.AllocateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, "RRM::Staging");
+        ZENGINE_VALIDATE_ASSERT(staging, "RRM::AppendToGlobalBuffer: staging alloc failed")
+        ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::AppendToGlobalBuffer: staging copy failed")
+
+        GlobalBufferCopyCtx ctx{staging.Handle, dst_buf.Handle, byte_offset, byte_size};
+
+        // Every caller (FlushPendingUploads, FlushPendingSwaps, RegisterBuiltinGeometry)
+        // calls EnsureBatchOpen first — there is no longer a synchronous fallback path.
+        ZENGINE_VALIDATE_ASSERT(m_batch_mode, "RRM::AppendToGlobalBuffer: called without an open batch — call EnsureBatchOpen first")
+        ZENGINE_VALIDATE_ASSERT(static_cast<uint8_t>(frame_index) == m_batch_frame_index, "RRM::AppendToGlobalBuffer: frame_index does not match the currently open batch")
+        RecordGlobalBufferCopy(m_batch_cmd->GetHandle(), &ctx);
+        BatchFrameState& frame = m_batch_frames[m_batch_frame_index];
+        ZENGINE_VALIDATE_ASSERT(frame.StagingCount < MAX_PENDING * 2, "RRM::AppendToGlobalBuffer: batch staging overflow")
+        frame.StagingBuffers[frame.StagingCount++] = staging;
+    }
+
+    RenderResourceManager::MeshSlot RenderResourceManager::AppendMeshData(AssetHandle asset, uint32_t frame_index)
+    {
+        AssetMesh* mesh = AssetManager::GetAsset<AssetMesh>(asset);
+        if (!mesh || mesh->Vertices.empty())
+        {
+            return {};
+        }
+
+        static constexpr uint32_t FLOATS_PER_DRAW_VERTEX = 8;                                      // x,y,z, nx,ny,nz, u,v
+        static constexpr uint32_t DRAW_VERTEX_BYTES      = FLOATS_PER_DRAW_VERTEX * sizeof(float); // 32
+
+        // Every downstream offset assumes Vertices.size() is a whole number of DrawVertex
+        // elements — enforced only by importer convention, so assert here rather than let
+        // a misaligned cursor corrupt every subsequent mesh's GPU-side read offset.
+        ZENGINE_VALIDATE_ASSERT(mesh->Vertices.size() % FLOATS_PER_DRAW_VERTEX == 0, "RRM::AppendMeshData: Vertices.size() is not a whole number of DrawVertex elements")
+
+        size_t         vert_bytes = mesh->Vertices.size() * sizeof(float);
+        size_t         idx_bytes  = mesh->Indices.size() * sizeof(uint32_t);
+        GeometryRegion region;
+        if (!m_pool.Allocate(static_cast<VkDeviceSize>(vert_bytes), static_cast<VkDeviceSize>(idx_bytes), region))
+        {
+            ZENGINE_LOG_RENDER_ERR("[RRM] AppendMeshData: geometry pool full")
+            return {};
+        }
+
+        AppendToGlobalBuffer(m_pool.VertexBuffer, mesh->Vertices.data(), vert_bytes, region.VtxByteOffset, frame_index);
+        AppendToGlobalBuffer(m_pool.IndexBuffer, mesh->Indices.data(), idx_bytes, region.IdxByteOffset, frame_index);
+
+        uint32_t vtx_elem_offset = static_cast<uint32_t>(region.VtxByteOffset / DRAW_VERTEX_BYTES);
+        uint32_t idx_elem_offset = static_cast<uint32_t>(region.IdxByteOffset / sizeof(uint32_t));
+        uint32_t vtx_elem_count  = static_cast<uint32_t>(mesh->Vertices.size() / FLOATS_PER_DRAW_VERTEX);
+        uint32_t idx_elem_count  = static_cast<uint32_t>(mesh->Indices.size());
+
+        ZENGINE_LOG_RENDER_INFO("[RRM] Uploaded mesh: {} verts ({} bytes), {} indices ({} bytes) — vtx@{} idx@{}", vtx_elem_count, vert_bytes, idx_elem_count, idx_bytes, vtx_elem_offset, idx_elem_offset)
+
+        return {region, vtx_elem_count, idx_elem_count};
+    }
+
+    BufferHandle RenderResourceManager::DoUploadMesh(AssetHandle asset, uint32_t frame_index)
+    {
+        MeshSlot data = AppendMeshData(asset, frame_index);
+        if (data.VtxCount == 0)
+        {
+            return {};
+        }
+
+        uint32_t slot                      = AllocMeshSlot();
+        m_mesh_slots[slot].Data            = data;
+        m_mesh_slots[slot].Data.State      = StreamingState::Resident;
+        m_mesh_slots[slot].Data.Referenced = false;
+        m_mesh_slots[slot].Data.Pinned     = false;
+        return {slot, m_mesh_slots[slot].Generation};
+    }
+
+    void RenderResourceManager::FlushPendingUploads(uint32_t frame_index)
+    {
+        // Compact geometry buffers if a scene reload was requested
+        if (m_pending_reset.exchange(false, std::memory_order_acq_rel))
+            ResetGeometryBuffersInternal();
+
+        uint32_t      count = 0;
+        PendingUpload local[MAX_PENDING];
+        {
+            std::lock_guard lock(m_pending_mutex);
+            count = m_pending_count;
+            secure_memcpy(local, sizeof(local), m_pending, count * sizeof(PendingUpload));
+            m_pending_count = 0;
+        }
+        if (count == 0)
+            return;
+
+        // Joins this frame's deferred batch (opened here if nothing else has yet) — closed
+        // once, by RRM::EndFrame, after everything else that might also join it this frame.
+        EnsureBatchOpen(static_cast<uint8_t>(frame_index));
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            BufferHandle h = DoUploadMesh(local[i].Asset, frame_index);
+            if (h.IsValid())
+            {
+                std::lock_guard lock(m_uuid_map_mutex);
+                if (m_uuid_to_buffer_count < MAX_UUID_MAP)
+                    m_uuid_to_buffer[m_uuid_to_buffer_count++] = {local[i].UUID, h};
+            }
+            else
+            {
+                ZENGINE_CORE_ERROR("[RRM] Mesh upload failed for asset handle {}", local[i].Asset)
+            }
+        }
+    }
+
+    void RenderResourceManager::UpdateBuffer(BufferView& dst, const void* data, size_t byte_size, uint32_t dst_offset)
+    {
+        if (!data || byte_size == 0 || !dst)
+            return;
+
+        VkMemoryPropertyFlags mem_flags = 0;
+        vmaGetAllocationMemoryProperties(m_device->GpuMem.Allocator, dst.Allocation, &mem_flags);
+
+        if (mem_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+        {
+            // BAR / HOST_VISIBLE — direct memcpy, no command buffer.
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, dst.Allocation, dst_offset, byte_size) == VK_SUCCESS, "RRM::UpdateBuffer: host-visible memcpy failed")
+            if (!(mem_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+                vmaFlushAllocation(m_device->GpuMem.Allocator, dst.Allocation, dst_offset, byte_size);
+            return;
+        }
+
+        // DEVICE_LOCAL. Two sub-cases with different lifecycles:
+        uint32_t ring_offset = 0;
+        void*    ring_ptr    = m_device->GpuMem.Ring.Allocate(static_cast<uint32_t>(byte_size), 4, &ring_offset);
+
+        if (ring_ptr)
+        {
+            // Ring path stays synchronous, deliberately not deferred: GpuAllocator::Ring's
+            // retirement (Ring::Drain, driven by VulkanDevice::TickMemory) tracks every
+            // chunk in one FIFO compared against RenderTimeline's completed value alone.
+            // Stamping a chunk with m_batch_timeline's (future, not-yet-reached) signal
+            // value instead would compare it against the wrong counter — the chunk could
+            // be reclaimed before the deferred copy on m_batch_timeline ever executes.
+            // Fixing that needs Ring to track more than one semaphore, which is out of
+            // scope here — so this sub-case keeps the fence-blocking model, just repointed
+            // at m_sync_upload_fence.
+            secure_memmove(ring_ptr, byte_size, data, byte_size);
+
+            VkQueue        gfx_queue  = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+            CommandBuffer* upload_cmd = m_upload_cmd_mgr->GetCommandBuffer(QueueType::GRAPHIC_QUEUE, m_active_frame_index, 0, 0, false);
+            RingCopyCtx    ctx{m_device->GpuMem.Ring.Buffer, dst.Handle, ring_offset, dst_offset, byte_size};
+            RecordAndSubmit(upload_cmd, m_sync_upload_fence, gfx_queue, RecordRingCopy, &ctx);
+
+            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(byte_size), m_device->SwapchainPtr->RenderTimelineNextValue);
+        }
+        else
+        {
+            // Staging path joins this frame's deferred batch — no GpuAllocator::Ring
+            // involvement, so no cross-semaphore retirement hazard.
+            EnsureBatchOpen(m_active_frame_index);
+
+            BufferView staging = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging);
+            ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::UpdateBuffer: staging copy failed")
+
+            StagingCopyCtx ctx{staging.Handle, dst.Handle, dst_offset, byte_size};
+            RecordStagingCopy(m_batch_cmd->GetHandle(), &ctx);
+
+            BatchFrameState& frame = m_batch_frames[m_batch_frame_index];
+            ZENGINE_VALIDATE_ASSERT(frame.StagingCount < MAX_PENDING * 2, "RRM::UpdateBuffer: batch staging overflow")
+            frame.StagingBuffers[frame.StagingCount++] = staging;
+        }
+    }
+
+    void RenderResourceManager::ScheduleSwap(BufferHandle old_handle, AssetHandle new_asset)
+    {
+        if (!old_handle.IsValid())
+        {
+            return;
+        }
+        std::lock_guard lock(m_pending_swap_mutex);
+        if (m_pending_swap_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_WARN("[RRM] Pending swap queue full — dropping hot-reload swap")
+            return;
+        }
+        PendingSwap& s = m_pending_swaps[m_pending_swap_count++];
+        s.OldBuffer    = old_handle;
+        s.NewAsset     = new_asset;
+    }
+
+    bool RenderResourceManager::GetMeshOffsets(BufferHandle handle, uint32_t& vtx_offset, uint32_t& idx_offset) const
+    {
+        if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+            return false;
+        const auto& slot = m_mesh_slots[handle.Index];
+        if (slot.Generation != handle.Generation)
+            return false;
+        vtx_offset = static_cast<uint32_t>(slot.Data.Region.VtxByteOffset / DRAW_VERTEX_BYTES);
+        idx_offset = static_cast<uint32_t>(slot.Data.Region.IdxByteOffset / sizeof(uint32_t));
+        return true;
+    }
+
+    bool RenderResourceManager::RequestMeshLoad(BufferHandle handle, const uuids::uuid& uuid)
+    {
+        const AssetRecord* rec = m_registry->FindByUUID(uuid);
+        if (!rec || rec->SlotHandle == 0)
+            return false;
+        return m_streaming_mgr.RequestLoad({uuid, rec->SlotHandle, handle, 0});
+    }
+
+    bool RenderResourceManager::IsMeshResident(BufferHandle handle) const
+    {
+        if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+            return false;
+        const auto& slot = m_mesh_slots[handle.Index];
+        if (slot.Generation != handle.Generation)
+            return false;
+        return slot.Data.State == StreamingState::Resident;
+    }
+
+    void RenderResourceManager::MarkMeshReferenced(BufferHandle handle)
+    {
+        if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+            return;
+        auto& slot = m_mesh_slots[handle.Index];
+        if (slot.Generation == handle.Generation)
+            slot.Data.Referenced = true;
+    }
+
+    BufferHandle RenderResourceManager::FindMeshBuffer(const uuids::uuid& uuid) const
+    {
+        // Render-thread only — m_uuid_to_buffer is written in FlushPendingUploads
+        // which also runs on the render thread, so no mutex needed.
+        for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+            if (m_uuid_to_buffer[i].UUID == uuid)
+                return m_uuid_to_buffer[i].Handle;
+        return {};
+    }
+
+    void RenderResourceManager::ReleaseMeshGeometry(const uuids::uuid& uuid)
+    {
+        std::lock_guard lock(m_uuid_map_mutex);
+
+        // Find and invalidate the slot
+        for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+        {
+            if (m_uuid_to_buffer[i].UUID == uuid)
+            {
+                BufferHandle h = m_uuid_to_buffer[i].Handle;
+
+                if (h.IsValid() && !(h.Generation & GBUF_GEN_TAG) && h.Index < m_mesh_slot_count)
+                {
+                    auto& slot = m_mesh_slots[h.Index];
+                    if (slot.Data.Region.VtxByteSize > 0)
+                        m_pool.Free(slot.Data.Region);
+                    slot.Generation = 0;
+                }
+
+                // Remove from UUID map (swap with last entry)
+                m_uuid_to_buffer[i] = m_uuid_to_buffer[--m_uuid_to_buffer_count];
+                ZENGINE_CORE_INFO("[RRM] Released mesh geometry slot for UUID {}", uuids::to_string(uuid))
+                return;
+            }
+        }
+    }
+
+    void RenderResourceManager::Release(BufferHandle handle)
+    {
+        if (!handle.IsValid())
+            return;
+
+        if (handle.Generation & GBUF_GEN_TAG)
+        {
+            // Generic device-local buffer — deferred-free the VmaAllocation.
+            if (handle.Index >= m_gbuf_slot_count)
+                return;
+            auto& slot = m_gbuf_slots[handle.Index];
+            if (slot.Generation != handle.Generation)
+                return;
+            DeferredFreeEntry e;
+            e.EntryKind     = DeferredFreeEntry::Kind::Buffer;
+            e.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
+            e.Data.Buffer   = slot.Data;
+            m_device->DeferFree(e);
+            slot.Data       = {};
+            slot.Generation = 0;
+        }
+        else
+        {
+            // Mesh slot — packed global buffer is append-only; just invalidate the slot.
+            if (handle.Index >= m_mesh_slot_count)
+                return;
+            m_mesh_slots[handle.Index].Generation = 0;
+        }
+    }
+
+    const Rendering::Textures::Texture* RenderResourceManager::GetTexture(const Rendering::Textures::TextureHandle& handle) const
+    {
+        return m_device->GlobalTextures.Access(handle);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(DeferredFreeEntry entry)
+    {
+        m_device->DeferFree(entry);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkShaderModule module)
+    {
+        if (module == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind      = DeferredFreeEntry::Kind::VkHandle;
+        e.TimelineValue  = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Vk.Handle = reinterpret_cast<void*>(module);
+        e.Data.Vk.Type   = Rendering::DeviceResourceType::SHADERMODULE;
+        e.Data.Vk.Extra  = nullptr;
+        m_device->DeferFree(e);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkPipeline pipeline)
+    {
+        if (pipeline == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind      = DeferredFreeEntry::Kind::VkHandle;
+        e.TimelineValue  = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Vk.Handle = reinterpret_cast<void*>(pipeline);
+        e.Data.Vk.Type   = Rendering::DeviceResourceType::PIPELINE;
+        e.Data.Vk.Extra  = nullptr;
+        m_device->DeferFree(e);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkBuffer buffer, VmaAllocation allocation)
+    {
+        if (buffer == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind              = DeferredFreeEntry::Kind::Buffer;
+        e.TimelineValue          = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Buffer.Handle     = buffer;
+        e.Data.Buffer.Allocation = allocation;
+        m_device->DeferFree(e);
+    }
+
+    void RenderResourceManager::EnqueueDeletion(VkImage image, VkImageView view, VmaAllocation allocation)
+    {
+        if (image == VK_NULL_HANDLE)
+            return;
+        DeferredFreeEntry e;
+        e.EntryKind             = DeferredFreeEntry::Kind::Image;
+        e.TimelineValue         = m_device->SwapchainPtr->RenderTimelineNextValue;
+        e.Data.Image.Handle     = image;
+        e.Data.Image.ViewHandle = view;
+        e.Data.Image.Allocation = allocation;
+        m_device->DeferFree(e);
+    }
+
+    uint32_t RenderResourceManager::AllocMeshSlot()
+    {
+        for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
+        {
+            if (m_mesh_slots[i].Generation == 0)
+            {
+                m_mesh_slots[i].Generation = ++m_mesh_slot_gen_counter[i];
+                return i;
+            }
+        }
+        ZENGINE_VALIDATE_ASSERT(m_mesh_slot_count < MAX_BUFFERS, "RRM: MAX_BUFFERS exceeded")
+        uint32_t idx                 = m_mesh_slot_count++;
+        m_mesh_slots[idx].Generation = ++m_mesh_slot_gen_counter[idx];
+        return idx;
+    }
+
+    // Masks the monotonic counter to 31 bits before OR-ing in GBUF_GEN_TAG (bit 31) so the
+    // counter can never collide with the tag, and skips 0 on the (practically unreachable)
+    // wraparound since Generation == 0 is the universal free/invalid sentinel.
+    uint32_t RenderResourceManager::NextGBufGeneration(uint32_t& counter)
+    {
+        uint32_t gen = (++counter) & 0x7FFF'FFFFu;
+        if (gen == 0)
+        {
+            gen = (++counter) & 0x7FFF'FFFFu;
+        }
+        return gen | GBUF_GEN_TAG;
+    }
+
+    uint32_t RenderResourceManager::AllocGBufSlot()
+    {
+        for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
+        {
+            if (m_gbuf_slots[i].Generation == 0)
+            {
+                m_gbuf_slots[i].Generation = NextGBufGeneration(m_gbuf_slot_gen_counter[i]);
+                return i;
+            }
+        }
+        ZENGINE_VALIDATE_ASSERT(m_gbuf_slot_count < MAX_GENERIC_BUFS, "RRM: MAX_GENERIC_BUFS exceeded")
+        uint32_t idx                 = m_gbuf_slot_count++;
+        m_gbuf_slots[idx].Generation = NextGBufGeneration(m_gbuf_slot_gen_counter[idx]);
+        return idx;
+    }
+
+    BufferHandle RenderResourceManager::UploadBuffer(const void* data, size_t byte_size, VkBufferUsageFlags usage, const char* debug_name)
+    {
+        if (!data || byte_size == 0)
+            return {};
+
+        Core::Memory::BufferView buf = m_device->GpuMem.AllocateBuffer(static_cast<VkDeviceSize>(byte_size), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, debug_name ? debug_name : "RRM::UploadBuffer");
+
+        if (!buf)
+            return {};
+
+        EnsureBatchOpen(m_active_frame_index);
+
+        BufferView staging = m_device->CreateBuffer(static_cast<VkDeviceSize>(byte_size), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging);
+        ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, staging.Allocation, 0, byte_size) == VK_SUCCESS, "RRM::UploadBuffer: staging copy failed")
+
+        StagingCopyCtx ctx{staging.Handle, buf.Handle, 0, byte_size};
+        RecordStagingCopy(m_batch_cmd->GetHandle(), &ctx);
+
+        BatchFrameState& frame = m_batch_frames[m_batch_frame_index];
+        ZENGINE_VALIDATE_ASSERT(frame.StagingCount < MAX_PENDING * 2, "RRM::UploadBuffer: batch staging overflow")
+        frame.StagingBuffers[frame.StagingCount++] = staging;
+
+        uint32_t slot_idx                          = AllocGBufSlot();
+        m_gbuf_slots[slot_idx].Data                = buf;
+        return {slot_idx, m_gbuf_slots[slot_idx].Generation};
+    }
+
+    const Core::Memory::BufferView* RenderResourceManager::GetBuffer(BufferHandle handle) const
+    {
+        if (!handle.IsValid() || !(handle.Generation & GBUF_GEN_TAG))
+            return nullptr;
+        if (handle.Index >= m_gbuf_slot_count)
+            return nullptr;
+        const auto& slot = m_gbuf_slots[handle.Index];
+        return slot.Generation == handle.Generation ? &slot.Data : nullptr;
+    }
+
+    void RenderResourceManager::InitTextureTimelines()
+    {
+        uint32_t total_pool_count = m_device->CommandBufferMgr->TotalPoolCount;
+        m_tex_total_cmd_count     = m_device->CommandBufferMgr->MaxBufferPerPool * m_device->CommandBufferMgr->MaxBufferPerPool;
+
+        m_tex_timelines.init(m_device->Arena, total_pool_count, total_pool_count);
+        m_tex_next_values.init(m_device->Arena, total_pool_count, total_pool_count);
+        m_tex_retire_values.init(m_device->Arena, total_pool_count, total_pool_count);
+        m_tex_retire_staging.init(m_device->Arena, total_pool_count, total_pool_count);
+        m_tex_deferral_retry.init(m_device->Arena, MAX_TEXTURE_DEFERRALS);
+
+        for (uint32_t i = 0; i < total_pool_count; ++i)
+        {
+            m_tex_timelines[i] = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+            m_tex_retire_values[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
+            m_tex_retire_staging[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
+            m_tex_next_values[i].store(1, std::memory_order_release);
+        }
+
+        if (m_device->HasSeparateTransferQueue)
+        {
+            m_tex_transfer_timelines.init(m_device->Arena, total_pool_count, total_pool_count);
+            m_tex_transfer_next_values.init(m_device->Arena, total_pool_count, total_pool_count);
+            m_tex_transfer_retire.init(m_device->Arena, total_pool_count, total_pool_count);
+            m_tex_transfer_staging.init(m_device->Arena, total_pool_count, total_pool_count);
+
+            for (uint32_t i = 0; i < total_pool_count; ++i)
+            {
+                m_tex_transfer_timelines[i] = ZPushStructCtorArgs(m_device->Arena, Rendering::Primitives::Semaphore, m_device, true);
+                m_tex_transfer_retire[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
+                m_tex_transfer_staging[i].init(m_device->Arena, m_tex_total_cmd_count, m_tex_total_cmd_count);
+                m_tex_transfer_next_values[i].store(1, std::memory_order_release);
+            }
+        }
+        m_streaming_upload_tickets.init(m_device->Arena, MAX_TEXTURE_DEFERRALS);
+    }
+
+    void RenderResourceManager::InitUploadSlabs()
+    {
+        m_active_texture_decode_slabs.value.store(0, std::memory_order_relaxed);
+        for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
+            m_upload_slabs[i].Init(m_upload_arena, UPLOAD_SLAB_BYTES);
+    }
+
+    bool RenderResourceManager::TryAcquireTextureDecodeSlab(uint8_t* out_index)
+    {
+        ZENGINE_VALIDATE_ASSERT(out_index != nullptr, "RenderResourceManager::TryAcquireTextureDecodeSlab: output must not be null")
+        uint32_t occupied = m_active_texture_decode_slabs.value.load(std::memory_order_acquire);
+        for (;;)
+        {
+            for (uint32_t index = 0; index < MAX_CONCURRENT_TEXTURE_DECODES; ++index)
+            {
+                const uint32_t bit = 1u << index;
+                if ((occupied & bit) != 0)
+                    continue;
+
+                const uint32_t desired = occupied | bit;
+                if (m_active_texture_decode_slabs.value.compare_exchange_weak(occupied, desired, std::memory_order_acq_rel, std::memory_order_acquire))
+                {
+                    *out_index = static_cast<uint8_t>(index);
+                    return true;
+                }
+                break;
+            }
+            if (occupied == (1u << MAX_CONCURRENT_TEXTURE_DECODES) - 1u)
+                return false;
+        }
+    }
+
+    void RenderResourceManager::ReleaseTextureDecodeSlab(uint8_t index)
+    {
+        ZENGINE_VALIDATE_ASSERT(index < MAX_CONCURRENT_TEXTURE_DECODES, "RenderResourceManager::ReleaseTextureDecodeSlab: invalid slab index")
+        const uint32_t bit      = 1u << index;
+        uint32_t       occupied = m_active_texture_decode_slabs.value.load(std::memory_order_acquire);
+        for (;;)
+        {
+            ZENGINE_VALIDATE_ASSERT((occupied & bit) != 0, "RenderResourceManager::ReleaseTextureDecodeSlab: slab was not leased")
+            if (m_active_texture_decode_slabs.value.compare_exchange_weak(occupied, occupied & ~bit, std::memory_order_acq_rel, std::memory_order_acquire))
+                return;
+        }
+    }
+
+    void RenderResourceManager::ShutdownTextureTimelines()
+    {
+        uint32_t total_pool_count = m_device->CommandBufferMgr->TotalPoolCount;
+        for (uint32_t p = 0; p < total_pool_count; ++p)
+        {
+            for (uint32_t i = 0; i < m_tex_total_cmd_count; ++i)
+            {
+                auto& sb = m_tex_retire_staging[p][i];
+                if (sb.Handle != VK_NULL_HANDLE)
+                    m_device->GpuMem.FreeBuffer(sb);
+
+                if (m_device->HasSeparateTransferQueue)
+                {
+                    auto& tsb = m_tex_transfer_staging[p][i];
+                    if (tsb.Handle != VK_NULL_HANDLE)
+                        m_device->GpuMem.FreeBuffer(tsb);
+                }
+            }
+
+            // Explicitly destroy arena-allocated Semaphore objects — VkSemaphore handles
+            // are never freed by the arena page release.
+            if (p < m_tex_timelines.size() && m_tex_timelines[p])
+                m_tex_timelines[p]->~Semaphore();
+
+            if (m_device->HasSeparateTransferQueue && p < m_tex_transfer_timelines.size() && m_tex_transfer_timelines[p])
+                m_tex_transfer_timelines[p]->~Semaphore();
+        }
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size)
+    {
+        using namespace Rendering::Specifications;
+        using namespace Rendering::Primitives;
+
+        if (!handle.Valid() || !data)
+            return {};
+        // A texture released from a transfer queue cannot be uploaded again until the
+        // graph has acquired it on its consumer queue. Retrying the deferral keeps the
+        // exclusive-ownership protocol valid on separate-family devices.
+        if (FindStreamingUploadTicket(handle))
+            return {};
+
+        uint32_t pool_index = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+
+        auto     texture    = m_device->GlobalTextures.Access(handle);
+        if (!texture)
+            return {};
+        const VkDeviceSize upload_size = data_size == 0 ? texture->BufferSize : static_cast<VkDeviceSize>(data_size);
+        if (upload_size == 0 || upload_size > texture->BufferSize)
+            return {};
+        auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
+        if (!img_buf)
+            return {};
+        auto img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        auto buffer_handle  = img_buf->GetHandle();
+
+        if (m_device->HasSeparateTransferQueue)
+        {
+            auto&    transfer_retire = m_tex_transfer_retire[pool_index];
+            uint32_t i               = 0;
+            for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
+                if (transfer_retire[i] == 0)
+                    break;
+            if (i >= GEOMETRY_UPLOAD_SLOT)
+            {
+                ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free transfer slot — upload deferred")
+                return {};
+            }
+
+            auto                            transfer_cmd = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, frame_index, thread_index, i);
+
+            ImageMemoryBarrierSpecification to_transfer  = {};
+            to_transfer.ImageHandle                      = buffer_handle;
+            to_transfer.OldLayout                        = img_buf->Layout;
+            to_transfer.NewLayout                        = ImageLayout::TRANSFER_DST_OPTIMAL;
+            to_transfer.ImageAspectMask                  = VkImageAspectFlagBits(img_buf_aspect);
+            to_transfer.SourceAccessMask                 = VK_ACCESS_NONE;
+            to_transfer.DestinationAccessMask            = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_transfer.SourceStageMask                  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            to_transfer.DestinationStageMask             = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            to_transfer.LayerCount                       = texture->Specification.LayerCount;
+            to_transfer.SourceQueueFamily                = m_device->TransferFamilyIndex;
+            to_transfer.DestinationQueueFamily           = m_device->TransferFamilyIndex;
+            transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
+            img_buf->Layout                                  = to_transfer.NewLayout;
+
+            // A streamed upload is submitted independently from the render timeline.
+            // Keep its staging allocation off the render-timeline ring and retire it
+            // with the producer timeline below.
+            BufferView                      transfer_staging = m_device->WriteTextureData(transfer_cmd, handle, data, nullptr, false, upload_size);
+
+            ImageMemoryBarrierSpecification release          = {};
+            release.ImageHandle                              = buffer_handle;
+            release.OldLayout                                = ImageLayout::TRANSFER_DST_OPTIMAL;
+            release.NewLayout                                = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            release.ImageAspectMask                          = VkImageAspectFlagBits(img_buf_aspect);
+            release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
+            release.DestinationAccessMask                    = VK_ACCESS_NONE;
+            release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            // This is the producer half of a queue-family transfer, recorded
+            // on a transfer-only queue. The render graph records the matching
+            // graphics-side acquire with the actual consumer stage.
+            release.DestinationStageMask                     = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            release.LayerCount                               = texture->Specification.LayerCount;
+            const uint32_t producer_family                   = m_device->GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex;
+            const bool     transfers_ownership               = producer_family != m_device->GraphicFamilyIndex;
+            release.SourceQueueFamily                        = transfers_ownership ? producer_family : VK_QUEUE_FAMILY_IGNORED;
+            release.DestinationQueueFamily                   = transfers_ownership ? m_device->GraphicFamilyIndex : VK_QUEUE_FAMILY_IGNORED;
+            transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{release});
+            img_buf->Layout = release.NewLayout;
+            transfer_cmd->End();
+
+            uint64_t transfer_val = m_tex_transfer_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            transfer_retire[i]    = transfer_val;
+            if (transfer_staging)
+                m_tex_transfer_staging[pool_index][i] = transfer_staging;
+
+            m_async_uploads.Enqueue({
+                .Buffer            = transfer_cmd,
+                .Timeline          = m_tex_transfer_timelines[pool_index],
+                .WaitTimeline      = nullptr,
+                .WaitFlag          = VK_PIPELINE_STAGE_2_NONE,
+                .SignalValue       = transfer_val,
+                .WaitValue         = UINT64_MAX,
+                .ExposeToFrameWait = false,
+                .StreamingTicket   = {.Texture = handle, .CompletionTimeline = m_tex_transfer_timelines[pool_index], .CompletionValue = transfer_val, .PostReleaseLayout = Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(release.NewLayout)], .ProducerQueueFamily = producer_family},
+                .OnSubmitted       = &RenderResourceManager::OnStreamingUploadSubmitted,
+                .SubmissionContext = this,
+            });
+        }
+        else
+        {
+            auto&    retire_values = m_tex_retire_values[pool_index];
+            uint32_t i             = 0;
+            for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
+                if (retire_values[i] == 0)
+                    break;
+            if (i >= GEOMETRY_UPLOAD_SLOT)
+            {
+                ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free graphics slot — upload deferred")
+                return {};
+            }
+
+            auto                            cmd         = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
+
+            ImageMemoryBarrierSpecification to_transfer = {};
+            to_transfer.ImageHandle                     = buffer_handle;
+            to_transfer.OldLayout                       = img_buf->Layout;
+            to_transfer.NewLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+            to_transfer.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
+            to_transfer.SourceAccessMask                = VK_ACCESS_NONE;
+            to_transfer.DestinationAccessMask           = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_transfer.SourceStageMask                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            to_transfer.DestinationStageMask            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            to_transfer.LayerCount                      = texture->Specification.LayerCount;
+            to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
+            to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
+            cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
+            img_buf->Layout                          = to_transfer.NewLayout;
+
+            // See the dedicated-transfer branch above: the upload submission is not
+            // represented by RenderTimeline, so its staging buffer must not use the ring.
+            BufferView                      staging  = m_device->WriteTextureData(cmd, handle, data, nullptr, false, upload_size);
+
+            ImageMemoryBarrierSpecification to_final = {};
+            to_final.ImageHandle                     = buffer_handle;
+            to_final.OldLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+            to_final.NewLayout                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            to_final.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
+            to_final.SourceAccessMask                = VK_ACCESS_TRANSFER_WRITE_BIT;
+            to_final.DestinationAccessMask           = VK_ACCESS_SHADER_READ_BIT;
+            to_final.SourceStageMask                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            to_final.DestinationStageMask            = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            to_final.LayerCount                      = texture->Specification.LayerCount;
+            to_final.SourceQueueFamily               = m_device->GraphicFamilyIndex;
+            to_final.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
+            cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
+            cmd->End();
+
+            uint64_t signal_value = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            retire_values[i]      = signal_value;
+            if (staging)
+                m_tex_retire_staging[pool_index][i] = staging;
+            m_async_uploads.Enqueue({
+                .Buffer            = cmd,
+                .Timeline          = m_tex_timelines[pool_index],
+                .WaitTimeline      = nullptr,
+                .WaitFlag          = VK_PIPELINE_STAGE_2_NONE,
+                .SignalValue       = signal_value,
+                .WaitValue         = UINT64_MAX,
+                .ExposeToFrameWait = false,
+                .StreamingTicket   = {.Texture = handle, .CompletionTimeline = m_tex_timelines[pool_index], .CompletionValue = signal_value, .PostReleaseLayout = Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(to_final.NewLayout)], .ProducerQueueFamily = m_device->GraphicFamilyIndex},
+                .OnSubmitted       = &RenderResourceManager::OnStreamingUploadSubmitted,
+                .SubmissionContext = this,
+            });
+            img_buf->Layout = to_final.NewLayout;
+        }
+        return handle;
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height)
+    {
+        using namespace Rendering::Specifications;
+        using namespace Rendering::Primitives;
+
+        if (!pixels || width == 0 || height == 0)
+            return {};
+
+        TextureSpecification spec                     = {};
+        spec.Width                                    = width;
+        spec.Height                                   = height;
+        spec.Format                                   = ImageFormat::R8G8B8A8_UNORM;
+
+        auto                            handle        = m_device->CreateTexture(spec);
+        auto                            texture       = m_device->GlobalTextures.Access(handle);
+        auto                            img_buf       = m_device->ImageBufferManager.Access(texture->BufferHandle);
+        auto                            buffer_handle = img_buf->GetHandle();
+
+        ImageMemoryBarrierSpecification to_transfer   = {};
+        to_transfer.ImageHandle                       = buffer_handle;
+        to_transfer.OldLayout                         = img_buf->Layout;
+        to_transfer.NewLayout                         = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_transfer.ImageAspectMask                   = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_transfer.SourceAccessMask                  = VK_ACCESS_NONE;
+        to_transfer.DestinationAccessMask             = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_transfer.SourceStageMask                   = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        to_transfer.DestinationStageMask              = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_transfer.LayerCount                        = 1;
+        to_transfer.SourceQueueFamily                 = m_device->GraphicFamilyIndex;
+        to_transfer.DestinationQueueFamily            = m_device->GraphicFamilyIndex;
+
+        ImageMemoryBarrierSpecification to_final      = {};
+        to_final.ImageHandle                          = buffer_handle;
+        to_final.OldLayout                            = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_final.NewLayout                            = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        to_final.ImageAspectMask                      = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_final.SourceAccessMask                     = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_final.DestinationAccessMask                = VK_ACCESS_SHADER_READ_BIT;
+        to_final.SourceStageMask                      = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_final.DestinationStageMask                 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        to_final.LayerCount                           = 1;
+        to_final.SourceQueueFamily                    = m_device->GraphicFamilyIndex;
+        to_final.DestinationQueueFamily               = m_device->GraphicFamilyIndex;
+
+        auto*                         cmd             = m_upload_cmd_mgr->GetCommandBuffer(QueueType::GRAPHIC_QUEUE, m_active_frame_index, 0, 0, false);
+        Rendering::Primitives::Fence* fence           = m_sync_upload_fence;
+        fence->Wait(UINT64_MAX);
+        fence->Reset();
+        cmd->ResetState();
+        vkResetCommandBuffer(cmd->GetHandle(), 0);
+        cmd->Begin();
+        cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
+        img_buf->Layout        = to_transfer.NewLayout;
+        uint32_t   ring_offset = 0;
+        BufferView staging     = m_device->WriteTextureData(cmd, handle, pixels, &ring_offset);
+        cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
+        img_buf->Layout = to_final.NewLayout;
+        cmd->End();
+
+        VkQueue         gfx_queue = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+        VkCommandBuffer raw       = cmd->GetHandle();
+        VkSubmitInfo    submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers    = &raw;
+
+        vkQueueSubmit(gfx_queue, 1, &submit, fence->GetHandle());
+        fence->Wait(UINT64_MAX);
+        cmd->ResetState();
+
+        // Gated on the render timeline's own progress rather than marked safe at value 0 —
+        // the fence wait above is not trustworthy proof of completion once any command
+        // buffer on the queue has already timed out (issue #764 follow-up investigation).
+        if (ring_offset != std::numeric_limits<uint32_t>::max())
+            m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
+
+        if (staging)
+        {
+            DeferredFreeEntry e;
+            e.EntryKind   = DeferredFreeEntry::Kind::Buffer;
+            e.Data.Buffer = staging;
+            m_device->DeferFree(e);
+        }
+
+        return handle;
+    }
+
+    bool RenderResourceManager::EnqueueTextureDeferral(const TextureDeferral& deferral)
+    {
+        return m_tex_deferral_queue.push(deferral);
+    }
+
+    bool RenderResourceManager::ProcessTextureDeferral(uint8_t frame_index, TextureDeferral& deferral)
+    {
+        auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels, deferral.ByteSize);
+        if (!result.Valid())
+            return false;
+
+        if (deferral.Slab && deferral.Pixels)
+            deferral.Slab->Free(deferral.Pixels);
+        if (deferral.DecodeSlabIndex != UINT8_MAX)
+            ReleaseTextureDecodeSlab(deferral.DecodeSlabIndex);
+        return true;
+    }
+
+    void RenderResourceManager::DiscardTextureDeferrals()
+    {
+        TextureDeferral deferral = {};
+        while (m_tex_deferral_queue.pop(deferral))
+        {
+            if (deferral.Slab && deferral.Pixels)
+                deferral.Slab->Free(deferral.Pixels);
+            if (deferral.DecodeSlabIndex != UINT8_MAX)
+                ReleaseTextureDecodeSlab(deferral.DecodeSlabIndex);
+        }
+
+        for (TextureDeferral& retry : m_tex_deferral_retry)
+        {
+            if (retry.Slab && retry.Pixels)
+                retry.Slab->Free(retry.Pixels);
+            if (retry.DecodeSlabIndex != UINT8_MAX)
+                ReleaseTextureDecodeSlab(retry.DecodeSlabIndex);
+        }
+        m_tex_deferral_retry.clear();
+    }
+
+    void RenderResourceManager::CompleteDeferrals(uint8_t frame_index)
+    {
+        // Retain deferrals that could not claim an upload slot. Keeping them in this
+        // render-thread-owned array avoids requeueing into a concurrently produced MPSC
+        // queue, and preserves the pixel allocation until a later frame can upload it.
+        for (size_t i = 0; i < m_tex_deferral_retry.size();)
+        {
+            if (!ProcessTextureDeferral(frame_index, m_tex_deferral_retry[i]))
+            {
+                ++i;
+                continue;
+            }
+            m_tex_deferral_retry.erase(i);
+        }
+
+        TextureDeferral deferral = {};
+        while (m_tex_deferral_queue.pop(deferral))
+        {
+            if (!ProcessTextureDeferral(frame_index, deferral))
+                m_tex_deferral_retry.push(deferral);
+        }
+
+        DispatchQueuedTextureDecodes();
+    }
+
+    void RenderResourceManager::SubmitAsyncUploads()
+    {
+        m_async_uploads.SubmitAll();
+    }
+
+    const Core::Containers::Array<Hardwares::StreamingUploadTicket>& RenderResourceManager::GetStreamingUploadTickets() const
+    {
+        return m_streaming_upload_tickets;
+    }
+
+    const Hardwares::StreamingUploadTicket* RenderResourceManager::FindStreamingUploadTicket(const Rendering::Textures::TextureHandle& handle) const
+    {
+        for (const auto& ticket : m_streaming_upload_tickets)
+            if (ticket.Texture.Index == handle.Index && ticket.Texture.Generation == handle.Generation)
+                return &ticket;
+        return nullptr;
+    }
+
+    void RenderResourceManager::PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket)
+    {
+        if (!ticket.Texture.Valid() || !ticket.CompletionTimeline || ticket.CompletionValue == 0)
+            return;
+
+        for (auto& pending : m_streaming_upload_tickets)
+        {
+            if (pending.Texture.Index == ticket.Texture.Index && pending.Texture.Generation == ticket.Texture.Generation)
+            {
+                pending = ticket;
+                return;
+            }
+        }
+        m_streaming_upload_tickets.push(ticket);
+    }
+
+    void RenderResourceManager::OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket)
+    {
+        if (context)
+            static_cast<RenderResourceManager*>(context)->PublishStreamingUploadTicket(ticket);
+    }
+
+    void RenderResourceManager::AcknowledgeStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket)
+    {
+        for (uint32_t index = 0; index < m_streaming_upload_tickets.size(); ++index)
+        {
+            const auto& pending = m_streaming_upload_tickets[index];
+            if (pending.Texture.Index != ticket.Texture.Index || pending.Texture.Generation != ticket.Texture.Generation || pending.CompletionTimeline != ticket.CompletionTimeline || pending.CompletionValue != ticket.CompletionValue)
+                continue;
+            m_streaming_upload_tickets.erase(index);
+            return;
+        }
+    }
+
+    void RenderResourceManager::RetireTextureSlots(uint8_t frame_index, uint8_t thread_index)
+    {
+        uint32_t pool_index     = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+
+        uint64_t graphics_value = 0;
+        vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), &graphics_value);
+
+        auto& retire_values = m_tex_retire_values[pool_index];
+        for (uint32_t i = 0; i < GEOMETRY_UPLOAD_SLOT; ++i)
+        {
+            auto retire_val = retire_values[i];
+            if (retire_val != 0 && graphics_value >= retire_val)
+            {
+                auto cmd = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i, false);
+                cmd->ResetState();
+                vkResetCommandBuffer(cmd->GetHandle(), 0);
+                retire_values[i] = 0;
+
+                auto& sb         = m_tex_retire_staging[pool_index][i];
+                if (sb.Handle != VK_NULL_HANDLE)
+                    m_device->GpuMem.FreeBuffer(sb);
+            }
+        }
+
+        if (m_device->HasSeparateTransferQueue)
+        {
+            uint64_t transfer_value = 0;
+            vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_transfer_timelines[pool_index]->GetHandle(), &transfer_value);
+            auto& transfer_retire = m_tex_transfer_retire[pool_index];
+            for (uint32_t i = 0; i < GEOMETRY_UPLOAD_SLOT; ++i)
+            {
+                auto tv = transfer_retire[i];
+                if (tv != 0 && transfer_value >= tv)
+                {
+                    auto cmd = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, frame_index, thread_index, i, false);
+                    cmd->ResetState();
+                    vkResetCommandBuffer(cmd->GetHandle(), 0);
+                    transfer_retire[i] = 0;
+
+                    auto& tsb          = m_tex_transfer_staging[pool_index][i];
+                    if (tsb.Handle != VK_NULL_HANDLE)
+                        m_device->GpuMem.FreeBuffer(tsb);
+                }
+            }
+        }
+    }
+
+    void RenderResourceManager::ClearAsyncUploads()
+    {
+        m_async_uploads.Clear();
+        m_device->AsyncGPUOperations.clear();
+
+        // Geometry batches are submitted immediately, unlike the cancellable
+        // texture jobs above. Keep their semaphore dependency across recreation:
+        // an OUT_OF_DATE acquire has no Present() submission to relay it to the
+        // next frame's graph.
+        if (m_batch_timeline && m_batch_next_value != 0)
+            m_device->EnqueueAsyncGPUOperation({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, m_batch_next_value, m_batch_timeline});
+
+        m_streaming_upload_tickets.clear();
+    }
+
+    void RenderResourceManager::ResetTextureTimelines()
+    {
+        auto total_thread_count = m_device->CommandBufferMgr->TotalThreadCount;
+        auto frame_count        = m_device->SwapchainPtr->BufferredFrameCount;
+
+        for (uint32_t f = 0; f < frame_count; ++f)
+        {
+            for (uint32_t t = 0; t < total_thread_count; ++t)
+            {
+                RetireTextureSlots(static_cast<uint8_t>(f), static_cast<uint8_t>(t));
+
+                uint32_t pool_index = (f * total_thread_count) + t;
+                uint64_t gv         = 0;
+                vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_timelines[pool_index]->GetHandle(), &gv);
+                m_tex_next_values[pool_index].store(gv + 1, std::memory_order_release);
+
+                if (m_device->HasSeparateTransferQueue)
+                {
+                    uint64_t tv = 0;
+                    vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_tex_transfer_timelines[pool_index]->GetHandle(), &tv);
+                    m_tex_transfer_next_values[pool_index].store(tv + 1, std::memory_order_release);
+                }
+            }
+        }
+        m_streaming_upload_tickets.clear();
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::IngestTexture(const uuids::uuid& uuid, const char* absolute_path, Rendering::Textures::TextureHandle existing)
+    {
+        ZENGINE_LOG_RENDER_INFO("[RRM] {} texture {} from {}", existing.Valid() ? "Reloading" : "Ingesting", uuids::to_string(uuid), absolute_path)
+        return SubmitTextureFile(absolute_path, existing);
+    }
+
+    void RenderResourceManager::ScheduleTextureReload(const uuids::uuid& uuid)
+    {
+        std::lock_guard lock(m_pending_texture_reload_mutex);
+        for (uint32_t i = 0; i < m_pending_texture_reload_count; ++i)
+            if (m_pending_texture_reloads[i] == uuid)
+                return; // already pending — dedupe
+        if (m_pending_texture_reload_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_WARN("[RRM] Pending texture reload queue full — dropping reload for {}", uuids::to_string(uuid))
+            return;
+        }
+        m_pending_texture_reloads[m_pending_texture_reload_count++] = uuid;
+    }
+
+    void RenderResourceManager::FlushPendingTextureReloads()
+    {
+        uint32_t    count = 0;
+        uuids::uuid local[MAX_PENDING];
+        {
+            std::lock_guard lock(m_pending_texture_reload_mutex);
+            count = m_pending_texture_reload_count;
+            secure_memcpy(local, sizeof(local), m_pending_texture_reloads, count * sizeof(local[0]));
+            m_pending_texture_reload_count = 0;
+        }
+
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            Rendering::Textures::TextureHandle existing = AssetManager::FindTextureHandle(local[i]);
+            if (!existing.Valid())
+                continue;
+
+            // IngestMutex guards the read: AssetManager::Textures (unlike Meshes/Materials)
+            // is arena-backed, so a concurrent IngestTexture on the import thread can
+            // reallocate its backing storage mid-read without this lock.
+            char full_path[MAX_FILE_PATH_COUNT] = {};
+            {
+                std::lock_guard lock(AssetManager::Instance()->IngestMutex);
+                AssetTexture*   tex = AssetManager::GetAsset<AssetTexture>(local[i]);
+                if (!tex || tex->Path.empty())
+                    continue;
+                snprintf(full_path, sizeof(full_path), "%s%c%s", AssetManager::Instance()->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, tex->Path.c_str());
+            }
+            IngestTexture(local[i], full_path, existing);
+        }
+    }
+
+    void RenderResourceManager::ReleaseTexture(const uuids::uuid& uuid)
+    {
+        // Captured before AssetManager::ReleaseTexture's deferred patch runs — that patch
+        // erases the UUID→handle map entry, so the handle must be read now or it's lost.
+        Rendering::Textures::TextureHandle handle = AssetManager::FindTextureHandle(uuid);
+
+        AssetManager::ReleaseTexture(uuid);
+
+        if (!handle.Valid())
+            return;
+
+        std::lock_guard lock(m_pending_texture_release_mutex);
+        if (m_pending_texture_release_count >= MAX_PENDING)
+        {
+            ZENGINE_LOG_RENDER_ERR("[RRM] Pending texture release queue full — texture handle (index {}) leaked", handle.Index)
+            return;
+        }
+        m_pending_texture_releases[m_pending_texture_release_count++] = handle;
+    }
+
+    void RenderResourceManager::FlushPendingTextureReleases()
+    {
+        uint32_t                           count = 0;
+        Rendering::Textures::TextureHandle local[MAX_PENDING];
+        {
+            std::lock_guard lock(m_pending_texture_release_mutex);
+            count = m_pending_texture_release_count;
+            secure_memcpy(local, sizeof(local), m_pending_texture_releases, count * sizeof(local[0]));
+            m_pending_texture_release_count = 0;
+        }
+
+        for (uint32_t i = 0; i < count; ++i)
+            m_device->DestroyTexture(local[i]);
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing, bool track_decode)
+    {
+        using namespace Rendering::Specifications;
+
+        std::unique_lock<std::mutex> l(m_pending_mutex);
+        if (!m_accept_texture_decodes.value.load(std::memory_order_acquire) || !filename || filename[0] == '\0')
+            return {};
+
+        const size_t filename_length = Helpers::secure_strlen(filename);
+        if (filename_length >= MAX_FILE_PATH_COUNT)
+        {
+            ZENGINE_CORE_ERROR("Texture path exceeds the {} byte engine limit: {}", MAX_FILE_PATH_COUNT - 1, filename)
+            return {};
+        }
+        cstring file_ext = std::strrchr(filename, '.');
+        if (!file_ext)
+            file_ext = "";
+        const bool is_environment_map = Helpers::secure_strcmp(file_ext, ".zenvmap") == 0;
+        if (Helpers::secure_strcmp(file_ext, ".hdr") == 0 || Helpers::secure_strcmp(file_ext, ".exr") == 0)
+        {
+            ZENGINE_CORE_ERROR("[RRM] Raw HDR environment maps must be imported into a .zenvmap artifact before runtime upload: {}", filename)
+            return {};
+        }
+
+        TextureSpecification spec{};
+
+        if (is_environment_map)
+        {
+            Importers::AssetCodec::EnvironmentMapFileHeader env_header{};
+            if (!Importers::AssetCodec::ReadEnvironmentMapFileHeader(filename, env_header))
+            {
+                ZENGINE_CORE_ERROR("Failed to read .zenvmap header: {}", filename)
+                return {};
+            }
+            spec.IsCubemap  = true;
+            spec.LayerCount = static_cast<uint32_t>(env_header.LayerCount);
+            spec.Format     = ImageFormat::R32G32B32A32_SFLOAT;
+            spec.Width      = static_cast<uint32_t>(env_header.FaceWidth);
+            spec.Height     = static_cast<uint32_t>(env_header.FaceHeight);
+        }
+        else
+        {
+            int w, h, ch;
+            if (!stbi_info(filename, &w, &h, &ch))
+                return {};
+
+            spec.Width  = static_cast<uint32_t>(w);
+            spec.Height = static_cast<uint32_t>(h);
+            spec.Format = ImageFormat::R8G8B8A8_SRGB;
+        }
+
+        if (spec.IsCubemap)
+        {
+            const uint32_t largest_dimension = std::max(spec.Width, spec.Height);
+            uint32_t       mip_count         = 1;
+            for (uint32_t dimension = largest_dimension; dimension > 1; dimension >>= 1)
+                ++mip_count;
+            spec.MipLevelCount  = mip_count;
+            // HDRI mip generation is recorded as a graph compute stage before
+            // the cubemap is sampled by the IBL convolution passes.
+            spec.IsUsageStorage = true;
+        }
+
+        spec.BytePerPixel = Specifications::BytePerChannelMap[VALUE_FROM_SPEC_MAP(spec.Format)];
+
+        Rendering::Textures::TextureHandle tex_handle;
+        if (existing.Valid())
+        {
+            // Reimport — reconstruct in place only if dimensions/format actually changed;
+            // same handle, same bindless index either way.
+            auto* texture = m_device->GlobalTextures.Access(existing);
+            if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format || texture->Specification.MipLevelCount != spec.MipLevelCount))
+                m_device->ReconstructTexture(existing, spec);
+            tex_handle = existing;
+        }
+        else
+        {
+            tex_handle = m_device->CreateTexture(spec);
+        }
+
+        if (track_decode && (!tex_handle.Valid() || !TrackTextureDecode(tex_handle)))
+        {
+            if (tex_handle.Valid() && !existing.Valid())
+                m_device->DestroyTexture(tex_handle);
+            return {};
+        }
+        if (!tex_handle.Valid())
+            return {};
+
+        auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
+        ZConstruct(task, TextureDecodeTask);
+        task->Owner            = this;
+        task->Specification    = spec;
+        task->Texture          = tex_handle;
+        task->IsEnvironmentMap = is_environment_map;
+        task->TrackCompletion  = track_decode;
+        Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
+
+        if (!m_queued_texture_decodes.push(task))
+        {
+            if (task->TrackCompletion)
+                PublishTextureDecodeCompletion(tex_handle, false);
+            if (!existing.Valid())
+                m_device->DestroyTexture(tex_handle);
+            m_texture_task_slab.Free(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode queue full — rejecting {}", filename)
+            return existing;
+        }
+
+        return tex_handle;
+    }
+
+    void RenderResourceManager::DispatchQueuedTextureDecodes()
+    {
+        for (;;)
+        {
+            uint8_t decode_slab_index = UINT8_MAX;
+            if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
+                return;
+
+            TextureDecodeTask* task = nullptr;
+            if (!m_queued_texture_decodes.pop(task))
+            {
+                ReleaseTextureDecodeSlab(decode_slab_index);
+                return;
+            }
+
+            task->DecodeSlabIndex = decode_slab_index;
+            m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
+            if (Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+                continue;
+
+            if (task->TrackCompletion)
+                PublishTextureDecodeCompletion(task->Texture, false);
+            ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
+            CompleteTextureDecodeTask(task);
+            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+            return;
+        }
+    }
+
+    void RenderResourceManager::DiscardQueuedTextureDecodes()
+    {
+        TextureDecodeTask* task = nullptr;
+        while (m_queued_texture_decodes.pop(task))
+            m_texture_task_slab.Free(task);
+    }
+
+    void RenderResourceManager::RunTextureDecodeTask(void* context)
+    {
+        TextureDecodeTask*      task     = static_cast<TextureDecodeTask*>(context);
+        RenderResourceManager*  manager  = task->Owner;
+        Core::Memory::TLSFSlab* previous = Helpers::GetWorkerSlab();
+        ZENGINE_VALIDATE_ASSERT(task->DecodeSlabIndex < MAX_CONCURRENT_TEXTURE_DECODES, "RenderResourceManager::RunTextureDecodeTask: task has no decode slab lease")
+        Core::Memory::TLSFSlab* slab = &manager->m_upload_slabs[task->DecodeSlabIndex];
+        Helpers::SetWorkerSlab(slab);
+        uint8_t* pixels    = nullptr;
+        size_t   byte_size = 0;
+
+        if (task->Specification.IsCubemap)
+        {
+            if (task->IsEnvironmentMap)
+            {
+                Rendering::Buffers::Bitmap cubemap = {};
+                if (!Importers::AssetCodec::DeserializeEnvironmentMapFile(task->Filename, cubemap))
+                {
+                    ZENGINE_CORE_ERROR("Failed to deserialize .zenvmap: {}", task->Filename)
+                }
+                else
+                {
+                    byte_size = cubemap.BufferSize;
+                    pixels    = static_cast<uint8_t*>(slab->Alloc(byte_size));
+                    Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
+                }
+            }
+            else
+            {
+                ZENGINE_CORE_ERROR("[RRM] Cubemap uploads require a cooked .zenvmap artifact: {}", task->Filename)
+            }
+        }
+        else
+        {
+            stbi_set_flip_vertically_on_load_thread(1);
+            int      width = 0, height = 0, channels = 0;
+            stbi_uc* image_data = stbi_load(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
+            if (!image_data)
+            {
+                ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
+            }
+            else
+            {
+                const size_t total_pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+                byte_size                 = total_pixels * STBI_rgb_alpha;
+                pixels                    = static_cast<uint8_t*>(slab->Alloc(byte_size));
+                if (channels <= STBI_rgb)
+                {
+                    stbir_resize_uint8(image_data, width, height, 0, pixels, width, height, 0, STBI_rgb_alpha);
+                    for (size_t i = 0; i < total_pixels; ++i)
+                        pixels[i * STBI_rgb_alpha + 3] = 255;
+                }
+                else
+                {
+                    Helpers::secure_memmove(pixels, byte_size, image_data, byte_size);
+                }
+                stbi_image_free(image_data);
+            }
+        }
+
+        bool decode_succeeded = false;
+        if (pixels && byte_size > 0)
+        {
+            TextureDeferral deferral = {};
+            deferral.Pixels          = pixels;
+            deferral.ByteSize        = byte_size;
+            deferral.Slab            = slab;
+            deferral.DecodeSlabIndex = task->DecodeSlabIndex;
+            deferral.TexHandle       = task->Texture;
+
+            if (manager->EnqueueTextureDeferral(deferral))
+            {
+                manager->m_device->RequestDeferredDescriptorUpdate(task->Texture);
+                decode_succeeded = true;
+            }
+            else
+            {
+                ZENGINE_CORE_ERROR("[RRM] Texture deferral queue full — dropping decoded texture {}", task->Filename)
+                slab->Free(pixels);
+            }
+        }
+
+        if (task->TrackCompletion)
+            manager->PublishTextureDecodeCompletion(task->Texture, decode_succeeded);
+        Helpers::SetWorkerSlab(previous);
+        if (!decode_succeeded)
+            manager->ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
+        manager->CompleteTextureDecodeTask(task);
+    }
+
+    void RenderResourceManager::CompleteTextureDecodeTask(TextureDecodeTask* task)
+    {
+        m_texture_task_slab.Free(task);
+        m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+    }
+
+    bool RenderResourceManager::TrackTextureDecode(const Rendering::Textures::TextureHandle& handle)
+    {
+        if (!handle.Valid())
+            return false;
+
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+                return true;
+        }
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (!tracked.Texture.Valid())
+            {
+                tracked.Texture = handle;
+                tracked.State   = TextureDecodeState::Pending;
+                return true;
+            }
+        }
+
+        ZENGINE_CORE_ERROR("[RRM] Texture decode observation table is full")
+        return false;
+    }
+
+    RenderResourceManager::TextureDecodeState RenderResourceManager::GetTextureDecodeState(const Rendering::Textures::TextureHandle& handle)
+    {
+        DrainTextureDecodeCompletions();
+        for (const TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+                return tracked.State;
+        }
+        return TextureDecodeState::Untracked;
+    }
+
+    void RenderResourceManager::ForgetTextureDecode(const Rendering::Textures::TextureHandle& handle)
+    {
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+            {
+                tracked = {};
+                return;
+            }
+        }
+    }
+
+    void RenderResourceManager::PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success)
+    {
+        if (!m_texture_decode_tracker.Completions.push({.Texture = handle, .Success = success}))
+            ZENGINE_CORE_ERROR("[RRM] Texture decode completion queue full — environment will retain its fallback")
+    }
+
+    void RenderResourceManager::DrainTextureDecodeCompletions()
+    {
+        TextureDecodeCompletion completion = {};
+        while (m_texture_decode_tracker.Completions.pop(completion))
+        {
+            for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+            {
+                if (tracked.Texture.Index == completion.Texture.Index && tracked.Texture.Generation == completion.Texture.Generation)
+                {
+                    tracked.State = completion.Success ? TextureDecodeState::Succeeded : TextureDecodeState::Failed;
+                    break;
+                }
+            }
+        }
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackTexture()
+    {
+        static constexpr const char* kFallbackRelativePath = "Settings/FallbackTexture.png";
+
+        const auto*                  engine_context        = Engine::GetContext();
+        if (!engine_context || !engine_context->EngineAssetsNativeRoot)
+        {
+            ZENGINE_CORE_ERROR("Fallback texture cannot be loaded because the engine asset root is unavailable")
+            return {};
+        }
+
+        const std::string fallback_path = (std::filesystem::path(engine_context->EngineAssetsNativeRoot) / kFallbackRelativePath).string();
+        if (!std::filesystem::exists(fallback_path))
+        {
+            // Keep GetOrCreateFallbackTexture's recovery behavior for development
+            // packages that were produced without the bundled fallback image.
+            static constexpr int     W = 4, H = 4;
+            static constexpr uint8_t R = 255, G = 20, B = 147, A = 255;
+            uint8_t                  pixels[W * H * 4];
+            for (int i = 0; i < W * H; ++i)
+            {
+                pixels[i * 4 + 0] = R;
+                pixels[i * 4 + 1] = G;
+                pixels[i * 4 + 2] = B;
+                pixels[i * 4 + 3] = A;
+            }
+            if (!stbi_write_png(fallback_path.c_str(), W, H, 4, pixels, W * 4))
+            {
+                ZENGINE_CORE_ERROR("Failed to create fallback texture: {}", fallback_path)
+                return {};
+            }
+        }
+
+        auto result = SubmitTextureFile(fallback_path.c_str());
+        if (result.Valid())
+        {
+            auto texture = m_device->GlobalTextures.Access(result);
+            if (texture)
+            {
+                auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
+                if (img_buf)
+                {
+                    m_device->FallbackDescriptorImageInfo             = img_buf->GetDescriptorImageInfo();
+                    m_device->FallbackDescriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                }
+            }
+        }
+        return result;
+    }
+
+    Textures::TextureHandle RenderResourceManager::CreateSynchronousTexture(const Specifications::TextureSpecification& specification, const void* pixels, cstring debug_name)
+    {
+        using namespace Rendering::Specifications;
+        using namespace Rendering::Primitives;
+
+        if (!m_device || !m_upload_cmd_mgr || !m_sync_upload_fence || !pixels)
+            return {};
+
+        const auto  handle  = m_device->CreateTexture(specification, debug_name);
+        auto* const texture = m_device->GlobalTextures.Access(handle);
+        auto* const image   = texture ? m_device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+        if (!texture || !image || image->GetHandle() == VK_NULL_HANDLE)
+        {
+            if (handle.Valid())
+                m_device->DestroyTexture(handle);
+            return {};
+        }
+
+        ImageMemoryBarrierSpecification to_transfer = {};
+        to_transfer.ImageHandle                     = image->GetHandle();
+        to_transfer.OldLayout                       = image->Layout;
+        to_transfer.NewLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_transfer.ImageAspectMask                 = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_transfer.SourceAccessMask                = VK_ACCESS_NONE;
+        to_transfer.DestinationAccessMask           = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_transfer.SourceStageMask                 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        to_transfer.DestinationStageMask            = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_transfer.LayerCount                      = specification.LayerCount;
+        to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
+        to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
+
+        ImageMemoryBarrierSpecification to_read     = {};
+        to_read.ImageHandle                         = image->GetHandle();
+        to_read.OldLayout                           = ImageLayout::TRANSFER_DST_OPTIMAL;
+        to_read.NewLayout                           = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+        to_read.ImageAspectMask                     = VK_IMAGE_ASPECT_COLOR_BIT;
+        to_read.SourceAccessMask                    = VK_ACCESS_TRANSFER_WRITE_BIT;
+        to_read.DestinationAccessMask               = VK_ACCESS_SHADER_READ_BIT;
+        to_read.SourceStageMask                     = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        to_read.DestinationStageMask                = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        to_read.LayerCount                          = specification.LayerCount;
+        to_read.SourceQueueFamily                   = m_device->GraphicFamilyIndex;
+        to_read.DestinationQueueFamily              = m_device->GraphicFamilyIndex;
+
+        auto* const command_buffer                  = m_upload_cmd_mgr->GetCommandBuffer(QueueType::GRAPHIC_QUEUE, m_active_frame_index, 0, 0, false);
+        m_sync_upload_fence->Wait(UINT64_MAX);
+        m_sync_upload_fence->Reset();
+        command_buffer->ResetState();
+        vkResetCommandBuffer(command_buffer->GetHandle(), 0);
+        command_buffer->Begin();
+        command_buffer->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
+        image->Layout      = to_transfer.NewLayout;
+        // This upload is synchronously fenced and does not signal RenderTimeline.
+        // Keep its staging allocation independent from the render-frame ring so its
+        // reuse cannot depend on an unrelated future frame submission.
+        BufferView staging = m_device->WriteTextureData(command_buffer, handle, pixels, nullptr, false);
+        command_buffer->TransitionImageLayout(ImageMemoryBarrier{to_read});
+        image->Layout = to_read.NewLayout;
+        command_buffer->End();
+
+        const VkQueue         queue = m_device->GetQueue(QueueType::GRAPHIC_QUEUE).Handle;
+        const VkCommandBuffer raw   = command_buffer->GetHandle();
+        VkSubmitInfo          submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers    = &raw;
+        if (vkQueueSubmit(queue, 1, &submit, m_sync_upload_fence->GetHandle()) != VK_SUCCESS)
+        {
+            if (staging)
+                m_device->GpuMem.FreeBuffer(staging);
+            m_device->DestroyTexture(handle);
+            return {};
+        }
+        m_sync_upload_fence->Wait(UINT64_MAX);
+        command_buffer->ResetState();
+
+        if (staging)
+            m_device->GpuMem.FreeBuffer(staging);
+
+        return handle;
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::GetOrCreateFallbackCubemap()
+    {
+        using namespace Rendering::Specifications;
+
+        if (m_fallback_cubemap.Valid())
+            return m_fallback_cubemap;
+
+        // A dim neutral-blue source keeps the viewport visibly usable while an
+        // HDRI or future atmosphere bake is pending. It is a real cubemap, so
+        // samplerCube descriptors are always valid on the first frame.
+        constexpr uint8_t fallback_pixels[6 * 4] = {
+            35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255, 35, 61, 89, 255,
+        };
+
+        TextureSpecification specification = {};
+        specification.IsCubemap            = true;
+        specification.LayerCount           = 6;
+        specification.Width                = 1;
+        specification.Height               = 1;
+        specification.Format               = ImageFormat::R8G8B8A8_UNORM;
+
+        m_fallback_cubemap                 = CreateSynchronousTexture(specification, fallback_pixels, "SkyEnvironmentFallback");
+        return m_fallback_cubemap;
+    }
+
+    EnvironmentLightingResources RenderResourceManager::GetOrCreateFallbackEnvironmentLighting()
+    {
+        using namespace Rendering::Specifications;
+
+        if (m_fallback_environment_lighting.Valid())
+            return m_fallback_environment_lighting;
+
+        constexpr BrdfIntegrationLutKey lut_key = {
+            .ShaderVersion = 1,
+            .Resolution    = kBrdfLutResolution,
+            .SampleCount   = kBrdfLutSampleCount,
+        };
+        const uint16_t neutral_radiance    = FloatToHalf(0.03f);
+        const uint16_t opaque_alpha        = FloatToHalf(1.0f);
+        uint16_t       neutral_cube[6 * 4] = {};
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            const uint32_t pixel    = face * 4;
+            neutral_cube[pixel]     = neutral_radiance;
+            neutral_cube[pixel + 1] = neutral_radiance;
+            neutral_cube[pixel + 2] = neutral_radiance;
+            neutral_cube[pixel + 3] = opaque_alpha;
+        }
+
+        TextureSpecification cube_spec         = {};
+        cube_spec.IsCubemap                    = true;
+        cube_spec.LayerCount                   = 6;
+        cube_spec.Width                        = 1;
+        cube_spec.Height                       = 1;
+        cube_spec.BytePerPixel                 = sizeof(uint16_t) * 4;
+        cube_spec.Format                       = ImageFormat::R16G16B16A16_SFLOAT;
+
+        EnvironmentLightingResources resources = {};
+        resources.DiffuseIrradiance            = CreateSynchronousTexture(cube_spec, neutral_cube, "FallbackDiffuseIrradiance");
+        resources.SpecularEnvironment          = CreateSynchronousTexture(cube_spec, neutral_cube, "FallbackSpecularEnvironment");
+        if (!resources.DiffuseIrradiance.Valid() || !resources.SpecularEnvironment.Valid())
+        {
+            if (resources.DiffuseIrradiance.Valid())
+                m_device->DestroyTexture(resources.DiffuseIrradiance);
+            if (resources.SpecularEnvironment.Valid())
+                m_device->DestroyTexture(resources.SpecularEnvironment);
+            return {};
+        }
+
+        const size_t pixel_count = static_cast<size_t>(lut_key.Resolution) * lut_key.Resolution * 4;
+        auto* const  lut_pixels  = static_cast<uint16_t*>(m_synchronous_texture_scratch.Alloc(pixel_count * sizeof(uint16_t)));
+        if (!lut_pixels)
+        {
+            m_device->DestroyTexture(resources.DiffuseIrradiance);
+            m_device->DestroyTexture(resources.SpecularEnvironment);
+            return {};
+        }
+        GenerateBrdfIntegrationLut(lut_pixels, lut_key.Resolution, lut_key.SampleCount);
+
+        TextureSpecification lut_spec = {};
+        lut_spec.Width                = lut_key.Resolution;
+        lut_spec.Height               = lut_key.Resolution;
+        lut_spec.BytePerPixel         = sizeof(uint16_t) * 4;
+        lut_spec.Format               = ImageFormat::R16G16B16A16_SFLOAT;
+        resources.BrdfIntegrationLut  = CreateSynchronousTexture(lut_spec, lut_pixels, "BrdfIntegrationLut");
+        m_synchronous_texture_scratch.Free(lut_pixels);
+
+        if (!resources.BrdfIntegrationLut.Valid())
+        {
+            m_device->DestroyTexture(resources.DiffuseIrradiance);
+            m_device->DestroyTexture(resources.SpecularEnvironment);
+            return {};
+        }
+
+        resources.BrdfIntegrationKey    = lut_key;
+        resources.SpecularMipCount      = 1;
+        m_fallback_environment_lighting = resources;
+        return m_fallback_environment_lighting;
+    }
+
+} // namespace ZEngine::Rendering

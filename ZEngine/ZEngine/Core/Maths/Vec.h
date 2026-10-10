@@ -230,7 +230,7 @@ namespace ZEngine::Core::Maths
     };
 
     template <typename T>
-    struct Vec4 : public Vec<T, 4>
+    struct alignas(4 * sizeof(T)) Vec4 : public Vec<T, 4>
     {
         using Vec<T, 4>::x;
         using Vec<T, 4>::y;

@@ -1,169 +1,200 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/Strings.h>
-#include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
+#include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Core/VFS/IVFSContext.h>
+#include <ZEngine/Core/VFS/Registry/AssetRecord.h>
+#include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/IAssetImporter.h>
-#include <condition_variable>
+#include <ZEngine/Managers/AssetTypes.h>
+#include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <mutex>
 
 namespace ZEngine::Managers
 {
-    enum class AssetType : uint8_t
-    {
-        MESH = 0,
-        MATERIAL,
-        TEXTURE,
-        MESH_HIERARCHY
-    };
-
     struct AssetManager
     {
-        using AssetHandle                                                                                           = uint32_t;
-
-        Core::Memory::ArenaAllocator                                                        Arena                   = {};
-        Core::Memory::ArenaAllocator                                                        ThreadLocalArena        = {};
-
+        Core::Memory::ArenaAllocator*                                                       Arena                   = nullptr;
         cstring                                                                             CurrentWorkingSpacePath = "";
 
-        std::atomic_bool                                                                    IsLoading               = false;
-        std::atomic_bool                                                                    RequestShutdown         = false;
+        // TLSF slab for the 5 long-lived growing containers below.
+        // Realloc extends in-place when the following block is free — eliminates
+        // the dead-block accumulation from arena-backed grows (~20 MB per 100 sessions).
+        static constexpr size_t                                                             CONTAINER_SLAB_BYTES    = 256 * 1024 * 1024; // 256 MB
+        Core::Memory::TLSFSlab                                                              ContainerSlab           = {};
 
+        // CPU-side import buffers — owned by the import pipeline.
         Core::Containers::Array<Importers::AssetNodeHierarchy>                              NodeHierarchies         = {};
         Core::Containers::Array<Importers::AssetMesh>                                       Meshes                  = {};
         Core::Containers::Array<Importers::AssetMaterial>                                   Materials               = {};
         Core::Containers::Array<Importers::AssetTexture>                                    Textures                = {};
 
+        // GPU-side material data — mirrored from Materials after upload.
         Core::Containers::Array<Rendering::Meshes::MeshMaterial>                            GPUMeshMaterials        = {};
 
-        Core::Containers::UnorderedHashMap<uuids::uuid, AssetHandle>                        UUIDToHandle            = {};
-        Core::Containers::UnorderedHashMap<AssetHandle, uuids::uuid>                        HandleToUUID            = {};
-        Core::Containers::UnorderedHashMap<uuids::uuid, uuids::uuid>                        MeshToNodeHierarchy     = {};
-        Core::Containers::UnorderedHashMap<uuids::uuid, uuids::uuid>                        NodeHierarchyToMesh     = {};
-
+        // GPU texture handle map — needed to resolve material → texture handles at upload time.
         Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
 
-        Hardwares::StorageBufferSetHandle                                                   MaterialBufferHandle    = {};
+        // Mesh UUID → NodeHierarchy slot — O(1) lookup replacing the old linear scan.
+        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           MeshToHierarchySlot     = {};
+        // Populated only when asset data is actually ingested — not by VFSScanner
+        // pre-registration (which sets SlotHandle=0, causing GetAsset to return a
+        // false match for any material at slot 0).
+        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           UUIDToMaterialSlot      = {};
 
-        std::mutex                                                                          Mut;
-        std::condition_variable                                                             Cond;
-        Helpers::ThreadSafeQueue<Importers::AssetImporterOutput>                            PendingAssetFiles           = {};
+        // (255, 20, 147) fallback handle used when a texture file cannot be resolved.
+        Rendering::Textures::TextureHandle                                                  FallbackTextureHandle   = {};
 
-        Helpers::ThreadSafeQueue<Importers::AssetMesh>                                      PendingAssetMeshes          = {};
-        Helpers::ThreadSafeQueue<Importers::AssetNodeHierarchy>                             PendingAssetNodeHierarchies = {};
-        Helpers::ThreadSafeQueue<Importers::AssetMaterial>                                  PendingAssetMaterials       = {};
-        Helpers::ThreadSafeQueue<Core::Containers::Array<Importers::AssetTexture>>          PendingAssetTextures        = {};
+        // Recursive so IngestMaterial can call IngestTexture while holding the lock.
+        mutable std::recursive_mutex                                                        IngestMutex;
 
-        Hardwares::VulkanDevice*                                                            Device                      = nullptr;
+        // Pending texture releases — written from any thread via ReleaseTexture, drained by
+        // FlushTextureReleases on the render thread.
+        static constexpr uint32_t                                                           MAX_PENDING_TEXTURE_RELEASES                         = 256;
+        uuids::uuid                                                                         PendingTextureReleases[MAX_PENDING_TEXTURE_RELEASES] = {};
+        uint32_t                                                                            PendingTextureReleaseCount                           = 0;
+        std::mutex                                                                          PendingTextureReleaseMutex;
+
+        Hardwares::VulkanDevice*                                                            Device   = nullptr;
+        ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
 
         Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
-        Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& id);
+        /// @brief Copies one loaded mesh's local-space bounds under the ingest lock.
+        /// @details Safe for editor scene queries while an importer may update mesh data.
+        [[nodiscard]] bool                                                                  TryGetMeshBounds(const uuids::uuid& id, Core::Maths::Vec3f& out_center, float& out_radius);
+        Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& mesh_id);
         AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
-        AssetHandle                                                                         GetMaterialHandleFromUUID(const uuids::uuid& material_uuid);
-
-        Importers::AssetTexture*                                                            LoadTextureFileAsAsset(cstring file, bool absolute);
 
         static AssetManager*                                                                Instance();
-
-        static AssetHandle                                                                  CreateHandle(uint32_t, AssetType);
-        static uint32_t                                                                     ReadAssetHandleIndex(AssetHandle);
-        static AssetType                                                                    ReadAssetHandleType(AssetHandle);
+        static AssetHandle                                                                  CreateHandle(uint32_t index, AssetType type);
+        static void                                                                         InitFallbackTexture(); // call after RRM is assigned to Device
+        static uint32_t                                                                     ReadAssetHandleIndex(AssetHandle h);
+        static AssetType                                                                    ReadAssetHandleType(AssetHandle h);
 
         static void                                                                         Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
-        static void                                                                         Run();
         static void                                                                         Shutdown();
 
-        static bool                                                                         IsLoadingAsset();
-        static AssetHandle                                                                  RegisterAsset(AssetType type, const uuids::uuid& uid, uint32_t asset_id);
+        static AssetHandle                                                                  RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path = {}, const Core::VFS::MetaFileData& meta = {});
 
-        static void                                                                         LoadAssetFile(const Importers::AssetImporterOutput& file);
+        // Returns true if uuid is already registered — used by Ingest* for deduplication.
+        static bool                                                                         IsRegistered(const uuids::uuid& id);
+
+        // Direct ingest — called from ImportCoordinator thread after AssetCodec cooks the file.
+        // Each method deduplicates (no-ops if uuid is already registered), copies data into
+        // arena-backed flat buffers, and calls RegisterAsset. Thread-safe via IngestMutex.
+        static void                                                                         IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy);
+        static Rendering::Textures::TextureHandle                                           IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path);
+        static void                                                                         IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
+        static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
+
+        /// @brief Single-UUID counterpart to ReloadFromDisk's material block — resolves,
+        ///        deserializes, and ingests one material (and its textures) by UUID.
+        ///        No-op if uuid is nil, unregistered, or already ingested.
+        static void                                                                         IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid);
+
+        /// @brief Thread-safe lookup of a texture's current handle by UUID.
+        static Rendering::Textures::TextureHandle                                           FindTextureHandle(const uuids::uuid& uuid);
+
+        /// @brief Resolve a material's texture map field to a bindless index.
+        /// @details UUID lookup first, else ingest from path, else INVALID_MAP_HANDLE.
+        static uint32_t                                                                     ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path);
+
+        /// @brief Thread-safe enqueue: patches every referencing material to the sentinel
+        ///        once FlushTextureReleases drains it.
+        static void                                                                         ReleaseTexture(const uuids::uuid& uuid);
+
+        /// @brief Render-thread drain of ReleaseTexture's queue.
+        static void                                                                         FlushTextureReleases();
+
+        static uuids::uuid                                                                  GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name);
+
+        // Reload all .zemesh and .zematerial assets already registered by the VFSScanner
+        // but not yet ingested (second launch / project reopen). Safe to call every scan.
+        static void                                                                         ReloadFromDisk(Core::Memory::ArenaAllocator* scratch);
 
         template <typename T, typename K>
         static T* GetAsset(K key)
         {
             return nullptr;
         }
-
-    private:
-        void __Run();
     };
 
     template <>
-    inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
+    inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, AssetHandle>(AssetHandle key)
     {
         uint32_t index = ReadAssetHandleIndex(key);
-        if (index < Instance()->Meshes.size())
-        {
-            return &Instance()->Meshes[index];
-        }
-        return nullptr;
+        return index < Instance()->Meshes.size() ? &Instance()->Meshes[index] : nullptr;
     }
 
     template <>
-    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
+    inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, AssetHandle>(AssetHandle key)
     {
         uint32_t index = ReadAssetHandleIndex(key);
-        if (index < Instance()->Materials.size())
-        {
-            return &Instance()->Materials[index];
-        }
-        return nullptr;
+        return index < Instance()->Materials.size() ? &Instance()->Materials[index] : nullptr;
     }
 
     template <>
-    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
+    inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, AssetHandle>(AssetHandle key)
     {
         uint32_t index = ReadAssetHandleIndex(key);
-        if (index < Instance()->Textures.size())
-        {
-            return &Instance()->Textures[index];
-        }
-        return nullptr;
+        return index < Instance()->Textures.size() ? &Instance()->Textures[index] : nullptr;
     }
 
     template <>
-    inline Importers::AssetNodeHierarchy* AssetManager::GetAsset<Importers::AssetNodeHierarchy, AssetManager::AssetHandle>(AssetManager::AssetHandle key)
+    inline Importers::AssetNodeHierarchy* AssetManager::GetAsset<Importers::AssetNodeHierarchy, AssetHandle>(AssetHandle key)
     {
         uint32_t index = ReadAssetHandleIndex(key);
-        if (index < Instance()->NodeHierarchies.size())
-        {
-            return &Instance()->NodeHierarchies[index];
-        }
-        return nullptr;
+        return index < Instance()->NodeHierarchies.size() ? &Instance()->NodeHierarchies[index] : nullptr;
     }
 
     template <>
     inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, uuids::uuid>(uuids::uuid id)
     {
-        if (Instance()->UUIDToHandle.contains(id))
-        {
-            const auto& handle = Instance()->UUIDToHandle.at(id);
-            return GetAsset<Importers::AssetMesh, AssetHandle>(handle);
-        }
-        return nullptr;
+        if (!Instance()->Registry)
+            return nullptr;
+        const auto* rec = Instance()->Registry->FindByUUID(id);
+        if (!rec)
+            return nullptr;
+        return GetAsset<Importers::AssetMesh, AssetHandle>(rec->SlotHandle);
     }
 
     template <>
     inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, uuids::uuid>(uuids::uuid id)
     {
-        if (Instance()->UUIDToHandle.contains(id))
-        {
-            const auto& handle = Instance()->UUIDToHandle.at(id);
-            return GetAsset<Importers::AssetMaterial, AssetHandle>(handle);
-        }
-        return nullptr;
+        if (!Instance()->Registry)
+            return nullptr;
+        const auto* rec = Instance()->Registry->FindByUUID(id);
+        // VFSScanner pre-registers every .zematerial UUID with SlotHandle=0 before any
+        // ingest happens — IsLoaded() tells a real ingest apart from that placeholder.
+        if (!rec || !rec->IsLoaded())
+            return nullptr;
+        return GetAsset<Importers::AssetMaterial, AssetHandle>(rec->SlotHandle);
     }
 
     template <>
     inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, uuids::uuid>(uuids::uuid id)
     {
-        if (Instance()->UUIDToHandle.contains(id))
-        {
-            const auto& handle = Instance()->UUIDToHandle.at(id);
-            return GetAsset<Importers::AssetTexture, AssetHandle>(handle);
-        }
-        return nullptr;
+        if (!Instance()->Registry)
+            return nullptr;
+        const auto* rec = Instance()->Registry->FindByUUID(id);
+        if (!rec)
+            return nullptr;
+        return GetAsset<Importers::AssetTexture, AssetHandle>(rec->SlotHandle);
     }
+
+    template <>
+    inline Importers::AssetNodeHierarchy* AssetManager::GetAsset<Importers::AssetNodeHierarchy, uuids::uuid>(uuids::uuid id)
+    {
+        if (!Instance()->Registry)
+            return nullptr;
+        const auto* rec = Instance()->Registry->FindByUUID(id);
+        if (!rec)
+            return nullptr;
+        return GetAsset<Importers::AssetNodeHierarchy, AssetHandle>(rec->SlotHandle);
+    }
+
 } // namespace ZEngine::Managers

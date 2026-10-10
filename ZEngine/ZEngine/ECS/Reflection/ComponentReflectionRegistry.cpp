@@ -1,0 +1,85 @@
+#include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/ZEngineDef.h>
+
+namespace ZEngine::ECS
+{
+    ComponentReflectionRegistry& ComponentReflectionRegistry::Get()
+    {
+        // Do not access after Engine::Deinitialize() — s_instance has static storage
+        // duration and outlives the arena, leaving m_metas.m_data dangling.
+        static ComponentReflectionRegistry s_instance;
+        return s_instance;
+    }
+
+    bool ComponentReflectionRegistry::IsInitialized() const
+    {
+        return m_arena != nullptr;
+    }
+
+    void ComponentReflectionRegistry::Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity)
+    {
+        ZENGINE_VALIDATE_ASSERT(arena != nullptr, "ComponentReflectionRegistry::Initialize: arena must not be null")
+        ZENGINE_VALIDATE_ASSERT(capacity > 0, "ComponentReflectionRegistry::Initialize: capacity must be > 0")
+
+        if (m_arena)
+        {
+            return; // already initialized
+        }
+
+        m_arena = arena;
+        m_meta.init(arena, capacity);
+    }
+
+    void ComponentReflectionRegistry::Register(const ComponentMeta& meta)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_arena != nullptr, "ComponentReflectionRegistry::Register: Initialize() must be called first")
+        ZENGINE_VALIDATE_ASSERT(meta.TypeName != nullptr, "ComponentReflectionRegistry::Register: meta.TypeName must not be null")
+        ZENGINE_VALIDATE_ASSERT(meta.FieldCount == 0 || meta.Fields != nullptr, "ComponentReflectionRegistry::Register: meta.Fields is null but FieldCount > 0")
+
+        if (const ComponentMeta* existing = Lookup(meta.TypeID))
+        {
+            ZENGINE_CORE_WARN("ComponentReflectionRegistry: TypeID {} already registered as '{}', ignoring '{}'", meta.TypeID, existing->TypeName, meta.TypeName);
+            return;
+        }
+
+        ZENGINE_VALIDATE_ASSERT(m_meta.size() < m_meta.capacity(), "ComponentReflectionRegistry::Register: exceeded the capacity reserved by Initialize() — pass a larger capacity there")
+
+        m_meta.push(meta);
+    }
+
+    const ComponentMeta* ComponentReflectionRegistry::Lookup(ComponentTypeID id) const
+    {
+        for (uint32_t i = 0; i < m_meta.size(); ++i)
+        {
+            if (m_meta[i].TypeID == id)
+            {
+                return &m_meta[i];
+            }
+        }
+        return nullptr;
+    }
+
+    const ComponentMeta* ComponentReflectionRegistry::LookupByName(cstring type_name) const
+    {
+        if (!type_name)
+        {
+            return nullptr;
+        }
+
+        for (uint32_t i = 0; i < m_meta.size(); ++i)
+        {
+            if (m_meta[i].TypeName && Helpers::secure_strcmp(m_meta[i].TypeName, type_name) == 0)
+            {
+                return &m_meta[i];
+            }
+        }
+        return nullptr;
+    }
+
+    uint32_t ComponentReflectionRegistry::Count() const
+    {
+        return static_cast<uint32_t>(m_meta.size());
+    }
+} // namespace ZEngine::ECS

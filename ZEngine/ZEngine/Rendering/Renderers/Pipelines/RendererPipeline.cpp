@@ -1,17 +1,152 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
-#include <array>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
-    void GraphicPipeline::Initialize(Hardwares::VulkanDevice* device, Specifications::GraphicRendererPipelineSpecification&& spec)
+    void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, cstring shader_name, uint32_t push_constant_size)
+    {
+        Device                   = device;
+        DeclaredPushConstantSize = push_constant_size;
+        Specifications::ShaderSpecification spec{};
+        spec.Name          = shader_name;
+        auto shader_handle = Device->CompileShader(spec);
+        if (!shader_handle)
+        {
+            ZENGINE_CORE_ERROR("")
+            return;
+        }
+
+        Shader = Device->ShaderManager.Access(shader_handle);
+    }
+
+    void ComputePipeline::Bake()
+    {
+        if (!Shader)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline cannot bake because its shader is unavailable")
+            InvalidateBakedState();
+            return;
+        }
+        if (Shader->ShaderCreateInfos.empty())
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader has no compute stage", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
+            return;
+        }
+        if (Shader->ShaderCreateInfos[0].stage != VK_SHADER_STAGE_COMPUTE_BIT)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader stage is not compute", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
+            return;
+        }
+
+        // Every command in this engine pushes the callback's declared range at
+        // offset zero. Reflection must therefore cover that exact interval for
+        // the compute stage, with neither a hole nor trailing compute bytes.
+        uint32_t covered_bytes  = 0;
+        bool     exact_coverage = true;
+        while (covered_bytes < DeclaredPushConstantSize)
+        {
+            bool found_next_range = false;
+            for (const VkPushConstantRange& range : Shader->PushConstants)
+            {
+                if ((range.stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) == 0 || range.offset != covered_bytes || range.size == 0)
+                    continue;
+
+                if (range.size > DeclaredPushConstantSize - covered_bytes)
+                {
+                    exact_coverage = false;
+                    break;
+                }
+                covered_bytes    += range.size;
+                found_next_range  = true;
+                break;
+            }
+            if (!found_next_range)
+            {
+                exact_coverage = false;
+                break;
+            }
+        }
+        for (const VkPushConstantRange& range : Shader->PushConstants)
+        {
+            if ((range.stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) != 0 && (range.offset >= DeclaredPushConstantSize || range.size > DeclaredPushConstantSize - range.offset))
+            {
+                exact_coverage = false;
+                break;
+            }
+        }
+        if (!exact_coverage)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}': callback push constants do not exactly match the reflected compute-stage range", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
+            return;
+        }
+        if (!Device || !Device->PipelineStateCache)
+        {
+            ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because the PSO cache is unavailable", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
+            InvalidateBakedState();
+            return;
+        }
+        if (Handle != VK_NULL_HANDLE)
+            Device->PipelineStateCache->UnpinPipeline(Handle);
+
+        VkPipelineLayoutCreateInfo layout_ci = {};
+        layout_ci.sType                      = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_ci.setLayoutCount             = (uint32_t) Shader->SetLayouts.size();
+        layout_ci.pSetLayouts                = Shader->SetLayouts.data();
+        layout_ci.pushConstantRangeCount     = (uint32_t) Shader->PushConstants.size();
+        layout_ci.pPushConstantRanges        = Shader->PushConstants.data();
+        Layout                               = Device->PipelineStateCache->GetOrCreatePipelineLayout(layout_ci);
+
+        VkComputePipelineCreateInfo ci       = {};
+        ci.sType                             = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        ci.stage                             = Shader->ShaderCreateInfos[0];
+        ci.layout                            = Layout;
+        ci.basePipelineIndex                 = -1;
+        const PSOComputePipelineKey key      = Device->PipelineStateCache->MakeComputePipelineKey(ci, Shader->Generation);
+        Handle                               = Device->PipelineStateCache->GetOrCreateComputePipeline(ci, Shader->Generation);
+        Device->PipelineStateCache->PinPipeline(Handle);
+        Device->PipelineStateCache->RecordComputeWarmup(Shader->m_specification.Name, key);
+        BakedShaderGeneration = Shader->Generation;
+    }
+
+    void ComputePipeline::InvalidateBakedState()
+    {
+        if (Device && Device->PipelineStateCache && Handle != VK_NULL_HANDLE)
+            Device->PipelineStateCache->UnpinPipeline(Handle);
+
+        Handle                  = VK_NULL_HANDLE;
+        Layout                  = VK_NULL_HANDLE;
+        BakedShaderGeneration   = UINT32_MAX;
+        DescriptorBindingsValid = false;
+    }
+
+    void ComputePipeline::Dispose()
+    {
+        if (Device && Device->PipelineStateCache && Handle != VK_NULL_HANDLE)
+            Device->PipelineStateCache->UnpinPipeline(Handle);
+
+        // Shaders are owned by VulkanDevice::ShaderManager and may be shared by passes.
+        Shader                = nullptr;
+
+        // Pipeline layouts are borrowed from PSOCache and outlive this pass.
+        Layout                = VK_NULL_HANDLE;
+        // Compute pipelines are borrowed from PSOCache and outlive this pass.
+        Handle                = VK_NULL_HANDLE;
+        BakedShaderGeneration = UINT32_MAX;
+    }
+
+    void GraphicPipeline::Initialize(Hardwares::VulkanDevice* device, Specifications::GraphicsPipelineDesc&& desc, RenderPasses::Attachment* attachment)
     {
         Device             = device;
-        Specification      = std::move(spec);
-        auto shader_handle = Device->CompileShader(Specification.ShaderSpecificationValue);
+        Description        = std::move(desc);
+        Attachment         = attachment;
+        auto shader_handle = Device->CompileShader(Description.ShaderSpecificationValue);
         if (!shader_handle)
         {
             ZENGINE_CORE_ERROR("")
@@ -24,16 +159,20 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     void GraphicPipeline::Bake()
     {
 
+        ZENGINE_VALIDATE_ASSERT(Device->PipelineStateCache != nullptr, "Graphic pipeline requires the PSO cache")
+        if (Handle != VK_NULL_HANDLE)
+            Device->PipelineStateCache->UnpinPipeline(Handle);
+
         auto                             scratch                                = ZGetScratch(Device->Arena);
         /*Pipeline fixed states*/
         /*
          * Dynamic State
          */
-        std::array<VkDynamicState, 2>    dynamic_state_collection               = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkDynamicState                   dynamic_state_collection[]             = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
         VkPipelineDynamicStateCreateInfo dynamic_state_create_info              = {};
         dynamic_state_create_info.sType                                         = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamic_state_create_info.dynamicStateCount                             = dynamic_state_collection.size();
-        dynamic_state_create_info.pDynamicStates                                = dynamic_state_collection.data();
+        dynamic_state_create_info.dynamicStateCount                             = 2;
+        dynamic_state_create_info.pDynamicStates                                = dynamic_state_collection;
         /*
          * Viewports and Scissors
          */
@@ -54,18 +193,24 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          * Vertex Input
          */
         Array<VkVertexInputBindingDescription> vertex_input_bindings            = {};
-        vertex_input_bindings.init(scratch.Arena, 5);
-        for (unsigned i = 0; i < Specification.VertexInputBindingSpecifications.size(); ++i)
         {
-            auto& input = Specification.VertexInputBindingSpecifications[i];
+            uint32_t n = Description.VertexInputBindingSpecifications.size();
+            vertex_input_bindings.init(scratch.Arena, n > 0 ? n : 1);
+        }
+        for (unsigned i = 0; i < Description.VertexInputBindingSpecifications.size(); ++i)
+        {
+            auto& input = Description.VertexInputBindingSpecifications[i];
             vertex_input_bindings.push(VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate});
         }
 
         Array<VkVertexInputAttributeDescription> vertex_input_attributes = {};
-        vertex_input_attributes.init(scratch.Arena, 5);
-        for (unsigned i = 0; i < Specification.VertexInputAttributeSpecifications.size(); ++i)
         {
-            auto& input = Specification.VertexInputAttributeSpecifications[i];
+            uint32_t n = Description.VertexInputAttributeSpecifications.size();
+            vertex_input_attributes.init(scratch.Arena, n > 0 ? n : 1);
+        }
+        for (unsigned i = 0; i < Description.VertexInputAttributeSpecifications.size(); ++i)
+        {
+            auto& input = Description.VertexInputAttributeSpecifications[i];
             vertex_input_attributes.push(VkVertexInputAttributeDescription{.location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset});
         }
 
@@ -84,7 +229,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         rasterization_create_info.rasterizerDiscardEnable                     = VK_FALSE;
         rasterization_create_info.polygonMode                                 = VK_POLYGON_MODE_FILL;
         rasterization_create_info.lineWidth                                   = 1.0f;
-        rasterization_create_info.cullMode                                    = (VkCullModeFlagBits) Specification.CullMode;
+        rasterization_create_info.cullMode                                    = (VkCullModeFlagBits) Description.CullMode;
         rasterization_create_info.frontFace                                   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterization_create_info.depthBiasEnable                             = VK_FALSE;
         rasterization_create_info.depthBiasConstantFactor                     = 0.0f; // Optional
@@ -105,27 +250,27 @@ namespace ZEngine::Rendering::Renderers::Pipelines
          */
         VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {};
         depth_stencil_state_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_stencil_state_create_info.stencilTestEnable                     = Specification.EnableStencilTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.stencilTestEnable                     = Description.EnableStencilTest ? VK_TRUE : VK_FALSE;
         depth_stencil_state_create_info.front                                 = {};
         depth_stencil_state_create_info.back                                  = {};
-        depth_stencil_state_create_info.depthTestEnable                       = Specification.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthCompareOp                        = VkCompareOp(Specification.DepthCompareOp);
-        depth_stencil_state_create_info.depthWriteEnable                      = Specification.EnableDepthWrite ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.depthTestEnable                       = Description.EnableDepthTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.depthCompareOp                        = VkCompareOp(Description.DepthCompareOp);
+        depth_stencil_state_create_info.depthWriteEnable                      = Description.EnableDepthWrite ? VK_TRUE : VK_FALSE;
         depth_stencil_state_create_info.minDepthBounds                        = 0.0f;
         depth_stencil_state_create_info.maxDepthBounds                        = 1.0f;
         /*
          * Color blend state and attachment
          */
-        ZENGINE_VALIDATE_ASSERT(Specification.Attachment, "Attachment can't be null")
+        ZENGINE_VALIDATE_ASSERT(Attachment, "Attachment can't be null")
 
-        uint32_t                                   attachment_count = Specification.Attachment->GetColorAttachmentCount();
+        uint32_t                                   attachment_count = Attachment->GetColorAttachmentCount();
         Array<VkPipelineColorBlendAttachmentState> color_blend_attachment_states{};
         color_blend_attachment_states.init(scratch.Arena, attachment_count, attachment_count);
         for (uint32_t i = 0; i < attachment_count; ++i)
         {
             color_blend_attachment_states[i].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-            if (Specification.EnableBlending)
+            if (Description.EnableBlending)
             {
                 color_blend_attachment_states[i].blendEnable         = VK_TRUE;
 
@@ -155,31 +300,47 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         // MoltenVK dereferences pAttachments unconditionally even when attachmentCount == 0,
         // so provide a dummy entry for depth-only pipelines to avoid a null-pointer fault.
-        VkPipelineColorBlendAttachmentState dummy_attachment              = {};
-        VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
-        color_blend_state_create_info.sType                               = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        color_blend_state_create_info.logicOpEnable                       = VK_FALSE;
-        color_blend_state_create_info.logicOp                             = VK_LOGIC_OP_COPY; // Optional
-        color_blend_state_create_info.attachmentCount                     = color_blend_attachment_states.size();
-        color_blend_state_create_info.pAttachments                        = (attachment_count > 0) ? color_blend_attachment_states.data() : &dummy_attachment;
-        color_blend_state_create_info.blendConstants[0]                   = 0.0f; // Optional
-        color_blend_state_create_info.blendConstants[1]                   = 0.0f; // Optional
-        color_blend_state_create_info.blendConstants[2]                   = 0.0f; // Optional
-        color_blend_state_create_info.blendConstants[3]                   = 0.0f; // Optional
-        color_blend_state_create_info.flags                               = 0;
-        color_blend_state_create_info.pNext                               = nullptr;
+        VkPipelineColorBlendAttachmentState dummy_attachment                                = {};
+        VkPipelineColorBlendStateCreateInfo color_blend_state_create_info                   = {};
+        color_blend_state_create_info.sType                                                 = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blend_state_create_info.logicOpEnable                                         = VK_FALSE;
+        color_blend_state_create_info.logicOp                                               = VK_LOGIC_OP_COPY; // Optional
+        color_blend_state_create_info.attachmentCount                                       = color_blend_attachment_states.size();
+        color_blend_state_create_info.pAttachments                                          = (attachment_count > 0) ? color_blend_attachment_states.data() : &dummy_attachment;
+        color_blend_state_create_info.blendConstants[0]                                     = 0.0f; // Optional
+        color_blend_state_create_info.blendConstants[1]                                     = 0.0f; // Optional
+        color_blend_state_create_info.blendConstants[2]                                     = 0.0f; // Optional
+        color_blend_state_create_info.blendConstants[3]                                     = 0.0f; // Optional
+        color_blend_state_create_info.flags                                                 = 0;
+        color_blend_state_create_info.pNext                                                 = nullptr;
         /*
          * Pipeline layout
          */
-        VkPipelineLayoutCreateInfo pipeline_layout_create_info            = {};
-        pipeline_layout_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipeline_layout_create_info.setLayoutCount                        = Shader->SetLayouts.size(); // Optional
-        pipeline_layout_create_info.pSetLayouts                           = Shader->SetLayouts.data(); // Optional
-        pipeline_layout_create_info.pushConstantRangeCount                = Shader->PushConstants.size();
-        pipeline_layout_create_info.pPushConstantRanges                   = Shader->PushConstants.data();
-        pipeline_layout_create_info.flags                                 = 0;
-        pipeline_layout_create_info.pNext                                 = nullptr;
-        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(Device->LogicalDevice, &(pipeline_layout_create_info), nullptr, &Layout) == VK_SUCCESS, "Failed to create pipeline layout")
+        VkPipelineLayoutCreateInfo pipeline_layout_create_info                              = {};
+        pipeline_layout_create_info.sType                                                   = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_create_info.setLayoutCount                                          = Shader->SetLayouts.size(); // Optional
+        pipeline_layout_create_info.pSetLayouts                                             = Shader->SetLayouts.data(); // Optional
+        pipeline_layout_create_info.pushConstantRangeCount                                  = Shader->PushConstants.size();
+        pipeline_layout_create_info.pPushConstantRanges                                     = Shader->PushConstants.data();
+        pipeline_layout_create_info.flags                                                   = 0;
+        pipeline_layout_create_info.pNext                                                   = nullptr;
+        Layout                                                                              = Device->PipelineStateCache->GetOrCreatePipelineLayout(pipeline_layout_create_info);
+        PSOCompatibilityRenderPassKey compatibility_key                                     = {};
+        VkRenderPass                  compatibility_render_pass                             = VK_NULL_HANDLE;
+        VkPipelineRenderingCreateInfo rendering_info                                        = {};
+        VkFormat                      rendering_color_formats[kMaxPSOColorBlendAttachments] = {};
+        if (Device->PhysicalDeviceSupportDynamicRendering)
+        {
+            const uint32_t color_format_count      = Attachment->GetDynamicRenderingFormats(rendering_color_formats, kMaxPSOColorBlendAttachments, &rendering_info.depthAttachmentFormat, &rendering_info.stencilAttachmentFormat);
+            rendering_info.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+            rendering_info.colorAttachmentCount    = color_format_count;
+            rendering_info.pColorAttachmentFormats = color_format_count == 0 ? nullptr : rendering_color_formats;
+        }
+        else
+        {
+            compatibility_key         = Device->PipelineStateCache->MakeCompatibilityRenderPassKey(*Attachment);
+            compatibility_render_pass = Device->PipelineStateCache->GetOrCreateCompatibilityRenderPass(*Attachment);
+        }
         /*
          * Graphic Pipeline Creation
          */
@@ -192,28 +353,37 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pViewportState               = &(viewport_state_create_info);
         graphic_pipeline_create_info.pRasterizationState          = &(rasterization_create_info);
         graphic_pipeline_create_info.pMultisampleState            = &(multisample_state_create_info);
-        graphic_pipeline_create_info.pDepthStencilState           = Specification.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
+        graphic_pipeline_create_info.pDepthStencilState           = Description.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
         graphic_pipeline_create_info.pColorBlendState             = &(color_blend_state_create_info);
         graphic_pipeline_create_info.pDynamicState                = &(dynamic_state_create_info);
         graphic_pipeline_create_info.layout                       = Layout;
-        graphic_pipeline_create_info.renderPass                   = Specification.Attachment->GetHandle();
+        graphic_pipeline_create_info.renderPass                   = compatibility_render_pass;
         graphic_pipeline_create_info.subpass                      = 0;
         graphic_pipeline_create_info.basePipelineHandle           = VK_NULL_HANDLE; // Optional
         graphic_pipeline_create_info.basePipelineIndex            = -1;             // Optional
         graphic_pipeline_create_info.flags                        = 0;              // Optional
-        graphic_pipeline_create_info.pNext                        = nullptr;        // Optional
-        ZENGINE_VALIDATE_ASSERT(vkCreateGraphicsPipelines(Device->LogicalDevice, VK_NULL_HANDLE, 1, &graphic_pipeline_create_info, nullptr, &Handle) == VK_SUCCESS, "Failed to create Graphics Pipeline")
+        graphic_pipeline_create_info.pNext                        = Device->PhysicalDeviceSupportDynamicRendering ? &rendering_info : nullptr;
+        const PSOGraphicsPipelineKey pipeline_key                 = Device->PipelineStateCache->MakeGraphicsPipelineKey(graphic_pipeline_create_info, Shader->Generation);
+        Handle                                                    = Device->PipelineStateCache->GetOrCreateGraphicsPipeline(graphic_pipeline_create_info, Shader->Generation);
+        Device->PipelineStateCache->PinPipeline(Handle);
+        Device->PipelineStateCache->RecordGraphicsWarmup(Shader->m_specification.Name, pipeline_key, compatibility_key);
+        BakedShaderGeneration = Shader->Generation;
 
         ZReleaseScratch(scratch);
     }
 
     void GraphicPipeline::Dispose()
     {
-        Shader->Dispose();
+        if (Device && Device->PipelineStateCache && Handle != VK_NULL_HANDLE)
+            Device->PipelineStateCache->UnpinPipeline(Handle);
 
-        Device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE_LAYOUT, Layout);
-        Device->EnqueueForDeletion(Rendering::DeviceResourceType::PIPELINE, Handle);
-        Layout = VK_NULL_HANDLE;
-        Handle = VK_NULL_HANDLE;
+        // Shaders are owned by VulkanDevice::ShaderManager and may be shared by passes.
+        Shader                = nullptr;
+
+        // Pipeline layouts are borrowed from PSOCache and outlive this pass.
+        Layout                = VK_NULL_HANDLE;
+        // Graphics pipelines are borrowed from PSOCache and outlive this pass.
+        Handle                = VK_NULL_HANDLE;
+        BakedShaderGeneration = UINT32_MAX;
     }
 } // namespace ZEngine::Rendering::Renderers::Pipelines

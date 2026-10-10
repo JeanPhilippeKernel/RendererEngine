@@ -1,6 +1,6 @@
 #pragma once
 #include <Tetragrama/EditorScene.h>
-#include <Tetragrama/Layers/ImguiLayer.h>
+#include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
@@ -16,15 +16,31 @@ namespace Tetragrama
 
     struct EditorConfiguration
     {
-        ZEngine::Core::Containers::String WorkingSpacePath         = {};
-        ZEngine::Core::Containers::String DefaultImportTexturePath = {};
-        ZEngine::Core::Containers::String DefaultImportSoundPath   = {};
-        ZEngine::Core::Containers::String ScenePath                = {};
-        ZEngine::Core::Containers::String SceneDataPath            = {};
-        ZEngine::Core::Containers::String ProjectName              = {};
-        ZEngine::Core::Containers::String ActiveSceneName          = {};
+        ZEngine::Core::Containers::String     WorkingSpacePath         = {};
+        ZEngine::Core::Containers::String     ScenePath                = {};
+        // Asset import directories (all under Assets/)
+        ZEngine::Core::Containers::String     TexturePath              = {};
+        ZEngine::Core::Containers::String     SoundPath                = {};
+        ZEngine::Core::Containers::String     MeshPath                 = {};
+        ZEngine::Core::Containers::String     MaterialPath             = {};
+        ZEngine::Core::Containers::String     SpritePath               = {};
+        ZEngine::Core::Containers::String     EnvironmentMapImportPath = {};
+        // New scenes begin with this template, then own and serialize their copy.
+        ZEngine::Rendering::Scenes::SkyConfig DefaultSky               = {};
+        ZEngine::Core::Containers::String     ProjectName              = {};
+        ZEngine::Core::Containers::String     ActiveSceneName          = {};
+        bool                                  DarkTheme                = true;
+        int                                   GizmoOperation           = -1;
+        bool                                  ShowContentBrowser       = true;
+        bool                                  FocusContentBrowser      = false;
+        bool                                  ShowConsole              = false;
+        bool                                  FocusConsole             = false;
+        bool                                  ShowImporter             = false;
+        bool                                  FocusImporter            = false;
+        char                                  PendingImportPath[1024]  = {};
+        char                                  PendingImportName[256]   = {};
 
-        void                              ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
+        void                                  ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };
     ZDEFINE_PTR(EditorConfiguration);
 
@@ -35,23 +51,40 @@ namespace Tetragrama
 
         virtual ~Editor() {}
 
-        ZRawPtr(Layers::ImguiLayer) UILayer                    = nullptr;
+        Layers::ZUILayer*                     ZUIUILayer                        = nullptr;
 
-        ZEngine::Core::VFS::VFSDiskBackend WorkingSpaceBackend = {};
+        /// @brief Editor-only navigation aid; it never changes game-camera behavior.
+        bool                                  ConstrainCameraToAtmosphereGround = false;
 
-        virtual void                       OnInitializing() override;
-        virtual void                       OverrideWindowConfiguration() override;
-        virtual void                       OnInitialized() override;
+        ZEngine::Core::VFS::VFSDiskBackend    WorkingSpaceBackend               = {};
+        // All editor-owned persistent CPU state is bounded by the Editor budget.
+        ZEngine::Core::Memory::ArenaAllocator EditorArena                       = {};
 
-        virtual void                       OnUpdate(float dt) override;
-        virtual void                       OnEvent(ZEngine::Core::CoreEvent&) override;
+        virtual void                          OnInitializing() override;
+        virtual void                          OverrideWindowConfiguration() override;
+        virtual void                          OnInitialized() override;
 
-        virtual void                       OnPreRender() override;
-        virtual void                       OnPostRender() override;
-        virtual void                       OnRenderUI() override;
+        virtual void                          OnUpdate(float dt) override;
+        virtual void                          OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        virtual void                       OnClosing() override;
-        virtual void                       OnClosed() override;
+        void                                  ProcessEvent(ZEngine::Core::CoreEvent&) override;
+
+        virtual void                          OnPreRender() override;
+        virtual void                          OnPostRender() override;
+        virtual void                          OnRenderUI() override;
+
+        virtual void                          OnClosing() override;
+        virtual void                          OnClosed() override;
+
+        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
+        void                                  SaveScene();
+
+        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
+        void                                  SaveSceneAs();
+
+        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
+        /// @param path Native filesystem path to the scene file.
+        void                                  OpenScene(const char* path);
     };
     ZDEFINE_PTR(Editor);
 

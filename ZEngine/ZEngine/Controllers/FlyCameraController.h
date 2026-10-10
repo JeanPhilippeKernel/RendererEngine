@@ -1,36 +1,76 @@
 #pragma once
 #include <ZEngine/Controllers/ICameraController.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Rendering/Cameras/FlyCamera.h>
 
 namespace ZEngine::Controllers
 {
-    struct FlyCameraController : public ICameraController, public Windows::Inputs::IMouseEventCallback, public Windows::Inputs::IKeyboardEventCallback
+    struct FlyCameraController : public ICameraController
     {
         FlyCameraController()          = default;
         virtual ~FlyCameraController() = default;
 
-        void                          Update(Core::TimeStep) override;
+        void                          Initialize(Input::InputManager* input_manager, Core::Memory::ArenaAllocator* arena);
+
+        void                          Update(Core::TimeStep dt) override;
         bool                          OnEvent(Core::CoreEvent&) override;
-
         Rendering::Cameras::CameraPtr GetCamera() const override;
-        virtual Core::Maths::Vec3f    GetPosition() const override;
-        virtual void                  SetPosition(const Core::Maths::Vec3f& position) override;
-
-        void                          SetViewport(float width, float height);
-        void                          ResumeEventProcessing();
-        void                          PauseEventProcessing();
-
-        virtual bool                  OnMouseButtonPressed(Windows::Events::MouseButtonPressedEvent&) override;
-        virtual bool                  OnMouseButtonReleased(Windows::Events::MouseButtonReleasedEvent&) override;
-        virtual bool                  OnMouseButtonMoved(Windows::Events::MouseButtonMovedEvent&) override;
-        virtual bool                  OnMouseButtonWheelMoved(Windows::Events::MouseButtonWheelEvent&) override;
-
-        virtual bool                  OnKeyPressed(Windows::Events::KeyPressedEvent&) override;
-        virtual bool                  OnKeyReleased(Windows::Events::KeyReleasedEvent&) override;
+        Core::Maths::Vec3f            GetPosition() const override;
+        void                          SetPosition(const Core::Maths::Vec3f&) override;
+        void                          SetViewport(float logicalW, float logicalH) override;
+        void                          SetViewportOrigin(float x, float y) override;
+        /// @brief Update the viewport screen rect used for self-contained hover detection.
+        void                          SetViewportRect(float x0, float y0, float x1, float y1) override;
+        void                          SetInputCapture(bool pointer_captured, bool keyboard_captured) override;
+        /// @brief Reset to Idle and unlock cursor — call when the app loses focus.
+        void                          ResumeEventProcessing() override;
+        void                          PauseEventProcessing() override;
 
     protected:
-        PaddedAtomic<bool>               m_process_event = {.value = false};
-        Rendering::Cameras::FlyCameraPtr m_camera        = nullptr;
+        /// @brief Camera interaction state.
+        enum class CamState : uint8_t
+        {
+            Idle  = 0, ///< Cursor outside viewport — no input fed.
+            Hover = 1, ///< Cursor inside viewport — scroll, pan, orbit active.
+            Fly   = 2, ///< RMB held — cursor locked, full WASD + mouselook.
+        };
+
+        void                             EnterFly();
+        void                             ExitFly();
+        void                             ClearKeyboardInput();
+        /// @brief Transfer one-shot editor commands without exposing key bindings to FlyCamera.
+        void                             FeedNavigationCommands(bool enabled);
+        Input::InputManager*             m_input                     = nullptr;
+        CamState                         m_state                     = CamState::Idle;
+        bool                             m_input_enabled             = true;
+        bool                             m_pointer_captured          = false;
+        bool                             m_keyboard_captured         = false;
+        float                            m_vp[4]                     = {}; // viewport rect: x0, y0, x1, y1
+        Rendering::Cameras::FlyCameraPtr m_camera                    = nullptr;
+
+        uint32_t                         m_slot_forward              = 0;
+        uint32_t                         m_slot_right                = 0;
+        uint32_t                         m_slot_up                   = 0;
+        uint32_t                         m_slot_scroll               = 0;
+        uint32_t                         m_slot_rmb                  = 0;
+        uint32_t                         m_slot_mmb                  = 0;
+        uint32_t                         m_slot_lmb                  = 0;
+        uint32_t                         m_slot_alt                  = 0;
+        uint32_t                         m_slot_shift                = 0;
+        // Command on macOS, Control on Windows and Linux. This is deliberately
+        // named by purpose rather than by physical key.
+        uint32_t                         m_slot_primary_modifier     = 0;
+        // The modifier used by non-keypad navigation fallbacks. It aliases
+        // Shift on Windows/Linux and is Control on macOS.
+        uint32_t                         m_slot_alternate_modifier   = 0;
+        uint32_t                         m_slot_focus                = 0;
+        uint32_t                         m_slot_frame_all            = 0;
+        uint32_t                         m_slot_projection           = 0;
+        uint32_t                         m_slot_projection_top_row   = 0;
+        uint32_t                         m_slot_axis_view[3]         = {};
+        uint32_t                         m_slot_axis_view_top_row[3] = {};
+        uint32_t                         m_slot_bookmark[9]          = {};
     };
+    ZDEFINE_PTR(FlyCameraController);
 } // namespace ZEngine::Controllers

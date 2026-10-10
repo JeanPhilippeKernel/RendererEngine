@@ -1,12 +1,31 @@
 #pragma once
-#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
+
+struct RRMUploadBatchTestHelper;
+
+namespace ZEngine::Rendering::Renderers::Pipelines
+{
+    struct IPipeline;
+    class PSOCache;
+} // namespace ZEngine::Rendering::Renderers::Pipelines
+namespace ZEngine::Rendering::Renderers::RenderPasses
+{
+    struct GraphicPass;
+}
+
 // clang-format off
+#include <ZEngine/Core/Containers/SPSCQueue.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
+#include <ZEngine/Core/Memory/GpuAllocator.h>
+#include <ZEngine/Rendering/EnvironmentLighting.h>
+#include <ZEngine/Rendering/RenderHandle.h>
+#include <ZEngine/Hardwares/CommandBufferManager.h>
+#include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
+#include <ZEngine/Hardwares/PerFrameUploadHeap.h>
 #include <ZEngine/Hardwares/VulkanLayer.h>
 #include <ZEngine/Helpers/HandleManager.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
 #include <ZEngine/Rendering/Primitives/Fence.h>
 #include <ZEngine/Rendering/Primitives/Semaphore.h>
 #include <ZEngine/Rendering/Pools/CommandPool.h>
@@ -16,14 +35,13 @@
 #include <ZEngine/Rendering/Specifications/RenderPassSpecification.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Containers/HashSet.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/Containers/Strings.h>
 #include <ZEngine/Core/Memory/Allocator.h>
-#include <ZEngine/Hardwares/AsyncResourceLoader.h>
-#include <set>
-#include <unordered_set>
 #include <limits>
 #include <cstdint>
+#include <atomic>
 // clang-format on
 
 namespace ZEngine::Windows
@@ -49,371 +67,62 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
 namespace ZEngine::Hardwares
 {
+    using Core::Memory::BufferImage;
+    using Core::Memory::BufferView;
+    using Core::Memory::GpuMemoryDomain;
+
     struct WriteDescriptorSetRequestKey;
-    struct WriteDescriptorSetRequest;
-    struct CommandBufferManager;
     struct AsyncGPUOperation;
     struct AsyncGPUOperationHandle;
-    /*
-     * Vertex | Index | Uniform | Storage Buffers
-     */
-    struct BufferView;
-    struct BufferImage;
-    struct IGraphicBuffer;
-    class StorageBuffer;
-    class VertexBuffer;
-    class IndexBuffer;
-    class UniformBuffer;
+
+    inline constexpr uint32_t kMaxShaderReloadPathBytes = 512;
+
+    /// @brief Cross-thread request consumed by the render thread before command recording.
+    struct ShaderReloadRequest
+    {
+        char Path[kMaxShaderReloadPathBytes] = {};
+    };
     /*
      * GPU Device
      */
     struct VulkanDevice;
 
-    enum BufferType : uint8_t
+    struct ImageBuffer
     {
-        UNKNOWN = 0,
-        VERTEX,
-        INDEX,
-        UNIFORM,
-        STORAGE,
-        INDIRECT
-    };
-    struct BufferView
-    {
-        uint8_t       FrameIndex = std::numeric_limits<uint8_t>::max();
-        BufferType    Type       = BufferType::UNKNOWN;
-        VkBuffer      Handle     = VK_NULL_HANDLE;
-        VmaAllocation Allocation = nullptr;
-        // clang-format off
-        operator bool() const
+        struct CachedImageView
         {
-            return (Handle != VK_NULL_HANDLE);
-        }
-        // clang-format on
-    };
+            VkImageSubresourceRange Range    = {};
+            VkImageViewType         ViewType = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+            VkImageView             Handle   = VK_NULL_HANDLE;
+        };
 
-    struct BufferImage
-    {
-        uint8_t       FrameIndex{std::numeric_limits<uint8_t>::max()};
-        VkImage       Handle{VK_NULL_HANDLE};
-        VkImageView   ViewHandle{VK_NULL_HANDLE};
-        VkSampler     Sampler{VK_NULL_HANDLE};
-        VmaAllocation Allocation{nullptr};
-        // clang-format off
-        operator bool() const
-        {
-            return (Handle != VK_NULL_HANDLE);
-        }
-        // clang-format on
-    };
+        ImageBuffer() = default;
+        ~ImageBuffer();
 
-    struct IGraphicBuffer
-    {
-        IGraphicBuffer() {}
-        IGraphicBuffer(Hardwares::VulkanDevice* device) : m_device(device) {}
-        virtual ~IGraphicBuffer();
+        Rendering::Specifications::ImageLayout              Layout        = Rendering::Specifications::ImageLayout::UNDEFINED;
+        Rendering::Specifications::ImageBufferSpecification Specification = {};
+        cstring                                             DebugName     = nullptr;
+        VulkanDevice*                                       Device        = nullptr;
 
-        virtual BufferView CreateBuffer() = 0;
+        void                                                Construct(VulkanDevice* device);
+        /// @brief Constructs a distinct VkImage backed by `backing`'s VMA allocation.
+        void                                                ConstructAliasing(VulkanDevice* device, const BufferImage& backing);
 
-        virtual void       Allocate(uint64_t size, const char* debug_name);
-        virtual void       Clear(uint8_t frame_index, uint8_t thread_index);
-        virtual void       ClearRange(uint8_t frame_index, uint8_t thread_index, uint8_t value, uint32_t offset, size_t size);
-        virtual void       UploadRange(uint8_t frame_index, uint8_t thread_index, const void* data, uint32_t offset, size_t size);
-        virtual void       Upload(uint8_t frame_index, uint8_t thread_index, const void* data, size_t size);
-
-        virtual void       Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size);
-
-        template <typename T>
-        inline void Write(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<T> content)
-        {
-            Write(frame_index, thread_index, content.data(), content.size_bytes());
-        }
-
-        template <typename T>
-        inline void Upload(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<T> content)
-        {
-            Upload(frame_index, thread_index, content.data(), content.size_bytes());
-        }
-
-        virtual void                          CleanUpMemory();
-        virtual void*                         GetNativeBufferHandle() const;
-        virtual const VkDescriptorBufferInfo& GetDescriptorBufferInfo();
-        virtual void                          Dispose();
-
-        uint64_t                              m_total_size     = 0;
-        uint64_t                              m_current_offset = 0;
-        Hardwares::VulkanDevice*              m_device         = nullptr;
-        BufferView                            Buffer           = {};
-        VkDescriptorBufferInfo                BufferInfo       = {};
-    };
-
-    template <typename T /*, typename = std::enable_if_t<std::is_base_of_v<IGraphicBuffer, T>> */>
-    struct IBufferSet
-    {
-        Core::Containers::Array<T> set = {};
-
-        T&                         operator[](uint32_t index)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-            return set[index];
-        }
-
-        T& At(uint32_t index)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-            return set[index];
-        }
-
-        template <typename K>
-        void SetData(uint32_t index, Core::Containers::ArrayView<K> data)
-        {
-            ZENGINE_VALIDATE_ASSERT(index < set.size(), "Index out of range")
-
-            T& entry = set[index];
-            entry->template Upload<K>(data);
-        }
-
-        void Dispose() {}
-    };
-
-    struct VertexBuffer : public IGraphicBuffer
-    {
-        explicit VertexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        virtual BufferView CreateBuffer() override;
-
-        virtual ~VertexBuffer() {}
-    };
-
-    using VertexBufferSet       = IBufferSet<VertexBuffer*>;
-    using VertexBufferSetHandle = Helpers::Handle<VertexBufferSet>;
-
-    template <>
-    inline void VertexBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    struct StorageBuffer : public IGraphicBuffer
-    {
-        explicit StorageBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        virtual BufferView CreateBuffer() override;
-
-        virtual ~StorageBuffer() {}
-    };
-
-    using StorageBufferSet       = IBufferSet<StorageBuffer*>;
-    using StorageBufferSetHandle = Helpers::Handle<StorageBufferSet>;
-
-    template <>
-    inline void StorageBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    struct IndexBuffer : public IGraphicBuffer
-    {
-        IndexBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        virtual BufferView CreateBuffer() override;
-
-        virtual ~IndexBuffer() {}
-    };
-
-    using IndexBufferSet       = IBufferSet<IndexBuffer*>;
-    using IndexBufferSetHandle = Helpers::Handle<IndexBufferSet>;
-
-    template <>
-    inline void IndexBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    struct IndirectBuffer : public IGraphicBuffer
-    {
-        explicit IndirectBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        uint32_t           CommandCount = 0;
-
-        virtual BufferView CreateBuffer() override;
-        virtual void       CleanUpMemory() override;
-        virtual void       Upload(uint8_t frame_index, uint8_t thread_index, const VkDrawIndirectCommand* data, size_t byte_size);
-
-        virtual void       Write(uint8_t frame_index, uint8_t thread_index, const void* data, size_t byte_size) override;
-
-        inline void        Write(uint8_t frame_index, uint8_t thread_index, Core::Containers::ArrayView<VkDrawIndirectCommand> content)
-        {
-            Write(frame_index, thread_index, content.data(), content.size_bytes());
-        }
-
-        virtual ~IndirectBuffer() {}
-    };
-
-    using IndirectBufferSet       = IBufferSet<IndirectBuffer*>;
-    using IndirectBufferSetHandle = Helpers::Handle<IndirectBufferSet>;
-
-    template <>
-    inline void IndirectBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    class UniformBuffer : public IGraphicBuffer
-    {
-    public:
-        explicit UniformBuffer() : IGraphicBuffer(nullptr) {}
-        explicit UniformBuffer(Hardwares::VulkanDevice* device) : IGraphicBuffer(device) {}
-
-        explicit UniformBuffer(const UniformBuffer& rhs) = delete;
-
-        explicit UniformBuffer(UniformBuffer& rhs)
-        {
-            this->m_device     = rhs.m_device;
-            this->m_total_size = rhs.m_total_size;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-        }
-
-        explicit UniformBuffer(UniformBuffer&& rhs) noexcept
-        {
-            this->m_device     = rhs.m_device;
-            this->m_total_size = rhs.m_total_size;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-        }
-
-        UniformBuffer& operator=(const UniformBuffer& rhs) = delete;
-
-        UniformBuffer& operator=(UniformBuffer& rhs)
-        {
-            if (this == &rhs)
-            {
-                return *this;
-            }
-
-            this->m_total_size = rhs.m_total_size;
-            this->m_device     = rhs.m_device;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-
-            return *this;
-        }
-
-        UniformBuffer& operator=(UniformBuffer&& rhs) noexcept
-        {
-            if (this == &rhs)
-            {
-                return *this;
-            }
-
-            this->m_total_size = rhs.m_total_size;
-            this->m_device     = rhs.m_device;
-
-            std::swap(this->Buffer, rhs.Buffer);
-            std::swap(this->m_uniform_buffer_mapped, rhs.m_uniform_buffer_mapped);
-
-            rhs.m_total_size            = 0;
-            rhs.m_uniform_buffer_mapped = false;
-            rhs.Buffer                  = {};
-
-            return *this;
-        }
-
-        virtual void       Allocate(uint64_t byte_size, const char* debug_name) override;
-        virtual BufferView CreateBuffer() override;
-        virtual void       CleanUpMemory() override;
-
-        virtual ~UniformBuffer() {}
+        BufferImage&                                        GetBuffer();
+        const BufferImage&                                  GetBuffer() const;
+        VkImageView                                         GetImageViewHandle() const;
+        /// @brief Returns a lazily-created view for one exact image subresource range.
+        /// @details The returned handle remains valid until this ImageBuffer is reconstructed or disposed.
+        VkImageView                                         GetImageViewHandle(VkImageViewType view_type, const VkImageSubresourceRange& range);
+        VkImage                                             GetHandle() const;
+        VkSampler                                           GetSampler() const;
+        void                                                Dispose();
+        VkDescriptorImageInfo&                              GetDescriptorImageInfo();
 
     private:
-        bool m_uniform_buffer_mapped{false};
-    };
-
-    using UniformBufferSet       = IBufferSet<UniformBuffer*>;
-    using UniformBufferSetHandle = Helpers::Handle<UniformBufferSet>;
-
-    template <>
-    inline void UniformBufferSet::Dispose()
-    {
-        for (auto buffer : set)
-        {
-            if (buffer)
-            {
-                buffer->Dispose();
-            }
-        }
-    }
-
-    struct Image2DBuffer
-    {
-        Image2DBuffer() = default;
-        ~Image2DBuffer();
-
-        Rendering::Specifications::ImageLayout                Layout        = Rendering::Specifications::ImageLayout::UNDEFINED;
-        Rendering::Specifications::Image2DBufferSpecification Specification = {};
-        VulkanDevice*                                         Device        = nullptr;
-
-        void                                                  Construct(VulkanDevice* device);
-
-        BufferImage&                                          GetBuffer();
-        const BufferImage&                                    GetBuffer() const;
-        VkImageView                                           GetImageViewHandle() const;
-        VkImage                                               GetHandle() const;
-        VkSampler                                             GetSampler() const;
-        void                                                  Dispose();
-        VkDescriptorImageInfo&                                GetDescriptorImageInfo();
-
-    private:
-        BufferImage           m_buffer_image;
-        VkDescriptorImageInfo m_image_info;
-    };
-
-    struct DirtyResource
-    {
-        uint32_t                      FrameIndex = UINT32_MAX;
-        void*                         Handle     = nullptr;
-        void*                         Data1      = nullptr;
-        Rendering::DeviceResourceType Type;
+        BufferImage                              m_buffer_image;
+        VkDescriptorImageInfo                    m_image_info;
+        Core::Containers::Array<CachedImageView> m_cached_image_views;
     };
 
     struct QueueView
@@ -421,6 +130,17 @@ namespace ZEngine::Hardwares
         uint32_t FamilyIndex{0xFFFFFFFF};
         VkQueue  Handle{VK_NULL_HANDLE};
     };
+
+    /// @brief Element of TextureHandleToDispose; TimelineValue gates Present()'s drain.
+    struct TextureDisposeEntry
+    {
+        Rendering::Textures::TextureHandle Handle        = {};
+        uint64_t                           TimelineValue = 0;
+    };
+
+    /// @brief Lock-free SPSC ring for TextureHandleToDispose — producer and consumer are
+    ///        both render-thread only, so no mutex is needed.
+    using TextureDisposeQueue = Core::Containers::SPSCQueue<TextureDisposeEntry, 1024>;
 
     /*
      * Command Buffer definition
@@ -441,7 +161,11 @@ namespace ZEngine::Hardwares
 
     struct CommandBuffer
     {
-        CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool one_time);
+        /// @brief Creates a Vulkan command buffer and its transient recording arena.
+        /// @param parent_arena Optional persistent arena for the recording arena.
+        /// @details Render-graph buffers pass a manager-owned arena because they
+        /// must outlive RenderGraph::Execute()'s Device->Arena scratch scope.
+        CommandBuffer(Hardwares::VulkanDevice* device, VkCommandPool command_pool, Rendering::QueueType type, bool primary, Core::Memory::ArenaAllocator* parent_arena = nullptr);
         ~CommandBuffer();
 
         Rendering::QueueType              QueueType;
@@ -453,7 +177,9 @@ namespace ZEngine::Hardwares
         void                              Free();
         VkCommandBuffer                   GetHandle() const;
         void                              Begin();
-        void                              BeginSecondary(Rendering::Renderers::RenderPasses::RenderPass* const render_pass, VkFramebuffer framebuffer);
+        void                              BeginSecondary(Rendering::Renderers::RenderPasses::GraphicPass* const render_pass, VkFramebuffer framebuffer);
+        /// @brief Begins a secondary command buffer outside a rendering instance.
+        void                              BeginSecondaryCompute();
         void                              End();
         bool                              Completed();
         bool                              IsExecutable();
@@ -465,102 +191,85 @@ namespace ZEngine::Hardwares
         void                              SetSignalSemaphore(Rendering::Primitives::Semaphore* const semaphore);
         Rendering::Primitives::Semaphore* GetSignalSemaphore() const;
         Rendering::Primitives::Fence*     GetSignalFence();
-        void                              ClearColor(float r, float g, float b, float a);
-        void                              ClearDepth(float depth_color, uint32_t stencil);
-        void                              BeginRenderPass(Rendering::Renderers::RenderPasses::RenderPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
+        /// @brief Begins a dynamic-rendering instance on this primary command buffer.
+        void                              BeginDynamicRendering(const VkRenderingInfo& rendering_info);
+        /// @brief Ends the active dynamic-rendering instance on this command buffer.
+        void                              EndDynamicRendering();
+        /// @brief Transitions the acquired swapchain image for color-attachment use.
+        void                              TransitionSwapchainImageToColorAttachment();
+        /// @brief Transitions the acquired swapchain image to the presentation layout.
+        void                              TransitionSwapchainImageToPresent();
+        /// @brief Begins a legacy render pass or a dynamic-rendering instance.
+        /// @return False when legacy rendering has no valid framebuffer.
+        bool                              BeginRenderPass(Rendering::Renderers::RenderPasses::GraphicPass* const, VkFramebuffer framebuffer, bool is_content_secondary_command_buffer);
         void                              EndRenderPass();
-        void                              BindDescriptorSets(uint32_t frame_index = 0);
+        void                              BindDescriptorSets(uint32_t frame_index = 0, const uint32_t* dynamic_offsets = nullptr, uint32_t dynamic_offset_count = 0);
         void                              BindDescriptorSet(const VkDescriptorSet& descriptor);
-        void                              BindPipeline(Rendering::Specifications::PipelineBindPoint bind_point, Rendering::Renderers::Pipelines::GraphicPipeline* const pipeline);
-        void                              DrawIndirect(const Hardwares::IndirectBuffer& buffer);
-        void                              DrawIndexedIndirect(const Hardwares::IndirectBuffer& buffer, uint32_t count);
+        void                              BindPipeline(Rendering::Renderers::Pipelines::IPipeline* const pipeline);
+        void                              DrawIndirect(VkBuffer buffer, uint32_t offset, uint32_t draw_count);
+        void                              DrawIndexedIndirect(VkBuffer buffer, uint32_t offset, uint32_t count);
+        void                              Dispatch(uint32_t group_count_x, uint32_t group_count_y = 1, uint32_t group_count_z = 1);
         void                              DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
         void                              Draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_index, uint32_t first_instance);
+        /// @brief Records a Vulkan Synchronization2 dependency on this command buffer.
+        void                              PipelineBarrier2(const VkDependencyInfo& dependency_info);
+        /// @brief Begins conditional execution using a GPU-written 32-bit predicate.
+        void                              BeginConditionalRendering(VkBuffer condition_buffer, VkDeviceSize offset = 0, bool invert = false);
+        /// @brief Ends the current conditional-execution scope.
+        void                              EndConditionalRendering();
+        /// @brief Records a Synchronization2 timestamp query on this command buffer.
+        void                              WriteTimestamp2(VkPipelineStageFlags2 stage_mask, VkQueryPool query_pool, uint32_t query);
+        /// @brief Resets a query range before it is reused by this command buffer.
+        /// @details RenderGraph records this on the graphics primary after the
+        /// associated FrameContext fence has completed.
+        void                              ResetQueryPool(VkQueryPool query_pool, uint32_t first_query, uint32_t query_count);
+        /// @brief Begins an occlusion or pipeline-statistics query.
+        void                              BeginQuery(VkQueryPool query_pool, uint32_t query, VkQueryControlFlags flags = 0);
+        /// @brief Ends an active occlusion or pipeline-statistics query.
+        void                              EndQuery(VkQueryPool query_pool, uint32_t query);
+        /// @brief Copies query-pool results into a transfer-destination buffer.
+        void                              CopyQueryPoolResults(VkQueryPool query_pool, uint32_t first_query, uint32_t query_count, VkBuffer destination, VkDeviceSize destination_offset, VkDeviceSize stride, VkQueryResultFlags flags);
+        void                              BeginDebugLabel(cstring name);
+        void                              EndDebugLabel();
         void                              TransitionImageLayout(const Rendering::Primitives::ImageMemoryBarrier& image_barrier);
-        void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout);
-        void                              BindVertexBuffer(Hardwares::VertexBuffer& buffer);
-        void                              BindIndexBuffer(const Hardwares::IndexBuffer& buffer, VkIndexType type);
+        /// @brief Copies a graph-declared range between two Vulkan buffers.
+        /// @details The caller declares transfer synchronization through the render graph;
+        /// this wrapper intentionally records only vkCmdCopyBuffer.
+        void                              CopyBuffer(VkBuffer source, VkBuffer destination, VkDeviceSize size, VkDeviceSize source_offset = 0, VkDeviceSize destination_offset = 0);
+        void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset = 0, uint32_t depth = 1);
+        void                              BindVertexBuffer(const Core::Memory::BufferView& buffer);
+        void                              BindIndexBuffer(const Core::Memory::BufferView& buffer, VkIndexType type);
         void                              SetScissor(uint32_t w, uint32_t h, int32_t x = 0, int32_t y = 0);
         void                              SetViewport(uint32_t w, uint32_t h, float x = 0.0f, float y = 0.0f, float min_depth = 0.0f, float max_depth = 1.0f);
         void                              PushConstants(VkShaderStageFlags stage_flags, uint32_t offset, uint32_t size, const void* data);
+        /// @brief Executes one already-recorded secondary command buffer without allocation.
+        void                              ExecuteSecondaryCommandBuffer(CommandBuffer* const buffer);
         void                              ExecuteSecondaryCommandBuffers(Core::Containers::ArrayView<CommandBuffer> buffers);
 
     private:
-        std::atomic_uint8_t m_command_buffer_state{CommandBufferState::Idle};
-        VkCommandBuffer     m_command_buffer{VK_NULL_HANDLE};
-        VkCommandPool       m_command_pool{VK_NULL_HANDLE};
-        VkClearValue        m_clear_value[2] = {0};
-        ZRawPtr(Rendering::Primitives::Fence) m_signal_fence;
-        ZRawPtr(Rendering::Primitives::Semaphore) m_signal_semaphore;
-        ZRawPtr(Rendering::Renderers::RenderPasses::RenderPass) m_active_render_pass;
+        std::atomic_uint8_t                         m_command_buffer_state{CommandBufferState::Idle};
+        VkCommandBuffer                             m_command_buffer{VK_NULL_HANDLE};
+        VkCommandPool                               m_command_pool{VK_NULL_HANDLE};
+        Rendering::Primitives::Fence*               m_signal_fence                = nullptr;
+        Rendering::Primitives::Semaphore*           m_signal_semaphore            = nullptr;
+        Rendering::Renderers::Pipelines::IPipeline* m_active_pipeline             = nullptr;
+        bool                                        m_in_render_pass              = false;
+        bool                                        m_in_dynamic_rendering        = false;
+        bool                                        m_dynamic_swapchain_rendering = false;
+        bool                                        m_in_conditional_rendering    = false;
     };
 
     ZDEFINE_PTR(CommandBuffer);
-
-    struct CommandBufferManager
-    {
-        struct InstantCommandBufferInfo;
-
-        void                                                            Initialize(VulkanDevice* device, uint32_t image_count = 0, uint8_t override_thread_count = 0);
-        void                                                            Deinitialize();
-        CommandBuffer*                                                  GetCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint8_t buffer_per_pool_index, bool begin = true);
-        CommandBuffer*                                                  GetInstantCommandBuffer(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index, uint32_t buffer_per_pool_index, bool begin = true);
-        Rendering::Pools::CommandPool*                                  GetCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
-        Rendering::Pools::CommandPool*                                  GetInstantCommandPool(Rendering::QueueType type, uint8_t frame_index, uint8_t thread_index);
-        void                                                            ResetPool(uint8_t frame_index, uint8_t thread_index);
-        void                                                            IncreaseBuffers();
-        void                                                            EnqueueBuffer(CommandBufferPtr const buffer);
-        void                                                            EndEnqueuedBuffers();
-        void                                                            ResetEnqueuedBufferIndex();
-        bool                                                            IsInitialized() const;
-
-        uint32_t                                                        TotalCommandBufferCount        = 0;
-        uint32_t                                                        TotalInstantCommandBufferCount = 0;
-        uint32_t                                                        TotalPoolCount                 = 0;
-        uint32_t                                                        TotalThreadCount               = 0;
-        uint32_t                                                        EnqueuedCommandBufferIndex     = 0;
-        const uint32_t                                                  MaxBufferPerPool               = 4;
-        VulkanDevice*                                                   Device                         = nullptr;
-
-        Core::Containers::Array<Rendering::Pools::CommandPool*>         InstantGraphicsPools           = {};
-        Core::Containers::Array<Rendering::Pools::CommandPool*>         InstantTransferPools           = {};
-        Core::Containers::Array<CommandBuffer*>                         InstantGraphicsCommandBuffers  = {};
-        Core::Containers::Array<CommandBuffer*>                         InstantTransferCommandBuffers  = {};
-
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> CommandPools                   = {};
-        Core::Containers::Array<ZRawPtr(Rendering::Pools::CommandPool)> TransferCommandPools           = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 CommandBuffers                 = {};
-        Core::Containers::Array<ZRawPtr(CommandBuffer)>                 TransferCommandBuffers         = {};
-        Core::Containers::Array<CommandBuffer*>                         EnqueuedCommandBuffers         = {};
-
-    private:
-        bool m_is_initialized = false;
-    };
-    ZDEFINE_PTR(CommandBufferManager);
 
     struct WriteDescriptorSetRequestKey
     {
         uint32_t        Binding = 0;
         VkDescriptorSet DstSet  = VK_NULL_HANDLE;
 
-        bool            operator<(const WriteDescriptorSetRequestKey& other) const
+        bool            operator==(const WriteDescriptorSetRequestKey& other) const
         {
-            if (Binding != other.Binding)
-                return Binding < other.Binding;
-            return DstSet < other.DstSet;
+            return Binding == other.Binding && DstSet == other.DstSet;
         }
-    };
-
-    struct WriteDescriptorSetRequest
-    {
-        bool             Updated = false;
-        int              Handle;
-        uint32_t         FrameIndex;
-        VkDescriptorSet  DstSet;
-        uint32_t         Binding;
-        uint32_t         DstArrayElement;
-        uint32_t         DescriptorCount;
-        VkDescriptorType DescriptorType;
     };
 
     /*
@@ -568,7 +277,7 @@ namespace ZEngine::Hardwares
      */
     struct AsyncGPUOperationHandle
     {
-        uint32_t                          StageFlags  = 0;
+        VkPipelineStageFlags2             StageFlags  = 0;
         uint64_t                          SignalValue = 0;
         Rendering::Primitives::Semaphore* Timeline    = nullptr;
     };
@@ -586,113 +295,204 @@ namespace ZEngine::Hardwares
      */
     struct VulkanDevice
     {
-        bool                                                                                                                         HasSeperateTransfertQueueFamily             = false;
-        bool                                                                                                                         PhysicalDeviceSupportSampledImageBindless   = false;
-        bool                                                                                                                         PhysicalDeviceSupportStorageBufferBindless  = false;
-        bool                                                                                                                         PhysicalDeviceSupportTimelineSemaphore      = false;
-        const char*                                                                                                                  ApplicationName                             = "Tetragrama";
-        const char*                                                                                                                  EngineName                                  = "ZEngine";
-        uint32_t                                                                                                                     WorkerThreadCount                           = 1;
-        uint32_t                                                                                                                     GraphicFamilyIndex                          = std::numeric_limits<uint32_t>::max();
-        uint32_t                                                                                                                     TransferFamilyIndex                         = std::numeric_limits<uint32_t>::max();
+        bool                                                                                                                         HasSeperateTransfertQueueFamily                                             = false;
+        /// @brief True when transfer work has a distinct VkQueue handle.
+        bool                                                                                                                         HasSeparateTransferQueue                                                    = false;
+        /// @brief True when compute work has a distinct VkQueue handle.
+        bool                                                                                                                         HasSeparateComputeQueue                                                     = false;
+        bool                                                                                                                         PhysicalDeviceSupportSampledImageBindless                                   = false;
+        bool                                                                                                                         PhysicalDeviceSupportStorageBufferBindless                                  = false;
+        bool                                                                                                                         PhysicalDeviceSupportTimelineSemaphore                                      = false;
+        bool                                                                                                                         PhysicalDeviceSupportDynamicRendering                                       = false;
+        /// @brief True only when host-side timestamp query resets were enabled.
+        bool                                                                                                                         PhysicalDeviceSupportHostQueryReset                                         = false;
+        /// @brief True when VK_EXT_conditional_rendering was enabled on this device.
+        bool                                                                                                                         PhysicalDeviceSupportConditionalRendering                                   = false;
+        /// @brief Valid timestamp bits for every resolved queue role; zero disables that role.
+        uint32_t                                                                                                                     QueueTimestampValidBits[static_cast<uint32_t>(Rendering::QueueType::COUNT)] = {};
+        // Sticky, set once VK_ERROR_DEVICE_LOST is observed on any queue/swapchain call —
+        // see CheckDeviceLost. The render loop checks this and stops issuing further Vulkan
+        // calls: once a device is lost, continuing to call into it is undefined behaviour and
+        // has been observed to segfault inside the Vulkan loader rather than return cleanly.
+        std::atomic_bool                                                                                                             IsDeviceLost                                                                = false;
+        const char*                                                                                                                  ApplicationName                                                             = "Tetragrama";
+        const char*                                                                                                                  EngineName                                                                  = "ZEngine";
+        uint32_t                                                                                                                     WorkerThreadCount                                                           = 1;
+        uint32_t                                                                                                                     GraphicFamilyIndex                                                          = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                                                                                     TransferFamilyIndex                                                         = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                                                                                     ComputeFamilyIndex                                                          = std::numeric_limits<uint32_t>::max();
+        uint32_t                                                                                                                     GraphicQueueIndex                                                           = 0;
+        uint32_t                                                                                                                     TransferQueueIndex                                                          = 0;
+        uint32_t                                                                                                                     ComputeQueueIndex                                                           = 0;
 
-        uint32_t                                                                                                                     WriteDescriptorSetIndex                     = 0;
-        uint32_t                                                                                                                     MaxGlobalTexture                            = 600;
-        VkInstance                                                                                                                   Instance                                    = VK_NULL_HANDLE;
-        VkSurfaceKHR                                                                                                                 Surface                                     = VK_NULL_HANDLE;
-        VkSurfaceFormatKHR                                                                                                           SurfaceFormat                               = {};
-        VkPresentModeKHR                                                                                                             PresentMode                                 = {};
-        VkPhysicalDeviceProperties2                                                                                                  PhysicalDeviceProperties                    = {};
-        VkPhysicalDeviceVulkan12Properties                                                                                           PhysicalDeviceVulkan12Properties            = {};
-        VkDevice                                                                                                                     LogicalDevice                               = VK_NULL_HANDLE;
-        VkPhysicalDevice                                                                                                             PhysicalDevice                              = VK_NULL_HANDLE;
-        VkPhysicalDeviceFeatures2                                                                                                    PhysicalDeviceFeature                       = {};
-        VkPhysicalDeviceMemoryProperties                                                                                             PhysicalDeviceMemoryProperties              = {};
-        VkSampler                                                                                                                    GlobalLinearWrapSampler                     = VK_NULL_HANDLE;
-        VkSampler                                                                                                                    GlobalLinearClampToEdgeSampler              = VK_NULL_HANDLE;
-        VkDescriptorPool                                                                                                             GlobalDescriptorPoolHandle                  = VK_NULL_HANDLE;
-        VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                    = VK_NULL_HANDLE;
-        VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                   = VK_NULL_HANDLE;
-        VkDescriptorSet                                                                                                              EmptyDescriptorSet                          = VK_NULL_HANDLE;
-        VmaAllocator                                                                                                                 VmaAllocatorValue                           = nullptr;
-        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo            = {};
-        VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo     = {};
-        CommandBufferManagerPtr                                                                                                      CommandBufferMgr                            = {};
-        DeviceSwapchainPtr                                                                                                           SwapchainPtr                                = {};
-        Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                         = {};
+        uint32_t                                                                                                                     WriteDescriptorSetIndex                                                     = 0;
+        uint32_t                                                                                                                     MaxGlobalTexture                                                            = 8192;
+        /// @brief Geometry streaming pool budget in bytes (vtx + idx combined).
+        ///        0 = auto-detect from PhysicalDeviceMemoryProperties (default).
+        ///        Set by Engine::Initialize from project.json memory.geometry_streaming_mb
+        ///        before RenderResourceManager::Initialize runs.
+        VkDeviceSize                                                                                                                 GeometryStreamingBudget                                                     = 0;
+        /// @brief Project-selected IBL quality copied into each new SkyEnvironment revision.
+        Rendering::EnvironmentLightingBakeSettings                                                                                   EnvironmentLightingBakeSettings                                             = {};
+        /// @brief Persistent fallback, published, and active-bake environment texture budget.
+        ///        Set by Engine::Initialize from project.json
+        ///        rendering.environment_lighting_budget_mb.
+        VkDeviceSize                                                                                                                 EnvironmentLightingMemoryBudget                                             = Rendering::DefaultEnvironmentLightingMemoryBudget;
+        VkInstance                                                                                                                   Instance                                                                    = VK_NULL_HANDLE;
+        VkSurfaceKHR                                                                                                                 Surface                                                                     = VK_NULL_HANDLE;
+        VkSurfaceFormatKHR                                                                                                           SurfaceFormat                                                               = {};
+        VkPresentModeKHR                                                                                                             PresentMode                                                                 = {};
+        VkPhysicalDeviceProperties2                                                                                                  PhysicalDeviceProperties                                                    = {};
+        VkPhysicalDeviceVulkan12Properties                                                                                           PhysicalDeviceVulkan12Properties                                            = {};
+        VkDevice                                                                                                                     LogicalDevice                                                               = VK_NULL_HANDLE;
+        VkPhysicalDevice                                                                                                             PhysicalDevice                                                              = VK_NULL_HANDLE;
+        VkPhysicalDeviceFeatures2                                                                                                    PhysicalDeviceFeature                                                       = {};
+        VkPhysicalDeviceMemoryProperties                                                                                             PhysicalDeviceMemoryProperties                                              = {};
+        VkSampler                                                                                                                    GlobalLinearWrapSampler                                                     = VK_NULL_HANDLE;
+        VkSampler                                                                                                                    GlobalLinearClampToEdgeSampler                                              = VK_NULL_HANDLE;
+        VkSampler                                                                                                                    GlobalLinearWrapUClampToEdgeVSampler                                        = VK_NULL_HANDLE;
+        VkDescriptorPool                                                                                                             GlobalDescriptorPoolHandle                                                  = VK_NULL_HANDLE;
+        VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                                                    = VK_NULL_HANDLE;
+        VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                                                   = VK_NULL_HANDLE;
+        VkDescriptorSet                                                                                                              EmptyDescriptorSet                                                          = VK_NULL_HANDLE;
+        Core::Memory::GpuAllocator                                                                                                   GpuMem                                                                      = {};
+        DeferredFreeQueue                                                                                                            PendingFree                                                                 = {};
+        PerFrameUploadHeap                                                                                                           FrameHeaps[3]                                                               = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo                                            = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo                                     = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapUClampToEdgeVSamplerImageInfo                               = {};
+        CommandBufferManagerPtr                                                                                                      CommandBufferMgr                                                            = {};
+        DeviceSwapchainPtr                                                                                                           SwapchainPtr                                                                = {};
+        Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                                                         = {};
 
-        Core::Containers::UnorderedHashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>>                                 ShaderCaches                                = {};
-        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap              = {}; //<set, vec<descriptorSet>>
-        Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                                          ShaderReservedDescriptorSetLayoutMap        = {}; // <set, layout>
-        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<Rendering::Specifications::LayoutBindingSpecification>> ShaderReservedLayoutBindingSpecificationMap = {};
-        std::set<WriteDescriptorSetRequestKey>                                                                                       WriteBindlessDescriptorSetRequests          = {};
-        std::unordered_set<uint32_t>                                                                                                 ShaderReservedBindingSets                   = {};
-        Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                              = {};
-        Helpers::HandleManager<Image2DBuffer>                                                                                        Image2DBufferManager                        = {};
-        Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToUpdates                      = {};
-        Helpers::ThreadSafeQueue<Rendering::Textures::TextureHandle>                                                                 TextureHandleToDispose                      = {};
-        Helpers::ThreadSafeQueue<AsyncGPUOperationHandle>                                                                            AsyncGPUOperations                          = {};
-        Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                               = {};
-        Helpers::HandleManager<VertexBufferSet>                                                                                      VertexBufferSetManager                      = {};
-        Helpers::HandleManager<StorageBufferSet>                                                                                     StorageBufferSetManager                     = {};
-        Helpers::HandleManager<IndirectBufferSet>                                                                                    IndirectBufferSetManager                    = {};
-        Helpers::HandleManager<IndexBufferSet>                                                                                       IndexBufferSetManager                       = {};
-        Helpers::HandleManager<UniformBufferSet>                                                                                     UniformBufferSetManager                     = {};
-        Helpers::HandleManager<DirtyResource>                                                                                        DirtyResources                              = {};
-        Helpers::HandleManager<BufferView>                                                                                           DirtyBuffers                                = {};
-        Helpers::HandleManager<BufferImage>                                                                                          DirtyBufferImages                           = {};
-        std::atomic_bool                                                                                                             RunningDirtyCollector                       = {};
-        std::mutex                                                                                                                   Mutex                                       = {};
-        Windows::CoreWindow*                                                                                                         CurrentWindow                               = nullptr;
-        ZEngine::Core::Memory::ArenaAllocator*                                                                                       Arena                                       = nullptr;
-        AsyncResourceLoaderPtr                                                                                                       AsyncResLoader                              = nullptr;
+        Core::Containers::UnorderedHashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>>                                 ShaderCaches                                                                = {};
+        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap                                              = {}; //<set, vec<descriptorSet>>
+        Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                                          ShaderReservedDescriptorSetLayoutMap                                        = {}; // <set, layout>
+        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<Rendering::Specifications::LayoutBindingSpecification>> ShaderReservedLayoutBindingSpecificationMap                                 = {};
+        Core::Containers::Array<WriteDescriptorSetRequestKey>                                                                        BindlessTextureSlotRequests                                                 = {};
+        Core::Containers::HashSet<uint32_t>                                                                                          ShaderReservedBindingSets                                                   = {};
+        Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                                                              = {};
+        Helpers::HandleManager<ImageBuffer>                                                                                          ImageBufferManager                                                          = {};
+        Core::Containers::MPSCQueue<Rendering::Textures::TextureHandle, 8192>                                                        TextureHandleToUpdates                                                      = {};
+        Core::Containers::SPSCQueue<Rendering::Textures::TextureHandle, 128>                                                         DeferredTextureDescriptorUpdates                                            = {};
+        TextureDisposeQueue                                                                                                          TextureHandleToDispose                                                      = {};
+        Core::Containers::MPSCQueue<AsyncGPUOperationHandle, 256>                                                                    AsyncGPUOperations                                                          = {};
+        Core::Containers::SPSCQueue<AsyncGPUOperationHandle, 128>                                                                    DeferredAsyncGPUOperations                                                  = {};
+        Core::Containers::MPSCQueue<ShaderReloadRequest, 64>                                                                         ShaderReloadRequests                                                        = {};
+        VkDescriptorImageInfo                                                                                                        FallbackDescriptorImageInfo                                                 = {};
+        Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                                                               = {};
+        /// @brief Device-owned cache for descriptor layouts, pipeline layouts, and driver pipeline data.
+        Rendering::Renderers::Pipelines::PSOCache*                                                                                   PipelineStateCache                                                          = nullptr;
+        std::mutex                                                                                                                   Mutex                                                                       = {};
+        Windows::CoreWindow*                                                                                                         CurrentWindow                                                               = nullptr;
+        ZEngine::Core::Memory::ArenaAllocator*                                                                                       Arena                                                                       = nullptr;
+        void*                                                                                                                        RRM                                                                         = nullptr;
 
         void                                                                                                                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                         Deinitialize();
         void                                                                                                                         Dispose();
-        void                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint32_t wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
+        bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, VkPipelineStageFlags2 wait_flag, uint64_t signal_value, uint64_t wait_value, Rendering::Primitives::Semaphore* const wait_timeline);
+        bool                                                                                                                         QueueSubmit(CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore, uint64_t signal_value, const VkSemaphoreSubmitInfo* wait_infos, uint32_t wait_info_count);
         bool                                                                                                                         QueueSubmit(const VkPipelineStageFlags wait_stage_flag, CommandBuffer* const command_buffer, Rendering::Primitives::Semaphore* const signal_semaphore = nullptr, Rendering::Primitives::Fence* const fence = nullptr);
+        /// @brief If result is VK_ERROR_DEVICE_LOST, sets IsDeviceLost (logging once, on the
+        ///        first caller to observe it) and returns true so the caller can bail out
+        ///        instead of asserting or continuing to submit to a dead device.
+        /// @param where Short description of the call site, for the one-time log line.
+        bool                                                                                                                         CheckDeviceLost(VkResult result, const char* where);
         void                                                                                                                         EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
-        void                                                                                                                         EnqueueForDeletion(Rendering::DeviceResourceType resource_type, void* const resource_handle);
-        void                                                                                                                         EnqueueForDeletion(Rendering::DeviceResourceType resource_type, DirtyResource resource);
-        void                                                                                                                         EnqueueBufferForDeletion(BufferView& buffer);
-        void                                                                                                                         EnqueueBufferImageForDeletion(BufferImage& buffer);
+        void                                                                                                                         EnqueueDeferredAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
+        /// @brief Registers a bindless descriptor target once for subsequent texture updates.
+        void                                                                                                                         AddBindlessTextureSlotRequest(const WriteDescriptorSetRequestKey& request);
         QueueView                                                                                                                    GetQueue(Rendering::QueueType type);
         void                                                                                                                         QueueWait(Rendering::QueueType type);
         void                                                                                                                         QueueWaitAll();
+        // Optional VK_EXT_debug_utils instrumentation. These are no-ops when the
+        // extension is unavailable, so render-graph execution stays portable.
+        void                                                                                                                         BeginDebugLabel(VkCommandBuffer command_buffer, cstring name) const;
+        void                                                                                                                         EndDebugLabel(VkCommandBuffer command_buffer) const;
+        /// @brief Assigns a tooling-only Vulkan object name when debug-utils is available.
+        void                                                                                                                         SetDebugObjectName(VkObjectType object_type, uint64_t object_handle, cstring name) const;
         void                                                                                                                         MapAndCopyToMemory(BufferView& buffer, size_t data_size, const void* data);
-        BufferView                                                                                                                   CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, VmaAllocationCreateFlags vma_create_flags = 0);
+        BufferView                                                                                                                   CreateBuffer(VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, Core::Memory::GpuMemoryDomain domain, const char* debug_name = nullptr);
+        /// @brief Creates a distinct buffer object backed by an existing allocation.
+        BufferView                                                                                                                   CreateAliasingBuffer(const BufferView& backing, VkDeviceSize byte_size, VkBufferUsageFlags buffer_usage, const char* debug_name = nullptr);
+        void                                                                                                                         TickMemory();
+        void                                                                                                                         DeferFree(DeferredFreeEntry entry);
+        uint32_t                                                                                                                     MinUniformBufferOffsetAlignment() const;
+        uint32_t                                                                                                                     MinStorageBufferOffsetAlignment() const;
         VkPipelineStageFlags                                                                                                         CopyBuffer(CommandBuffer* const command_buffer, const BufferView& source, const BufferView& destination, VkDeviceSize byte_size, VkDeviceSize src_buffer_offset = 0u, VkDeviceSize dst_buffer_offset = 0u);
-        BufferImage                                     CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, VkImageCreateFlags image_create_flag_bit = 0);
-        VkFormat                                        FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
-        VkFormat                                        FindDepthFormat();
-        VkImageView                                     CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
-        VkFramebuffer                                   CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
-        VertexBufferSetHandle                           CreateVertexBufferSet();
-        StorageBufferSetHandle                          CreateStorageBufferSet();
-        IndirectBufferSetHandle                         CreateIndirectBufferSet();
-        IndexBufferSetHandle                            CreateIndexBufferSet();
-        UniformBufferSetHandle                          CreateUniformBufferSet();
-        void                                            DirtyCollector();
+        BufferImage   CreateImage(uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkMemoryPropertyFlags requested_properties, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, uint32_t mip_level_count = 1U, VkImageCreateFlags image_create_flag_bit = 0, cstring debug_name = nullptr, uint32_t depth = 1U);
+        /// @brief Creates a distinct image object backed by an existing image allocation.
+        BufferImage   CreateAliasingImage(const BufferImage& backing, uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U, uint32_t mip_level_count = 1U, VkImageCreateFlags image_create_flag_bit = 0, cstring debug_name = nullptr, uint32_t depth = 1U);
+        VkFormat      FindSupportedFormat(Core::Containers::ArrayView<VkFormat> format_collection, VkImageTiling image_tiling, VkFormatFeatureFlags feature_flags);
+        VkFormat      FindDepthFormat();
+        VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
+        /// @brief Creates an image view covering the supplied exact subresource range.
+        VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range);
+        VkFramebuffer CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);
 
-        Rendering::Textures::TextureHandle              CreateTexture(uint32_t width, uint32_t height);
-        Rendering::Textures::TextureHandle              CreateTexture(uint32_t width, uint32_t height, float r = 255, float g = 255, float b = 255, float a = 255);
-        Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec);
-        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data);
+        /// @brief Queues a shader-file reload request from any producer thread.
+        void                                            RequestShaderReload(cstring shader_path);
 
-        Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(const Rendering::Specifications::RenderPassSpecification& spec);
+        /// @brief Reloads queued shaders on the render thread before command recording.
+        void                                            FlushShaderReloadRequests();
+
+        /// @brief Reloads a cached shader and invalidates pipelines compiled from its old generation.
+        bool                                            ReloadShader(cstring shader_name);
+
+        /// @brief Creates a texture and assigns the optional allocator debug name.
+        Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr);
+        /// @brief Creates a texture object aliased to the backing allocation of `source`.
+        Rendering::Textures::TextureHandle              CreateAliasingTexture(const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source, cstring debug_name = nullptr);
+
+        /// @brief In-place resize/format change: same handle, same slot, same bindless index.
+        /// @return false if handle is not live.
+        bool                                            ReconstructTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec);
+        /// @brief Reconstructs an aliased texture object against a reconstructed backing texture.
+        bool                                            ReconstructAliasingTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source);
+
+        /// @brief Dirty this handle's bindless descriptor for the next graph frame to refresh.
+        void                                            RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+        void                                            RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+        /// @brief Applies queued bindless descriptor writes before render-graph recording.
+        /// @details Render-thread only. DeviceSwapchain::Present never writes descriptors.
+        void                                            FlushBindlessTextureUpdates();
+
+        /// @brief Timeline-gated disposal. Render-thread only.
+        void                                            DestroyTexture(const Rendering::Textures::TextureHandle& handle);
+
+        /// @brief Copies data into the texture's backing image via the ring buffer when it
+        ///        fits, else a one-shot staging buffer (returned so the caller can free it
+        ///        once the copy's GPU work retires).
+        /// @param out_ring_offset When non-null, set to the ring's byte offset if the ring
+        ///        path was used (UINT32_MAX otherwise) — the caller must then call
+        ///        GpuMem.Ring.Submit(offset, size, signal_value) once it knows the timeline
+        ///        value the enqueued copy will signal, or this region is never marked safe
+        ///        to reclaim and a later allocation can overwrite it before the GPU reads it.
+        /// @param use_staging_ring Set false for independently submitted work whose
+        ///        completion is not represented by RenderTimeline.
+        BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true, VkDeviceSize data_size = 0);
+
+        Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
 
     private:
+        friend struct CommandBuffer;
+        friend struct ::RRMUploadBatchTestHelper;
+
         VulkanLayer                                                       m_layer     = {};
         Core::Containers::UnorderedHashMap<Rendering::QueueType, VkQueue> m_queue_map = {};
         VkDebugUtilsMessengerEXT                                          m_debug_messenger{VK_NULL_HANDLE};
         PFN_vkCreateDebugUtilsMessengerEXT                                __createDebugMessengerPtr{VK_NULL_HANDLE};
         PFN_vkDestroyDebugUtilsMessengerEXT                               __destroyDebugMessengerPtr{VK_NULL_HANDLE};
-        void                                                              __cleanupDirtyResource();
-        void                                                              __cleanupBufferDirtyResource();
-        void                                                              __cleanupBufferImageDirtyResource();
+        PFN_vkCmdBeginDebugUtilsLabelEXT                                  __beginDebugLabelPtr{VK_NULL_HANDLE};
+        PFN_vkCmdEndDebugUtilsLabelEXT                                    __endDebugLabelPtr{VK_NULL_HANDLE};
+        PFN_vkSetDebugUtilsObjectNameEXT                                  __setDebugObjectNamePtr{VK_NULL_HANDLE};
+        PFN_vkCmdBeginRendering                                           __beginRenderingPtr{VK_NULL_HANDLE};
+        PFN_vkCmdEndRendering                                             __endRenderingPtr{VK_NULL_HANDLE};
+        PFN_vkCmdBeginConditionalRenderingEXT                             __beginConditionalRenderingPtr{VK_NULL_HANDLE};
+        PFN_vkCmdEndConditionalRenderingEXT                               __endConditionalRenderingPtr{VK_NULL_HANDLE};
         static VKAPI_ATTR VkBool32 VKAPI_CALL                             __debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
     };
 
@@ -702,52 +502,7 @@ namespace ZEngine::Hardwares
 namespace ZEngine::Helpers
 {
     template <>
-    inline void HandleManager<Hardwares::VertexBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::StorageBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::IndirectBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::IndexBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::UniformBufferSet>::Dispose()
-    {
-        for (size_t i = 0; i < m_count; ++i)
-        {
-            m_memory[i].Dispose();
-        }
-    }
-
-    template <>
-    inline void HandleManager<Hardwares::Image2DBuffer>::Dispose()
+    inline void HandleManager<Hardwares::ImageBuffer>::Dispose()
     {
         for (size_t i = 0; i < m_count; ++i)
         {

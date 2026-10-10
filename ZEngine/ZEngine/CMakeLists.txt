@@ -22,7 +22,7 @@ if(ZENGINE_VERSION_PRERELEASE)
 else()
     set(ZENGINE_VERSION_FULL "${ZENGINE_VERSION_MAJOR}.${ZENGINE_VERSION_MINOR}.${ZENGINE_VERSION_PATCH}")
 endif()
-
+math(EXPR ZENGINE_PIPELINE_CACHE_ENGINE_VERSION "(${ZENGINE_VERSION_MAJOR} << 22) | (${ZENGINE_VERSION_MINOR} << 12) | ${ZENGINE_VERSION_PATCH}")
 message("-- Engine version: v${ZENGINE_VERSION_FULL}")
 
 configure_file(
@@ -38,6 +38,12 @@ configure_file(
 #
 file(GLOB_RECURSE ZENGINE_SOURCES_CORE CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/*.cpp
+)
+file(GLOB_RECURSE ZENGINE_SOURCES_ECS CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/ECS/*.cpp
+)
+file(GLOB_RECURSE ZENGINE_SOURCES_PROFILING CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/Profiling/*.cpp
 )
 file(GLOB_RECURSE ZENGINE_SOURCES_RENDERING CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Rendering/*.cpp
@@ -62,13 +68,26 @@ file(GLOB_RECURSE ZENGINE_SOURCES_HELPERS CONFIGURE_DEPENDS
 file(GLOB_RECURSE ZENGINE_SOURCES_EVENT CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Event/*.cpp
 )
+file(GLOB_RECURSE ZENGINE_SOURCES_INPUT CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/Input/*.cpp
+)
 file(GLOB_RECURSE ZENGINE_SOURCES_HARDWARE CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Hardwares/*.cpp
+)
+file(GLOB_RECURSE ZENGINE_SOURCES_UI CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/UI/*.cpp
 )
 
 if(APPLE)
     list(APPEND ZENGINE_SOURCES_CRASH_HANDLERS
         ${CMAKE_CURRENT_SOURCE_DIR}/CrashHandlers/CrashHandlerMacOS.mm
+    )
+    list(APPEND ZENGINE_SOURCES_CORE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Core/VFS/Platform/VFSFSEventsWatcher.mm
+    )
+    list(APPEND ZENGINE_SOURCES_WINDOWS
+        ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/MacOSFileDialog.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/MacOSAppIcon.mm
     )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
     list(APPEND ZENGINE_SOURCES_CRASH_HANDLERS
@@ -87,14 +106,17 @@ file(GLOB_RECURSE ZENGINE_RESOURCES  CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/../
 source_group(TREE ${PROJECT_SOURCE_DIR}/ZEngine PREFIX "Source Files" FILES
     ${ZENGINE_HEADERS}
     ${ZENGINE_SOURCES_CORE}
+    ${ZENGINE_SOURCES_PROFILING}
     ${ZENGINE_SOURCES_RENDERING}
     ${ZENGINE_SOURCES_WINDOWS}
     ${ZENGINE_SOURCES_APPLICATION}
     ${ZENGINE_SOURCES_MANAGERS}
     ${ZENGINE_SOURCES_HELPERS}
     ${ZENGINE_SOURCES_EVENT}
+    ${ZENGINE_SOURCES_INPUT}
     ${ZENGINE_SOURCES_HARDWARE}
     ${ZENGINE_SOURCES_CRASH_HANDLERS}
+    ${ZENGINE_SOURCES_UI}
 )
 source_group(TREE ${PROJECT_SOURCE_DIR}/../Resources PREFIX "Resources Files" FILES ${ZENGINE_RESOURCES})
 
@@ -106,25 +128,53 @@ target_sources(zEngineLib PUBLIC FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR
 
 target_sources(zEngineLib PRIVATE
     ${ZENGINE_SOURCES_CORE}
+    ${ZENGINE_SOURCES_ECS}
+    ${ZENGINE_SOURCES_PROFILING}
     ${ZENGINE_SOURCES_RENDERING}
     ${ZENGINE_SOURCES_WINDOWS}
     ${ZENGINE_SOURCES_APPLICATION}
     ${ZENGINE_SOURCES_MANAGERS}
     ${ZENGINE_SOURCES_HELPERS}
     ${ZENGINE_SOURCES_EVENT}
+    ${ZENGINE_SOURCES_INPUT}
     ${ZENGINE_SOURCES_HARDWARE}
     ${ZENGINE_SOURCES_CRASH_HANDLERS}
+    ${ZENGINE_SOURCES_UI}
     ${CMAKE_CURRENT_SOURCE_DIR}/Engine.cpp
 )
 
+# Tracy profiling integration
+#
+if(ZENGINE_TRACY)
+    target_compile_definitions(zEngineLib PRIVATE ZENGINE_TRACY=1)
+endif()
+
+# Editor-only engine code (YAMLSceneSerializer).
+option(ZENGINE_BUILD_EDITOR "Compile editor-only engine code" ON)
+if (ZENGINE_BUILD_EDITOR)
+    target_compile_definitions(zEngineLib PUBLIC ZENGINE_EDITOR=1)
+endif()
+
+# Logging defaults
+# it expands in
+# ZENGINE_LOG_LEVEL_${CHANNEL}=ZENGINE_LOG_LEVEL_${ZENGINE_LOG_LEVEL_${CHANNEL}} => ZENGINE_LOG_LEVEL_ENGINE=ZENGINE_LOG_LEVEL_WARN
+foreach(CHANNEL IN ITEMS ENGINE ECS RENDER PHYSICS AUDIO NETWORK VFS ASSET UI GAME)
+    target_compile_definitions(zEngineLib PUBLIC
+        ZENGINE_LOG_LEVEL_${CHANNEL}=ZENGINE_LOG_LEVEL_${ZENGINE_LOG_LEVEL_${CHANNEL}})
+endforeach()
+
 target_compile_definitions (zEngineLib
     PRIVATE
+        ZENGINE_PIPELINE_CACHE_ENGINE_VERSION=${ZENGINE_PIPELINE_CACHE_ENGINE_VERSION}
         $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:ZENGINE_CRASH_HANDLER_ENABLED=1>
         $<$<CONFIG:Release>:ZENGINE_RELEASE=1>
         $<$<CONFIG:RelWithDebInfo>:ZENGINE_RELWITHDEBINFO=1>
+        $<$<CONFIG:Debug>:ENABLE_VULKAN_VALIDATION_LAYER>
+        $<$<CONFIG:Debug>:VMA_DEBUG_MARGIN=16>
+        $<$<CONFIG:Debug>:VMA_DEBUG_DETECT_CORRUPTION=1>
 	PUBLIC
+		$<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:ZENGINE_PROFILING=1>
 		ZENGINE_PLATFORM
-		ENABLE_VULKAN_SYNCHRONIZATION_LAYER
 		YAML_CPP_STATIC_DEFINE
 )
 
@@ -135,8 +185,33 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     target_compile_definitions(zEngineLib PUBLIC NOMINMAX GLFW_EXPOSE_NATIVE_WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(zEngineLib PUBLIC stdc++fs dl)
-    target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_WAYLAND)
+    # GLFW 3.5 includes both backends and selects the active session at runtime.
+    # The file-dialog layer needs both native window types for correct parenting.
+    target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_X11 GLFW_EXPOSE_NATIVE_WAYLAND)
+
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+    pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
+    target_link_libraries(zEngineLib PRIVATE PkgConfig::GIO PkgConfig::WAYLAND_CLIENT)
+
+    set(ZENGINE_XDG_FOREIGN_PROTOCOL ${CMAKE_CURRENT_SOURCE_DIR}/Windows/Platform/xdg-foreign-unstable-v2.xml)
+    set(ZENGINE_XDG_FOREIGN_HEADER ${CMAKE_CURRENT_BINARY_DIR}/xdg-foreign-unstable-v2-client-protocol.h)
+    set(ZENGINE_XDG_FOREIGN_CODE ${CMAKE_CURRENT_BINARY_DIR}/xdg-foreign-unstable-v2-client-protocol.c)
+
+    find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner REQUIRED)
+    add_custom_command(
+        OUTPUT ${ZENGINE_XDG_FOREIGN_HEADER} ${ZENGINE_XDG_FOREIGN_CODE}
+        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} client-header ${ZENGINE_XDG_FOREIGN_PROTOCOL} ${ZENGINE_XDG_FOREIGN_HEADER}
+        COMMAND ${WAYLAND_SCANNER_EXECUTABLE} private-code ${ZENGINE_XDG_FOREIGN_PROTOCOL} ${ZENGINE_XDG_FOREIGN_CODE}
+        DEPENDS ${ZENGINE_XDG_FOREIGN_PROTOCOL}
+        VERBATIM
+    )
+    target_sources(zEngineLib PRIVATE
+        ${ZENGINE_XDG_FOREIGN_HEADER}
+        ${ZENGINE_XDG_FOREIGN_CODE}
+    )
+    target_include_directories(zEngineLib PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    target_link_libraries(zEngineLib PRIVATE "-lobjc" "-framework AppKit" "-framework CoreGraphics")
+    target_link_libraries(zEngineLib PRIVATE "-lobjc" "-framework AppKit" "-framework CoreGraphics" "-framework CoreServices")
     target_compile_definitions(zEngineLib PUBLIC GLFW_EXPOSE_NATIVE_COCOA)
 endif()

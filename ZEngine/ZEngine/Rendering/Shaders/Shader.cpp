@@ -2,10 +2,12 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Shaders/Shader.h>
 #include <ZEngine/Rendering/Shaders/ShaderReader.h>
 #include <spirv_cross.hpp>
 #include <vulkan/vulkan.h>
+#include <algorithm>
 
 using namespace ZEngine::Rendering::Specifications;
 using namespace ZEngine::Helpers;
@@ -29,20 +31,22 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::Initialize(Hardwares::VulkanDevice* device, const Specifications::ShaderSpecification& spec)
     {
-        device->Arena->CreateSubArena(ZMega(5), &LocalArena);
+        ZENGINE_VALIDATE_ASSERT(device != nullptr, "Shader::Initialize requires a Vulkan device")
+        ZENGINE_VALIDATE_ASSERT(LocalArena.m_memory == nullptr, "Shader::Initialize called on an initialized shader")
+        device->Arena->CreateSubArena(ZMega(5), &LocalArena, "VulkanDevice/Shader");
 
         m_device        = device;
         m_specification = spec;
 
-        ShaderCreateInfos.init(m_device->Arena, 4);
-        ShaderModules.init(m_device->Arena, 3);
-        PushConstants.init(m_device->Arena, 4);
-        PushConstantSpecifications.init(m_device->Arena, 4);
-        LayoutBindingSpecificationMap.init(m_device->Arena, 4);
-        LayoutBindingSpecifications.init(m_device->Arena, 5);
-        SetLayouts.init(m_device->Arena, 5);
-        InternalDescriptorSetLayoutMap.init(m_device->Arena, 5);
-        DescriptorSetMap.init(m_device->Arena, 5);
+        ShaderCreateInfos.init(&LocalArena, 4);
+        ShaderModules.init(&LocalArena, 3);
+        PushConstants.init(&LocalArena, 4);
+        PushConstantSpecifications.init(&LocalArena, 4);
+        LayoutBindingSpecificationMap.init(&LocalArena, 4);
+        LayoutBindingSpecifications.init(&LocalArena, 5);
+        SetLayouts.init(&LocalArena, 5);
+        InternalDescriptorSetLayoutMap.init(&LocalArena, 5);
+        DescriptorSetMap.init(&LocalArena, 5);
 
         CreateModule();
         CreateDescriptorSetLayouts();
@@ -70,7 +74,7 @@ namespace ZEngine::Rendering::Shaders
                 else
                 {
                     SetLayouts.push(m_device->EmptyDescriptorSetLayout);
-                    DescriptorSetMap[i].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+                    DescriptorSetMap[i].init(&LocalArena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
                     for (uint32_t f = 0; f < m_device->SwapchainPtr->BufferredFrameCount; ++f)
                     {
                         DescriptorSetMap[i][f] = m_device->EmptyDescriptorSet;
@@ -87,6 +91,13 @@ namespace ZEngine::Rendering::Shaders
             }
         }
 
+        BindingsByName.init(&LocalArena, static_cast<size_t>(LayoutBindingSpecifications.size() * 2) + 4);
+        for (const auto& spec : LayoutBindingSpecifications)
+        {
+            if (spec.Name)
+                BindingsByName[spec.Name] = spec;
+        }
+
         // We remove the Set to avoid double release from the Device and Shader owned resource
         for (const auto [set, _] : m_device->ShaderReservedDescriptorSetLayoutMap)
         {
@@ -99,7 +110,7 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreateModule()
     {
-        Scope<spirv_cross::Compiler> spirv_compiler = nullptr;
+        auto scratch = ZGetScratch(m_device->Arena);
 
         /*
          * Vertex Shader processing
@@ -108,7 +119,7 @@ namespace ZEngine::Rendering::Shaders
         {
             auto&                    shader_create_info_collection = ShaderCreateInfos.push_use({});
             auto&                    shader_module                 = ShaderModules.push_use({});
-            std::vector<uint32_t>    vertex_shader_binary_code     = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.VertexFilename);
+            Array<uint32_t>          vertex_shader_binary_code     = Rendering::Shaders::ShaderReader::ReadAsBinary(scratch.Arena, m_specification.VertexFilename);
             VkShaderModuleCreateInfo vertex_shader_create_info     = {};
             vertex_shader_create_info.sType                        = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             vertex_shader_create_info.codeSize                     = vertex_shader_binary_code.size() * sizeof(uint32_t);
@@ -121,7 +132,7 @@ namespace ZEngine::Rendering::Shaders
             /*
              * Source Reflection
              */
-            spirv_compiler                       = CreateScope<spirv_cross::Compiler>(vertex_shader_binary_code);
+            auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(vertex_shader_binary_code.data(), vertex_shader_binary_code.size());
             auto vertex_resources                = spirv_compiler->get_shader_resources();
             for (const auto& UB_resource : vertex_resources.uniform_buffers)
             {
@@ -130,15 +141,20 @@ namespace ZEngine::Rendering::Shaders
 
                 if (!LayoutBindingSpecificationMap.contains(set) || (LayoutBindingSpecificationMap.at(set).capacity() <= 0))
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
 
                 auto name_c_size = (UB_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                 Helpers::secure_strcpy(name_c_str, name_c_size, UB_resource.name.c_str());
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::VERTEX});
+                // UBCamera at set=0, binding=0 is accessed via a dynamic offset
+                // (the per-frame FrameHeap offset). Declare DYNAMIC here so the
+                // pool and descriptor set layout are correct from the start.
+                DescriptorType ub_type = (set == 0 && binding == 0) ? DescriptorType::UNIFORM_BUFFER_DYNAMIC : DescriptorType::UNIFORM_BUFFER;
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = ub_type, .Flags = ShaderStageFlags::VERTEX});
             }
 
+            // Collect reflected storage buffers.
             for (const auto& SB_resource : vertex_resources.storage_buffers)
             {
                 uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
@@ -146,7 +162,7 @@ namespace ZEngine::Rendering::Shaders
 
                 if (!LayoutBindingSpecificationMap.contains(set) || (LayoutBindingSpecificationMap.at(set).capacity() <= 0))
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
 
                 auto name_c_size = (SB_resource.name.size() + 1u);
@@ -165,18 +181,15 @@ namespace ZEngine::Rendering::Shaders
                     uint32_t struct_total_size = 0;
                     for (uint32_t i = 0; i < type.member_types.size(); ++i)
                     {
-                        uint32_t memberSize  = spirv_compiler->get_declared_struct_member_size(type, i);
-                        struct_total_size   += memberSize;
+                        const uint32_t member_offset = spirv_compiler->type_struct_member_offset(type, i);
+                        const uint32_t member_size   = static_cast<uint32_t>(spirv_compiler->get_declared_struct_member_size(type, i));
+                        struct_total_size            = std::max(struct_total_size, member_offset + member_size);
                     }
 
                     auto name_c_size = (pushConstant_resource.name.size() + 1u);
                     auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                     Helpers::secure_strcpy(name_c_str, name_c_size, pushConstant_resource.name.c_str());
                     PushConstantSpecifications.push(PushConstantSpecification{.Name = name_c_str, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::VERTEX});
-                    /*
-                     * We update the offset for next iteration
-                     */
-                    struct_offset = struct_total_size;
                 }
             }
         }
@@ -187,7 +200,7 @@ namespace ZEngine::Rendering::Shaders
         {
             auto&                    shader_create_info_collection = ShaderCreateInfos.push_use({});
             auto&                    shader_module                 = ShaderModules.push_use({});
-            std::vector<uint32_t>    fragment_shader_binary_code   = Rendering::Shaders::ShaderReader::ReadAsBinary(m_specification.FragmentFilename);
+            Array<uint32_t>          fragment_shader_binary_code   = Rendering::Shaders::ShaderReader::ReadAsBinary(scratch.Arena, m_specification.FragmentFilename);
             VkShaderModuleCreateInfo fragment_shader_create_info   = {};
             fragment_shader_create_info.sType                      = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
             fragment_shader_create_info.codeSize                   = fragment_shader_binary_code.size() * sizeof(uint32_t);
@@ -200,7 +213,7 @@ namespace ZEngine::Rendering::Shaders
             /*
              * Source Reflection
              */
-            spirv_compiler                       = CreateScope<spirv_cross::Compiler>(fragment_shader_binary_code);
+            auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(fragment_shader_binary_code.data(), fragment_shader_binary_code.size());
             auto fragment_resources              = spirv_compiler->get_shader_resources();
             for (const auto& UB_resource : fragment_resources.uniform_buffers)
             {
@@ -209,14 +222,15 @@ namespace ZEngine::Rendering::Shaders
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
 
                 auto name_c_size = (UB_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                 Helpers::secure_strcpy(name_c_str, name_c_size, UB_resource.name.c_str());
 
-                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::UNIFORM_BUFFER, .Flags = ShaderStageFlags::FRAGMENT});
+                DescriptorType ub_frag_type = (set == 0 && binding == 0) ? DescriptorType::UNIFORM_BUFFER_DYNAMIC : DescriptorType::UNIFORM_BUFFER;
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = ub_frag_type, .Flags = ShaderStageFlags::FRAGMENT});
             }
 
             for (const auto& SB_resource : fragment_resources.storage_buffers)
@@ -224,9 +238,9 @@ namespace ZEngine::Rendering::Shaders
                 uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
                 uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
 
-                if (LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
                 auto name_c_size = (SB_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
@@ -244,24 +258,22 @@ namespace ZEngine::Rendering::Shaders
                     uint32_t struct_total_size = 0;
                     for (uint32_t i = 0; i < type.member_types.size(); ++i)
                     {
-                        uint32_t memberSize  = spirv_compiler->get_declared_struct_member_size(type, i);
-                        struct_total_size   += memberSize;
+                        const uint32_t member_offset = spirv_compiler->type_struct_member_offset(type, i);
+                        const uint32_t member_size   = static_cast<uint32_t>(spirv_compiler->get_declared_struct_member_size(type, i));
+                        struct_total_size            = std::max(struct_total_size, member_offset + member_size);
                     }
                     auto name_c_size = (pushConstant_resource.name.size() + 1u);
                     auto name_c_str  = ZPushString(&LocalArena, name_c_size);
                     Helpers::secure_strcpy(name_c_str, name_c_size, pushConstant_resource.name.c_str());
 
                     PushConstantSpecifications.push(PushConstantSpecification{.Name = name_c_str, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::FRAGMENT});
-                    /*
-                     * We update the offset for next iteration
-                     */
-                    struct_offset = struct_total_size;
                 }
             }
 
             for (const auto& SI_resource : fragment_resources.sampled_images)
             {
-                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
@@ -269,32 +281,29 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecification binding_spec           = {};
                     for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        const auto& spec = binding_specifications[i];
-                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        if (binding_specifications[i].Binding == binding)
                         {
-                            binding_spec = spec;
+                            binding_spec = binding_specifications[i];
                             break;
                         }
                     }
 
                     if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                     {
-                        LayoutBindingSpecificationMap[set].init(m_device->Arena, 2);
+                        LayoutBindingSpecificationMap[set].init(&LocalArena, 2);
                     }
 
                     LayoutBindingSpecificationMap[set].push(std::move(binding_spec));
 
                     continue;
                 }
-                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
-
-                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                const auto& type  = spirv_compiler->get_type(SI_resource.type_id);
+                uint32_t    count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
                 auto name_c_size = (SI_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
@@ -305,7 +314,8 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& SI_resource : fragment_resources.separate_images)
             {
-                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
@@ -313,32 +323,30 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecification binding_spec           = {};
                     for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        const auto& spec = binding_specifications[i];
-                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        if (binding_specifications[i].Binding == binding)
                         {
-                            binding_spec = spec;
+                            binding_spec = binding_specifications[i];
                             break;
                         }
                     }
 
                     if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                     {
-                        LayoutBindingSpecificationMap[set].init(m_device->Arena, 2);
+                        LayoutBindingSpecificationMap[set].init(&LocalArena, 2);
                     }
 
                     LayoutBindingSpecificationMap[set].push(std::move(binding_spec));
 
                     continue;
                 }
-                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
+                const auto& type  = spirv_compiler->get_type(SI_resource.type_id);
 
-                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                uint32_t    count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
                 auto name_c_size = (SI_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
@@ -349,7 +357,8 @@ namespace ZEngine::Rendering::Shaders
 
             for (const auto& SI_resource : fragment_resources.separate_samplers)
             {
-                uint32_t set = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t set     = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
                 if (m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
                 {
@@ -357,32 +366,29 @@ namespace ZEngine::Rendering::Shaders
                     LayoutBindingSpecification binding_spec           = {};
                     for (size_t i = 0; i < binding_specifications.size(); ++i)
                     {
-                        const auto& spec = binding_specifications[i];
-                        if (Helpers::secure_strcmp(spec.Name, SI_resource.name.c_str()) == 0)
+                        if (binding_specifications[i].Binding == binding)
                         {
-                            binding_spec = spec;
+                            binding_spec = binding_specifications[i];
                             break;
                         }
                     }
 
                     if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                     {
-                        LayoutBindingSpecificationMap[set].init(m_device->Arena, 2);
+                        LayoutBindingSpecificationMap[set].init(&LocalArena, 2);
                     }
 
                     LayoutBindingSpecificationMap[set].push(std::move(binding_spec));
 
                     continue;
                 }
-                uint32_t    binding = spirv_compiler->get_decoration(SI_resource.id, spv::DecorationBinding);
 
-                const auto& type    = spirv_compiler->get_type(SI_resource.type_id);
-
-                uint32_t    count   = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                const auto& type  = spirv_compiler->get_type(SI_resource.type_id);
+                uint32_t    count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
 
                 if (LayoutBindingSpecificationMap[set].capacity() <= 0)
                 {
-                    LayoutBindingSpecificationMap[set].init(m_device->Arena, 10);
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
                 }
                 auto name_c_size = (SI_resource.name.size() + 1u);
                 auto name_c_str  = ZPushString(&LocalArena, name_c_size);
@@ -391,50 +397,216 @@ namespace ZEngine::Rendering::Shaders
                 LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::SAMPLER, .Flags = ShaderStageFlags::FRAGMENT});
             }
         }
+
+        if (Helpers::secure_strlen(m_specification.ComputeFilename))
+        {
+            auto&                    shader_create_info_collection = ShaderCreateInfos.push_use({});
+            auto&                    shader_module                 = ShaderModules.push_use({});
+            Array<uint32_t>          compute_shader_binary_code    = Rendering::Shaders::ShaderReader::ReadAsBinary(scratch.Arena, m_specification.ComputeFilename);
+            VkShaderModuleCreateInfo compute_shader_create_info    = {};
+            compute_shader_create_info.sType                       = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            compute_shader_create_info.codeSize                    = compute_shader_binary_code.size() * sizeof(uint32_t);
+            compute_shader_create_info.pCode                       = compute_shader_binary_code.data();
+            ZENGINE_VALIDATE_ASSERT(vkCreateShaderModule(m_device->LogicalDevice, &compute_shader_create_info, nullptr, &shader_module) == VK_SUCCESS, "Failed to create ShaderModule")
+            shader_create_info_collection.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shader_create_info_collection.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
+            shader_create_info_collection.module = shader_module;
+            shader_create_info_collection.pName  = "main";
+
+            auto spirv_compiler                  = CreateScope<spirv_cross::Compiler>(compute_shader_binary_code.data(), compute_shader_binary_code.size());
+            auto compute_resources               = spirv_compiler->get_shader_resources();
+
+            auto reflect_reserved_binding        = [&](uint32_t set, uint32_t binding, DescriptorType descriptor_type) {
+                if (!m_device->ShaderReservedLayoutBindingSpecificationMap.contains(set))
+                    return false;
+
+                const auto&                       reserved_bindings = m_device->ShaderReservedLayoutBindingSpecificationMap.at(set);
+                const LayoutBindingSpecification* reserved          = nullptr;
+                for (const auto& candidate : reserved_bindings)
+                {
+                    if (candidate.Binding == binding)
+                    {
+                        reserved = &candidate;
+                        break;
+                    }
+                }
+
+                ZENGINE_VALIDATE_ASSERT(reserved != nullptr, "Compute shader declares an undeclared binding in a reserved descriptor set")
+                ZENGINE_VALIDATE_ASSERT(reserved->DescriptorTypeValue == descriptor_type, "Compute shader descriptor type conflicts with a reserved descriptor set binding")
+                ZENGINE_VALIDATE_ASSERT(reserved->Flags == ShaderStageFlags::COMPUTE, "Compute shader declares a binding unavailable to the compute stage")
+
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 2);
+                LayoutBindingSpecificationMap[set].push(*reserved);
+                return true;
+            };
+
+            for (const auto& UB_resource : compute_resources.uniform_buffers)
+            {
+                uint32_t       set     = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationDescriptorSet);
+                uint32_t       binding = spirv_compiler->get_decoration(UB_resource.id, spv::DecorationBinding);
+                DescriptorType ub_type = (set == 0 && binding == 0) ? DescriptorType::UNIFORM_BUFFER_DYNAMIC : DescriptorType::UNIFORM_BUFFER;
+                if (reflect_reserved_binding(set, binding, ub_type))
+                    continue;
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
+
+                auto name_c_size = UB_resource.name.size() + 1u;
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, UB_resource.name.c_str());
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = ub_type, .Flags = ShaderStageFlags::COMPUTE});
+            }
+
+            for (const auto& SB_resource : compute_resources.storage_buffers)
+            {
+                uint32_t set     = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationDescriptorSet);
+                uint32_t binding = spirv_compiler->get_decoration(SB_resource.id, spv::DecorationBinding);
+                if (reflect_reserved_binding(set, binding, DescriptorType::STORAGE_BUFFER))
+                    continue;
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
+
+                auto name_c_size = SB_resource.name.size() + 1u;
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, SB_resource.name.c_str());
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Name = name_c_str, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER, .Flags = ShaderStageFlags::COMPUTE});
+            }
+
+            auto reflect_image_binding = [&](const spirv_cross::Resource& resource, DescriptorType descriptor_type) {
+                const uint32_t set     = spirv_compiler->get_decoration(resource.id, spv::DecorationDescriptorSet);
+                const uint32_t binding = spirv_compiler->get_decoration(resource.id, spv::DecorationBinding);
+
+                if (reflect_reserved_binding(set, binding, descriptor_type))
+                    return;
+
+                const auto&    type  = spirv_compiler->get_type(resource.type_id);
+                const uint32_t count = std::min(type.array.empty() ? 1 : type.array[0], 256u);
+                if (!LayoutBindingSpecificationMap.contains(set) || LayoutBindingSpecificationMap.at(set).capacity() <= 0)
+                    LayoutBindingSpecificationMap[set].init(&LocalArena, 10);
+
+                const size_t name_c_size = resource.name.size() + 1u;
+                char*        name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, resource.name.c_str());
+                LayoutBindingSpecificationMap[set].push(LayoutBindingSpecification{.Set = set, .Binding = binding, .Count = count, .Name = name_c_str, .DescriptorTypeValue = descriptor_type, .Flags = ShaderStageFlags::COMPUTE});
+            };
+
+            for (const auto& resource : compute_resources.sampled_images)
+                reflect_image_binding(resource, DescriptorType::COMBINED_IMAGE_SAMPLER);
+            for (const auto& resource : compute_resources.separate_images)
+                reflect_image_binding(resource, DescriptorType::SAMPLED_IMAGE);
+            for (const auto& resource : compute_resources.separate_samplers)
+                reflect_image_binding(resource, DescriptorType::SAMPLER);
+            for (const auto& resource : compute_resources.storage_images)
+                reflect_image_binding(resource, DescriptorType::STORAGE_IMAGE);
+
+            for (const auto& push_constant_resource : compute_resources.push_constant_buffers)
+            {
+                const spirv_cross::SPIRType& type = spirv_compiler->get_type(push_constant_resource.base_type_id);
+                if (type.basetype != spirv_cross::SPIRType::Struct)
+                    continue;
+
+                uint32_t struct_total_size = 0;
+                for (uint32_t i = 0; i < type.member_types.size(); ++i)
+                {
+                    const uint32_t member_offset = spirv_compiler->type_struct_member_offset(type, i);
+                    const uint32_t member_size   = static_cast<uint32_t>(spirv_compiler->get_declared_struct_member_size(type, i));
+                    struct_total_size            = std::max(struct_total_size, member_offset + member_size);
+                }
+
+                auto name_c_size = push_constant_resource.name.size() + 1u;
+                auto name_c_str  = ZPushString(&LocalArena, name_c_size);
+                Helpers::secure_strcpy(name_c_str, name_c_size, push_constant_resource.name.c_str());
+                const uint32_t struct_offset = PushConstantSpecifications.empty() ? 0 : PushConstantSpecifications.back().Offset + PushConstantSpecifications.back().Size;
+                PushConstantSpecifications.push(PushConstantSpecification{.Name = name_c_str, .Size = struct_total_size, .Offset = struct_offset, .Flags = ShaderStageFlags::COMPUTE});
+            }
+        }
+
+        ZReleaseScratch(scratch);
     }
 
     Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(cstring name)
     {
-        LayoutBindingSpecification binding_spec = {};
-
         if (!Helpers::secure_strlen(name))
-        {
-            return binding_spec;
-        }
+            return {};
 
-        for (const auto& layout_binding : LayoutBindingSpecificationMap)
-        {
-            const auto& binding_specification_collection = layout_binding.second;
-            auto        find_it                          = std::find_if(binding_specification_collection.begin(), binding_specification_collection.end(), [&](const LayoutBindingSpecification& spec) { return Helpers::secure_strcmp(spec.Name, name) == 0; });
-
-            if (find_it != std::end(binding_specification_collection))
-            {
-                binding_spec = *find_it;
-                break;
-            }
-        }
-        return binding_spec;
+        const auto* spec = BindingsByName.find(name);
+        return spec ? *spec : LayoutBindingSpecification{};
     }
 
     void Shader::Dispose()
     {
-        for (auto& shader_module : ShaderModules)
-        {
-            vkDestroyShaderModule(m_device->LogicalDevice, shader_module, nullptr);
-        }
-        ShaderModules.clear();
+        if (!m_device)
+            return;
 
-        for (auto set_layout : InternalDescriptorSetLayoutMap)
-        {
-            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, set_layout.second);
-        }
+        DestroyModules();
+
+        // Descriptor-set layouts are borrowed from the device PSO cache. The cache
+        // outlives shaders and retires them during VulkanDevice shutdown.
         InternalDescriptorSetLayoutMap.clear();
 
-        if (m_descriptor_pool)
+        RetireDescriptorPool();
+        ShaderCreateInfos.clear();
+        PushConstants.clear();
+        PushConstantSpecifications.clear();
+        LayoutBindingSpecificationMap.clear();
+        LayoutBindingSpecifications.clear();
+        SetLayouts.clear();
+        DescriptorSetMap.clear();
+        BindingsByName.clear();
+        LocalArena.Shutdown();
+        m_device = nullptr;
+    }
+
+    void Shader::Reload()
+    {
+        ZENGINE_VALIDATE_ASSERT(m_device != nullptr, "Shader::Reload requires an initialized shader")
+        ZENGINE_VALIDATE_ASSERT(m_device->PipelineStateCache != nullptr, "Shader::Reload requires the PSO cache")
+
+        const uint32_t retired_generation = Generation;
+        const auto     specification      = m_specification;
+        ++Generation;
+
+        // Descriptor sets remain usable until the render timeline reaches this frame.
+        RetireDescriptorPool();
+        m_device->PipelineStateCache->InvalidateShaderModules(ShaderModules.data(), static_cast<uint32_t>(ShaderModules.size()), retired_generation);
+        DestroyModules();
+
+        InternalDescriptorSetLayoutMap.clear();
+        ShaderCreateInfos.clear();
+        PushConstants.clear();
+        PushConstantSpecifications.clear();
+        LayoutBindingSpecificationMap.clear();
+        LayoutBindingSpecifications.clear();
+        SetLayouts.clear();
+        DescriptorSetMap.clear();
+        BindingsByName.clear();
+        LocalArena.Shutdown();
+
+        Initialize(m_device, specification);
+    }
+
+    void Shader::DestroyModules()
+    {
+        for (auto& shader_module : ShaderModules)
         {
-            m_device->EnqueueForDeletion(Rendering::DeviceResourceType::DESCRIPTORPOOL, m_descriptor_pool);
-            m_descriptor_pool = VK_NULL_HANDLE;
+            if (m_device->PipelineStateCache)
+                m_device->PipelineStateCache->RetireShaderModule(shader_module);
+            else
+                vkDestroyShaderModule(m_device->LogicalDevice, shader_module, nullptr);
         }
+        ShaderModules.clear();
+    }
+
+    void Shader::RetireDescriptorPool()
+    {
+        if (m_descriptor_pool == VK_NULL_HANDLE)
+            return;
+
+        Hardwares::DeferredFreeEntry entry = {};
+        entry.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        entry.Data.Vk                      = {m_descriptor_pool, Rendering::DeviceResourceType::DESCRIPTORPOOL, nullptr};
+        m_device->DeferFree(entry);
+        m_descriptor_pool = VK_NULL_HANDLE;
     }
 
     void Shader::CreateDescriptorSetLayouts()
@@ -443,8 +615,9 @@ namespace ZEngine::Rendering::Shaders
 
         Array<VkDescriptorPoolSize> pool_size_collection = {};
         pool_size_collection.init(scratch.Arena, 10);
+        bool                                pool_needs_update_after_bind = false; // set true when a non-reserved binding uses UPDATE_AFTER_BIND_BIT
 
-        Array<VkDescriptorSetLayoutBinding> layout_binding_collection = {};
+        Array<VkDescriptorSetLayoutBinding> layout_binding_collection    = {};
         layout_binding_collection.init(scratch.Arena, 10);
 
         for (const auto layout_binding_set : LayoutBindingSpecificationMap)
@@ -458,27 +631,67 @@ namespace ZEngine::Rendering::Shaders
                 continue;
             }
 
+            layout_binding_collection.clear();
             for (uint32_t i = 0; i < layout_binding_set.second.size(); ++i)
             {
-                layout_binding_collection.push(VkDescriptorSetLayoutBinding{.binding = layout_binding_set.second[i].Binding, .descriptorType = DescriptorTypeMap[static_cast<uint32_t>(layout_binding_set.second[i].DescriptorTypeValue)], .descriptorCount = layout_binding_set.second[i].Count, .stageFlags = ShaderStageFlagsMap[static_cast<uint32_t>(layout_binding_set.second[i].Flags)], .pImmutableSamplers = nullptr});
+                const auto&                  specification = layout_binding_set.second[i];
+                VkDescriptorSetLayoutBinding binding       = {.binding = specification.Binding, .descriptorType = DescriptorTypeMap[static_cast<uint32_t>(specification.DescriptorTypeValue)], .descriptorCount = specification.Count, .stageFlags = ShaderStageFlagsMap[static_cast<uint32_t>(specification.Flags)], .pImmutableSamplers = nullptr};
+                bool                         merged        = false;
+                for (uint32_t binding_index = 0; binding_index < layout_binding_collection.size(); ++binding_index)
+                {
+                    auto& existing = layout_binding_collection[binding_index];
+                    if (existing.binding != binding.binding)
+                        continue;
+
+                    ZENGINE_VALIDATE_ASSERT(existing.descriptorType == binding.descriptorType, "Shader reflection produced incompatible descriptor types for one binding")
+                    ZENGINE_VALIDATE_ASSERT(existing.descriptorCount == binding.descriptorCount, "Shader reflection produced incompatible descriptor counts for one binding")
+                    existing.stageFlags |= binding.stageFlags;
+                    merged               = true;
+                    break;
+                }
+                if (!merged)
+                    layout_binding_collection.push(binding);
+            }
+
+            for (const auto& lb : layout_binding_collection)
+            {
+                auto it = std::find_if(pool_size_collection.begin(), pool_size_collection.end(), [&](const VkDescriptorPoolSize& ps) { return ps.type == lb.descriptorType; });
+                if (it == pool_size_collection.end())
+                    pool_size_collection.push(VkDescriptorPoolSize{.type = lb.descriptorType, .descriptorCount = lb.descriptorCount});
+                else
+                    it->descriptorCount += lb.descriptorCount;
             }
 
             /*
              * Binding flag extension
              */
+            // UNIFORM_BUFFER_DYNAMIC is incompatible with UPDATE_AFTER_BIND_POOL_BIT.
+            // If this set has a dynamic UBO, disable all UPDATE_AFTER_BIND flags for this set.
+            bool has_dynamic_ubo = false;
+            for (uint32_t i = 0; i < layout_binding_collection.size(); ++i)
+                if (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+                {
+                    has_dynamic_ubo = true;
+                    break;
+                }
+
             Array<VkDescriptorBindingFlags> binding_flags_collection = {};
             binding_flags_collection.init(scratch.Arena, layout_binding_collection.size(), layout_binding_collection.size());
             for (uint32_t i = 0; i < layout_binding_collection.size(); ++i)
             {
-                binding_flags_collection[i] = 0; // We zeroing as we iterate
+                binding_flags_collection[i] = 0;
 
-                if (m_device->PhysicalDeviceSupportSampledImageBindless && ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)))
+                if (!has_dynamic_ubo)
                 {
-                    binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-                }
-                else if (m_device->PhysicalDeviceSupportStorageBufferBindless && (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))
-                {
-                    binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+                    if (m_device->PhysicalDeviceSupportSampledImageBindless && ((layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)))
+                    {
+                        binding_flags_collection[i]  = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+                        pool_needs_update_after_bind = true;
+                    }
+                    else if (m_device->PhysicalDeviceSupportStorageBufferBindless && (layout_binding_collection[i].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))
+                    {
+                        binding_flags_collection[i] = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+                    }
                 }
             }
 
@@ -494,35 +707,27 @@ namespace ZEngine::Rendering::Shaders
             descriptor_set_layout_create_info.bindingCount                        = layout_binding_collection.size();
             descriptor_set_layout_create_info.pBindings                           = layout_binding_collection.data();
 
-            if (m_device->PhysicalDeviceSupportSampledImageBindless)
+            // Only set UPDATE_AFTER_BIND_POOL_BIT if at least one binding in this set
+            // actually uses UPDATE_AFTER_BIND_BIT — UNIFORM_BUFFER_DYNAMIC is incompatible
+            // with layouts that have this flag.
+            bool has_update_after_bind                                            = false;
+            for (uint32_t k = 0; k < binding_flags_collection.size(); ++k)
+                if (binding_flags_collection[k] & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT)
+                {
+                    has_update_after_bind = true;
+                    break;
+                }
+
+            if (m_device->PhysicalDeviceSupportSampledImageBindless && has_update_after_bind)
             {
                 descriptor_set_layout_create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
                 descriptor_set_layout_create_info.pNext = &binding_flags_create_info;
             }
 
-            VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
-            ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(m_device->LogicalDevice, &descriptor_set_layout_create_info, nullptr, &descriptor_set_layout) == VK_SUCCESS, "Failed to create DescriptorSetLayout")
-
-            InternalDescriptorSetLayoutMap[binding_set] = std::move(descriptor_set_layout);
+            ZENGINE_VALIDATE_ASSERT(m_device->PipelineStateCache != nullptr, "Shader descriptor layouts require the PSO cache")
+            InternalDescriptorSetLayoutMap[binding_set] = m_device->PipelineStateCache->GetOrCreateDescriptorSetLayout(descriptor_set_layout_create_info);
         }
 
-        /*
-         * Packing PoolSize
-         */
-        for (const auto& layout_binding : layout_binding_collection)
-        {
-            auto find_pool_size_it = std::find_if(pool_size_collection.begin(), pool_size_collection.end(), [&](const VkDescriptorPoolSize& pool_size) { return (layout_binding.descriptorType == pool_size.type); });
-
-            if (find_pool_size_it == std::end(pool_size_collection))
-            {
-                pool_size_collection.push(VkDescriptorPoolSize{.type = layout_binding.descriptorType, .descriptorCount = layout_binding.descriptorCount});
-                continue;
-            }
-            /*
-             * ToDo: we should check the limit against the device..
-             */
-            find_pool_size_it->descriptorCount += layout_binding.descriptorCount;
-        }
         /*
          * Ensure correctness with number of frame count
          */
@@ -530,20 +735,6 @@ namespace ZEngine::Rendering::Shaders
         {
             pool_size.descriptorCount *= m_device->SwapchainPtr->BufferredFrameCount;
         }
-        // Reserved sets never contribute pool sizes, so populate their DescriptorSetMap
-        // entries unconditionally - before the early return below.
-        for (const auto layout : InternalDescriptorSetLayoutMap)
-        {
-            if (m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
-            {
-                DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
-                for (uint32_t i = 0; i < m_device->SwapchainPtr->BufferredFrameCount; ++i)
-                {
-                    DescriptorSetMap[layout.first][i] = m_device->ShaderReservedDescriptorSetMap.at(layout.first)[i];
-                }
-            }
-        }
-
         /*
          * Create DescriptorPool
          */
@@ -553,10 +744,17 @@ namespace ZEngine::Rendering::Shaders
             return;
         }
 
+        uint32_t non_reserved_set_count = 0;
+        for (const auto& layout : InternalDescriptorSetLayoutMap)
+        {
+            if (!m_device->ShaderReservedDescriptorSetMap.contains(layout.first))
+                ++non_reserved_set_count;
+        }
+
         VkDescriptorPoolCreateInfo pool_info = {};
         pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool_info.flags                      = m_device->PhysicalDeviceSupportSampledImageBindless ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
-        pool_info.maxSets                    = m_device->SwapchainPtr->BufferredFrameCount;
+        pool_info.flags                      = pool_needs_update_after_bind ? VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT : 0;
+        pool_info.maxSets                    = non_reserved_set_count * m_device->SwapchainPtr->BufferredFrameCount;
         pool_info.poolSizeCount              = pool_size_collection.size();
         pool_info.pPoolSizes                 = pool_size_collection.data();
 
@@ -574,7 +772,7 @@ namespace ZEngine::Rendering::Shaders
                 continue;
             }
 
-            DescriptorSetMap[layout.first].init(m_device->Arena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
+            DescriptorSetMap[layout.first].init(&LocalArena, m_device->SwapchainPtr->BufferredFrameCount, m_device->SwapchainPtr->BufferredFrameCount);
 
             auto                         scratch    = ZGetScratch(&LocalArena);
 
@@ -598,15 +796,23 @@ namespace ZEngine::Rendering::Shaders
 
     void Shader::CreatePushConstantRange()
     {
-        if (!PushConstantSpecifications.empty())
+        for (const auto& specification : PushConstantSpecifications)
         {
-            VkPushConstantRange& range = PushConstants.push_use(VkPushConstantRange{.offset = 0});
-            for (const auto& push_constant_spec : PushConstantSpecifications)
+            const VkShaderStageFlags stage_flags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(specification.Flags)];
+            bool                     merged      = false;
+            for (VkPushConstantRange& range : PushConstants)
             {
-                range.stageFlags |= ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(push_constant_spec.Flags)];
-                range.size       += push_constant_spec.Size;
+                if (range.offset != specification.Offset || range.size != specification.Size)
+                    continue;
+
+                range.stageFlags |= stage_flags;
+                merged            = true;
+                break;
             }
-            PushConstantSpecifications.clear();
+
+            if (!merged)
+                PushConstants.push(VkPushConstantRange{.stageFlags = stage_flags, .offset = specification.Offset, .size = specification.Size});
         }
+        PushConstantSpecifications.clear();
     }
 } // namespace ZEngine::Rendering::Shaders

@@ -266,12 +266,10 @@ static bool ShowCrashDialogCocoa(cstring app_name,
         }
         else
         {
-            // Path B: signal path — the crashing thread is in sigsuspend.
-            // If the crash happened on a non-main thread, the main thread is still
-            // running the GLFW event loop and will drain the main queue.
-            // If the crash happened on the main thread, the wait below times out
-            // and we skip the dialog rather than crash trying to show it on the
-            // wrong thread (NSWindow requires the main thread on modern macOS).
+            // Path B: signal path — the crashing thread is parked in sigsuspend.
+            // NSWindow must be created and shown on the main thread (macOS 14+ strictly
+            // enforces this). Use dispatch_async to the main queue, then spin a private
+            // CFRunLoop on this worker thread to drain it until the dialog closes.
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
             dispatch_async(dispatch_get_main_queue(), ^{
                 @autoreleasepool
@@ -297,7 +295,10 @@ static bool ShowCrashDialogCocoa(cstring app_name,
                     dispatch_semaphore_signal(sem);
                 }
             });
-            dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
+            // Pump the main run loop from this worker thread so the dispatch_async
+            // block above can execute (the main thread is stuck in sigsuspend).
+            while (dispatch_semaphore_wait(sem, DISPATCH_TIME_NOW) != 0)
+                [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
         }
 
         if (didSend && comment.length > 0)
@@ -318,19 +319,20 @@ namespace ZEngine::CrashHandlers
     struct WorkerThreadParams
     {
         int         SignalNumber                        = 0;
-        cstring     SignalOrException                   = nullptr;
+        char        SignalOrException[512]              = {};
         void*       BacktraceAddrs[kMaxBacktraceFrames] = {};
         int         BacktraceSize                       = 0;
         char        LogPath[kMaxPathLen]                = {};
         bool        BacktraceFromSignal                 = false;
     };
 
-    static constexpr size_t   kAltStackSize = 32 * 1024;
-    static struct sigaction   s_previous_actions[NSIG] = {};
-    static char               s_alt_stack_mem[kAltStackSize];
-    static int                s_crash_pipe[2] = {-1, -1};
-    static WorkerThreadParams s_crash_params  = {};
-    static pthread_t          s_worker_thread;
+    static constexpr size_t        kAltStackSize       = 32 * 1024;
+    static struct sigaction        s_previous_actions[NSIG] = {};
+    static char                    s_alt_stack_mem[kAltStackSize];
+    static int                     s_crash_pipe[2]     = {-1, -1};
+    static WorkerThreadParams      s_crash_params      = {};
+    static pthread_t               s_worker_thread;
+    static std::atomic<bool>       s_in_crash_handler  = {false};
 
     static const char* SignalToString(int sig)
     {
@@ -602,22 +604,31 @@ namespace ZEngine::CrashHandlers
 
     static void SignalHandler(int sig, siginfo_t* /*info*/, void* ctx)
     {
-        s_crash_params.SignalNumber      = sig;
-        s_crash_params.SignalOrException = SignalToString(sig);
-
-        s_crash_params.BacktraceSize       = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
-        s_crash_params.BacktraceFromSignal = true;
-
-        if (ctx)
+        s_crash_params.SignalNumber = sig;
+        // Only overwrite SignalOrException when OnCrash is NOT already running.
+        // If OnCrash set s_in_crash_handler=true first (and already set the message),
+        // a secondary signal (e.g. SIGSEGV from backtrace()) must not clobber it.
+        // If OnCrash() is already running (s_in_crash_handler=true), a secondary signal
+        // (e.g. SIGSEGV from backtrace()) must not overwrite the crash params OnCrash
+        // already set. Still write to the pipe so the worker wakes up.
+        if (!s_in_crash_handler.load(std::memory_order_acquire))
         {
-            auto* uc = static_cast<ucontext_t*>(ctx);
+            snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", SignalToString(sig));
+
+            s_crash_params.BacktraceSize       = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+            s_crash_params.BacktraceFromSignal = true;
+
+            if (ctx)
+            {
+                auto* uc = static_cast<ucontext_t*>(ctx);
 #if defined(__x86_64__)
-            if (s_crash_params.BacktraceSize > 0)
-                s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
+                if (s_crash_params.BacktraceSize > 0)
+                    s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__rip);
 #elif defined(__aarch64__)
-            if (s_crash_params.BacktraceSize > 0)
-                s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
+                if (s_crash_params.BacktraceSize > 0)
+                    s_crash_params.BacktraceAddrs[0] = reinterpret_cast<void*>(uc->uc_mcontext->__ss.__pc);
 #endif
+            }
         }
 
         uint8_t byte = 1;
@@ -703,20 +714,19 @@ namespace ZEngine::CrashHandlers
 
     [[noreturn]] void CrashHandler::OnCrash(cstring signal_or_exception, void* /*ctx*/)
     {
-        static std::atomic<bool> s_in_crash_handler{false};
         if (s_in_crash_handler.exchange(true, std::memory_order_acq_rel))
         {
             fputs("[CrashHandler] FATAL: crash handler reentered. Aborting.\n", stderr);
             _exit(EXIT_FAILURE);
         }
 
-        // Capture the call-site stack here, on the calling thread, before waking
-        // the worker.  BacktraceFromSignal stays false so the worker skips its own
-        // (meaningless) backtrace and uses these addresses instead.
-        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+        // Set the message BEFORE backtrace(): in Release builds backtrace() can trigger
+        // SIGSEGV (missing frame pointers). If it does, the signal handler guard above
+        // ensures SignalOrException is not overwritten, so the original message survives.
+        snprintf(s_crash_params.SignalOrException, sizeof(s_crash_params.SignalOrException), "%s", signal_or_exception ? signal_or_exception : "");
 
-        s_crash_params.SignalOrException = signal_or_exception;
-        uint8_t byte                     = 1;
+        s_crash_params.BacktraceSize = backtrace(s_crash_params.BacktraceAddrs, kMaxBacktraceFrames);
+        uint8_t byte = 1;
         write(s_crash_pipe[1], &byte, 1);
         // Pump the main run loop so the dispatch_sync block posted by the
         // worker thread (which shows the Cocoa dialog) can execute here on

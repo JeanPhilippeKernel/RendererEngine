@@ -3,7 +3,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Rendering/Primitives/Fence.h>
 #include <ZEngine/Rendering/Primitives/Semaphore.h>
-#include <ZEngine/Rendering/Renderers/RenderPasses/Attachment.h>
+#include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
 #include <limits>
@@ -11,6 +11,33 @@
 namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
+
+    // None: normal. Pending: recreate at start of next AcquireNextImage (set by
+    // framebuffer resize, SUBOPTIMAL at acquire/present, OOD at present or zero-size
+    // surface). FrameAborted: failed acquire — no image, no GPU work submitted.
+    enum class RecreationState : uint8_t
+    {
+        None         = 0,
+        Pending      = 1,
+        FrameAborted = 2,
+    };
+
+    // Called synchronously after recreation so render targets resize in the same frame.
+    using SwapchainResizedFn    = void (*)(uint32_t width, uint32_t height, void* ctx);
+    /// @brief Called after this frame's graphics command buffers have been submitted.
+    /// @param timeline Timeline semaphore signalled by the accepted graphics submission.
+    /// @param timeline_value Exact value signalled by that submission.
+    using RenderWorkSubmittedFn = void (*)(void* ctx, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+    /// @brief Called when a queued submission callback's frame was never submitted.
+    using RenderWorkCancelledFn = void (*)(void* ctx);
+
+    /// @brief Render-thread callback associated with one pending graphics submission.
+    struct RenderWorkSubmissionCallback
+    {
+        RenderWorkSubmittedFn Function = nullptr;
+        RenderWorkCancelledFn Cancel   = nullptr;
+        void*                 Context  = nullptr;
+    };
 
     struct FrameContext
     {
@@ -21,11 +48,24 @@ namespace ZEngine::Hardwares
     };
     ZDEFINE_PTR(FrameContext);
 
+    struct FrameAsyncOperation
+    {
+        VkPipelineStageFlags2             StageFlags  = 0;
+        uint64_t                          SignalValue = 0;
+        Rendering::Primitives::Semaphore* Timeline    = nullptr;
+    };
+
     struct DeviceSwapchain
     {
+        // Leave the render thread able to consume resize/minimize/close requests
+        // even when the compositor stops making presentation progress.
+        static constexpr uint64_t                                  ImageAcquireTimeoutNs          = 100'000'000;
+
         Core::Memory::ArenaAllocator                               Arena                          = {};
         VulkanDevice*                                              Device                         = nullptr;
-        bool                                                       HasRecreationPending           = false;
+        RecreationState                                            Recreation                     = RecreationState::None;
+        SwapchainResizedFn                                         OnSwapchainResized             = nullptr;
+        void*                                                      OnSwapchainResizedCtx          = nullptr;
         uint32_t                                                   BufferredFrameCount            = 0;
         uint32_t                                                   SwapchainImageCount            = 3;
         uint32_t                                                   PreviousSwapchainImageCount    = 3;
@@ -33,6 +73,8 @@ namespace ZEngine::Hardwares
 
         uint32_t                                                   SwapchainImageWidth            = std::numeric_limits<uint32_t>::max();
         uint32_t                                                   SwapchainImageHeight           = std::numeric_limits<uint32_t>::max();
+        // Render-thread-owned copy of the main thread's physical framebuffer size.
+        VkExtent2D                                                 FramebufferExtent              = {};
         uint32_t                                                   FrameContextOffset             = 0;
         uint32_t                                                   FrameContextPoolSize           = 0;
         const uint32_t                                             FrameContextPoolSizeFactor     = 4;
@@ -42,21 +84,69 @@ namespace ZEngine::Hardwares
         VkSwapchainKHR                                             SwapchainHandle                = VK_NULL_HANDLE;
         FrameContextPtr                                            CurrentFrame                   = nullptr;
         Rendering::Primitives::Semaphore*                          RenderTimeline                 = nullptr;
+        // Latest graphics work submitted directly by RenderGraph rather than through
+        // Present(). A later upload must wait on this semaphore directly: relaying it
+        // through RenderTimeline preserves execution order but loses the draw access
+        // scope needed for a subsequent buffer write.
+        Rendering::Primitives::Semaphore*                          DirectGraphicsTimeline         = nullptr;
+        uint64_t                                                   DirectGraphicsTimelineValue    = 0;
         Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = nullptr;
         Core::Containers::Array<FrameContext>                      FrameContexts                  = {};
+        Core::Containers::Array<VkImage>                           SwapchainImages                = {};
         Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
         Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
+        Core::Containers::Array<VkImageLayout>                     SwapchainImageLayouts          = {};
+        // Fence from the accepted graphics submission that last rendered each
+        // swapchain image. Reset fences are never retained here.
         Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
-        Core::Containers::Array<Rendering::Primitives::Fence*>     PresentCompletes               = {};
         Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
+        // Render-thread-owned snapshot of asynchronous GPU work relevant to the
+        // current frame. Both graph batches and Present() consume this list.
+        Core::Containers::Array<FrameAsyncOperation>               FrameAsyncOperations           = {};
+        // Render-thread-owned callbacks. A callback is delivered only once
+        // vkQueueSubmit2 has accepted this frame's graphics command buffers.
+        Core::Containers::Array<RenderWorkSubmissionCallback>      RenderWorkSubmittedCallbacks   = {};
 
-        void                                                       Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
-        void                                                       Create();
-        void                                                       Clear();
-        void                                                       Dispose();
+        // Debug-only, opt-in render-graph diagnostic state. It is reset at the
+        // beginning of every frame and set only for a traced graph submission.
+        bool                                                       TraceSubmission                = false;
 
-        void                                                       AcquireNextImage(uint32_t frame_context_idx);
-        void                                                       Present();
+        // Returns false when no image was acquired (timeout, failed acquire, or
+        // zero-size surface). Callers must skip all rendering work for that frame.
+        bool                                                       IsFrameValid() const
+        {
+            return Recreation != RecreationState::FrameAborted && CurrentFrame != nullptr && CurrentFrame->ImageIndex != std::numeric_limits<uint32_t>::max();
+        }
+
+        void              Initialize(VulkanDevice* const device, uint32_t buffered_frame_size);
+        void              UpdateFramebufferExtent(uint32_t width, uint32_t height);
+        static VkExtent2D ResolveExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D framebuffer_extent);
+        void              Create();
+        void              Clear();
+        void              Dispose();
+
+        void              AcquireNextImage(uint32_t frame_context_idx);
+        /// @brief Updates the frame's acquired-image state; only success/suboptimal have an image.
+        bool              ApplyAcquireResult(FrameContext& frame, VkResult result, uint32_t image_index);
+        void              CollectAsyncGPUOperations();
+        /// @brief Delivers `fn` after this frame's graphics work has been accepted by Vulkan.
+        /// @details The caller owns `context` until delivery or cancellation. `cancel_fn`
+        /// releases any CPU-side frame state when the graphics submission is rejected.
+        void              EnqueueRenderWorkSubmittedCallback(RenderWorkSubmittedFn fn, void* context, RenderWorkCancelledFn cancel_fn = nullptr);
+        void              Present();
+
+#if !defined(NDEBUG)
+        // Test-only: inject a recreation state without going through the Vulkan
+        // SUBOPTIMAL/OOD detection path. Used by SwapchainResizeTest to exercise
+        // the recreation state machine in isolation.
+        void ForceRecreation(RecreationState state)
+        {
+            Recreation = state;
+        }
+#endif
+
+    private:
+        void ClearImageInFlightReferences(Rendering::Primitives::Fence* fence, uint32_t frame_index);
     };
     ZDEFINE_PTR(DeviceSwapchain);
 } // namespace ZEngine::Hardwares

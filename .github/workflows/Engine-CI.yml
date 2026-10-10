@@ -3,8 +3,28 @@ name: Engine CI
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'ZEngine/**'
+      - 'Tetragrama/**'
+      - 'Obelisk/**'
+      - 'Resources/**'
+      - 'Scripts/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'dependencies.cmake'
+      - '.github/workflows/**'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'ZEngine/**'
+      - 'Tetragrama/**'
+      - 'Obelisk/**'
+      - 'Resources/**'
+      - 'Scripts/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'dependencies.cmake'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       run_debug:
@@ -22,16 +42,16 @@ on:
 
 jobs:
   commitlint:
-    if: github.event_name == 'pull_request'
+    # A develop-to-main promotion contains historical commits that predate
+    # commitlint enforcement. Ordinary pull requests remain fully linted.
+    if: >-
+      github.event_name == 'pull_request' &&
+      !(github.event.pull_request.head.ref == 'develop' &&
+        github.event.pull_request.base.ref == 'main')
     uses: ./.github/workflows/job-commitlint.yml
 
   clang-format:
-    strategy:
-      matrix:
-        directories: [ZEngine, Tetragrama, Obelisk, Resources/Shaders]
     uses: ./.github/workflows/job-clangformat.yml
-    with:
-      srcDirectory: ${{ matrix.directories }}
 
   windows:
     needs: [commitlint, clang-format]

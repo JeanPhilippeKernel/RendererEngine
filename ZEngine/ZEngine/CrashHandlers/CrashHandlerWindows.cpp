@@ -22,12 +22,12 @@ namespace ZEngine::CrashHandlers
 
     struct WorkerThreadParams
     {
-        DWORD               FaultedThreadId       = 0;
-        HANDLE              FaultedThreadHandle   = nullptr;
-        cstring             SignalOrException     = nullptr;
-        EXCEPTION_POINTERS* ExceptionInfo         = nullptr;
-        char                LogPath[kMaxPathLen]  = {0};
-        char                DumpPath[kMaxPathLen] = {0};
+        DWORD               FaultedThreadId        = 0;
+        HANDLE              FaultedThreadHandle    = nullptr;
+        char                SignalOrException[512] = {};
+        EXCEPTION_POINTERS* ExceptionInfo          = nullptr;
+        char                LogPath[kMaxPathLen]   = {0};
+        char                DumpPath[kMaxPathLen]  = {0};
     };
 
     enum : int
@@ -848,9 +848,9 @@ namespace ZEngine::CrashHandlers
         }
 
         WorkerThreadParams params;
-        params.SignalOrException = signal_or_exception;
-        params.ExceptionInfo     = exception_info;
-        params.FaultedThreadId   = GetCurrentThreadId();
+        snprintf(params.SignalOrException, sizeof(params.SignalOrException), "%s", signal_or_exception ? signal_or_exception : "");
+        params.ExceptionInfo   = exception_info;
+        params.FaultedThreadId = GetCurrentThreadId();
         if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &params.FaultedThreadHandle, THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0))
             params.FaultedThreadHandle = GetCurrentThread();
 

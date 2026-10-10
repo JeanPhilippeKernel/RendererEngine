@@ -27,8 +27,10 @@ namespace ZEngine::Rendering::Primitives
             return;
         }
 
-        /*Todo : register for deletion from device*/
-        Device->EnqueueForDeletion(Rendering::DeviceResourceType::SEMAPHORE, m_handle);
+        Hardwares::DeferredFreeEntry e = {};
+        e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        e.Data.Vk                      = {m_handle, Rendering::DeviceResourceType::SEMAPHORE, nullptr};
+        Device->DeferFree(e);
         m_handle          = VK_NULL_HANDLE;
         m_semaphore_state = SemaphoreState::Idle;
     }

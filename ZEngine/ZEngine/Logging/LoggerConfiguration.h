@@ -9,6 +9,8 @@ namespace ZEngine::Logging
         std::string               EngineLoggerName = "ENGINE";
         std::string               OutputDirectory  = "Logs";
         std::string               LogFilename      = "engine_dump.log";
+        std::string               CrashLogDir      = "CrashDumps";
         std::chrono::milliseconds PeriodicFlush    = std::chrono::milliseconds(1);
+        size_t                    RingBufferSize   = 1024;
     };
 } // namespace ZEngine::Logging

@@ -1,0 +1,76 @@
+#version 460
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform textureCube SourceRadiance;
+layout(set = 0, binding = 1) uniform sampler LinearClampToEdgeSampler;
+layout(set = 0, binding = 2, rgba16f) uniform writeonly image2DArray Destination;
+
+layout(push_constant) uniform DiffuseIrradiancePushConstants
+{
+    uint  Resolution;
+    uint  SampleCount;
+    uvec2 Padding;
+}
+Push;
+
+const float PI = 3.14159265358979323846;
+
+float       radical_inverse_vdc(uint bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10;
+}
+
+vec2 hammersley(uint index, uint count)
+{
+    return vec2(float(index) / float(count), radical_inverse_vdc(index));
+}
+
+vec3 cube_direction(uint face, vec2 uv)
+{
+    if (face == 0u)
+        return normalize(vec3(1.0, -uv.y, -uv.x));
+    if (face == 1u)
+        return normalize(vec3(-1.0, -uv.y, uv.x));
+    if (face == 2u)
+        return normalize(vec3(uv.x, 1.0, uv.y));
+    if (face == 3u)
+        return normalize(vec3(uv.x, -1.0, -uv.y));
+    if (face == 4u)
+        return normalize(vec3(uv.x, -uv.y, 1.0));
+    return normalize(vec3(-uv.x, -uv.y, -1.0));
+}
+
+void main()
+{
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    const uint  face  = gl_GlobalInvocationID.z;
+    if (pixel.x >= Push.Resolution || pixel.y >= Push.Resolution || face >= 6u)
+        return;
+
+    const vec2 normal_uv  = ((vec2(pixel) + vec2(0.5)) / float(Push.Resolution)) * 2.0 - 1.0;
+    const vec3 normal     = cube_direction(face, normal_uv);
+    const vec3 up_axis    = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    const vec3 tangent    = normalize(cross(up_axis, normal));
+    const vec3 bitangent  = cross(normal, tangent);
+
+    vec3       irradiance = vec3(0.0);
+    for (uint sample_index = 0u; sample_index < Push.SampleCount; ++sample_index)
+    {
+        const vec2  xi         = hammersley(sample_index, Push.SampleCount);
+        const float cos_theta  = sqrt(1.0 - xi.y);
+        const float sin_theta  = sqrt(xi.y);
+        const float phi        = 2.0 * PI * xi.x;
+        const vec3  local      = vec3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
+        const vec3  direction  = normalize(tangent * local.x + bitangent * local.y + normal * local.z);
+        irradiance            += textureLod(samplerCube(SourceRadiance, LinearClampToEdgeSampler), direction, 0.0).rgb;
+    }
+
+    irradiance *= PI / float(Push.SampleCount);
+    imageStore(Destination, ivec3(pixel, face), vec4(irradiance, 1.0));
+}

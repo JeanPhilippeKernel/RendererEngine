@@ -72,7 +72,7 @@ namespace ZEngine::Controllers
         }
     }
 
-    ZRawPtr(Rendering::Cameras::Camera) PerspectiveCameraController::GetCamera() const
+    Rendering::Cameras::Camera* PerspectiveCameraController::GetCamera() const
     {
         return m_perspective_camera;
     }

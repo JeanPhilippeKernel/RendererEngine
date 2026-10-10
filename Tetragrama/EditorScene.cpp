@@ -1,275 +1,169 @@
 #include <Tetragrama/EditorScene.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
-#include <stack>
-
-using namespace ZEngine::Rendering::Meshes;
+#include <ZEngine/Rendering/BuiltinMeshes.h>
+#include <random>
 using namespace ZEngine::Core::Containers;
-using namespace ZEngine::Core::Maths;
+using namespace ZEngine::ECS::Components;
 using namespace ZEngine::Managers;
-using namespace ZEngine::Helpers;
+using ZEngine::Core::VFS::VFSPath;
 
 namespace Tetragrama
 {
-    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name)
+    namespace
     {
-        arena->CreateSubArena(ZMega(200), &LocalArena);
+        uuids::uuid GenerateEntityUUID()
+        {
+            std::random_device           random_device;
+            std::mt19937                 generator(random_device());
+            uuids::uuid_random_generator uuid_generator(generator);
+            return uuid_generator();
+        }
+    } // namespace
 
-        Name                     = name;
+    EditorScene::~EditorScene()
+    {
+        // InstanceArena is carved from LocalArena. Tear it down while its
+        // parent is still alive; base-class destruction happens afterwards.
+        InstanceArena.Shutdown();
+        ReleaseDeserializedArena();
+    }
 
-        PendingOnLoadHierarchies = CreateRef<ThreadSafeQueue<AssetManager::AssetHandle>>();
+    void EditorScene::Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring name, const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
+    {
+        // The caller supplies the bounded Editor owner. This child arena covers
+        // asset lists, scene graph data, seqlock instance buffers, reload paths,
+        // and the 4 MiB InstanceArena sub-arena.
+        arena->CreateSubArena(ZMega(200), &LocalArenaStorage, "EditorContext/EditorScene");
+        LocalArena = &LocalArenaStorage;
 
-        AssetFiles.init(&LocalArena, 500);
-        HashToAssetFile.init(&LocalArena, 500);
+        Name       = name;
+        Sky        = sky_defaults;
+        Sky.Sanitize();
 
-        Hierarchies.init(&LocalArena, 1000);
-        HierarchiesNodeRef.init(&LocalArena, 1000);
-        Names.init(&LocalArena, 1000);
-        LocalTransforms.init(&LocalArena, 1000);
-        GlobalTransforms.init(&LocalArena, 1000);
-        NodeNames.init(&LocalArena, 1000);
-        MeshAllocations.init(&LocalArena, 1000);
-        NodeSubMeshesAllocations.init(&LocalArena, 1000);
+        AssetFiles.init(LocalArena, 500);
+        HashToAssetFile.init(LocalArena, 500);
 
-        Vertices.init(&LocalArena, 40000, 40000);
-        Indices.init(&LocalArena, 10000, 10000);
-        ZEngine::Helpers::secure_memset(Vertices.data(), 0, sizeof(float) * Vertices.size(), sizeof(float) * Vertices.size());
-        ZEngine::Helpers::secure_memset(Indices.data(), 0, sizeof(uint32_t) * Indices.size(), sizeof(uint32_t) * Indices.size());
+        // Allocate a sub-arena for the instance list.
+        LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "EditorContext/EditorScene/Instances");
+        Instances.init(&InstanceArena, 64);
 
-        /*
-         * Root Scene node
-         */
-        Reset();
+        // Spawn a default directional light so new scenes are not dark.
+        // Rotation: -60° pitch (mostly downward), 30° yaw (slight horizontal angle).
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (ctx && ctx->ActorManager)
+        {
+            ZEngine::Rendering::RegisterBuiltinMeshes(LocalArena);
 
-        InitRootNode();
+            const uuids::uuid light_uuid = ZEngine::Rendering::BuiltinMeshUUIDParsed(ZEngine::Rendering::BuiltinMeshID::DirectionalLightIcon);
+            if (light_uuid.is_nil())
+                return;
+
+            constexpr cstring         default_light_name = "DirectionalLight";
+
+            ZEngine::ECS::ActorHandle handle             = ctx->ActorManager->Create();
+            ZEngine::ECS::Actor*      actor              = ctx->ActorManager->Access(handle);
+            if (!actor)
+                return;
+
+            NameComponent nc = {};
+            ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), default_light_name, ZEngine::Helpers::secure_strlen(default_light_name));
+            actor->AddComponent<NameComponent>(nc);
+
+            TransformComponent tc = {};
+            tc.Rotation.x         = -1.047f;
+            tc.Rotation.y         = 0.524f;
+            actor->AddComponent<TransformComponent>(tc);
+
+            LightComponent lc = {};
+            lc.LightType      = LightComponent::Type::Directional;
+            lc.Intensity      = 3.f;
+            lc.Color[0]       = 1.f;
+            lc.Color[1]       = 1.f;
+            lc.Color[2]       = 1.f;
+            actor->AddComponent<LightComponent>(lc);
+
+            UUIDComponent uc = {};
+            uc.Value         = GenerateEntityUUID();
+            actor->AddComponent<UUIDComponent>(uc);
+            if (Sky.PrimaryCelestialLight.is_nil())
+                Sky.PrimaryCelestialLight = uc.Value;
+
+            uint32_t      render_id = AddMeshInstance(light_uuid, default_light_name);
+            MeshComponent mc        = {};
+            mc.MeshUUID             = light_uuid;
+            mc.RenderInstanceId     = render_id;
+            actor->AddComponent<MeshComponent>(mc);
+        }
+
+        MarkSkyDirty();
+    }
+
+    bool EditorScene::InitializeDeserialized()
+    {
+        // A scene must outlive serializer scratch, but it cannot create a new root
+        // mapping for every load. Claim one of the two pre-reserved, profiled slots.
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context)
+            return false;
+
+        struct SceneLoadSlot
+        {
+            ZEngine::Core::Memory::ArenaAllocator* Arena = nullptr;
+            PaddedAtomic<bool>*                    InUse = nullptr;
+        };
+        const SceneLoadSlot slots[] = {
+            {&context->EditorSceneLoadArenaA, &context->EditorSceneLoadArenaAInUse},
+            {&context->EditorSceneLoadArenaB, &context->EditorSceneLoadArenaBInUse},
+        };
+
+        for (const SceneLoadSlot& slot : slots)
+        {
+            bool available = false;
+            if (!slot.Arena->m_memory || !slot.InUse->value.compare_exchange_strong(available, true, std::memory_order_acq_rel))
+                continue;
+
+            LocalArena        = slot.Arena;
+            DeserializedInUse = slot.InUse;
+            LocalArena->Clear();
+            LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "EditorSceneLoad/Instances");
+            if (!InstanceArena.m_memory)
+            {
+                ReleaseDeserializedArena();
+                return false;
+            }
+
+            AssetFiles.init(LocalArena, 500);
+            HashToAssetFile.init(LocalArena, 500);
+            Instances.init(&InstanceArena, 64);
+            return true;
+        }
+
+        ZENGINE_CORE_WARN("[EditorScene] Both bounded deserialization slots are in use")
+        return false;
+    }
+
+    void EditorScene::ReleaseDeserializedArena()
+    {
+        if (!DeserializedInUse)
+            return;
+
+        LocalArena->Clear();
+        DeserializedInUse->value.store(false, std::memory_order_release);
+        DeserializedInUse = nullptr;
+        LocalArena        = nullptr;
     }
 
     bool EditorScene::HasPendingChange() const
     {
-        return HasPendingChanges.load(std::memory_order_acquire);
-    }
-
-    int EditorScene::AddHierarchyNode(int parent, int depth)
-    {
-        if (depth < 0)
-        {
-            return -1;
-        }
-
-        int                             node_id  = static_cast<int>(Hierarchies.size());
-
-        // Create new node
-        ZEngine::Helpers::NodeHierarchy new_node = {};
-        new_node.Parent                          = parent;
-        new_node.DepthLevel                      = depth;
-
-        Hierarchies.push(new_node);
-        HierarchiesNodeRef.push({});
-        LocalTransforms.push(Identity<Mat4f>());
-        GlobalTransforms.push(Identity<Mat4f>());
-
-        if (parent >= 0)
-        {
-            auto& parent_node = Hierarchies[parent];
-
-            if (parent_node.FirstChild == -1)
-            {
-                // First child
-                parent_node.FirstChild = node_id;
-                parent_node.LastChild  = node_id;
-            }
-            else
-            {
-                // Append to last child's sibling list in O(1)
-                Hierarchies[parent_node.LastChild].RightSibling = node_id;
-                parent_node.LastChild                           = node_id;
-            }
-        }
-
-        HasPendingChanges.store(true, std::memory_order_release);
-
-        return node_id;
-    }
-
-    int EditorScene::CreateSceneNode(int parent, int depth, const ZEngine::Importers::AssetNodeRef& metadata)
-    {
-        int node_id = AddHierarchyNode(parent, depth);
-        if (node_id < 0)
-        {
-            ZENGINE_CORE_ERROR("{}, failed to create scene node", __FUNCTION__)
-            return node_id;
-        }
-
-        HierarchiesNodeRef[node_id] = metadata;
-
-        NodeNames[node_id]          = Names.size();
-        auto&   name                = Names.push_use({});
-        cstring name_val            = "Empty entity";
-
-        if (HierarchiesNodeRef[node_id].IsValid())
-        {
-            if (ZEngine::Helpers::secure_strlen(metadata.Name) > 0)
-            {
-                name_val = metadata.Name;
-            }
-        }
-        name.init(&LocalArena, name_val);
-
-        HasPendingChanges.store(true, std::memory_order_release);
-
-        TransformBufferDirty[0].store(true, std::memory_order_release);
-        TransformBufferDirty[1].store(true, std::memory_order_release);
-        TransformBufferDirty[2].store(true, std::memory_order_release);
-        return node_id;
-    }
-
-    void EditorScene::RemoveSceneNode(int node_id)
-    {
-        if (node_id < 0 || node_id >= static_cast<int>(Hierarchies.size()))
-            return;
-
-        if (IsSceneNodeDeleted(node_id))
-            return;
-
-        auto& node = Hierarchies[node_id];
-
-        // Unlink from parent's child list
-        if (node.Parent >= 0)
-        {
-            auto& parent  = Hierarchies[node.Parent];
-            int   prev    = -1;
-            int   current = parent.FirstChild;
-
-            while (current != -1)
-            {
-                if (current == node_id)
-                {
-                    if (prev == -1)
-                        parent.FirstChild = node.RightSibling;
-                    else
-                        Hierarchies[prev].RightSibling = node.RightSibling;
-                    break;
-                }
-
-                prev    = current;
-                current = Hierarchies[current].RightSibling;
-            }
-        }
-
-        std::stack<int> to_delete;
-        to_delete.push(node_id);
-
-        while (!to_delete.empty())
-        {
-            int current_id = to_delete.top();
-            to_delete.pop();
-
-            auto& current_node = Hierarchies[current_id];
-
-            // Push children to delete stack
-            int   child        = current_node.FirstChild;
-            while (child != -1)
-            {
-                int next_sibling = Hierarchies[child].RightSibling;
-                to_delete.push(child);
-                child = next_sibling;
-            }
-
-            // Mark as deleted
-            current_node.Parent       = -2;
-            current_node.FirstChild   = -1;
-            current_node.RightSibling = -1;
-            current_node.DepthLevel   = -1;
-
-            Names[current_id].clear();
-            Names[current_id].append("(deleted)");
-        }
-
-        HasPendingChanges.store(true, std::memory_order_release);
-    }
-
-    void EditorScene::ReparentNode(int node_id, int new_parent)
-    {
-        auto& node       = Hierarchies[node_id];
-        int   old_parent = node.Parent;
-
-        // unlink from old parent
-        if (old_parent >= 0)
-        {
-            auto& parent  = Hierarchies[old_parent];
-            int   prev    = -1;
-            int   current = parent.FirstChild;
-
-            while (current != -1)
-            {
-                if (current == node_id)
-                {
-                    if (prev == -1)
-                        parent.FirstChild = node.RightSibling;
-                    else
-                        Hierarchies[prev].RightSibling = node.RightSibling;
-                    break;
-                }
-
-                prev    = current;
-                current = Hierarchies[current].RightSibling;
-            }
-        }
-
-        // link to new parent
-        node.Parent                        = new_parent;
-        node.RightSibling                  = Hierarchies[new_parent].FirstChild;
-        Hierarchies[new_parent].FirstChild = node_id;
-        node.DepthLevel                    = Hierarchies[new_parent].DepthLevel + 1;
-    }
-
-    bool EditorScene::IsSceneNodeDeleted(int node)
-    {
-        if (node < 0)
-        {
-            return true;
-        }
-        return Hierarchies[node].Parent == -2;
-    }
-
-    const ZEngine::Rendering::Meshes::MeshAllocation& EditorScene::CreateOrGetMeshAllocation(ZEngine::Importers::AssetMesh* const mesh)
-    {
-        if (MeshAllocations.contains(mesh->MeshUUID))
-        {
-            MeshAllocations[mesh->MeshUUID].InstanceCount++;
-        }
-        else
-        {
-            auto vert_buff_dst_write_offset = Vertices.data() + CurrentVertexOffset;
-            auto vert_buff_dst_byte_size    = sizeof(float) * Vertices.size();
-
-            auto vert_buff_src_write_offset = mesh->Vertices.data();
-            auto vert_buff_src_byte_size    = sizeof(float) * mesh->Vertices.size();
-
-            auto indx_buff_dst_write_offset = Indices.data() + CurrentIndexOffset;
-            auto indx_buff_dst_byte_size    = sizeof(uint32_t) * Indices.size();
-
-            auto indx_buff_src_write_offset = mesh->Indices.data();
-            auto indx_buff_src_byte_size    = sizeof(uint32_t) * mesh->Indices.size();
-
-            ZEngine::Helpers::secure_memcpy(vert_buff_dst_write_offset, vert_buff_dst_byte_size, vert_buff_src_write_offset, vert_buff_src_byte_size);
-            ZEngine::Helpers::secure_memcpy(indx_buff_dst_write_offset, indx_buff_dst_byte_size, indx_buff_src_write_offset, indx_buff_src_byte_size);
-
-            MeshAllocations[mesh->MeshUUID].VertexOffset            = CurrentVertexOffset;
-            MeshAllocations[mesh->MeshUUID].IndexOffset             = CurrentIndexOffset;
-            MeshAllocations[mesh->MeshUUID].VertexCount             = mesh->Vertices.size();
-            MeshAllocations[mesh->MeshUUID].IndexCount              = mesh->Indices.size();
-            MeshAllocations[mesh->MeshUUID].SubMeshAllocationCount  = mesh->SubMeshes.size();
-            MeshAllocations[mesh->MeshUUID].InstanceCount           = 1;
-
-            CurrentVertexOffset                                    += mesh->Vertices.size();
-            CurrentIndexOffset                                     += mesh->Indices.size();
-        }
-
-        MeshAllocationDirty[0].store(true, std::memory_order_release);
-        MeshAllocationDirty[1].store(true, std::memory_order_release);
-        MeshAllocationDirty[2].store(true, std::memory_order_release);
-
-        return MeshAllocations.at(mesh->MeshUUID);
+        return HasPendingChanges.value.load(std::memory_order_acquire);
     }
 
     void EditorScene::PushAssetFile(const ZEngine::Importers::AssetImporterOutput& data)
@@ -283,12 +177,12 @@ namespace Tetragrama
         EditorAssetSceneFiles asset_file = {};
         asset_file.Type                  = data.Type;
         asset_file.Hash                  = ZEngine::Core::Containers::hash_compute(data.Path.c_str());
-        asset_file.Path.init(&(LocalArena), data.Path.c_str());
-        asset_file.RootPath.init(&(LocalArena), data.RootPath.c_str());
+        asset_file.Path.init(LocalArena, data.Path.c_str());
+        asset_file.RootPath.init(LocalArena, data.RootPath.c_str());
 
         if (HashToAssetFile.contains(asset_file.Hash))
         {
-            ZENGINE_CORE_WARN("Asset file already exist at that location : {}", asset_file.Path.c_str())
+            ZENGINE_CORE_WARN("Asset file already exists at that location : {}", asset_file.Path.c_str())
             return;
         }
 
@@ -296,91 +190,174 @@ namespace Tetragrama
         AssetFiles.push(asset_file);
         HashToAssetFile.insert(asset_file.Hash, index);
 
-        HasPendingChanges.store(true, std::memory_order_release);
+        HasPendingChanges.value.store(true, std::memory_order_release);
     }
 
     void EditorScene::MarkDirty(bool value)
     {
-        Dirty.store(value, std::memory_order_release);
+        Dirty.value.store(value, std::memory_order_release);
     }
 
     bool EditorScene::IsDirty()
     {
-        return Dirty.load(std::memory_order_acquire);
+        return Dirty.value.load(std::memory_order_acquire);
     }
 
-    void EditorScene::Reset()
+    void EditorScene::Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
     {
         AssetFiles.clear();
         HashToAssetFile.clear();
 
-        Hierarchies.clear();
-        HierarchiesNodeRef.clear();
-        Names.clear();
-        LocalTransforms.clear();
-        GlobalTransforms.clear();
-        NodeNames.clear();
+        SeqBeginWrite();
+        Instances.clear();
+        NextInstanceId = 1;
+        SeqEndWrite();
+        MarkInstancesDirty();
 
-        Dirty.store(false, std::memory_order_release);
+        Sky = sky_defaults;
+        Sky.Sanitize();
+        MarkSkyDirty();
+
+        Dirty.value.store(false, std::memory_order_release);
     }
 
-    void EditorScene::InitRootNode()
+    bool EditorScene::SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle)
     {
-        NodeNames.insert(0, 0);
-        auto& root_name = Names.push_use({});
-        root_name.init(&LocalArena, Name);
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager)
+            return false;
 
-        LocalTransforms.push(Identity<Mat4f>());
-        GlobalTransforms.push(Identity<Mat4f>());
+        ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        if (!actor)
+            return false;
 
-        auto& node = Hierarchies.push_use({});
-        HierarchiesNodeRef.push({});
-        node.DepthLevel = 0;
+        const LightComponent* light = actor->GetComponent<LightComponent>();
+        if (!light || light->LightType != LightComponent::Type::Directional)
+            return false;
+
+        UUIDComponent* identity = actor->GetComponent<UUIDComponent>();
+        if (!identity)
+        {
+            UUIDComponent created = {};
+            created.Value         = GenerateEntityUUID();
+            actor->AddComponent<UUIDComponent>(created);
+            identity = actor->GetComponent<UUIDComponent>();
+        }
+        if (!identity || identity->Value.is_nil())
+            return false;
+
+        Sky.PrimaryCelestialLight = identity->Value;
+        MarkSkyDirty();
+        MarkDirty(true);
+        return true;
+    }
+
+    void EditorScene::ClearPrimaryCelestialLight()
+    {
+        if (Sky.PrimaryCelestialLight.is_nil())
+            return;
+
+        Sky.PrimaryCelestialLight = {};
+        MarkSkyDirty();
+        MarkDirty(true);
     }
 
     void EditorScene::ExtractAsync(const EditorScene& scene)
     {
+        // Compact the global geometry buffers before ingesting a new scene so
+        // orphaned data from the previous scene is reclaimed starting from offset 0.
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (ctx && ctx->RenderResourceManager)
+            ctx->RenderResourceManager->ResetGeometryBuffers();
+
         for (const auto& file : scene.AssetFiles)
         {
             auto& f = AssetFiles.push_use({});
             f.Hash  = file.Hash;
             f.Type  = file.Type;
-            f.Path.init(&(LocalArena), file.Path.c_str());
-            f.RootPath.init(&(LocalArena), file.RootPath.c_str());
+            f.Path.init(LocalArena, file.Path.c_str());
+            f.RootPath.init(LocalArena, file.RootPath.c_str());
         }
 
-        for (const auto& name : scene.Names)
+        // Re-ingest cooked assets on scene load.
+        // Materials are processed before meshes so their texture handles are available
+        // when the mesh submeshes reference them.
+        for (const auto& file : AssetFiles)
         {
-            auto& n = Names.push_use({});
-            n.init(&(LocalArena), name.c_str());
-        }
+            if (file.Type == ZEngine::Importers::AssetFileType::MATERIAL)
+            {
+                ZEngine::Importers::AssetMaterial mat{};
+                auto                              path                            = ZEngine::Core::Containers::String{};
+                char                              native_buf[MAX_FILE_PATH_COUNT] = {};
+                VFSPath::Parse(file.Path.c_str()).Value().ResolveNative(file.RootPath.c_str(), native_buf, sizeof(native_buf));
+                path.init(LocalArena, native_buf);
+                ZEngine::Importers::AssetCodec::DeserializeMaterialAssetFile(LocalArena, path.c_str(), mat);
 
-        for (const auto& h : scene.Hierarchies)
-        {
-            Hierarchies.push(h);
-            HierarchiesNodeRef.push({});
-        }
+                // Reconstruct AssetTexture entries from the inline path fields so
+                // IngestTextures can upload them to the GPU.
+                ZEngine::Core::Containers::Array<ZEngine::Importers::AssetTexture> textures{};
+                textures.init(LocalArena, 5);
+                auto add_tex = [&](const uuids::uuid& uuid, const ZEngine::Core::Containers::String& tex_path) {
+                    if (!uuid.is_nil() && !tex_path.empty())
+                    {
+                        auto& t       = textures.push_use({});
+                        t.TextureUUID = uuid;
+                        t.Path.init(LocalArena, tex_path.c_str());
+                    }
+                };
+                add_tex(mat.AlbedoTexUUID, mat.AlbedoTexPath);
+                add_tex(mat.EmissiveTexUUID, mat.EmissiveTexPath);
+                add_tex(mat.NormalTexUUID, mat.NormalTexPath);
+                add_tex(mat.OpacityTexUUID, mat.OpacityTexPath);
+                add_tex(mat.SpecularTexUUID, mat.SpecularTexPath);
 
-        for (const auto& lt : scene.LocalTransforms)
-        {
-            LocalTransforms.push(lt);
+                AssetManager::IngestTextures(std::move(textures));
+                AssetManager::IngestMaterial(std::move(mat));
+            }
         }
-
-        for (const auto& gt : scene.GlobalTransforms)
-        {
-            GlobalTransforms.push(gt);
-        }
-
-        for (const auto& [k, v] : scene.NodeNames)
-        {
-            NodeNames.insert(k, v);
-        }
-
-        auto asset_manager = AssetManager::Instance();
 
         for (const auto& file : AssetFiles)
         {
-            asset_manager->LoadAssetFile(ZEngine::Importers::AssetImporterOutput{.Type = file.Type, .Path = file.Path.c_str(), .RootPath = file.RootPath.c_str()});
+            if (file.Type == ZEngine::Importers::AssetFileType::MESH)
+            {
+                ZEngine::Importers::AssetMesh          mesh{};
+                ZEngine::Importers::AssetNodeHierarchy hier{};
+                auto                                   path                            = ZEngine::Core::Containers::String{};
+                char                                   native_buf[MAX_FILE_PATH_COUNT] = {};
+                VFSPath::Parse(file.Path.c_str()).Value().ResolveNative(file.RootPath.c_str(), native_buf, sizeof(native_buf));
+                path.init(LocalArena, native_buf);
+                ZEngine::Importers::AssetCodec::DeserializeMeshAssetFile(LocalArena, path.c_str(), mesh, hier);
+                AssetManager::IngestMesh(std::move(mesh), std::move(hier));
+            }
         }
     }
+
+    ZEngine::ECS::ActorHandle EditorScene::SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name)
+    {
+        auto* ctx = ZEngine::Engine::GetContext();
+        if (!ctx || !ctx->ActorManager)
+            return {};
+
+        // Register with the render scene first to get a stable instance ID.
+        uint32_t                  render_id = AddMeshInstance(mesh_uuid, name);
+
+        // Create the Actor and wire up components.
+        ZEngine::ECS::ActorHandle handle    = ctx->ActorManager->Create();
+        ZEngine::ECS::Actor*      actor     = ctx->ActorManager->Access(handle);
+        if (!actor)
+            return {};
+
+        NameComponent nc = {};
+        ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), name, ZEngine::Helpers::secure_strlen(name));
+        actor->AddComponent<NameComponent>(nc);
+        actor->AddComponent<TransformComponent>({});
+
+        MeshComponent mc    = {};
+        mc.MeshUUID         = mesh_uuid;
+        mc.RenderInstanceId = render_id;
+        actor->AddComponent<MeshComponent>(mc);
+
+        return handle;
+    }
+
 } // namespace Tetragrama

@@ -4,6 +4,11 @@
 **Status:** Design
 **Depends on:** `render-graph-integration.md`, `shadows.md`, `actor-ecs-architecture.md` (LightComponent)
 
+> **RenderGraph API correction:** this future design predates the current callback API.
+> Implement resource declarations in Register and dispatch lifecycle through the
+> current graph contract in render-graph-integration.md; Setup/Compile snippets are
+> non-authoritative design sketches.
+
 ---
 
 ## 1. Problem
@@ -86,7 +91,7 @@ The frustum generation pass runs before `LightCullPass`. It is skipped if the ca
 
 ---
 
-## 5. Light-Tile Assignment Pass
+## 5. Proposed light-tile assignment pass
 
 A second compute dispatch assigns lights to tiles and writes the `LightGrid` and `LightIndexList` buffers.
 
@@ -147,7 +152,7 @@ struct LightGridEntry {
 
 ---
 
-## 6. `LightCullPass : IRenderGraphCallbackPass`
+## 6. Historical `LightCullPass` callback sketch
 
 ```cpp
 class LightCullPass final : public IRenderGraphCallbackPass {
@@ -196,7 +201,7 @@ void LightCullPass::Setup(RenderGraphBuilder& builder) {
 
 ---
 
-## 7. LightingPass Integration
+## 7. Proposed LightingPass integration
 
 `LightingPass` (the full-screen lighting evaluation in the forward path) binds `light_grid` and `light_index_list` as descriptor set resources. The fragment shader computes its tile index from `gl_FragCoord`:
 

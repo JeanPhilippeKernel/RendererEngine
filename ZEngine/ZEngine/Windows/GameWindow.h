@@ -30,7 +30,7 @@ namespace ZEngine::Windows
         virtual float                    GetTime() override;
         virtual float                    GetDeltaTime() override;
 
-        virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}) override;
+        virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}, std::string_view default_dir = {}, std::string_view message = {}) override;
 
         virtual bool                     CreateSurface(void* instance, void** out_window_surface) override;
 
@@ -48,6 +48,7 @@ namespace ZEngine::Windows
         static void  __OnGlfwWindowResized(GLFWwindow*, int width, int height);
         static void  __OnGlfwWindowMaximized(GLFWwindow*, int maximized);
         static void  __OnGlfwWindowMinimized(GLFWwindow*, int minimized);
+        static void  __OnGlfwWindowFocus(GLFWwindow*, int focused);
 
         static void  __OnGlfwMouseButtonRaised(GLFWwindow*, int button, int action, int mods);
         static void  __OnGlfwMouseScrollRaised(GLFWwindow*, double xoffset, double yoffset);

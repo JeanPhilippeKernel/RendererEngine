@@ -3,6 +3,19 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 
+#if defined(__linux__)
+#include <spawn.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <vector>
+
+extern char** environ;
+#endif
+
 using namespace ZEngine;
 using namespace ZEngine::Core::Memory;
 
@@ -13,11 +26,82 @@ TEST(AllocatorTest, ArenaInit)
     manager.Shutdown();
 }
 
+TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
+{
+    const MemoryBudgetConfig default_budget = MemoryBudgetConfig::Default();
+    const MemoryBudgetConfig budget         = MemoryBudgetConfig::Editor();
+    const MemoryBudgetConfig server_budget  = MemoryBudgetConfig::Server();
+
+    EXPECT_EQ(budget.AssetManager.SizeBytes, ZMega(1280));
+    EXPECT_EQ(budget.EditorContext.SizeBytes, ZMega(320));
+    EXPECT_EQ(budget.EditorSceneLoadA.SizeBytes, ZMega(200));
+    EXPECT_EQ(budget.EditorSceneLoadB.SizeBytes, ZMega(200));
+    EXPECT_EQ(budget.AnimationManager.SizeBytes, 0);
+    EXPECT_EQ(budget.Swapchain.SizeBytes, 0);
+    EXPECT_EQ(budget.ShaderCache.SizeBytes, 0);
+    EXPECT_EQ(budget.Serializer.SizeBytes, 0);
+    EXPECT_EQ(default_budget.Bootstrap.SizeBytes, ZMega(32));
+    EXPECT_EQ(budget.ImportPipeline.SizeBytes, ZGiga(4));
+    EXPECT_EQ(default_budget.TotalCapacity(), ZMega(7604));
+    EXPECT_EQ(budget.TotalCapacity(), ZMega(7868));
+    EXPECT_EQ(server_budget.TotalCapacity(), ZMega(6324));
+    EXPECT_TRUE(default_budget.Validate(ZGiga(8)));
+    EXPECT_TRUE(budget.Validate(ZGiga(8)));
+    EXPECT_TRUE(server_budget.Validate(ZGiga(8)));
+}
+
+TEST(MemoryBudgetConfigTest, CapacityOverrunIdentifiesEveryConfiguredOwner)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap    = {"BootstrapOwner", ZMega(2)};
+    config.AssetManager = {"AssetsOwner", ZMega(1)};
+
+    EXPECT_DEATH_IF_SUPPORTED((void) config.Validate(ZMega(1)), "Bootstrap.*BootstrapOwner.*AssetsOwner");
+}
+
+TEST(MemoryManagerTest, MaterializesBootstrapOwner)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap = {"Bootstrap", ZKilo(64)};
+
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(128), config);
+
+    EXPECT_NE(manager.BootstrapArena.m_memory, nullptr);
+    EXPECT_FALSE(manager.BootstrapArena.m_is_sub_arena);
+    EXPECT_EQ(manager.BootstrapArena.m_total_size, ZKilo(64));
+    EXPECT_STREQ(manager.BootstrapArena.m_owner_name, "Bootstrap");
+    EXPECT_EQ(manager.MainArena.m_memory, nullptr);
+
+    manager.Shutdown();
+}
+
+TEST(MemoryManagerTest, ConfiguredOwnersAreIndependentlyReserved)
+{
+    MemoryBudgetConfig config{};
+    config.Bootstrap    = {"Bootstrap", ZKilo(64)};
+    config.AssetManager = {"AssetManager", ZKilo(64)};
+
+    MemoryManager manager{};
+    manager.Initialize(ZMega(1), config);
+
+    ArenaAllocator asset_arena{};
+    manager.CreateBudgetedArena(config.AssetManager, &asset_arena);
+
+    EXPECT_EQ(manager.MainArena.m_memory, nullptr);
+    EXPECT_FALSE(asset_arena.m_is_sub_arena);
+    EXPECT_NE(asset_arena.m_memory, nullptr);
+    EXPECT_NE(manager.BootstrapArena.m_memory, asset_arena.m_memory);
+    EXPECT_NE(asset_arena.Allocate(1), nullptr);
+
+    manager.Shutdown();
+}
+
 TEST(AllocatorTest, ArenaAllocate)
 {
     MemoryManager manager{};
     manager.Initialize(200, {});
-    auto arena = manager.MainArena;
+    auto& arena = manager.MainArena;
 
     for (int i = 0; i < 10; ++i)
     {
@@ -204,6 +288,24 @@ TEST(AllocatorTest, ArenaAllocateOOM)
     manager.Shutdown();
 }
 
+TEST(AllocatorTest, ArenaCapacityFailureIdentifiesOwnerAndRequest)
+{
+    ArenaAllocator arena{};
+    arena.Initialize(64, 4096, "TinyArena");
+
+    ASSERT_NE(arena.Allocate(64), nullptr);
+    EXPECT_EQ(arena.Allocate(1), nullptr);
+
+    const ArenaAllocationFailure& failure = arena.LastFailure();
+    EXPECT_EQ(failure.Kind, ArenaAllocationFailureKind::CapacityExceeded);
+    EXPECT_STREQ(failure.OwnerName, "TinyArena");
+    EXPECT_EQ(failure.RequestedSize, 1u);
+    EXPECT_EQ(failure.CurrentUsage, 64u);
+    EXPECT_EQ(failure.Capacity, 64u);
+
+    arena.Shutdown();
+}
+
 TEST(AllocatorTest, ArenaResizeSlowPath)
 {
     MemoryManager manager{};
@@ -274,8 +376,13 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
     EXPECT_TRUE(sub.m_is_sub_arena);
     EXPECT_EQ(sub.m_total_size, ZKilo(4));
 
+    // All platforms reserve child address space without making it writable. The first
+    // allocation promotes only its first page.
+    EXPECT_EQ(sub.m_committed_size, 0u);
+
     int* val = reinterpret_cast<int*>(sub.Allocate(sizeof(int)));
     ASSERT_NE(val, nullptr);
+    EXPECT_EQ(sub.m_committed_size, sub.m_mem_page_size);
     *val = 77;
     EXPECT_EQ(*val, 77);
 
@@ -285,6 +392,214 @@ TEST(AllocatorTest, ArenaSubArenaLifecycle)
     void* after = parent->Allocate(sizeof(int));
     EXPECT_NE(after, nullptr);
 
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ParentAndChildCommitOnlyOwnedPages)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto* parent = &manager.MainArena;
+
+    ASSERT_NE(parent->Allocate(1), nullptr);
+    EXPECT_EQ(parent->m_committed_size, parent->m_mem_page_size);
+
+    ArenaAllocator child{};
+    parent->CreateSubArena(ZMega(1), &child, "ChildArena");
+    EXPECT_EQ(child.m_committed_size, 0u);
+
+    ASSERT_NE(child.Allocate(1), nullptr);
+    EXPECT_EQ(child.m_committed_size, child.m_mem_page_size);
+    EXPECT_EQ(parent->m_committed_size, parent->m_mem_page_size);
+
+    // This allocation follows the child arena in the root range. It must promote a
+    // single parent page, not the child's entire unused reservation.
+    ASSERT_NE(parent->Allocate(1), nullptr);
+    EXPECT_EQ(parent->m_committed_size, 2 * parent->m_mem_page_size);
+    EXPECT_EQ(child.m_committed_size, child.m_mem_page_size);
+
+    child.Shutdown();
+    manager.Shutdown();
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+TEST(AllocatorTest, PosixReservationLeavesUnallocatedPagesProtected)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(1), {});
+    ArenaAllocator& arena = manager.MainArena;
+
+    ASSERT_NE(arena.Allocate(1), nullptr);
+    ASSERT_EQ(arena.m_committed_size, arena.m_mem_page_size);
+
+    // The second page remains PROT_NONE until an allocation reaches it. This guards
+    // against regressing to a full read/write mmap on macOS or Linux.
+    EXPECT_DEATH(
+        {
+            volatile uint8_t* uncommitted_page = arena.m_memory + arena.m_mem_page_size;
+            *uncommitted_page                  = 1;
+        },
+        "");
+
+    manager.Shutdown();
+}
+#endif
+
+#if defined(__linux__)
+namespace
+{
+    constexpr const char* LinuxAddressLimitChildEnvironment = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD";
+
+    uint64_t              CurrentLinuxAddressSpaceBytes()
+    {
+        FILE* file = fopen("/proc/self/statm", "r");
+        if (!file)
+            return 0;
+
+        unsigned long pages = 0;
+        const int     read  = fscanf(file, "%lu", &pages);
+        fclose(file);
+        if (read != 1)
+            return 0;
+
+        const long page_size = sysconf(_SC_PAGESIZE);
+        if (page_size <= 0 || pages > std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(page_size))
+            return 0;
+        return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size);
+    }
+} // namespace
+
+TEST(MemoryManagerTest, LinuxConfiguredOwnersStartBelowRootAddressLimit)
+{
+    if (std::getenv(LinuxAddressLimitChildEnvironment))
+    {
+        const uint64_t current_address_space = CurrentLinuxAddressSpaceBytes();
+        if (current_address_space == 0)
+            GTEST_SKIP() << "unable to read /proc/self/statm";
+
+        struct rlimit previous_limit = {};
+        if (getrlimit(RLIMIT_AS, &previous_limit) != 0)
+            GTEST_SKIP() << "RLIMIT_AS is unavailable";
+
+        constexpr rlim_t headroom = static_cast<rlim_t>(ZMega(128));
+        if (current_address_space > std::numeric_limits<rlim_t>::max() - headroom)
+            GTEST_SKIP() << "current address space is too large for an RLIMIT_AS test";
+
+        const rlim_t constrained_limit = static_cast<rlim_t>(current_address_space) + headroom;
+        if (previous_limit.rlim_cur != RLIM_INFINITY && previous_limit.rlim_cur < constrained_limit)
+            GTEST_SKIP() << "inherited RLIMIT_AS is already more restrictive";
+
+        struct rlimit limit = previous_limit;
+        limit.rlim_cur      = constrained_limit;
+        if (setrlimit(RLIMIT_AS, &limit) != 0)
+            GTEST_SKIP() << "unable to set constrained RLIMIT_AS";
+
+        MemoryBudgetConfig config{};
+        config.Bootstrap    = {"Bootstrap", ZMega(4)};
+        config.AssetManager = {"ConstrainedAsset", ZMega(32)};
+
+        MemoryManager manager{};
+        manager.Initialize(ZGiga(8), config);
+
+        ArenaAllocator asset_arena{};
+        manager.CreateBudgetedArena(config.AssetManager, &asset_arena);
+
+        ASSERT_EQ(manager.MainArena.m_memory, nullptr);
+        ASSERT_NE(manager.BootstrapArena.m_memory, nullptr);
+        ASSERT_NE(asset_arena.m_memory, nullptr);
+        ASSERT_NE(asset_arena.Allocate(1), nullptr);
+        EXPECT_EQ(asset_arena.m_committed_size, asset_arena.m_mem_page_size);
+
+        manager.Shutdown();
+        return;
+    }
+
+    std::vector<char*> child_environment;
+    for (char** entry = environ; *entry; ++entry)
+        child_environment.push_back(*entry);
+
+    char child_marker[] = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD=1";
+    child_environment.push_back(child_marker);
+    child_environment.push_back(nullptr);
+
+    char  child_path[]   = "/proc/self/exe";
+    char  child_filter[] = "--gtest_filter=MemoryManagerTest.LinuxConfiguredOwnersStartBelowRootAddressLimit";
+    char  child_brief[]  = "--gtest_brief=1";
+    char* child_argv[]   = {child_path, child_filter, child_brief, nullptr};
+
+    pid_t child_pid      = 0;
+    ASSERT_EQ(posix_spawn(&child_pid, child_path, nullptr, nullptr, child_argv, child_environment.data()), 0);
+
+    int status = 0;
+    ASSERT_EQ(waitpid(child_pid, &status, 0), child_pid);
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+}
+#endif
+
+// Regression: multiple large sub-arenas carved from one parent must all succeed and be
+// independently usable. This reproduces the Windows UIContext failure where eager commit
+// of earlier sub-arenas (ImportPipeline 3.5 GB, etc.) exhausted pagefile quota so that
+// the UIContext VirtualAlloc(MEM_COMMIT) returned NULL.
+TEST(AllocatorTest, ArenaSubArenaMultipleLargeSubArenas)
+{
+    // Use 4 MB total; carve three 1 MB sub-arenas (mirrors FrameArena + PersistentArena
+    // + PayloadArena pattern in AppRenderPipeline at a smaller scale).
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto*          parent = &(manager.MainArena);
+
+    ArenaAllocator a{}, b{}, c{};
+    parent->CreateSubArena(ZMega(1), &a);
+    parent->CreateSubArena(ZMega(1), &b);
+    parent->CreateSubArena(ZMega(1), &c);
+
+    ASSERT_NE(a.m_memory, nullptr);
+    ASSERT_NE(b.m_memory, nullptr);
+    ASSERT_NE(c.m_memory, nullptr);
+
+    // Each sub-arena must allocate independently.
+    int* pa = reinterpret_cast<int*>(a.Allocate(sizeof(int)));
+    int* pb = reinterpret_cast<int*>(b.Allocate(sizeof(int)));
+    int* pc = reinterpret_cast<int*>(c.Allocate(sizeof(int)));
+    ASSERT_NE(pa, nullptr);
+    *pa = 1;
+    ASSERT_NE(pb, nullptr);
+    *pb = 2;
+    ASSERT_NE(pc, nullptr);
+    *pc = 3;
+    EXPECT_EQ(*pa, 1);
+    EXPECT_EQ(*pb, 2);
+    EXPECT_EQ(*pc, 3);
+
+    // Sub-arena address ranges must not overlap.
+    EXPECT_GE((uintptr_t) b.m_memory, (uintptr_t) a.m_memory + ZMega(1));
+    EXPECT_GE((uintptr_t) c.m_memory, (uintptr_t) b.m_memory + ZMega(1));
+
+    c.Shutdown();
+    b.Shutdown();
+    a.Shutdown();
+    manager.Shutdown();
+}
+
+// Sub-arena m_memory must be page-aligned on every platform — on Windows this keeps
+// VirtualAlloc(MEM_COMMIT) boundaries clean; elsewhere it's just a uniform guarantee.
+TEST(AllocatorTest, ArenaSubArenaPageAligned)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto* parent = &(manager.MainArena);
+
+    // Allocate one byte first to make the next sub-arena start non-trivially aligned.
+    (void) parent->Allocate(1);
+
+    ArenaAllocator sub{};
+    parent->CreateSubArena(ZMega(1), &sub);
+
+    ASSERT_NE(sub.m_memory, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(sub.m_memory) % parent->m_mem_page_size, 0u);
+
+    sub.Shutdown();
     manager.Shutdown();
 }
 
@@ -321,10 +636,9 @@ TEST(AllocatorTest, PoolExhaustion)
     pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
 
     for (size_t i = 0; i < chunk_count; ++i)
-    {
         EXPECT_NE(pool.Allocate(), nullptr) << "expected valid slot at i=" << i;
-    }
-    EXPECT_EQ(pool.Allocate(), nullptr) << "expected nullptr on exhausted pool";
+
+    EXPECT_DEATH(pool.Allocate(), "");
     manager.Shutdown();
 }
 
@@ -359,10 +673,7 @@ TEST(AllocatorTest, PoolClearResetsAllSlots)
     pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
 
     for (size_t i = 0; i < chunk_count; ++i)
-    {
         ASSERT_NE(pool.Allocate(), nullptr);
-    }
-    EXPECT_EQ(pool.Allocate(), nullptr);
 
     pool.Clear();
 
@@ -387,3 +698,209 @@ TEST(AllocatorTest, PoolChunkSizeAlignedUp)
     EXPECT_EQ(pool.chunk_size, alignment);
     manager.Shutdown();
 }
+
+// AllocateNoZero — skip zeroing for large decode buffers
+TEST(AllocatorTest, ArenaAllocateNoZeroDoesNotZero)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*            arena = &(manager.MainArena);
+
+    constexpr size_t sz    = 64;
+    auto*            p1    = reinterpret_cast<uint8_t*>(arena->Allocate(sz));
+    for (size_t i = 0; i < sz; ++i)
+        p1[i] = 0xAB;
+
+    arena->Clear();
+
+    auto* p2 = reinterpret_cast<uint8_t*>(arena->AllocateNoZero(sz));
+    ASSERT_NE(p2, nullptr);
+    ASSERT_EQ(p1, p2);
+
+    bool any_nonzero = false;
+    for (size_t i = 0; i < sz; ++i)
+        if (p2[i] != 0)
+        {
+            any_nonzero = true;
+            break;
+        }
+    EXPECT_TRUE(any_nonzero) << "AllocateNoZero must not zero memory";
+
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroAlignment)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    for (size_t align : {1u, 8u, 16u, 64u})
+    {
+        arena->Clear();
+        void* p = arena->AllocateNoZero(32, align);
+        ASSERT_NE(p, nullptr) << "alignment=" << align;
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(p) % align, 0u) << "misaligned for alignment=" << align;
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroOOM)
+{
+    MemoryManager manager{};
+    manager.Initialize(128, {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_EQ(arena->AllocateNoZero(256), nullptr);
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroAndAllocateSameCursor)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*            arena = &(manager.MainArena);
+
+    constexpr size_t sz    = 32;
+    void*            a     = arena->AllocateNoZero(sz);
+    void*            b     = arena->Allocate(sz);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(reinterpret_cast<uint8_t*>(a) + sz, reinterpret_cast<uint8_t*>(b)) << "AllocateNoZero must advance the cursor identically to Allocate";
+
+    manager.Shutdown();
+}
+
+// Alignment precondition — non-power-of-two must assert
+TEST(AllocatorTest, ArenaAllocateNonPowerOfTwoDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_DEATH(arena->Allocate(4, 3), "");
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateNoZeroNonPowerOfTwoDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_DEATH(arena->AllocateNoZero(4, 3), "");
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, ArenaAllocateZeroSizeDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    EXPECT_DEATH(arena->Allocate(0), "");
+    manager.Shutdown();
+}
+
+// PoolAllocator — freed chunk must be re-allocated zeroed (placement new regression)
+TEST(AllocatorTest, PoolFreedChunkReturnedZeroed)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*         arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Foo) * 1, sizeof(Foo));
+
+    auto* slot = reinterpret_cast<Foo*>(pool.Allocate());
+    ASSERT_NE(slot, nullptr);
+    slot->x = 0xDEAD;
+    slot->y = 3.14f;
+    pool.Free(slot);
+
+    auto* reused = reinterpret_cast<uint8_t*>(pool.Allocate());
+    ASSERT_NE(reused, nullptr);
+    for (size_t i = 0; i < sizeof(Foo); ++i)
+        EXPECT_EQ(reused[i], 0u) << "byte " << i << " not zeroed after re-alloc";
+
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolFreeListIntegrityAfterMultipleFreeCycles)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto* arena = &(manager.MainArena);
+
+    // Use a chunk large enough to hold PoolFreeNode (pointer = 8 bytes on 64-bit).
+    struct Slot
+    {
+        uint64_t a = 0;
+        uint64_t b = 0;
+    }; // 16 bytes — well above minimum
+    constexpr int N = 16;
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Slot) * N, sizeof(Slot));
+
+    Slot* ptrs[N];
+    for (int i = 0; i < N; ++i)
+    {
+        ptrs[i] = reinterpret_cast<Slot*>(pool.Allocate());
+        ASSERT_NE(ptrs[i], nullptr);
+        ptrs[i]->a = static_cast<uint64_t>(i + 1);
+    }
+    for (int i = N - 1; i >= 0; --i)
+        pool.Free(ptrs[i]);
+
+    for (int i = 0; i < N; ++i)
+    {
+        auto* p = reinterpret_cast<Slot*>(pool.Allocate());
+        EXPECT_NE(p, nullptr) << "slot " << i << " unavailable after free cycle";
+        if (p)
+        {
+            EXPECT_EQ(p->a, 0u) << "slot " << i << " not zeroed on re-alloc";
+            EXPECT_EQ(p->b, 0u) << "slot " << i << " not zeroed on re-alloc";
+        }
+    }
+    manager.Shutdown();
+}
+
+TEST(AllocatorTest, PoolAllocateFreeAllocateManyTimes)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*         arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(int) * 4, sizeof(int));
+
+    for (int round = 0; round < 1000; ++round)
+    {
+        auto* p = reinterpret_cast<int*>(pool.Allocate());
+        ASSERT_NE(p, nullptr) << "round=" << round;
+        EXPECT_EQ(*p, 0) << "not zeroed at round=" << round;
+        *p = round;
+        pool.Free(p);
+    }
+    manager.Shutdown();
+}
+
+// Double-free detection — debug builds only
+#ifndef NDEBUG
+TEST(AllocatorTest, PoolDoubleFreeDeath)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZKilo(4), {});
+    auto*         arena = &(manager.MainArena);
+
+    PoolAllocator pool;
+    pool.Initialize(arena, sizeof(Foo) * 4, sizeof(Foo));
+
+    auto* slot = reinterpret_cast<Foo*>(pool.Allocate());
+    ASSERT_NE(slot, nullptr);
+    pool.Free(slot);
+
+    EXPECT_DEATH(pool.Free(slot), "");
+    manager.Shutdown();
+}
+#endif

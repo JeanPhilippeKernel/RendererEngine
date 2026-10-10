@@ -10,12 +10,12 @@ on:
         default: 'Debug'
       architecture:
         type: string
-        default: 'x64'
+        default: 'arm64'
 
 jobs:
   test:
     name: test-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
-    runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-latest' }}
+    runs-on: macos-latest
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v6

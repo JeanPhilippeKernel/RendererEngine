@@ -412,9 +412,15 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::NotFound);
         }
-        if (FindNode(rel_dst))
+        MemNode* destination = FindNode(rel_dst);
+        if (destination)
         {
-            return VFSResult<void>::Fail(VFSError::AlreadyExists);
+            if (destination->NodeKind == MemNode::Kind::Directory && HasChildren(rel_dst))
+            {
+                return VFSResult<void>::Fail(VFSError::IOError);
+            }
+            m_nodes.remove(rel_dst.CStr());
+            destination->~MemNode();
         }
 
         m_nodes.remove(rel_src.CStr());

@@ -41,7 +41,7 @@ param (
     [Parameter(HelpMessage = "Whether to check code formatting correctness, default to False")]
     [bool] $VerifyFormatting = $False,
 
-    [Parameter(HelpMessage = "VS version use to build, default to 2022")]
+    [Parameter(HelpMessage = "VS version use to build, default to 2026")]
     [ValidateSet('2022', '2026')]
     [int] $VsVersion = 2026
 )

@@ -235,6 +235,17 @@ namespace ZEngine::Core::VFS
         return {};
     }
 
+    VFSPathComponent VFSPath::ExtensionNoDot() const
+    {
+        VFSPathComponent ext = Extension();
+        if (ext.Length > 0 && ext.Data && ext.Data[0] == '.')
+        {
+            ext.Data   += 1;
+            ext.Length -= 1;
+        }
+        return ext;
+    }
+
     VFSPath VFSPath::Parent() const
     {
         if (m_component_count <= 1)

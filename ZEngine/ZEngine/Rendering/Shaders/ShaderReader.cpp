@@ -1,4 +1,8 @@
+#include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/VFS/IVFSFile.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Rendering/Shaders/ShaderReader.h>
 
@@ -15,22 +19,41 @@ namespace ZEngine::Rendering::Shaders
         }
     }
 
-    std::vector<uint32_t> ShaderReader::ReadAsBinary(std::string_view filename)
+    Core::Containers::Array<uint32_t> ShaderReader::ReadAsBinary(Core::Memory::ArenaAllocator* arena, cstring filename)
     {
-        std::ifstream file_stream = {};
-        file_stream.open(std::string(filename), std::ifstream::binary | std::ifstream::ate);
-        if (!file_stream.is_open())
+        ZENGINE_VALIDATE_ASSERT(arena, "ShaderReader::ReadAsBinary requires an arena")
+        auto* vfs      = Engine::GetContext()->VFS;
+        auto  path_res = Core::VFS::VFSPath::Parse(filename);
+        if (path_res.Failed())
         {
-            ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename.data())
+            ZENGINE_CORE_ERROR("====== Shader file : {} — invalid VFS path ======", filename)
             ZENGINE_EXIT_FAILURE()
         }
 
-        size_t                buffer_size = static_cast<size_t>(file_stream.tellg());
-        std::vector<uint32_t> buffer(buffer_size / 4);
-        file_stream.seekg(std::ifstream::beg);
-        file_stream.read(reinterpret_cast<char*>(buffer.data()), buffer_size);
-        file_stream.close();
+        auto file_res = vfs->Open(path_res.Value(), Core::VFS::VFSOpenFlags::Read);
+        if (file_res.Failed())
+        {
+            ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename)
+            ZENGINE_EXIT_FAILURE()
+        }
 
+        auto* file     = file_res.Value();
+        auto  size_res = file->Size();
+        if (size_res.Failed())
+        {
+            vfs->Close(file);
+            ZENGINE_CORE_ERROR("====== Shader file : {} cannot get size ======", filename)
+            ZENGINE_EXIT_FAILURE()
+        }
+
+        const uint64_t byte_size = size_res.Value();
+        ZENGINE_VALIDATE_ASSERT(byte_size > 0 && byte_size % sizeof(uint32_t) == 0, "Shader binary must contain a non-empty number of 32-bit words")
+
+        Core::Containers::Array<uint32_t> buffer;
+        buffer.init(arena, static_cast<size_t>(byte_size / sizeof(uint32_t)), static_cast<size_t>(byte_size / sizeof(uint32_t)));
+        Core::Containers::ArrayView<uint8_t> view{reinterpret_cast<uint8_t*>(buffer.data()), byte_size};
+        file->ReadAll(view);
+        vfs->Close(file);
         return buffer;
     }
 
@@ -42,6 +65,8 @@ namespace ZEngine::Rendering::Shaders
             return ShaderType::FRAGMENT;
         if (path.extension() == ".geom")
             return ShaderType::GEOMETRY;
+        if (path.extension() == ".comp")
+            return ShaderType::COMPUTE;
         return ShaderType::UNKNOWN;
     }
 

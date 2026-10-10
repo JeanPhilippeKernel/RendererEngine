@@ -1,0 +1,1111 @@
+#include <Tetragrama/Editor.h>
+#include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Panels/AssetImporterPanel.h>
+#include <Tetragrama/Panels/ProjectViewPanel.h>
+#include <ZEngine/Core/Coroutine.h>
+#include <ZEngine/Core/MainThreadScheduler.h>
+#include <ZEngine/Core/VFS/Meta/MetaFileData.h>
+#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
+#include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/UI/ZUIWidgets.h>
+#include <fmt/format.h>
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+using namespace ZEngine::UI;
+using namespace ZEngine::Core::VFS;
+using namespace ZEngine::Helpers;
+using namespace ZEngine::Importers;
+
+namespace Tetragrama::Panels
+{
+    static constexpr float kBg[4]    = {0.09f, 0.09f, 0.095f, 1.f};
+    static constexpr float kWhite[4] = {0.80f, 0.80f, 0.80f, 1.0f};
+    static constexpr float kGreen[4] = {0.30f, 1.00f, 0.40f, 1.0f};
+    static constexpr float kRed[4]   = {1.00f, 0.30f, 0.30f, 1.0f};
+
+    // Initialize
+
+    void                   AssetImporterPanel::Initialize(Tetragrama::Layers::ZUILayer* layer, ProjectViewPanel* project_view)
+    {
+        m_layer        = layer;
+        m_project_view = project_view;
+        if (!layer)
+            return;
+
+        // Scratch arena for ImportConfiguration strings — carved from layer arena
+        // ZKilo(64): ~8 path strings × ≤512 bytes each — a few KB is all we need
+        layer->LocalArena.CreateSubArena(ZKilo(64), &m_local_arena, "EditorContext/AssetImporterPanelScratch");
+        // Importer arenas carved from the engine's ImportPipeline budget so all
+        // import memory — engine importers and editor importers — is budget-tracked.
+        auto* import_arena = &ZEngine::Engine::GetContext()->ImportPipelineArena;
+        // Publication results can contain one entry per material and texture. Keep
+        // them outside the 64 KiB configuration scratch arena and reuse storage on
+        // the next import. The layer's shared local arena is only 4 MiB, so use the
+        // import budget for this bounded 8 MiB result slab.
+        m_import_result_slab.Init(import_arena, ZMega(8));
+        m_import_task.PublishedPaths.init(&m_import_result_slab, 32);
+        import_arena->CreateSubArena(ZMega(64), &m_gltf_importer_arena, "ImportPipeline/EditorGltfImporter");
+        import_arena->CreateSubArena(ZMega(128), &m_assimp_importer_arena, "ImportPipeline/EditorAssimpImporter");
+
+        m_gltf_importer   = ZPushStructCtor(import_arena, ZEngine::Importers::GltfImporter);
+        m_fbx_importer    = ZPushStructCtor(import_arena, ZEngine::Importers::FbxImporter);
+        m_assimp_importer = ZPushStructCtor(import_arena, ZEngine::Importers::AssimpImporter);
+
+        m_gltf_importer->Initialize(&m_gltf_importer_arena);
+        m_fbx_importer->Initialize(import_arena);
+        m_assimp_importer->Initialize(&m_assimp_importer_arena);
+    }
+
+    // BuildContent entry
+
+    void AssetImporterPanel::BuildContent(ZUIContext* ctx, float rect[4])
+    {
+        (void) rect;
+
+        auto* app = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        if (!app)
+        {
+            EmptyPanelBg(ctx, "##imp_bg", kBg, nullptr);
+            return;
+        }
+
+        // Consume PendingImportPath written by viewport drag-drop or project right-click.
+        // Goes directly to importing (like develop) — no Options shown for drag-drop.
+        if (app->Configuration && app->Configuration->PendingImportPath[0] != '\0' && m_state.value.load(std::memory_order_acquire) == ImporterState::Idle)
+        {
+            secure_strncpy(m_path_buf, sizeof(m_path_buf), app->Configuration->PendingImportPath, sizeof(m_path_buf) - 1);
+            secure_strncpy(m_instance_name, sizeof(m_instance_name), app->Configuration->PendingImportName, sizeof(m_instance_name) - 1);
+            app->Configuration->PendingImportPath[0] = '\0';
+            app->Configuration->PendingImportName[0] = '\0';
+            m_add_to_scene                           = true;
+            StartImport();
+        }
+
+        ZUIBox* bg = ZUIBeginColumn(ctx, "##imp_bg", ZFill(), ZFill());
+        bg->Flags  = bg->Flags | ZUI_DrawBackground | ZUI_Scrollable;
+        ZUIBoxSetColorArr(bg, kBg);
+        bg->EdgeSoftness = 0.f;
+
+        switch (m_state.value.load(std::memory_order_acquire))
+        {
+            case ImporterState::Idle:
+                BuildIdle(ctx);
+                break;
+            case ImporterState::Options:
+                BuildOptions(ctx);
+                break;
+            case ImporterState::Importing:
+                BuildImporting(ctx);
+                break;
+        }
+
+        ZUIEndColumn(ctx);
+    }
+
+    // BuildIdle
+
+    void AssetImporterPanel::BuildIdle(ZUIContext* ctx)
+    {
+        float fh = ZUIGetFrameHeight(ctx);
+        ZUISpacer(ctx, 10.f);
+
+        // "+ Import File" button
+        {
+            ZUIBeginRow(ctx, "##imp_idle_r", ZFill(), ZPx(fh + 6.f));
+            ZUISpacer(ctx, 8.f);
+            ZUISignal btn = ZUIButton(ctx, "+ Import File##imp_browse");
+            ZUIEndRow(ctx);
+            if (btn.Flags & ZUI_SignalClicked)
+                BrowseFile();
+        }
+
+        ZUISpacer(ctx, 6.f);
+        {
+            ZUIBeginRow(ctx, "##imp_drop_hint", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 8.f);
+            ZUILabel(ctx, "or drag a 3D file onto the viewport", ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+        }
+
+        // Recent imports
+        if (m_hist_count > 0)
+        {
+            ZUISpacer(ctx, 12.f);
+            ZUISeparator(ctx);
+            ZUISpacer(ctx, 6.f);
+            {
+                ZUIBeginRow(ctx, "##imp_hist_hdr", ZFill(), ZPx(fh));
+                ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, "Recent Imports", ctx->Theme.TextDim);
+                ZUIEndRow(ctx);
+            }
+            ZUISpacer(ctx, 4.f);
+
+            // Newest-first (ring buffer: head-1 = newest)
+            static const char* kRowKeys[kHistMax] = {
+                "##hr0",
+                "##hr1",
+                "##hr2",
+                "##hr3",
+                "##hr4",
+                "##hr5",
+                "##hr6",
+                "##hr7",
+                "##hr8",
+                "##hr9",
+                "##hra",
+                "##hrb",
+                "##hrc",
+                "##hrd",
+                "##hre",
+                "##hrf",
+            };
+            for (int i = 0; i < m_hist_count; ++i)
+            {
+                int              idx = (m_hist_count - 1 - i) % kHistMax;
+                const HistEntry& e   = m_history[idx];
+                char             buf[320];
+                if (e.ok)
+                    snprintf(buf, sizeof(buf), "[OK]  %s", e.name);
+                else
+                    snprintf(buf, sizeof(buf), "[ERR] %s  (%s)", e.name, e.message);
+                ZUIBeginRow(ctx, kRowKeys[i], ZFill(), ZPx(fh));
+                ZUISpacer(ctx, 8.f);
+                ZUILabel(ctx, buf, e.ok ? kGreen : kRed);
+                ZUIEndRow(ctx);
+                ZUISpacer(ctx, 2.f);
+            }
+        }
+    }
+
+    // BuildOptions
+
+    void AssetImporterPanel::BuildOptions(ZUIContext* ctx)
+    {
+        float fh = ZUIGetFrameHeight(ctx);
+        ZUISpacer(ctx, 8.f);
+
+        // Header: filename stem + X close button
+        {
+            char stem_buf[256] = {};
+            auto pr            = VFSPath::Parse(m_path_buf);
+            if (pr.Succeeded())
+            {
+                auto s = pr.Value().Stem();
+                snprintf(stem_buf, sizeof(stem_buf), "%.*s", (int) s.Length, s.Data);
+            }
+            ZUIBeginRow(ctx, "##imp_opt_hdr", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 8.f);
+            ZUILabel(ctx, stem_buf, ctx->Theme.TextDefault);
+
+            ZUIBox* fill  = ZUIPushBox(ctx, "##imp_hfill", 11, ZUI_None);
+            fill->Size[0] = ZFill();
+            fill->Size[1] = ZPx(1.f);
+            ZUIPopBox(ctx);
+
+            ZUIBox* xb    = ZUIPushBox(ctx, "##imp_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
+            xb->Size[0]   = ZPx(fh);
+            xb->Size[1]   = ZPx(fh);
+            xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
+            xb->TextAlign = ZUITextAlign::Center;
+            bool xhov     = (ctx->HotKey == xb->Key);
+            ZUIBoxSetColor(xb, xhov ? 0.82f : 0.f, xhov ? 0.15f : 0.f, xhov ? 0.15f : 0.f, xhov ? 1.f : 0.f);
+            xb->TextColor[0] = ctx->Theme.TextDim[0];
+            xb->TextColor[1] = ctx->Theme.TextDim[1];
+            xb->TextColor[2] = ctx->Theme.TextDim[2];
+            xb->TextColor[3] = 1.f;
+            ZUISignal xsig   = ZUISignalFromBox(ctx, xb);
+            ZUIPopBox(ctx);
+            ZUIEndRow(ctx);
+
+            if (xsig.Flags & ZUI_SignalClicked)
+            {
+                m_path_buf[0] = '\0';
+                m_state.value.store(ImporterState::Idle, std::memory_order_release);
+            }
+        }
+
+        ZUISeparator(ctx);
+        ZUISpacer(ctx, 6.f);
+
+        // Filter pill row — same visual style as InspectorPanel category pills
+        {
+            static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal active
+            static const float kPillHov[4]  = {0.28f, 0.28f, 0.33f, 1.f}; // hover
+            static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark inactive
+            static const char* kPills[]     = {"General", "Mesh", "Material", "Animation", "LOD", "All"};
+            static const char* kPillKeys[]  = {"##pf0", "##pf1", "##pf2", "##pf3", "##pf4", "##pf5"};
+
+            ZUIBeginRow(ctx, "##imp_filter_row", ZFill(), ZPx(fh + 4.f));
+            ZUISpacer(ctx, 6.f);
+            for (int pi = 0; pi < 6; ++pi)
+            {
+                bool disabled = (pi == 3 || pi == 4);
+                if (disabled)
+                    ZUIBeginDisabled(ctx);
+
+                bool     act    = (m_options_filter == pi);
+                uint32_t plen   = (uint32_t) strlen(kPills[pi]);
+                float    pill_w = fmaxf((float) plen * 7.f + 10.f, 40.f);
+
+                ZUIBox*  pb     = ZUIPushBox(ctx, kPillKeys[pi], (uint32_t) strlen(kPillKeys[pi]), ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
+                pb->Size[0]     = ZPx(pill_w);
+                pb->Size[1]     = ZPx(fh);
+                pb->Label       = ZUIPushStr(&ctx->FrameArena, kPills[pi], plen);
+                pb->TextAlign   = ZUITextAlign::Center;
+                bool pill_hov   = !act && !disabled && (ctx->HotKey == pb->Key);
+                ZUIBoxSetColorArr(pb, act ? kPillAct : pill_hov ? kPillHov : kPillRest);
+                ZUIBoxSetCornerRadius(pb, 3.f);
+                pb->TextColor[0] = pb->TextColor[1] = pb->TextColor[2] = pb->TextColor[3] = 1.f;
+                ZUISignal psig                                                            = ZUISignalFromBox(ctx, pb);
+                ZUIPopBox(ctx);
+                ZUISpacer(ctx, 4.f);
+                if (!disabled && (psig.Flags & ZUI_SignalClicked))
+                    m_options_filter = pi;
+
+                if (disabled)
+                    ZUIEndDisabled(ctx);
+            }
+            ZUIEndRow(ctx);
+        }
+        ZUISeparator(ctx);
+
+        // Filtered settings (scroll region)
+        ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
+        {
+            static constexpr float kLblW = 140.f;
+            // 2-column row helper (label left, widget fills right)
+#define IMP_ROW_BEGIN(key)                         \
+    ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); \
+    ZUISpacer(ctx, 8.f);                           \
+    ZUIBeginColumn(ctx, key "_l", ZPx(kLblW), ZFill());
+#define IMP_ROW_MID(label)                        \
+    ZUILabel(ctx, label, ctx->Theme.TextDefault); \
+    ZUIEndColumn(ctx);
+#define IMP_ROW_END      \
+    ZUISpacer(ctx, 8.f); \
+    ZUIEndRow(ctx);      \
+    ZUISpacer(ctx, 3.f);
+            // Checkbox row (checkbox left, label right)
+#define IMP_CB_ROW_BEGIN(key)                      \
+    ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); \
+    ZUISpacer(ctx, 8.f);
+#define IMP_CB_ROW_END(label)                     \
+    ZUISpacer(ctx, 8.f);                          \
+    ZUILabel(ctx, label, ctx->Theme.TextDefault); \
+    ZUIEndRow(ctx);                               \
+    ZUISpacer(ctx, 3.f);
+
+            bool        show_gen   = (m_options_filter == 0 || m_options_filter == 5);
+            bool        show_mesh  = (m_options_filter == 1 || m_options_filter == 5);
+            bool        show_mat   = (m_options_filter == 2 || m_options_filter == 5);
+            bool        show_anim  = (m_options_filter == 3 || m_options_filter == 5);
+            bool        show_lod   = (m_options_filter == 4 || m_options_filter == 5);
+
+            // Collapse state per section (persist within session)
+            static bool s_gen_open = true, s_mesh_open = true, s_mat_open = true;
+            static bool s_anim_open = true, s_lod_open = true;
+
+            // General / Common
+            if (show_gen)
+            {
+                ZUICollapsingHeader(ctx, "Common", &s_gen_open);
+                if (s_gen_open)
+                {
+                    IMP_CB_ROW_BEGIN("##imp_usn_r")
+                    ZUICheckbox(ctx, "##imp_usn", &m_use_source_name);
+                    IMP_CB_ROW_END("Use Source Name for Asset")
+
+                    // Asset Name — always show field; disabled when using source name
+                    IMP_ROW_BEGIN("##imp_aname_r")
+                    IMP_ROW_MID("Asset Name")
+                    {
+                        char fn_buf[256] = {};
+                        if (m_use_source_name)
+                        {
+                            auto pr = VFSPath::Parse(m_path_buf);
+                            if (pr.Succeeded())
+                            {
+                                auto s = pr.Value().Stem();
+                                snprintf(fn_buf, sizeof(fn_buf), "%.*s", (int) s.Length, s.Data);
+                            }
+                            ZUIBeginDisabled(ctx);
+                            ZUITextField(ctx, "##imp_name_dis", fn_buf, sizeof(fn_buf), 0.f);
+                            ZUIEndDisabled(ctx);
+                        }
+                        else
+                            ZUITextField(ctx, "##imp_name", m_instance_name, sizeof(m_instance_name), 0.f);
+                    }
+                    IMP_ROW_END
+
+                    // Offset Uniform Scale — fixed-width input (not full-width drag)
+                    IMP_ROW_BEGIN("##imp_scale_r")
+                    IMP_ROW_MID("Offset Uniform Scale")
+                    ZUIInputFloat(ctx, "##imp_scale", &m_scale, 80.f);
+                    IMP_ROW_END
+
+                    // Axis Up — fixed-width combo
+                    IMP_ROW_BEGIN("##imp_axis_r")
+                    IMP_ROW_MID("Axis Up")
+                    {
+                        static const char* kAxes[] = {"Y-Up", "Z-Up"};
+                        ctx->PopupDesiredW         = 120.f;
+                        if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index], ZPx(160.f)))
+                        {
+                            for (int i = 0; i < 2; ++i)
+                                if (ZUIComboItem(ctx, kAxes[i], m_axis_index == i))
+                                    m_axis_index = i;
+                            ZUIEndCombo(ctx);
+                        }
+                    }
+                    IMP_ROW_END
+                    ZUISpacer(ctx, 4.f);
+                } // s_gen_open
+            } // show_gen
+
+            // Mesh
+            if (show_mesh)
+            {
+                ZUICollapsingHeader(ctx, "Common Meshes", &s_mesh_open);
+                if (s_mesh_open)
+                {
+                    // Normals — fixed-width combo
+                    IMP_ROW_BEGIN("##imp_nrm_r")
+                    IMP_ROW_MID("Normals")
+                    {
+                        static const char* kNrm[] = {"Off", "Flat", "Smooth"};
+                        ctx->PopupDesiredW        = 120.f;
+                        if (ZUIBeginCombo(ctx, "##imp_normals", kNrm[m_normals_mode], ZPx(160.f)))
+                        {
+                            for (int i = 0; i < 3; ++i)
+                                if (ZUIComboItem(ctx, kNrm[i], m_normals_mode == i))
+                                    m_normals_mode = i;
+                            ZUIEndCombo(ctx);
+                        }
+                    }
+                    IMP_ROW_END
+
+                    IMP_CB_ROW_BEGIN("##imp_mv_r")
+                    ZUICheckbox(ctx, "##imp_mv", &m_merge_vertices);
+                    IMP_CB_ROW_END("Merge Identical Vertices")
+
+                    IMP_CB_ROW_BEGIN("##imp_fuv_r")
+                    ZUICheckbox(ctx, "##imp_fuv", &m_flip_uvs);
+                    IMP_CB_ROW_END("Flip UVs")
+
+                    {
+                        static bool s_keep_sections = false;
+                        ZUIBeginDisabled(ctx);
+                        IMP_CB_ROW_BEGIN("##imp_ks_r")
+                        ZUICheckbox(ctx, "##imp_ks", &s_keep_sections);
+                        IMP_CB_ROW_END("Keep Sections Separate")
+                        ZUIEndDisabled(ctx);
+                    }
+                    ZUISpacer(ctx, 4.f);
+                } // s_mesh_open
+            } // show_mesh
+
+            // Material
+            if (show_mat)
+            {
+                ZUICollapsingHeader(ctx, "Materials", &s_mat_open);
+                if (s_mat_open)
+                {
+                    IMP_CB_ROW_BEGIN("##imp_imat_r")
+                    ZUICheckbox(ctx, "##imp_imat", &m_import_materials);
+                    IMP_CB_ROW_END("Import Materials")
+
+                    IMP_CB_ROW_BEGIN("##imp_itex_r")
+                    ZUICheckbox(ctx, "##imp_itex", &m_import_textures);
+                    IMP_CB_ROW_END("Import Textures")
+                    ZUISpacer(ctx, 4.f);
+                } // s_mat_open
+            } // show_mat
+
+            // Animation (disabled)
+            if (show_anim)
+            {
+                ZUIBeginDisabled(ctx);
+                ZUICollapsingHeader(ctx, "Common Skeletal Meshes and Animations", &s_anim_open);
+                if (s_anim_open)
+                {
+                    static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
+                    IMP_CB_ROW_BEGIN("##imp_ia_r") ZUICheckbox(ctx, "##imp_ia", &s_import_anims);
+                    IMP_CB_ROW_END("Import Animations")
+                    IMP_CB_ROW_BEGIN("##imp_ioa_r") ZUICheckbox(ctx, "##imp_ioa", &s_only_anims);
+                    IMP_CB_ROW_END("Import Only Animations")
+                    IMP_CB_ROW_BEGIN("##imp_ibt_r") ZUICheckbox(ctx, "##imp_ibt", &s_bone_tracks);
+                    IMP_CB_ROW_END("Import Bone Tracks")
+                    ZUISpacer(ctx, 4.f);
+                    ZUIBeginRow(ctx, "##imp_anim_hint", ZFill(), ZPx(fh));
+                    ZUISpacer(ctx, 8.f);
+                    ZUILabel(ctx, "Animation import requires skeletal mesh support.", ctx->Theme.TextDim);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 4.f);
+                }
+                ZUIEndDisabled(ctx);
+            }
+
+            // LOD (disabled)
+            if (show_lod)
+            {
+                ZUIBeginDisabled(ctx);
+                ZUICollapsingHeader(ctx, "LOD", &s_lod_open);
+                if (s_lod_open)
+                {
+                    static bool s_import_lods = false;
+                    static int  s_max_lods    = 4;
+                    IMP_CB_ROW_BEGIN("##imp_il_r") ZUICheckbox(ctx, "##imp_il", &s_import_lods);
+                    IMP_CB_ROW_END("Import LODs")
+                    IMP_ROW_BEGIN("##imp_lod_n_r") IMP_ROW_MID("Max LOD Count") ZUIInputFloat(ctx, "##imp_lod_n", (float*) &s_max_lods, 80.f);
+                    IMP_ROW_END
+                    ZUISpacer(ctx, 4.f);
+                    ZUIBeginRow(ctx, "##imp_lod_hint", ZFill(), ZPx(fh));
+                    ZUISpacer(ctx, 8.f);
+                    ZUILabel(ctx, "LOD support requires virtual geometry streaming.", ctx->Theme.TextDim);
+                    ZUIEndRow(ctx);
+                    ZUISpacer(ctx, 4.f);
+                }
+                ZUIEndDisabled(ctx);
+            }
+
+#undef IMP_ROW_BEGIN
+#undef IMP_ROW_MID
+#undef IMP_ROW_END
+#undef IMP_CB_ROW_BEGIN
+#undef IMP_CB_ROW_END
+        }
+        ZUIEndScrollRegion(ctx);
+
+        ZUISeparator(ctx);
+        ZUISpacer(ctx, 6.f);
+        ZUICheckbox(ctx, "Use same settings for subsequent files##imp_ss", &m_same_settings);
+        ZUISpacer(ctx, 8.f);
+
+        // Footer buttons
+        {
+            ZUIBeginRow(ctx, "##imp_footer", ZFill(), ZPx(fh + 4.f));
+            ZUISpacer(ctx, 8.f);
+            ZUISignal imp_btn = ZUIButton(ctx, "Import All##imp_do");
+            ZUISpacer(ctx, 6.f);
+            ZUIBeginDisabled(ctx);
+            ZUIButton(ctx, "Preview...##imp_prev");
+            ZUIEndDisabled(ctx);
+            ZUISpacer(ctx, 6.f);
+            ZUISignal cancel = ZUIButton(ctx, "Cancel##imp_cancel");
+            ZUIEndRow(ctx);
+
+            if (imp_btn.Flags & ZUI_SignalClicked)
+                StartImport();
+            if (cancel.Flags & ZUI_SignalClicked)
+            {
+                m_path_buf[0] = '\0';
+                m_state.value.store(ImporterState::Idle, std::memory_order_release);
+            }
+        }
+        ZUISpacer(ctx, 8.f);
+    }
+
+    // BuildImporting
+
+    void AssetImporterPanel::BuildImporting(ZUIContext* ctx)
+    {
+        float fh = ZUIGetFrameHeight(ctx);
+        ZUISpacer(ctx, 8.f);
+
+        // "Importing <filename>"
+        {
+            char stem_buf[256] = {};
+            auto pr            = VFSPath::Parse(m_path_buf);
+            if (pr.Succeeded())
+            {
+                auto s = pr.Value().Stem();
+                snprintf(stem_buf, sizeof(stem_buf), "Importing %.*s", (int) s.Length, s.Data);
+            }
+            else
+                secure_strncpy(stem_buf, sizeof(stem_buf), "Importing...", 12);
+            ZUIBeginRow(ctx, "##imp_ing_hdr", ZFill(), ZPx(fh));
+            ZUISpacer(ctx, 8.f);
+            ZUILabel(ctx, stem_buf, ctx->Theme.TextDefault);
+            ZUIEndRow(ctx);
+        }
+        ZUISpacer(ctx, 6.f);
+
+        // Progress bar
+        {
+            ZUIBeginRow(ctx, "##imp_prog_r", ZFill(), ZPx(18.f));
+            ZUISpacer(ctx, 8.f);
+            ZUIProgressBar(ctx, "##imp_prog", m_progress.value.load(std::memory_order_relaxed));
+            ZUISpacer(ctx, 8.f);
+            ZUIEndRow(ctx);
+        }
+
+        ZUISpacer(ctx, 6.f);
+        ZUISeparator(ctx);
+        ZUISpacer(ctx, 4.f);
+
+        // Log scroll region
+        ZUIBeginScrollRegion(ctx, "##imp_log_scroll", ZFill(), ZFill());
+        {
+            std::lock_guard<std::mutex> lock(m_log_mutex);
+            int                         start = (m_log_count < kLogMax) ? 0 : m_log_head; // oldest first
+            // HOT PATH — runs every frame during import, no heap allocation allowed.
+            for (int i = 0; i < m_log_count; ++i)
+            {
+                int  idx = (start + i) % kLogMax;
+                char line[270];
+                snprintf(line, sizeof(line), "> %s", m_log[idx].text);
+                ZUILabel(ctx, line, m_log[idx].color);
+            }
+        }
+        ZUIEndScrollRegion(ctx);
+    }
+
+    // File browse
+
+    std::future<void> AssetImporterPanel::BrowseFileAsync()
+    {
+        if (!m_layer || !m_layer->CurrentApp)
+            co_return;
+        auto                          window  = m_layer->CurrentApp->CurrentWindow;
+        std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
+        std::string                   picked  = co_await window->OpenFileDialogAsync(filters, {}, "Select a 3D asset file");
+        if (!picked.empty())
+        {
+            secure_strncpy(m_path_buf, sizeof(m_path_buf), picked.c_str(), sizeof(m_path_buf) - 1);
+            m_instance_name[0] = '\0';
+            m_add_to_scene     = false;
+            if (m_same_settings)
+                StartImport();
+            else
+                m_state.value.store(ImporterState::Options, std::memory_order_release);
+        }
+    }
+
+    void AssetImporterPanel::BrowseFile()
+    {
+        ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<AssetImporterPanel*>(ctx)->BrowseFileAsync(); });
+    }
+
+    // StartImport
+
+    void AssetImporterPanel::StartImport()
+    {
+        if (m_state.value.load(std::memory_order_acquire) == ImporterState::Importing)
+            return;
+
+        if (!m_gltf_importer || !m_fbx_importer || !m_assimp_importer)
+            return;
+
+        auto* app = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        if (!app || !app->Configuration)
+            return;
+
+        auto vfs_result = VFSPath::Parse(m_path_buf);
+        if (vfs_result.Failed())
+            return;
+
+        auto& vfs_value  = vfs_result.Value();
+        auto  asset_name = vfs_value.Stem();
+        auto  parent_dir = vfs_value.Parent();
+
+        char  asset_file_buf[256];
+        snprintf(asset_file_buf, sizeof(asset_file_buf), "%.*s.zemesh", (int) asset_name.Length, asset_name.Data);
+
+        m_local_arena.Clear();
+
+        auto*       config = ZPushStruct(&m_local_arena, ZEngine::Importers::AssetCodec::ImportConfiguration);
+        const auto& cfg    = *app->Configuration;
+        config->OutputWorkingSpacePath.init(&m_local_arena, cfg.WorkingSpacePath.c_str());
+        config->OutputTextureFilesPath.init(&m_local_arena, cfg.TexturePath.c_str());
+        config->OutputAssetsPath.init(&m_local_arena, cfg.MeshPath.c_str());
+        config->OutputMaterialPath.init(&m_local_arena, cfg.MaterialPath.c_str());
+        if (!m_use_source_name && m_instance_name[0] != '\0')
+            config->AssetName.init(&m_local_arena, m_instance_name);
+        else
+            config->AssetName.init(&m_local_arena, asset_name.Data);
+        config->OutputAssetFile.init(&m_local_arena, asset_file_buf);
+        config->InputBaseAssetFilePath.init(&m_local_arena, parent_dir.CStr());
+        config->VFS                     = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
+        config->Options.UniformScale    = m_scale;
+        config->Options.AxisUpIsZ       = (m_axis_index == 1);
+        config->Options.NormalsMode     = static_cast<uint8_t>(m_normals_mode);
+        config->Options.MergeVertices   = m_merge_vertices;
+        config->Options.ImportMaterials = m_import_materials;
+        config->Options.ImportTextures  = m_import_textures;
+        config->Options.FlipUVs         = m_flip_uvs;
+
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Importing %.*s", (int) vfs_value.Filename().Length, vfs_value.Filename().Data);
+        PushLog(msg, kWhite[0], kWhite[1], kWhite[2]);
+
+        m_state.value.store(ImporterState::Importing, std::memory_order_release);
+        m_progress.value.store(0.f, std::memory_order_relaxed);
+
+        m_import_task.Outputs.clear();
+        m_import_task.PublishedPaths.clear();
+        m_import_task.Error.clear();
+        m_import_task.Outcome                           = ImportTaskOutcome::Pending;
+        m_import_task.Publication                       = {};
+        m_import_task.Panel                             = this;
+        m_import_task.Configuration                     = *config;
+        m_import_task.Configuration.ArtifactContext     = &m_import_task;
+        m_import_task.Configuration.OnArtifactPublished = &AssetImporterPanel::OnImportArtifactPublished;
+        if (m_import_task.Configuration.VFS)
+            m_import_task.Publication = m_import_task.Configuration.VFS->BeginImportPublication();
+        secure_strncpy(m_import_task.SourcePath, sizeof(m_import_task.SourcePath), m_path_buf, secure_strlen(m_path_buf));
+
+        const auto ext = vfs_value.Extension();
+
+        if (secure_strcmp(ext.Data, ".glb") == 0 || secure_strcmp(ext.Data, ".gltf") == 0)
+        {
+            m_import_task.Kind = ImporterKind::Gltf;
+        }
+        else if (secure_strcmp(ext.Data, ".fbx") == 0)
+        {
+            m_import_task.Kind = ImporterKind::Fbx;
+        }
+        else
+        {
+            m_import_task.Kind = ImporterKind::Assimp;
+        }
+
+        if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&m_import_task, &AssetImporterPanel::RunImportTask))
+        {
+            EndImportPublication(m_import_task);
+            m_state.value.store(ImporterState::Options, std::memory_order_release);
+            PushLog("Import task rejected because the thread pool is shutting down", kRed[0], kRed[1], kRed[2]);
+        }
+    }
+
+    void AssetImporterPanel::RunImportTask(void* context)
+    {
+        auto* task = static_cast<ImportTask*>(context);
+        if (!task)
+            return;
+
+        auto* panel = task->Panel;
+        if (!panel)
+        {
+            EndImportPublication(*task);
+            return;
+        }
+
+        const auto& config = task->Configuration;
+        switch (task->Kind)
+        {
+            case ImporterKind::Gltf:
+                panel->m_gltf_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, task, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                break;
+            case ImporterKind::Fbx:
+                panel->m_fbx_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, task, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                break;
+            case ImporterKind::Assimp:
+                panel->m_assimp_importer->ImportFile(task->SourcePath, config, &panel->m_local_arena, task, OnImportFileComplete, OnImportProgress, OnImportError, OnImportLog);
+                break;
+        }
+
+        if (task->Outcome == ImportTaskOutcome::Pending)
+        {
+            task->Error   = "Importer returned without reporting a result";
+            task->Outcome = ImportTaskOutcome::Failed;
+        }
+
+        // ImportFile's local scratch storage is gone once it returns. The worker
+        // callbacks have already copied the required output paths into ImportTask.
+        ZEngine::Core::MainThreadScheduler::Post(task, &AssetImporterPanel::FinalizeImportTask);
+    }
+
+    void AssetImporterPanel::FinalizeImportTask(void* context)
+    {
+        auto* task = static_cast<ImportTask*>(context);
+        if (!task)
+            return;
+
+        auto* panel = task->Panel;
+        if (panel)
+        {
+            if (task->Outcome == ImportTaskOutcome::Completed)
+            {
+                ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs(task->Outputs.data(), task->Outputs.size());
+                CompleteImportOnMainThread(panel, outputs);
+            }
+            else
+            {
+                CompleteImportErrorOnMainThread(panel, task->Error.empty() ? "Importer returned without an error message" : task->Error);
+            }
+        }
+
+        // CompleteImportOnMainThread can return early on metadata errors. Release the
+        // publication afterwards in every case so watcher processing cannot remain
+        // deferred after an import failure.
+        EndImportPublication(*task);
+        task->PublishedPaths.clear();
+    }
+
+    void AssetImporterPanel::CreateMeshActor(uuids::uuid mesh_uuid, uint32_t render_instance_id, const char* name)
+    {
+        auto* ctx = ZEngine::Engine::GetContext();
+
+        if (ctx && ctx->ActorManager)
+        {
+            using namespace ZEngine::ECS::Components;
+            ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
+            ZEngine::ECS::Actor*      actor  = ctx->ActorManager->Access(handle);
+            if (actor)
+            {
+                NameComponent nc = {};
+                secure_strncpy(nc.Value, sizeof(nc.Value), name, secure_strlen(name));
+                actor->AddComponent<NameComponent>(nc);
+                actor->AddComponent<TransformComponent>({});
+                MeshComponent mc    = {};
+                mc.MeshUUID         = mesh_uuid;
+                mc.RenderInstanceId = render_instance_id;
+                actor->AddComponent<MeshComponent>(mc);
+            }
+        }
+    }
+
+    // PushLog / PushHistory
+
+    void AssetImporterPanel::PushLog(const char* text, float r, float g, float b)
+    {
+        std::lock_guard<std::mutex> lock(m_log_mutex);
+        LogEntry&                   e = m_log[m_log_head];
+        secure_strncpy(e.text, sizeof(e.text), text, sizeof(e.text) - 1);
+        e.color[0] = r;
+        e.color[1] = g;
+        e.color[2] = b;
+        e.color[3] = 1.f;
+        m_log_head = (m_log_head + 1) % kLogMax;
+        if (m_log_count < kLogMax)
+            ++m_log_count;
+    }
+
+    void AssetImporterPanel::PushHistory(const char* name, bool ok, const char* msg)
+    {
+        if (m_hist_count < kHistMax)
+        {
+            HistEntry& e = m_history[m_hist_count++];
+            secure_strncpy(e.name, sizeof(e.name), name, sizeof(e.name) - 1);
+            secure_strncpy(e.message, sizeof(e.message), msg, sizeof(e.message) - 1);
+            e.ok = ok;
+        }
+        else
+        {
+            // Shift to keep newest at the end
+            for (int i = 0; i < kHistMax - 1; ++i)
+                m_history[i] = m_history[i + 1];
+            HistEntry& e = m_history[kHistMax - 1];
+            secure_strncpy(e.name, sizeof(e.name), name, sizeof(e.name) - 1);
+            secure_strncpy(e.message, sizeof(e.message), msg, sizeof(e.message) - 1);
+            e.ok = ok;
+        }
+    }
+
+    // Static callbacks
+
+    void AssetImporterPanel::OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        if (!task)
+            return;
+        // An importer may have published some artifacts before reporting an error.
+        // Once it reports that error, completion must not turn the task into a
+        // success and hide it from the editor.
+        if (task->Outcome == ImportTaskOutcome::Failed)
+            return;
+
+        task->Outputs.clear();
+        if (outputs.size() > 0)
+        {
+            task->Outputs.assign(outputs.data(), outputs.data() + outputs.size());
+            for (const auto& output : task->Outputs)
+                RecordPublishedPath(*task, output.Path.c_str());
+        }
+        task->Error.clear();
+        task->Outcome = ImportTaskOutcome::Completed;
+    }
+
+    void AssetImporterPanel::OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType, const char* path)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        if (task)
+            RecordPublishedPath(*task, path);
+    }
+
+    void AssetImporterPanel::RecordPublishedPath(ImportTask& task, const char* path)
+    {
+        if (!path || path[0] == '\0')
+            return;
+        auto parsed = VFSPath::Parse(path);
+        if (parsed.Failed())
+            return;
+
+        for (const ZEngine::Core::VFS::VFSPath& existing : task.PublishedPaths)
+            if (existing == parsed.Value())
+                return;
+
+        task.PublishedPaths.push(parsed.Value());
+    }
+
+    void AssetImporterPanel::EndImportPublication(ImportTask& task)
+    {
+        auto* vfs = task.Configuration.VFS;
+        if (!vfs || !task.Publication.IsValid())
+            return;
+
+        for (const ZEngine::Core::VFS::VFSPath& published : task.PublishedPaths)
+            vfs->RecordImportPublicationArtifact(task.Publication, published);
+        vfs->EndImportPublication(task.Publication);
+        task.Publication = {};
+    }
+
+    void AssetImporterPanel::CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
+    {
+        auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
+
+        if (self->m_project_view)
+            self->m_project_view->RequestRefresh();
+
+        bool    has_mesh  = false;
+        cstring mesh_path = nullptr;
+        for (unsigned i = 0; i < outputs.size(); ++i)
+        {
+            if (outputs[i].Type == ZEngine::Importers::AssetFileType::MESH)
+            {
+                has_mesh  = true;
+                mesh_path = outputs[i].Path.c_str();
+            }
+        }
+
+        // Write a .meta for every cooked material (#762) — mirrors the mesh handling
+        // below. Without this, AssimpImporter/GltfImporter/FbxImporter's material
+        // UUID stabilization (also #762) has no .meta to read on the next re-import,
+        // and every re-cook mints a brand-new, disconnected material identity.
+        {
+            auto*   ctx_engine = ZEngine::Engine::GetContext();
+            auto*   app        = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
+            cstring ws         = (app && app->Configuration) ? app->Configuration->WorkingSpacePath.c_str() : "";
+            if (ctx_engine && ctx_engine->VFS && ws[0] != '\0')
+            {
+                auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
+                for (unsigned i = 0; i < outputs.size(); ++i)
+                {
+                    if (outputs[i].Type != ZEngine::Importers::AssetFileType::MATERIAL)
+                        continue;
+
+                    cstring mat_path = outputs[i].Path.c_str();
+                    auto    rel      = VFSPath::Parse(mat_path);
+                    if (!rel.Succeeded())
+                        continue;
+
+                    auto material_uuid = ReadEmbeddedAssetUUID(*vfs, rel.Value());
+                    if (material_uuid.Failed())
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read material identity for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(material_uuid.Error())));
+                        return;
+                    }
+
+                    auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
+                    if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read metadata for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(meta_result.Error())));
+                        return;
+                    }
+                    ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                    meta.AssetUUID                        = material_uuid.Value();
+                    secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
+                    secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mat_path, sizeof(meta.ArtifactPath) - 1);
+                    secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
+                    auto write = ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                    if (write.Failed())
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to persist metadata for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(write.Error())));
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (has_mesh && mesh_path)
+        {
+            // mesh_path is VFS-relative (e.g. "/Assets/Meshes/test_cube.zemesh") —
+            // ReadAssetMeshFileHeader does raw filesystem I/O and needs a native path.
+            char native_mesh_path[MAX_FILE_PATH_COUNT] = {};
+            {
+                auto*   header_app = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
+                cstring header_ws  = (header_app && header_app->Configuration) ? header_app->Configuration->WorkingSpacePath.c_str() : "";
+                auto    mesh_pr    = VFSPath::Parse(mesh_path);
+                if (mesh_pr.Succeeded() && header_ws[0] != '\0')
+                    mesh_pr.Value().ResolveNative(header_ws, native_mesh_path, sizeof(native_mesh_path));
+            }
+
+            // Read once, shared by the meta write below and the add-to-scene block.
+            ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
+            bool                                                has_header = ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_mesh_path, header);
+
+            // Write meta file (source path for re-import)
+            auto*                                               ctx_engine = ZEngine::Engine::GetContext();
+            if (ctx_engine && ctx_engine->VFS)
+            {
+                auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
+
+                // mesh_path (AssetImporterOutput::Path) is already a VFS-relative path
+                // (e.g. "Assets/Meshes/test_cube.zemesh") — config.OutputAssetsPath has
+                // no native workspace prefix to strip (see Editor.cpp's expand_nested:
+                // "Result is a workspace-relative sub-path ... no leading slash"). The
+                // previous strncmp-against-WorkingSpacePath check could never match,
+                // silently skipping this whole block on every import (#762).
+                auto  rel = VFSPath::Parse(mesh_path);
+                if (rel.Succeeded())
+                {
+                    auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
+                    if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read metadata for '{}' (VFS error {})", mesh_path, static_cast<uint32_t>(meta_result.Error())));
+                        return;
+                    }
+                    ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
+                    // Sync to the file's own embedded UUID — otherwise a nil
+                    // AssetUUID gets locked in forever (#755).
+                    if (has_header)
+                        meta.AssetUUID = header.Id;
+                    secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
+                    secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
+                    secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
+                    auto write = ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
+                    if (write.Failed())
+                    {
+                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to persist metadata for '{}' (VFS error {})", mesh_path, static_cast<uint32_t>(write.Error())));
+                        return;
+                    }
+                }
+            }
+
+            // Add mesh instance to scene if triggered by drag-drop
+            if (self->m_add_to_scene && has_header)
+            {
+                auto* app   = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
+                auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+                if (scene)
+                {
+                    char iname[256] = {};
+                    if (self->m_instance_name[0])
+                        secure_strncpy(iname, sizeof(iname), self->m_instance_name, sizeof(iname) - 1);
+                    else
+                    {
+                        auto pr = VFSPath::Parse(self->m_path_buf);
+                        if (pr.Succeeded())
+                        {
+                            auto s = pr.Value().Stem();
+                            snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
+                        }
+                    }
+                    self->CreateMeshActor(header.Id, scene->AddMeshInstance(header.Id, iname), iname);
+                }
+            }
+            self->m_add_to_scene     = false;
+            self->m_instance_name[0] = '\0';
+
+            self->PushLog("Completed", kGreen[0], kGreen[1], kGreen[2]);
+            char fn[256] = {};
+            {
+                auto pr = VFSPath::Parse(self->m_path_buf);
+                if (pr.Succeeded())
+                {
+                    auto f = pr.Value().Filename();
+                    snprintf(fn, sizeof(fn), "%.*s", (int) f.Length, f.Data);
+                }
+            }
+            self->PushHistory(fn, true, "Completed");
+        }
+        else
+        {
+            self->m_add_to_scene     = false;
+            self->m_instance_name[0] = '\0';
+            self->PushLog("Import failed — no mesh output", kRed[0], kRed[1], kRed[2]);
+            char fn[256] = {};
+            {
+                auto pr = VFSPath::Parse(self->m_path_buf);
+                if (pr.Succeeded())
+                {
+                    auto f = pr.Value().Filename();
+                    snprintf(fn, sizeof(fn), "%.*s", (int) f.Length, f.Data);
+                }
+            }
+            self->PushHistory(fn, false, "No mesh output");
+        }
+
+        self->m_progress.value.store(1.f, std::memory_order_relaxed);
+        self->m_state.value.store(ImporterState::Idle, std::memory_order_release);
+    }
+
+    void AssetImporterPanel::OnImportProgress(void* ctx, float pct)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        auto* self = task ? task->Panel : nullptr;
+        if (!self)
+            return;
+
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Processing... %.0f%%", pct * 100.f);
+        self->PushLog(msg, kWhite[0], kWhite[1], kWhite[2]);
+        self->m_progress.value.store(pct, std::memory_order_relaxed);
+    }
+
+    void AssetImporterPanel::OnImportError(void* ctx, std::string_view err)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        if (!task)
+            return;
+
+        task->Outputs.clear();
+        task->Error.assign(err.data(), err.size());
+        task->Outcome = ImportTaskOutcome::Failed;
+    }
+
+    void AssetImporterPanel::CompleteImportErrorOnMainThread(void* ctx, std::string_view err)
+    {
+        auto* self               = reinterpret_cast<AssetImporterPanel*>(ctx);
+        self->m_add_to_scene     = false;
+        self->m_instance_name[0] = '\0';
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Error: %.*s", (int) err.size(), err.data());
+        self->PushLog(msg, kRed[0], kRed[1], kRed[2]);
+        char fn[256] = {};
+        {
+            auto pr = VFSPath::Parse(self->m_path_buf);
+            if (pr.Succeeded())
+            {
+                auto f = pr.Value().Filename();
+                snprintf(fn, sizeof(fn), "%.*s", (int) f.Length, f.Data);
+            }
+        }
+        self->PushHistory(fn, false, msg);
+        self->m_state.value.store(ImporterState::Idle, std::memory_order_release);
+    }
+
+    void AssetImporterPanel::OnImportLog(void* ctx, std::string_view msg)
+    {
+        auto* task = static_cast<ImportTask*>(ctx);
+        auto* self = task ? task->Panel : nullptr;
+        if (!self)
+            return;
+
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%.*s", (int) msg.size(), msg.data());
+        self->PushLog(buf, kWhite[0], kWhite[1], kWhite[2]);
+    }
+
+} // namespace Tetragrama::Panels

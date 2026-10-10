@@ -1,104 +1,186 @@
-#include <ZEngine/Core/Coroutine.h>
-#include <ZEngine/Helpers/ThreadPool.h>
-#include <ZEngine/Importers/AssetTypes.h>
+#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/EnvironmentMapImporter.h>
-#include <fmt/format.h>
-#include <filesystem>
+#include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/ZEngineDef.h>
+#include <uuid.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
-// stb_image implementation is defined once in AsyncResourceLoader.cpp.
+// stb_image implementation is defined once in RenderResourceManager.cpp.
 #include <stb/stb_image.h>
+#include <tinyexr.h>
 
-using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Buffers;
-using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Importers
 {
-    std::future<void> EnvironmentMapImporter::ImportAsync(const char* filename, const ImportConfiguration& cfg)
+    namespace
     {
-        ThreadPoolHelper::Submit([this, path = std::string(filename), cfg] {
-            std::unique_lock l(m_mutex);
+        constexpr int k_rgba_channel_count = 4;
 
-            Arena.Clear();
-            auto                thread_local_arena = &Arena;
-            ImportConfiguration config             = {};
-
-            config.OutputWorkingSpacePath.init(thread_local_arena, cfg.OutputWorkingSpacePath.c_str());
-            config.OutputAssetsPath.init(thread_local_arena, cfg.OutputAssetsPath.c_str());
-            config.AssetName.init(thread_local_arena, cfg.AssetName.c_str());
-            config.OutputAssetFile.init(thread_local_arena, cfg.OutputAssetFile.c_str());
-
-            std::string dir_path      = fmt::format("{0}{1}{2}", config.OutputWorkingSpacePath.c_str(), PLATFORM_OS_BACKSLASH, config.OutputAssetsPath.c_str());
-            std::string fullname_path = fmt::format("{0}{1}{2}", dir_path, PLATFORM_OS_BACKSLASH, config.OutputAssetFile.c_str());
-
-            if (std::filesystem::exists(fullname_path))
-            {
-                REPORT_LOG(Context, fmt::format("Environment map already exists"))
+        void          AddImportSetting(Core::VFS::MetaFileData& meta, const char* key, const char* value)
+        {
+            if (meta.SettingsCount >= Core::VFS::META_MAX_SETTINGS)
                 return;
-            }
+            Core::VFS::MetaKeyValuePair& setting = meta.Settings[meta.SettingsCount++];
+            std::snprintf(setting.Key, sizeof(setting.Key), "%s", key);
+            std::snprintf(setting.Value, sizeof(setting.Value), "%s", value);
+        }
 
-            m_is_importing.store(true, std::memory_order_release);
-
-            int          width = 0, height = 0, channel = 0;
-            // stbi_set_flip_vertically_on_load(1);
-            const float* image_data = stbi_loadf(path.c_str(), &width, &height, &channel, 4);
-
-            if (!image_data)
-            {
-                if (m_error_callback)
-                {
-                    m_error_callback(Context, fmt::format("Failed to decode '{}': {}", path, stbi_failure_reason()));
-                }
-                m_is_importing.store(false, std::memory_order_release);
-                return;
-            }
-
-            if (m_progress_callback)
-            {
-                m_progress_callback(Context, 0.33f);
-            }
-
-            Bitmap equirect = {width, height, 4, BitmapFormat::FLOAT, image_data};
-            stbi_image_free(const_cast<float*>(image_data));
-
-            Bitmap vertical_cross = Bitmap::EquirectangularMapToVerticalCross(equirect);
-            Bitmap cubemap        = Bitmap::VerticalCrossToCubemap(vertical_cross);
-
-            if (m_progress_callback)
-            {
-                m_progress_callback(Context, 0.75f);
-            }
-
-            auto output = IAssetImporter::SerializeEnvironmentMapFile(cubemap, config);
-
-            m_is_importing.store(false, std::memory_order_release);
-
-            if (output.Type == AssetFileType::ENVIRONMENT_MAP)
-            {
-                if (m_progress_callback)
-                {
-                    m_progress_callback(Context, 1.0f);
-                }
-
-                Array<AssetImporterOutput> outputs = {};
-                outputs.init(thread_local_arena, 1);
-                outputs.push(output);
-
-                if (m_complete_callback)
-                {
-                    m_complete_callback(Context, ArrayView{outputs});
-                }
-            }
+        void FreeDecodedPixels(float* pixels, bool is_exr)
+        {
+            if (is_exr)
+                std::free(pixels);
             else
-            {
-                if (m_error_callback)
-                {
-                    m_error_callback(Context, fmt::format("Failed to write .zenvmap"));
-                }
-            }
-        });
+                stbi_image_free(pixels);
+        }
+    } // namespace
 
-        co_return;
+    void EnvironmentMapImporter::Initialize(Core::Memory::ArenaAllocator* arena)
+    {
+        arena->CreateSubArena(ZMega(128), &Arena, "ImportPipeline/EnvironmentMapImporter");
+        DecodeSlab.Init(&Arena, ZMega(128));
     }
 
+    bool EnvironmentMapImporter::CanImport(const char* extension) const
+    {
+        if (!extension)
+            return false;
+        return Helpers::secure_strcmp(extension, "hdr") == 0 || Helpers::secure_strcmp(extension, "exr") == 0;
+    }
+
+    bool EnvironmentMapImporter::IsSupportedEquirectangularSource(int width, int height, const float* rgba_pixels)
+    {
+        if (!rgba_pixels || width <= 0 || height <= 0 || width != height * 2 || width % 4 != 0)
+            return false;
+
+        const int face_size = width / 4;
+        if (face_size <= 0 || face_size > static_cast<int>(AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE))
+            return false;
+
+        const size_t component_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+        for (size_t index = 0; index < component_count; ++index)
+            if (!std::isfinite(rgba_pixels[index]) || rgba_pixels[index] < 0.0f)
+                return false;
+        return true;
+    }
+
+    bool EnvironmentMapImporter::BuildArtifactPath(const uuids::uuid& asset_uuid, char* out_path, size_t out_path_size)
+    {
+        if (asset_uuid.is_nil() || !out_path || out_path_size == 0)
+            return false;
+        const int written = std::snprintf(out_path, out_path_size, "/_cache/envmaps/%s.zenvmap", uuids::to_string(asset_uuid).c_str());
+        return written > 0 && static_cast<size_t>(written) < out_path_size;
+    }
+
+    Core::VFS::VFSResult<void> EnvironmentMapImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
+    {
+        // Keep the source decode and 96 MiB cubemap conversion under one bounded
+        // peak. ImportCoordinator may dispatch several paths at once, but this
+        // importer intentionally admits one environment map at a time.
+        std::lock_guard decode_lock(m_decode_mutex);
+
+        // The decoders work on the filesystem, while the source identity and
+        // cooked artifact remain VFS paths. Resolve the source relative to its workspace.
+        char            native[MAX_FILE_PATH_COUNT] = {};
+        const char*     working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        if (working_space && working_space[0] != '\0')
+            path.ResolveNative(working_space, native, sizeof(native));
+        else
+            path.ToNative(native, sizeof(native));
+
+        int        width = 0, height = 0;
+        float*     image_data = nullptr;
+        const bool is_exr     = path.Extension().Equals(".exr");
+        if (is_exr)
+        {
+            const char* error_message = nullptr;
+            if (LoadEXR(&image_data, &width, &height, native, &error_message) != TINYEXR_SUCCESS)
+            {
+                ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load EXR '{}': {}", native, error_message ? error_message : "unknown decoder error")
+                if (error_message)
+                    FreeEXRErrorMessage(error_message);
+                FreeDecodedPixels(image_data, true);
+                return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+            }
+        }
+        else
+        {
+            image_data = stbi_loadf(native, &width, &height, nullptr, k_rgba_channel_count);
+        }
+        if (!image_data)
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load {} '{}': {}", is_exr ? "EXR" : "HDR", native, is_exr ? "decoder returned no pixels" : stbi_failure_reason())
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+        }
+
+        if (!IsSupportedEquirectangularSource(width, height, image_data))
+        {
+            FreeDecodedPixels(image_data, is_exr);
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: '{}' must be a finite, non-negative 2:1 HDRI equirectangular image with a face size no larger than {}", native, AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
+
+        Bitmap equirect = Bitmap::FromData(width, height, 1, k_rgba_channel_count, BitmapFormat::Float, BitmapType::Texture2D, image_data);
+        FreeDecodedPixels(image_data, is_exr);
+
+        // The cache is UUID keyed, regenerable, and never stored in scene data.
+        char vfs_path_buf[MAX_FILE_PATH_COUNT] = {};
+        if (!BuildArtifactPath(meta.AssetUUID, vfs_path_buf, sizeof(vfs_path_buf)))
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: cannot build a cache path for '{}'", native)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
+
+        auto out_path_result = Core::VFS::VFSPath::Parse(vfs_path_buf);
+        if (!out_path_result.Succeeded())
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: invalid output path '{}'", vfs_path_buf)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
+
+        // Ensure the cache directory exists
+        auto       cache_dir               = Core::VFS::VFSPath::Parse("/_cache/envmaps").Value();
+        const auto create_directory_result = ctx.CreateDir(cache_dir);
+        if (create_directory_result.Failed() && create_directory_result.Error() != Core::VFS::VFSError::AlreadyExists)
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: cannot create the cache directory for '{}'", native)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+        }
+
+        const AssetCodec::EnvironmentMapCookMetadata cook_metadata = {.SourceHash = meta.SourceHash};
+        Bitmap                                       cubemap       = BitmapConvert::EquirectToCubemap(equirect, &DecodeSlab);
+        auto                                         write_result  = AssetCodec::SerializeEnvironmentMapFileVFS(ctx, out_path_result.Value(), cubemap, cook_metadata);
+        if (write_result.Failed())
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to write .zenvmap for '{}'", native)
+            return write_result;
+        }
+
+        // Keep the artifact metadata beside the stable source UUID. The render
+        // path reads the cooked path and validates this source hash before upload.
+        Core::VFS::MetaFileData cooked_meta = meta;
+        std::snprintf(cooked_meta.ImporterName, sizeof(cooked_meta.ImporterName), "%s", "EnvironmentMapImporter");
+        std::snprintf(cooked_meta.SourcePath, sizeof(cooked_meta.SourcePath), "%s", native);
+        std::snprintf(cooked_meta.ArtifactPath, sizeof(cooked_meta.ArtifactPath), "%s", vfs_path_buf);
+        cooked_meta.SettingsCount = 0;
+        AddImportSetting(cooked_meta, "artifact_version", "2");
+        AddImportSetting(cooked_meta, "pixel_format", "rgba32f");
+        AddImportSetting(cooked_meta, "color_space", "linear_scene");
+        AddImportSetting(cooked_meta, "orientation", "renderer_canonical_v1");
+        AddImportSetting(cooked_meta, "mip_policy", "generate_on_gpu");
+        AddImportSetting(cooked_meta, "exposure", "1.0");
+        if (Core::VFS::MetaFileIO::Write(ctx, path, cooked_meta).Failed())
+        {
+            ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to write metadata for '{}'", native)
+            return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
+        }
+
+        ZENGINE_CORE_INFO("EnvironmentMapImporter: cooked '{}' → '{}'", native, vfs_path_buf)
+        return Core::VFS::VFSResult<void>::Ok();
+    }
 } // namespace ZEngine::Importers

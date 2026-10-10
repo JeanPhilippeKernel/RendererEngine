@@ -1,6 +1,8 @@
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 
 namespace ZEngine::Core::VFS
@@ -240,6 +242,20 @@ namespace ZEngine::Core::VFS
         Helpers::secure_memcpy(out_buf, MAX_FILE_PATH_COUNT, m_native_root, m_native_root_len);
         Helpers::secure_memcpy(out_buf + m_native_root_len, MAX_FILE_PATH_COUNT - m_native_root_len, native, native_len);
         out_buf[m_native_root_len + native_len] = '\0';
+
+        // Defense-in-depth: verify the composed path stays within m_native_root.
+        // VFSPath::Parse already rejects '..' segments, but this backend must not rely
+        // solely on every upstream caller using Parse — any future code path that
+        // constructs a VFSPath from raw bytes could bypass that check.
+        if (std::memcmp(out_buf, m_native_root, m_native_root_len) != 0)
+        {
+            return false;
+        }
+        const char next = out_buf[m_native_root_len];
+        if (next != '\0' && next != '/' && next != '\\')
+        {
+            return false;
+        }
         return true;
     }
 
@@ -279,13 +295,17 @@ namespace ZEngine::Core::VFS
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
         }
 
-        const bool wants_write = HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Append);
+        const bool wants_write = HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Append) || HasFlag(flags, VFSOpenFlags::Create) || HasFlag(flags, VFSOpenFlags::Truncate);
         if (wants_write && !HasCap(m_caps, VFSBackendCaps::Write))
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
         }
 
-        void* mem = m_file_pool.Allocate();
+        void* mem;
+        {
+            std::lock_guard<std::mutex> lock(m_file_pool_mutex);
+            mem = m_file_pool.Allocate();
+        }
         if (!mem)
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
@@ -296,14 +316,25 @@ namespace ZEngine::Core::VFS
         file->m_writable  = wants_write;
 
 #if defined(_WIN32)
-        const DWORD access   = GENERIC_READ | (wants_write ? GENERIC_WRITE : 0);
-        const DWORD creation = wants_write ? OPEN_ALWAYS : OPEN_EXISTING;
-        file->m_handle       = CreateFileA(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const DWORD access = GENERIC_READ | (wants_write ? GENERIC_WRITE : 0);
+        DWORD       creation;
+        if (HasFlag(flags, VFSOpenFlags::Create) && HasFlag(flags, VFSOpenFlags::Truncate))
+            creation = CREATE_ALWAYS; // create or truncate
+        else if (HasFlag(flags, VFSOpenFlags::Truncate))
+            creation = TRUNCATE_EXISTING; // truncate must-exist file
+        else if (wants_write || HasFlag(flags, VFSOpenFlags::Create))
+            creation = OPEN_ALWAYS; // create if absent, open if present
+        else
+            creation = OPEN_EXISTING;
+        file->m_handle = CreateFileA(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file->m_handle == INVALID_HANDLE_VALUE)
         {
+            const DWORD native_error = GetLastError();
+            const auto  error        = native_error == ERROR_FILE_NOT_FOUND || native_error == ERROR_PATH_NOT_FOUND ? VFSError::NotFound : native_error == ERROR_ACCESS_DENIED ? VFSError::PermissionDenied : VFSError::IOError;
             file->~VFSDiskFile();
+            std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             m_file_pool.Free(file);
-            return VFSResult<IVFSFile*>::Fail(VFSError::NotFound);
+            return VFSResult<IVFSFile*>::Fail(error);
         }
         LARGE_INTEGER sz;
         if (GetFileSizeEx(file->m_handle, &sz))
@@ -312,20 +343,21 @@ namespace ZEngine::Core::VFS
         }
 #else
         int oflags = wants_write ? O_RDWR : O_RDONLY;
-        if (HasFlag(flags, VFSOpenFlags::Write))
-        {
+        if (HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Create))
             oflags |= O_CREAT;
-        }
+        if (HasFlag(flags, VFSOpenFlags::Truncate))
+            oflags |= O_TRUNC;
         if (HasFlag(flags, VFSOpenFlags::Append))
-        {
             oflags |= O_CREAT | O_APPEND;
-        }
         file->m_fd = ::open(native, oflags, 0644);
         if (file->m_fd < 0)
         {
+            const int  native_error = errno;
+            const auto error        = native_error == ENOENT ? VFSError::NotFound : native_error == EACCES || native_error == EPERM ? VFSError::PermissionDenied : native_error == ENOTDIR ? VFSError::NotADirectory : native_error == EISDIR ? VFSError::NotAFile : VFSError::IOError;
             file->~VFSDiskFile();
+            std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             m_file_pool.Free(file);
-            return VFSResult<IVFSFile*>::Fail(VFSError::NotFound);
+            return VFSResult<IVFSFile*>::Fail(error);
         }
         struct stat st;
         if (::fstat(file->m_fd, &st) == 0)
@@ -343,6 +375,7 @@ namespace ZEngine::Core::VFS
             return;
         }
         file->~IVFSFile();
+        std::lock_guard<std::mutex> lock(m_file_pool_mutex);
         m_file_pool.Free(file);
     }
 
@@ -481,6 +514,22 @@ namespace ZEngine::Core::VFS
         return VFSResult<void>::Ok();
     }
 
+    VFSResult<void> VFSDiskBackend::RemoveAll(const VFSPath& relative_path)
+    {
+        if (!HasCap(m_caps, VFSBackendCaps::Write))
+        {
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
+        char native[MAX_FILE_PATH_COUNT] = {};
+        if (!ResolveNativePath(relative_path, native))
+        {
+            return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(native, ec);
+        return ec ? VFSResult<void>::Fail(VFSError::IOError) : VFSResult<void>::Ok();
+    }
+
     VFSResult<void> VFSDiskBackend::Rename(const VFSPath& rel_src, const VFSPath& rel_dst)
     {
         if (!HasCap(m_caps, VFSBackendCaps::Write))
@@ -493,12 +542,19 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
+#if defined(_WIN32)
+        if (!MoveFileExA(native_src, native_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            return VFSResult<void>::Fail(VFSError::IOError);
+        }
+#else
         std::error_code ec;
         std::filesystem::rename(native_src, native_dst, ec);
         if (ec)
         {
             return VFSResult<void>::Fail(VFSError::IOError);
         }
+#endif
         return VFSResult<void>::Ok();
     }
 

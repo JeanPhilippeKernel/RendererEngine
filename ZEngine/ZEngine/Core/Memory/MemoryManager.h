@@ -1,14 +1,6 @@
 #pragma once
-#ifdef _WIN32
-// clang-format off
-#include <windows.h>
-// clang-format on
-#include <sysinfoapi.h>
-#elif defined(__linux__) || defined(__APPLE__)
-#include <unistd.h>
-#endif
-
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Profiling/MemoryProfiler.h>
 
 namespace ZEngine::Core::Memory
 {
@@ -21,51 +13,59 @@ namespace ZEngine::Core::Memory
 
     struct MemoryBudgetConfig
     {
-        SubArenaConfig  AudioEngine      = {};
-        SubArenaConfig  AnimationManager = {};
-        SubArenaConfig  AssetManager     = {};
-        SubArenaConfig  ECSScene         = {};
-        SubArenaConfig  Logging          = {};
-        SubArenaConfig  VirtualFS        = {};
-        SubArenaConfig  VulkanDevice     = {};
-        SubArenaConfig  Importer         = {};
-        SubArenaConfig  UIContext        = {};
-        SubArenaConfig  Swapchain        = {};
-        SubArenaConfig  ShaderCache      = {};
-        SubArenaConfig  Serializer       = {};
-        SubArenaConfig  Network          = {};
+        // Process-lifetime engine/application objects that exist before a subsystem
+        // owner is available (window, EngineContext, application state, scheduler).
+        SubArenaConfig                   Bootstrap        = {};
+        SubArenaConfig                   AudioEngine      = {};
+        SubArenaConfig                   AnimationManager = {};
+        SubArenaConfig                   AssetManager     = {};
+        SubArenaConfig                   ECSScene         = {};
+        SubArenaConfig                   Logging          = {};
+        SubArenaConfig                   VirtualFS        = {};
+        SubArenaConfig                   VulkanDevice     = {};
+        SubArenaConfig                   ImportPipeline   = {}; // importers + renderer resource uploads
+        SubArenaConfig                   UIContext        = {};
+        // Editor-only persistent state: editor scene, viewport tools, and panel layer.
+        // This remains zero for game and server profiles.
+        SubArenaConfig                   EditorContext    = {};
+        // Two independent scene-load slots allow a serializer worker to prepare a
+        // replacement scene while the active deserialized scene remains readable.
+        SubArenaConfig                   EditorSceneLoadA = {};
+        SubArenaConfig                   EditorSceneLoadB = {};
+        SubArenaConfig                   Swapchain        = {};
+        SubArenaConfig                   ShaderCache      = {};
+        SubArenaConfig                   Serializer       = {};
+        SubArenaConfig                   Network          = {};
+        SubArenaConfig                   Input            = {};
 
-        // Returns the total bytes committed by all SubArenaConfig entries.
-        inline uint64_t TotalCommitted() const
-        {
-            return AudioEngine.SizeBytes + AnimationManager.SizeBytes + AssetManager.SizeBytes + ECSScene.SizeBytes + Logging.SizeBytes + VirtualFS.SizeBytes + VulkanDevice.SizeBytes + Importer.SizeBytes + UIContext.SizeBytes + Swapchain.SizeBytes + ShaderCache.SizeBytes + Serializer.SizeBytes + Network.SizeBytes;
-        }
+        // Returns the total virtual capacity reserved by all SubArenaConfig entries.
+        // Physical pages are committed lazily when an arena allocates from them.
+        [[nodiscard]] uint64_t           TotalCapacity() const;
 
         // Validates that the sum of all SizeBytes fields does not exceed total_available_bytes.
         // Returns false and logs the overage if the budget is exceeded.
-        inline bool Validate(uint64_t total_available_bytes) const
-        {
-            const uint64_t committed = TotalCommitted();
-            ZENGINE_VALIDATE_ASSERT(committed <= total_available_bytes, "MemoryBudgetConfig::Validate: budget exceeds arena size")
-            return committed <= total_available_bytes;
-        }
+        [[nodiscard]] bool               Validate(uint64_t total_available_bytes) const;
 
         inline static MemoryBudgetConfig Default()
         {
             MemoryBudgetConfig cfg = {};
-            cfg.AudioEngine        = {"AudioEngine", ZMega(32ULL)};
-            cfg.AnimationManager   = {"AnimationManager", ZMega(64ULL)};
-            cfg.AssetManager       = {"AssetManager", ZMega(100ULL)};
-            cfg.ECSScene           = {"ECSScene", ZMega(128ULL)};
-            cfg.Logging            = {"Logging", ZMega(4ULL)};
-            cfg.VirtualFS          = {"VirtualFS", ZMega(32ULL)};
-            cfg.VulkanDevice       = {"VulkanDevice", ZMega(512ULL)};
-            cfg.Importer           = {"Importer", ZMega(350ULL)};
-            cfg.UIContext          = {"UIContext", ZMega(8ULL)};
-            cfg.Swapchain          = {"Swapchain", ZMega(3ULL)};
-            cfg.ShaderCache        = {"ShaderCache", ZMega(16ULL)};
-            cfg.Serializer         = {"Serializer", ZMega(150ULL)};
-            cfg.Network            = {"Network", ZMega(32ULL)};
+            cfg.Bootstrap          = {"Bootstrap", ZMega(32ULL)};
+            cfg.AudioEngine        = {"AudioEngine", ZMega(128ULL)};
+            cfg.AnimationManager   = {"AnimationManager", ZMega(256ULL)};
+            cfg.AssetManager       = {"AssetManager", ZGiga(1ULL)};
+            cfg.ECSScene           = {"ECSScene", ZMega(512ULL)};
+            cfg.Logging            = {"Logging", ZMega(8ULL)};
+            cfg.VirtualFS          = {"VirtualFS", ZMega(64ULL)};
+            cfg.VulkanDevice       = {"VulkanDevice", ZGiga(1ULL)};
+            // 4 GiB covers the persistent importer arenas plus the bounded
+            // per-worker CPU decode slabs used to upload imported resources.
+            cfg.ImportPipeline     = {"ImportPipeline", ZGiga(4ULL)};
+            cfg.UIContext          = {"UIContext", ZMega(64ULL)};
+            cfg.Swapchain          = {"Swapchain", ZMega(8ULL)};
+            cfg.ShaderCache        = {"ShaderCache", ZMega(64ULL)};
+            cfg.Serializer         = {"Serializer", ZMega(256ULL)};
+            cfg.Network            = {"Network", ZMega(64ULL)};
+            cfg.Input              = {"Input", ZMega(4ULL)};
 
             return cfg;
         }
@@ -82,13 +82,29 @@ namespace ZEngine::Core::Memory
             return cfg;
         }
 
-        // Returns a reduced budget for tool / editor builds (no audio, no network).
+        // Returns a calibrated budget for tool / editor builds. The editor does not
+        // materialize the legacy animation, swapchain, shader-cache, or serializer
+        // roots; their capacity is reassigned to the measured persistent owners.
         inline static MemoryBudgetConfig Editor()
         {
-            auto cfg                  = Default();
-            cfg.AudioEngine.SizeBytes = 0ull;
-            cfg.Network.SizeBytes     = 0ull;
-            cfg.UIContext.SizeBytes   = ZMega(32ULL);
+            auto cfg                       = Default();
+            cfg.AudioEngine.SizeBytes      = 0ull;
+            cfg.Network.SizeBytes          = 0ull;
+            cfg.AnimationManager.SizeBytes = 0ull;
+            cfg.Swapchain.SizeBytes        = 0ull;
+            cfg.ShaderCache.SizeBytes      = 0ull;
+            cfg.Serializer.SizeBytes       = 0ull;
+            // SampleProject with its atmosphere and both representative meshes
+            // peaked at 788.9 MiB. 1.25 GiB leaves approximately 38% headroom.
+            cfg.AssetManager.SizeBytes     = ZMega(1280ULL);
+            cfg.UIContext.SizeBytes        = ZMega(128ULL);
+            // The active editor scene reserves 200 MiB from this owner. Separate
+            // scene-load owners below keep replacement deserialization bounded.
+            // The same workload peaked at 209.2 MiB; 320 MiB leaves approximately
+            // 35% headroom instead of crossing the 80% profiler watermark.
+            cfg.EditorContext              = {"EditorContext", ZMega(320ULL)};
+            cfg.EditorSceneLoadA           = {"EditorSceneLoadA", ZMega(200ULL)};
+            cfg.EditorSceneLoadB           = {"EditorSceneLoadB", ZMega(200ULL)};
 
             return cfg;
         }
@@ -96,45 +112,26 @@ namespace ZEngine::Core::Memory
 
     struct MemoryManager
     {
-        ArenaAllocator     MainArena = {};
-        MemoryBudgetConfig Budget    = {};
+        // Configured application runs reserve each named budget independently.
+        // MainArena is retained only for unconfigured allocator/unit-test use.
+        ArenaAllocator     MainArena      = {};
+        // The sole long-lived owner created automatically during Initialize. It is
+        // intentionally small and exists before logging, VFS, or device state.
+        ArenaAllocator     BootstrapArena = {};
+        MemoryBudgetConfig Budget         = {};
 
-        void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config)
-        {
-            Budget = config;
-            config.Validate(buffer_size);
+        void               Initialize(uint64_t buffer_size, const MemoryBudgetConfig& config);
+        void               CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result);
+        void               Shutdown();
 
-            unsigned long page_size = 0ul;
+    private:
+        static constexpr uint32_t MaxOwnedArenas = 32;
 
-            // Get the system page size
-            // This is platform-specific, so we need to handle it differently for Windows and Linux/macOS
-            // 4KB is the default page size, but it isn't guaranteed.
-            // Linux on ARM64 has a 16KB page size, macOS on ARM64 has a 16KB page size, and Windows on ARM64 has a 4KB page size.
-#ifdef _WIN32
-            SYSTEM_INFO sys_info;
-            GetSystemInfo(&sys_info);
-            page_size = sys_info.dwPageSize;
-#elif defined(__linux__) || defined(__APPLE__)
-            page_size = sysconf(_SC_PAGESIZE);
-#endif
-            MainArena.Initialize(buffer_size, page_size);
-        }
+        void                      RegisterOwnedArena(ArenaAllocator* arena);
 
-        void CreateBudgetedArena(const SubArenaConfig& config, ArenaAllocator* result)
-        {
-            ZENGINE_VALIDATE_ASSERT(config.SizeBytes > 0, "MemoryManager::CreateBudgetedArena: SizeBytes must be > 0")
-            ZENGINE_VALIDATE_ASSERT(result != nullptr, "MemoryManager::CreateBudgetedArena: out must not be null")
-
-            MainArena.CreateSubArena(config.SizeBytes, result);
-
-#if defined(ZENGINE_ENABLE_PROFILING)
-            MemoryProfiler::TrackArena(config.Name, result);
-#endif
-        }
-
-        void Shutdown()
-        {
-            MainArena.Shutdown();
-        }
+        ArenaAllocator*           m_owned_arenas[MaxOwnedArenas] = {};
+        uint32_t                  m_owned_arena_count            = 0;
+        size_t                    m_page_size                    = 0;
+        bool                      m_uses_independent_owners      = false;
     };
 } // namespace ZEngine::Core::Memory

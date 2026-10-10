@@ -18,13 +18,17 @@ on:
 jobs:
   cmake-build:
     name: cmake-build-windows-${{ inputs.configuration }}
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: update llvm to version 22
-        run: choco upgrade llvm
+      - name: Install LLVM 22
+        run: choco install llvm --version=22.1.0 --allow-downgrade --no-progress -y
+
+      - name: Exclude build directory from Windows Defender
+        run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
+        shell: pwsh
 
       - name: CMake Build
         run: .\Scripts\BuildEngine.ps1 -Configurations ${{inputs.configuration}} -RunClangFormat 0

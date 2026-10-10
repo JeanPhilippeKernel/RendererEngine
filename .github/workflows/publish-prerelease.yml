@@ -51,15 +51,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/Windows-x64-Release
 
-      - name: Download macOS x64 artifact
-        if: steps.check-tag.outputs.skipped != 'true'
-        uses: actions/download-artifact@v6
-        with:
-          name: macOS-x64-Release
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: artifacts/macOS-x64-Release
-
       - name: Download macOS arm64 artifact
         if: steps.check-tag.outputs.skipped != 'true'
         uses: actions/download-artifact@v6
@@ -84,7 +75,6 @@ jobs:
           VERSION="${{ steps.check-tag.outputs.version }}"
           cd artifacts
           zip -r "ZEngine-${VERSION}-Windows-x64.zip"    Windows-x64-Release/
-          zip -r "ZEngine-${VERSION}-macOS-x64.zip"      macOS-x64-Release/
           zip -r "ZEngine-${VERSION}-macOS-arm64.zip"    macOS-arm64-Release/
           tar -czf "ZEngine-${VERSION}-Linux-x64.tar.gz" linux-Release/
 
@@ -99,6 +89,5 @@ jobs:
           body_path: /tmp/release-notes.md
           files: |
             artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-Windows-x64.zip
-            artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-macOS-x64.zip
             artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-macOS-arm64.zip
             artifacts/ZEngine-${{ steps.check-tag.outputs.version }}-Linux-x64.tar.gz

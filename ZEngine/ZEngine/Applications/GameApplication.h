@@ -1,11 +1,12 @@
 #pragma once
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Controllers/ICameraController.h>
+#include <ZEngine/Core/Containers/MPSCQueue.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/TimeStep.h>
-#include <ZEngine/Core/VFS/VFSContext.h>
-#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Core/VFS/IVFSBackend.h>
+#include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <ZEngine/Windows/WindowConfiguration.h>
 #include <ZEngine/ZEngineDef.h>
@@ -20,7 +21,7 @@ namespace ZEngine::Applications
 
     struct ApplicationState
     {
-        Helpers::ThreadSafeQueue<RenderTargetResizeRequest> RenderTargetResizeRequests = {};
+        Core::Containers::MPSCQueue<RenderTargetResizeRequest, 128> RenderTargetResizeRequests = {};
     };
 
     ZDEFINE_PTR(ApplicationState);
@@ -31,6 +32,7 @@ namespace ZEngine::Applications
         bool                              EnableRenderOverlay = false;
         cstring                           ConfigFile          = nullptr;
         cstring                           WorkingSpacePath    = nullptr;
+        Core::VFS::IVFSBackend*           VFSBackend          = nullptr;
         Windows::WindowConfiguration      WindowCfg           = {};
 
         Core::Memory::MemoryManager*      Memory              = nullptr;
@@ -40,14 +42,11 @@ namespace ZEngine::Applications
         Controllers::ICameraControllerPtr CameraController    = nullptr;
         Rendering::Scenes::RenderScenePtr CurrentScene        = nullptr;
 
-        Core::VFS::VFSContext             VFS                 = {};
-        Core::VFS::IVFSContext*           GetVFSContext();
-
         void                              Initialize(Core::Memory::MemoryManager* memory);
         void                              Update(Core::TimeStep dt);
-        void                              ProcessEvent(Core::CoreEvent&);
+        virtual void                      ProcessEvent(Core::CoreEvent&);
         void                              Run();
-        void                              PrepareScene(RenderPayload&);
+        void                              PrepareScene(RenderFrameState&);
         void                              Shutdown();
 
         virtual void                      OverrideWindowConfiguration() = 0;
@@ -64,6 +63,11 @@ namespace ZEngine::Applications
 
         virtual void                      OnClosing()                   = 0;
         virtual void                      OnClosed()                    = 0;
+
+    private:
+        uint32_t m_render_target_width           = 0;
+        uint32_t m_render_target_height          = 0;
+        uint64_t m_render_target_resize_sequence = 0;
     };
     ZDEFINE_PTR(GameApplication);
 

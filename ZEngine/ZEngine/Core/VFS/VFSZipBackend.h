@@ -6,6 +6,7 @@
 #include <ZEngine/Core/VFS/IVFSFile.h>
 #include <ZEngine/ZEngineDef.h>
 #include <miniz.h>
+#include <atomic>
 #include <mutex>
 
 namespace ZEngine::Core::VFS
@@ -45,7 +46,8 @@ namespace ZEngine::Core::VFS
         uint8_t*                m_data         = nullptr;
         VFSZipBackend*          m_backend      = nullptr;
         Memory::ArenaAllocator* m_arena        = nullptr;
-        bool                    m_decompressed = false;
+        std::atomic<bool>       m_decompressed = false;
+        std::mutex              m_decompress_mutex;
     };
 
     struct VFSZipBackend : IVFSBackend

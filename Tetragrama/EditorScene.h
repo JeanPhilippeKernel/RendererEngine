@@ -1,9 +1,7 @@
 #pragma once
-#include <ZEngine/Helpers/IntrusivePtr.h>
-#include <ZEngine/Helpers/ThreadSafeQueue.h>
+#include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/Importers/IAssetImporter.h>
-#include <ZEngine/Managers/AssetManager.h>
-#include <ZEngine/Rendering/Scenes/GraphicScene.h>
+#include <ZEngine/Rendering/Scenes/RenderScene.h>
 
 namespace Tetragrama::Serializers
 {
@@ -22,43 +20,43 @@ namespace Tetragrama
 
     struct EditorScene : public ZEngine::Rendering::Scenes::RenderScene
     {
-        std::atomic_bool                                                                                       Dirty                    = false;
-        std::atomic_bool                                                                                       HasPendingChanges        = false;
+        cstring                                                         Name                = "";
+        PaddedAtomic<bool>                                              Dirty               = {};
+        PaddedAtomic<bool>                                              HasPendingChanges   = {};
+        ZEngine::ECS::ActorHandle                                       SelectedActorHandle = {}; // invalid = nothing selected
 
-        cstring                                                                                                Name                     = "";
-        std::atomic_int                                                                                        SelectedSceneNode        = -1;
-        ZEngine::Core::Containers::Array<ZEngine::Importers::AssetNodeRef>                                     HierarchiesNodeRef       = {};
-        ZEngine::Core::Containers::Array<ZEngine::Core::Containers::String>                                    Names                    = {};
-        ZEngine::Core::Containers::UnorderedHashMap<uint32_t, uint32_t>                                        NodeNames                = {};
+        ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t> HashToAssetFile     = {};
+        ZEngine::Core::Containers::Array<EditorAssetSceneFiles>         AssetFiles          = {};
 
-        ZEngine::Helpers::Ref<ZEngine::Helpers::ThreadSafeQueue<ZEngine::Managers::AssetManager::AssetHandle>> PendingOnLoadHierarchies = nullptr;
-        ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t>                                        HashToAssetFile          = {};
-        ZEngine::Core::Containers::Array<EditorAssetSceneFiles>                                                AssetFiles               = {};
+        ZEngine::Core::Memory::ArenaAllocator                           LocalArenaStorage   = {};
+        ZEngine::Core::Memory::ArenaAllocator*                          LocalArena          = nullptr;
+        PaddedAtomic<bool>*                                             DeserializedInUse   = nullptr;
 
-        ZEngine::Core::Memory::ArenaAllocator                                                                  LocalArena               = {};
+        ~EditorScene();
 
-        void                                                                                                   Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "");
+        void                      Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, cstring scene_name = "", const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
+        /// @brief Initializes persistent scene storage without creating default editor content.
+        bool                      InitializeDeserialized();
 
-        bool                                                                                                   HasPendingChange() const;
+        bool                      HasPendingChange() const;
+        void                      PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
+        void                      MarkDirty(bool value);
+        bool                      IsDirty();
+        void                      Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
+        void                      ExtractAsync(const EditorScene& scene);
 
-        int                                                                                                    AddHierarchyNode(int parent, int depth);
+        /// @brief Assigns a directional actor as the sky's optional sun source.
+        /// @return False when @p handle is stale or does not name a directional light.
+        bool                      SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle);
+        void                      ClearPrimaryCelestialLight();
 
-        int                                                                                                    CreateSceneNode(int parent = 0, int depth = 1, const ZEngine::Importers::AssetNodeRef& = {});
-        void                                                                                                   RemoveSceneNode(int node_id);
-        void                                                                                                   ReparentNode(int node_id, int new_parent);
-        bool                                                                                                   IsSceneNodeDeleted(int node_id);
+        // Create a fully wired Actor: registers with RenderScene and adds
+        // NameComponent + TransformComponent + MeshComponent in one call.
+        // Returns the ActorHandle (invalid if ActorManager is not live).
+        ZEngine::ECS::ActorHandle SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name);
 
-        const ZEngine::Rendering::Meshes::MeshAllocation&                                                      CreateOrGetMeshAllocation(ZEngine::Importers::AssetMesh* const);
-
-        void                                                                                                   PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
-
-        void                                                                                                   MarkDirty(bool value);
-        bool                                                                                                   IsDirty();
-
-        void                                                                                                   Reset();
-        void                                                                                                   InitRootNode();
-
-        void                                                                                                   ExtractAsync(const EditorScene& scene);
+    private:
+        void ReleaseDeserializedArena();
     };
     ZDEFINE_PTR(EditorScene);
 

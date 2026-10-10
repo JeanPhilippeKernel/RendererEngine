@@ -1,5 +1,6 @@
 #pragma once
 #include <future>
+#include <utility>
 
 #if defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L
 #include <coroutine>
@@ -108,10 +109,42 @@ namespace ZENGINE_COROUTINE_NAMESPACE
         void await_suspend(coroutine_handle<> callback)
         {
             ZEngine::Core::CoroutineAction coroutine_action = {};
-            coroutine_action.Ready                          = [&m_internal_future = m_internal_future]() -> bool { return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero()); };
-            coroutine_action.Action                         = callback;
+            coroutine_action.ReadyCtx                       = &m_internal_future;
+            coroutine_action.Ready                          = [](void* ctx) -> bool { return future_status::ready == static_cast<std::future<T>*>(ctx)->wait_for(chrono::milliseconds::zero()); };
+            coroutine_action.ActionCtx                      = callback.address();
+            coroutine_action.Action                         = [](void* ctx) { coroutine_handle<>::from_address(ctx).resume(); };
 
-            ZEngine::Core::CoroutineScheduler::Schedule(std::move(coroutine_action));
+            ZEngine::Core::CoroutineScheduler::Schedule(coroutine_action);
+        }
+
+        decltype(auto) await_resume()
+        {
+            return m_internal_future.get();
+        }
+    };
+
+    // An rvalue future is normally a temporary. Keep it in the coroutine frame
+    // while suspended instead of placing a pointer to an expired temporary in
+    // CoroutineScheduler.
+    template <typename T>
+    struct OwningAwaiter
+    {
+        std::future<T> m_internal_future;
+
+        bool           await_ready() const
+        {
+            return future_status::ready == m_internal_future.wait_for(chrono::milliseconds::zero());
+        }
+
+        void await_suspend(coroutine_handle<> callback)
+        {
+            ZEngine::Core::CoroutineAction coroutine_action = {};
+            coroutine_action.ReadyCtx                       = &m_internal_future;
+            coroutine_action.Ready                          = [](void* ctx) -> bool { return future_status::ready == static_cast<std::future<T>*>(ctx)->wait_for(chrono::milliseconds::zero()); };
+            coroutine_action.ActionCtx                      = callback.address();
+            coroutine_action.Action                         = [](void* ctx) { coroutine_handle<>::from_address(ctx).resume(); };
+
+            ZEngine::Core::CoroutineScheduler::Schedule(coroutine_action);
         }
 
         decltype(auto) await_resume()
@@ -125,7 +158,7 @@ namespace ZENGINE_COROUTINE_NAMESPACE
 template <typename T>
 auto operator co_await(std::future<T>&& f)
 {
-    return ZENGINE_COROUTINE_NAMESPACE::Awaiter<T>{f};
+    return ZENGINE_COROUTINE_NAMESPACE::OwningAwaiter<T>{std::move(f)};
 }
 
 template <typename T>

@@ -12,11 +12,11 @@ namespace ZEngine::Windows::Inputs
     {
         IDevice(const char* name = "abstract_device") : m_name(name) {}
         virtual ~IDevice() = default;
-        const char*                                    m_name;
-        static Core::Memory::ArenaAllocator*           Arena;
-        static std::map<const char*, ZRawPtr(IDevice)> Devices;
+        const char*                            m_name;
+        static Core::Memory::ArenaAllocator*   Arena;
+        static std::map<const char*, IDevice*> Devices;
 
-        static void                                    Initialize(Core::Memory::ArenaAllocator* arena)
+        static void                            Initialize(Core::Memory::ArenaAllocator* arena)
         {
             Arena = arena;
         }
