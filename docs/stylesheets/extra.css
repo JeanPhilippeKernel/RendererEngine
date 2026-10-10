@@ -14,8 +14,8 @@
   --ze-constellation-star: #4868dc;
   --ze-constellation-dust: #758cf0;
   --ze-constellation-glow: rgb(72 104 220 / 0.62);
-  --ze-zodiac-line: #415fd0;
-  --ze-wireframe-line: #506fe4;
+  --ze-geometry-line: #5d75d8;
+  --ze-geometry-fill: rgb(93 117 216 / 0.05);
 }
 
 [data-md-color-scheme="slate"] {
@@ -34,8 +34,8 @@
   --ze-constellation-star: #d0d9ff;
   --ze-constellation-dust: #98abff;
   --ze-constellation-glow: rgb(164 180 255 / 0.82);
-  --ze-zodiac-line: #bdcaff;
-  --ze-wireframe-line: #bdcaff;
+  --ze-geometry-line: #aebdff;
+  --ze-geometry-fill: rgb(174 189 255 / 0.08);
 }
 
 /* Match the wordmark to the header palette. Material switches the header
@@ -127,58 +127,28 @@ body:has(.ze-home) .md-main {
   opacity: 0.55;
 }
 
-.ze-zodiac-wheel,
-.ze-engine-wireframe {
+.ze-geometry {
+  animation: ze-geometry-drift 18s ease-in-out infinite alternate;
   transform-box: view-box;
   transform-origin: 600px 240px;
 }
 
-.ze-zodiac-wheel {
-  animation: ze-zodiac-wheel 20s ease-in-out infinite;
-  opacity: 0;
-}
-
-.ze-zodiac-wheel circle,
-.ze-zodiac-wheel path {
-  animation: ze-zodiac-draw 20s ease-in-out infinite;
-  fill: none;
-  stroke: var(--ze-zodiac-line);
-  stroke-dasharray: 1000;
-  stroke-dashoffset: 1000;
-  stroke-width: 1.25;
-}
-
-.ze-zodiac-wheel__mark {
-  stroke-width: 3 !important;
-}
-
-.ze-engine-wireframe {
-  animation: ze-engine-wireframe 20s ease-in-out infinite;
-  opacity: 0;
-}
-
-.ze-engine-wireframe path {
-  animation: ze-engine-wireframe-draw 20s ease-in-out infinite;
-  fill: none;
-  stroke: var(--ze-wireframe-line);
-  stroke-dasharray: 1100;
-  stroke-dashoffset: 1100;
-  stroke-linecap: round;
+.ze-geometry path {
+  animation: ze-geometry-draw 16s ease-in-out infinite;
+  fill: var(--ze-geometry-fill);
+  stroke: var(--ze-geometry-line);
+  stroke-dasharray: 640;
+  stroke-dashoffset: 640;
   stroke-linejoin: round;
-  stroke-width: 1.35;
+  stroke-width: 1.15;
 }
 
-.ze-engine-wireframe__label {
-  animation: ze-engine-wireframe-draw 20s ease-in-out infinite;
-  fill: transparent;
-  font-family: var(--md-text-font-family), sans-serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: 0.4rem;
-  stroke: var(--ze-wireframe-line);
-  stroke-dasharray: 700;
-  stroke-dashoffset: 700;
-  stroke-width: 0.8;
+.ze-geometry path:nth-child(2n) {
+  animation-delay: -5s;
+}
+
+.ze-geometry path:nth-child(3n) {
+  animation-delay: -10s;
 }
 
 @keyframes ze-constellation-drift {
@@ -220,65 +190,32 @@ body:has(.ze-home) .md-main {
   }
 }
 
-@keyframes ze-zodiac-wheel {
-  0%, 8% {
-    opacity: 0;
-    transform: scale(0.88);
+@keyframes ze-geometry-drift {
+  from {
+    opacity: 0.55;
+    transform: rotate(-1deg) scale(0.98);
   }
 
-  18%, 46% {
-    opacity: 0.72;
-    transform: scale(1);
-  }
-
-  56%, 100% {
-    opacity: 0;
-    transform: scale(1.06);
+  to {
+    opacity: 0.9;
+    transform: rotate(1deg) scale(1.02);
   }
 }
 
-@keyframes ze-zodiac-draw {
-  0%, 10% {
-    stroke-dashoffset: 1000;
+@keyframes ze-geometry-draw {
+  0%, 14% {
+    opacity: 0;
+    stroke-dashoffset: 640;
   }
 
-  30%, 52% {
+  42%, 74% {
+    opacity: 0.62;
     stroke-dashoffset: 0;
   }
 
   100% {
-    stroke-dashoffset: -1000;
-  }
-}
-
-@keyframes ze-engine-wireframe {
-  0%, 48% {
     opacity: 0;
-    transform: scale(0.93);
-  }
-
-  62%, 90% {
-    opacity: 0.76;
-    transform: scale(1);
-  }
-
-  100% {
-    opacity: 0;
-    transform: scale(1.04);
-  }
-}
-
-@keyframes ze-engine-wireframe-draw {
-  0%, 50% {
-    stroke-dashoffset: 1100;
-  }
-
-  76%, 92% {
-    stroke-dashoffset: 0;
-  }
-
-  100% {
-    stroke-dashoffset: -1100;
+    stroke-dashoffset: -640;
   }
 }
 
@@ -287,12 +224,8 @@ body:has(.ze-home) .md-main {
   .ze-constellation__dust circle,
   .ze-constellation__lines,
   .ze-constellation__stars circle,
-  .ze-zodiac-wheel,
-  .ze-zodiac-wheel circle,
-  .ze-zodiac-wheel path,
-  .ze-engine-wireframe,
-  .ze-engine-wireframe path,
-  .ze-engine-wireframe__label {
+  .ze-geometry,
+  .ze-geometry path {
     animation: none;
   }
 
@@ -301,15 +234,8 @@ body:has(.ze-home) .md-main {
     stroke-dashoffset: 0;
   }
 
-  .ze-zodiac-wheel,
-  .ze-engine-wireframe {
-    opacity: 0.44;
-  }
-
-  .ze-zodiac-wheel circle,
-  .ze-zodiac-wheel path,
-  .ze-engine-wireframe path,
-  .ze-engine-wireframe__label {
+  .ze-geometry path {
+    opacity: 0.46;
     stroke-dashoffset: 0;
   }
 }

@@ -44,19 +44,13 @@
       <circle cx="835" cy="410" r="2" />
       <circle cx="1060" cy="342" r="2" />
     </g>
-    <g class="ze-zodiac-wheel">
-      <circle cx="600" cy="240" r="132" />
-      <circle cx="600" cy="240" r="92" />
-      <path d="M 600 108 L 600 148 M 666 126 L 646 161 M 714 174 L 679 194 M 732 240 L 692 240 M 714 306 L 679 286 M 666 354 L 646 319 M 600 372 L 600 332 M 534 354 L 554 319 M 486 306 L 521 286 M 468 240 L 508 240 M 486 174 L 521 194 M 534 126 L 554 161" />
-      <path class="ze-zodiac-wheel__mark" d="M 558 188 L 642 188 L 558 292 L 642 292" />
-    </g>
-    <g class="ze-engine-wireframe">
-      <path d="M 600 92 L 726 166 L 726 314 L 600 388 L 474 314 L 474 166 Z" />
-      <path d="M 600 92 L 600 388 M 474 166 L 726 314 M 726 166 L 474 314" />
-      <path d="M 600 142 L 682 190 L 682 286 L 600 334 L 518 286 L 518 190 Z" />
-      <path d="M 518 190 L 682 286 M 682 190 L 518 286 M 600 142 L 600 334" />
-      <path d="M 430 240 L 530 198 M 670 198 L 770 240 M 430 240 L 530 282 M 670 282 L 770 240" />
-      <text class="ze-engine-wireframe__label" x="600" y="435" text-anchor="middle">ZODIAC ENGINE</text>
+    <g class="ze-geometry">
+      <path d="M 80 84 L 178 52 L 234 128 L 170 206 L 74 168 Z" />
+      <path d="M 84 292 L 177 248 L 255 305 L 212 390 L 108 384 Z" />
+      <path d="M 954 72 L 1082 98 L 1128 196 L 1040 250 L 940 178 Z" />
+      <path d="M 924 294 L 1010 252 L 1118 300 L 1124 390 L 1010 430 L 918 382 Z" />
+      <path d="M 332 44 L 390 98 L 370 178 L 286 196 L 248 126 Z" />
+      <path d="M 762 298 L 828 254 L 900 298 L 886 378 L 804 404 L 742 358 Z" />
     </g>
   </svg>
 </div>
