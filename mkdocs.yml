@@ -17,14 +17,14 @@ theme:
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
+      primary: black
       accent: light-blue
       toggle:
         icon: material/brightness-4
         name: Use light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
+      primary: white
       accent: light-blue
       toggle:
         icon: material/brightness-7

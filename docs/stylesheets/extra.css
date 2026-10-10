@@ -8,6 +8,16 @@
   --ze-accent: #9aa7ff;
 }
 
+/* Match the wordmark to the header palette. Material switches the header
+ * between white and near-black with the selected color scheme. */
+[data-md-color-scheme="default"] .md-logo img {
+  content: url("../assets/logo-black.png");
+}
+
+[data-md-color-scheme="slate"] .md-logo img {
+  content: url("../assets/logo-white.png");
+}
+
 .ze-hero {
   padding: 3rem 0 2.25rem;
   text-align: center;
