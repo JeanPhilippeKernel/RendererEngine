@@ -1,11 +1,41 @@
 :root {
   --ze-ink: #1c2338;
   --ze-accent: #6679f3;
+  --ze-copy: #384563;
+  --ze-page-background:
+    radial-gradient(circle at 50% 115%, rgb(121 151 255 / 0.25), transparent 44%),
+    linear-gradient(135deg, #f8faff, #e9efff);
+  --ze-surface: rgb(255 255 255 / 0.68);
+  --ze-surface-elevated: rgb(255 255 255 / 0.88);
+  --ze-surface-border: rgb(70 95 170 / 0.18);
+  --ze-surface-shadow: 0 0.7rem 2.5rem rgb(35 54 111 / 0.08);
+  --ze-heading-shadow: 0 0.1rem 1.2rem rgb(255 255 255 / 0.9);
+  --ze-constellation-line: #5273e8;
+  --ze-constellation-star: #4868dc;
+  --ze-constellation-dust: #758cf0;
+  --ze-constellation-glow: rgb(72 104 220 / 0.62);
+  --ze-zodiac-line: #415fd0;
+  --ze-wireframe-line: #506fe4;
 }
 
 [data-md-color-scheme="slate"] {
   --ze-ink: #f2f5ff;
   --ze-accent: #9aa7ff;
+  --ze-copy: #d4dcf7;
+  --ze-page-background:
+    radial-gradient(circle at 50% 115%, rgb(79 107 229 / 0.28), transparent 44%),
+    linear-gradient(135deg, #0a1020, #111a32);
+  --ze-surface: rgb(17 27 52 / 0.72);
+  --ze-surface-elevated: rgb(27 40 73 / 0.9);
+  --ze-surface-border: rgb(161 180 255 / 0.2);
+  --ze-surface-shadow: 0 0.7rem 2.5rem rgb(0 0 0 / 0.28);
+  --ze-heading-shadow: 0 0.1rem 1.4rem rgb(0 0 0 / 0.72);
+  --ze-constellation-line: #9badff;
+  --ze-constellation-star: #d0d9ff;
+  --ze-constellation-dust: #98abff;
+  --ze-constellation-glow: rgb(164 180 255 / 0.82);
+  --ze-zodiac-line: #bdcaff;
+  --ze-wireframe-line: #bdcaff;
 }
 
 /* Match the wordmark to the header palette. Material switches the header
@@ -26,17 +56,11 @@
 /* The home page keeps the constellation fixed while its content scrolls over
  * it. The selector limits this treatment to the landing page. */
 body:has(.ze-home) {
-  background:
-    radial-gradient(circle at 50% 115%, rgb(121 151 255 / 0.25), transparent 44%),
-    linear-gradient(135deg, #f8faff, #e9efff);
+  background: var(--ze-page-background);
 }
 
-[data-md-color-scheme="slate"] body:has(.ze-home) {
-  background:
-    radial-gradient(circle at 50% 115%, rgb(79 107 229 / 0.28), transparent 44%),
-    linear-gradient(135deg, #0a1020, #111a32);
-}
-
+body:has(.ze-home) .md-content,
+body:has(.ze-home) .md-content__inner,
 body:has(.ze-home) .md-main {
   background: transparent;
 }
@@ -67,7 +91,7 @@ body:has(.ze-home) .md-main {
 
 .ze-constellation__lines {
   fill: none;
-  stroke: #5273e8;
+  stroke: var(--ze-constellation-line);
   stroke-dasharray: 760;
   stroke-dashoffset: 760;
   stroke-linecap: round;
@@ -85,8 +109,8 @@ body:has(.ze-home) .md-main {
 
 .ze-constellation__stars circle {
   animation: ze-constellation-twinkle 4.8s ease-in-out infinite;
-  fill: #4868dc;
-  filter: drop-shadow(0 0 0.45rem rgb(72 104 220 / 0.62));
+  fill: var(--ze-constellation-star);
+  filter: drop-shadow(0 0 0.45rem var(--ze-constellation-glow));
 }
 
 .ze-constellation__stars circle:nth-child(3n + 2) {
@@ -99,7 +123,7 @@ body:has(.ze-home) .md-main {
 
 .ze-constellation__dust circle {
   animation: ze-constellation-twinkle 5.8s ease-in-out infinite;
-  fill: #758cf0;
+  fill: var(--ze-constellation-dust);
   opacity: 0.55;
 }
 
@@ -118,7 +142,7 @@ body:has(.ze-home) .md-main {
 .ze-zodiac-wheel path {
   animation: ze-zodiac-draw 20s ease-in-out infinite;
   fill: none;
-  stroke: #415fd0;
+  stroke: var(--ze-zodiac-line);
   stroke-dasharray: 1000;
   stroke-dashoffset: 1000;
   stroke-width: 1.25;
@@ -136,7 +160,7 @@ body:has(.ze-home) .md-main {
 .ze-engine-wireframe path {
   animation: ze-engine-wireframe-draw 20s ease-in-out infinite;
   fill: none;
-  stroke: #506fe4;
+  stroke: var(--ze-wireframe-line);
   stroke-dasharray: 1100;
   stroke-dashoffset: 1100;
   stroke-linecap: round;
@@ -151,30 +175,10 @@ body:has(.ze-home) .md-main {
   font-size: 1.4rem;
   font-weight: 700;
   letter-spacing: 0.4rem;
-  stroke: #506fe4;
+  stroke: var(--ze-wireframe-line);
   stroke-dasharray: 700;
   stroke-dashoffset: 700;
   stroke-width: 0.8;
-}
-
-[data-md-color-scheme="slate"] .ze-constellation__lines {
-  stroke: #9badff;
-}
-
-[data-md-color-scheme="slate"] .ze-constellation__stars circle {
-  fill: #d0d9ff;
-  filter: drop-shadow(0 0 0.55rem rgb(164 180 255 / 0.82));
-}
-
-[data-md-color-scheme="slate"] .ze-constellation__dust circle {
-  fill: #98abff;
-}
-
-[data-md-color-scheme="slate"] .ze-zodiac-wheel circle,
-[data-md-color-scheme="slate"] .ze-zodiac-wheel path,
-[data-md-color-scheme="slate"] .ze-engine-wireframe path,
-[data-md-color-scheme="slate"] .ze-engine-wireframe__label {
-  stroke: #bdcaff;
 }
 
 @keyframes ze-constellation-drift {
@@ -317,24 +321,57 @@ body:has(.ze-home) .md-main {
   letter-spacing: -0.045em;
   margin: 0 auto 0.7rem;
   max-width: 850px;
+  text-shadow: var(--ze-heading-shadow);
 }
 
 .ze-hero p {
+  color: var(--ze-copy);
   font-size: 1.12rem;
   margin: 0 auto 1.4rem;
   max-width: 680px;
 }
 
 .ze-release {
+  background: var(--ze-surface);
+  border: 0.05rem solid var(--ze-surface-border);
   border-left: 0.2rem solid var(--ze-accent);
+  border-radius: 0.55rem;
+  box-shadow: var(--ze-surface-shadow);
   margin: 1.6rem 0 2.2rem;
   padding: 0.8rem 1rem;
 }
 
-.md-typeset .grid.cards > ul > li {
-  border-radius: 0.55rem;
+.ze-home > h2 {
+  color: var(--ze-ink);
+  text-shadow: var(--ze-heading-shadow);
 }
 
-.md-typeset .grid.cards > ul > li:hover {
+.ze-home > p,
+.ze-home > ul {
+  color: var(--ze-copy);
+}
+
+.ze-home .grid.cards > ul > li {
+  background: var(--ze-surface);
+  border-color: var(--ze-surface-border);
+  border-radius: 0.55rem;
+  box-shadow: var(--ze-surface-shadow);
+}
+
+.ze-home .grid.cards > ul > li:hover {
+  background: var(--ze-surface-elevated);
   border-color: var(--ze-accent);
+}
+
+.ze-home table {
+  background: var(--ze-surface);
+  border: 0.05rem solid var(--ze-surface-border);
+  border-radius: 0.55rem;
+  box-shadow: var(--ze-surface-shadow);
+  overflow: hidden;
+}
+
+.ze-home table th {
+  background: var(--ze-surface-elevated);
+  color: var(--ze-ink);
 }
