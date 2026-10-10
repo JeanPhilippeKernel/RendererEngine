@@ -165,7 +165,7 @@ sequenceDiagram
 
     Main->>State: copy and publish newest RenderFrameState
     Main->>UI: publish completed ZUI payload when a slot is free
-    Render->>State: claim newest Ready slot; release older unread slots
+    Render->>State: claim newest Ready slot and release older unread slots
     alt new state exists
         Render->>Render: retain newest state
     else no new state

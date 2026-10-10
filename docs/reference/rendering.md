@@ -85,7 +85,7 @@ sequenceDiagram
     Render->>Render: DoUploadTexture × M (per-texture timeline)
 
     Render->>Render: AppRenderPipeline::RenderScene
-    Note over Render: Snapshot instances; rebuild submesh + culling input
+    Note over Render: Snapshot instances then rebuild submesh and culling input
     Render->>Render: Upload TransformSB + DrawDataSB + CullingInputSB
 
     Render->>Render: RenderGraph::Execute

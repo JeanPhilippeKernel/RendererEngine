@@ -420,9 +420,9 @@ sequenceDiagram
     R->>R: Register() + Compile()
     R->>R: Resolve requested queue roles
     R->>C: record and submit when a distinct compute queue exists
-    C-->>G: timeline signal; acquire on cross-family edge
+    C-->>G: timeline signal and acquire on cross-family edge
     R->>T: record and submit when a distinct transfer queue exists
-    T-->>G: timeline signal; acquire on cross-family edge
+    T-->>G: timeline signal and acquire on cross-family edge
     R->>G: record graphics batch and submit/present
 ```
 
