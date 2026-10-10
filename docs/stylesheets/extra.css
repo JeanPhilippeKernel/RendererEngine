@@ -1,0 +1,43 @@
+:root {
+  --ze-ink: #1c2338;
+  --ze-accent: #6679f3;
+}
+
+[data-md-color-scheme="slate"] {
+  --ze-ink: #f2f5ff;
+  --ze-accent: #9aa7ff;
+}
+
+.ze-hero {
+  padding: 3rem 0 2.25rem;
+  text-align: center;
+}
+
+.ze-hero h1 {
+  color: var(--ze-ink);
+  font-size: clamp(2.35rem, 5vw, 4rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  margin: 0 auto 0.7rem;
+  max-width: 850px;
+}
+
+.ze-hero p {
+  font-size: 1.12rem;
+  margin: 0 auto 1.4rem;
+  max-width: 680px;
+}
+
+.ze-release {
+  border-left: 0.2rem solid var(--ze-accent);
+  margin: 1.6rem 0 2.2rem;
+  padding: 0.8rem 1rem;
+}
+
+.md-typeset .grid.cards > ul > li {
+  border-radius: 0.55rem;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--ze-accent);
+}

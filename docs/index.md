@@ -1,42 +1,80 @@
-# Zodiac Engine (ZEngine) — Documentation
+<div class="ze-hero" markdown>
 
-Welcome to the Zodiac Engine documentation — the reference for ZEngine's architecture, systems, and design decisions.
+# Build worlds with Zodiac Engine
 
-## Pages
+Zodiac Engine is a cross-platform C++20 and Vulkan engine with a native editor,
+asset pipeline, virtual file system, and project tooling for Windows, macOS, and Linux.
 
-| Page | Description |
+[Install ZEngine](getting-started/install-with-zodiac-engine-hub.md){ .md-button .md-button--primary }
+[Build from source](development/build-from-source.md){ .md-button }
+
+</div>
+
+<div class="ze-release" markdown>
+
+**ZEngine 1.0.0 is available.** Install it through
+[Zodiac Engine Hub (Panzerfaust)](https://github.com/JeanPhilippeKernel/ZodiacEngineHub/releases),
+then select the engine version from the Hub. Review the
+[release notes](project/releases.md) before updating an existing project.
+
+</div>
+
+## Start where you are
+
+<div class="grid cards" markdown>
+
+-   :material-download: **Install the engine**
+
+    ---
+
+    Download Zodiac Engine Hub, install a ZEngine version, and open a project.
+
+    [Install with the Hub](getting-started/install-with-zodiac-engine-hub.md)
+
+-   :material-cube-outline: **Use the editor**
+
+    ---
+
+    Learn the current asset-importing and scene-authoring workflow in Tetragrama.
+
+    [Open the editor guide](editor/index.md)
+
+-   :material-hammer-wrench: **Develop from source**
+
+    ---
+
+    Build, run, and debug the engine with the supported CMake presets and scripts.
+
+    [Open the development guide](development/index.md)
+
+-   :material-book-open-page-variant: **Understand the engine**
+
+    ---
+
+    Explore the engine architecture, rendering, memory, UI, and container contracts.
+
+    [Browse the reference](reference/index.md)
+
+</div>
+
+## What is included
+
+| Component | Purpose |
 |---|---|
-| [Engine Architecture](engine-architecture.md) | Thread model, per-frame main/render loop, cross-thread communication channels, ECS, asset pipeline, VFS, init/shutdown order |
-| [Memory Management](memory-management.md) | Arena allocator design, allocation macros, scratch arenas, memory budget, GPU memory domains, Vulkan object teardown rules |
-| [Rendering Domain](rendering-domain.md) | GPU rendering pipeline, global geometry buffers, render graph and passes, RenderResourceManager, shutdown teardown |
-| [Asset Manager](asset-manager.md) | CPU-side asset registry, ingest pipeline (mesh/texture/material), GPU material binding, thread safety, initialization contract |
-| [ZUI System](zui-system.md) | Native retained-mode UI — box model, layout solver, interaction system, docking, font atlas, Vulkan renderer |
-| [Containers](containers.md) | Arena-backed containers: Array, UnorderedHashMap, HashMap (ordered), String — capacity contract, pitfalls, usage patterns |
-| [Roadmap](roadmap.md) | Feature roadmap and status |
+| **ZEngine** | Core runtime: ECS, Vulkan rendering, virtual file system, memory system, input, and platform services. |
+| **Tetragrama** | Native editor for scene authoring and asset management. |
+| **Zodiac Engine Hub / Panzerfaust** | Launcher and project manager that installs and selects engine versions, and creates or opens projects. |
 
-## Current scene-authoring program
+## Current release
 
-The editor is moving from compatibility scene extraction to a persistent,
-cross-machine authoring document. The linked set combines active designs with
-implemented-contract references. A document under `ZEngine/docs/completed/`
-has completed its stated implementation scope; it can still define a current
-boundary and point to follow-on work. Historical migration sections remain
-background only and do not override these contracts.
+ZEngine **1.0.0** is the current stable release. It includes the 1.0 engine,
+editor, and importer work. The asset-importer migration uses VFS paths; consult
+the [1.0.0 changelog](project/releases.md#zengine-100) before updating existing
+projects.
 
-| Area | Current document |
-|---|---|
-| Production sequencing and completion evidence | [Production Execution Plan](../ZEngine/docs/execution-plan.md) |
-| Scene identity, schema, load/save, and cooked runtime boundary | [Scene Serialization](../ZEngine/docs/future-plan/scene-serialization.md) |
-| ECS/Actor ownership and render-binding restoration | [Actor–ECS Architecture](../ZEngine/docs/completed/actor-ecs-architecture.md) |
-| Global selection and stale-safe viewport picking | [Editor Selection](../ZEngine/docs/future-plan/editor-entity-selection.md) |
-| Semantic history and dirty checkpoints | [Editor Undo / Redo](../ZEngine/docs/future-plan/editor-undo-redo.md) |
-| Edit/Play isolation | [Editor Play Mode](../ZEngine/docs/future-plan/editor-play-mode.md) |
-| Native transform tools | [3D Gizmo](../ZEngine/docs/future-plan/gizmo-3d-pass.md) |
-| Shared arbitrary-orientation scene grid | [Serialized Editor Grid](../ZEngine/docs/future-plan/editor-grid.md) |
-| Current frame and render-thread boundary | [Rendering Flow](../ZEngine/docs/completed/rendering-flow.md) |
-| Generated project configuration handoff | [ZodiacEngineHub / Panzerfaust Integration](../ZEngine/docs/future-plan/panzerfaust.md) |
+## Need help?
 
-`project.json` is generated by ZodiacEngineHub. Engine documentation may refer
-to its current keys and `--projectConfigFile` CLI option, but changes to generated
-project schema/defaults belong in ZodiacEngineHub rather than hand-editing a
-generated project file.
+- Read the [getting-started guide](getting-started/index.md).
+- Search this documentation with the control at the top of the page.
+- Ask the community on [Discord](https://discord.gg/jC3GPVKKsW).
+- Report confirmed bugs in the [issue tracker](https://github.com/JeanPhilippeKernel/RendererEngine/issues).

@@ -1,13 +1,19 @@
 site_name: Zodiac Engine
-site_description: Open-source cross-platform 3D rendering engine written in C++20 with Vulkan
+site_description: Cross-platform Vulkan engine, editor, and project tooling
 site_url: https://jeanphilippekernel.github.io/zodiac-engine-docs/
 repo_name: JeanPhilippeKernel/RendererEngine
 repo_url: https://github.com/JeanPhilippeKernel/RendererEngine
+edit_uri: edit/develop/docs/
+
+copyright: Copyright &copy; 2026 Zodiac Engine contributors
 
 theme:
   name: material
-  logo: https://raw.githubusercontent.com/JeanPhilippeKernel/RendererEngine/main/ZEngine/docs/logo/WhiteAssetZE.png
-  favicon: https://raw.githubusercontent.com/JeanPhilippeKernel/RendererEngine/main/ZEngine/docs/logo/WhiteAssetZE.png
+  language: en
+  logo: assets/logo-white.png
+  favicon: assets/logo-white.png
+  icon:
+    repo: fontawesome/brands/github
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
@@ -15,32 +21,103 @@ theme:
       accent: light-blue
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: Use light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: indigo
       accent: light-blue
       toggle:
         icon: material/brightness-7
-        name: Switch to dark mode
+        name: Use dark mode
   features:
-    - navigation.instant
-    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
     - navigation.top
     - navigation.footer
+    - navigation.tracking
     - search.suggest
     - search.highlight
     - content.code.copy
+    - content.action.edit
+
+not_in_nav: |
+  design/execution-plan.md
+  design/memory-budget.md
+  design/completed/*
+  design/future-plan/**
+  design/presentations/*
+  project/roadmap-legacy.md
 
 plugins:
-  - search
+  - search:
+      lang: en
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/JeanPhilippeKernel/RendererEngine
+      name: RendererEngine on GitHub
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/jC3GPVKKsW
+      name: Zodiac Engine on Discord
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Home: index.md
-  - Engine Architecture: engine-architecture.md
-  - Memory Management: memory-management.md
-  - Rendering Domain: rendering-domain.md
-  - Asset Manager: asset-manager.md
-  - ZUI System: zui-system.md
-  - Containers: containers.md
-  - Roadmap: roadmap.md
+  - Get ZEngine:
+      - Overview: getting-started/index.md
+      - Install with Zodiac Engine Hub: getting-started/install-with-zodiac-engine-hub.md
+      - Create your first project: getting-started/first-project.md
+      - Update and migration: getting-started/update-and-migration.md
+      - Supported platforms: getting-started/supported-platforms.md
+  - Editor:
+      - Overview: editor/index.md
+      - Assets and importing: editor/assets-and-importing.md
+      - Scenes and authoring: editor/scenes.md
+  - Develop:
+      - Overview: development/index.md
+      - Build from source: development/build-from-source.md
+      - Run and debug: development/run-and-debug.md
+      - Project configuration: development/project-configuration.md
+  - Reference:
+      - Overview: reference/index.md
+      - Engine architecture: reference/architecture.md
+      - Rendering: reference/rendering.md
+      - Asset pipeline: reference/asset-pipeline.md
+      - Memory management: reference/memory-management.md
+      - ZUI system: reference/zui.md
+      - Containers: reference/containers.md
+  - Project:
+      - Releases and changelog: project/releases.md
+      - Roadmap: project/roadmap.md
+      - Design documents: design/index.md
+      - Proposals and RFCs: project/rfcs.md
+      - Historical records: project/archive.md
+  - Contribute:
+      - Overview: contributing/index.md
+      - Commit conventions: contributing/commit-conventions.md
+      - Release process: contributing/release-process.md
