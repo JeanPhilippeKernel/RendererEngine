@@ -25,6 +25,7 @@ jobs:
             - uses: googleapis/release-please-action@v4
               id: release
               with:
+                  target-branch: main
                   config-file: release-please-config.json
                   manifest-file: .release-please-manifest.json
                   token: ${{ secrets.GITHUB_TOKEN }}
