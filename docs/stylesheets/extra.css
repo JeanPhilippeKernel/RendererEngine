@@ -19,8 +19,306 @@
 }
 
 .ze-hero {
-  padding: 3rem 0 2.25rem;
+  padding: clamp(3.25rem, 8vw, 5.4rem) clamp(1.2rem, 5vw, 4rem) 3.25rem;
   text-align: center;
+}
+
+/* The home page keeps the constellation fixed while its content scrolls over
+ * it. The selector limits this treatment to the landing page. */
+body:has(.ze-home) {
+  background:
+    radial-gradient(circle at 50% 115%, rgb(121 151 255 / 0.25), transparent 44%),
+    linear-gradient(135deg, #f8faff, #e9efff);
+}
+
+[data-md-color-scheme="slate"] body:has(.ze-home) {
+  background:
+    radial-gradient(circle at 50% 115%, rgb(79 107 229 / 0.28), transparent 44%),
+    linear-gradient(135deg, #0a1020, #111a32);
+}
+
+body:has(.ze-home) .md-main {
+  background: transparent;
+}
+
+.ze-home > :not(.ze-constellation) {
+  position: relative;
+  z-index: 1;
+}
+
+.ze-constellation {
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+}
+
+.ze-constellation svg {
+  animation: ze-constellation-drift 22s ease-in-out infinite alternate;
+  height: 100vh;
+  min-height: 32rem;
+  min-width: 62rem;
+  position: absolute;
+  right: 50%;
+  top: 50%;
+  transform: translate(50%, -50%);
+  width: 100vw;
+}
+
+.ze-constellation__lines {
+  fill: none;
+  stroke: #5273e8;
+  stroke-dasharray: 760;
+  stroke-dashoffset: 760;
+  stroke-linecap: round;
+  stroke-width: 1.4;
+  animation: ze-constellation-draw 12s ease-in-out infinite;
+}
+
+.ze-constellation__lines--right {
+  animation-delay: -4s;
+}
+
+.ze-constellation__lines--crown {
+  animation-delay: -8s;
+}
+
+.ze-constellation__stars circle {
+  animation: ze-constellation-twinkle 4.8s ease-in-out infinite;
+  fill: #4868dc;
+  filter: drop-shadow(0 0 0.45rem rgb(72 104 220 / 0.62));
+}
+
+.ze-constellation__stars circle:nth-child(3n + 2) {
+  animation-delay: -1.6s;
+}
+
+.ze-constellation__stars circle:nth-child(3n) {
+  animation-delay: -3.2s;
+}
+
+.ze-constellation__dust circle {
+  animation: ze-constellation-twinkle 5.8s ease-in-out infinite;
+  fill: #758cf0;
+  opacity: 0.55;
+}
+
+.ze-zodiac-wheel,
+.ze-engine-wireframe {
+  transform-box: view-box;
+  transform-origin: 600px 240px;
+}
+
+.ze-zodiac-wheel {
+  animation: ze-zodiac-wheel 20s ease-in-out infinite;
+  opacity: 0;
+}
+
+.ze-zodiac-wheel circle,
+.ze-zodiac-wheel path {
+  animation: ze-zodiac-draw 20s ease-in-out infinite;
+  fill: none;
+  stroke: #415fd0;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  stroke-width: 1.25;
+}
+
+.ze-zodiac-wheel__mark {
+  stroke-width: 3 !important;
+}
+
+.ze-zodiac-wheel__glyphs text {
+  fill: #415fd0;
+  font-family: var(--md-text-font-family), sans-serif;
+  font-size: 1.25rem;
+  opacity: 0.88;
+}
+
+.ze-engine-wireframe {
+  animation: ze-engine-wireframe 20s ease-in-out infinite;
+  opacity: 0;
+}
+
+.ze-engine-wireframe path {
+  animation: ze-engine-wireframe-draw 20s ease-in-out infinite;
+  fill: none;
+  stroke: #506fe4;
+  stroke-dasharray: 1100;
+  stroke-dashoffset: 1100;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+}
+
+.ze-engine-wireframe__label {
+  animation: ze-engine-wireframe-draw 20s ease-in-out infinite;
+  fill: transparent;
+  font-family: var(--md-text-font-family), sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.4rem;
+  stroke: #506fe4;
+  stroke-dasharray: 700;
+  stroke-dashoffset: 700;
+  stroke-width: 0.8;
+}
+
+[data-md-color-scheme="slate"] .ze-constellation__lines {
+  stroke: #9badff;
+}
+
+[data-md-color-scheme="slate"] .ze-constellation__stars circle {
+  fill: #d0d9ff;
+  filter: drop-shadow(0 0 0.55rem rgb(164 180 255 / 0.82));
+}
+
+[data-md-color-scheme="slate"] .ze-constellation__dust circle {
+  fill: #98abff;
+}
+
+[data-md-color-scheme="slate"] .ze-zodiac-wheel circle,
+[data-md-color-scheme="slate"] .ze-zodiac-wheel path,
+[data-md-color-scheme="slate"] .ze-engine-wireframe path,
+[data-md-color-scheme="slate"] .ze-engine-wireframe__label {
+  stroke: #bdcaff;
+}
+
+[data-md-color-scheme="slate"] .ze-zodiac-wheel__glyphs text {
+  fill: #d7deff;
+}
+
+@keyframes ze-constellation-drift {
+  from {
+    transform: translate(50%, -50%) scale(1);
+  }
+
+  to {
+    transform: translate(49%, -51%) scale(1.035);
+  }
+}
+
+@keyframes ze-constellation-draw {
+  0%, 18% {
+    opacity: 0;
+    stroke-dashoffset: 760;
+  }
+
+  45%, 78% {
+    opacity: 0.72;
+    stroke-dashoffset: 0;
+  }
+
+  100% {
+    opacity: 0;
+    stroke-dashoffset: -760;
+  }
+}
+
+@keyframes ze-constellation-twinkle {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+}
+
+@keyframes ze-zodiac-wheel {
+  0%, 8% {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+
+  18%, 46% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+
+  56%, 100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes ze-zodiac-draw {
+  0%, 10% {
+    stroke-dashoffset: 1000;
+  }
+
+  30%, 52% {
+    stroke-dashoffset: 0;
+  }
+
+  100% {
+    stroke-dashoffset: -1000;
+  }
+}
+
+@keyframes ze-engine-wireframe {
+  0%, 48% {
+    opacity: 0;
+    transform: scale(0.93);
+  }
+
+  62%, 90% {
+    opacity: 0.76;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes ze-engine-wireframe-draw {
+  0%, 50% {
+    stroke-dashoffset: 1100;
+  }
+
+  76%, 92% {
+    stroke-dashoffset: 0;
+  }
+
+  100% {
+    stroke-dashoffset: -1100;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ze-constellation svg,
+  .ze-constellation__dust circle,
+  .ze-constellation__lines,
+  .ze-constellation__stars circle,
+  .ze-zodiac-wheel,
+  .ze-zodiac-wheel circle,
+  .ze-zodiac-wheel path,
+  .ze-engine-wireframe,
+  .ze-engine-wireframe path,
+  .ze-engine-wireframe__label {
+    animation: none;
+  }
+
+  .ze-constellation__lines {
+    opacity: 0.65;
+    stroke-dashoffset: 0;
+  }
+
+  .ze-zodiac-wheel,
+  .ze-engine-wireframe {
+    opacity: 0.44;
+  }
+
+  .ze-zodiac-wheel circle,
+  .ze-zodiac-wheel path,
+  .ze-engine-wireframe path,
+  .ze-engine-wireframe__label {
+    stroke-dashoffset: 0;
+  }
 }
 
 .ze-hero h1 {
