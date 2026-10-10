@@ -204,6 +204,17 @@ TEST_F(SchemaRegistryFixture, RejectsInvalidKeys)
     EXPECT_TRUE(m_diag.HasErrors());
 }
 
+TEST_F(SchemaRegistryFixture, RejectsNonASCIIKeysOnEveryPlatform)
+{
+    // UTF-8 bytes for an accented character must not become valid merely because
+    // a target uses unsigned char by default.
+    const char non_ascii_key[] = {'z', 'e', 'n', 'g', 'i', 'n', 'e', '.', static_cast<char>(0xC3), static_cast<char>(0xA9), '\0'};
+
+    EXPECT_FALSE(m_registry.Register(Desc(non_ascii_key, 1), &m_diag));
+    EXPECT_EQ(m_registry.Count(), 0u);
+    EXPECT_TRUE(m_diag.HasErrors());
+}
+
 TEST_F(SchemaRegistryFixture, RejectsVersionZero)
 {
     EXPECT_FALSE(m_registry.Register(Desc("transform", 1, 0), &m_diag));

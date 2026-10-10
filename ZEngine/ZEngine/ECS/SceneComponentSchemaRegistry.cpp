@@ -22,11 +22,12 @@ namespace ZEngine::ECS
                 return false;
             }
 
-            // Wire keys stay printable and separator-free so they survive any format.
+            // Wire keys use portable printable ASCII and are separator-free so they
+            // survive any format without depending on the target's char signedness.
             for (size_t i = 0; i < len; ++i)
             {
-                const char c = key[i];
-                if (c <= ' ' || c == 0x7F || c == '/' || c == '\\' || c == '"')
+                const unsigned char c = static_cast<unsigned char>(key[i]);
+                if (c < 0x21u || c > 0x7Eu || c == '/' || c == '\\' || c == '"')
                 {
                     return false;
                 }
