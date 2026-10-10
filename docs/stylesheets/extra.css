@@ -65,6 +65,14 @@ body:has(.ze-home) .md-main {
   background: transparent;
 }
 
+/* The landing page supplies its own navigation and hierarchy. Material's
+ * primary navigation, table of contents, and edit control obscure the hero. */
+body:has(.ze-home) .md-content__button,
+body:has(.ze-home) .md-sidebar--primary,
+body:has(.ze-home) .md-sidebar--secondary {
+  display: none;
+}
+
 .ze-home > :not(.ze-constellation) {
   position: relative;
   z-index: 1;
