@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versions are managed automatically via [Release Please](https://github.com/googleapis/release-please)
 based on [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.0.1](https://github.com/JeanPhilippeKernel/RendererEngine/compare/v1.0.0...v1.0.1) (2026-10-10)
+
+
+### Documentation
+
+* add animated zodiac home background ([59fadf9](https://github.com/JeanPhilippeKernel/RendererEngine/commit/59fadf9614930d95dbe94c397ceac97da8f82534))
+* align home page with color themes ([098a2c0](https://github.com/JeanPhilippeKernel/RendererEngine/commit/098a2c048e5f4295d283597ed83b01ccc13faab9))
+* correct Mermaid diagram syntax ([b7f99f2](https://github.com/JeanPhilippeKernel/RendererEngine/commit/b7f99f282db4e94048a635ab3ffdf2cb872ca893))
+* publish rebuilt documentation website ([#856](https://github.com/JeanPhilippeKernel/RendererEngine/issues/856)) ([8376f56](https://github.com/JeanPhilippeKernel/RendererEngine/commit/8376f56e1c2e815b8acf04e84b6114efeac0c396))
+* rebuild documentation website ([4f3db23](https://github.com/JeanPhilippeKernel/RendererEngine/commit/4f3db235b80badf0438a7debbcf092a2bf4b2b40))
+* rebuild documentation website ([#855](https://github.com/JeanPhilippeKernel/RendererEngine/issues/855)) ([3b94004](https://github.com/JeanPhilippeKernel/RendererEngine/commit/3b9400489a2e9409b49d054f15d3a0e8c061fadc))
+* remove home page sidebar artifacts ([6ebbd55](https://github.com/JeanPhilippeKernel/RendererEngine/commit/6ebbd5575e201303cbd0b47008d7e8e0db1bc429))
+* remove zodiac wheel glyphs ([c3d8507](https://github.com/JeanPhilippeKernel/RendererEngine/commit/c3d8507ff95147ab333e77dcbeda69e98515e38b))
+* render Mermaid diagrams ([28fa59b](https://github.com/JeanPhilippeKernel/RendererEngine/commit/28fa59b462be7a5cdf0ea6f98c8901c820f59e71))
+* simplify animated home background ([d3c50e9](https://github.com/JeanPhilippeKernel/RendererEngine/commit/d3c50e9622dfa1df58cfbc2dc082fc17aee4394e))
+* theme header by color scheme ([c664bd5](https://github.com/JeanPhilippeKernel/RendererEngine/commit/c664bd5a1b8df4de48e3920247d301f2eb191919))
+
 ## [1.0.0](https://github.com/JeanPhilippeKernel/RendererEngine/compare/v0.3.0...v1.0.0) (2026-10-10)
 
 
