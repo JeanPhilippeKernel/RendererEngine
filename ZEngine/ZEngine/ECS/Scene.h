@@ -6,21 +6,33 @@
 #include <ZEngine/ECS/ComponentStorage.h>
 #include <ZEngine/ECS/EntityRegistry.h>
 #include <ZEngine/ECS/RenderableTransform.h>
+#include <ZEngine/ECS/SceneGridSettings.h>
 #include <ZEngine/ZEngineDef.h>
+#include <uuid.h>
 
 namespace ZEngine::ECS
 {
     class Scene
     {
     public:
-        void          Initialize(Core::Memory::ArenaAllocator* arena);
-        void          Shutdown();
+        static constexpr uint32_t MAX_NAME_LEN = 128;
+
+        void                      Initialize(Core::Memory::ArenaAllocator* arena);
+        void                      Shutdown();
+
+        // Durable source identity; the scene document persists both.
+        void                      SetIdentity(const uuids::uuid& uuid, cstring name);
+        const uuids::uuid&        GetUUID() const;
+        cstring                   GetName() const;
+
+        SceneGridSettings&        GetGridSettings();
+        const SceneGridSettings&  GetGridSettings() const;
 
         // Entity lifetime
-        EntityID      CreateEntity();
-        void          DestroyEntity(EntityID id);
-        bool          IsAlive(EntityID id) const;
-        ArchetypeMask GetMask(EntityID id) const;
+        EntityID                  CreateEntity();
+        void                      DestroyEntity(EntityID id);
+        bool                      IsAlive(EntityID id) const;
+        ArchetypeMask             GetMask(EntityID id) const;
 
         // Component access
         template <typename T>
@@ -82,6 +94,13 @@ namespace ZEngine::ECS
             });
         }
 
+        // Fn must be callable as: void(EntityID)
+        template <typename Fn>
+        void ForEachEntity(Fn&& fn) const
+        {
+            m_registry.ForEachAlive(fn);
+        }
+
         uint32_t AliveCount() const
         {
             return m_registry.AliveCount();
@@ -110,7 +129,10 @@ namespace ZEngine::ECS
         EntityRegistry                                                          m_registry;
         Core::Containers::UnorderedHashMap<ComponentTypeID, IComponentStorage*> m_storages;
         Core::Containers::Array<IComponentStorage*>                             m_storages_list; // for iteration in DestroyEntity
-        Core::Memory::ArenaAllocator*                                           m_arena = nullptr;
+        Core::Memory::ArenaAllocator*                                           m_arena              = nullptr;
+        uuids::uuid                                                             m_uuid               = {};
+        char                                                                    m_name[MAX_NAME_LEN] = {};
+        SceneGridSettings                                                       m_grid               = {};
 
         template <typename T>
         ComponentStorage<T>& GetOrCreateStorage()

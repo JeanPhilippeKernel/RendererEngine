@@ -1,5 +1,8 @@
 #pragma once
+#include <bit>
 #include <cmath>
+#include <cstdint>
+#include <type_traits>
 
 namespace ZEngine::Core::Maths
 {
@@ -17,6 +20,36 @@ namespace ZEngine::Core::Maths
 
     template <typename T>
     constexpr T HALF_PI = T(1.570796326794896619231321691639751442);
+
+    template <typename T>
+    constexpr T INF = []() {
+        static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>, "INF requires float or double");
+        if constexpr (std::is_same_v<T, float>)
+            return std::bit_cast<float>(uint32_t(0x7F800000u));
+        else
+            return std::bit_cast<double>(uint64_t(0x7FF0000000000000ull));
+    }();
+
+    template <typename T>
+    constexpr T QNAN = []() {
+        static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>, "QNAN requires float or double");
+        if constexpr (std::is_same_v<T, float>)
+            return std::bit_cast<float>(uint32_t(0x7FC00000u));
+        else
+            return std::bit_cast<double>(uint64_t(0x7FF8000000000000ull));
+    }();
+
+    template <typename T>
+    constexpr bool isnan(T x)
+    {
+        return x != x;
+    }
+
+    template <typename T>
+    constexpr bool isfinite(T x)
+    {
+        return (x - x) == T(0);
+    }
 
     template <typename T>
     constexpr T clamp(T value, T minVal, T maxVal)

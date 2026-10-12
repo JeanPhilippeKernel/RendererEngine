@@ -4,6 +4,7 @@
 #include <ZEngine/ECS/ComponentTypeID.h>
 #include <ZEngine/ECS/EntityID.h>
 #include <ZEngine/ECS/SceneDiagnostics.h>
+#include <ZEngine/ECS/SceneValue.h>
 #include <ZEngine/ZEngineDef.h>
 #include <uuid.h>
 #include <cstdint>
@@ -11,9 +12,6 @@
 namespace ZEngine::ECS
 {
     class Scene;
-
-    class SceneValue;
-    class SceneValueWriter;
     class SceneBinaryReader;
     class SceneBinaryWriter;
 
@@ -95,6 +93,10 @@ namespace ZEngine::ECS
     class SceneComponentSchemaRegistry
     {
     public:
+        static constexpr uint32_t   MAX_KEY_LEN = 128;
+
+        static bool                 IsValidKey(cstring key);
+
         void                        Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
         [[nodiscard]] bool          IsInitialized() const;
 
