@@ -1,6 +1,7 @@
 #include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/ECS/Scene.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/ZEngineDef.h>
 
 namespace ZEngine::ECS
@@ -19,6 +20,32 @@ namespace ZEngine::ECS
         // Storage objects are arena-allocated — no individual delete needed.
         // The arena owner is responsible for freeing memory.
         m_arena = nullptr;
+    }
+
+    void Scene::SetIdentity(const uuids::uuid& uuid, cstring name)
+    {
+        m_uuid = uuid;
+        Helpers::secure_strncpy(m_name, MAX_NAME_LEN, name ? name : "", MAX_NAME_LEN - 1);
+    }
+
+    const uuids::uuid& Scene::GetUUID() const
+    {
+        return m_uuid;
+    }
+
+    cstring Scene::GetName() const
+    {
+        return m_name;
+    }
+
+    SceneGridSettings& Scene::GetGridSettings()
+    {
+        return m_grid;
+    }
+
+    const SceneGridSettings& Scene::GetGridSettings() const
+    {
+        return m_grid;
     }
 
     EntityID Scene::CreateEntity()

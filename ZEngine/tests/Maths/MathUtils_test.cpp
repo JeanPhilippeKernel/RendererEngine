@@ -35,3 +35,15 @@ TEST(MathUtilsTest, TrigonometricFunctionsRemainContinuousAcrossFullTurns)
         EXPECT_NEAR(ZEngine::Core::Maths::cos(angle), std::cos(angle), 1e-5f);
     }
 }
+
+TEST(MathUtilsTest, InfinityAndNaNAreClassified)
+{
+    EXPECT_FALSE(ZEngine::Core::Maths::isfinite(INF<float>));
+    EXPECT_FALSE(ZEngine::Core::Maths::isfinite(-INF<double>));
+    EXPECT_FALSE(ZEngine::Core::Maths::isfinite(QNAN<float>));
+    EXPECT_TRUE(ZEngine::Core::Maths::isnan(QNAN<double>));
+    EXPECT_FALSE(ZEngine::Core::Maths::isnan(INF<double>));
+    EXPECT_TRUE(ZEngine::Core::Maths::isfinite(0.0f));
+    EXPECT_TRUE(ZEngine::Core::Maths::isfinite(-3.4e38f));
+    EXPECT_TRUE(INF<float> > 3.4e38f);
+}

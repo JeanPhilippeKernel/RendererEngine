@@ -3,6 +3,7 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 
 #define BIT(x)                 (1 << (x))
+#define BIT64(x)               (uint64_t(1) << (x))
 #define ZENGINE_EXIT_FAILURE() exit(EXIT_FAILURE);
 
 #define ZENGINE_KEYCODE        ZEngine::Windows::Inputs::GlfwKeyCode

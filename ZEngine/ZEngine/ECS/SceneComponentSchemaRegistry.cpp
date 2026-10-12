@@ -7,34 +7,6 @@ namespace ZEngine::ECS
 {
     namespace
     {
-        constexpr uint32_t MAX_KEY_LEN = 128;
-
-        bool               IsValidKey(cstring key)
-        {
-            if (!key || key[0] == '\0')
-            {
-                return false;
-            }
-
-            const size_t len = Helpers::secure_strlen(key);
-            if (len >= MAX_KEY_LEN)
-            {
-                return false;
-            }
-
-            // Wire keys use portable printable ASCII and are separator-free so they
-            // survive any format without depending on the target's char signedness.
-            for (size_t i = 0; i < len; ++i)
-            {
-                const unsigned char c = static_cast<unsigned char>(key[i]);
-                if (c < 0x21u || c > 0x7Eu || c == '/' || c == '\\' || c == '"')
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
         bool IsValidFieldClass(SceneFieldClass field_class)
         {
             switch (field_class)
@@ -54,6 +26,30 @@ namespace ZEngine::ECS
             ZENGINE_CORE_ERROR("SceneComponentSchemaRegistry::Register rejected: {}", message)
         }
     } // namespace
+
+    bool SceneComponentSchemaRegistry::IsValidKey(cstring key)
+    {
+        if (!key || key[0] == '\0')
+        {
+            return false;
+        }
+
+        const size_t len = Helpers::secure_strlen(key);
+        if (len >= MAX_KEY_LEN)
+        {
+            return false;
+        }
+
+        for (size_t i = 0; i < len; ++i)
+        {
+            const unsigned char c = static_cast<unsigned char>(key[i]);
+            if (c < 0x21u || c > 0x7Eu || c == '/' || c == '\\' || c == '"')
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool SceneComponentSchemaRegistry::IsInitialized() const
     {
