@@ -9,6 +9,7 @@
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/EnvironmentBackgroundPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GizmoPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
@@ -144,6 +145,7 @@ namespace ZEngine::Rendering::Renderers
         auto aerial_pass                 = ZPushStructCtor(Device->Arena, AerialPerspectivePass);
         auto sky_composite_pass          = ZPushStructCtor(Device->Arena, SkyCompositePass);
         auto grid_pass                   = ZPushStructCtor(Device->Arena, GridPass);
+        auto gizmo_pass                  = ZPushStructCtor(Device->Arena, GizmoPass);
         auto tone_mapping_pass           = ZPushStructCtor(Device->Arena, ToneMappingPass);
 
         RenderGraph->Initialize(Device, RenderSceneData);
@@ -167,6 +169,7 @@ namespace ZEngine::Rendering::Renderers
         m_sky_environment.ConfigureMemoryBudget(Device->EnvironmentLightingMemoryBudget, fallback_memory_bytes);
         m_lighting_pass                            = lighting_pass;
         m_grid_pass                                = grid_pass;
+        m_gizmo_pass                               = gizmo_pass;
         m_environment_background_pass              = environment_background_pass;
         m_sky_sphere_pass                          = sky_sphere_pass;
         m_sky_view_lut_pass                        = sky_view_lut_pass;
@@ -212,6 +215,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass);
         RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
+        RenderGraph->AddCallbackPass("Editor Gizmo Pass", gizmo_pass);
         RenderGraph->Setup();
         RenderGraph->Compile();
         PublishMemoryStatistics();
@@ -233,6 +237,7 @@ namespace ZEngine::Rendering::Renderers
             DiscardSkyResources(retired_sky_resources);
         m_lighting_pass                            = nullptr;
         m_grid_pass                                = nullptr;
+        m_gizmo_pass                               = nullptr;
         m_environment_background_pass              = nullptr;
         m_sky_sphere_pass                          = nullptr;
         m_sky_view_lut_pass                        = nullptr;
@@ -1013,5 +1018,13 @@ namespace ZEngine::Rendering::Renderers
         secure_memcpy(p.ColorThick, sizeof(p.ColorThick), cfg.ColorThick, sizeof(cfg.ColorThick));
         secure_memcpy(p.ColorXAxis, sizeof(p.ColorXAxis), cfg.ColorXAxis, sizeof(cfg.ColorXAxis));
         secure_memcpy(p.ColorZAxis, sizeof(p.ColorZAxis), cfg.ColorZAxis, sizeof(cfg.ColorZAxis));
+    }
+
+    void GraphicRenderer::ApplyGizmoState(const GizmoRenderState& state)
+    {
+        auto* pass = RenderGraph ? RenderGraph->GetPass("Editor Gizmo Pass") : nullptr;
+        if (!pass || !pass->Callback)
+            return;
+        static_cast<GizmoPass*>(pass->Callback)->State = state;
     }
 } // namespace ZEngine::Rendering::Renderers

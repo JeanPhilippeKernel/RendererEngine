@@ -184,13 +184,14 @@ namespace ZEngine::Applications
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
     }
 
-    void AppRenderPipeline::RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, const Rendering::Scenes::SkyCelestialLight& celestial_light, uint64_t sky_revision, const Rendering::Renderers::ZUIRenderPayload* overlay)
+    void AppRenderPipeline::RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, const Rendering::Scenes::SkyCelestialLight& celestial_light, uint64_t sky_revision, const Rendering::Renderers::GizmoRenderState& gizmo, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
         auto swpachain    = Device->SwapchainPtr;
         auto frame_index  = swpachain->CurrentFrame->Index;
         auto thread_index = RenderMainThreadIndex;
 
         SceneRenderer->ApplySkyConfig(sky, celestial_light, sky_revision);
+        SceneRenderer->ApplyGizmoState(gizmo);
 
         if (scene->GridDirty[frame_index].value.exchange(false, std::memory_order_acquire))
         {

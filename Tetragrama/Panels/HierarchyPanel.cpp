@@ -129,7 +129,8 @@ namespace Tetragrama::Panels
                     secure_strncpy(nc_new.Value, sizeof(nc_new.Value), "Collection", 10);
                     na->AddComponent<NameComponent>(nc_new);
                     na->AddComponent<TransformComponent>({});
-                    scene->SelectedActorHandle = nh;
+                    scene->EnsureActorUUID(nh);
+                    scene->SelectActor(nh);
                 }
             }
         }
@@ -419,7 +420,7 @@ namespace Tetragrama::Panels
 
                 bool  has_ch    = (first_child[ni] != UINT32_MAX);
                 bool  collapsed = has_ch && IsCollapsed(nodes[ni].EID); // exact develop naming
-                bool  selected  = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
+                bool  selected  = scene->IsActorSelected(nodes[ni].Handle);
                 bool  renaming  = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
                 float indent    = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
 
@@ -555,8 +556,11 @@ namespace Tetragrama::Panels
                     // so double-click must be tracked here, not in ZUISignalFromBox.
                     if (row_clicked)
                     {
-                        scene->SelectedActorHandle = nodes[ni].Handle;
-                        double now                 = (double) ctx->Time;
+                        if (ctx->CtrlDown)
+                            scene->ToggleActorSelection(nodes[ni].Handle);
+                        else
+                            scene->SelectActor(nodes[ni].Handle);
+                        double now = (double) ctx->Time;
                         if (m_last_click_idx == nodes[ni].Handle.Index && m_last_click_gen == nodes[ni].Handle.Generation && now - m_last_click_time < 0.30)
                         {
                             // Double-click on name/icon area → start rename
@@ -794,8 +798,7 @@ namespace Tetragrama::Panels
                 const auto* identity = a->GetComponent<UUIDComponent>();
                 if (identity && identity->Value == scene->Sky.PrimaryCelestialLight)
                     scene->ClearPrimaryCelestialLight();
-                if (scene->SelectedActorHandle.Index == pending_delete.Index && scene->SelectedActorHandle.Generation == pending_delete.Generation)
-                    scene->SelectedActorHandle = {};
+                scene->RemoveActorFromSelection(pending_delete);
                 if (m_rename_id.IsValid() && m_rename_id == delete_eid)
                 {
                     m_rename_id   = {};
@@ -812,10 +815,11 @@ namespace Tetragrama::Panels
         ZUIBoxSetColorArr(sb, ctx->Theme.TitleBarBg);
         ZUISpacer(ctx, 6.f);
         {
-            char status[64];
-            int  total = (int) eng->ActorManager->Count();
-            if (scene->SelectedActorHandle.Valid())
-                snprintf(status, sizeof(status), "%d actor%s (1 selected)", total, total == 1 ? "" : "s");
+            char           status[64];
+            int            total          = (int) eng->ActorManager->Count();
+            const uint32_t selected_count = scene->SelectedActorCount();
+            if (selected_count > 0)
+                snprintf(status, sizeof(status), "%d actor%s (%u selected)", total, total == 1 ? "" : "s", selected_count);
             else
                 snprintf(status, sizeof(status), "%d actor%s", total, total == 1 ? "" : "s");
             ZUILabel(ctx, status, kDim);

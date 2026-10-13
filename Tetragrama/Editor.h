@@ -1,5 +1,6 @@
 #pragma once
 #include <Tetragrama/EditorScene.h>
+#include <Tetragrama/Gizmos/EditorGizmoController.h>
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Applications/GameApplication.h>
 #include <ZEngine/Core/Memory/Allocator.h>
@@ -59,12 +60,14 @@ namespace Tetragrama
         ZEngine::Core::VFS::VFSDiskBackend    WorkingSpaceBackend               = {};
         // All editor-owned persistent CPU state is bounded by the Editor budget.
         ZEngine::Core::Memory::ArenaAllocator EditorArena                       = {};
+        Gizmos::EditorGizmoController         GizmoController                   = {};
 
         virtual void                          OnInitializing() override;
         virtual void                          OverrideWindowConfiguration() override;
         virtual void                          OnInitialized() override;
 
         virtual void                          OnUpdate(float dt) override;
+        void                                  PrepareScene(ZEngine::Applications::RenderFrameState& state) override;
         virtual void                          OnEvent(ZEngine::Core::CoreEvent&) override;
 
         void                                  ProcessEvent(ZEngine::Core::CoreEvent&) override;

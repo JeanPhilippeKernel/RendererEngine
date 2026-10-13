@@ -3,6 +3,97 @@
 
 namespace ZEngine::UI
 {
+    namespace
+    {
+        void EndPointerCapture(ZUIContext* ctx, ZUIPointerCaptureEndReason reason)
+        {
+            if (!ctx || !ctx->PointerCapture.Active)
+                return;
+
+            ctx->PointerCaptureEnd = {
+                .Token    = ctx->PointerCapture.Token,
+                .OwnerKey = ctx->PointerCapture.OwnerKey,
+                .Reason   = reason,
+                .Pending  = true,
+            };
+            ctx->PointerCapture.Active = false;
+        }
+    } // namespace
+
+    ZUIPointerCaptureToken ZUICapturePointer(ZUIContext* ctx, uint64_t owner_key, uint64_t viewport_key, uint64_t viewport_generation, uint8_t button)
+    {
+        if (!ctx || owner_key == 0 || viewport_key == 0 || viewport_generation == 0 || button >= 3 || ctx->PointerCapture.Active || ctx->PointerCaptureEnd.Pending)
+            return 0;
+
+        ZUIPointerCaptureToken token = ctx->NextPointerCaptureToken++;
+        if (token == 0)
+            token = ctx->NextPointerCaptureToken++;
+        ctx->PointerCapture = {
+            .Token              = token,
+            .OwnerKey           = owner_key,
+            .ViewportKey        = viewport_key,
+            .ViewportGeneration = viewport_generation,
+            .Button             = button,
+            .Active             = true,
+        };
+        // Do not let a regular ZUI box continue a drag beneath a native tool.
+        ctx->ActiveKey     = 0;
+        ctx->DragSourceKey = 0;
+        return token;
+    }
+
+    bool ZUIReleasePointerCapture(ZUIContext* ctx, ZUIPointerCaptureToken token)
+    {
+        if (!ctx || !ctx->PointerCapture.Active || token == 0 || ctx->PointerCapture.Token != token)
+            return false;
+        EndPointerCapture(ctx, ZUIPointerCaptureEndReason::Released);
+        return true;
+    }
+
+    bool ZUICancelPointerCapture(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason reason)
+    {
+        if (!ctx || !ctx->PointerCapture.Active || token == 0 || ctx->PointerCapture.Token != token || reason == ZUIPointerCaptureEndReason::None || reason == ZUIPointerCaptureEndReason::Released)
+            return false;
+        EndPointerCapture(ctx, reason);
+        return true;
+    }
+
+    bool ZUIHasPointerCapture(const ZUIContext* ctx, ZUIPointerCaptureToken token)
+    {
+        return ctx && token != 0 && ctx->PointerCapture.Active && ctx->PointerCapture.Token == token;
+    }
+
+    bool ZUIConsumePointerCaptureEnd(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason& out_reason)
+    {
+        if (!ctx || token == 0 || !ctx->PointerCaptureEnd.Pending || ctx->PointerCaptureEnd.Token != token)
+            return false;
+        out_reason             = ctx->PointerCaptureEnd.Reason;
+        ctx->PointerCaptureEnd = {};
+        return true;
+    }
+
+    void ZUISetPointerCaptureWindowFocused(ZUIContext* ctx, bool focused)
+    {
+        if (!focused && ctx && ctx->PointerCapture.Active)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::WindowFocusLost);
+    }
+
+    void ZUIProcessPointerCaptureEndOfFrame(ZUIContext* ctx)
+    {
+        if (!ctx || !ctx->PointerCapture.Active)
+            return;
+
+        const ZUIPointerCapture capture = ctx->PointerCapture;
+        if (ctx->EscapePressed)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::Escape);
+        else if (ctx->ViewportInputKey != capture.ViewportKey || ctx->ViewportGeneration != capture.ViewportGeneration)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::ViewportUnavailable);
+        else if (ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::ModalInterruption);
+        else if (ctx->MouseReleased[capture.Button])
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::Released);
+    }
+
     static bool PointInBox(const float pt[2], const ZUIBox* box)
     {
         return pt[0] >= box->ScreenMin[0] && pt[0] <= box->ScreenMax[0] && pt[1] >= box->ScreenMin[1] && pt[1] <= box->ScreenMax[1];
@@ -10,6 +101,15 @@ namespace ZEngine::UI
 
     void ZUIInteractionPass(ZUIContext* ctx)
     {
+        if (ctx && ctx->PointerCapture.Active)
+        {
+            // The owning native tool receives raw pointer input. Regular widgets
+            // must neither become hot nor receive a new active drag underneath it.
+            ctx->HotKey        = 0;
+            ctx->ActiveKey     = 0;
+            ctx->DragSourceKey = 0;
+            return;
+        }
         if (!ctx->Root)
         {
             ctx->HotKey = 0;

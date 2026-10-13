@@ -146,13 +146,17 @@ namespace Tetragrama::Components
             ZUISpacer(ctx, 4.f);
 
             // "Edit" menu
+            auto* edit_app   = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto* edit_scene = edit_app ? reinterpret_cast<EditorScenePtr>(edit_app->CurrentScene) : nullptr;
             if (ZUIBeginMenu(ctx, "Edit"))
             {
-                if (ZUIMenuItemEx(ctx, "Undo", sc_undo, false, false))
+                if (ZUIMenuItemEx(ctx, "Undo", sc_undo, false, edit_scene && !edit_scene->TransformSession.IsActive() && edit_scene->CanUndoTransform()))
                 {
+                    (void) edit_scene->UndoTransform();
                 }
-                if (ZUIMenuItemEx(ctx, "Redo", sc_redo, false, false))
+                if (ZUIMenuItemEx(ctx, "Redo", sc_redo, false, edit_scene && !edit_scene->TransformSession.IsActive() && edit_scene->CanRedoTransform()))
                 {
+                    (void) edit_scene->RedoTransform();
                 }
                 ZUISeparator(ctx);
                 if (ZUIMenuItemEx(ctx, "Select All", sc_all))
@@ -164,18 +168,19 @@ namespace Tetragrama::Components
                         auto* eng        = ZEngine::Engine::GetContext();
                         if (edit_scene && eng && eng->ActorManager && eng->ActorManager->Count() > 0)
                         {
-                            bool found = false;
-                            eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*) {
-                                if (!found)
-                                {
-                                    edit_scene->SelectedActorHandle = h;
-                                    found                           = true;
-                                }
-                            });
+                            edit_scene->ClearSelection();
+                            eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*) { edit_scene->SelectActor(h, true); });
                         }
                     }
                 }
                 ZUIEndMenu(ctx);
+            }
+            if (edit_scene && !edit_scene->TransformSession.IsActive() && !ctx->TextInputActive)
+            {
+                if (ctx->CtrlZPressed)
+                    (void) edit_scene->UndoTransform();
+                if (ctx->CtrlYPressed)
+                    (void) edit_scene->RedoTransform();
             }
             ZUISpacer(ctx, 4.f);
 

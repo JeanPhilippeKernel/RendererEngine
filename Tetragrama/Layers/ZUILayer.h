@@ -21,7 +21,7 @@ namespace Tetragrama::Layers
         void Deinitialize() override {}
 
         bool OnEvent(ZEngine::Core::CoreEvent& event) override;
-        void Update(ZEngine::Core::TimeStep dt) override {}
+        void Update(ZEngine::Core::TimeStep dt) override;
         void Render(ZEngine::Rendering::Renderers::GraphicRenderer* const, ZEngine::Hardwares::CommandBuffer* const) override;
 
         bool OnKeyPressed(ZEngine::Windows::Events::KeyPressedEvent&) override;

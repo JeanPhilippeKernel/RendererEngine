@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <cmath>
 
 namespace ZEngine::Core::Maths
 {
@@ -511,51 +512,126 @@ namespace ZEngine::Core::Maths
             a(3, 0) * b(0, 3) + a(3, 1) * b(1, 3) + a(3, 2) * b(2, 3) + a(3, 3) * b(3, 3)));
     }
 
-    inline bool DecomposeTransformComponent(const Mat4f& transform, Vec3f& translation, Vec3f& rotation, Vec3f& scale)
-    {
-        Mat4f LocalMatrix(transform);
-        if (epsilonEqual(LocalMatrix(3, 3), static_cast<float>(0)))
-            return false;
+    // Declared here because strict decomposition verifies its result by round-tripping
+    // through the canonical local-transform composer defined below.
+    inline Mat4f ComposeTransformMatrix(const Vec3f& position, const Vec3f& rotation, const Vec3f& scale);
 
-        if (epsilonNotEqual(LocalMatrix(0, 3), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 1), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 2), static_cast<float>(0.0f)))
+    /// @brief Tolerances used when converting an affine matrix into authored local TRS.
+    /// @details TransformComponent deliberately has no shear or general-affine representation.
+    ///          Editor tools must therefore reject matrices which cannot round-trip through
+    ///          ComposeTransformMatrix rather than approximating them and corrupting a scene.
+    struct TransformTRSDecompositionTolerance
+    {
+        float MinimumScale           = 1.0e-5f;
+        float OrthogonalityTolerance = 1.0e-4f;
+        float RecompositionTolerance = 1.0e-4f;
+    };
+
+    /// @brief Strictly decomposes an affine matrix into the engine's authored YXZ Euler TRS.
+    /// @returns false when @p transform is non-finite, projective, singular, sheared, or would
+    ///          fail a ComposeTransformMatrix round trip. Output arguments are untouched on
+    ///          failure.
+    /// @details A reflection has several mathematically equivalent TRS encodings. The engine
+    ///          canonicalizes it by carrying a negative determinant on Scale.x; Scale.y and
+    ///          Scale.z are non-negative. This gives history, serialization, and gizmo previews
+    ///          stable authored values without changing the represented matrix.
+    inline bool TryDecomposeTransformTRS(const Mat4f& transform, Vec3f& translation, Vec3f& rotation, Vec3f& scale, const TransformTRSDecompositionTolerance& tolerance = {})
+    {
+        const auto finite = [](float value) { return std::isfinite(value); };
+        for (size_t row = 0; row < 4; ++row)
         {
-            LocalMatrix(3, 0) = LocalMatrix(3, 1) = LocalMatrix(3, 2) = static_cast<float>(0);
-            LocalMatrix(3, 3)                                         = static_cast<float>(1);
+            for (size_t column = 0; column < 4; ++column)
+            {
+                if (!finite(transform(row, column)))
+                    return false;
+            }
         }
 
-        // Next take care of translation (easy).
-        translation    = Vec3f(LocalMatrix[3].x, LocalMatrix[3].y, LocalMatrix[3].z);
-        LocalMatrix[3] = Vec4f(0, 0, 0, LocalMatrix[3].w);
+        if (!finite(tolerance.MinimumScale) || !finite(tolerance.OrthogonalityTolerance) || !finite(tolerance.RecompositionTolerance) || tolerance.MinimumScale <= 0.f || tolerance.OrthogonalityTolerance < 0.f || tolerance.RecompositionTolerance < 0.f)
+            return false;
 
-        Vec3f Row[3], Pdum3;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                Row[i][j] = LocalMatrix(i, j);
+        // TransformComponent accepts affine matrices only. Translation lives in the final
+        // column because Matrix is column-major.
+        if (std::fabs(transform(3, 0)) > tolerance.RecompositionTolerance || std::fabs(transform(3, 1)) > tolerance.RecompositionTolerance || std::fabs(transform(3, 2)) > tolerance.RecompositionTolerance || std::fabs(transform(3, 3) - 1.f) > tolerance.RecompositionTolerance)
+            return false;
 
-        scale.x    = Row[0].magnitude();
-        Row[0]     = Row[0].normalize();
-        scale.y    = Row[1].magnitude();
-        Row[1]     = Row[1].normalize();
-        scale.z    = Row[2].magnitude();
-        Row[2]     = Row[2].normalize();
+        const Vec3f column_x = {transform(0, 0), transform(1, 0), transform(2, 0)};
+        const Vec3f column_y = {transform(0, 1), transform(1, 1), transform(2, 1)};
+        const Vec3f column_z = {transform(0, 2), transform(1, 2), transform(2, 2)};
+        const float length_x = column_x.magnitude();
+        const float length_y = column_y.magnitude();
+        const float length_z = column_z.magnitude();
+        if (!finite(length_x) || !finite(length_y) || !finite(length_z) || length_x <= tolerance.MinimumScale || length_y <= tolerance.MinimumScale || length_z <= tolerance.MinimumScale)
+            return false;
 
-        // At this point, the matrix (in rows[]) is orthonormal.
-        // Check for a coordinate system flip.  If the determinant
-        // is -1, then negate the matrix and the scaling factors.
+        const Vec3f unit_x = column_x / length_x;
+        const Vec3f unit_y = column_y / length_y;
+        const Vec3f unit_z = column_z / length_z;
+        const auto  dot    = [](const Vec3f& a, const Vec3f& b) { return a.x * b.x + a.y * b.y + a.z * b.z; };
+        const auto  cross  = [](const Vec3f& a, const Vec3f& b) { return Vec3f{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; };
 
-        rotation.y = asin(-Row[0][2]);
-        if (cos(rotation.y) != 0)
+        if (std::fabs(dot(unit_x, unit_y)) > tolerance.OrthogonalityTolerance || std::fabs(dot(unit_x, unit_z)) > tolerance.OrthogonalityTolerance || std::fabs(dot(unit_y, unit_z)) > tolerance.OrthogonalityTolerance)
+            return false;
+
+        const float determinant = dot(unit_x, cross(unit_y, unit_z));
+        if (!finite(determinant) || std::fabs(std::fabs(determinant) - 1.f) > tolerance.OrthogonalityTolerance * 3.f)
+            return false;
+
+        Vec3f       candidate_scale = {determinant < 0.f ? -length_x : length_x, length_y, length_z};
+        const Vec3f rotation_x      = column_x / candidate_scale.x;
+        const Vec3f rotation_y      = column_y / candidate_scale.y;
+        const Vec3f rotation_z      = column_z / candidate_scale.z;
+
+        Mat4f       rotation_matrix = {};
+        rotation_matrix(0, 0)       = rotation_x.x;
+        rotation_matrix(1, 0)       = rotation_x.y;
+        rotation_matrix(2, 0)       = rotation_x.z;
+        rotation_matrix(0, 1)       = rotation_y.x;
+        rotation_matrix(1, 1)       = rotation_y.y;
+        rotation_matrix(2, 1)       = rotation_y.z;
+        rotation_matrix(0, 2)       = rotation_z.x;
+        rotation_matrix(1, 2)       = rotation_z.y;
+        rotation_matrix(2, 2)       = rotation_z.z;
+
+        Vec3f candidate_rotation    = {};
+        candidate_rotation.y        = std::asin(clamp(-rotation_matrix(0, 2), -1.f, 1.f));
+        const float cos_y           = std::cos(candidate_rotation.y);
+        if (std::fabs(cos_y) > tolerance.MinimumScale)
         {
-            rotation.x = atan2(Row[1][2], Row[2][2]);
-            rotation.z = atan2(Row[0][1], Row[0][0]);
+            candidate_rotation.x = std::atan2(rotation_matrix(1, 2), rotation_matrix(2, 2));
+            candidate_rotation.z = std::atan2(rotation_matrix(0, 1), rotation_matrix(0, 0));
         }
         else
         {
-            rotation.x = atan2(-Row[2][0], Row[1][1]);
-            rotation.z = 0;
+            // At the YXZ gimbal singularity Z is canonicalized to zero. The remaining
+            // degree of freedom is represented by X so the resulting matrix is stable.
+            candidate_rotation.x = rotation_matrix(0, 2) < 0.f ? std::atan2(rotation_matrix(1, 0), rotation_matrix(1, 1)) : std::atan2(-rotation_matrix(1, 0), rotation_matrix(1, 1));
+            candidate_rotation.z = 0.f;
         }
 
+        const Vec3f candidate_translation = {transform(0, 3), transform(1, 3), transform(2, 3)};
+        const Mat4f recomposed            = ComposeTransformMatrix(candidate_translation, candidate_rotation, candidate_scale);
+        for (size_t row = 0; row < 4; ++row)
+        {
+            for (size_t column = 0; column < 4; ++column)
+            {
+                const float magnitude = std::fmax(1.f, std::fmax(std::fabs(transform(row, column)), std::fabs(recomposed(row, column))));
+                if (std::fabs(transform(row, column) - recomposed(row, column)) > tolerance.RecompositionTolerance * magnitude)
+                    return false;
+            }
+        }
+
+        translation = candidate_translation;
+        rotation    = candidate_rotation;
+        scale       = candidate_scale;
         return true;
+    }
+
+    /// @deprecated Use TryDecomposeTransformTRS. This retained spelling now has the same
+    ///             strict failure semantics so existing callers cannot silently accept shear.
+    inline bool DecomposeTransformComponent(const Mat4f& transform, Vec3f& translation, Vec3f& rotation, Vec3f& scale)
+    {
+        return TryDecomposeTransformTRS(transform, translation, rotation, scale);
     }
 
     // Inverse of DecomposeTransformComponent: builds a column-major TRS matrix

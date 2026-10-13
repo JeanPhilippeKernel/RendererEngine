@@ -14,6 +14,40 @@ namespace ZEngine::UI
         bool Keyboard = false;
     };
 
+    using ZUIPointerCaptureToken = uint64_t;
+
+    /// @brief The condition which ended an explicit non-widget pointer capture.
+    enum class ZUIPointerCaptureEndReason : uint8_t
+    {
+        None,
+        Released,
+        Escape,
+        WindowFocusLost,
+        ViewportUnavailable,
+        ModalInterruption,
+        ExplicitCancellation,
+    };
+
+    /// @brief One exclusive pointer lease, normally owned by an editor viewport tool.
+    struct ZUIPointerCapture
+    {
+        ZUIPointerCaptureToken Token              = 0;
+        uint64_t               OwnerKey           = 0;
+        uint64_t               ViewportKey        = 0;
+        uint64_t               ViewportGeneration = 0;
+        uint8_t                Button             = 0;
+        bool                   Active             = false;
+    };
+
+    /// @brief A one-shot notification retained until its owning tool consumes it.
+    struct ZUIPointerCaptureEndEvent
+    {
+        ZUIPointerCaptureToken     Token    = 0;
+        uint64_t                   OwnerKey = 0;
+        ZUIPointerCaptureEndReason Reason   = ZUIPointerCaptureEndReason::None;
+        bool                       Pending  = false;
+    };
+
     /// @brief Single source of truth for all UI colors.
     ///
     /// Swap the whole struct at runtime to change the entire editor theme.
@@ -374,94 +408,100 @@ namespace ZEngine::UI
             ZUIStyleVar Id  = ZUIStyleVar_Alpha; ///< Which property was overridden.
             float       Old = 0.f;               ///< Previous value to restore on pop.
         };
-        ZUIStyleEntry             StyleStack[64]       = {};
-        uint32_t                  StyleStackDepth      = 0;
+        ZUIStyleEntry             StyleStack[64]          = {};
+        uint32_t                  StyleStackDepth         = 0;
 
         // active color theme — swap to retheme the whole UI at runtime
-        ZUITheme                  Theme                = {};
+        ZUITheme                  Theme                   = {};
 
         // Vector draw list — populated by PreparePayload each frame (FrameArena-backed)
-        ZUIDrawList               DrawList             = {};
+        ZUIDrawList               DrawList                = {};
 
         // Logical UI dimensions — set by AppRenderPipeline::BeginOverlayFrame each frame.
-        uint32_t                  ScreenW              = 1280;
-        uint32_t                  ScreenH              = 720;
+        uint32_t                  ScreenW                 = 1280;
+        uint32_t                  ScreenH                 = 720;
         // Physical framebuffer pixels per ZUI coordinate.  This incorporates the GLFW
         // content scale on platforms where the framebuffer/window ratio remains 1:1.
-        float                     UIScale              = 1.f;
+        float                     UIScale                 = 1.f;
         // Converts GLFW cursor coordinates into ZUI coordinates.  GLFW reports
         // positions in window coordinates, which may be larger than ZUI's
         // DPI-independent coordinate space.
-        float                     InputScale[2]        = {1.f, 1.f};
+        float                     InputScale[2]           = {1.f, 1.f};
         // Log dimensions initially and on changes, never on every frame.
-        bool                      UIScaleLogged        = false;
+        bool                      UIScaleLogged           = false;
 
         // drag-and-drop — source is set by ZUIBeginDragSource while a box is held+moving;
         // drop result (DragDropFired/DragTargetKey) is set by ZUIInteractionPass on mouse-release
         // and cleared at the START of the next ZUIEndFrame so BuildUI can read it
-        uint64_t                  DragSourceKey        = 0;
-        char                      DragPayload[512]     = {};
-        uint32_t                  DragPayloadLen       = 0;
-        bool                      DragDropFired        = false;
-        uint64_t                  DragTargetKey        = 0;
+        uint64_t                  DragSourceKey           = 0;
+        char                      DragPayload[512]        = {};
+        uint32_t                  DragPayloadLen          = 0;
+        bool                      DragDropFired           = false;
+        uint64_t                  DragTargetKey           = 0;
 
         // Written by ViewportPanel each UI frame; consumed by the next application update
         // to identify the scene viewport's pointer target.
-        bool                      ViewportHovered      = false;
-        uint64_t                  ViewportInputKey     = 0;
-        int                       ResizeCursor         = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
+        bool                      ViewportHovered         = false;
+        uint64_t                  ViewportInputKey        = 0;
+        uint64_t                  ViewportGeneration      = 0;
+        // Separate from box ActiveKey: native editor tools capture a drag even
+        // while the cursor leaves the viewport or crosses ordinary UI widgets.
+        ZUIPointerCapture         PointerCapture          = {};
+        ZUIPointerCaptureEndEvent PointerCaptureEnd       = {};
+        ZUIPointerCaptureToken    NextPointerCaptureToken = 1;
+        int                       ResizeCursor            = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
 
         // Modifier key state — written by ZUILayer::OnKeyPressed/Released
-        bool                      CtrlDown             = false;
-        bool                      ShiftDown            = false;
-        bool                      AltDown              = false;
+        bool                      CtrlDown                = false;
+        bool                      ShiftDown               = false;
+        bool                      AltDown                 = false;
         // Set by text-editing widgets while their field owns FocusKey. This
         // remains separate from generic keyboard focus used for buttons and
         // tree rows so editor navigation can stay available after selection.
-        bool                      TextInputActive      = false;
+        bool                      TextInputActive         = false;
 
         // Tab focus navigation — set by ZUILayer, consumed by ZUIEndFrame
-        bool                      TabPressed           = false;
-        bool                      ShiftTabPressed      = false;
-        bool                      EscapePressed        = false; // clear FocusKey
-        bool                      EnterPressed         = false; // confirm / deactivate field
-        bool                      SpacePressed         = false; // activate focused button
-        bool                      ArrowUpPressed       = false; // nudge drag float / combo nav
-        bool                      ArrowDownPressed     = false;
-        bool                      ArrowLeftPressed     = false; // text cursor left
-        bool                      ArrowRightPressed    = false; // text cursor right
-        bool                      HomePressed          = false; // cursor to start of field
-        bool                      EndPressed           = false; // cursor to end of field
-        bool                      CtrlCPressed         = false;
-        bool                      CtrlXPressed         = false;
-        bool                      CtrlBackspacePressed = false;
-        bool                      CtrlAPressed         = false;
-        bool                      CtrlZPressed         = false; // undo
-        bool                      CtrlYPressed         = false; // redo
-        bool                      DeletePressed        = false; // forward-delete at cursor
+        bool                      TabPressed              = false;
+        bool                      ShiftTabPressed         = false;
+        bool                      EscapePressed           = false; // clear FocusKey
+        bool                      EnterPressed            = false; // confirm / deactivate field
+        bool                      SpacePressed            = false; // activate focused button
+        bool                      ArrowUpPressed          = false; // nudge drag float / combo nav
+        bool                      ArrowDownPressed        = false;
+        bool                      ArrowLeftPressed        = false; // text cursor left
+        bool                      ArrowRightPressed       = false; // text cursor right
+        bool                      HomePressed             = false; // cursor to start of field
+        bool                      EndPressed              = false; // cursor to end of field
+        bool                      CtrlCPressed            = false;
+        bool                      CtrlXPressed            = false;
+        bool                      CtrlBackspacePressed    = false;
+        bool                      CtrlAPressed            = false;
+        bool                      CtrlZPressed            = false; // undo
+        bool                      CtrlYPressed            = false; // redo
+        bool                      DeletePressed           = false; // forward-delete at cursor
         // Held state for key-repeat (same mechanism as BackspaceHeld)
-        bool                      ArrowLeftHeld        = false;
-        bool                      ArrowRightHeld       = false;
-        bool                      ArrowUpHeld          = false;
-        bool                      ArrowDownHeld        = false;
-        bool                      DeleteHeld           = false;
-        float                     ArrowRepeatTimer     = 0.f;
+        bool                      ArrowLeftHeld           = false;
+        bool                      ArrowRightHeld          = false;
+        bool                      ArrowUpHeld             = false;
+        bool                      ArrowDownHeld           = false;
+        bool                      DeleteHeld              = false;
+        float                     ArrowRepeatTimer        = 0.f;
         // Per-frame tracking updated in ZUISignalFromBox during the build pass
-        uint64_t                  TabNavNextKey        = 0; // first clickable after FocusKey
-        uint64_t                  TabNavPrevKey        = 0; // last clickable before FocusKey
-        uint64_t                  TabNavFirstKey       = 0; // first clickable seen (wraparound)
-        uint64_t                  TabNavLastKey        = 0; // last clickable seen (Shift+Tab wrap)
-        bool                      TabNavSeenFocus      = false;
+        uint64_t                  TabNavNextKey           = 0; // first clickable after FocusKey
+        uint64_t                  TabNavPrevKey           = 0; // last clickable before FocusKey
+        uint64_t                  TabNavFirstKey          = 0; // first clickable seen (wraparound)
+        uint64_t                  TabNavLastKey           = 0; // last clickable seen (Shift+Tab wrap)
+        bool                      TabNavSeenFocus         = false;
 
         // Input repeat — ZUIEndFrame advances the timer; after RepeatDelay
         // it fires BackspacePressed / ArrowPressed at RepeatRate hz
-        float                     KeyRepeatTimer       = 0.f;
-        static constexpr float    kRepeatDelay         = 0.45f; // s before first repeat
-        static constexpr float    kRepeatRate          = 0.04f; // s between repeats
+        float                     KeyRepeatTimer          = 0.f;
+        static constexpr float    kRepeatDelay            = 0.45f; // s before first repeat
+        static constexpr float    kRepeatRate             = 0.04f; // s between repeats
 
         // ZUIBeginDisabled / ZUIEndDisabled — widgets skip Clickable and dim colours
-        bool                      Disabled             = false;
-        int                       DisabledDepth        = 0; // supports nesting
+        bool                      Disabled                = false;
+        int                       DisabledDepth           = 0; // supports nesting
 
         // Popup stack — supports nested popups (menus + submenus).
         // ZUIOpenPopup queues a push at the current PopupBuildDepth.
@@ -470,7 +510,7 @@ namespace ZEngine::UI
         //   and increments PopupBuildDepth for nested content.
         // ZUIClosePopup clears the entire stack.
         // Interaction pass pops from innermost outward when pressing outside.
-        static constexpr uint32_t kMaxPopupDepth       = 8;
+        static constexpr uint32_t kMaxPopupDepth          = 8;
         struct ZUIPopupEntry
         {
             uint64_t Key         = 0;
@@ -572,7 +612,7 @@ namespace ZEngine::UI
         const bool other_drag      = ctx->DragSourceKey != 0 && ctx->DragSourceKey != ctx->ViewportInputKey;
 
         return {
-            .Pointer  = !viewport_active || modal_or_popup || other_hot || other_active || other_drag,
+            .Pointer  = ctx->PointerCapture.Active || !viewport_active || modal_or_popup || other_hot || other_active || other_drag,
             .Keyboard = modal_or_popup || ctx->TextInputActive,
         };
     }

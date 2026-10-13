@@ -548,7 +548,7 @@ namespace ZEngine
             if (frame_valid && state.Scene)
             {
                 const auto* overlay = state.RenderOverlay ? (has_next_overlay ? &next_overlay->ZUIOverlay : (retained_overlay ? &retained_overlay->ZUIOverlay : nullptr)) : nullptr;
-                pipeline->RenderScene(state.Camera, state.Scene, state.Sky, state.CelestialLight, state.SkyRevision, overlay);
+                pipeline->RenderScene(state.Camera, state.Scene, state.Sky, state.CelestialLight, state.SkyRevision, state.Gizmo, overlay);
             }
             pipeline->EndFrame();
             if (!frame_valid)

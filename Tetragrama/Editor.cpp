@@ -7,6 +7,7 @@
 #include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
+#include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIContext.h>
@@ -86,6 +87,9 @@ namespace Tetragrama
         ZUIUILayer->AddComponent(sbar);
         editor_cam_controller->Initialize(&EditorArena, CurrentWindow, ZEngine::Engine::GetContext()->InputManager, this);
         editor_scene->Initialize(&EditorArena, Configuration->ActiveSceneName.c_str(), Configuration->DefaultSky);
+        GizmoController.Initialize(&EditorArena, ZEngine::ECS::ActorManager::MAX_ACTORS);
+        if (Configuration->GizmoOperation >= -1 && Configuration->GizmoOperation <= 2)
+            GizmoController.SetOperation(static_cast<ZEngine::Rendering::Renderers::GizmoOperation>(Configuration->GizmoOperation + 1));
 
         CameraController = editor_cam_controller;
         CurrentScene     = editor_scene;
@@ -160,6 +164,11 @@ namespace Tetragrama
 
     void Editor::OnUpdate(float dt)
     {
+        // Focus loss can end a native gizmo lease before camera input is sampled.
+        // Update ZUI first so its capture state is authoritative for this frame.
+        if (ZUIUILayer)
+            ZUIUILayer->Update(dt);
+
         if (CameraController)
         {
             ZEngine::UI::ZUIInputCapture capture = {};
@@ -167,9 +176,12 @@ namespace Tetragrama
                 capture = ZEngine::UI::ZUIGetInputCapture(RenderPipeline->ZUICtx);
             CameraController->SetInputCapture(capture.Pointer, capture.Keyboard);
         }
+    }
 
-        if (ZUIUILayer)
-            ZUIUILayer->Update(dt);
+    void Editor::PrepareScene(ZEngine::Applications::RenderFrameState& state)
+    {
+        ZEngine::Applications::GameApplication::PrepareScene(state);
+        state.Gizmo = GizmoController.RenderState();
     }
 
     void Editor::OnEvent(Core::CoreEvent& /*e*/)

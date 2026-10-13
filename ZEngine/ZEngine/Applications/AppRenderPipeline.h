@@ -22,20 +22,22 @@ namespace ZEngine::Applications
     /// @brief Latest render state transferred from the main thread to the render thread.
     struct RenderFrameState
     {
-        Rendering::Cameras::CameraFrameData  Camera         = {};
-        Rendering::Scenes::RenderScenePtr    Scene          = nullptr;
+        Rendering::Cameras::CameraFrameData    Camera         = {};
+        Rendering::Scenes::RenderScenePtr      Scene          = nullptr;
         // Immutable authoring copy paired with the scene revision. The render
         // thread must consume this instead of reading Scene->Sky directly.
-        Rendering::Scenes::SkyConfig         Sky            = {};
-        Rendering::Scenes::SkyCelestialLight CelestialLight = {};
-        uint64_t                             SkyRevision    = 0;
-        uint32_t                             RenderTargetW  = 0;
-        uint32_t                             RenderTargetH  = 0;
-        uint64_t                             ResizeSequence = 0;
+        Rendering::Scenes::SkyConfig           Sky            = {};
+        Rendering::Scenes::SkyCelestialLight   CelestialLight = {};
+        uint64_t                               SkyRevision    = 0;
+        uint32_t                               RenderTargetW  = 0;
+        uint32_t                               RenderTargetH  = 0;
+        uint64_t                               ResizeSequence = 0;
         // Physical window size, captured on the main thread with platform events.
-        uint32_t                             FramebufferW   = 0;
-        uint32_t                             FramebufferH   = 0;
-        bool                                 RenderOverlay  = false;
+        uint32_t                               FramebufferW   = 0;
+        uint32_t                               FramebufferH   = 0;
+        /// @brief Editor presentation data copied by value with this frame.
+        Rendering::Renderers::GizmoRenderState Gizmo          = {};
+        bool                                   RenderOverlay  = false;
     };
 
     /// @brief Immutable ZUI draw data retained while the render thread records it.
@@ -73,7 +75,7 @@ namespace ZEngine::Applications
         bool                                     BeginFrame();
         void                                     EndFrame();
 
-        void                                     RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, const Rendering::Scenes::SkyCelestialLight& celestial_light, uint64_t sky_revision, const Rendering::Renderers::ZUIRenderPayload* overlay);
+        void                                     RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, const Rendering::Scenes::SkyCelestialLight& celestial_light, uint64_t sky_revision, const Rendering::Renderers::GizmoRenderState& gizmo, const Rendering::Renderers::ZUIRenderPayload* overlay);
 
         void                                     BeginOverlayFrame(float dt = 0.f);
         void                                     EndOverlayFrame();

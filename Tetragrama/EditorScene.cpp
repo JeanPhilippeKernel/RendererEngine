@@ -19,7 +19,12 @@ namespace Tetragrama
 {
     namespace
     {
-        uuids::uuid GenerateEntityUUID()
+        constexpr uint32_t TransformHistoryCommandCapacity = 64;
+        // This is a fixed editor-memory budget: complete commands, never partial
+        // record sets, are retired instead of growing EditorArena for every drag.
+        constexpr uint32_t TransformHistoryRecordCapacity  = 16384;
+
+        uuids::uuid        GenerateEntityUUID()
         {
             std::random_device           random_device;
             std::mt19937                 generator(random_device());
@@ -50,6 +55,7 @@ namespace Tetragrama
 
         AssetFiles.init(LocalArena, 500);
         HashToAssetFile.init(LocalArena, 500);
+        TransformSession.Initialize(LocalArena, ZEngine::ECS::ActorManager::MAX_ACTORS, TransformHistoryCommandCapacity, TransformHistoryRecordCapacity);
 
         // Allocate a sub-arena for the instance list.
         LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "EditorContext/EditorScene/Instances");
@@ -142,6 +148,7 @@ namespace Tetragrama
 
             AssetFiles.init(LocalArena, 500);
             HashToAssetFile.init(LocalArena, 500);
+            TransformSession.Initialize(LocalArena, ZEngine::ECS::ActorManager::MAX_ACTORS, TransformHistoryCommandCapacity, TransformHistoryRecordCapacity);
             Instances.init(&InstanceArena, 64);
             return true;
         }
@@ -205,6 +212,8 @@ namespace Tetragrama
 
     void EditorScene::Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
     {
+        ClearSelection();
+        TransformSession.History().Clear();
         AssetFiles.clear();
         HashToAssetFile.clear();
 
@@ -219,6 +228,164 @@ namespace Tetragrama
         MarkSkyDirty();
 
         Dirty.value.store(false, std::memory_order_release);
+    }
+
+    void EditorScene::SyncPrimarySelection()
+    {
+        SelectedActorHandle                 = {};
+        const ZEngine::ECS::EntityID active = TransformSession.ActiveEntity();
+        if (!active.IsValid())
+            return;
+
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager)
+            return;
+
+        context->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle handle, ZEngine::ECS::Actor* actor) {
+            if (!SelectedActorHandle.Valid() && actor->GetEntityID() == active)
+                SelectedActorHandle = handle;
+        });
+    }
+
+    bool EditorScene::SelectActor(ZEngine::ECS::ActorHandle handle, bool append)
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager || !context->Scene)
+            return false;
+
+        ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        if (!actor)
+            return false;
+
+        const ZEngine::ECS::EntityID entity   = actor->GetEntityID();
+        bool                         selected = false;
+        if (append)
+            selected = TransformSession.AddToSelection(*context->Scene, entity);
+        else
+            selected = TransformSession.SetSelection(*context->Scene, {&entity, 1}, entity);
+        if (!selected)
+            return false;
+
+        SyncPrimarySelection();
+        return true;
+    }
+
+    bool EditorScene::SelectRenderInstance(uint32_t instance_id, bool append)
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager || instance_id == 0)
+            return false;
+
+        ZEngine::ECS::ActorHandle owner = {};
+        context->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle handle, ZEngine::ECS::Actor* actor) {
+            if (owner.Valid())
+                return;
+            const MeshComponent* mesh = actor ? actor->GetComponent<MeshComponent>() : nullptr;
+            if (mesh && mesh->RenderInstanceId == instance_id)
+                owner = handle;
+        });
+        return owner.Valid() && SelectActor(owner, append);
+    }
+
+    bool EditorScene::ToggleActorSelection(ZEngine::ECS::ActorHandle handle)
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager || !context->Scene)
+            return false;
+
+        ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        if (!actor || !TransformSession.ToggleSelection(*context->Scene, actor->GetEntityID()))
+            return false;
+
+        SyncPrimarySelection();
+        return true;
+    }
+
+    bool EditorScene::RemoveActorFromSelection(ZEngine::ECS::ActorHandle handle)
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager)
+            return false;
+
+        ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        if (!actor || !TransformSession.RemoveFromSelection(actor->GetEntityID()))
+            return false;
+
+        SyncPrimarySelection();
+        return true;
+    }
+
+    bool EditorScene::EnsureActorUUID(ZEngine::ECS::ActorHandle handle)
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager)
+            return false;
+
+        ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        if (!actor)
+            return false;
+
+        UUIDComponent* identity = actor->GetComponent<UUIDComponent>();
+        if (!identity)
+        {
+            UUIDComponent created = {};
+            created.Value         = GenerateEntityUUID();
+            actor->AddComponent<UUIDComponent>(created);
+            identity = actor->GetComponent<UUIDComponent>();
+        }
+        else if (identity->Value.is_nil())
+        {
+            identity->Value = GenerateEntityUUID();
+        }
+        return identity && !identity->Value.is_nil();
+    }
+
+    void EditorScene::ClearSelection()
+    {
+        TransformSession.ClearSelection();
+        SelectedActorHandle = {};
+    }
+
+    bool EditorScene::IsActorSelected(ZEngine::ECS::ActorHandle handle) const
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->ActorManager)
+            return false;
+        const ZEngine::ECS::Actor* actor = context->ActorManager->Access(handle);
+        return actor && TransformSession.Contains(actor->GetEntityID());
+    }
+
+    uint32_t EditorScene::SelectedActorCount() const
+    {
+        return static_cast<uint32_t>(TransformSession.Selection().size());
+    }
+
+    bool EditorScene::UndoTransform()
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->Scene || !TransformSession.Undo(*context->Scene))
+            return false;
+        MarkDirty(true);
+        return true;
+    }
+
+    bool EditorScene::RedoTransform()
+    {
+        auto* context = ZEngine::Engine::GetContext();
+        if (!context || !context->Scene || !TransformSession.Redo(*context->Scene))
+            return false;
+        MarkDirty(true);
+        return true;
+    }
+
+    bool EditorScene::CanUndoTransform() const
+    {
+        return !TransformSession.IsActive() && TransformSession.History().CanUndo();
+    }
+
+    bool EditorScene::CanRedoTransform() const
+    {
+        return !TransformSession.IsActive() && TransformSession.History().CanRedo();
     }
 
     bool EditorScene::SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle)
@@ -351,6 +518,10 @@ namespace Tetragrama
         ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), name, ZEngine::Helpers::secure_strlen(name));
         actor->AddComponent<NameComponent>(nc);
         actor->AddComponent<TransformComponent>({});
+
+        UUIDComponent uc = {};
+        uc.Value         = GenerateEntityUUID();
+        actor->AddComponent<UUIDComponent>(uc);
 
         MeshComponent mc    = {};
         mc.MeshUUID         = mesh_uuid;

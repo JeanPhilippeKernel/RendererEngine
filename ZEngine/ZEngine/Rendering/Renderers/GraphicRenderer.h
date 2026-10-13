@@ -1,6 +1,7 @@
 #pragma once
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Cameras/Camera.h>
+#include <ZEngine/Rendering/Renderers/GizmoRenderData.h>
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
 #include <ZEngine/Rendering/Scenes/SkyEnvironment.h>
 
@@ -8,6 +9,7 @@ namespace ZEngine::Rendering::Renderers
 {
     struct LightingPass;
     struct GridPass;
+    struct GizmoPass;
     struct EnvironmentBackgroundPass;
     struct SkySpherePass;
     struct SkyViewLutPass;
@@ -70,6 +72,8 @@ namespace ZEngine::Rendering::Renderers
         /// @brief Pins the published environment and selects it for this immutable camera frame.
         void                                   BeginSkyFrame(const Cameras::CameraFrameData& camera);
         void                                   ApplyGridConfig(const Scenes::GridConfig& cfg);
+        /// @brief Applies the immutable editor-gizmo presentation snapshot for this frame.
+        void                                   ApplyGizmoState(const GizmoRenderState& state);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
         Textures::TextureHandle                GetFrameOutput();
         /// @brief Returns a coherent renderer-memory snapshot for a non-render-thread UI reader.
@@ -123,6 +127,7 @@ namespace ZEngine::Rendering::Renderers
         Scenes::SkyEnvironment                          m_sky_environment                          = {};
         LightingPass*                                   m_lighting_pass                            = nullptr;
         GridPass*                                       m_grid_pass                                = nullptr;
+        GizmoPass*                                      m_gizmo_pass                               = nullptr;
         EnvironmentBackgroundPass*                      m_environment_background_pass              = nullptr;
         SkySpherePass*                                  m_sky_sphere_pass                          = nullptr;
         SkyViewLutPass*                                 m_sky_view_lut_pass                        = nullptr;

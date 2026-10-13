@@ -21,7 +21,7 @@ namespace
         if (!app || !app->CurrentScene)
             return miss;
 
-        return ZEngine::Rendering::Scenes::RaycastSceneBounds(*app->CurrentScene, origin, direction, max_distance);
+        return ZEngine::Rendering::Scenes::RaycastSceneGeometry(*app->CurrentScene, origin, direction, max_distance);
     }
 
     bool GetEditorSelectionBounds(void* context, Vec3f& out_center, float& out_radius)

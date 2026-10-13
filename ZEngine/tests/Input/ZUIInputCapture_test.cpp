@@ -1,6 +1,7 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIInteraction.h>
+#include <ZEngine/UI/ZUIWidgets.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::UI;
@@ -72,6 +73,69 @@ TEST(ZUIInputCaptureTest, PopupsAndModalsCaptureBothInputChannels)
     capture            = ZUIGetInputCapture(&ctx);
     EXPECT_TRUE(capture.Pointer);
     EXPECT_TRUE(capture.Keyboard);
+}
+
+TEST(ZUIInputCaptureTest, ExplicitPointerLeaseCapturesOnlyThePointerAndCannotBeStolen)
+{
+    ZUIContext ctx                     = {};
+    ctx.ViewportInputKey               = 42;
+    ctx.ViewportGeneration             = 7;
+
+    const ZUIPointerCaptureToken token = ZUICapturePointer(&ctx, 100, 42, 7);
+    ASSERT_NE(token, 0u);
+    EXPECT_TRUE(ZUIHasPointerCapture(&ctx, token));
+    EXPECT_TRUE(ZUIGetInputCapture(&ctx).Pointer);
+    EXPECT_FALSE(ZUIGetInputCapture(&ctx).Keyboard);
+    EXPECT_EQ(ZUICapturePointer(&ctx, 101, 42, 7), 0u);
+
+    ASSERT_TRUE(ZUIReleasePointerCapture(&ctx, token));
+    // A consumer must observe the terminal event before another native tool
+    // can lease the pointer. This prevents a release from being mistaken for
+    // the next tool's drag start.
+    EXPECT_EQ(ZUICapturePointer(&ctx, 101, 42, 7), 0u);
+    ZUIPointerCaptureEndReason reason = ZUIPointerCaptureEndReason::None;
+    ASSERT_TRUE(ZUIConsumePointerCaptureEnd(&ctx, token, reason));
+    EXPECT_EQ(reason, ZUIPointerCaptureEndReason::Released);
+    EXPECT_FALSE(ZUIGetInputCapture(&ctx).Pointer);
+    EXPECT_NE(ZUICapturePointer(&ctx, 101, 42, 7), 0u);
+}
+
+TEST(ZUIInputCaptureTest, EndOfFrameCancelsAViewportLeaseForEscapeOrViewportReplacement)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+
+    ZUIContext ctx = {};
+    ZUIContextInit(&ctx, &memory.MainArena, ZKilo(64), ZKilo(16), 64, 16);
+
+    ZUIBeginFrame(&ctx, 1.f / 60.f);
+    ZUIBox* root = ZUIBeginColumn(&ctx, "root", ZPx(100.f), ZPx(100.f));
+    ZUIEndColumn(&ctx);
+    ctx.ViewportInputKey                      = 42;
+    ctx.ViewportGeneration                    = 3;
+    const ZUIPointerCaptureToken escape_token = ZUICapturePointer(&ctx, 1, 42, 3);
+    ASSERT_NE(escape_token, 0u);
+    ctx.EscapePressed = true;
+    ZUIEndFrame(&ctx);
+
+    ZUIPointerCaptureEndReason reason = ZUIPointerCaptureEndReason::None;
+    ASSERT_TRUE(ZUIConsumePointerCaptureEnd(&ctx, escape_token, reason));
+    EXPECT_EQ(reason, ZUIPointerCaptureEndReason::Escape);
+
+    ZUIBeginFrame(&ctx, 1.f / 60.f);
+    root = ZUIBeginColumn(&ctx, "root", ZPx(100.f), ZPx(100.f));
+    ZUIEndColumn(&ctx);
+    ctx.ViewportInputKey                        = 42;
+    ctx.ViewportGeneration                      = 4;
+    const ZUIPointerCaptureToken viewport_token = ZUICapturePointer(&ctx, 1, 42, 4);
+    ASSERT_NE(viewport_token, 0u);
+    ctx.ViewportGeneration = 5;
+    ZUIEndFrame(&ctx);
+
+    ASSERT_TRUE(ZUIConsumePointerCaptureEnd(&ctx, viewport_token, reason));
+    EXPECT_EQ(reason, ZUIPointerCaptureEndReason::ViewportUnavailable);
+    ZUIContextDestroy(&ctx);
+    memory.Shutdown();
 }
 
 TEST(ZUIInputCaptureTest, PortaledPopupInsideModalRemainsMouseInteractive)

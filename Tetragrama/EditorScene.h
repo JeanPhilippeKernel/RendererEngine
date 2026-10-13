@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/ECS/ActorManager.h>
+#include <ZEngine/ECS/Tools/TransformEditSession.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 
@@ -23,7 +24,10 @@ namespace Tetragrama
         cstring                                                         Name                = "";
         PaddedAtomic<bool>                                              Dirty               = {};
         PaddedAtomic<bool>                                              HasPendingChanges   = {};
-        ZEngine::ECS::ActorHandle                                       SelectedActorHandle = {}; // invalid = nothing selected
+        // Compatibility primary selection for existing inspector/camera panels. The
+        // TransformSession is authoritative and can represent a multi-selection.
+        ZEngine::ECS::ActorHandle                                       SelectedActorHandle = {};
+        ZEngine::ECS::Tools::TransformEditSession                       TransformSession    = {};
 
         ZEngine::Core::Containers::UnorderedHashMap<uint64_t, uint32_t> HashToAssetFile     = {};
         ZEngine::Core::Containers::Array<EditorAssetSceneFiles>         AssetFiles          = {};
@@ -45,6 +49,24 @@ namespace Tetragrama
         void                      Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
         void                      ExtractAsync(const EditorScene& scene);
 
+        /// @brief Selection entry points used by hierarchy, viewport and shortcuts.
+        /// @details They keep the legacy primary ActorHandle synchronized with the
+        ///          transform session's ECS selection.
+        bool                      SelectActor(ZEngine::ECS::ActorHandle handle, bool append = false);
+        /// @brief Selects the actor that owns a render-scene instance identifier.
+        bool                      SelectRenderInstance(uint32_t instance_id, bool append = false);
+        bool                      ToggleActorSelection(ZEngine::ECS::ActorHandle handle);
+        bool                      RemoveActorFromSelection(ZEngine::ECS::ActorHandle handle);
+        bool                      EnsureActorUUID(ZEngine::ECS::ActorHandle handle);
+        void                      ClearSelection();
+        [[nodiscard]] bool        IsActorSelected(ZEngine::ECS::ActorHandle handle) const;
+        [[nodiscard]] uint32_t    SelectedActorCount() const;
+
+        [[nodiscard]] bool        UndoTransform();
+        [[nodiscard]] bool        RedoTransform();
+        [[nodiscard]] bool        CanUndoTransform() const;
+        [[nodiscard]] bool        CanRedoTransform() const;
+
         /// @brief Assigns a directional actor as the sky's optional sun source.
         /// @return False when @p handle is stale or does not name a directional light.
         bool                      SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle);
@@ -56,6 +78,7 @@ namespace Tetragrama
         ZEngine::ECS::ActorHandle SpawnMeshActor(const uuids::uuid& mesh_uuid, const char* name);
 
     private:
+        void SyncPrimarySelection();
         void ReleaseDeserializedArena();
     };
     ZDEFINE_PTR(EditorScene);

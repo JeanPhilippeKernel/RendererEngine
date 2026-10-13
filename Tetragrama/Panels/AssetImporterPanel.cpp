@@ -772,6 +772,14 @@ namespace Tetragrama::Panels
                 mc.MeshUUID         = mesh_uuid;
                 mc.RenderInstanceId = render_instance_id;
                 actor->AddComponent<MeshComponent>(mc);
+
+                auto* app   = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+                auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
+                if (scene)
+                {
+                    scene->EnsureActorUUID(handle);
+                    scene->SelectActor(handle);
+                }
             }
         }
     }

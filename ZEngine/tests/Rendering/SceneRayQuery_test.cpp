@@ -91,3 +91,30 @@ TEST(SceneRayQueryTest, IgnoresInvalidBounds)
     EXPECT_EQ(hit.InstanceId, 2u);
     EXPECT_NEAR(hit.Distance, 4.0f, 1e-6f);
 }
+
+TEST(SceneRayQueryTest, IntersectsIndexedMeshTrianglesInsteadOfTheirBoundingVolume)
+{
+    // The ray passes through this triangle's enclosing sphere but outside the
+    // triangle itself. Bounds-only selection would produce a false positive.
+    const float vertices[] = {
+        -1.f, 1.f, -4.f, 0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 1.f, -4.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 2.f, -4.f, 0.f, 0.f, 1.f, 0.f, 0.f,
+    };
+    const uint32_t indices[] = {0, 1, 2};
+    float          distance  = 17.f;
+    EXPECT_FALSE(RaycastIndexedTriangles({vertices, 24}, {indices, 3}, Identity<Mat4f>(), {0.f, 0.f, 0.f}, {0.f, 0.f, -1.f}, 20.f, distance));
+    EXPECT_FLOAT_EQ(distance, 17.f);
+}
+
+TEST(SceneRayQueryTest, ReturnsTheNearestTransformedMeshTriangle)
+{
+    const float vertices[] = {
+        -1.f, -1.f, -2.f, 0.f, 0.f, 1.f, 0.f, 0.f, 1.f, -1.f, -2.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, -2.f, 0.f, 0.f, 1.f, 0.f, 0.f, -1.f, -1.f, -5.f, 0.f, 0.f, 1.f, 0.f, 0.f, 1.f, -1.f, -5.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, -5.f, 0.f, 0.f, 1.f, 0.f, 0.f,
+    };
+    const uint32_t indices[] = {0, 1, 2, 3, 4, 5};
+    Mat4f          transform = Identity<Mat4f>();
+    transform(0, 3)          = 2.f;
+
+    float distance           = 0.f;
+    ASSERT_TRUE(RaycastIndexedTriangles({vertices, 48}, {indices, 6}, transform, {2.f, 0.f, 0.f}, {0.f, 0.f, -2.f}, 20.f, distance));
+    EXPECT_NEAR(distance, 2.f, 1.0e-5f);
+}

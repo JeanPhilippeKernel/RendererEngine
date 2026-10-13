@@ -58,6 +58,16 @@ namespace Tetragrama::Layers
         return false;
     }
 
+    void ZUILayer::Update(ZEngine::Core::TimeStep /*dt*/)
+    {
+        if (!m_ctx)
+            return;
+
+        auto*      engine  = ZEngine::Engine::GetContext();
+        const bool focused = engine && engine->InputManager && engine->InputManager->IsWindowFocused();
+        ZEngine::UI::ZUISetPointerCaptureWindowFocused(m_ctx, focused);
+    }
+
     void ZUILayer::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const, ZEngine::Hardwares::CommandBuffer* const)
     {
         if (!m_ctx || m_component_count == 0)

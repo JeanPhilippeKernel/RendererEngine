@@ -3,6 +3,7 @@
 #include <ZEngine/Rendering/Scenes/SceneRayQuery.h>
 #include <atomic>
 #include <cmath>
+#include <mutex>
 
 using namespace ZEngine::Core::Maths;
 
@@ -39,6 +40,37 @@ namespace
         const float far_distance  = -projection + root;
         const float distance      = near_distance > 0.0f ? near_distance : far_distance;
         if (!std::isfinite(distance) || distance <= 0.0f || distance > max_distance)
+            return false;
+
+        out_distance = distance;
+        return true;
+    }
+
+    bool IntersectTriangle(const Vec3f& origin, const Vec3f& direction, const Vec3f& a, const Vec3f& b, const Vec3f& c, float max_distance, float& out_distance)
+    {
+        if (!IsFinite(a) || !IsFinite(b) || !IsFinite(c))
+            return false;
+
+        const Vec3f edge_ab     = b - a;
+        const Vec3f edge_ac     = c - a;
+        const Vec3f p           = cross3d(direction, edge_ac);
+        const float determinant = dot(edge_ab, p);
+        if (!std::isfinite(determinant) || std::fabs(determinant) <= 1.0e-7f)
+            return false;
+
+        const float reciprocal = 1.f / determinant;
+        const Vec3f from_a     = origin - a;
+        const float u          = dot(from_a, p) * reciprocal;
+        if (!std::isfinite(u) || u < 0.f || u > 1.f)
+            return false;
+
+        const Vec3f q = cross3d(from_a, edge_ab);
+        const float v = dot(direction, q) * reciprocal;
+        if (!std::isfinite(v) || v < 0.f || u + v > 1.f)
+            return false;
+
+        const float distance = dot(edge_ac, q) * reciprocal;
+        if (!std::isfinite(distance) || distance <= 1.0e-5f || distance > max_distance)
             return false;
 
         out_distance = distance;
@@ -141,6 +173,46 @@ namespace ZEngine::Rendering::Scenes
         return result;
     }
 
+    bool RaycastIndexedTriangles(Core::Containers::ArrayView<const float> vertices, Core::Containers::ArrayView<const uint32_t> indices, const Mat4f& transform, Vec3f origin, Vec3f direction, float max_distance, float& out_distance)
+    {
+        if (vertices.size() < 24 || vertices.size() % 8 != 0 || indices.size() < 3 || !std::isfinite(max_distance) || max_distance <= 0.f || !IsFinite(origin))
+            return false;
+
+        Vec3f normalized_direction = {};
+        if (!NormalizeRayDirection(direction, normalized_direction))
+            return false;
+
+        const uint32_t vertex_count = static_cast<uint32_t>(vertices.size() / 8);
+        float          closest      = max_distance;
+        bool           hit          = false;
+        for (size_t index = 0; index + 2 < indices.size(); index += 3)
+        {
+            const uint32_t triangle[3] = {indices[index], indices[index + 1], indices[index + 2]};
+            if (triangle[0] >= vertex_count || triangle[1] >= vertex_count || triangle[2] >= vertex_count)
+                continue;
+
+            const Vec3f local[3] = {
+                {vertices[static_cast<size_t>(triangle[0]) * 8], vertices[static_cast<size_t>(triangle[0]) * 8 + 1], vertices[static_cast<size_t>(triangle[0]) * 8 + 2]},
+                {vertices[static_cast<size_t>(triangle[1]) * 8], vertices[static_cast<size_t>(triangle[1]) * 8 + 1], vertices[static_cast<size_t>(triangle[1]) * 8 + 2]},
+                {vertices[static_cast<size_t>(triangle[2]) * 8], vertices[static_cast<size_t>(triangle[2]) * 8 + 1], vertices[static_cast<size_t>(triangle[2]) * 8 + 2]},
+            };
+            const Vec3f a        = TransformPoint(transform, local[0]);
+            const Vec3f b        = TransformPoint(transform, local[1]);
+            const Vec3f c        = TransformPoint(transform, local[2]);
+            float       distance = 0.f;
+            if (!IntersectTriangle(origin, normalized_direction, a, b, c, closest, distance))
+                continue;
+
+            closest = distance;
+            hit     = true;
+        }
+
+        if (!hit)
+            return false;
+        out_distance = closest;
+        return true;
+    }
+
     SceneRaycastHit RaycastSceneBounds(const RenderScene& scene, Vec3f origin, Vec3f direction, float max_distance)
     {
         SceneRaycastHit result = {};
@@ -180,6 +252,64 @@ namespace ZEngine::Rendering::Scenes
                 closest.Hit        = true;
                 closest.Distance   = distance;
                 closest.InstanceId = bounds.InstanceId;
+            }
+
+            std::atomic_thread_fence(std::memory_order_acquire);
+            const uint64_t sequence_after = scene.m_seq.value.load(std::memory_order_acquire);
+            if (sequence_before == sequence_after)
+                return closest;
+        }
+    }
+
+    SceneRaycastHit RaycastSceneGeometry(const RenderScene& scene, Vec3f origin, Vec3f direction, float max_distance)
+    {
+        SceneRaycastHit result = {};
+        result.Distance        = max_distance;
+        if (!std::isfinite(max_distance) || max_distance <= 0.f)
+            return result;
+
+        auto* assets = Managers::AssetManager::Instance();
+        if (!assets)
+            return result;
+
+        Vec3f normalized_direction = {};
+        if (!NormalizeRayDirection(direction, normalized_direction))
+            return result;
+
+        // Mesh storage can be replaced during a reimport. Hold the same lock
+        // used by ingestion across this click-only query so vertex/index views
+        // remain valid without copying them into a transient container.
+        std::lock_guard lock(assets->IngestMutex);
+        while (true)
+        {
+            const uint64_t sequence_before = scene.m_seq.value.load(std::memory_order_acquire);
+            if (sequence_before & 1u)
+                continue;
+
+            const MeshInstance* const instances      = scene.Instances.data();
+            const size_t              instance_count = scene.Instances.size();
+            SceneRaycastHit           closest        = {};
+            closest.Distance                         = max_distance;
+
+            for (size_t index = 0; index < instance_count; ++index)
+            {
+                const MeshInstance&         instance = instances[index];
+                Importers::AssetMesh* const mesh     = assets->GetMeshAsset(instance.MeshUUID);
+                if (!mesh || mesh->BoundsRadius <= 0.f)
+                    continue;
+
+                const SceneRaycastBounds bounds         = TransformBounds(mesh->BoundsCenter, mesh->BoundsRadius, instance.Transform, instance.Id);
+                float                    broad_distance = 0.f;
+                if (!IntersectSphere(origin, normalized_direction, bounds, closest.Distance, broad_distance))
+                    continue;
+
+                float distance = 0.f;
+                if (!RaycastIndexedTriangles({mesh->Vertices.data(), mesh->Vertices.size()}, {mesh->Indices.data(), mesh->Indices.size()}, instance.Transform, origin, normalized_direction, closest.Distance, distance))
+                    continue;
+
+                closest.Hit        = true;
+                closest.Distance   = distance;
+                closest.InstanceId = instance.Id;
             }
 
             std::atomic_thread_fence(std::memory_order_acquire);
