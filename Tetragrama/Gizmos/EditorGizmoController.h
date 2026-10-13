@@ -46,6 +46,10 @@ namespace Tetragrama::Gizmos
         [[nodiscard]] CoordinateSpace                                        Space() const;
         [[nodiscard]] bool                                                   IsManipulating() const;
 
+        /// @brief Processes terminal input events even when the viewport is hidden.
+        void                                                                 UpdateInputCapture(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, ZEngine::ECS::Scene& scene);
+        void                                                                 Cancel(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, ZEngine::ECS::Scene& scene);
+
         /// @brief Processes one UI frame for the viewport and updates the render snapshot.
         /// @param viewport_rect Logical UI coordinates [left, top, right, bottom].
         void                                                                 Update(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, ZEngine::ECS::Scene& scene, const ZEngine::Rendering::Cameras::FlyCamera& camera, const float viewport_rect[4], uint64_t viewport_key, uint64_t viewport_generation);
@@ -91,13 +95,14 @@ namespace Tetragrama::Gizmos
             ZEngine::Core::Maths::Vec3f         AxisNormal         = {0.f, 0.f, 1.f};
             float                               GizmoScale         = 1.f;
             float                               StartScalar        = 0.f;
-            float                               StartRadius        = 0.f;
             ZEngine::Core::Maths::Vec3f         StartPoint         = {};
             float                               StartScreen[2]     = {};
+            float                               StartMouse[2]      = {};
             float                               ScreenRotationSign = 1.f;
             bool                                UseWorldRotation   = false;
             DragCamera                          Camera             = {};
             bool                                Active             = false;
+            bool                                Previewed          = false;
         };
 
         [[nodiscard]] bool                                            RebuildPresentation(EditorScene& editor_scene, ZEngine::ECS::Scene& scene, const ZEngine::Rendering::Cameras::FlyCamera& camera, const float viewport_rect[4], const float input_scale[2]);

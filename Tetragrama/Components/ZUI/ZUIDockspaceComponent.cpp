@@ -101,8 +101,9 @@ namespace Tetragrama::Components
                     ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
                         auto* app     = reinterpret_cast<EditorPtr>(ptr);
                         auto* eng_ctx = ZEngine::Engine::GetContext();
-                        if (app && app->CurrentScene && eng_ctx && eng_ctx->ActorManager)
+                        if (app && app->CurrentScene && eng_ctx && eng_ctx->Scene && eng_ctx->ActorManager)
                         {
+                            app->GizmoController.Cancel(app->RenderPipeline ? app->RenderPipeline->ZUICtx : nullptr, *static_cast<EditorScene*>(app->CurrentScene), *eng_ctx->Scene);
                             eng_ctx->ActorManager->DestroyAll();
                             reinterpret_cast<EditorScenePtr>(app->CurrentScene)->Reset(app->Configuration->DefaultSky);
                         }
@@ -260,9 +261,8 @@ namespace Tetragrama::Components
                 m_modal_y = (sh - kH) * 0.5f;
             }
 
-            // Dim backdrop — visual only; NOT Clickable (a clickable full-screen sibling
-            // visited after the window in LIFO traversal would overwrite HotKey for all
-            // window children). Click-outside is detected via bounds check below instead.
+            // Dim backdrop is visual only. Click-outside is detected via the
+            // bounds check below rather than a full-screen clickable widget.
             {
                 ZUIBox* dim      = ZUIPushBox(ctx, "##stg_dim", 9, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 dim->Size[0]     = ZPx(sw);

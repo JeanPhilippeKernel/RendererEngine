@@ -151,7 +151,9 @@ namespace Tetragrama::Gizmos
             if (!std::isfinite(ndc_x) || !std::isfinite(ndc_y))
                 return false;
             out_x = rect[0] + (ndc_x * .5f + .5f) * (rect[2] - rect[0]);
-            out_y = rect[1] + (.5f - ndc_y * .5f) * (rect[3] - rect[1]);
+            // The Vulkan projection already flips Y and the viewport has a
+            // positive height, so NDC -1 is the top of the displayed image.
+            out_y = rect[1] + (.5f + ndc_y * .5f) * (rect[3] - rect[1]);
             return std::isfinite(out_x) && std::isfinite(out_y);
         }
 
@@ -324,7 +326,7 @@ namespace Tetragrama::Gizmos
             return false;
 
         out_x = camera.Rect[0] + (ndc_x * .5f + .5f) * (camera.Rect[2] - camera.Rect[0]);
-        out_y = camera.Rect[1] + (.5f - ndc_y * .5f) * (camera.Rect[3] - camera.Rect[1]);
+        out_y = camera.Rect[1] + (.5f + ndc_y * .5f) * (camera.Rect[3] - camera.Rect[1]);
         return std::isfinite(out_x) && std::isfinite(out_y);
     }
 
@@ -529,13 +531,15 @@ namespace Tetragrama::Gizmos
             return false;
         }
 
-        m_drag              = {};
-        m_drag.CaptureToken = capture;
-        m_drag.Handle       = handle;
-        m_drag.Pivot        = MatrixTranslation(m_render.Basis);
-        m_drag.AxisA        = AxisForHandle(handle, MatrixColumn(m_render.Basis, 0), MatrixColumn(m_render.Basis, 1), MatrixColumn(m_render.Basis, 2));
-        m_drag.GizmoScale   = m_render.Scale;
-        m_drag.Active       = true;
+        m_drag               = {};
+        m_drag.CaptureToken  = capture;
+        m_drag.Handle        = handle;
+        m_drag.Pivot         = MatrixTranslation(m_render.Basis);
+        m_drag.AxisA         = AxisForHandle(handle, MatrixColumn(m_render.Basis, 0), MatrixColumn(m_render.Basis, 1), MatrixColumn(m_render.Basis, 2));
+        m_drag.GizmoScale    = m_render.Scale;
+        m_drag.Active        = true;
+        m_drag.StartMouse[0] = ctx->MousePos[0];
+        m_drag.StartMouse[1] = ctx->MousePos[1];
 
         if (handle == GizmoHandle::PlaneXY)
         {
@@ -646,17 +650,10 @@ namespace Tetragrama::Gizmos
         }
         else if (m_operation == GizmoOperation::Scale && handle == GizmoHandle::Uniform)
         {
-            float pivot_x = 0.f, pivot_y = 0.f;
-            if (!ProjectDragPoint(m_drag.Pivot, pivot_x, pivot_y))
-            {
-                FinishDrag(ctx, editor_scene, scene, false);
-                return false;
-            }
-            const float dx     = ctx->MousePos[0] - pivot_x;
-            const float dy     = ctx->MousePos[1] - pivot_y;
-            m_drag.StartRadius = std::sqrt(dx * dx + dy * dy);
-            if (m_drag.StartRadius <= 1.0e-4f)
-                m_drag.StartRadius = UniformHitPixels;
+            // A center handle has no stable initial radius. Use signed screen
+            // displacement instead, so clicking its center cannot cause a jump.
+            m_drag.StartScreen[0] = ctx->MousePos[0];
+            m_drag.StartScreen[1] = ctx->MousePos[1];
         }
         else if (m_operation == GizmoOperation::Scale)
         {
@@ -670,6 +667,8 @@ namespace Tetragrama::Gizmos
     {
         if (!ctx || !m_drag.Active)
             return false;
+        if (!m_drag.Previewed && ctx->MousePos[0] == m_drag.StartMouse[0] && ctx->MousePos[1] == m_drag.StartMouse[1])
+            return true;
         GizmoRay   ray     = {};
         const bool has_ray = CursorRayForDrag(*ctx, ray);
         Mat4f      delta   = Identity<Mat4f>();
@@ -726,14 +725,7 @@ namespace Tetragrama::Gizmos
             float ratio = 1.f;
             if (m_drag.Handle == GizmoHandle::Uniform)
             {
-                float pivot_x = 0.f, pivot_y = 0.f;
-                if (!ProjectDragPoint(m_drag.Pivot, pivot_x, pivot_y))
-                    return true;
-                const float dx     = ctx->MousePos[0] - pivot_x;
-                const float dy     = ctx->MousePos[1] - pivot_y;
-                const float radius = std::sqrt(dx * dx + dy * dy);
-                if (!TryGizmoScaleRatio(m_drag.StartRadius, radius, ratio))
-                    return true;
+                ratio = 1.f + ((ctx->MousePos[0] - m_drag.StartScreen[0]) - (ctx->MousePos[1] - m_drag.StartScreen[1])) / GizmoPixels;
             }
             else
             {
@@ -761,7 +753,19 @@ namespace Tetragrama::Gizmos
         m_preview_world.clear();
         for (const DragTarget& target : m_drag_targets)
             m_preview_world.push(delta * target.InitialWorld);
-        return m_preview_world.size() == m_drag_targets.size() && editor_scene.TransformSession.PreviewWorld(scene, {m_preview_world.data(), m_preview_world.size()});
+        if (m_preview_world.size() != m_drag_targets.size() || !editor_scene.TransformSession.PreviewWorld(scene, {m_preview_world.data(), m_preview_world.size()}))
+            return false;
+        m_drag.Previewed = true;
+        if (m_operation == GizmoOperation::Translate)
+        {
+            // Keep the visible gizmo attached to the edited selection while the
+            // constraint math continues to use its frozen initial pivot/camera.
+            const Vec4f pivot    = delta * Vec4f(m_drag.Pivot, 1.f);
+            m_render.Basis(0, 3) = pivot.x;
+            m_render.Basis(1, 3) = pivot.y;
+            m_render.Basis(2, 3) = pivot.z;
+        }
+        return true;
     }
 
     void EditorGizmoController::FinishDrag(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, Scene& scene, bool commit)
@@ -817,7 +821,11 @@ namespace Tetragrama::Gizmos
 
         if (reason == ZEngine::UI::ZUIPointerCaptureEndReason::Released)
         {
-            if (editor_scene.TransformSession.Commit(scene) && editor_scene.TransformSession.LastCommitChanged())
+            // Release can arrive while UI payload production is backpressured.
+            // Apply the latest cursor position before committing the transaction.
+            if (!PreviewDrag(ctx, editor_scene, scene))
+                (void) editor_scene.TransformSession.Cancel(scene);
+            else if (editor_scene.TransformSession.Commit(scene) && editor_scene.TransformSession.LastCommitChanged())
                 editor_scene.MarkDirty(true);
         }
         else
@@ -832,31 +840,47 @@ namespace Tetragrama::Gizmos
         m_preview_world.clear();
     }
 
+    void EditorGizmoController::UpdateInputCapture(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, Scene& scene)
+    {
+        if (!ctx)
+            return;
+        ConsumePointerEnd(ctx, editor_scene, scene);
+        if (m_drag.Active && (ctx->EscapePressed || ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0))
+            FinishDrag(ctx, editor_scene, scene, false);
+    }
+
+    void EditorGizmoController::Cancel(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, Scene& scene)
+    {
+        FinishDrag(ctx, editor_scene, scene, false);
+        ConsumePointerEnd(ctx, editor_scene, scene);
+        m_hovered = GizmoHandle::None;
+        m_render  = {};
+    }
+
     void EditorGizmoController::Update(ZEngine::UI::ZUIContext* ctx, EditorScene& editor_scene, Scene& scene, const FlyCamera& camera, const float viewport_rect[4], uint64_t viewport_key, uint64_t viewport_generation)
     {
         if (!ctx || viewport_key == 0 || viewport_generation == 0)
             return;
 
-        ConsumePointerEnd(ctx, editor_scene, scene);
-        if (m_drag.Active && (ctx->EscapePressed || ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0))
-            FinishDrag(ctx, editor_scene, scene, false);
+        UpdateInputCapture(ctx, editor_scene, scene);
 
         if (!m_drag.Active)
         {
-            if (!RebuildPresentation(editor_scene, scene, camera, viewport_rect, ctx->InputScale))
-                return;
-            m_hovered        = HitTest(camera, viewport_rect, ctx->MousePos[0], ctx->MousePos[1]);
-            m_render.Hovered = m_hovered;
-            if (ctx->MousePressed[0] && IsInside(viewport_rect, ctx->MousePos[0], ctx->MousePos[1]) && m_hovered != GizmoHandle::None)
+            (void) RebuildPresentation(editor_scene, scene, camera, viewport_rect, ctx->InputScale);
+            const bool input_available = ctx->ActiveModalKey == 0 && ctx->ModalBox == nullptr && ctx->PopupStackSize == 0 && !ctx->PointerCapture.Active && !ctx->PointerCaptureEnd.Pending && !ctx->EscapePressed && (ctx->HotKey == 0 || ctx->HotKey == viewport_key) && (ctx->ActiveKey == 0 || ctx->ActiveKey == viewport_key) && ctx->DragSourceKey == 0 && IsInside(viewport_rect, ctx->MousePos[0], ctx->MousePos[1]);
+            m_hovered                  = input_available ? HitTest(camera, viewport_rect, ctx->MousePos[0], ctx->MousePos[1]) : GizmoHandle::None;
+            m_render.Hovered           = m_hovered;
+            if (ctx->MousePressed[0] && input_available && m_hovered != GizmoHandle::None)
                 (void) BeginDrag(ctx, editor_scene, scene, camera, viewport_rect, viewport_key, viewport_generation, m_hovered);
-            else if (ctx->MousePressed[0] && IsInside(viewport_rect, ctx->MousePos[0], ctx->MousePos[1]) && (ctx->HotKey == 0 || ctx->HotKey == viewport_key))
+            else if (ctx->MousePressed[0] && input_available)
             {
                 const GizmoRay ray = CursorRay(*ctx, camera, viewport_rect);
                 const auto     hit = ZEngine::Rendering::Scenes::RaycastSceneGeometry(editor_scene, ray.Origin, ray.Direction, camera.Settings.FarPlane);
                 if (hit.Hit)
-                    (void) editor_scene.SelectRenderInstance(hit.InstanceId, ctx->CtrlDown);
+                    (void) editor_scene.SelectRenderInstance(scene, hit.InstanceId, ctx->CtrlDown);
                 else if (!ctx->CtrlDown)
                     editor_scene.ClearSelection();
+                (void) RebuildPresentation(editor_scene, scene, camera, viewport_rect, ctx->InputScale);
             }
             return;
         }
@@ -865,7 +889,7 @@ namespace Tetragrama::Gizmos
         m_render.Hovered = m_drag.Handle;
         if (ctx->MouseReleased[0])
         {
-            FinishDrag(ctx, editor_scene, scene, true);
+            FinishDrag(ctx, editor_scene, scene, PreviewDrag(ctx, editor_scene, scene));
             return;
         }
         if (!PreviewDrag(ctx, editor_scene, scene))

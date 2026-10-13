@@ -100,6 +100,148 @@ TEST(ZUIInputCaptureTest, ExplicitPointerLeaseCapturesOnlyThePointerAndCannotBeS
     EXPECT_NE(ZUICapturePointer(&ctx, 101, 42, 7), 0u);
 }
 
+TEST(ZUIInputCaptureTest, ViewportLeaseDoesNotStealInputFromAnOverlay)
+{
+    ZUIContext ctx{};
+    ctx.HotKey = 99;
+    EXPECT_EQ(ZUICapturePointer(&ctx, 1, 42, 7), 0u);
+    ctx.HotKey         = 42;
+    ctx.PopupStackSize = 1;
+    EXPECT_EQ(ZUICapturePointer(&ctx, 1, 42, 7), 0u);
+    ctx.PopupStackSize = 0;
+    ctx.ActiveModalKey = 123;
+    EXPECT_EQ(ZUICapturePointer(&ctx, 1, 42, 7), 0u);
+    ctx.ActiveModalKey = 0;
+    ctx.DragSourceKey  = 100;
+    EXPECT_EQ(ZUICapturePointer(&ctx, 1, 42, 7), 0u);
+    ctx.DragSourceKey = 0;
+    EXPECT_NE(ZUICapturePointer(&ctx, 1, 42, 7), 0u);
+}
+
+TEST(ZUIInputCaptureTest, FocusLossCancelsTheLeaseAndClearsHeldPointerState)
+{
+    ZUIContext ctx{};
+    ctx.HotKey       = 42;
+    const auto token = ZUICapturePointer(&ctx, 100, 42, 7);
+    ASSERT_NE(token, 0u);
+    ctx.MouseDown[0] = ctx.MouseDown[1] = ctx.MouseDown[2] = true;
+    ctx.MousePressed[0]                                    = true;
+    ctx.MouseReleased[1]                                   = true;
+    ctx.CtrlDown = ctx.ShiftDown = ctx.AltDown = true;
+    ZUISetPointerCaptureWindowFocused(&ctx, false);
+    EXPECT_FALSE(ZUIHasPointerCapture(&ctx, token));
+    for (uint32_t button = 0; button < 3; ++button)
+    {
+        EXPECT_FALSE(ctx.MouseDown[button]);
+        EXPECT_FALSE(ctx.MousePressed[button]);
+        EXPECT_FALSE(ctx.MouseReleased[button]);
+    }
+    EXPECT_FALSE(ctx.CtrlDown);
+    EXPECT_FALSE(ctx.ShiftDown);
+    EXPECT_FALSE(ctx.AltDown);
+    EXPECT_EQ(ctx.HotKey, 0u);
+    ZUIPointerCaptureEndReason reason{};
+    ASSERT_TRUE(ZUIConsumePointerCaptureEnd(&ctx, token, reason));
+    EXPECT_EQ(reason, ZUIPointerCaptureEndReason::WindowFocusLost);
+    ZUISetPointerCaptureWindowFocused(&ctx, true);
+    EXPECT_FALSE(ctx.MouseDown[0]);
+}
+
+TEST(ZUIInputCaptureTest, FocusLossClearsWidgetDragsWithoutANativeLease)
+{
+    ZUIContext ctx{};
+    ctx.HotKey = ctx.ActiveKey = ctx.DragSourceKey = 42;
+    ctx.FocusKey                                   = 99;
+    ctx.TextInputActive                            = true;
+    ctx.MouseDown[0]                               = true;
+    ctx.MousePressed[0]                            = true;
+    ctx.CtrlDown                                   = true;
+    ctx.ScrollDelta                                = 1.f;
+    ctx.MousePos[0]                                = 10.f;
+    ctx.MousePos[1]                                = 20.f;
+    ZUISetPointerCaptureWindowFocused(&ctx, true);
+    EXPECT_TRUE(ctx.MouseDown[0]);
+    EXPECT_EQ(ctx.ActiveKey, 42u);
+    ZUISetPointerCaptureWindowFocused(&ctx, false);
+    EXPECT_FALSE(ctx.MouseDown[0]);
+    EXPECT_FALSE(ctx.MousePressed[0]);
+    EXPECT_FALSE(ctx.MouseReleased[0]);
+    EXPECT_FALSE(ctx.CtrlDown);
+    EXPECT_EQ(ctx.HotKey, 0u);
+    EXPECT_EQ(ctx.ActiveKey, 0u);
+    EXPECT_EQ(ctx.DragSourceKey, 0u);
+    EXPECT_FALSE(ctx.DragDropFired);
+    EXPECT_FALSE(ctx.PointerCaptureEnd.Pending);
+    EXPECT_FLOAT_EQ(ctx.ScrollDelta, 0.f);
+    EXPECT_FLOAT_EQ(ctx.PrevMousePos[0], ctx.MousePos[0]);
+    EXPECT_FLOAT_EQ(ctx.PrevMousePos[1], ctx.MousePos[1]);
+    EXPECT_EQ(ctx.FocusKey, 99u);
+    EXPECT_TRUE(ctx.TextInputActive);
+    ZUISetPointerCaptureWindowFocused(nullptr, false);
+}
+
+TEST(ZUIInputCaptureTest, ViewportToolbarWinsHitTestingAndReceivesTheClick)
+{
+    ZEngine::Core::Memory::MemoryManager memory;
+    memory.Initialize(ZMega(1), {});
+    ZUIContext ctx{};
+    ZUIContextInit(&ctx, &memory.MainArena, ZKilo(64), ZKilo(16), 64, 16);
+    ctx.ScreenW            = 100;
+    ctx.ScreenH            = 100;
+    ctx.MousePos[0]        = 20.f;
+    ctx.MousePos[1]        = 20.f;
+    uint64_t   button_key  = 0;
+
+    const auto build_frame = [&]() {
+        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        ZUIBeginColumn(&ctx, "root", ZPx(100.f), ZPx(100.f));
+        ZUIBox* image          = ZUIPushBox(&ctx, "viewport", 8, ZUI_Clickable);
+        image->Size[0]         = ZFill();
+        image->Size[1]         = ZFill();
+        ctx.ViewportInputKey   = image->Key;
+        ctx.ViewportGeneration = 1;
+        ZUIPopBox(&ctx);
+
+        ZUIBox* toolbar        = ZUIBeginColumn(&ctx, "toolbar", ZPx(30.f), ZPx(60.f));
+        toolbar->Flags         = toolbar->Flags | ZUI_FloatX | ZUI_FloatY;
+        toolbar->FloatPos[0]   = 8.f;
+        toolbar->FloatPos[1]   = 8.f;
+        ZUIBox* button         = ZUIPushBox(&ctx, "translate", 9, ZUI_Clickable);
+        button->Size[0]        = ZFill();
+        button->Size[1]        = ZPx(28.f);
+        button_key             = button->Key;
+        const ZUISignal signal = ZUISignalFromBox(&ctx, button);
+        ZUIPopBox(&ctx);
+        ZUIEndColumn(&ctx);
+        ZUIEndColumn(&ctx);
+        ZUIEndFrame(&ctx);
+        return signal;
+    };
+
+    build_frame();
+    EXPECT_EQ(ctx.HotKey, button_key);
+    EXPECT_TRUE(ZUIGetInputCapture(&ctx).Pointer);
+    EXPECT_EQ(ZUICapturePointer(&ctx, 100, ctx.ViewportInputKey, 1), 0u);
+
+    ctx.MouseDown[0]    = true;
+    ctx.MousePressed[0] = true;
+    EXPECT_TRUE(build_frame().Flags & ZUI_SignalPressed);
+    EXPECT_EQ(ctx.ActiveKey, button_key);
+    ctx.MouseDown[0]     = false;
+    ctx.MouseReleased[0] = true;
+    EXPECT_TRUE(build_frame().Flags & ZUI_SignalClicked);
+    EXPECT_EQ(ctx.ActiveKey, 0u);
+    EXPECT_FALSE(build_frame().Flags & ZUI_SignalClicked);
+
+    ctx.MousePos[0] = 80.f;
+    ctx.MousePos[1] = 80.f;
+    build_frame();
+    EXPECT_EQ(ctx.HotKey, ctx.ViewportInputKey);
+    EXPECT_FALSE(ZUIGetInputCapture(&ctx).Pointer);
+    ZUIContextDestroy(&ctx);
+    memory.Shutdown();
+}
+
 TEST(ZUIInputCaptureTest, EndOfFrameCancelsAViewportLeaseForEscapeOrViewportReplacement)
 {
     ZEngine::Core::Memory::MemoryManager memory = {};
@@ -152,10 +294,13 @@ TEST(ZUIInputCaptureTest, PortaledPopupInsideModalRemainsMouseInteractive)
     ZUIBox item           = {};
 
     root.FirstChild       = &modal;
+    root.LastChild        = &popup;
     modal.Parent          = &root;
     modal.NextSib         = &popup;
     popup.Parent          = &root;
+    popup.PrevSib         = &modal;
     popup.FirstChild      = &item;
+    popup.LastChild       = &item;
     item.Parent           = &popup;
     item.Key              = 42;
     item.Flags            = ZUI_Clickable;

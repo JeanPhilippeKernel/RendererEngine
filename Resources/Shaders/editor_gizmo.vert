@@ -1,4 +1,6 @@
 #version 460
+#extension GL_GOOGLE_include_directive : enable
+#include "editor_gizmo_ring.glsl"
 
 layout(set = 0, binding = 0) uniform UBCamera
 {
@@ -47,21 +49,10 @@ vec3 planeVertex(uint index)
     return vec3(positions[index], 0.0);
 }
 
-vec3 ringVertex(uint index)
-{
-    const uint  segment = index / 6u;
-    const uint  corner  = index % 6u;
-    const float a0      = 6.28318530718 * float(segment) / 48.0;
-    const float a1      = 6.28318530718 * float(segment + 1u) / 48.0;
-    const float radius  = (corner == 0u || corner == 2u || corner == 3u) ? 0.79 : 0.85;
-    const float angle   = (corner == 0u || corner == 1u || corner == 2u) ? a0 : a1;
-    return vec3(cos(angle) * radius, sin(angle) * radius, 0.0);
-}
-
 vec3 cubeVertex(uint index)
 {
     vec3 p = kBoxCorners[kBoxIndices[index]];
-    return (p - vec3(0.5)) * 0.13;
+    return vec3(p.x - 0.5, p.y * 0.5, p.z * 0.5) * 0.13;
 }
 
 void main()

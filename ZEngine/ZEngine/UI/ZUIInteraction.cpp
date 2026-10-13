@@ -24,6 +24,8 @@ namespace ZEngine::UI
     {
         if (!ctx || owner_key == 0 || viewport_key == 0 || viewport_generation == 0 || button >= 3 || ctx->PointerCapture.Active || ctx->PointerCaptureEnd.Pending)
             return 0;
+        if (ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0 || (ctx->HotKey != 0 && ctx->HotKey != viewport_key) || (ctx->ActiveKey != 0 && ctx->ActiveKey != viewport_key) || ctx->DragSourceKey != 0)
+            return 0;
 
         ZUIPointerCaptureToken token = ctx->NextPointerCaptureToken++;
         if (token == 0)
@@ -74,8 +76,28 @@ namespace ZEngine::UI
 
     void ZUISetPointerCaptureWindowFocused(ZUIContext* ctx, bool focused)
     {
-        if (!focused && ctx && ctx->PointerCapture.Active)
-            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::WindowFocusLost);
+        if (!ctx || focused)
+            return;
+
+        EndPointerCapture(ctx, ZUIPointerCaptureEndReason::WindowFocusLost);
+        // Releases can happen in another window and never reach this context.
+        // Cancel pointer interactions instead of synthesizing a release/click,
+        // while preserving logical keyboard focus and authored widget values.
+        for (uint32_t button = 0; button < 3; ++button)
+        {
+            ctx->MouseDown[button]     = false;
+            ctx->MousePressed[button]  = false;
+            ctx->MouseReleased[button] = false;
+        }
+        ctx->CtrlDown        = false;
+        ctx->ShiftDown       = false;
+        ctx->AltDown         = false;
+        ctx->HotKey          = 0;
+        ctx->ActiveKey       = 0;
+        ctx->DragSourceKey   = 0;
+        ctx->ScrollDelta     = 0.f;
+        ctx->PrevMousePos[0] = ctx->MousePos[0];
+        ctx->PrevMousePos[1] = ctx->MousePos[1];
     }
 
     void ZUIProcessPointerCaptureEndOfFrame(ZUIContext* ctx)
@@ -170,7 +192,9 @@ namespace ZEngine::UI
                 }
             }
 
-            for (ZUIBox* child = box->FirstChild; child; child = child->NextSib)
+            // Match the painter's order: the LIFO stack must visit earlier
+            // siblings first so later overlays replace the underlying hit.
+            for (ZUIBox* child = box->LastChild; child; child = child->PrevSib)
             {
                 if (stack_top < max)
                 {

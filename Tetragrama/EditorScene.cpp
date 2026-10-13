@@ -270,21 +270,22 @@ namespace Tetragrama
         return true;
     }
 
-    bool EditorScene::SelectRenderInstance(uint32_t instance_id, bool append)
+    bool EditorScene::SelectRenderInstance(ZEngine::ECS::Scene& scene, uint32_t instance_id, bool toggle)
     {
-        auto* context = ZEngine::Engine::GetContext();
-        if (!context || !context->ActorManager || instance_id == 0)
+        if (instance_id == 0)
             return false;
 
-        ZEngine::ECS::ActorHandle owner = {};
-        context->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle handle, ZEngine::ECS::Actor* actor) {
-            if (owner.Valid())
-                return;
-            const MeshComponent* mesh = actor ? actor->GetComponent<MeshComponent>() : nullptr;
-            if (mesh && mesh->RenderInstanceId == instance_id)
-                owner = handle;
+        ZEngine::ECS::EntityID owner = ZEngine::ECS::INVALID_ENTITY;
+        scene.ForEach<MeshComponent, TransformComponent>([&](ZEngine::ECS::EntityID entity, MeshComponent& mesh, TransformComponent&) {
+            if (!owner.IsValid() && mesh.RenderInstanceId == instance_id)
+                owner = entity;
         });
-        return owner.Valid() && SelectActor(owner, append);
+        if (!owner.IsValid())
+            return false;
+        const bool selected = toggle ? TransformSession.ToggleSelection(scene, owner) : TransformSession.SetSelection(scene, {&owner, 1}, owner);
+        if (selected)
+            SyncPrimarySelection();
+        return selected;
     }
 
     bool EditorScene::ToggleActorSelection(ZEngine::ECS::ActorHandle handle)

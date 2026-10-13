@@ -24,7 +24,7 @@ namespace
         return true;
     }
 
-    bool IntersectSphere(const Vec3f& origin, const Vec3f& direction, const ZEngine::Rendering::Scenes::SceneRaycastBounds& bounds, float max_distance, float& out_distance)
+    bool IntersectSphere(const Vec3f& origin, const Vec3f& direction, const ZEngine::Rendering::Scenes::SceneRaycastBounds& bounds, float max_distance, float& out_distance, bool broad_phase = false)
     {
         if (!IsFinite(origin) || !IsFinite(direction) || !IsFinite(bounds.Center) || !std::isfinite(bounds.Radius) || bounds.Radius <= 0.0f)
             return false;
@@ -38,8 +38,12 @@ namespace
         const float root          = std::sqrt(discriminant);
         const float near_distance = -projection - root;
         const float far_distance  = -projection + root;
-        const float distance      = near_distance > 0.0f ? near_distance : far_distance;
-        if (!std::isfinite(distance) || distance <= 0.0f || distance > max_distance)
+        if (!std::isfinite(far_distance) || far_distance <= 0.0f)
+            return false;
+        // Broad phase tests interval overlap, not the next sphere surface. A
+        // ray starting inside can hit a triangle before the sphere's exit.
+        const float distance = near_distance > 0.0f ? near_distance : (broad_phase ? 0.0f : far_distance);
+        if (!std::isfinite(distance) || distance > max_distance)
             return false;
 
         out_distance = distance;
@@ -77,12 +81,21 @@ namespace
         return true;
     }
 
-    float MaxColumnScale(const ZEngine::Core::Maths::Mat4f& transform)
+    float ConservativeBoundsScale(const ZEngine::Core::Maths::Mat4f& transform)
     {
-        const float x = Vec3f(transform(0, 0), transform(1, 0), transform(2, 0)).magnitude();
-        const float y = Vec3f(transform(0, 1), transform(1, 1), transform(2, 1)).magnitude();
-        const float z = Vec3f(transform(0, 2), transform(1, 2), transform(2, 2)).magnitude();
-        return x > y ? (x > z ? x : z) : (y > z ? y : z);
+        const Vec3f x  = {transform(0, 0), transform(1, 0), transform(2, 0)};
+        const Vec3f y  = {transform(0, 1), transform(1, 1), transform(2, 1)};
+        const Vec3f z  = {transform(0, 2), transform(1, 2), transform(2, 2)};
+        const float xy = std::fabs(dot(x, y));
+        const float xz = std::fabs(dot(x, z));
+        const float yz = std::fabs(dot(y, z));
+        // The maximum absolute row sum of A^T A bounds its largest eigenvalue.
+        // Unlike the largest column length, this remains conservative for shear
+        // introduced by a rotated child beneath a nonuniformly scaled parent.
+        const float sx = dot(x, x) + xy + xz;
+        const float sy = dot(y, y) + xy + yz;
+        const float sz = dot(z, z) + xz + yz;
+        return std::sqrt(std::fmax(sx, std::fmax(sy, sz)));
     }
 
     ZEngine::Core::Maths::Vec3f TransformPoint(const ZEngine::Core::Maths::Mat4f& transform, const ZEngine::Core::Maths::Vec3f& point)
@@ -144,7 +157,7 @@ namespace ZEngine::Rendering::Scenes
     {
         return {
             .Center     = TransformPoint(transform, local_center),
-            .Radius     = local_radius * MaxColumnScale(transform),
+            .Radius     = local_radius * ConservativeBoundsScale(transform),
             .InstanceId = instance_id,
         };
     }
@@ -211,6 +224,34 @@ namespace ZEngine::Rendering::Scenes
             return false;
         out_distance = closest;
         return true;
+    }
+
+    bool RaycastMeshGeometry(const Importers::AssetMesh& mesh, const Mat4f& transform, Vec3f origin, Vec3f direction, float max_distance, float& out_distance)
+    {
+        if (mesh.SubMeshes.empty())
+            return RaycastIndexedTriangles({mesh.Vertices.data(), mesh.Vertices.size()}, {mesh.Indices.data(), mesh.Indices.size()}, transform, origin, direction, max_distance, out_distance);
+
+        if (mesh.Vertices.size() % 8 != 0 || !std::isfinite(max_distance) || max_distance <= 0.f)
+            return false;
+
+        const size_t vertex_count = mesh.Vertices.size() / 8;
+        float        closest      = max_distance;
+        bool         hit          = false;
+        for (const auto& submesh : mesh.SubMeshes)
+        {
+            if (submesh.VertexOffset > vertex_count || submesh.VertexCount > vertex_count - submesh.VertexOffset || submesh.IndexOffset > mesh.Indices.size() || submesh.IndexCount > mesh.Indices.size() - submesh.IndexOffset || submesh.VertexCount < 3 || submesh.IndexCount < 3)
+                continue;
+
+            float distance = 0.f;
+            if (RaycastIndexedTriangles({mesh.Vertices.data() + size_t(submesh.VertexOffset) * 8, size_t(submesh.VertexCount) * 8}, {mesh.Indices.data() + submesh.IndexOffset, submesh.IndexCount}, transform, origin, direction, closest, distance))
+            {
+                closest = distance;
+                hit     = true;
+            }
+        }
+        if (hit)
+            out_distance = closest;
+        return hit;
     }
 
     SceneRaycastHit RaycastSceneBounds(const RenderScene& scene, Vec3f origin, Vec3f direction, float max_distance)
@@ -300,11 +341,11 @@ namespace ZEngine::Rendering::Scenes
 
                 const SceneRaycastBounds bounds         = TransformBounds(mesh->BoundsCenter, mesh->BoundsRadius, instance.Transform, instance.Id);
                 float                    broad_distance = 0.f;
-                if (!IntersectSphere(origin, normalized_direction, bounds, closest.Distance, broad_distance))
+                if (!IntersectSphere(origin, normalized_direction, bounds, closest.Distance, broad_distance, true))
                     continue;
 
                 float distance = 0.f;
-                if (!RaycastIndexedTriangles({mesh->Vertices.data(), mesh->Vertices.size()}, {mesh->Indices.data(), mesh->Indices.size()}, instance.Transform, origin, normalized_direction, closest.Distance, distance))
+                if (!RaycastMeshGeometry(*mesh, instance.Transform, origin, normalized_direction, closest.Distance, distance))
                     continue;
 
                 closest.Hit        = true;

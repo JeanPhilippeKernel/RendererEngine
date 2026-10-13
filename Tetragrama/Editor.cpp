@@ -169,6 +169,10 @@ namespace Tetragrama
         if (ZUIUILayer)
             ZUIUILayer->Update(dt);
 
+        auto* context = ZEngine::Engine::GetContext();
+        if (RenderPipeline && RenderPipeline->ZUICtx && CurrentScene && context && context->Scene)
+            GizmoController.UpdateInputCapture(RenderPipeline->ZUICtx, *static_cast<EditorScene*>(CurrentScene), *context->Scene);
+
         if (CameraController)
         {
             ZEngine::UI::ZUIInputCapture capture = {};
@@ -181,7 +185,8 @@ namespace Tetragrama
     void Editor::PrepareScene(ZEngine::Applications::RenderFrameState& state)
     {
         ZEngine::Applications::GameApplication::PrepareScene(state);
-        state.Gizmo = GizmoController.RenderState();
+        if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUICtx->ViewportInputKey != 0)
+            state.Gizmo = GizmoController.RenderState();
     }
 
     void Editor::OnEvent(Core::CoreEvent& /*e*/)

@@ -54,7 +54,7 @@ namespace Tetragrama
         ///          transform session's ECS selection.
         bool                      SelectActor(ZEngine::ECS::ActorHandle handle, bool append = false);
         /// @brief Selects the actor that owns a render-scene instance identifier.
-        bool                      SelectRenderInstance(uint32_t instance_id, bool append = false);
+        bool                      SelectRenderInstance(ZEngine::ECS::Scene& scene, uint32_t instance_id, bool toggle = false);
         bool                      ToggleActorSelection(ZEngine::ECS::ActorHandle handle);
         bool                      RemoveActorFromSelection(ZEngine::ECS::ActorHandle handle);
         bool                      EnsureActorUUID(ZEngine::ECS::ActorHandle handle);

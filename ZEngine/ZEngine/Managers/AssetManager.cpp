@@ -85,6 +85,7 @@ namespace ZEngine::Managers
     {
         if (s_Instance)
             s_Instance->ContainerSlab.Shutdown();
+        s_Instance = nullptr;
     }
 
     AssetHandle AssetManager::RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)

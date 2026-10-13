@@ -38,7 +38,8 @@ namespace ZEngine::UI
     [[nodiscard]] bool                   ZUIHasPointerCapture(const ZUIContext* ctx, ZUIPointerCaptureToken token);
     [[nodiscard]] bool                   ZUIConsumePointerCaptureEnd(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason& out_reason);
 
-    /// @brief Cancels an active capture as soon as its window loses focus.
+    /// @brief Cancels pointer interactions and clears held buttons/modifiers on
+    /// window focus loss, preserving logical keyboard focus and widget values.
     void                                 ZUISetPointerCaptureWindowFocused(ZUIContext* ctx, bool focused);
     /// @internal Called after the frame's viewport/modal state has been rebuilt.
     void                                 ZUIProcessPointerCaptureEndOfFrame(ZUIContext* ctx);

@@ -4,6 +4,11 @@
 #include <ZEngine/Core/Maths/Vec.h>
 #include <cstdint>
 
+namespace ZEngine::Importers
+{
+    struct AssetMesh;
+}
+
 namespace ZEngine::Rendering::Scenes
 {
     struct RenderScene;
@@ -27,8 +32,9 @@ namespace ZEngine::Rendering::Scenes
     };
 
     /// @brief Converts a mesh-local bounding sphere to world space.
-    /// @details The radius uses the largest basis scale, conservatively handling
-    /// non-uniform scale. This helper does not allocate.
+    /// @details The radius conservatively bounds non-uniform scale and hierarchy
+    /// shear using an upper bound on the linear transform's maximum stretch.
+    /// This helper does not allocate.
     [[nodiscard]] SceneRaycastBounds TransformBounds(Core::Maths::Vec3f local_center, float local_radius, const Core::Maths::Mat4f& transform, uint32_t instance_id);
 
     /// @brief Returns the closest positive ray/sphere hit in a supplied bounds set.
@@ -41,6 +47,11 @@ namespace ZEngine::Rendering::Scenes
     /// @p out_distance unchanged on failure. It is intended for exact editor
     /// selection after a cheap bounds broad phase.
     [[nodiscard]] bool               RaycastIndexedTriangles(Core::Containers::ArrayView<const float> vertices, Core::Containers::ArrayView<const uint32_t> indices, const Core::Maths::Mat4f& transform, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance, float& out_distance);
+
+    /// @brief Queries a mesh with submesh-local indices, honoring each vertex/index range.
+    /// @details Invalid ranges are skipped without reading outside asset storage. A mesh
+    /// without submeshes is treated as one mesh-global indexed triangle list.
+    [[nodiscard]] bool               RaycastMeshGeometry(const Importers::AssetMesh& mesh, const Core::Maths::Mat4f& transform, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance, float& out_distance);
 
     /// @brief Returns the closest transformed mesh-bound hit in a render scene.
     /// @details Instance iteration is seqlock-protected and mesh bounds are read
