@@ -186,8 +186,8 @@ TEST_F(InputManagerTest, GetCurrentFrame_InitialActionCountIsZero)
 
 TEST_F(InputManagerTest, GetCurrentFrame_AfterRegistration_ActionCountUpdatedOnNextPoll)
 {
-    input.RegisterAction("A", InputActionType::Button);
-    input.RegisterAction("B", InputActionType::Axis1D);
+    const auto _A = input.RegisterAction("A", InputActionType::Button);
+    const auto _B = input.RegisterAction("B", InputActionType::Axis1D);
     // ActionCount in the frame is set by Poll; before Poll it reflects the
     // previous Poll's count (0 since Poll hasn't run).
     EXPECT_EQ(input.GetCurrentFrame().ActionCount, 0u);

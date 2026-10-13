@@ -31,7 +31,7 @@ protected:
         m_manager.Initialize(ZMega(16), {});
         m_backend.Initialize(&m_manager.MainArena);
         m_ctx.Initialize(&m_manager.MainArena, 4);
-        m_ctx.Mount(&m_backend, VFSPath::Root(), 0);
+        const auto _ = m_ctx.Mount(&m_backend, VFSPath::Root(), 0);
     }
 
     void TearDown() override
@@ -51,7 +51,7 @@ protected:
 
     void WriteRaw(const char* path, const char* content)
     {
-        m_backend.WriteFile(P(path), Bytes(content, std::strlen(content)));
+        const auto _ = m_backend.WriteFile(P(path), Bytes(content, std::strlen(content)));
     }
 
     bool FileExists(const char* path)

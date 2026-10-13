@@ -54,11 +54,11 @@ protected:
 TEST_F(SchedulerFixture, IndependentSystemsInSameWave)
 {
     // A writes Transform, B writes Velocity — no overlap → same wave
-    auto SystemA = [](Scene&, float, WorldCommands&) {};
-    auto SystemB = [](Scene&, float, WorldCommands&) {};
+    auto       SystemA = [](Scene&, float, WorldCommands&) {};
+    auto       SystemB = [](Scene&, float, WorldCommands&) {};
 
-    m_tick.RegisterSystem(SystemA, {.WriteMask = MaskBit(ComponentTypeOf<TransformComponent>())});
-    m_tick.RegisterSystem(SystemB, {.WriteMask = MaskBit(ComponentTypeOf<VelocityComponent>())});
+    const auto _A      = m_tick.RegisterSystem(SystemA, {.WriteMask = MaskBit(ComponentTypeOf<TransformComponent>())});
+    const auto _B      = m_tick.RegisterSystem(SystemB, {.WriteMask = MaskBit(ComponentTypeOf<VelocityComponent>())});
     m_tick.Commit();
 
     EXPECT_EQ(m_tick.WaveCount(), 1u);
@@ -113,11 +113,11 @@ TEST_F(SchedulerFixture, WriteBeforeReadOrderVerifiedViaState)
 TEST_F(SchedulerFixture, WorldCommandsSpawnAppliedAfterTick)
 {
     static EntityID s_spawned;
-    s_spawned    = INVALID_ENTITY;
+    s_spawned          = INVALID_ENTITY;
 
-    auto Spawner = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({&s_spawned, [](void* ctx, EntityID id) { *static_cast<EntityID*>(ctx) = id; }}); };
+    auto       Spawner = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({&s_spawned, [](void* ctx, EntityID id) { *static_cast<EntityID*>(ctx) = id; }}); };
 
-    m_tick.RegisterSystem(Spawner, {});
+    const auto _       = m_tick.RegisterSystem(Spawner, {});
     m_tick.Commit();
 
     m_tick.Tick(m_scene, 0.016f, m_commands);
@@ -168,8 +168,8 @@ TEST_F(SchedulerFixture, ParallelSystemsBothSpawn_BothEntitiesCreated)
     auto                    SpawnerB = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({nullptr, [](void*, EntityID) { s_spawn_count.fetch_add(1, std::memory_order_relaxed); }}); };
 
     // Disjoint masks → same wave (no conflict, no OrderBefore required).
-    m_tick.RegisterSystem(SpawnerA, {.UsesCommands = true});
-    m_tick.RegisterSystem(SpawnerB, {.UsesCommands = true});
+    const auto              _A       = m_tick.RegisterSystem(SpawnerA, {.UsesCommands = true});
+    const auto              _B       = m_tick.RegisterSystem(SpawnerB, {.UsesCommands = true});
     m_tick.Commit();
 
     EXPECT_EQ(m_tick.WaveCount(), 1u);
@@ -193,8 +193,8 @@ TEST_F(SchedulerFixture, ParallelSpawnCallbacks_IndicesRemappedCorrectly)
     auto            SpawnerA = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({&s_from_a, [](void* ctx, EntityID id) { *static_cast<EntityID*>(ctx) = id; }}); };
     auto            SpawnerB = [](Scene&, float, WorldCommands& cmds) { cmds.SpawnEntity({&s_from_b, [](void* ctx, EntityID id) { *static_cast<EntityID*>(ctx) = id; }}); };
 
-    m_tick.RegisterSystem(SpawnerA, {.UsesCommands = true});
-    m_tick.RegisterSystem(SpawnerB, {.UsesCommands = true});
+    const auto      _A       = m_tick.RegisterSystem(SpawnerA, {.UsesCommands = true});
+    const auto      _B       = m_tick.RegisterSystem(SpawnerB, {.UsesCommands = true});
     m_tick.Commit();
 
     s_from_a = INVALID_ENTITY;
