@@ -11,6 +11,7 @@ set	(CMAKE_CXX_STANDARD 20)
 
 file (GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
 file (GLOB_RECURSE CPP_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+list(FILTER CPP_FILES EXCLUDE REGEX "/tests/")
 
 source_group (TREE ${PROJECT_SOURCE_DIR} PREFIX "Source Files" FILES ${HEADER_FILES} ${CPP_FILES})
 
@@ -36,3 +37,7 @@ target_compile_definitions(Tetragrama
 )
 
 target_link_libraries(Tetragrama PUBLIC zEngineLib)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

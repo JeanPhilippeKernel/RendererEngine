@@ -101,8 +101,9 @@ namespace Tetragrama::Components
                     ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
                         auto* app     = reinterpret_cast<EditorPtr>(ptr);
                         auto* eng_ctx = ZEngine::Engine::GetContext();
-                        if (app && app->CurrentScene && eng_ctx && eng_ctx->ActorManager)
+                        if (app && app->CurrentScene && eng_ctx && eng_ctx->Scene && eng_ctx->ActorManager)
                         {
+                            app->GizmoController.Cancel(app->RenderPipeline ? app->RenderPipeline->ZUICtx : nullptr, *static_cast<EditorScene*>(app->CurrentScene), *eng_ctx->Scene);
                             eng_ctx->ActorManager->DestroyAll();
                             reinterpret_cast<EditorScenePtr>(app->CurrentScene)->Reset(app->Configuration->DefaultSky);
                         }
@@ -146,13 +147,17 @@ namespace Tetragrama::Components
             ZUISpacer(ctx, 4.f);
 
             // "Edit" menu
+            auto* edit_app   = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto* edit_scene = edit_app ? reinterpret_cast<EditorScenePtr>(edit_app->CurrentScene) : nullptr;
             if (ZUIBeginMenu(ctx, "Edit"))
             {
-                if (ZUIMenuItemEx(ctx, "Undo", sc_undo, false, false))
+                if (ZUIMenuItemEx(ctx, "Undo", sc_undo, false, edit_scene && !edit_scene->TransformSession.IsActive() && edit_scene->CanUndoTransform()))
                 {
+                    (void) edit_scene->UndoTransform();
                 }
-                if (ZUIMenuItemEx(ctx, "Redo", sc_redo, false, false))
+                if (ZUIMenuItemEx(ctx, "Redo", sc_redo, false, edit_scene && !edit_scene->TransformSession.IsActive() && edit_scene->CanRedoTransform()))
                 {
+                    (void) edit_scene->RedoTransform();
                 }
                 ZUISeparator(ctx);
                 if (ZUIMenuItemEx(ctx, "Select All", sc_all))
@@ -164,18 +169,19 @@ namespace Tetragrama::Components
                         auto* eng        = ZEngine::Engine::GetContext();
                         if (edit_scene && eng && eng->ActorManager && eng->ActorManager->Count() > 0)
                         {
-                            bool found = false;
-                            eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*) {
-                                if (!found)
-                                {
-                                    edit_scene->SelectedActorHandle = h;
-                                    found                           = true;
-                                }
-                            });
+                            edit_scene->ClearSelection();
+                            eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*) { edit_scene->SelectActor(h, true); });
                         }
                     }
                 }
                 ZUIEndMenu(ctx);
+            }
+            if (edit_scene && !edit_scene->TransformSession.IsActive() && !ctx->TextInputActive)
+            {
+                if (ctx->CtrlZPressed)
+                    (void) edit_scene->UndoTransform();
+                if (ctx->CtrlYPressed)
+                    (void) edit_scene->RedoTransform();
             }
             ZUISpacer(ctx, 4.f);
 
@@ -255,9 +261,8 @@ namespace Tetragrama::Components
                 m_modal_y = (sh - kH) * 0.5f;
             }
 
-            // Dim backdrop — visual only; NOT Clickable (a clickable full-screen sibling
-            // visited after the window in LIFO traversal would overwrite HotKey for all
-            // window children). Click-outside is detected via bounds check below instead.
+            // Dim backdrop is visual only. Click-outside is detected via the
+            // bounds check below rather than a full-screen clickable widget.
             {
                 ZUIBox* dim      = ZUIPushBox(ctx, "##stg_dim", 9, ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 dim->Size[0]     = ZPx(sw);

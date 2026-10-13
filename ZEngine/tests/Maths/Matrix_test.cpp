@@ -506,3 +506,72 @@ TEST(MatrixTest, DecomposeTransformComponent)
     EXPECT_NEAR(scale.y, 0.5f, EPSILON);
     EXPECT_NEAR(scale.z, 3.0f, EPSILON);
 }
+
+TEST(MatrixTest, StrictTRSDecompositionRoundTripsRotatedNonUniformTransform)
+{
+    const Vec3f position            = {12.5f, -3.25f, 7.75f};
+    const Vec3f rotation            = {0.45f, -0.6f, 0.2f};
+    const Vec3f scale               = {2.0f, 3.5f, 0.75f};
+    const Mat4f source              = ComposeTransformMatrix(position, rotation, scale);
+
+    Vec3f       decomposed_position = {};
+    Vec3f       decomposed_rotation = {};
+    Vec3f       decomposed_scale    = {};
+    ASSERT_TRUE(TryDecomposeTransformTRS(source, decomposed_position, decomposed_rotation, decomposed_scale));
+
+    const Mat4f recomposed = ComposeTransformMatrix(decomposed_position, decomposed_rotation, decomposed_scale);
+    for (size_t row = 0; row < 4; ++row)
+        for (size_t column = 0; column < 4; ++column)
+            EXPECT_NEAR(recomposed(row, column), source(row, column), 1.0e-4f);
+}
+
+TEST(MatrixTest, StrictTRSDecompositionCanonicalizesReflectionsWithoutChangingMatrix)
+{
+    const Mat4f source   = ComposeTransformMatrix({1.f, 2.f, 3.f}, {0.3f, -0.2f, 0.5f}, {1.f, -2.f, 3.f});
+
+    Vec3f       position = {};
+    Vec3f       rotation = {};
+    Vec3f       scale    = {};
+    ASSERT_TRUE(TryDecomposeTransformTRS(source, position, rotation, scale));
+    EXPECT_LT(scale.x, 0.f);
+    EXPECT_GT(scale.y, 0.f);
+    EXPECT_GT(scale.z, 0.f);
+
+    const Mat4f recomposed = ComposeTransformMatrix(position, rotation, scale);
+    for (size_t row = 0; row < 4; ++row)
+        for (size_t column = 0; column < 4; ++column)
+            EXPECT_NEAR(recomposed(row, column), source(row, column), 1.0e-4f);
+}
+
+TEST(MatrixTest, StrictTRSDecompositionRejectsShearWithoutChangingOutputs)
+{
+    Mat4f sheared  = Identity<Mat4f>();
+    sheared(0, 1)  = 0.25f;
+
+    Vec3f position = {7.f, 8.f, 9.f};
+    Vec3f rotation = {1.f, 2.f, 3.f};
+    Vec3f scale    = {4.f, 5.f, 6.f};
+    EXPECT_FALSE(TryDecomposeTransformTRS(sheared, position, rotation, scale));
+    EXPECT_FLOAT_EQ(position.x, 7.f);
+    EXPECT_FLOAT_EQ(position.y, 8.f);
+    EXPECT_FLOAT_EQ(position.z, 9.f);
+    EXPECT_FLOAT_EQ(rotation.x, 1.f);
+    EXPECT_FLOAT_EQ(rotation.y, 2.f);
+    EXPECT_FLOAT_EQ(rotation.z, 3.f);
+    EXPECT_FLOAT_EQ(scale.x, 4.f);
+    EXPECT_FLOAT_EQ(scale.y, 5.f);
+    EXPECT_FLOAT_EQ(scale.z, 6.f);
+}
+
+TEST(MatrixTest, StrictTRSDecompositionRejectsSingularAndProjectiveMatrices)
+{
+    const Mat4f singular = ComposeTransformMatrix({}, {}, {0.f, 1.f, 1.f});
+    Vec3f       position = {};
+    Vec3f       rotation = {};
+    Vec3f       scale    = {};
+    EXPECT_FALSE(TryDecomposeTransformTRS(singular, position, rotation, scale));
+
+    Mat4f projective = Identity<Mat4f>();
+    projective(3, 0) = 0.1f;
+    EXPECT_FALSE(TryDecomposeTransformTRS(projective, position, rotation, scale));
+}

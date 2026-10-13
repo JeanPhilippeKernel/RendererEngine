@@ -3,6 +3,119 @@
 
 namespace ZEngine::UI
 {
+    namespace
+    {
+        void EndPointerCapture(ZUIContext* ctx, ZUIPointerCaptureEndReason reason)
+        {
+            if (!ctx || !ctx->PointerCapture.Active)
+                return;
+
+            ctx->PointerCaptureEnd = {
+                .Token    = ctx->PointerCapture.Token,
+                .OwnerKey = ctx->PointerCapture.OwnerKey,
+                .Reason   = reason,
+                .Pending  = true,
+            };
+            ctx->PointerCapture.Active = false;
+        }
+    } // namespace
+
+    ZUIPointerCaptureToken ZUICapturePointer(ZUIContext* ctx, uint64_t owner_key, uint64_t viewport_key, uint64_t viewport_generation, uint8_t button)
+    {
+        if (!ctx || owner_key == 0 || viewport_key == 0 || viewport_generation == 0 || button >= 3 || ctx->PointerCapture.Active || ctx->PointerCaptureEnd.Pending)
+            return 0;
+        if (ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0 || (ctx->HotKey != 0 && ctx->HotKey != viewport_key) || (ctx->ActiveKey != 0 && ctx->ActiveKey != viewport_key) || ctx->DragSourceKey != 0)
+            return 0;
+
+        ZUIPointerCaptureToken token = ctx->NextPointerCaptureToken++;
+        if (token == 0)
+            token = ctx->NextPointerCaptureToken++;
+        ctx->PointerCapture = {
+            .Token              = token,
+            .OwnerKey           = owner_key,
+            .ViewportKey        = viewport_key,
+            .ViewportGeneration = viewport_generation,
+            .Button             = button,
+            .Active             = true,
+        };
+        // Do not let a regular ZUI box continue a drag beneath a native tool.
+        ctx->ActiveKey     = 0;
+        ctx->DragSourceKey = 0;
+        return token;
+    }
+
+    bool ZUIReleasePointerCapture(ZUIContext* ctx, ZUIPointerCaptureToken token)
+    {
+        if (!ctx || !ctx->PointerCapture.Active || token == 0 || ctx->PointerCapture.Token != token)
+            return false;
+        EndPointerCapture(ctx, ZUIPointerCaptureEndReason::Released);
+        return true;
+    }
+
+    bool ZUICancelPointerCapture(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason reason)
+    {
+        if (!ctx || !ctx->PointerCapture.Active || token == 0 || ctx->PointerCapture.Token != token || reason == ZUIPointerCaptureEndReason::None || reason == ZUIPointerCaptureEndReason::Released)
+            return false;
+        EndPointerCapture(ctx, reason);
+        return true;
+    }
+
+    bool ZUIHasPointerCapture(const ZUIContext* ctx, ZUIPointerCaptureToken token)
+    {
+        return ctx && token != 0 && ctx->PointerCapture.Active && ctx->PointerCapture.Token == token;
+    }
+
+    bool ZUIConsumePointerCaptureEnd(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason& out_reason)
+    {
+        if (!ctx || token == 0 || !ctx->PointerCaptureEnd.Pending || ctx->PointerCaptureEnd.Token != token)
+            return false;
+        out_reason             = ctx->PointerCaptureEnd.Reason;
+        ctx->PointerCaptureEnd = {};
+        return true;
+    }
+
+    void ZUISetPointerCaptureWindowFocused(ZUIContext* ctx, bool focused)
+    {
+        if (!ctx || focused)
+            return;
+
+        EndPointerCapture(ctx, ZUIPointerCaptureEndReason::WindowFocusLost);
+        // Releases can happen in another window and never reach this context.
+        // Cancel pointer interactions instead of synthesizing a release/click,
+        // while preserving logical keyboard focus and authored widget values.
+        for (uint32_t button = 0; button < 3; ++button)
+        {
+            ctx->MouseDown[button]     = false;
+            ctx->MousePressed[button]  = false;
+            ctx->MouseReleased[button] = false;
+        }
+        ctx->CtrlDown        = false;
+        ctx->ShiftDown       = false;
+        ctx->AltDown         = false;
+        ctx->HotKey          = 0;
+        ctx->ActiveKey       = 0;
+        ctx->DragSourceKey   = 0;
+        ctx->ScrollDelta     = 0.f;
+        ctx->PrevMousePos[0] = ctx->MousePos[0];
+        ctx->PrevMousePos[1] = ctx->MousePos[1];
+    }
+
+    void ZUIProcessPointerCaptureEndOfFrame(ZUIContext* ctx)
+    {
+        if (!ctx || !ctx->PointerCapture.Active)
+            return;
+
+        const ZUIPointerCapture capture = ctx->PointerCapture;
+        if (ctx->EscapePressed)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::Escape);
+        else if (ctx->ViewportInputKey != capture.ViewportKey || ctx->ViewportGeneration != capture.ViewportGeneration)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::ViewportUnavailable);
+        else if (ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0)
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::ModalInterruption);
+        else if (ctx->MouseReleased[capture.Button])
+            EndPointerCapture(ctx, ZUIPointerCaptureEndReason::Released);
+    }
+
     static bool PointInBox(const float pt[2], const ZUIBox* box)
     {
         return pt[0] >= box->ScreenMin[0] && pt[0] <= box->ScreenMax[0] && pt[1] >= box->ScreenMin[1] && pt[1] <= box->ScreenMax[1];
@@ -10,6 +123,15 @@ namespace ZEngine::UI
 
     void ZUIInteractionPass(ZUIContext* ctx)
     {
+        if (ctx && ctx->PointerCapture.Active)
+        {
+            // The owning native tool receives raw pointer input. Regular widgets
+            // must neither become hot nor receive a new active drag underneath it.
+            ctx->HotKey        = 0;
+            ctx->ActiveKey     = 0;
+            ctx->DragSourceKey = 0;
+            return;
+        }
         if (!ctx->Root)
         {
             ctx->HotKey = 0;
@@ -70,7 +192,9 @@ namespace ZEngine::UI
                 }
             }
 
-            for (ZUIBox* child = box->FirstChild; child; child = child->NextSib)
+            // Match the painter's order: the LIFO stack must visit earlier
+            // siblings first so later overlays replace the underlying hit.
+            for (ZUIBox* child = box->LastChild; child; child = child->PrevSib)
             {
                 if (stack_top < max)
                 {

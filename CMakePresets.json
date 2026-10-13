@@ -141,7 +141,8 @@
             "binaryDir": "Result.Linux.x64.Debug",
             "generator": "Ninja",
             "cacheVariables": {
-                "CMAKE_INSTALL_PREFIX": "Result.Linux.x64.Debug"
+                "CMAKE_INSTALL_PREFIX": "Result.Linux.x64.Debug",
+                "USE_GAS": "ON"
             }
         },
         {

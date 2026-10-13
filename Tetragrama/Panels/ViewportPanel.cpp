@@ -11,6 +11,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Cameras/FlyCamera.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
@@ -94,6 +95,8 @@ namespace Tetragrama::Panels
                 mesh.MeshUUID         = payload->MeshId;
                 mesh.RenderInstanceId = render_id;
                 actor->AddComponent<MeshComponent>(mesh);
+                scene->EnsureActorUUID(handle);
+                scene->SelectActor(handle);
             }
         }
 
@@ -158,9 +161,7 @@ namespace Tetragrama::Panels
         img->Size[1]      = ZFill();
         img->TextureIndex = m_scene_texture.Valid() ? (uint32_t) m_scene_texture.Index : 0xFFFFFFFFu;
         ZUIBoxSetColor(img, 1.f, 1.f, 1.f, m_scene_texture.Valid() ? 1.f : 0.f);
-        ctx->ViewportInputKey = img->Key;
-
-        ZUISignal img_sig     = ZUISignalFromBox(ctx, img);
+        ZUISignal img_sig = ZUISignalFromBox(ctx, img);
         ZUIPopBox(ctx);
 
         // The camera consumes raw GLFW cursor positions, not UI-space positions.
@@ -208,7 +209,24 @@ namespace Tetragrama::Panels
             {
                 m_last_w = requested_width;
                 m_last_h = requested_height;
+                ++m_viewport_generation;
+                if (m_viewport_generation == 0)
+                    ++m_viewport_generation;
             }
+        }
+
+        ctx->ViewportInputKey   = img->Key;
+        ctx->ViewportGeneration = m_viewport_generation;
+
+        // The gizmo owns its interaction independently from the ZUI image box.
+        // It publishes a value-only render snapshot and captures the pointer before
+        // the end-of-frame ZUI hit-test can activate another widget beneath a drag.
+        if (app->CameraController)
+        {
+            auto* const editor_scene = reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene);
+            auto* const camera       = static_cast<ZEngine::Rendering::Cameras::FlyCamera*>(app->CameraController->GetCamera());
+            if (editor_scene && camera)
+                app->GizmoController.Update(ctx, *editor_scene, *ZEngine::Engine::GetContext()->Scene, *camera, rect, img->Key, m_viewport_generation);
         }
 
         // Overlay toolbar: vertical, floated top-left at (8, 8)
@@ -219,7 +237,7 @@ namespace Tetragrama::Panels
             static constexpr float kPad    = 5.f; // top / bottom inner padding
             static constexpr float kGap    = 4.f; // gap between buttons
             static constexpr float kSepGap = 4.f; // gap on each side of separator
-            float                  tb_h    = kPad + kBtnSz + kSepGap + kSepH + kSepGap + kBtnSz + kGap + kBtnSz + kGap + kBtnSz + kPad;
+            float                  tb_h    = kPad + kBtnSz + kSepGap + kSepH + kSepGap + kBtnSz + kGap + kBtnSz + kGap + kBtnSz + kGap + kBtnSz + kPad;
 
             ZUIBox*                tb      = ZUIBeginColumn(ctx, "##vp_tb", ZPx(kTbW), ZPx(tb_h));
             tb->Flags                      = tb->Flags | ZUI_FloatX | ZUI_FloatY;
@@ -316,7 +334,22 @@ namespace Tetragrama::Panels
                 ZUISignal sig = ZUISignalFromBox(ctx, b);
                 ZUIPopBox(ctx);
                 if (sig.Flags & ZUI_SignalClicked)
+                {
                     m_gizmo_op = act ? kGizmoNone : d.op;
+                    app->GizmoController.SetOperation(static_cast<ZEngine::Rendering::Renderers::GizmoOperation>(m_gizmo_op + 1));
+                }
+            }
+
+            ZUISpacer(ctx, kGap);
+            // World/local changes the complete handle basis and all drag constraints.
+            // Keep this textual so its state remains legible without adding a fourth icon.
+            {
+                const ZUISignal signal = ZUIButton(ctx, m_gizmo_local ? "L" : "W", ZFill(), ZPx(kBtnSz));
+                if (signal.Flags & ZUI_SignalClicked)
+                {
+                    m_gizmo_local = !m_gizmo_local;
+                    app->GizmoController.SetCoordinateSpace(m_gizmo_local ? Tetragrama::Gizmos::EditorGizmoController::CoordinateSpace::Local : Tetragrama::Gizmos::EditorGizmoController::CoordinateSpace::World);
+                }
             }
 
             ZUISpacer(ctx, kPad);

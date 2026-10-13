@@ -30,17 +30,18 @@ namespace ZEngine::UI
     {
         ZUIStyleUpdate(&ctx->Style); // recompute FrameHeight = FontSize + FramePadding.y*2
         ctx->FrameArena.Clear();
-        ctx->Root              = nullptr;
-        ctx->Current           = nullptr;
-        ctx->DeltaTime         = dt;
-        ctx->Time             += dt;
-        ctx->ResizeCursor      = 0;
+        ctx->Root                = nullptr;
+        ctx->Current             = nullptr;
+        ctx->DeltaTime           = dt;
+        ctx->Time               += dt;
+        ctx->ResizeCursor        = 0;
         // Rebuilt by text-editing widgets below. The application consumes the
         // prior frame's value before ZUIBeginFrame runs.
-        ctx->TextInputActive   = false;
+        ctx->TextInputActive     = false;
         // The application consumes the prior frame's viewport key before this point.
-        ctx->ViewportInputKey  = 0;
-        ctx->PopupBuildDepth   = 0; // reset render depth; rebuilt during each BuildUI pass
+        ctx->ViewportInputKey    = 0;
+        ctx->ViewportGeneration  = 0;
+        ctx->PopupBuildDepth     = 0; // reset render depth; rebuilt during each BuildUI pass
         // Clear stale Box* pointers — boxes are re-created each frame in FrameArena
         for (uint32_t i = 0; i < ctx->PopupStackSize; i++)
             ctx->PopupStack[i].Box = nullptr;
@@ -61,6 +62,7 @@ namespace ZEngine::UI
 
         ZUILayoutSolve(ctx);
         ZUIInteractionPass(ctx);
+        ZUIProcessPointerCaptureEndOfFrame(ctx);
 
         // Save mouse position before clearing edge states — used for drag delta next frame
         ctx->PrevMousePos[0] = ctx->MousePos[0];

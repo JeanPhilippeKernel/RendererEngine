@@ -29,3 +29,10 @@ jobs:
         env:
           DYLD_LIBRARY_PATH: ${{github.workspace}}/lib
         run: ${{github.workspace}}/tests/ZEngineTests
+
+      - name: Run Editor Interaction Tests
+        env:
+          DYLD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: |
+          chmod +x "${{github.workspace}}/tests/TetragramaTests"
+          "${{github.workspace}}/tests/TetragramaTests"

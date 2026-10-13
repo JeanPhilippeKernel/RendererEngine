@@ -41,6 +41,7 @@ namespace Tetragrama::Panels
         ZEngine::Rendering::Textures::TextureHandle m_scene_texture           = {};
         uint32_t                                    m_last_w                  = 0;
         uint32_t                                    m_last_h                  = 0;
+        uint64_t                                    m_viewport_generation     = 1;
 
         // Written on drop, consumed by the MainThreadScheduler trampolines above.
         char                                        m_pending_mesh_drop[512]  = {};
@@ -48,6 +49,7 @@ namespace Tetragrama::Panels
 
         // Gizmo operation: -1=none, 0=translate, 1=rotate, 2=scale
         int                                         m_gizmo_op                = -1;
+        bool                                        m_gizmo_local             = false;
         bool                                        m_grid_enabled            = true;
 
         static constexpr size_t                     DroppedMeshTaskArenaBytes = ZMega(256);

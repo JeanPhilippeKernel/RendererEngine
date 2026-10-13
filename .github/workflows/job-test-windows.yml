@@ -24,3 +24,9 @@ jobs:
         env:
           PATH: ${{github.workspace}}\lib
         run: ${{github.workspace}}\tests\ZEngineTests.exe
+
+      - name: Run Editor Interaction Tests
+        shell: pwsh
+        env:
+          PATH: ${{github.workspace}}\lib
+        run: ${{github.workspace}}\tests\TetragramaTests.exe

@@ -52,6 +52,8 @@ function(add_shader_compiler shader stage suffix)
 
     if (shader_name STREQUAL "sky_atmosphere_multiscattering")
         list(APPEND shader_dependencies "${ShaderPath}/sky_atmosphere_common.glsl")
+    elseif (shader_name STREQUAL "editor_gizmo")
+        list(APPEND shader_dependencies "${ShaderPath}/editor_gizmo_ring.glsl")
     elseif (shader_name STREQUAL "sky_atmosphere_sky_view" OR shader_name STREQUAL "sky_atmosphere_aerial_perspective" OR shader_name STREQUAL "sky_atmosphere_source_radiance")
         list(APPEND shader_dependencies
             "${ShaderPath}/sky_atmosphere_common.glsl"

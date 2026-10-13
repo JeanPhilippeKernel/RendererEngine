@@ -4,6 +4,11 @@
 #include <ZEngine/Core/Maths/Vec.h>
 #include <cstdint>
 
+namespace ZEngine::Importers
+{
+    struct AssetMesh;
+}
+
 namespace ZEngine::Rendering::Scenes
 {
     struct RenderScene;
@@ -27,19 +32,38 @@ namespace ZEngine::Rendering::Scenes
     };
 
     /// @brief Converts a mesh-local bounding sphere to world space.
-    /// @details The radius uses the largest basis scale, conservatively handling
-    /// non-uniform scale. This helper does not allocate.
+    /// @details The radius conservatively bounds non-uniform scale and hierarchy
+    /// shear using an upper bound on the linear transform's maximum stretch.
+    /// This helper does not allocate.
     [[nodiscard]] SceneRaycastBounds TransformBounds(Core::Maths::Vec3f local_center, float local_radius, const Core::Maths::Mat4f& transform, uint32_t instance_id);
 
     /// @brief Returns the closest positive ray/sphere hit in a supplied bounds set.
     /// @details Direction is normalized internally. The query does not allocate.
     [[nodiscard]] SceneRaycastHit    RaycastBounds(Core::Containers::ArrayView<const SceneRaycastBounds> bounds, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance);
 
+    /// @brief Returns the closest positive triangle hit in indexed engine mesh data.
+    /// @details Vertices use the engine's eight-float layout (position xyz,
+    /// normal xyz, uv xy). The function performs no allocation and leaves
+    /// @p out_distance unchanged on failure. It is intended for exact editor
+    /// selection after a cheap bounds broad phase.
+    [[nodiscard]] bool               RaycastIndexedTriangles(Core::Containers::ArrayView<const float> vertices, Core::Containers::ArrayView<const uint32_t> indices, const Core::Maths::Mat4f& transform, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance, float& out_distance);
+
+    /// @brief Queries a mesh with submesh-local indices, honoring each vertex/index range.
+    /// @details Invalid ranges are skipped without reading outside asset storage. A mesh
+    /// without submeshes is treated as one mesh-global indexed triangle list.
+    [[nodiscard]] bool               RaycastMeshGeometry(const Importers::AssetMesh& mesh, const Core::Maths::Mat4f& transform, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance, float& out_distance);
+
     /// @brief Returns the closest transformed mesh-bound hit in a render scene.
     /// @details Instance iteration is seqlock-protected and mesh bounds are read
     /// under AssetManager's ingest lock. This is safe on the editor update thread
     /// and has no allocations on the camera update path.
     [[nodiscard]] SceneRaycastHit    RaycastSceneBounds(const RenderScene& scene, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance);
+
+    /// @brief Returns the closest exact triangle hit in a render scene.
+    /// @details Mesh asset access is protected against concurrent importing and
+    /// scene traversal is seqlock-protected. This query runs only on explicit
+    /// selection clicks; it does not allocate or stall the GPU.
+    [[nodiscard]] SceneRaycastHit    RaycastSceneGeometry(const RenderScene& scene, Core::Maths::Vec3f origin, Core::Maths::Vec3f direction, float max_distance);
 
     /// @brief Retrieves one selected instance's transformed mesh bounds.
     /// @details The output is only modified on success. Instance access uses the

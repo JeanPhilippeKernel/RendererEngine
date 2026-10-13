@@ -27,7 +27,22 @@ namespace ZEngine::UI
 
     /// @brief Called from ZUIEndFrame — DFS hit-test walk that updates HotKey / ActiveKey on ctx.
     /// @param ctx Active ZUI context.
-    void      ZUIInteractionPass(ZUIContext* ctx);
+    void                                 ZUIInteractionPass(ZUIContext* ctx);
+
+    /// @brief Starts an exclusive viewport-tool pointer capture.
+    /// @return A non-zero token on success. A capture cannot be stolen and a pending end
+    ///         notification must be consumed before another capture starts.
+    [[nodiscard]] ZUIPointerCaptureToken ZUICapturePointer(ZUIContext* ctx, uint64_t owner_key, uint64_t viewport_key, uint64_t viewport_generation, uint8_t button = 0);
+    [[nodiscard]] bool                   ZUIReleasePointerCapture(ZUIContext* ctx, ZUIPointerCaptureToken token);
+    [[nodiscard]] bool                   ZUICancelPointerCapture(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason reason = ZUIPointerCaptureEndReason::ExplicitCancellation);
+    [[nodiscard]] bool                   ZUIHasPointerCapture(const ZUIContext* ctx, ZUIPointerCaptureToken token);
+    [[nodiscard]] bool                   ZUIConsumePointerCaptureEnd(ZUIContext* ctx, ZUIPointerCaptureToken token, ZUIPointerCaptureEndReason& out_reason);
+
+    /// @brief Cancels pointer interactions and clears held buttons/modifiers on
+    /// window focus loss, preserving logical keyboard focus and widget values.
+    void                                 ZUISetPointerCaptureWindowFocused(ZUIContext* ctx, bool focused);
+    /// @internal Called after the frame's viewport/modal state has been rebuilt.
+    void                                 ZUIProcessPointerCaptureEndOfFrame(ZUIContext* ctx);
 
     /// @brief Query interaction state for @p box after the build phase.
     ///
@@ -35,6 +50,6 @@ namespace ZEngine::UI
     /// @param ctx Active ZUI context.
     /// @param box Box to query signals for.
     /// @returns Interaction signal valid for this frame only.
-    ZUISignal ZUISignalFromBox(ZUIContext* ctx, ZUIBox* box);
+    ZUISignal                            ZUISignalFromBox(ZUIContext* ctx, ZUIBox* box);
 
 } // namespace ZEngine::UI
