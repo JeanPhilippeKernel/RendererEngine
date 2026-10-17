@@ -33,11 +33,14 @@ namespace ZEngine::Rendering::Renderers
     /// @brief Push-constant layout shared with zui_draw.vert.
     struct ZUIDrawPushConstant
     {
-        float    Scale[2]     = {};
-        float    Translate[2] = {};
+        float                       Scale[2]     = {};
+        float                       Translate[2] = {};
         /// @brief Logical-to-physical scale consumed by uFbScale.
-        float    FbScale[2]   = {1.f, 1.f};
-        uint32_t TexIdx       = 0;
+        float                       FbScale[2]   = {1.f, 1.f};
+        uint32_t                    TexIdx       = 0;
+        uint32_t                    Padding      = 0; ///< Align the GLSL vec4 effect descriptor to offset 32.
+        UI::ZUIShadowDrawParams     Shadow       = {};
+        UI::ZUIColorFieldDrawParams ColorField   = {};
     };
 
     /// @brief Final graphics pass that uploads and draws the ZUI draw list.
@@ -45,6 +48,10 @@ namespace ZEngine::Rendering::Renderers
     {
         /// @brief Number of frame-local upload-buffer slots owned by the pass.
         static constexpr uint32_t            FRAMES_IN_FLIGHT              = 3;
+        static constexpr uint32_t            VertexCapacity                = UI::ZUIDrawList::VertexLimit;
+        // uint16_t bounds vertex addresses, not the number of indices. AA
+        // strokes/fills reuse each vertex several times (up to 4.5 indices/vertex).
+        static constexpr uint32_t            IndexCapacity                 = UI::ZUIDrawList::IndexLimit;
 
         /// @brief Graphics-pass state used to render the current ZUI payload.
         RenderPasses::GraphicPass*           DrawPass                      = nullptr;

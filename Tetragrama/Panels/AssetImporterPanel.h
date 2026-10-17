@@ -9,6 +9,7 @@
 #include <ZEngine/Importers/AssimpImporter.h>
 #include <ZEngine/Importers/FbxImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
+#include <ZEngine/UI/ZUIIcons.h>
 #include <ZEngine/UI/ZUIPanel.h>
 #include <uuid.h>
 #include <future>
@@ -27,7 +28,10 @@ namespace Tetragrama::Panels
     {
         AssetImporterPanel()
         {
-            Title = "Importer";
+            Title       = "Asset Importer";
+            LegacyTitle = "Importer";
+            Key         = ZEngine::UI::ZUIHashStr("Importer", 8);
+            Icon        = static_cast<int>(ZEngine::UI::ZUIIcon::Folder);
         }
 
         /// @brief Allocates importers and arenas; must be called once before first use.
@@ -41,6 +45,8 @@ namespace Tetragrama::Panels
         void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
 
     private:
+        friend struct AssetImporterPanelTestAccess;
+
         Tetragrama::Layers::ZUILayer*         m_layer                 = nullptr;
         ProjectViewPanel*                     m_project_view          = nullptr;
 
@@ -65,6 +71,8 @@ namespace Tetragrama::Panels
             Fbx,
             Assimp,
         };
+
+        static bool TryGetImporterKind(const ZEngine::Core::VFS::VFSPath& path, ImporterKind& kind);
 
         enum class ImportTaskOutcome : uint8_t
         {
@@ -101,6 +109,8 @@ namespace Tetragrama::Panels
 
         // Import settings
         char                        m_path_buf[1024]     = {};
+        char                        m_error[256]         = {};
+        bool                        m_browse_pending     = false;
         bool                        m_add_to_scene       = false; // true when triggered by viewport drag-drop
         char                        m_instance_name[256] = {};
         bool                        m_use_source_name    = true;
@@ -112,7 +122,10 @@ namespace Tetragrama::Panels
         bool                        m_import_materials   = true;
         bool                        m_import_textures    = true;
         bool                        m_same_settings      = false;
-        int                         m_options_filter     = 5; // 0=General 1=Mesh 2=Material 3=Anim 4=LOD 5=All
+        bool                        m_mesh_open          = true;
+        bool                        m_materials_open     = true;
+        bool                        m_animation_open     = true;
+        bool                        m_history_open       = true;
 
         // Import history ring buffer (Idle state, newest first)
         static constexpr int        kHistMax             = 16;
@@ -135,20 +148,26 @@ namespace Tetragrama::Panels
         LogEntry          m_log[kLogMax] = {};
         int               m_log_head     = 0;
         int               m_log_count    = 0;
-        std::mutex        m_log_mutex;
+        std::mutex        m_log_mutex    = {};
+        char              m_status[256]  = {};
 
         // Build helpers
         /// @brief Build the idle state UI (file selection).
         void              BuildIdle(ZEngine::UI::ZUIContext* ctx);
         /// @brief Build the options state UI (import settings).
         void              BuildOptions(ZEngine::UI::ZUIContext* ctx);
-        /// @brief Build the in-progress state UI (progress bar, log).
+        /// @brief Build the in-progress state UI (progress bar and latest worker status).
         void              BuildImporting(ZEngine::UI::ZUIContext* ctx);
+        void              CancelSelection();
 
         /// @brief Open the file browser dialog synchronously.
         void              BrowseFile();
         /// @brief Open the file browser dialog asynchronously.
         std::future<void> BrowseFileAsync();
+        /// @brief Validates a source selected by browsing or dropping, then shows import options.
+        bool              SelectSource(const char* path);
+        /// @brief Validates names/options and builds a coherent configuration in the scratch arena.
+        bool              BuildImportConfiguration(ZEngine::Importers::AssetCodec::ImportConfiguration& config, ZEngine::Core::VFS::IVFSContext* vfs);
         /// @brief Begin the import process with the current settings.
         void              StartImport();
         /// @brief Add an imported mesh instance to the ECS scene on the main thread.

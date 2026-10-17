@@ -3,6 +3,9 @@
 #include <Tetragrama/Panels/InspectorPanel.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <ZEngine/ECS/ArchetypeMask.h>
+#include <ZEngine/ECS/Components/CameraComponent.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
+#include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Reflection/ComponentMeta.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
@@ -21,107 +24,145 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Panels
 {
-    static constexpr float kLabelW = 96.f;
+    static constexpr float kLabelW    = 96.f;
 
-    // Vec3Row
-    // Three DragFloats with colored 3px left-edge bars (R=red, G=green, B=blue).
-    // Matches develop Vec3Row() + ImDrawList colored bar approach.
-    static bool            Vec3Row(ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw)
+    // Figma "Transform property": 27 px row, 10 px lead, 96 px label, three 22 px axis boxes with a
+    // 2 x 15 colored indicator, 6 px gaps, then a 11 px reset icon.
+    static constexpr float kRowLead   = 10.f;
+    static constexpr float kRowGap    = 6.f;
+    static constexpr float kResetSize = 11.f;
+
+    static float           AxisWidth(float pw)
     {
-        // Axis bar colors — matches develop: R(215,90,80) G(100,200,110) B(90,140,230)
-        static const float kBarR[4] = {0.84f, 0.35f, 0.31f, 1.f};
-        static const float kBarG[4] = {0.39f, 0.78f, 0.43f, 1.f};
-        static const float kBarB[4] = {0.35f, 0.55f, 0.90f, 1.f};
+        return fmaxf((pw - kRowLead - kLabelW - kRowGap - kRowGap * 2.f - kRowGap - kResetSize - kRowLead) / 3.f, 32.f);
+    }
 
-        const float        fh       = ZUIGetFrameHeight(ctx);
-        // Layout: [8 lead][label][3 bar][w3][4 gap][3 bar][w3][4 gap][3 bar][w3][8 trail]
-        // Fixed overhead (excl. label): 8+3+4+3+4+3+8 = 33px
-        const float        w3       = fmaxf((pw - kLabelW - 33.f) / 3.f, 32.f);
-        bool               any      = false;
+    static void RowLabel(ZUIContext* ctx, const char* label)
+    {
+        ZUIBox* lbl   = ZUIPushBox(ctx, "##lbl", 5, ZUI_DrawText);
+        lbl->Size[0]  = ZPx(kLabelW);
+        lbl->Size[1]  = ZPx(14.f);
+        uint32_t llen = (uint32_t) ZEngine::Helpers::secure_strlen(label);
+        lbl->Label    = ZUIPushStr(&ctx->FrameArena, label, llen);
+        for (int k = 0; k < 4; ++k)
+            lbl->TextColor[k] = ctx->Theme.TextDefault[k];
+        ZUIPopBox(ctx);
+    }
 
-        ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
-        ZUISpacer(ctx, 8.f);
+    static bool Vec3Row(ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw, bool degrees)
+    {
+        static const float kAxis[3][4] = {ZUI_TOKEN(ZEngine::UI::Tokens::AccentRed), ZUI_TOKEN(ZEngine::UI::Tokens::AccentGreen), ZUI_TOKEN(ZEngine::UI::Tokens::AccentBlue)};
+        static const char* kNames[3]   = {"x", "y", "z"};
 
-        // Label
+        const float        w3          = AxisWidth(pw);
+        bool               any         = false;
+
+        ZUIBox*            row         = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(27.f));
+        row->Padding[0]                = kRowLead;
+        row->Padding[2]                = kRowLead;
+        row->Gap                       = kRowGap;
+        row->CrossAlign                = ZUIAlign::Center;
+
+        RowLabel(ctx, label);
+
+        const float saved_pad  = ctx->Style.FramePadding[0];
+        ctx->FlatInputs        = true;
+        ctx->DragFloatDecimals = 1;
+        ctx->DragFloatSuffix   = degrees ? "\xB0" : nullptr;
+        for (int a = 0; a < 3; ++a)
         {
-            ZUIBox* lbl       = ZUIPushBox(ctx, "##lbl", 5, ZUI_DrawText);
-            lbl->Size[0]      = ZPx(kLabelW);
-            lbl->Size[1]      = ZPx(fh);
-            uint32_t llen     = (uint32_t) strlen(label);
-            lbl->Label        = ZUIPushStr(&ctx->FrameArena, label, llen);
-            lbl->TextColor[0] = ctx->Theme.TextDim[0];
-            lbl->TextColor[1] = ctx->Theme.TextDim[1];
-            lbl->TextColor[2] = ctx->Theme.TextDim[2];
-            lbl->TextColor[3] = ctx->Theme.TextDim[3];
-            ZUIPopBox(ctx);
-        }
+            char ck[56] = {}, bk[56] = {}, fk[56] = {};
+            snprintf(ck, sizeof(ck), "##ax%s_%s", kNames[a], row_key + 2);
+            snprintf(bk, sizeof(bk), "##bx%s_%s", kNames[a], row_key + 2);
+            snprintf(fk, sizeof(fk), "##%s_%s", kNames[a], row_key + 2);
+            ZUIBox* cell       = ZUIBeginRow(ctx, ck, ZPx(w3), ZPx(22.f));
+            cell->Flags        = cell->Flags | ZUI_DrawBackground;
+            cell->Padding[0]   = 4.f;
+            cell->CrossAlign   = ZUIAlign::Center;
+            cell->EdgeSoftness = 0.5f;
+            ZUIBoxSetColorArr(cell, ctx->Theme.InputBg);
+            ZUIBoxSetCornerRadius(cell, 3.f);
 
-        // X — thin 3px colored bar + DragFloat
-        {
-            char bk[48], fk[48];
-            snprintf(bk, sizeof(bk), "##bx_%s", row_key + 2);
-            snprintf(fk, sizeof(fk), "##x_%s", row_key + 2);
-            ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
-            bar->Size[0] = ZPx(3.f);
-            bar->Size[1] = ZPx(fh);
-            ZUIBoxSetColorArr(bar, kBarR);
+            ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) ZEngine::Helpers::secure_strlen(bk), ZUI_DrawBackground);
+            bar->Size[0] = ZPx(2.f);
+            bar->Size[1] = ZPx(15.f);
+            ZUIBoxSetColorArr(bar, kAxis[a]);
             bar->EdgeSoftness = 0.f;
             ZUIPopBox(ctx);
-            any |= ZUIDragFloat(ctx, fk, &v[0], speed, w3);
-        }
-        ZUISpacer(ctx, 4.f); // gap between X and Y groups
 
-        // Y — thin 3px colored bar + DragFloat
-        {
-            char bk[48], fk[48];
-            snprintf(bk, sizeof(bk), "##by_%s", row_key + 2);
-            snprintf(fk, sizeof(fk), "##y_%s", row_key + 2);
-            ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
-            bar->Size[0] = ZPx(3.f);
-            bar->Size[1] = ZPx(fh);
-            ZUIBoxSetColorArr(bar, kBarG);
-            bar->EdgeSoftness = 0.f;
-            ZUIPopBox(ctx);
-            any |= ZUIDragFloat(ctx, fk, &v[1], speed, w3);
+            ctx->Style.FramePadding[0]  = 4.f;
+            any                        |= ZUIDragFloat(ctx, fk, &v[a], speed, w3 - 6.f);
+            ctx->Style.FramePadding[0]  = saved_pad;
+            ZUIEndRow(ctx);
         }
-        ZUISpacer(ctx, 4.f); // gap between Y and Z groups
+        ctx->FlatInputs        = false;
+        ctx->DragFloatDecimals = 3;
+        ctx->DragFloatSuffix   = nullptr;
 
-        // Z — thin 3px colored bar + DragFloat
-        {
-            char bk[48], fk[48];
-            snprintf(bk, sizeof(bk), "##bz_%s", row_key + 2);
-            snprintf(fk, sizeof(fk), "##z_%s", row_key + 2);
-            ZUIBox* bar  = ZUIPushBox(ctx, bk, (uint32_t) strlen(bk), ZUI_DrawBackground);
-            bar->Size[0] = ZPx(3.f);
-            bar->Size[1] = ZPx(fh);
-            ZUIBoxSetColorArr(bar, kBarB);
-            bar->EdgeSoftness = 0.f;
-            ZUIPopBox(ctx);
-            any |= ZUIDragFloat(ctx, fk, &v[2], speed, w3);
-        }
-        ZUISpacer(ctx, 8.f); // trailing
-
+        ZUIIconBox(ctx, ZUIIcon::RotateCcw, kResetSize, ctx->Theme.TextDim);
         ZUIEndRow(ctx);
         return any;
+    }
+
+    // Display name of a component type: the registry's "TransformComponent" reads as "Transform".
+    static const char* DisplayName(ZUIContext* ctx, const char* type_name)
+    {
+        const size_t      len       = ZEngine::Helpers::secure_strlen(type_name);
+        static const char kSuffix[] = "Component";
+        if (len > sizeof(kSuffix) - 1 && ZEngine::Helpers::secure_strcmp(type_name + len - (sizeof(kSuffix) - 1), kSuffix) == 0)
+        {
+            char* out = (char*) ZUIPushStr(&ctx->FrameArena, type_name, (uint32_t) (len - (sizeof(kSuffix) - 1))).Ptr;
+            return out;
+        }
+        return type_name;
+    }
+
+    // Figma "Property section heading": 28 px band, chevron, semibold title, ellipsis.
+    static void SectionHeading(ZUIContext* ctx, const char* type_name, bool* open)
+    {
+        const char* title   = DisplayName(ctx, type_name);
+        char        key[96] = {};
+        snprintf(key, sizeof(key), "##sec_%s", type_name);
+        ZUIBox* row     = ZUIBeginRow(ctx, key, ZFill(), ZPx(28.f));
+        row->Flags      = row->Flags | ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawBorder | ZUI_KeyboardActivate;
+        row->Padding[0] = row->Padding[2] = 10.f;
+        row->Gap                          = 7.f;
+        row->CrossAlign                   = ZUIAlign::Center;
+        row->EdgeSoftness                 = 0.f;
+        ZUIBoxSetColorArr(row, ctx->Theme.ButtonBg);
+        for (int k = 0; k < 4; ++k)
+            row->BorderColor[k] = ctx->Theme.PanelBorder[k];
+        row->BorderThickness = 0.f;
+        ZUIIconBox(ctx, *open ? ZUIIcon::ChevronDown : ZUIIcon::ChevronRight, 11.f, ctx->Theme.TextDefault);
+        ZUILabelTight(ctx, title, ctx->Theme.TextDefault, ZUIFontSize::Heading);
+        {
+            ZUIBox* fill  = ZUIPushBox(ctx, "##sec_fill", 10, ZUI_None);
+            fill->Size[0] = ZFill();
+            fill->Size[1] = ZPx(1.f);
+            ZUIPopBox(ctx);
+        }
+        ZUIIconBox(ctx, ZUIIcon::Ellipsis, 13.f, ctx->Theme.TextDim);
+        ZUISignal sig = ZUISignalFromBox(ctx, row);
+        ZUIEndRow(ctx);
+        if (sig.Flags & ZUI_SignalClicked)
+            *open = !*open;
     }
 
     // DrawZUIField
     // Widget dispatch by FieldType. Two-column row: dim label (kLabelW) + widget.
     // Matches develop DrawField() translated to ZUI widget calls.
-    static void DrawZUIField(ZUIContext* ctx, const FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
+    static bool DrawZUIField(ZUIContext* ctx, const FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
     {
         if (fd.Hidden)
-            return;
+            return false;
 
-        void* ptr = static_cast<char*>(comp_data) + fd.Offset;
-        float fh  = ZUIGetFrameHeight(ctx);
-        float wid = fmaxf(pw - kLabelW - 24.f, 36.f); // 8px leading + 8px trailing
+        bool  changed     = false;
 
-        // Vertical breathing room — same 3px gap above every field row,
-        // current and future types all get it for free here.
-        ZUISpacer(ctx, 3.f);
+        void* ptr         = static_cast<char*>(comp_data) + fd.Offset;
+        float fh          = ZUIGetFrameHeight(ctx);
+        float wid         = fmaxf(pw - kRowLead - kLabelW - kRowGap - kRowGap - kResetSize - kRowLead, 36.f);
 
-        char row_key[48];
+        char  row_key[48] = {};
         snprintf(row_key, sizeof(row_key), "##frow_%u_%u", comp_idx, field_idx);
 
         // Vec3f is handled by Vec3Row (full-row layout with colored bars)
@@ -139,45 +180,39 @@ namespace Tetragrama::Panels
                 display[2] = fv[2] * 57.2957795f;
             }
 
-            if (Vec3Row(ctx, row_key, fd.Name, display, is_radians ? 1.0f : 0.05f, pw) && is_radians)
+            changed = Vec3Row(ctx, row_key, fd.Name, display, is_radians ? 1.0f : 0.05f, pw, is_radians);
+            if (changed && is_radians)
             {
                 fv[0] = display[0] * 0.01745329f; // deg → rad
                 fv[1] = display[1] * 0.01745329f;
                 fv[2] = display[2] * 0.01745329f;
             }
-            else if (!is_radians)
+            else if (changed)
             {
                 fv[0] = display[0];
                 fv[1] = display[1];
                 fv[2] = display[2];
             }
-            return;
+            return changed;
         }
 
         // All other types: two-column row (label | widget)
-        ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh));
-        ZUISpacer(ctx, 8.f); // leading indent — aligns with Vec3Row
+        (void) fh;
+        ZUIBox* frow     = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(29.f));
+        frow->Padding[0] = kRowLead;
+        frow->Padding[2] = kRowLead;
+        frow->Gap        = kRowGap;
+        frow->CrossAlign = ZUIAlign::Center;
+        RowLabel(ctx, fd.Name);
+        ctx->FlatInputs = true;
 
-        {
-            ZUIBox* lbl       = ZUIPushBox(ctx, "##lbl", 5, ZUI_DrawText);
-            lbl->Size[0]      = ZPx(kLabelW);
-            lbl->Size[1]      = ZPx(fh);
-            uint32_t llen     = (uint32_t) strlen(fd.Name);
-            lbl->Label        = ZUIPushStr(&ctx->FrameArena, fd.Name, llen);
-            lbl->TextColor[0] = ctx->Theme.TextDim[0];
-            lbl->TextColor[1] = ctx->Theme.TextDim[1];
-            lbl->TextColor[2] = ctx->Theme.TextDim[2];
-            lbl->TextColor[3] = ctx->Theme.TextDim[3];
-            ZUIPopBox(ctx);
-        }
-
-        char wkey[48];
+        char wkey[48]   = {};
         snprintf(wkey, sizeof(wkey), "##fv_%u_%u", comp_idx, field_idx);
 
         switch (fd.Type)
         {
             case FieldType::Bool:
-                ZUICheckbox(ctx, wkey, static_cast<bool*>(ptr));
+                changed = ZUICheckbox(ctx, wkey, static_cast<bool*>(ptr));
                 break;
 
             case FieldType::Int8:
@@ -193,6 +228,7 @@ namespace Tetragrama::Panels
                     val = *static_cast<int32_t*>(ptr);
                 if (ZUIDragInt(ctx, wkey, &val, 1.f, wid))
                 {
+                    changed = true;
                     if (fd.Type == FieldType::Int8)
                         *static_cast<int8_t*>(ptr) = (int8_t) val;
                     else if (fd.Type == FieldType::Int16)
@@ -210,7 +246,7 @@ namespace Tetragrama::Panels
             case FieldType::UInt64:
             {
                 // Display as read-only formatted string for now
-                char buf[32];
+                char buf[32] = {};
                 snprintf(buf, sizeof(buf), "%lld", (long long) *(int64_t*) ptr);
                 ZUILabel(ctx, buf, ctx->Theme.TextDefault);
                 break;
@@ -218,7 +254,7 @@ namespace Tetragrama::Panels
 
             case FieldType::Float:
             {
-                ZUIDragFloat(ctx, wkey, static_cast<float*>(ptr), 0.05f, wid);
+                changed = ZUIDragFloat(ctx, wkey, static_cast<float*>(ptr), 0.05f, wid);
                 break;
             }
 
@@ -226,19 +262,22 @@ namespace Tetragrama::Panels
             {
                 float f = (float) *static_cast<double*>(ptr);
                 if (ZUIDragFloat(ctx, wkey, &f, 0.05f, wid))
+                {
+                    changed                    = true;
                     *static_cast<double*>(ptr) = (double) f;
+                }
                 break;
             }
 
             case FieldType::Vec2f:
             {
-                float* fv = static_cast<float*>(ptr);
-                float  w2 = fmaxf(wid * 0.5f, 36.f);
-                char   xk[48], yk[48];
+                float* fv     = static_cast<float*>(ptr);
+                float  w2     = fmaxf(wid * 0.5f, 36.f);
+                char   xk[48] = {}, yk[48] = {};
                 snprintf(xk, sizeof(xk), "##v2x_%u_%u", comp_idx, field_idx);
                 snprintf(yk, sizeof(yk), "##v2y_%u_%u", comp_idx, field_idx);
-                ZUIDragFloat(ctx, xk, &fv[0], 0.05f, w2);
-                ZUIDragFloat(ctx, yk, &fv[1], 0.05f, w2);
+                changed |= ZUIDragFloat(ctx, xk, &fv[0], 0.05f, w2);
+                changed |= ZUIDragFloat(ctx, yk, &fv[1], 0.05f, w2);
                 break;
             }
 
@@ -248,9 +287,9 @@ namespace Tetragrama::Panels
                 float  w4 = fmaxf(wid * 0.25f, 28.f);
                 for (int ax = 0; ax < 4; ++ax)
                 {
-                    char ak[48];
+                    char ak[48] = {};
                     snprintf(ak, sizeof(ak), "##v4_%d_%u_%u", ax, comp_idx, field_idx);
-                    ZUIDragFloat(ctx, ak, &fv[ax], 0.05f, w4);
+                    changed |= ZUIDragFloat(ctx, ak, &fv[ax], 0.05f, w4);
                 }
                 break;
             }
@@ -258,7 +297,7 @@ namespace Tetragrama::Panels
             case FieldType::String:
             {
                 uint32_t cap = fd.StringCap > 0 ? fd.StringCap : 256u;
-                ZUITextField(ctx, wkey, static_cast<char*>(ptr), cap, wid);
+                changed      = ZUITextField(ctx, wkey, static_cast<char*>(ptr), cap, wid);
                 break;
             }
 
@@ -306,7 +345,8 @@ namespace Tetragrama::Panels
                         bool sel = (fd.EnumValues[ei].Value == cur);
                         if (ZUIComboItem(ctx, fd.EnumValues[ei].Name, sel))
                         {
-                            int64_t nv = fd.EnumValues[ei].Value;
+                            int64_t nv  = fd.EnumValues[ei].Value;
+                            changed    |= nv != cur;
                             switch (fd.Size)
                             {
                                 case 1:
@@ -334,8 +374,10 @@ namespace Tetragrama::Panels
                 break;
         }
 
-        ZUISpacer(ctx, 8.f); // trailing — matches leading
+        ctx->FlatInputs = false;
+        ZUIIconBox(ctx, ZUIIcon::RotateCcw, kResetSize, ctx->Theme.TextDim);
         ZUIEndRow(ctx);
+        return changed;
     }
 
     void InspectorPanel::BuildContent(ZUIContext* ctx, float rect[4])
@@ -395,45 +437,88 @@ namespace Tetragrama::Panels
             return;
         }
 
-        ArchetypeMask mask     = actor->GetComponentMask();
-        const auto&   registry = ComponentReflectionRegistry::Get();
+        ArchetypeMask mask      = actor->GetComponentMask();
+        const auto&   registry  = ComponentReflectionRegistry::Get();
 
-        // Actor header — name editing + Add Component
+        const float   accent[4] = ZUI_TOKEN(ZEngine::UI::Tokens::AccentBlue);
+
+        // Figma "Actor identity": 45 px band, 22 px actor glyph, name over kind, lock icon.
         {
-            constexpr float kAddBtnW = 70.f;
+            const char* kind = "Actor";
+            if (actor->HasComponent<LightComponent>())
+                kind = "Light Actor";
+            else if (actor->HasComponent<CameraComponent>())
+                kind = "Camera Actor";
+            else if (actor->HasComponent<MeshComponent>())
+                kind = "Static Mesh Actor";
 
-            ZUIBox*         hdr      = ZUIBeginColumn(ctx, "##insp_hdr", ZFill(), ZPx(fh + 16.f));
-            hdr->Flags               = hdr->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColor(hdr, 0.18f, 0.18f, 0.22f, 1.f);
-            hdr->EdgeSoftness = 0.f;
-            hdr->Padding[1]   = 6.f; // top padding — vertically centers the field
-            hdr->Padding[3]   = 6.f; // bottom padding
+            ZUIBox* id     = ZUIBeginRow(ctx, "##insp_id", ZFill(), ZPx(45.f));
+            id->Padding[0] = id->Padding[2] = 10.f;
+            id->Gap                         = 9.f;
+            id->CrossAlign                  = ZUIAlign::Center;
+            ZUIIconBox(ctx, ZUIIcon::Box, 22.f, accent);
 
-            auto* nc_comp     = actor->GetComponent<NameComponent>();
-            ZUIBeginRow(ctx, "##insp_hdr_r", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            if (nc_comp)
-                ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 32.f - kAddBtnW, 80.f));
-            else
-                ZUILabel(ctx, "Actor", ctx->Theme.TextDefault);
-            ZUISpacer(ctx, 8.f);
-
-            static constexpr const char* kAddBtnLabel = "+ Add";
-            if (ZUIButton(ctx, kAddBtnLabel, ZPx(kAddBtnW), ZPx(fh)).Flags & ZUI_SignalClicked)
+            ZUIBox* col              = ZUIBeginColumn(ctx, "##insp_id_col", ZFill(), ZFit());
+            col->Gap                 = 3.f;
+            auto*          nc_comp   = actor->GetComponent<NameComponent>();
+            const uint64_t name_hash = ZUIHashStr("##actor_name", 12);
+            if (m_renaming && nc_comp && ctx->FocusKey != name_hash && ctx->ActiveKey != name_hash && ctx->HotKey != name_hash)
             {
-                // The button sits flush against the panel's right edge, so opening at
-                // the click position (ZUIOpenPopup's default) clips the list against
-                // the window edge — anchor leftward from the button's own right edge
-                // instead, same pattern ZUIBeginCombo uses for its dropdown.
-                uint64_t            btn_key = ZUIHashStr(kAddBtnLabel, (uint32_t) strlen(kAddBtnLabel));
+                // Focus left the field on a previous frame: leave edit mode.
+                static int s_wait = 0;
+                if (++s_wait > 2)
+                {
+                    m_renaming = false;
+                    s_wait     = 0;
+                }
+            }
+            if (m_renaming && nc_comp)
+            {
+                if (ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 10.f - 22.f - 9.f - 9.f - 13.f - 10.f, 80.f)))
+                    scene->MarkDirty(true);
+            }
+            else
+            {
+                const char* nm  = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+                ZUIBox*     lbl = ZUILabelTight(ctx, nm, ctx->Theme.TextDefault, ZUIFontSize::Header);
+                (void) lbl;
+                ZUIBox* hit      = ZUIPushBox(ctx, "##actor_name_hit", 16, ZUI_Clickable | ZUI_FloatX | ZUI_FloatY | ZUI_KeyboardActivate);
+                hit->Size[0]     = ZPct(1.f);
+                hit->Size[1]     = ZPx(15.f);
+                hit->FloatPos[0] = 0.f;
+                hit->FloatPos[1] = 0.f;
+                ZUISignal hs     = ZUISignalFromBox(ctx, hit);
+                ZUIPopBox(ctx);
+                if ((hs.Flags & ZUI_SignalClicked) && nc_comp)
+                {
+                    m_renaming    = true;
+                    ctx->FocusKey = name_hash;
+                }
+            }
+            ZUILabelTight(ctx, kind, ctx->Theme.TextDim, ZUIFontSize::Body);
+            ZUIEndColumn(ctx);
+
+            ZUIIconBox(ctx, ZUIIcon::LockOpen, 13.f, ctx->Theme.TextDim);
+            ZUIEndRow(ctx);
+        }
+
+        // Figma "Component actions": Add Component (primary) and Blueprint / Add Script.
+        {
+            ZUIBox* ca     = ZUIBeginRow(ctx, "##insp_actions", ZFill(), ZPx(31.f));
+            ca->Padding[0] = ca->Padding[2] = 10.f;
+            ca->Gap                         = 7.f;
+            ca->CrossAlign                  = ZUIAlign::Center;
+            ZUISignal add                   = ZUIEditorControl(ctx, "##insp_add", ZUIIcon::Plus, "Add Component", false, true, nullptr, false, true);
+            ZUIEditorControl(ctx, "##insp_script", ZUIIcon::Code, "Blueprint / Add Script", false);
+            ZUIEndRow(ctx);
+            if (add.Flags & ZUI_SignalClicked)
+            {
+                uint64_t            btn_key = ZUIHashStr("##insp_add", 10);
                 ZUIPersistentState* ps      = ZUIStateGetOrInsert(&ctx->StateStore, btn_key);
                 float               py      = (ps && ps->ScreenMaxY > 0.f) ? ps->ScreenMaxY : ctx->MousePos[1];
-                float               px      = (ps && ps->ScreenMaxX > 0.f) ? fmaxf(ps->ScreenMaxX - ctx->Style.PopupMinWidth, 0.f) : ctx->MousePos[0];
+                float               px      = (ps && ps->ScreenMinX > 0.f) ? ps->ScreenMinX : ctx->MousePos[0];
                 ZUIOpenPopup(ctx, "##add_component_popup", px, py);
             }
-
-            ZUISpacer(ctx, 8.f);
-            ZUIEndRow(ctx);
 
             if (ZUIBeginPopup(ctx, "##add_component_popup"))
             {
@@ -443,9 +528,15 @@ namespace Tetragrama::Panels
                         return; // already on the actor
                     if (!meta.Add)
                         return; // display-only, cannot be constructed
-                    any = true;
-                    if (ZUIMenuItem(ctx, meta.TypeName))
+                    any                 = true;
+                    char add_label[160] = {};
+                    snprintf(add_label, sizeof(add_label), "%s##add_%s", DisplayName(ctx, meta.TypeName), meta.TypeName);
+                    if (ZUIMenuItemEx(ctx, add_label, nullptr))
+                    {
                         eng->Scene->AddComponentRaw(actor->GetEntityID(), meta.TypeID);
+                        if (MaskHas(actor->GetComponentMask(), meta.TypeID))
+                            scene->MarkDirty(true);
+                    }
                 });
 
                 if (!any)
@@ -453,109 +544,90 @@ namespace Tetragrama::Panels
 
                 ZUIEndPopup(ctx);
             }
+        }
 
+        // Figma "Actor component tree": the actor and the components attached to it.
+        {
+            auto*       nc_comp   = actor->GetComponent<NameComponent>();
+            const char* nm        = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+            char        self[160] = {};
+            snprintf(self, sizeof(self), "%s (Self)", nm);
+
+            ZUIBox* tree     = ZUIBeginColumn(ctx, "##insp_tree", ZFill(), ZFit());
+            tree->Padding[0] = 12.f;
+            tree->Padding[1] = 7.f;
+            tree->Padding[3] = 7.f;
+            tree->Gap        = 6.f;
+            ZUIBox* r0       = ZUIBeginRow(ctx, "##insp_tree_self", ZFill(), ZPx(12.f));
+            r0->Gap          = 7.f;
+            r0->CrossAlign   = ZUIAlign::Center;
+            ZUIIconBox(ctx, ZUIIcon::ChevronDown, 10.f, ctx->Theme.TextDim);
+            ZUIIconBox(ctx, ZUIIcon::Box, 12.f, ctx->Theme.TextDim);
+            ZUILabelTight(ctx, self, ctx->Theme.TextDefault, ZUIFontSize::Body);
+            ZUIEndRow(ctx);
+            uint32_t tree_n = 0;
+            registry.ForEach([&](const ComponentMeta& meta) {
+                if (!MaskHas(mask, meta.TypeID) || tree_n >= 1 || ZEngine::Helpers::secure_strcmp(meta.TypeName, "NameComponent") == 0 || ZEngine::Helpers::secure_strcmp(meta.TypeName, "UUIDComponent") == 0 || ZEngine::Helpers::secure_strcmp(meta.TypeName, "TransformComponent") == 0)
+                    return;
+                char tk[48] = {};
+                snprintf(tk, sizeof(tk), "##insp_tree_%u", tree_n++);
+                ZUIBox* rc     = ZUIBeginRow(ctx, tk, ZFill(), ZPx(12.f));
+                rc->Padding[0] = 22.f;
+                rc->Gap        = 7.f;
+                rc->CrossAlign = ZUIAlign::Center;
+                ZUIIconBox(ctx, ZUIIcon::Box, 12.f, ctx->Theme.TextDim);
+                ZUILabelTight(ctx, DisplayName(ctx, meta.TypeName), ctx->Theme.TextDefault, ZUIFontSize::Body);
+                ZUIEndRow(ctx);
+            });
             ZUIEndColumn(ctx);
         }
 
-        // Search bar
-        ZUISpacer(ctx, 4.f);
-        ZUIBeginRow(ctx, "##insp_search_row", ZFill(), ZPx(fh));
-        ZUISpacer(ctx, 8.f);
-        ZUISearchBox(ctx, "##insp_search", m_search, sizeof(m_search), "Search Details...", ZFill());
-        ZUISpacer(ctx, 8.f);
-        ZUIEndRow(ctx);
-        ZUISpacer(ctx, 4.f);
-
-        // Category pill buttons (UE5-style filter row)
-        // Collect unique categories for components on this actor
+        // Figma "Details search": 35 px band; the filter icon picks the category (replaces the pill row).
         {
-            static constexpr int kMaxCats       = 16;
-            const char*          cats[kMaxCats] = {};
-            int                  cat_n          = 0;
-            const ArchetypeMask  cat_mask       = actor->GetComponentMask();
-            const auto&          cat_reg        = ComponentReflectionRegistry::Get();
+            ZUIBox* sr     = ZUIBeginRow(ctx, "##insp_search_row", ZFill(), ZPx(35.f));
+            sr->Padding[0] = sr->Padding[2] = 10.f;
+            sr->Gap                         = 8.f;
+            sr->CrossAlign                  = ZUIAlign::Center;
+            ZUISearchBox(ctx, "##insp_search", m_search, sizeof(m_search), "Search details", ZFill());
+            ZUIBox* fl      = ZUIPushBox(ctx, "##insp_cat_btn", 13, ZUI_DrawIcon | ZUI_Clickable | ZUI_KeyboardActivate);
+            fl->Size[0]     = ZPx(14.f);
+            fl->Size[1]     = ZPx(14.f);
+            fl->IconId      = (uint16_t) ZUIIcon::ListFilter;
+            const float* fc = (ZEngine::Helpers::secure_strcmp(m_category, "All") == 0) ? ctx->Theme.TextDim : accent;
+            for (int k = 0; k < 4; ++k)
+                fl->TextColor[k] = fc[k];
+            ZUISignal fs = ZUISignalFromBox(ctx, fl);
+            ZUIPopBox(ctx);
+            ZUIEndRow(ctx);
+            if (fs.Flags & ZUI_SignalClicked)
+                ZUIOpenPopup(ctx, "##insp_cat_popup");
 
-            cat_reg.ForEach([&](const ComponentMeta& m) {
-                if (!MaskHas(cat_mask, m.TypeID) || !m.Category)
-                    return;
-                // Check not already in list
-                for (int ci = 0; ci < cat_n; ++ci)
-                    if (cats[ci] && strcmp(cats[ci], m.Category) == 0)
-                        return;
-                if (cat_n < kMaxCats)
-                    cats[cat_n++] = m.Category;
-            });
-
-            if (cat_n > 0)
+            if (ZUIBeginPopup(ctx, "##insp_cat_popup"))
             {
-                ZUISpacer(ctx, 4.f);
-                // Pill button colors
-                static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal — active
-                static const float kPillHov[4]  = {0.28f, 0.28f, 0.33f, 1.f}; // slightly brighter — hover
-                static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark — inactive
-
-                ZUIBeginRow(ctx, "##cat_pills", ZFill(), ZPx(fh + 4.f));
-                ZUISpacer(ctx, 6.f);
-
-                // "All" pill
-                {
-                    bool    is_all = (strcmp(m_category, "All") == 0);
-                    ZUIBox* btn    = ZUIPushBox(ctx, "##cpAll", 7, ZUI_Clickable | ZUI_DrawBackground | ZUI_DrawText);
-                    float   tw     = 28.f;
-                    btn->Size[0]   = ZPx(tw);
-                    btn->Size[1]   = ZPx(fh);
-                    btn->Label     = ZUIPushStr(&ctx->FrameArena, "All", 3);
-                    btn->TextAlign = ZUITextAlign::Center;
-                    bool pill_hov  = !is_all && (ctx->HotKey == btn->Key);
-                    ZUIBoxSetColorArr(btn, is_all ? kPillAct : pill_hov ? kPillHov : kPillRest);
-                    ZUIBoxSetCornerRadius(btn, 3.f);
-                    btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
-                    btn->TextColor[3]                                         = 1.f;
-                    ZUISignal sig                                             = ZUISignalFromBox(ctx, btn);
-                    ZUIPopBox(ctx);
-                    if (sig.Flags & ZUI_SignalClicked)
-                        ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), "All", 3);
-                    ZUISpacer(ctx, 4.f);
-                }
-
-                // One pill per category
+                if (ZUIMenuItemEx(ctx, "All", nullptr, ZEngine::Helpers::secure_strcmp(m_category, "All") == 0))
+                    ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), "All", 3);
+                static constexpr int kMaxCats       = 16;
+                const char*          cats[kMaxCats] = {};
+                int                  cat_n          = 0;
+                registry.ForEach([&](const ComponentMeta& m) {
+                    if (!MaskHas(mask, m.TypeID) || !m.Category)
+                        return;
+                    for (int ci = 0; ci < cat_n; ++ci)
+                        if (cats[ci] && ZEngine::Helpers::secure_strcmp(cats[ci], m.Category) == 0)
+                            return;
+                    if (cat_n < kMaxCats)
+                        cats[cat_n++] = m.Category;
+                });
                 for (int ci = 0; ci < cat_n; ++ci)
-                {
-                    if (!cats[ci])
-                        continue;
-                    bool is_active = (strcmp(m_category, cats[ci]) == 0);
-                    char pill_key[48];
-                    snprintf(pill_key, sizeof(pill_key), "##cp_%d", ci);
-                    uint32_t clen   = (uint32_t) strlen(cats[ci]);
-                    // Approximate pill width from name length
-                    float    pill_w = fmaxf((float) clen * 7.f + 10.f, 40.f);
-
-                    ZUIBox*  btn    = ZUIPushBox(ctx, pill_key, (uint32_t) strlen(pill_key), ZUI_Clickable | ZUI_DrawBackground | ZUI_DrawText);
-                    btn->Size[0]    = ZPx(pill_w);
-                    btn->Size[1]    = ZPx(fh);
-                    btn->Label      = ZUIPushStr(&ctx->FrameArena, cats[ci], clen);
-                    btn->TextAlign  = ZUITextAlign::Center;
-                    bool pill_hov   = !is_active && (ctx->HotKey == btn->Key);
-                    ZUIBoxSetColorArr(btn, is_active ? kPillAct : pill_hov ? kPillHov : kPillRest);
-                    ZUIBoxSetCornerRadius(btn, 3.f);
-                    btn->TextColor[0] = btn->TextColor[1] = btn->TextColor[2] = 1.f;
-                    btn->TextColor[3]                                         = 1.f;
-                    ZUISignal sig                                             = ZUISignalFromBox(ctx, btn);
-                    ZUIPopBox(ctx);
-                    if (sig.Flags & ZUI_SignalClicked)
+                    if (ZUIMenuItemEx(ctx, cats[ci], nullptr, ZEngine::Helpers::secure_strcmp(m_category, cats[ci]) == 0))
                         ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), cats[ci], sizeof(m_category) - 1);
-                    ZUISpacer(ctx, 4.f);
-                }
-                ZUIEndRow(ctx);
-                ZUISpacer(ctx, 4.f);
+                ZUIEndPopup(ctx);
             }
         }
 
-        ZUISeparator(ctx);
-
         // Scroll region
         ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##insp_scroll", ZFill(), ZFill());
-        ZUIPaddingXY(scroll, 0.f, 4.f); // 4px top/bottom breathing room
+        (void) scroll;
 
         // Reflection-driven component sections
         uint32_t comp_idx = 0;
@@ -566,8 +638,8 @@ namespace Tetragrama::Panels
                 return;
 
             // Category pill filter
-            bool all_cats = (strcmp(m_category, "All") == 0);
-            if (!all_cats && (!meta.Category || strcmp(meta.Category, m_category) != 0))
+            bool all_cats = (ZEngine::Helpers::secure_strcmp(m_category, "All") == 0);
+            if (!all_cats && (!meta.Category || ZEngine::Helpers::secure_strcmp(meta.Category, m_category) != 0))
             {
                 ++comp_idx;
                 return;
@@ -597,17 +669,14 @@ namespace Tetragrama::Panels
             }
 
             uint32_t open_idx = meta.TypeID < 64u ? meta.TypeID : 0u;
-            ZUICollapsingHeader(ctx, meta.TypeName, &m_sec_open[open_idx]);
+            SectionHeading(ctx, meta.TypeName, &m_sec_open[open_idx]);
 
             if (m_sec_open[open_idx])
             {
-                ZUISpacer(ctx, 6.f);
                 for (uint32_t fi = 0; fi < meta.FieldCount; ++fi)
-                    DrawZUIField(ctx, meta.Fields[fi], comp_data, pw, comp_idx, fi);
-                ZUISpacer(ctx, 6.f);
-                ZUISeparator(ctx);
+                    if (DrawZUIField(ctx, meta.Fields[fi], comp_data, pw, comp_idx, fi))
+                        scene->MarkDirty(true);
             }
-            ZUISpacer(ctx, 2.f); // small gap between sections
 
             ++comp_idx;
         });

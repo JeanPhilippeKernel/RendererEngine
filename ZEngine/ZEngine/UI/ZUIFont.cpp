@@ -18,6 +18,29 @@ using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::UI
 {
+    // Latin-1 C1 control slots hold extra typographic glyphs so byte-based text can reach them
+    // (see ZUI_GLYPH_* in ZUIFont.h).
+    static uint32_t ZUIBakedCodepoint(uint32_t byte_value)
+    {
+        switch (byte_value)
+        {
+            case 0x85:
+                return 0x2026; // ellipsis
+            case 0x95:
+                return 0x2022; // bullet
+            case 0x96:
+                return 0x2013; // en dash
+            case 0x97:
+                return 0x2014; // em dash
+            case 0x8F:
+                return 0x2191; // up arrow
+            case 0x8E:
+                return 0x2193; // down arrow
+            default:
+                return byte_value;
+        }
+    }
+
     // Load a TTF file from the VFS into temp_arena. Returns nullptr on failure.
     static uint8_t* LoadTTFFromVFS(const char* vfs_path, ArenaAllocator* temp_arena, uint64_t* out_size)
     {
@@ -49,7 +72,7 @@ namespace ZEngine::UI
         return data;
     }
 
-    ZUIFontAtlas* ZUIFontAtlasBake(ArenaAllocator* persistent_arena, ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path)
+    ZUIFontAtlas* ZUIFontAtlasBake(ArenaAllocator* persistent_arena, ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path, const char* icon_vfs_path, const uint32_t* icon_codepoints, uint32_t icon_count, float icon_size, float size_tiny, float size_large, float size_heading)
     {
         // 1. Load TTF data
         uint64_t ttf_size = 0;
@@ -79,25 +102,40 @@ namespace ZEngine::UI
         else
             ft_header = ft_body;
 
-        const float    kSizes[3]    = {size_small, size_body, size_header};
-        FT_Face        kFaces[3]    = {ft_body, ft_body, ft_header};
-        const int      kGlyphPad    = 1; // 1-px border so bilinear sampling never bleeds
+        FT_Face ft_icon = nullptr;
+        if (icon_vfs_path && icon_codepoints && icon_count > 0 && icon_size > 0.f)
+        {
+            uint64_t icon_ttf_size = 0;
+            uint8_t* icon_ttf      = LoadTTFFromVFS(icon_vfs_path, temp_arena, &icon_ttf_size);
+            if (icon_ttf)
+                FT_New_Memory_Face(ft_lib, icon_ttf, (FT_Long) icon_ttf_size, 0, &ft_icon);
+        }
+        const uint32_t kIconGlyphs           = ft_icon ? icon_count : 0;
+
+        // Header and Heading use the semibold face; both share the single GPU atlas.
+        // A size of 0 skips an optional variant.
+        constexpr int  kFontVariants         = 6;
+        const float    kSizes[kFontVariants] = {size_small, size_body, size_header, size_tiny, size_large, size_heading};
+        FT_Face        kFaces[kFontVariants] = {ft_body, ft_body, ft_header, ft_body, ft_body, ft_header};
+        const int      kGlyphPad             = 1; // 1-px border so bilinear sampling never bleeds
 
         // 3. Two-pass atlas packing
         //    Pass A: render each glyph to measure its bitmap dimensions.
         //    Pass B: render again into the atlas at stb_rect_pack positions.
-        const uint32_t kTotalGlyphs = 3 * codepoint_count;
-        stbrp_rect*    rects        = ZPushArray(temp_arena, stbrp_rect, kTotalGlyphs);
+        const uint32_t kTotalGlyphs          = kFontVariants * codepoint_count + kIconGlyphs;
+        stbrp_rect*    rects                 = ZPushArray(temp_arena, stbrp_rect, kTotalGlyphs);
 
         // Pass A — measure
-        for (int fi = 0; fi < 3; ++fi)
+        for (int fi = 0; fi < kFontVariants; ++fi)
         {
+            if (kSizes[fi] <= 0.f)
+                continue;
             FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
             for (uint32_t gi = 0; gi < codepoint_count; ++gi)
             {
                 uint32_t ri       = (uint32_t) fi * codepoint_count + gi;
                 rects[ri].id      = (int) ri;
-                FT_UInt glyph_idx = FT_Get_Char_Index(kFaces[fi], first_codepoint + gi);
+                FT_UInt glyph_idx = FT_Get_Char_Index(kFaces[fi], ZUIBakedCodepoint(first_codepoint + gi));
                 if (glyph_idx == 0 || FT_Load_Glyph(kFaces[fi], glyph_idx, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT) != 0)
                 {
                     rects[ri].w = rects[ri].h = 0;
@@ -105,6 +143,24 @@ namespace ZEngine::UI
                 }
                 rects[ri].w = (stbrp_coord) (kFaces[fi]->glyph->bitmap.width + 2 * kGlyphPad);
                 rects[ri].h = (stbrp_coord) (kFaces[fi]->glyph->bitmap.rows + 2 * kGlyphPad);
+            }
+        }
+
+        if (ft_icon)
+        {
+            FT_Set_Pixel_Sizes(ft_icon, 0, (FT_UInt) icon_size);
+            for (uint32_t ii = 0; ii < kIconGlyphs; ++ii)
+            {
+                uint32_t ri       = kFontVariants * codepoint_count + ii;
+                rects[ri].id      = (int) ri;
+                FT_UInt glyph_idx = FT_Get_Char_Index(ft_icon, icon_codepoints[ii]);
+                if (glyph_idx == 0 || FT_Load_Glyph(ft_icon, glyph_idx, FT_LOAD_RENDER | FT_LOAD_NO_HINTING) != 0)
+                {
+                    rects[ri].w = rects[ri].h = 0;
+                    continue;
+                }
+                rects[ri].w = (stbrp_coord) (ft_icon->glyph->bitmap.width + 2 * kGlyphPad);
+                rects[ri].h = (stbrp_coord) (ft_icon->glyph->bitmap.rows + 2 * kGlyphPad);
             }
         }
 
@@ -121,8 +177,10 @@ namespace ZEngine::UI
         // White texel at (0,0) — used by solid-color draws
         atlas_px[0]       = 255u;
 
-        for (int fi = 0; fi < 3; ++fi)
+        for (int fi = 0; fi < kFontVariants; ++fi)
         {
+            if (kSizes[fi] <= 0.f)
+                continue;
             FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
             for (uint32_t gi = 0; gi < codepoint_count; ++gi)
             {
@@ -130,7 +188,7 @@ namespace ZEngine::UI
                 if (!rects[ri].was_packed || rects[ri].w == 0)
                     continue;
 
-                FT_UInt glyph_idx = FT_Get_Char_Index(kFaces[fi], first_codepoint + gi);
+                FT_UInt glyph_idx = FT_Get_Char_Index(kFaces[fi], ZUIBakedCodepoint(first_codepoint + gi));
                 if (glyph_idx == 0 || FT_Load_Glyph(kFaces[fi], glyph_idx, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT) != 0)
                     continue;
 
@@ -146,6 +204,26 @@ namespace ZEngine::UI
                         atlas_px[dst] = bmp.buffer[row * abs(bmp.pitch) + col];
                     }
                 }
+            }
+        }
+
+        if (ft_icon)
+        {
+            FT_Set_Pixel_Sizes(ft_icon, 0, (FT_UInt) icon_size);
+            for (uint32_t ii = 0; ii < kIconGlyphs; ++ii)
+            {
+                uint32_t ri = kFontVariants * codepoint_count + ii;
+                if (!rects[ri].was_packed || rects[ri].w == 0)
+                    continue;
+                FT_UInt glyph_idx = FT_Get_Char_Index(ft_icon, icon_codepoints[ii]);
+                if (glyph_idx == 0 || FT_Load_Glyph(ft_icon, glyph_idx, FT_LOAD_RENDER | FT_LOAD_NO_HINTING) != 0)
+                    continue;
+                FT_Bitmap& bmp   = ft_icon->glyph->bitmap;
+                int        dst_x = (int) rects[ri].x + kGlyphPad;
+                int        dst_y = (int) rects[ri].y + kGlyphPad;
+                for (int row = 0; row < (int) bmp.rows; ++row)
+                    for (int col = 0; col < (int) bmp.width; ++col)
+                        atlas_px[(dst_y + row) * (int) kAtlasW + (dst_x + col)] = bmp.buffer[row * abs(bmp.pitch) + col];
             }
         }
 
@@ -169,23 +247,25 @@ namespace ZEngine::UI
         device->RequestDescriptorUpdate(gpu_handle);
 
         // 6. Build ZUIFontAtlas
-        ZUIFontAtlas* atlas = ZPushStruct(persistent_arena, ZUIFontAtlas);
-        atlas->Handle       = gpu_handle;
-        atlas->Width        = kAtlasW;
-        atlas->Height       = kAtlasH;
-        atlas->WhiteU       = 0.5f / (float) kAtlasW;
-        atlas->WhiteV       = 0.5f / (float) kAtlasH;
+        ZUIFontAtlas* atlas            = ZPushStructCtor(persistent_arena, ZUIFontAtlas);
+        atlas->Handle                  = gpu_handle;
+        atlas->Width                   = kAtlasW;
+        atlas->Height                  = kAtlasH;
+        atlas->WhiteU                  = 0.5f / (float) kAtlasW;
+        atlas->WhiteV                  = 0.5f / (float) kAtlasH;
 
-        float     inv_w     = 1.f / (float) kAtlasW;
-        float     inv_h     = 1.f / (float) kAtlasH;
+        float     inv_w                = 1.f / (float) kAtlasW;
+        float     inv_h                = 1.f / (float) kAtlasH;
 
-        ZUIFont** kDsts[3]  = {&atlas->Small, &atlas->Body, &atlas->Header};
+        ZUIFont** kDsts[kFontVariants] = {&atlas->Small, &atlas->Body, &atlas->Header, &atlas->Tiny, &atlas->Large, &atlas->Heading};
 
-        for (int fi = 0; fi < 3; ++fi)
+        for (int fi = 0; fi < kFontVariants; ++fi)
         {
+            if (kSizes[fi] <= 0.f)
+                continue;
             FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]);
 
-            ZUIFont* font        = ZPushStruct(persistent_arena, ZUIFont);
+            ZUIFont* font        = ZPushStructCtor(persistent_arena, ZUIFont);
             font->Glyphs         = ZPushArray(persistent_arena, ZUIGlyph, codepoint_count);
             font->GlyphCount     = codepoint_count;
             font->FirstCodepoint = first_codepoint;
@@ -202,7 +282,7 @@ namespace ZEngine::UI
                 ZUIGlyph& g         = font->Glyphs[gi];
                 uint32_t  ri        = (uint32_t) fi * codepoint_count + gi;
 
-                FT_UInt   glyph_idx = FT_Get_Char_Index(kFaces[fi], first_codepoint + gi);
+                FT_UInt   glyph_idx = FT_Get_Char_Index(kFaces[fi], ZUIBakedCodepoint(first_codepoint + gi));
                 if (glyph_idx == 0 || FT_Load_Glyph(kFaces[fi], glyph_idx, FT_LOAD_RENDER | FT_LOAD_FORCE_AUTOHINT) != 0)
                 {
                     // Missing glyph — advance only, no visible quad
@@ -231,6 +311,48 @@ namespace ZEngine::UI
             }
 
             *kDsts[fi] = font;
+        }
+
+        if (ft_icon)
+        {
+            FT_Set_Pixel_Sizes(ft_icon, 0, (FT_UInt) icon_size);
+            ZUIFont* font        = ZPushStructCtor(persistent_arena, ZUIFont);
+            font->Glyphs         = ZPushArray(persistent_arena, ZUIGlyph, kIconGlyphs);
+            font->GlyphCount     = kIconGlyphs;
+            font->FirstCodepoint = 0;
+            font->FontSize       = icon_size;
+            font->Ascent         = (float) (ft_icon->size->metrics.ascender >> 6);
+            font->Descent        = (float) (ft_icon->size->metrics.descender >> 6);
+            font->LineHeight     = (float) (ft_icon->size->metrics.height >> 6);
+            for (uint32_t ii = 0; ii < kIconGlyphs; ++ii)
+            {
+                ZUIGlyph& g         = font->Glyphs[ii];
+                uint32_t  ri        = kFontVariants * codepoint_count + ii;
+                FT_UInt   glyph_idx = FT_Get_Char_Index(ft_icon, icon_codepoints[ii]);
+                if (glyph_idx == 0 || FT_Load_Glyph(ft_icon, glyph_idx, FT_LOAD_RENDER | FT_LOAD_NO_HINTING) != 0)
+                {
+                    g          = {};
+                    g.AdvanceX = icon_size;
+                    continue;
+                }
+                FT_GlyphSlot slot = ft_icon->glyph;
+                g.OffsetX         = (float) slot->bitmap_left;
+                g.OffsetY         = -(float) slot->bitmap_top;
+                g.Width           = (float) slot->bitmap.width;
+                g.Height          = (float) slot->bitmap.rows;
+                g.AdvanceX        = (float) (slot->advance.x >> 6);
+                if (rects[ri].was_packed && rects[ri].w > 0)
+                {
+                    int px0 = (int) rects[ri].x + kGlyphPad;
+                    int py0 = (int) rects[ri].y + kGlyphPad;
+                    g.U0    = (float) px0 * inv_w;
+                    g.V0    = (float) py0 * inv_h;
+                    g.U1    = (float) (px0 + (int) slot->bitmap.width) * inv_w;
+                    g.V1    = (float) (py0 + (int) slot->bitmap.rows) * inv_h;
+                }
+            }
+            atlas->Icon = font;
+            FT_Done_Face(ft_icon);
         }
 
         // 7. Clean up FreeType (its own heap, not arena-tracked)

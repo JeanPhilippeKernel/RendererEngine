@@ -1,5 +1,6 @@
 #include <ZEngine/UI/ZUIFont.h>
 #include <ZEngine/UI/ZUILayout.h>
+#include <cmath>
 
 namespace ZEngine::UI
 {
@@ -11,6 +12,27 @@ namespace ZEngine::UI
     static inline float PadEnd(const ZUIBox* b, int axis)
     {
         return (axis == 0) ? b->Padding[2] : b->Padding[3];
+    }
+
+    // Total Gap between in-flow children of @p box along its layout axis.
+    // Floated children are positioned absolutely, so they neither take a gap nor receive one.
+    static inline float GapTotal(const ZUIBox* box)
+    {
+        if (box->Gap == 0.f)
+        {
+            return 0.f;
+        }
+        const int axis = (int) box->LayoutAxis;
+        uint32_t  flow = 0;
+        for (const ZUIBox* c = box->FirstChild; c; c = c->NextSib)
+        {
+            const bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+            if (!floated)
+            {
+                ++flow;
+            }
+        }
+        return (flow > 1) ? box->Gap * (float) (flow - 1) : 0.f;
     }
 
     void ZUILayoutSolve(ZUIContext* ctx)
@@ -79,6 +101,7 @@ namespace ZEngine::UI
                                 if (!floated)
                                     accum += c->ComputedSize[axis];
                             }
+                            accum += GapTotal(box);
                         }
                         else
                         {
@@ -98,6 +121,7 @@ namespace ZEngine::UI
                     default:
                         break; // Fill / ParentPercent deferred to Pass 2
                 }
+                box->ComputedSize[axis] = fmaxf(box->ComputedSize[axis], box->MinSize[axis]);
             }
         }
 
@@ -152,7 +176,7 @@ namespace ZEngine::UI
                                 else
                                     non_fill += sib->ComputedSize[axis];
                             }
-                            float remaining         = parent->ComputedSize[axis] - ps - pe - non_fill;
+                            float remaining         = parent->ComputedSize[axis] - ps - pe - non_fill - GapTotal(parent);
                             box->ComputedSize[axis] = (fill_n > 0) ? remaining / (float) fill_n : 0.f;
                         }
                         break;
@@ -191,8 +215,9 @@ namespace ZEngine::UI
                 if (!floated)
                     total += c->ComputedSize[axis];
             }
+            total          += GapTotal(box);
 
-            float overflow = total - available;
+            float overflow  = total - available;
             if (overflow <= 0.001f)
             {
                 continue;
@@ -239,6 +264,61 @@ namespace ZEngine::UI
             }
         }
 
+        // Pass 2.75 — resolve main-axis flow (FlowGap / FlowOffset) once per container so
+        // Pass 3 stays O(children). Free space is whatever remains after final child sizes
+        // and Gap; Fill children and overflow leave none, so alignment is a no-op there.
+        for (uint32_t i = 0; i < node_count; ++i)
+        {
+            ZUIBox* box     = nodes[i];
+            box->FlowGap    = box->Gap;
+            box->FlowOffset = 0.f;
+            if (!box->FirstChild || box->MainAlign == ZUIAlign::Start)
+            {
+                continue;
+            }
+
+            const int axis = (int) box->LayoutAxis;
+            uint32_t  flow = 0;
+            float     used = 0.f;
+            for (ZUIBox* c = box->FirstChild; c; c = c->NextSib)
+            {
+                const bool floated = (axis == 0) ? !!(c->Flags & ZUI_FloatX) : !!(c->Flags & ZUI_FloatY);
+                if (!floated)
+                {
+                    ++flow;
+                    used += c->ComputedSize[axis];
+                }
+            }
+            if (flow == 0)
+            {
+                continue;
+            }
+
+            const float free_space = box->ComputedSize[axis] - PadStart(box, axis) - PadEnd(box, axis) - used - box->Gap * (float) (flow - 1);
+            if (free_space <= 0.001f)
+            {
+                continue;
+            }
+
+            switch (box->MainAlign)
+            {
+                case ZUIAlign::Center:
+                    box->FlowOffset = free_space * 0.5f;
+                    break;
+                case ZUIAlign::End:
+                    box->FlowOffset = free_space;
+                    break;
+                case ZUIAlign::SpaceBetween:
+                    if (flow > 1)
+                    {
+                        box->FlowGap = box->Gap + free_space / (float) (flow - 1);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
         // Pass 3 — assign screen positions (top-down, after sizes finalized)
         for (uint32_t i = 0; i < node_count; ++i)
         {
@@ -258,7 +338,7 @@ namespace ZEngine::UI
                     bool floating = (axis == 0) ? !!(box->Flags & ZUI_FloatX) : !!(box->Flags & ZUI_FloatY);
                     if (floating)
                     {
-                        box->ScreenMin[axis] = parent->ScreenMin[axis] + box->FloatPos[axis];
+                        box->ScreenMin[axis] = parent->ScreenMin[axis] + parent->ComputedSize[axis] * box->FloatAnchor[axis] + box->FloatPos[axis];
                     }
                     else if (axis == layout)
                     {
@@ -275,7 +355,7 @@ namespace ZEngine::UI
                         }
                         if (prev_flow)
                         {
-                            box->ScreenMin[axis] = prev_flow->ScreenMax[axis];
+                            box->ScreenMin[axis] = prev_flow->ScreenMax[axis] + parent->FlowGap;
                         }
                         else
                         {
@@ -289,17 +369,36 @@ namespace ZEngine::UI
                                 if (ps_state)
                                     scroll = (axis == 1) ? ps_state->ScrollY : ps_state->ScrollX;
                             }
-                            box->ScreenMin[axis] = parent->ScreenMin[axis] + ps - scroll;
+                            box->ScreenMin[axis] = parent->ScreenMin[axis] + ps - scroll + parent->FlowOffset;
                         }
                     }
                     else
                     {
-                        float ps             = PadStart(parent, axis);
-                        box->ScreenMin[axis] = parent->ScreenMin[axis] + ps;
+                        float ps           = PadStart(parent, axis);
+                        float cross_offset = 0.f;
+                        if (parent->CrossAlign == ZUIAlign::Center || parent->CrossAlign == ZUIAlign::End)
+                        {
+                            const float free_space = parent->ComputedSize[axis] - ps - PadEnd(parent, axis) - box->ComputedSize[axis];
+                            if (free_space > 0.f)
+                            {
+                                cross_offset = (parent->CrossAlign == ZUIAlign::Center) ? free_space * 0.5f : free_space;
+                            }
+                        }
+                        box->ScreenMin[axis] = parent->ScreenMin[axis] + ps + cross_offset;
                     }
                 }
             }
 
+            if (box->Flags & ZUI_Tooltip)
+            {
+                const float screen[2] = {(float) ctx->ScreenW, (float) ctx->ScreenH};
+                for (int axis = 0; axis < 2; ++axis)
+                {
+                    if (box->ScreenMin[axis] + box->ComputedSize[axis] > screen[axis])
+                        box->ScreenMin[axis] -= box->ComputedSize[axis] + 24.f;
+                    box->ScreenMin[axis] = fmaxf(0.f, fminf(box->ScreenMin[axis], screen[axis] - box->ComputedSize[axis]));
+                }
+            }
             box->ScreenMax[0] = box->ScreenMin[0] + box->ComputedSize[0];
             box->ScreenMax[1] = box->ScreenMin[1] + box->ComputedSize[1];
 
@@ -338,9 +437,10 @@ namespace ZEngine::UI
                 if (!floated)
                     content += c->ComputedSize[layout];
             }
+            content          += GapTotal(box);
 
-            float visible    = box->ComputedSize[layout] - PadStart(box, layout) - PadEnd(box, layout);
-            float max_scroll = content - visible;
+            float visible     = box->ComputedSize[layout] - PadStart(box, layout) - PadEnd(box, layout);
+            float max_scroll  = content - visible;
             if (max_scroll < 0.f)
                 max_scroll = 0.f;
 

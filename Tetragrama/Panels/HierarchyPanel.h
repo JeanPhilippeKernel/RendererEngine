@@ -37,16 +37,17 @@ namespace Tetragrama::Panels
         ZEngine::ECS::EntityID        m_collapsed[kMaxCollapsed] = {};
         int                           m_ncollapsed               = 0;
         bool                          m_root_open                = true;
+        int                           m_sort_col                 = 0; ///< 0 = Actor Label, 1 = Type (kept here: the data table reloads its own sort state every frame)
+        bool                          m_sort_asc                 = true;
 
-        // Drag-reparent: panel owns drag state because ZUIInteractionPass clears
-        // DragPayloadLen=0 on mouse release (before BuildContent sees DragDropFired=true)
+        // Drag-reparent: keep the source actor stable while rebuilding the tree.
         ZEngine::ECS::ActorHandle     m_dragging_actor           = {};
         char                          m_drag_label[128]          = {};
 
         // Panel-level double-click tracking (ZUISignalFromBox is called twice per row,
         // so we track in the panel to avoid double-firing)
-        uint32_t                      m_last_click_idx           = UINT32_MAX;
-        uint32_t                      m_last_click_gen           = 0;
+        uint64_t                      m_last_click_idx           = UINT64_MAX;
+        uint64_t                      m_last_click_gen           = 0;
         double                        m_last_click_time          = -1.0;
 
         /// @brief Returns true if @p id is in the collapsed set.

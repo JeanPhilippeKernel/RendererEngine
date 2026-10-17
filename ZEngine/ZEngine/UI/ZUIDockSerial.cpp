@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIDockSerial.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 #include <cstdio>
@@ -12,10 +13,19 @@ namespace ZEngine::UI
 
     static constexpr uint32_t kMaxSerialNodes = 128;
 
+    static bool               ViewIsAssigned(const ZUIPanelManager* manager, const ZUIPanelView* view)
+    {
+        for (uint32_t pi = 0; pi < manager->PanelCount; ++pi)
+            for (uint32_t vi = 0; vi < manager->Panels[pi].ViewCount; ++vi)
+                if (manager->Panels[pi].Views[vi] == view)
+                    return true;
+        return false;
+    }
+
     struct NodeRecord
     {
-        ZUIDockNode* Ptr;
-        int          ParentId; // -1 = root
+        ZUIDockNode* Ptr      = nullptr;
+        int          ParentId = -1; // -1 = root
     };
 
     static void CollectNodes(ZUIDockNode* node, int parent_id, NodeRecord records[], uint32_t* count)
@@ -50,8 +60,8 @@ namespace ZEngine::UI
         // node <id> <parent_id> <is_leaf> <axis:0=X,1=Y> <pct> [<content_key_hex> <is_central> <auto_hide_tab_bar>]
         if (manager->DockTree && manager->DockTree->Root)
         {
-            NodeRecord records[kMaxSerialNodes];
-            uint32_t   count = 0;
+            NodeRecord records[kMaxSerialNodes] = {};
+            uint32_t   count                    = 0;
             CollectNodes(manager->DockTree->Root, -1, records, &count);
 
             for (uint32_t i = 0; i < count; ++i)
@@ -109,9 +119,9 @@ namespace ZEngine::UI
             return false;
         }
 
-        // Version check (v3 only; v2 files are discarded, not migrated)
-        char line[512];
-        if (!fgets(line, sizeof(line), f) || strncmp(line, "# ZUI Layout v4", 15) != 0)
+        // Version check (v4 only; older formats are discarded, not migrated)
+        char line[512] = {};
+        if (!fgets(line, sizeof(line), f) || ZEngine::Helpers::secure_memcmp(line, sizeof(line), "# ZUI Layout v4", sizeof("# ZUI Layout v4"), 15) != 0)
         {
             fclose(f);
             return false;
@@ -120,38 +130,38 @@ namespace ZEngine::UI
         // Pass 1: parse all node records
         struct LoadNode
         {
-            int      parent_id;
-            int      is_leaf;
-            int      axis; // 0=X 1=Y
-            float    pct;
-            uint64_t content_key; // 0 if split
-            int      is_central;
-            int      auto_hide_tab_bar;
+            int      parent_id         = -1;
+            int      is_leaf           = {};
+            int      axis              = {}; // 0=X 1=Y
+            float    pct               = 1.f;
+            uint64_t content_key       = {}; // 0 if split
+            int      is_central        = {};
+            int      auto_hide_tab_bar = {};
         };
 
-        LoadNode load_nodes[kMaxSerialNodes];
-        uint32_t node_count = 0;
+        LoadNode load_nodes[kMaxSerialNodes] = {};
+        uint32_t node_count                  = 0;
 
         // Also buffer panel lines for pass 2
         struct LoadPanel
         {
-            uint64_t key;
-            uint32_t active_tab;
-            int      hidden;
-            uint32_t view_count;
+            uint64_t key        = {};
+            uint32_t active_tab = {};
+            int      hidden     = {};
+            uint32_t view_count = {};
         };
-        static constexpr uint32_t kMaxPanels = 32;
-        LoadPanel                 load_panels[kMaxPanels];
-        char                      panel_views[kMaxPanels][kMaxTabsPerPanel][64]; // title buffers
-        int                       panel_view_vis[kMaxPanels][kMaxTabsPerPanel];  // per-view visible (v4)
-        uint32_t                  panel_count    = 0;
-        int                       pending_panel  = -1; // index of panel we're reading views for
-        uint32_t                  panel_view_idx = 0;
+        static constexpr uint32_t kMaxPanels                                    = 32;
+        LoadPanel                 load_panels[kMaxPanels]                       = {};
+        char                      panel_views[kMaxPanels][kMaxTabsPerPanel][64] = {}; // title buffers
+        int                       panel_view_vis[kMaxPanels][kMaxTabsPerPanel]  = {}; // per-view visible (v4)
+        uint32_t                  panel_count                                   = 0;
+        int                       pending_panel                                 = -1; // index of panel we're reading views for
+        uint32_t                  panel_view_idx                                = 0;
 
         while (fgets(line, sizeof(line), f))
         {
             // Strip trailing newline
-            uint32_t len = (uint32_t) strlen(line);
+            uint32_t len = (uint32_t) ZEngine::Helpers::secure_strlen(line);
             while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
             {
                 line[--len] = '\0';
@@ -162,7 +172,7 @@ namespace ZEngine::UI
                 continue;
             }
 
-            if (strncmp(line, "node ", 5) == 0 && node_count < kMaxSerialNodes)
+            if (ZEngine::Helpers::secure_memcmp(line, sizeof(line), "node ", sizeof("node "), 5) == 0 && node_count < kMaxSerialNodes)
             {
                 pending_panel             = -1; // end any ongoing panel read
                 LoadNode& n               = load_nodes[node_count];
@@ -177,32 +187,39 @@ namespace ZEngine::UI
                     ++node_count;
                 }
             }
-            else if (strncmp(line, "panel ", 6) == 0 && panel_count < kMaxPanels)
+            else if (ZEngine::Helpers::secure_memcmp(line, sizeof(line), "panel ", sizeof("panel "), 6) == 0 && panel_count < kMaxPanels)
             {
                 LoadPanel&         p = load_panels[panel_count];
                 unsigned long long k = 0;
                 if (sscanf(line + 6, "%llx %u %d %u", &k, &p.active_tab, &p.hidden, &p.view_count) == 4)
                 {
-                    p.key          = (uint64_t) k;
+                    p.key = (uint64_t) k;
+                    if (p.view_count > kMaxTabsPerPanel)
+                        p.view_count = kMaxTabsPerPanel;
                     pending_panel  = (int) panel_count;
                     panel_view_idx = 0;
                     ++panel_count;
                 }
             }
-            else if (strncmp(line, "view ", 5) == 0 && pending_panel >= 0)
+            else if (ZEngine::Helpers::secure_memcmp(line, sizeof(line), "view ", sizeof("view "), 5) == 0 && pending_panel >= 0)
             {
                 if (panel_view_idx < kMaxTabsPerPanel)
                 {
-                    char title_buf[64] = {};
-                    int  vis           = 1; // default visible if not present
-                    // v4: "view <title> <visible>"  v3: "view <title>"
-                    int  parsed        = sscanf(line + 5, "%63s %d", title_buf, &vis);
-                    if (parsed >= 1)
+                    char* title  = line + 5;
+                    int   vis    = 1;
+                    // Read visibility from the right: titles can contain spaces. Keep
+                    // accepting old title-only records, without changing the v4 format.
+                    char* suffix = strrchr(title, ' ');
+                    if (suffix && (ZEngine::Helpers::secure_strcmp(suffix + 1, "0") == 0 || ZEngine::Helpers::secure_strcmp(suffix + 1, "1") == 0))
                     {
-                        snprintf(panel_views[pending_panel][panel_view_idx], sizeof(panel_views[0][0]), "%s", title_buf);
-                        panel_view_vis[pending_panel][panel_view_idx] = (parsed >= 2) ? vis : 1;
-                        ++panel_view_idx;
+                        vis     = suffix[1] - '0';
+                        *suffix = '\0';
                     }
+                    // Reject overlong titles rather than silently matching a different view.
+                    if (ZEngine::Helpers::secure_strlen(title) < sizeof(panel_views[0][0]))
+                        ZEngine::Helpers::secure_memcpy(panel_views[pending_panel][panel_view_idx], sizeof(panel_views[pending_panel][panel_view_idx]), title, ZEngine::Helpers::secure_strlen(title) + 1);
+                    panel_view_vis[pending_panel][panel_view_idx] = vis;
+                    ++panel_view_idx;
                 }
             }
         }
@@ -270,29 +287,39 @@ namespace ZEngine::UI
         // Without this, unmatched panels end up with ViewCount=0 → invisible.
         struct ViewSnapshot
         {
-            ZUIPanelView* Views[kMaxTabsPerPanel];
-            uint32_t      Count;
+            ZUIPanelView* Views[kMaxTabsPerPanel] = {};
+            uint32_t      Count                   = {};
         };
-        ViewSnapshot snapshots[kMaxPanels];
+        ViewSnapshot snapshots[kMaxPanels]       = {};
+        bool         restored_panels[kMaxPanels] = {};
         for (uint32_t i = 0; i < manager->PanelCount; ++i)
         {
             snapshots[i].Count = manager->Panels[i].ViewCount;
             for (uint32_t v = 0; v < manager->Panels[i].ViewCount; ++v)
                 snapshots[i].Views[v] = manager->Panels[i].Views[v];
             manager->Panels[i].ViewCount = 0;
+            // Reserve the default panel slots while recreating saved drag slots.
+            // AddPanel otherwise reuses hidden empty slots before their records load.
+            manager->Panels[i].Hidden    = false;
         }
 
         for (uint32_t pi = 0; pi < panel_count; ++pi)
         {
             LoadPanel& lp = load_panels[pi];
             ZUIPanel*  p  = manager->FindPanel(lp.key);
+            // Drag-created panel keys are part of the saved tree. Recreate
+            // them directly; a shared view (Console/Importer) need not have a
+            // default panel whose key is the hash of its title.
+            if (!p && lp.view_count)
+                p = manager->AddPanel(lp.key);
             if (!p)
             {
                 continue;
             }
 
-            p->ActiveTab = lp.active_tab;
-            p->Hidden    = (lp.hidden != 0);
+            p->ActiveTab                         = lp.active_tab;
+            p->Hidden                            = (lp.hidden != 0);
+            restored_panels[p - manager->Panels] = true;
 
             // Assign views by matching titles; restore per-view Visible (v4)
             for (uint32_t vi = 0; vi < lp.view_count && p->ViewCount < kMaxTabsPerPanel; ++vi)
@@ -300,7 +327,7 @@ namespace ZEngine::UI
                 const char* title = panel_views[pi][vi];
                 for (uint32_t gi = 0; gi < view_count; ++gi)
                 {
-                    if (views[gi] && views[gi]->Title && strcmp(views[gi]->Title, title) == 0)
+                    if (views[gi] && views[gi]->MatchesTitle(title) && !ViewIsAssigned(manager, views[gi]))
                     {
                         views[gi]->Visible       = (panel_view_vis[pi][vi] != 0);
                         p->Views[p->ViewCount++] = views[gi];
@@ -313,85 +340,24 @@ namespace ZEngine::UI
                 p->ActiveTab = p->ViewCount - 1;
         }
 
-        // Pass 2b — match drag-created (DragKeySeq) panel records by view title.
-        // Panels are always created as AddPanel(ZUIDockHashName(view->Title)), so
-        // ZUIDockHashName(view->Title) == original_panel->DockKey — no snapshots needed.
-        // For each unmatched record: redirect its leaf ContentKey to the original panel
-        // and assign views directly. This makes drag-split positions survive restarts.
-        for (uint32_t pi = 0; pi < panel_count; ++pi)
-        {
-            LoadPanel& lp = load_panels[pi];
-            if (manager->FindPanel(lp.key))
-            {
-                continue;
-            } // already matched
-            if (lp.view_count == 0)
-            {
-                continue;
-            } // nothing to restore
-
-            // Identify the owner panel from the first view title
-            const char* first_title = panel_views[pi][0];
-            ZUIPanel*   owner       = nullptr;
-            for (uint32_t gi = 0; gi < view_count && !owner; ++gi)
-            {
-                if (!views[gi] || !views[gi]->Title)
-                {
-                    continue;
-                }
-                if (strcmp(views[gi]->Title, first_title) != 0)
-                {
-                    continue;
-                }
-                uint64_t owner_key = ZUIDockHashName(views[gi]->Title);
-                owner              = manager->FindPanel(owner_key);
-            }
-            if (!owner)
-            {
-                continue;
-            }
-
-            // Redirect the DragKeySeq leaf to the owner panel (if it has no leaf yet)
-            if (!ZUIDockFindLeaf(manager->DockTree, owner->DockKey))
-            {
-                ZUIDockNode* leaf = ZUIDockFindLeaf(manager->DockTree, lp.key);
-                if (leaf)
-                    leaf->ContentKey = owner->DockKey;
-            }
-
-            // Assign all views from the drag-created record to the owner panel
-            owner->ViewCount = 0;
-            owner->Hidden    = false;
-            owner->ActiveTab = lp.active_tab;
-            for (uint32_t vi = 0; vi < lp.view_count && owner->ViewCount < kMaxTabsPerPanel; ++vi)
-            {
-                const char* t = panel_views[pi][vi];
-                for (uint32_t gi = 0; gi < view_count; ++gi)
-                {
-                    if (views[gi] && views[gi]->Title && strcmp(views[gi]->Title, t) == 0)
-                    {
-                        owner->Views[owner->ViewCount++] = views[gi];
-                        break;
-                    }
-                }
-            }
-            if (owner->ActiveTab >= owner->ViewCount && owner->ViewCount > 0)
-                owner->ActiveTab = owner->ViewCount - 1;
-        }
-
-        // Restore view assignments for panels not found in the ini (stale/renamed keys).
-        // These keep their default AddView() assignments so the editor still renders.
+        // Preserve registered views omitted by older/partial layouts, including
+        // hidden tools added to an existing panel. Never restore a view already
+        // assigned elsewhere, or moving tabs duplicates them on the next launch.
         for (uint32_t i = 0; i < manager->PanelCount; ++i)
         {
             ZUIPanel* p = &manager->Panels[i];
-            if (p->ViewCount == 0 && snapshots[i].Count > 0)
+            for (uint32_t v = 0; v < snapshots[i].Count && p->ViewCount < kMaxTabsPerPanel; ++v)
             {
-                p->ViewCount = snapshots[i].Count;
-                for (uint32_t v = 0; v < snapshots[i].Count; ++v)
-                    p->Views[v] = snapshots[i].Views[v];
-                // Keep Hidden=false (panel was previously visible before the ini mismatch)
-                p->Hidden = false;
+                auto* view = snapshots[i].Views[v];
+                if (view && !ViewIsAssigned(manager, view))
+                {
+                    p->Views[p->ViewCount++] = view;
+                    if (!restored_panels[i])
+                        p->Hidden = false;
+                }
             }
+            if (!p->ViewCount)
+                p->Hidden = true;
         }
 
         // Collapse orphaned leaves — leaves whose ContentKey has NO registered panel at all.
@@ -399,11 +365,11 @@ namespace ZEngine::UI
         // exist in the current session's Panels[] array). Leaves with a registered panel
         // (even one with ViewCount==0) are left alone; hidden-panel collapse handles them.
         {
-            uint64_t     orphan_keys[kMaxSerialNodes];
-            uint32_t     orphan_count = 0;
+            uint64_t     orphan_keys[kMaxSerialNodes] = {};
+            uint32_t     orphan_count                 = 0;
 
-            ZUIDockNode* stk[kMaxSerialNodes];
-            uint32_t     stk_top = 0;
+            ZUIDockNode* stk[kMaxSerialNodes]         = {};
+            uint32_t     stk_top                      = 0;
             if (manager->DockTree->Root)
                 stk[stk_top++] = manager->DockTree->Root;
             while (stk_top > 0 && orphan_count < kMaxSerialNodes)
@@ -445,8 +411,8 @@ namespace ZEngine::UI
             // DFS: find the first leaf (may be an orphaned root)
             ZUIDockNode* tgt = nullptr;
             {
-                ZUIDockNode* s[kMaxSerialNodes];
-                uint32_t     st = 0;
+                ZUIDockNode* s[kMaxSerialNodes] = {};
+                uint32_t     st                 = 0;
                 if (manager->DockTree->Root)
                     s[st++] = manager->DockTree->Root;
                 while (st > 0 && !tgt)

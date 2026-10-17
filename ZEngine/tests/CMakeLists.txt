@@ -9,6 +9,7 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     ECS/*.cpp
     Scene/*.cpp
     Rendering/*.cpp
+    UI/*.cpp
 )
 
 # macOS and Windows are multi-config

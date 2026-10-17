@@ -9,7 +9,7 @@
 //   - CmdBuffer              → scissor/texture batches
 //   - _Path                  → scratch path points (CPU only)
 //
-// AA fringe width = FringeScale (1.0 logical px, matches ImGui).
+// AA fringe width = FringeScale (one framebuffer pixel in logical coordinates).
 // Solid-color fills use the atlas white pixel (WhiteU/WhiteV).
 
 namespace ZEngine::UI
@@ -26,16 +26,39 @@ namespace ZEngine::UI
     };
     static_assert(sizeof(ZUIDrawVtx) == 20, "ZUIDrawVtx size mismatch");
 
-    /// @brief One scissored draw call with its own clip rect and texture index.
+    /// @brief Gaussian rounded-rectangle shadow; Sigma == 0 selects normal textured rendering.
+    struct ZUIShadowDrawParams
+    {
+        float HalfSize[2] = {};
+        float Radius      = 0.f;
+        float Sigma       = 0.f;
+    };
+    static_assert(sizeof(ZUIShadowDrawParams) == 16);
+
+    /// Analytic paint: Enabled=1 is the color-taylor field, 2 is a rounded
+    /// gradient/swatch (LightnessMode selects its checkerboard underlay).
+    struct ZUIColorFieldDrawParams
+    {
+        float Brightness                                       = 1.f;
+        float Lightness                                        = 0.5f;
+        float LightnessMode                                    = 0.f;
+        float Enabled                                          = 0.f;
+        bool  operator==(const ZUIColorFieldDrawParams&) const = default;
+    };
+    static_assert(sizeof(ZUIColorFieldDrawParams) == 16);
+
+    /// @brief One scissored draw call with its own clip rect, texture index and effect.
     struct ZUIDrawListCmd
     {
-        uint32_t IdxOffset = 0;   // first index in IdxBuffer
-        uint32_t ElemCount = 0;   // index count for this call
-        float    ClipX     = 0.f; // scissor rect (logical px)
-        float    ClipY     = 0.f;
-        float    ClipW     = 0.f;
-        float    ClipH     = 0.f;
-        uint32_t TexIdx    = 0; // bindless texture array index
+        uint32_t                IdxOffset  = 0;   // first index in IdxBuffer
+        uint32_t                ElemCount  = 0;   // index count for this call
+        float                   ClipX      = 0.f; // scissor rect (logical px)
+        float                   ClipY      = 0.f;
+        float                   ClipW      = 0.f;
+        float                   ClipH      = 0.f;
+        uint32_t                TexIdx     = 0; // bindless texture array index
+        ZUIShadowDrawParams     Shadow     = {};
+        ZUIColorFieldDrawParams ColorField = {};
     };
 
     /// @brief Immediate-mode vector draw list.
@@ -43,42 +66,51 @@ namespace ZEngine::UI
     /// Mirrors ImDrawList: VtxBuffer/IdxBuffer hold GPU-ready geometry;
     /// CmdBuffer holds scissor/texture batches; PathX/PathY are CPU-only scratch
     /// for building path primitives before they are tessellated into vertices.
+    /// Primitives that cannot fit the vertex/index budget are rejected without
+    /// emitting partial geometry or wrapping 16-bit vertex addresses.
     struct ZUIDrawList
     {
-        // GPU-bound buffers (allocated from FrameArena each frame)
-        ZUIDrawVtx*          Vtx                         = nullptr;
-        uint32_t             VtxCount                    = 0;
-        uint32_t             VtxCapacity                 = 0;
+        // uint16_t indices address vertices, not index-buffer elements.
+        static constexpr uint32_t              VertexLimit                 = 1u << 16;
+        // Closed AA strokes are densest: 18 indices per 4 vertices. Convex
+        // fills use (9*n - 6) indices per 2*n vertices; quads use 6 per 4.
+        static constexpr uint32_t              IndexLimit                  = (VertexLimit / 4) * 18;
+        ZEngine::Core::Memory::ArenaAllocator* Arena                       = nullptr; ///< Owns this list's buffers, including all growth.
 
-        uint16_t*            Idx                         = nullptr;
-        uint32_t             IdxCount                    = 0;
-        uint32_t             IdxCapacity                 = 0;
+        // GPU-bound buffers (allocated from FrameArena each frame)
+        ZUIDrawVtx*                            Vtx                         = nullptr;
+        uint32_t                               VtxCount                    = 0;
+        uint32_t                               VtxCapacity                 = 0;
+
+        uint16_t*                              Idx                         = nullptr;
+        uint32_t                               IdxCount                    = 0;
+        uint32_t                               IdxCapacity                 = 0;
 
         // Scissor command buffer
-        ZUIDrawListCmd*      Cmds                        = nullptr;
-        uint32_t             CmdCount                    = 0;
-        uint32_t             CmdCapacity                 = 0;
+        ZUIDrawListCmd*                        Cmds                        = nullptr;
+        uint32_t                               CmdCount                    = 0;
+        uint32_t                               CmdCapacity                 = 0;
 
         // CPU-only path scratch (not sent to GPU)
-        float*               PathX                       = nullptr;
-        float*               PathY                       = nullptr;
-        uint32_t             PathCount                   = 0;
-        uint32_t             PathCap                     = 0;
+        float*                                 PathX                       = nullptr;
+        float*                                 PathY                       = nullptr;
+        uint32_t                               PathCount                   = 0;
+        uint32_t                               PathCap                     = 0;
 
         // Clip rect stack
-        static constexpr int kMaxClipDepth               = 16;
-        float                ClipStack[kMaxClipDepth][4] = {}; // [x0,y0,x1,y1]
-        int                  ClipDepth                   = 0;
+        static constexpr int                   kMaxClipDepth               = 16;
+        float                                  ClipStack[kMaxClipDepth][4] = {}; // [x0,y0,x1,y1]
+        int                                    ClipDepth                   = 0;
 
-        // AA fringe width — 1.0f = 1 logical pixel (matches ImGui)
-        float                FringeScale                 = 1.0f;
+        // AA fringe width in logical coordinates; renderer sets 1 / UIScale.
+        float                                  FringeScale                 = 1.0f;
 
         // White pixel UV for solid-color fills
-        float                WhiteU                      = 0.f;
-        float                WhiteV                      = 0.f;
+        float                                  WhiteU                      = 0.f;
+        float                                  WhiteV                      = 0.f;
 
         // Active texture index (atlas slot)
-        uint32_t             AtlasTexIdx                 = 0;
+        uint32_t                               AtlasTexIdx                 = 0;
     };
 
     // Lifecycle
@@ -128,9 +160,12 @@ namespace ZEngine::UI
     /// @param dl Target draw list.
     void            ZUIDrawListAddRectFilled(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding = 0.f, uint32_t round_flags = 0xF);
 
-    /// @brief AA-stroked (outline) rounded rect.
+    /// @brief AA-stroked rounded rect with the stroke inside its bounds.
     /// @param dl Target draw list.
     void            ZUIDrawListAddRect(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding = 0.f, uint32_t round_flags = 0xF, float thickness = 1.f);
+
+    /// @brief AA-stroked rounded rectangle with a continuous 3 px dash / 3 px gap pattern.
+    void            ZUIDrawListAddRectDashed(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding = 0.f, float thickness = 1.f);
 
     /// @brief AA-filled circle; @p num_segments = 0 auto-selects quality.
     /// @param dl Target draw list.
@@ -151,6 +186,18 @@ namespace ZEngine::UI
     /// @brief Flat (no AA) solid rect — fast path for opaque fills.
     /// @param dl Target draw list.
     void            ZUIDrawListAddRectFilledNoAA(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col);
+
+    /// @brief Blurred rounded rectangle, in one quad/draw, bounded to three Gaussian sigmas.
+    /// @param blur Figma blur radius (sigma = blur / 2), in logical px.
+    void            ZUIDrawListAddShadow(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding, float blur);
+
+    /// One anti-aliased, procedural hexagon, matching ColorMath::ColorAtPoint.
+    void            ZUIDrawListAddColorField(ZUIDrawList* dl, float cx, float cy, float radius, float brightness, float lightness, bool lightness_mode);
+
+    /// Rounded, piecewise-linear colour ramp, or two-colour split preview.
+    /// Masks both the paint and optional 4 px checkerboard at the same edge.
+    /// Uses four vertices per interval and no temporary textures or heap storage.
+    void            ZUIDrawListAddColorRect(ZUIDrawList* dl, float x0, float y0, float x1, float y1, const uint32_t* stops, int count, float rounding, bool checker = false, bool vertical = false, bool split = false);
 
     /// @brief Per-corner colored rect (gradient quad) — no AA, no rounding.
     /// @param dl Target draw list.
