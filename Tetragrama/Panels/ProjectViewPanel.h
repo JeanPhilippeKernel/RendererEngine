@@ -1,5 +1,6 @@
 #pragma once
 #include <Tetragrama/Layers/ZUILayer.h>
+#include <Tetragrama/Panels/FolderTreeCache.h>
 #include <ZEngine/Core/VFS/IVFSBackend.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
@@ -31,6 +32,8 @@ namespace Tetragrama::Panels
         void                          RequestRefresh();
 
     private:
+        friend struct ProjectViewPanelTestAccess;
+
         // Navigation
         ZEngine::Core::VFS::VFSPath m_current_dir = {};
         bool                        m_root_init   = false;
@@ -47,34 +50,17 @@ namespace Tetragrama::Panels
         int                  m_nentries             = 0;
         bool                 m_needs_refresh        = true;
 
-        // Sources tree per-directory listing cache
-        // Avoids live vfs->List() calls every frame per open tree node.
-        // Invalidated alongside the grid listing on m_needs_refresh.
-        struct TreeDirEntry
-        {
-            char name[256]      = {};
-            char full_path[512] = {};
-        };
-        static constexpr int kMaxTreeEntries = 128; // subdirs per cached dir
-        static constexpr int kMaxCachedDirs  = 48;
-        struct TreeDirCache
-        {
-            char         key[512]                 = {};
-            TreeDirEntry entries[kMaxTreeEntries] = {};
-            int          count                    = 0;
-            bool         valid                    = false;
-        };
-        TreeDirCache m_tree_cache[kMaxCachedDirs] = {};
-        int          m_tree_cache_count           = 0;
+        FolderTreeCache      m_folder_tree          = {};
 
         // Search + type filter
-        char         m_search[256]                = {};
-        char         m_type_filter[32]            = "All";
+        char                 m_search[256]          = {};
+        char                 m_folder_search[128]   = {};
+        char                 m_type_filter[32]      = "All";
 
         // Selection + double-click
-        char         m_selected_path[512]         = {};
-        char         m_last_click_path[512]       = {};
-        float        m_last_click_time            = -1.f;
+        char                 m_selected_path[512]   = {};
+        char                 m_last_click_path[512] = {};
+        float                m_last_click_time      = -1.f;
 
         // Modals
         enum class Modal
@@ -105,9 +91,6 @@ namespace Tetragrama::Panels
         void                        DrawGrid(ZEngine::UI::ZUIContext* ctx, float pw);
         /// @brief Draw any open modal dialogs (rename, delete, etc.).
         void                        DrawModals(ZEngine::UI::ZUIContext* ctx, ZEngine::Core::VFS::IVFSContext* vfs);
-
-        /// @brief Return (and cache) the subdirectory list for a given path.
-        const TreeDirEntry*         GetCachedSubdirs(ZEngine::Core::VFS::IVFSContext* vfs, const ZEngine::Core::VFS::VFSPath& dir, int* out_count);
 
         /// @brief Returns the icon color for a file given its name/extension.
         /// @param name File name (may include path).

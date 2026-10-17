@@ -1,6 +1,8 @@
 #pragma once
 #include <ZEngine/UI/ZUIBox.h>
+#include <ZEngine/UI/ZUIColorMath.h>
 #include <ZEngine/UI/ZUIContext.h>
+#include <ZEngine/UI/ZUIIcons.h>
 #include <ZEngine/UI/ZUIInteraction.h>
 
 namespace ZEngine::UI
@@ -69,18 +71,18 @@ namespace ZEngine::UI
     /// @brief Push a vertical stack; children are laid out along the Y axis.
     /// @param ctx Active ZUI context.
     /// @return The container box — override size/color before adding children.
-    ZUIBox*     ZUIBeginColumn(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFit());
+    ZUIBox*   ZUIBeginColumn(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFit());
     /// @brief Close the column opened by ZUIBeginColumn.
     /// @param ctx Active ZUI context.
-    void        ZUIEndColumn(ZUIContext* ctx);
+    void      ZUIEndColumn(ZUIContext* ctx);
 
     /// @brief Push a horizontal stack; children are laid out along the X axis.
     /// @param ctx Active ZUI context.
     /// @return The container box.
-    ZUIBox*     ZUIBeginRow(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFit());
+    ZUIBox*   ZUIBeginRow(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFit());
     /// @brief Close the row opened by ZUIBeginRow.
     /// @param ctx Active ZUI context.
-    void        ZUIEndRow(ZUIContext* ctx);
+    void      ZUIEndRow(ZUIContext* ctx);
 
     /// @brief Push a vertically-scrollable clipped region.
     ///
@@ -88,20 +90,20 @@ namespace ZEngine::UI
     /// the mouse wheel. Horizontal scroll is supported when LayoutAxis==X.
     /// @param ctx Active ZUI context.
     /// @return The container box — set Size / BgColor before adding children.
-    ZUIBox*     ZUIBeginScrollRegion(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFill());
+    ZUIBox*   ZUIBeginScrollRegion(ZUIContext* ctx, const char* key, ZUISize w = ZFill(), ZUISize h = ZFill());
     /// @brief Close the scroll region opened by ZUIBeginScrollRegion.
     /// @param ctx Active ZUI context.
-    void        ZUIEndScrollRegion(ZUIContext* ctx);
+    void      ZUIEndScrollRegion(ZUIContext* ctx);
 
     /// @brief Request the named scroll region to jump to its bottom on the next frame.
     /// @param ctx Active ZUI context.
     /// @note Call once whenever new content is appended (e.g. a new log entry).
-    void        ZUIScrollToBottom(ZUIContext* ctx, const char* key);
+    void      ZUIScrollToBottom(ZUIContext* ctx, const char* key);
 
     /// @brief Read the current vertical scroll offset of the named region.
     /// @param ctx Active ZUI context.
     /// @return Scroll offset in logical pixels, or 0 if key not found.
-    float       ZUIGetScrollY(ZUIContext* ctx, const char* key);
+    float     ZUIGetScrollY(ZUIContext* ctx, const char* key);
 
     // Leaf widgets
 
@@ -110,17 +112,51 @@ namespace ZEngine::UI
     /// @param text  Null-terminated string to display.
     /// @param color RGBA color, or nullptr to use Theme.TextDefault.
     /// @param size  Font variant (Body/Small/Header).
-    void        ZUILabel(ZUIContext* ctx, const char* text, const float color[4] = nullptr, ZUIFontSize size = ZUIFontSize::Body);
+    void      ZUILabel(ZUIContext* ctx, const char* text, const float color[4] = nullptr, ZUIFontSize size = ZUIFontSize::Body);
 
-    /// @brief Standard push button.
+    /// @brief Non-interactive text label sized exactly to its glyphs (no FramePadding), for tight rows
+    ///        where the surrounding container supplies padding and gaps.
+    /// @param size Font face; Tiny 9, Small 10, Body 11, Heading 11 semibold, Large 12, Header 12 semibold.
+    /// @returns The label box.
+    ZUIBox*   ZUILabelTight(ZUIContext* ctx, const char* text, const float color[4] = nullptr, ZUIFontSize size = ZUIFontSize::Body);
+
+    /// @brief Non-interactive Lucide icon, centred in a square box.
+    /// @param ctx   Active ZUI context.
+    /// @param icon  Icon id (see ZUIIcons.h).
+    /// @param size  Box edge in logical px (the Figma icon slot is 16).
+    /// @param color RGBA color, or nullptr to use Theme.TextDim (Figma text/secondary).
+    /// @returns The icon box, so callers can override size or color.
+    ZUIBox*   ZUIIconBox(ZUIContext* ctx, ZUIIcon icon, float size = 16.f, const float color[4] = nullptr);
+
+    /// @brief 26 px editor control from the Figma toolbar: [icon] [label] [chevron] on a rounded surface.
+    /// Padding 8, gap 6, 16 px icon, 10 px chevron, Body 11 label; icon-only controls are 32 px wide.
+    /// @param key        Unique box key.
+    /// @param icon       Leading icon, or ZUIIcon::Count for none.
+    /// @param label      Optional label (nullptr = none).
+    /// @param chevron    Trailing dropdown chevron.
+    /// @param active     Selected state: selection fill, blue border/icon, primary label.
+    /// @param icon_color Optional icon tint (ignored when active).
+    /// @param dim        Disabled appearance and interaction.
+    /// @param primary    Primary button recipe, including its dedicated hover/pressed colors.
+    /// @returns The control's signal.
+    ZUISignal ZUIEditorControl(ZUIContext* ctx, const char* key, ZUIIcon icon, const char* label, bool chevron, bool active = false, const float* icon_color = nullptr, bool dim = false, bool primary = false);
+
+    enum class ZUIButtonKind : uint8_t
+    {
+        Primary,
+        Secondary,
+        Ghost
+    };
+
+    /// @brief Standard push button, using the shared Figma button recipe.
     /// @param ctx Active ZUI context.
     /// @param label Button label text.
     /// @param w Width (default ZText() = label width + FramePadding.x × 2).
-    /// @param h Height (default = FrameHeight ≈ 19 px).
+    /// @param h Height (default 26 logical px, Figma height/control).
     /// @return ZUISignal — check ZUI_SignalClicked for activation.
-    ZUISignal   ZUIButton(ZUIContext* ctx, const char* label, ZUISize w = ZText(), ZUISize h = ZPx(19.f));
+    ZUISignal   ZUIButton(ZUIContext* ctx, const char* label, ZUISize w = ZText(), ZUISize h = ZPx(Metrics::HeightControl), ZUIButtonKind kind = ZUIButtonKind::Secondary);
 
-    /// @brief Compact borderless button — safe inside rows and toolbars.
+    /// @brief Content-sized Secondary button, 26 px high.
     /// @param ctx Active ZUI context.
     /// @param label Button label text.
     /// @returns True on click.
@@ -131,20 +167,14 @@ namespace ZEngine::UI
     /// @param key Widget key string.
     ZUISignal   ZUIInvisibleButton(ZUIContext* ctx, const char* key, ZUISize w = ZText(), ZUISize h = ZPx(28.f));
 
-    /// @brief Stateful toggle button — background brightens when @p *active is true.
+    /// @brief Stateful Secondary button — selection fill and blue border when active.
     /// @param ctx Active ZUI context.
     /// @param label Button label text.
     /// @param active Toggled in-place on click.
     /// @return true the frame @p *active changes.
-    bool        ZUIToggleButton(ZUIContext* ctx, const char* label, bool* active, ZUISize w = ZText(), ZUISize h = ZPx(28.f));
+    bool        ZUIToggleButton(ZUIContext* ctx, const char* label, bool* active, ZUISize w = ZText(), ZUISize h = ZPx(Metrics::HeightControl));
 
-    /// @brief Clickable image drawn from the bindless texture array.
-    /// @param ctx Active ZUI context.
-    /// @param key Widget key string.
-    /// @param texture_index Bindless slot (e.g. TextureHandle::Index).
-    ZUISignal   ZUIImageButton(ZUIContext* ctx, const char* key, uint32_t texture_index, ZUISize w = ZPx(28.f), ZUISize h = ZPx(28.f));
-
-    /// @brief Begin a disabled scope — nested widgets skip Clickable and are visually dimmed.
+    /// @brief Begin a disabled scope — nested widgets cannot interact and use disabled tokens.
     /// @param ctx Active ZUI context.
     void        ZUIBeginDisabled(ZUIContext* ctx);
     /// @brief End the disabled scope opened by ZUIBeginDisabled.
@@ -172,7 +202,13 @@ namespace ZEngine::UI
     /// @param label Checkbox label text.
     /// @param checked Toggled in-place on click.
     /// @return true the frame @p *checked changes.
-    bool        ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked);
+    /// @param leading_label_width Positive width places the label before the tick, for property forms.
+    bool        ZUICheckbox(ZUIContext* ctx, const char* label, bool* checked, float leading_label_width = 0.f);
+    /// @brief Figma "Toggle": 28x16 pill, accent/blue when on, with a 12 px thumb. Returns true when flipped.
+    bool        ZUIToggle(ZUIContext* ctx, const char* key, bool* on);
+    /// @brief Figma active-tab indicator: a 2 px accent/blue bar along the top of the enclosing tab.
+    ///        Call inside the tab's row; it floats, so it takes no layout space.
+    void        ZUIActiveTabIndicator(ZUIContext* ctx, const char* key, float tab_width);
 
     /// @brief Radio button — sets @p *selected = index when clicked.
     /// @param ctx Active ZUI context.
@@ -203,7 +239,7 @@ namespace ZEngine::UI
     /// @param label Header label text.
     /// @param open Pointer to the open/close state (toggled on click).
     /// @param bg_color         Optional RGBA background override; nullptr = transparent.
-    /// @param show_focus_border Draw a 1px teal focus ring when focused (default true).
+    /// @param show_focus_border Draw a 1 px blue focus ring when focused (default true).
     ///                          Pass false to suppress it — e.g. mini-panel section stacks.
     /// @return Interaction signal from the header box.
     ZUISignal   ZUICollapsingHeader(ZUIContext* ctx, const char* label, bool* open, const float* bg_color = nullptr, bool show_focus_border = true);
@@ -241,7 +277,7 @@ namespace ZEngine::UI
     /// @param h Height in pixels.
     void        ZUIDropZoneFill(ZUIContext* ctx, const char* key, float float_x, float float_y, float w, float h);
 
-    /// @brief 2px solid teal horizontal divider rendered in flow.
+    /// @brief 2 px solid blue horizontal divider rendered in flow.
     /// Marks the exact insertion boundary between sections or panels.
     /// @param ctx Active ZUI context.
     /// @param key Widget key string.
@@ -249,7 +285,7 @@ namespace ZEngine::UI
 
     /// @brief Full drag ghost: drop-shadow + content-body stub + labeled header row.
     ///
-    /// @p cursor_x / @p cursor_y are in the current parent's coordinate space.
+    /// @p cursor_x / @p cursor_y are absolute logical screen coordinates.
     /// The ghost is offset so the cursor sits at ~30 % of the ghost width horizontally
     /// and is vertically centered on cursor_y.
     /// @param ctx Active ZUI context.
@@ -257,7 +293,11 @@ namespace ZEngine::UI
     /// @param label Tab label shown in the ghost.
     /// @param cursor_x Cursor X position.
     /// @param cursor_y Cursor Y position.
-    void        ZUIDockGhostHeader(ZUIContext* ctx, const char* key, const char* label, float cursor_x, float cursor_y);
+    void        ZUIDockGhostHeader(ZUIContext* ctx, const char* key, const char* label, float cursor_x, float cursor_y, int icon = -1, bool closeable = true);
+
+    /// @brief Foreground drag feedback: centered 28 px chip, or a tooltip label offset 12 px.
+    void        ZUIDragCursor(ZUIContext* ctx);
+    void        ZUIDragLabel(ZUIContext* ctx, const char* label);
 
     /// @brief Full-width selectable row.
     /// @param selected Toggled in-place on click.
@@ -292,11 +332,16 @@ namespace ZEngine::UI
     /// @return true when the value changes (on Enter or focus loss).
     bool        ZUIInputFloat(ZUIContext* ctx, const char* key, float* value, float width_px = 80.f);
 
-    /// @brief Inline color editor: swatch + hex label; clicking opens ZUIColorPicker4.
+    /// @brief Inline color editor: 22px swatch + four 72px byte/percentage fields.
     /// @param ctx Active ZUI context.
-    /// @param color RGBA in linear [0, 1].
+    /// @param color RGBA in the specified storage encoding; alpha is linear coverage.
+    /// @param space Defaults to display sRGB. Linear properties convert only here;
+    ///              swatch, hex text and popup all use the same sRGB values.
     /// @return true when changed.
-    bool        ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4]);
+    bool        ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4], ZUIColorSpace space = ZUIColorSpace::Srgb);
+
+    /// RGB-only counterpart (262px wide). Never accesses an alpha component.
+    bool        ZUIColorEdit3(ZUIContext* ctx, const char* key, float color[3], ZUIColorSpace space = ZUIColorSpace::Srgb);
 
     /// @brief Animated loading arc driven by ctx->Time.
     /// @param ctx Active ZUI context.
@@ -335,7 +380,9 @@ namespace ZEngine::UI
     bool        ZUIMenuItem(ZUIContext* ctx, const char* label, bool enabled = true);
 
     /// @brief Extended menu item — checkmark, keyboard shortcut, enabled flag.
-    bool        ZUIMenuItemEx(ZUIContext* ctx, const char* label, const char* shortcut = nullptr, bool selected = false, bool enabled = true);
+    /// @param icon    Optional leading ZUIIcon index (-1 = none); a checked item shows a check mark when no icon is given.
+    /// @param submenu Draws a trailing chevron (the item opens a submenu).
+    bool        ZUIMenuItemEx(ZUIContext* ctx, const char* label, const char* shortcut = nullptr, bool selected = false, bool enabled = true, int icon = -1, bool submenu = false);
 
     /// @brief Selectable item inside a ZUIBeginCombo popup.
     /// @param ctx Active ZUI context.
@@ -405,7 +452,7 @@ namespace ZEngine::UI
     /// @brief Horizontal slider — maps thumb position linearly to [v_min, v_max].
     /// @param ctx Active ZUI context.
     /// @return true while the value changes.
-    bool    ZUISliderFloat(ZUIContext* ctx, const char* key, float* value, float v_min, float v_max, ZUISize w = ZFill(), ZUISize h = ZPx(24.f));
+    bool    ZUISliderFloat(ZUIContext* ctx, const char* key, float* value, float v_min, float v_max, ZUISize w = ZFill(), ZUISize h = ZPx(Metrics::HeightControlSm));
 
     /// @brief Integer text field clamped to [v_min, v_max].
     /// @return true when value changes.
@@ -416,8 +463,10 @@ namespace ZEngine::UI
     /// @return true when @p buf changes.
     bool    ZUIInputTextMultiline(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, ZUISize w = ZFill(), ZUISize h = ZPx(120.f));
 
-    /// @brief RGBA colour picker (hue bar + SV square + alpha bar).
-    /// @param color RGBA in linear [0, 1]. Modified in-place.
+    /// @brief 320x567 Figma picker: live field/bars, RGB/HSB/HSL channels, hex,
+    ///        old/new and session Recent. Ctrl/Cmd+Z and redo group each gesture.
+    /// @param color Normalized display sRGB [0,1], alpha linear coverage. Modified
+    ///              in-place. ZUIColorEdit4 converts linear storage at its boundary.
     /// @return true when changed.
     bool    ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4]);
 
@@ -451,7 +500,8 @@ namespace ZEngine::UI
     ///        Opens a popup to the right on hover, positioned at the item's right edge.
     ///        Pair with ZUIEndSubMenu.
     /// @param ctx Active ZUI context.
-    bool    ZUIBeginSubMenu(ZUIContext* ctx, const char* label, bool enabled = true);
+    /// @param icon Optional leading ZUIIcon index (-1 = none).
+    bool    ZUIBeginSubMenu(ZUIContext* ctx, const char* label, bool enabled = true, int icon = -1);
     /// @brief Close the submenu opened by ZUIBeginSubMenu.
     /// @param ctx Active ZUI context.
     void    ZUIEndSubMenu(ZUIContext* ctx);
@@ -592,14 +642,16 @@ namespace ZEngine::UI
     /// When the box is held and the mouse has moved, records
     /// ctx->DragSourceKey and copies @p payload so the next ZUIAcceptDrop
     /// call can retrieve it.
-    void             ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box, const char* payload, uint32_t payload_len);
+    void             ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box, const char* payload, uint32_t payload_len, ZUIDragPayloadKind kind = ZUIDragPayloadKind::Opaque);
 
     /// @brief Accept a drop on @p box.
     ///
-    /// Returns true exactly once — on the frame the drop fires.
-    /// @param out_buf  Receives the payload (null-terminated); may be nullptr.
+    /// Returns true only on the frame the drop fires for this box.
+    /// @param out_buf Receives exact opaque bytes, or a null-terminated path; may be nullptr.
     /// @param out_size Capacity of @p out_buf.
-    bool             ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box, char* out_buf, uint32_t out_size);
+    /// @param kind Receives the payload namespace; opaque/binary payloads are not filenames.
+    /// Oversized payloads are rejected rather than truncated into a different filename.
+    bool             ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box, char* out_buf, uint32_t out_size, ZUIDragPayloadKind* kind = nullptr);
 
     /// @brief Display a texture in a box.
     /// @param texture_index Bindless array slot (e.g. TextureHandle::Index).

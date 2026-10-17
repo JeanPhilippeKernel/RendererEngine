@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIBox.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIDockspace.h>
@@ -13,13 +14,21 @@ namespace ZEngine::UI
     /// panel's rendered content. Register the view with ZUIPanelManager::AddView().
     struct ZUIPanelView
     {
-        const char* Title                                         = "Panel"; ///< Displayed in the tab bar
-        uint64_t    Key                                           = 0;       ///< Optional stable key; 0 = derive from Title
-        bool        Visible                                       = true;
-        bool        Closeable                                     = true;                 ///< false = no close button on this tab (e.g. main viewport)
-        float       TabColor[4]                                   = {0.f, 0.f, 0.f, 0.f}; ///< Per-tab accent (alpha=0 → theme default)
+        const char* Title       = "Panel"; ///< Displayed in the tab bar
+        const char* LegacyTitle = nullptr; ///< Previous persisted title, accepted when restoring layouts and showing tools.
+        uint64_t    Key         = 0;       ///< Optional stable key; 0 = derive from Title
+        bool        Visible     = true;
+        bool        Closeable   = true;                 ///< false = no close button on this tab (e.g. main viewport)
+        bool        Chromeless  = false;                ///< true = this dock's tabs are rendered in the external document strip
+        int         Icon        = -1;                   ///< ZUIIcon shown in the tab, -1 = none
+        float       TabColor[4] = {0.f, 0.f, 0.f, 0.f}; ///< Per-tab accent (alpha=0 → theme default)
 
-        virtual ~ZUIPanelView()                                   = default;
+        virtual ~ZUIPanelView() = default;
+
+        bool MatchesTitle(const char* title) const
+        {
+            return title && ((Title && ZEngine::Helpers::secure_strcmp(Title, title) == 0) || (LegacyTitle && ZEngine::Helpers::secure_strcmp(LegacyTitle, title) == 0));
+        }
 
         /// @brief Called every frame to build the view's widget tree.
         /// @param ctx  Active ZUI context.
@@ -28,9 +37,22 @@ namespace ZEngine::UI
 
         /// @brief Called once after the ZUI font atlas is baked. Optional.
         virtual void Initialize(ZUIContext*) {}
+
+    private:
+        friend struct ZUIPanelManager;
+        bool DefaultVisible = true; ///< Captured at registration, not changed by tab moves or saved layouts.
     };
 
     static constexpr uint32_t kMaxTabsPerPanel = 16;
+
+    /// @brief One entry of the document tab bar (the top strip), describing a view of the viewport slot.
+    struct ZUIDocumentTab
+    {
+        const char* Title     = "";
+        int         Icon      = -1;
+        bool        Active    = false;
+        bool        Closeable = true;
+    };
 
     /// @brief One docked panel holding 1..N views as tabs.
     struct ZUIPanel
@@ -44,6 +66,9 @@ namespace ZEngine::UI
         bool          ReorderActive           = false;
         uint32_t      ReorderTabIdx           = 0;
         float         ReorderAccumX           = 0.f;
+        ZUIPanelView* LastActiveView          = nullptr; ///< Reveal newly activated tabs in a horizontally scrolled strip.
+        float         LastActiveTabOffset     = -1.f;
+        float         LastTabBarWidth         = 0.f;
     };
 
     /// SrcTabIdx == kWholePanel means the drag moves the entire panel, not a single tab.
@@ -142,18 +167,28 @@ namespace ZEngine::UI
 
         // Shell API — used by ZUIDockspaceComponent's Layout settings page.
 
-        /// @brief Clear the current dock layout and reset to default.
+        /// @brief Restore registered default visibility, re-dock missing panels and discard the saved layout.
         void             ResetLayout();
 
-        /// @brief Show or hide a panel by its dock key.
-        /// @param key     Dock node key.
+        /// @brief Show or hide a view by title, optionally activating its tab.
+        /// @param name    View title.
         /// @param visible True to show, false to hide.
-        void             SetPanelVisible(const char* name, bool visible);
+        /// @param focus   Activate and focus even an already-visible tab (ignored when hiding).
+        void             SetPanelVisible(const char* name, bool visible, bool focus = false);
 
         /// @brief Return whether the panel for @p key is currently visible.
         /// @param key Dock node key.
         /// @returns True if the panel is visible.
         bool             IsPanelVisible(const char* name) const;
+
+        /// @brief List the visible views of the panel hosting @p anchor_title, for the document tab bar.
+        /// @details A panel holding a Chromeless view draws no tab strip of its own: its tabs live in the
+        ///          document bar instead, so the editor never stacks a second tab bar under the first.
+        /// @return Number of entries written to @p out (at most @p cap).
+        uint32_t         GetDocumentTabs(const char* anchor_title, ZUIDocumentTab* out, uint32_t cap) const;
+
+        /// Draw the external document strip using the same input/overflow logic as docked tabs.
+        void             BuildDocumentTabBar(ZUIContext* ctx, const char* anchor_title, const char* anchor_label, float height = 30.f);
 
     private:
         struct SplitDivider
@@ -168,8 +203,8 @@ namespace ZEngine::UI
         void                      PreDetectCloseEvents(ZUIContext* ctx);
         void                      BuildMenuBar(ZUIContext* ctx, float sw, float mh);
         void                      BuildDockedPanel(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
-        void                      BuildTabBar(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
-        void                      BuildDropZones(ZUIContext* ctx, ZUIPanel* p, float rect[4]);
+        void                      BuildTabBar(ZUIContext* ctx, ZUIPanel* p, float rect[4], const char* anchor_title = nullptr, const char* anchor_label = nullptr);
+        void                      BuildDropZones(ZUIContext* ctx, ZUIPanel* p, float rect[4], bool document_bar = false);
         void                      BuildDividerHitZones(ZUIContext* ctx); ///< Input pass — first; owns ActiveKey for resize
         void                      BuildDividerVisuals(ZUIContext* ctx);  ///< Render pass — last; always on top of panels
         void                      CommitDrop(ZUIPanel* src, uint32_t tab_idx, ZUIDockNode* dst, ZUIDropZone zone);

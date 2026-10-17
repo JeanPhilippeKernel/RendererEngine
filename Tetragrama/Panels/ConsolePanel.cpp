@@ -1,4 +1,5 @@
 #include <Tetragrama/Panels/ConsolePanel.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cctype>
 #include <cstring>
@@ -29,6 +30,7 @@ namespace Tetragrama::Panels
     ConsolePanel::ConsolePanel()
     {
         Title = "Console";
+        Icon  = (int) ZEngine::UI::ZUIIcon::Terminal;
     }
 
     ConsolePanel::~ConsolePanel()
@@ -52,11 +54,11 @@ namespace Tetragrama::Panels
     {
         auto*    self = static_cast<ConsolePanel*>(user);
         LogEntry e    = {};
-        int      len  = msg.Message ? (int) strlen(msg.Message) : 0;
+        int      len  = msg.Message ? (int) ZEngine::Helpers::secure_strlen(msg.Message) : 0;
         if (len > (int) sizeof(e.Text) - 1)
             len = (int) sizeof(e.Text) - 1;
         if (msg.Message)
-            memcpy(e.Text, msg.Message, len);
+            ZEngine::Helpers::secure_memcpy(e.Text, sizeof(e.Text), msg.Message, len);
         e.Text[len] = '\0';
         e.Color[0]  = msg.Color[0];
         e.Color[1]  = msg.Color[1];
@@ -94,7 +96,8 @@ namespace Tetragrama::Panels
         ZUISpacer(ctx, 6.f);
 
         // Toolbar: search | Filters popup | Clear | auto-scroll
-        ZUIBeginRow(ctx, "##con_tb", ZFill(), ZPx(fh));
+        auto* toolbar       = ZUIBeginRow(ctx, "##con_tb", ZFill(), ZPx(fmaxf(fh, Metrics::HeightControl)));
+        toolbar->CrossAlign = ZUIAlign::Center;
         ZUISpacer(ctx, 8.f);
         ZUISearchBox(ctx, "##con_search", m_search, sizeof(m_search), "Search Log...", ZPx(fmaxf(pw * 0.50f, 120.f)));
         ZUISpacer(ctx, 8.f);
@@ -125,8 +128,8 @@ namespace Tetragrama::Panels
         ZUISeparator(ctx);
 
         // Log entries
-        bool    pending;
-        ZUIBox* scroll = ZUIBeginScrollRegion(ctx, "##con_scroll", ZFill(), ZFill());
+        bool    pending = {};
+        ZUIBox* scroll  = ZUIBeginScrollRegion(ctx, "##con_scroll", ZFill(), ZFill());
         ZUIPaddingXY(scroll, 4.f, 2.f);
         {
             std::lock_guard<std::mutex> lk(m_mutex);

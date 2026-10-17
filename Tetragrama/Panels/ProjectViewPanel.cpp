@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <string_view>
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
@@ -20,11 +21,11 @@ namespace Tetragrama::Panels
 {
     // Static helpers
 
-    // Unified extension dispatch (fixes #5 .dae/.dds split, prevents future divergence)
+    // Shared, exact extension dispatch for the browser's type filters and tiles.
     struct ExtInfo
     {
-        const float* Color;
-        const char*  Category;
+        const float* Color    = nullptr;
+        const char*  Category = "Other";
     };
 
     static ExtInfo GetExtInfo(const char* name)
@@ -41,82 +42,42 @@ namespace Tetragrama::Panels
         const char* dot = strrchr(name, '.');
         if (!dot)
             return {kDefault, "Other"};
-        const char* ext = dot + 1;
-        char        e0  = (char) tolower((unsigned char) ext[0]);
-        char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
-        char        e2  = e1 ? (char) tolower((unsigned char) ext[2]) : 0;
+        // All supported extensions fit here. Normalize once without allocating or
+        // classifying unknown longer extensions from just their first few bytes.
+        char   extension[16] = {};
+        size_t length        = 0;
+        for (const char* p = dot + 1; *p; ++p)
+        {
+            if (length == sizeof(extension) - 1)
+                return {kDefault, "Other"};
+            extension[length++] = (char) tolower((unsigned char) *p);
+        }
+        const std::string_view ext(extension, length);
 
         // Scripts
-        if (e0 == 'c' && (e1 == 'p' || e1 == 'c' || e1 == 'x' || e1 == 0))
-            return {kScript, "Scripts"}; // .cpp .cc .cxx .c
-        if (e0 == 'h' && (e1 == 'p' || e1 == 'x' || e1 == 0))
-            return {kHeader, "Scripts"}; // .hpp .hxx .h
-        if (e0 == 'c' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"}; // .cs (not .css or .csv)
-        if (e0 == 'j' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"}; // .js  (not .json)
-        if (e0 == 't' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"}; // .ts  (not .tsc or .tsx)
-        if (e0 == 'p' && e1 == 'y')
-            return {kScript, "Scripts"}; // .py
-        if (e0 == 'l' && e1 == 'u')
-            return {kScript, "Scripts"}; // .lua
-        if (e0 == 'r' && e1 == 's' && e2 == 0)
-            return {kScript, "Scripts"}; // .rs (Rust)
+        if (ext == "cpp" || ext == "cc" || ext == "cxx" || ext == "c" || ext == "cs" || ext == "js" || ext == "ts" || ext == "py" || ext == "lua" || ext == "rs")
+            return {kScript, "Scripts"};
+        if (ext == "hpp" || ext == "hxx" || ext == "h")
+            return {kHeader, "Scripts"};
 
         // Shaders
-        if (e0 == 'g' && e1 == 'l' && e2 == 's')
-            return {kShader, "Shaders"}; // .glsl
-        if (e0 == 'v' && e1 == 'e')
-            return {kShader, "Shaders"}; // .vert
-        if (e0 == 'f' && e1 == 'r')
-            return {kShader, "Shaders"}; // .frag
-        if (e0 == 'c' && e1 == 'o')
-            return {kShader, "Shaders"}; // .comp
-        if (e0 == 'h' && e1 == 'l')
-            return {kShader, "Shaders"}; // .hlsl
-        if (e0 == 's' && e1 == 'p')
-            return {kShader, "Shaders"}; // .spv
+        if (ext == "glsl" || ext == "vert" || ext == "frag" || ext == "comp" || ext == "hlsl" || ext == "spv")
+            return {kShader, "Shaders"};
+
+        if (ext == "zematerial")
+            return {kShader, "Materials"};
 
         // Textures
-        if (e0 == 'p' && (e1 == 'n' || e1 == 's' || e1 == 'f'))
-            return {kTexture, "Textures"}; // .png .psd .pfm
-        if (e0 == 'j' && e1 == 'p')
-            return {kTexture, "Textures"}; // .jpg .jpeg
-        if (e0 == 'b' && e1 == 'm')
-            return {kTexture, "Textures"}; // .bmp
-        if (e0 == 't' && (e1 == 'g' || e1 == 'i'))
-            return {kTexture, "Textures"}; // .tga .tiff .tif
-        if (e0 == 'd' && e1 == 'd')
-            return {kTexture, "Textures"}; // .dds
-        if (e0 == 'h' && e1 == 'd')
-            return {kTexture, "Textures"}; // .hdr
-        if (e0 == 'e' && e1 == 'x')
-            return {kTexture, "Textures"}; // .exr
-        if (e0 == 'w' && e1 == 'e')
-            return {kTexture, "Textures"}; // .webp
-        if (e0 == 'k' && e1 == 't')
-            return {kTexture, "Textures"}; // .ktx .ktx2
+        if (ext == "png" || ext == "psd" || ext == "pfm" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "tga" || ext == "tif" || ext == "tiff" || ext == "dds" || ext == "hdr" || ext == "exr" || ext == "webp" || ext == "ktx" || ext == "ktx2" || ext == "zetextures" || ext == "zenvmap")
+            return {kTexture, "Textures"};
 
         // Scenes
-        if (e0 == 'z')
-            return {kScene, "Scenes"}; // .zescene
+        if (ext == "zescene")
+            return {kScene, "Scenes"};
 
         // Models
-        if (e0 == 'g' && (e1 == 'l' || e1 == 't'))
-            return {kMesh, "Models"}; // .glb .gltf
-        if (e0 == 'f' && e1 == 'b')
-            return {kMesh, "Models"}; // .fbx
-        if (e0 == 'o' && e1 == 'b')
-            return {kMesh, "Models"}; // .obj
-        if (e0 == 'd' && e1 == 'a')
-            return {kMesh, "Models"}; // .dae
-        if (e0 == 'u' && e1 == 's')
-            return {kMesh, "Models"}; // .usd .usda .usdc
-        if (e0 == 's' && e1 == 't')
-            return {kMesh, "Models"}; // .stl
-        if (e0 == 'p' && e1 == 'l')
-            return {kMesh, "Models"}; // .ply
+        if (ext == "zemesh" || ext == "glb" || ext == "gltf" || ext == "fbx" || ext == "obj" || ext == "dae" || ext == "usd" || ext == "usda" || ext == "usdc" || ext == "stl" || ext == "ply")
+            return {kMesh, "Models"};
 
         return {kDefault, "Other"};
     }
@@ -124,44 +85,6 @@ namespace Tetragrama::Panels
     const float* ProjectViewPanel::ExtColor(const char* name)
     {
         return GetExtInfo(name).Color;
-    }
-
-    static float ExtIconType(const char* name)
-    {
-        if (!name)
-            return ZUI_ICON_ACTOR;
-        const char* dot = strrchr(name, '.');
-        if (!dot)
-            return ZUI_ICON_ACTOR;
-        const char* ext = dot + 1;
-        char        e0  = (char) tolower((unsigned char) ext[0]);
-        char        e1  = ext[0] ? (char) tolower((unsigned char) ext[1]) : 0;
-        char        e2  = e1 ? (char) tolower((unsigned char) ext[2]) : 0;
-        if (e0 == 'c' && e1 == 'p')
-            return ZUI_ICON_SOURCE_CPP; // .cpp .cc
-        if (e0 == 'c' && e1 == 'x')
-            return ZUI_ICON_SOURCE_CPP; // .cxx
-        if (e0 == 'c' && e1 == 0)
-            return ZUI_ICON_SOURCE_CPP; // .c
-        if (e0 == 'h' && e1 == 'p')
-            return ZUI_ICON_SOURCE_H; // .hpp
-        if (e0 == 'h' && e1 == 'x')
-            return ZUI_ICON_SOURCE_H; // .hxx
-        if (e0 == 'h' && e1 == 0)
-            return ZUI_ICON_SOURCE_H; // .h
-        if (e0 == 'c' && e1 == 's' && e2 == 0)
-            return ZUI_ICON_SOURCE_CS; // .cs
-        if (e0 == 'j' && e1 == 's' && e2 == 0)
-            return ZUI_ICON_SOURCE_JS; // .js only
-        if (e0 == 'j' && e1 == 's' && e2 != 0)
-            return ZUI_ICON_SOURCE_JSON; // .json
-        if (e0 == 't' && e1 == 's' && e2 == 0)
-            return ZUI_ICON_SOURCE_JS; // .ts only
-        if (e0 == 'p' && e1 == 'y')
-            return ZUI_ICON_SOURCE_PY; // .py
-        if (e0 == 'l' && e1 == 'u')
-            return ZUI_ICON_SOURCE_PY; // .lua (reuse green)
-        return ZUI_ICON_ACTOR;
     }
 
     const char* ProjectViewPanel::TypeCategory(const char* name)
@@ -172,15 +95,15 @@ namespace Tetragrama::Panels
     bool ProjectViewPanel::PassesFilters(const Entry& e, const char* search, const char* type_filter)
     {
         // Type filter
-        if (strcmp(type_filter, "All") != 0)
+        if (ZEngine::Helpers::secure_strcmp(type_filter, "All") != 0)
         {
-            if (strcmp(type_filter, "Folders") == 0 && !e.is_dir)
+            if (ZEngine::Helpers::secure_strcmp(type_filter, "Folders") == 0 && !e.is_dir)
                 return false;
-            if (strcmp(type_filter, "Folders") != 0)
+            if (ZEngine::Helpers::secure_strcmp(type_filter, "Folders") != 0)
             {
                 if (e.is_dir)
                     return false; // folders don't match type categories
-                if (strcmp(TypeCategory(e.name), type_filter) != 0)
+                if (ZEngine::Helpers::secure_strcmp(TypeCategory(e.name), type_filter) != 0)
                     return false;
             }
         }
@@ -208,13 +131,14 @@ namespace Tetragrama::Panels
     // Constructor
     ProjectViewPanel::ProjectViewPanel()
     {
-        Title = "Project";
+        Title = "Content Browser";
+        Icon  = (int) ZEngine::UI::ZUIIcon::FolderOpen;
     }
 
     void ProjectViewPanel::RequestRefresh()
     {
-        m_needs_refresh    = true;
-        m_tree_cache_count = 0;
+        m_needs_refresh = true;
+        m_folder_tree.Invalidate();
     }
 
     // VFS listing
@@ -250,69 +174,15 @@ namespace Tetragrama::Panels
             }
         }
         ZReleaseScratch(scratch);
-        m_tree_cache_count = 0; // invalidate sources-tree cache alongside grid
-        m_needs_refresh    = false;
-    }
-
-    // Sources tree subdirectory cache
-    const ProjectViewPanel::TreeDirEntry* ProjectViewPanel::GetCachedSubdirs(IVFSContext* vfs, const VFSPath& dir, int* out_count)
-    {
-        *out_count          = 0;
-        const char* dir_str = dir.CStr();
-        if (!dir_str || !vfs)
-            return nullptr;
-
-        // Cache hit
-        for (int i = 0; i < m_tree_cache_count; ++i)
-        {
-            if (m_tree_cache[i].valid && strcmp(m_tree_cache[i].key, dir_str) == 0)
-            {
-                *out_count = m_tree_cache[i].count;
-                return m_tree_cache[i].entries;
-            }
-        }
-
-        // Cache full — evict all (simple LRU-free policy)
-        if (m_tree_cache_count >= kMaxCachedDirs)
-            m_tree_cache_count = 0;
-
-        TreeDirCache& slot = m_tree_cache[m_tree_cache_count++];
-        slot               = {};
-        secure_strncpy(slot.key, sizeof(slot.key), dir_str, sizeof(slot.key) - 1);
-
-        auto* eng = ZEngine::Engine::GetContext();
-        if (eng)
-        {
-            auto scratch = ZGetScratch(&eng->VFSArena);
-            auto res     = vfs->List(dir, scratch.Arena);
-            if (res.Succeeded())
-            {
-                for (uint32_t i = 0; i < res.Value().size() && slot.count < kMaxTreeEntries; ++i)
-                {
-                    const VFSDirEntry& e = res.Value()[i];
-                    if (!e.IsDirectory)
-                        continue;
-                    char fn[256] = {};
-                    e.Path.CopyFilename(fn, sizeof(fn));
-                    if (!fn[0] || fn[0] == '.')
-                        continue;
-                    TreeDirEntry& te = slot.entries[slot.count++];
-                    secure_strncpy(te.name, sizeof(te.name), fn, sizeof(te.name) - 1);
-                    secure_strncpy(te.full_path, sizeof(te.full_path), e.Path.CStr() ? e.Path.CStr() : "", sizeof(te.full_path) - 1);
-                }
-            }
-            ZReleaseScratch(scratch);
-        }
-        slot.valid = true;
-        *out_count = slot.count;
-        return slot.entries;
+        m_needs_refresh = false;
     }
 
     // Breadcrumb
     void ProjectViewPanel::DrawBreadcrumb(ZUIContext* ctx, float fh)
     {
-        ZUIBox* bar = ZUIBeginRow(ctx, "##pv_bc_row", ZFill(), ZPx(fh));
-        bar->Flags  = bar->Flags | ZUI_DrawBackground;
+        ZUIBox* bar     = ZUIBeginRow(ctx, "##pv_bc_row", ZFill(), ZPx(std::max(fh, Metrics::HeightControl)));
+        bar->CrossAlign = ZUIAlign::Center;
+        bar->Flags      = bar->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bar, ctx->Theme.TitleBarBg);
         bar->EdgeSoftness = 0.f;
         ZUISpacer(ctx, 6.f);
@@ -383,202 +253,183 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
     }
 
-    // Sources tree (left pane) — iterative DFS
-    // Uses GetCachedSubdirs to avoid live vfs->List calls every frame.
-    // Stack entries hold a full_path string pointer (stable in cache) + depth.
+    // Sources tree: stable indices, lazy listings, and cached ancestor-preserving search.
     void ProjectViewPanel::DrawSourcesTree(ZUIContext* ctx, IVFSContext* vfs)
     {
         if (!vfs)
             return;
 
-        static const float kSelBg[4] = {0.26f, 0.44f, 0.70f, 0.30f};
-        float              fh        = ZUIGetFrameHeight(ctx);
-
-        // DFS stack: (full_path pointer into cache, depth)
-        struct StackEntry
-        {
-            const char* full_path;
-            int         depth;
-        };
-        static constexpr int kMaxStack  = 512;
-        StackEntry*          stk        = ZPushArray(&ctx->FrameArena, StackEntry, kMaxStack);
-        int                  sp         = 0;
-
-        // Seed the stack with top-level directories (pushed in reverse for L-to-R order)
-        int                  root_count = 0;
-        const TreeDirEntry*  root_dirs  = GetCachedSubdirs(vfs, VFSPath::Root(), &root_count);
-        for (int i = root_count - 1; i >= 0 && sp < kMaxStack; --i)
-            stk[sp++] = {root_dirs[i].full_path, 1};
+        m_folder_tree.UpdateSearch(*vfs, ctx->FrameArena, m_folder_search);
+        const bool searching = m_folder_search[0] != '\0';
+        uint32_t*  stk       = ZPushArray(&ctx->FrameArena, uint32_t, FolderTreeCache::Capacity);
+        uint32_t   sp        = 0;
+        for (uint32_t i = m_folder_tree.Nodes[0].LastChild; i != FolderTreeCache::None; i = m_folder_tree.Nodes[i].PrevSibling)
+            stk[sp++] = i;
+        const auto* scroll         = ZUIStateGetOrInsert(&ctx->StateStore, ZUIHashStr("##pv_src_scroll", 15));
+        const float scroll_y       = scroll ? scroll->ScrollY : 0.f;
+        const float height         = scroll && scroll->ScreenMaxY > scroll->ScreenMinY ? scroll->ScreenMaxY - scroll->ScreenMinY : (float) ctx->ScreenH;
+        const float first_y        = fmaxf(0.f, scroll_y - 46.f);
+        const float last_y         = scroll_y + height + 46.f;
+        float       row_y          = 23.f; // The caller has already drawn the root row.
+        float       skipped        = 0.f;
+        uint32_t    listing_budget = 16;
 
         // HOT PATH — runs every frame, no heap allocation allowed.
         while (sp > 0)
         {
-            StackEntry e = stk[--sp];
-            if (!e.full_path || !e.full_path[0])
+            const uint32_t index = stk[--sp];
+            const auto&    e     = m_folder_tree.Nodes[index];
+            if (searching && !e.Visible)
                 continue;
+            const char* name      = e.Path + e.NameOffset;
+            uint64_t    key       = ZUIHashStr(e.Path, (uint32_t) ZEngine::Helpers::secure_strlen(e.Path));
+            auto*       ps        = searching ? nullptr : ZUIStateGetOrInsert(&ctx->StateStore, key);
+            bool        is_open   = searching || (ps && ps->UserData > 0.5f);
+            bool        is_sel    = (ZEngine::Helpers::secure_strcmp(e.Path, m_current_dir.CStr()) == 0);
 
-            // Re-derive name from path
-            char name[256] = {};
+            // Only visible rows build boxes. Spacers preserve total scroll height;
+            // broad searches cannot exhaust the UI's 8192-box frame budget.
+            const bool  draw_row  = row_y + 23.f >= first_y && row_y <= last_y;
+            row_y                += 23.f;
+            if (!draw_row)
+                skipped += 23.f;
+            else
             {
-                const char* slash = strrchr(e.full_path, '/');
-                const char* src   = slash ? slash + 1 : e.full_path;
-                secure_strncpy(name, sizeof(name), src, sizeof(name) - 1);
-            }
-            if (!name[0])
-                continue;
-
-            uint64_t key     = ZUIHashStr(e.full_path, (uint32_t) strlen(e.full_path));
-            auto*    ps      = ZUIStateGetOrInsert(&ctx->StateStore, key);
-            bool     is_open = ps ? (ps->UserData > 0.5f) : false;
-            bool     is_sel  = (m_current_dir.CStr() && strcmp(e.full_path, m_current_dir.CStr()) == 0);
-
-            // Wrapper column: indentation + optional selection bg
-            char     ck[64]  = {};
-            snprintf(ck, sizeof(ck), "##stc_%llu", (unsigned long long) key);
-            ZUIBox* col       = ZUIBeginColumn(ctx, ck, ZFill(), ZPx(fh));
-            col->Padding[0]   = (float) e.depth * ctx->Style.IndentSpacing;
-            col->EdgeSoftness = 0.f;
-            if (is_sel)
-            {
-                col->Flags = col->Flags | ZUI_DrawBackground;
-                ZUIBoxSetColorArr(col, kSelBg);
-            }
-
-            char tn[300] = {};
-            snprintf(tn, sizeof(tn), "%s##st_%llu", name, (unsigned long long) key);
-            ZUISignal sig = ZUITreeNode(ctx, tn, &is_open);
-            if (ps)
-                ps->UserData = is_open ? 1.f : 0.f;
-            ZUIEndColumn(ctx);
-
-            if (sig.Flags & ZUI_SignalClicked)
-            {
-                auto pr = VFSPath::Parse(e.full_path);
-                if (pr.Succeeded())
+                if (skipped > 0.f)
                 {
-                    m_current_dir   = pr.Value();
-                    m_needs_refresh = true;
+                    ZUISpacer(ctx, skipped);
+                    skipped = 0.f;
+                }
+
+                // Figma "Content folder": 23 px row, 9 px lead (+19 per level), 9 px chevron, 13 px folder, 7 px gaps.
+                // Share the row's persistent state with expansion state. Separate
+                // row/chevron/expansion keys would exceed the state table on large trees.
+                ZUIBox* col       = ZUIBeginRow(ctx, e.Path, ZFill(), ZPx(23.f));
+                col->Flags        = col->Flags | ZUI_DrawBackground | ZUI_Clickable | ZUI_KeyboardActivate;
+                col->Padding[0]   = 9.f + (float) (e.Depth - 1) * 19.f;
+                col->Gap          = 7.f;
+                col->CrossAlign   = ZUIAlign::Center;
+                col->EdgeSoftness = 0.f;
+                {
+                    const float rest[4] = {0.f, 0.f, 0.f, 0.f};
+                    ZUIBoxSetColorArr(col, is_sel ? ctx->Theme.ButtonActiveBg : (ctx->HotKey == col->Key ? ctx->Theme.ButtonHoveredBg : rest));
+                }
+                char chk[80] = {};
+                snprintf(chk, sizeof(chk), "##stch_%llu", (unsigned long long) key);
+                ZUIBox* chev  = ZUIPushBox(ctx, chk, (uint32_t) ZEngine::Helpers::secure_strlen(chk), ZUI_DrawIcon);
+                chev->Size[0] = ZPx(9.f);
+                chev->Size[1] = ZPx(9.f);
+                chev->IconId  = (uint16_t) (is_open ? ZUIIcon::ChevronDown : ZUIIcon::ChevronRight);
+                for (int c = 0; c < 4; ++c)
+                    chev->TextColor[c] = ctx->Theme.TextDim[c];
+                ZUIPopBox(ctx);
+                ZUIIconBox(ctx, (is_open || is_sel) ? ZUIIcon::FolderOpen : ZUIIcon::Folder, 13.f, is_sel ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+                ZUILabelTight(ctx, name, ctx->Theme.TextDefault, ZUIFontSize::Body);
+                ZUISignal sig = ZUISignalFromBox(ctx, col);
+                ZUIEndRow(ctx);
+                const auto* row_state       = ps ? ps : ZUIStateGetOrInsert(&ctx->StateStore, key);
+                const float chevron_x       = row_state->ScreenMinX + col->Padding[0];
+                const bool  chevron_clicked = (sig.Flags & ZUI_SignalClicked) && ctx->MousePos[0] >= chevron_x && ctx->MousePos[0] <= chevron_x + 9.f;
+                if (!searching && chevron_clicked)
+                    is_open = !is_open;
+                if (ps && !searching)
+                    ps->UserData = is_open ? 1.f : 0.f;
+                if (chevron_clicked)
+                    sig.Flags &= ~(uint32_t) ZUI_SignalClicked;
+
+                if (sig.Flags & ZUI_SignalClicked)
+                {
+                    auto pr = VFSPath::Parse(e.Path);
+                    if (pr.Succeeded())
+                    {
+                        m_current_dir   = pr.Value();
+                        m_needs_refresh = true;
+                    }
+                }
+
+                // Context menu — unique key per node to prevent wrong-node deletion
+                char ctx_key[48] = {};
+                snprintf(ctx_key, sizeof(ctx_key), "##stctx_%llu", (unsigned long long) key);
+                if (ZUIBeginPopupContextItem(ctx, ctx_key, sig))
+                {
+                    auto pr = VFSPath::Parse(e.Path);
+                    if (ZUIMenuItemEx(ctx, "New Folder", nullptr, false, true, (int) ZUIIcon::FolderPlus) && pr.Succeeded())
+                    {
+                        m_modal        = Modal::CreateFolder;
+                        m_modal_target = pr.Value();
+                        m_modal_buf[0] = '\0';
+                        m_modal_opened = false;
+                    }
+                    if (ZUIMenuItemEx(ctx, "Rename", "F2") && pr.Succeeded())
+                    {
+                        m_modal        = Modal::RenameItem;
+                        m_modal_target = pr.Value();
+                        m_modal_is_dir = true;
+                        secure_strncpy(m_modal_buf, sizeof(m_modal_buf), name, sizeof(m_modal_buf) - 1);
+                        m_modal_opened = false;
+                    }
+                    if (ZUIMenuItemEx(ctx, "Delete", "Del", false, true, (int) ZUIIcon::X) && pr.Succeeded())
+                    {
+                        m_modal        = Modal::DeleteItem;
+                        m_modal_target = pr.Value();
+                        m_modal_is_dir = true;
+                        m_modal_opened = false;
+                    }
+                    ZUIEndPopup(ctx);
                 }
             }
-
-            // Context menu — unique key per node to prevent wrong-node deletion
-            char ctx_key[48] = {};
-            snprintf(ctx_key, sizeof(ctx_key), "##stctx_%llu", (unsigned long long) key);
-            if (ZUIBeginPopupContextItem(ctx, ctx_key, sig))
-            {
-                auto pr = VFSPath::Parse(e.full_path);
-                if (ZUIMenuItem(ctx, "New Folder") && pr.Succeeded())
-                {
-                    m_modal        = Modal::CreateFolder;
-                    m_modal_target = pr.Value();
-                    m_modal_buf[0] = '\0';
-                    m_modal_opened = false;
-                }
-                if (ZUIMenuItem(ctx, "Rename") && pr.Succeeded())
-                {
-                    m_modal        = Modal::RenameItem;
-                    m_modal_target = pr.Value();
-                    m_modal_is_dir = true;
-                    secure_strncpy(m_modal_buf, sizeof(m_modal_buf), name, sizeof(m_modal_buf) - 1);
-                    m_modal_opened = false;
-                }
-                if (ZUIMenuItem(ctx, "Delete") && pr.Succeeded())
-                {
-                    m_modal        = Modal::DeleteItem;
-                    m_modal_target = pr.Value();
-                    m_modal_is_dir = true;
-                    m_modal_opened = false;
-                }
-                ZUIEndPopup(ctx);
-            }
-
-            ZUISpacer(ctx, 1.f);
 
             // If open, push children in reverse order for correct DFS display
-            if (is_open && e.depth < 32)
+            if (is_open)
             {
-                auto pr = VFSPath::Parse(e.full_path);
-                if (pr.Succeeded())
+                // Search discovery is budgeted above; never perform extra listings here.
+                if (!searching && !e.Loaded && listing_budget > 0)
                 {
-                    int                 child_count = 0;
-                    const TreeDirEntry* children    = GetCachedSubdirs(vfs, pr.Value(), &child_count);
-                    for (int ci = child_count - 1; ci >= 0 && sp < kMaxStack; --ci)
-                        stk[sp++] = {children[ci].full_path, e.depth + 1};
+                    m_folder_tree.LoadChildren(*vfs, ctx->FrameArena, index);
+                    --listing_budget;
                 }
+                for (uint32_t i = e.LastChild; i != FolderTreeCache::None; i = m_folder_tree.Nodes[i].PrevSibling)
+                    stk[sp++] = i;
             }
         }
+        if (skipped > 0.f)
+            ZUISpacer(ctx, skipped);
+        if (m_folder_tree.Searching())
+            ZUILabel(ctx, "Searching folders...", ctx->Theme.TextDim);
+        if (m_folder_tree.Incomplete)
+            ZUILabel(ctx, "Folder index incomplete; refresh to retry.", ctx->Theme.TextWarn);
     }
 
     // Filters panel (middle column)
     void ProjectViewPanel::DrawFilters(ZUIContext* ctx)
     {
-        float                fh            = ZUIGetFrameHeight(ctx);
-        float                row_h         = fh + 4.f; // taller than default for readability
-
-        static const char*   kCategories[] = {"All", "Folders", "Scenes", "Models", "Textures", "Scripts", "Shaders", "Other"};
-        static constexpr int kNCats        = 8;
-
-        static const float   kActBg[4]     = {0.22f, 0.63f, 0.69f, 1.f}; // teal — fully opaque when active
-        static const float   kHovBg[4]     = {1.f, 1.f, 1.f, 0.06f};     // subtle white hover
-        static const float   kRestBg[4]    = {0.f, 0.f, 0.f, 0.f};
-
-        ZUIBeginScrollRegion(ctx, "##pv_flt_scroll", ZFill(), ZFill());
-        ZUISpacer(ctx, 8.f);
-
-        for (int i = 0; i < kNCats; ++i)
+        static const char* kCategories[] = {"All", "Folders", "Scenes", "Models", "Materials", "Textures", "Scripts", "Shaders", "Other"};
+        if (ZUIBeginPopup(ctx, "##pv_filter_menu"))
         {
-            bool active = (strcmp(m_type_filter, kCategories[i]) == 0);
-            char rk[32] = {};
-            snprintf(rk, sizeof(rk), "##pv_flt_%d", i);
-            ZUIBox* row   = ZUIBeginRow(ctx, rk, ZFill(), ZPx(row_h));
-            row->Flags    = row->Flags | ZUI_DrawBackground | ZUI_Clickable;
-            bool hov      = (ctx->HotKey == row->Key);
-            bool pressing = !active && (ctx->ActiveKey == row->Key);
-            if (active)
-                ZUIBoxSetColorArr(row, kActBg);
-            else if (pressing)
+            for (const char* category : kCategories)
             {
-                static const float kPressBg[4] = {1.f, 1.f, 1.f, 0.12f};
-                ZUIBoxSetColorArr(row, kPressBg);
+                const bool active = (ZEngine::Helpers::secure_strcmp(m_type_filter, category) == 0);
+                if (ZUIMenuItemEx(ctx, category, nullptr, active))
+                    secure_strncpy(m_type_filter, sizeof(m_type_filter), category, sizeof(m_type_filter) - 1);
             }
-            else if (hov)
-                ZUIBoxSetColorArr(row, kHovBg);
-            else
-                ZUIBoxSetColorArr(row, kRestBg);
-            ZUIBoxSetCornerRadius(row, 3.f);
-            row->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 10.f);
-            ZUILabel(ctx, kCategories[i], ctx->Theme.TextDefault); // always bright — these are clickable filters
-            ZUISignal s = ZUISignalFromBox(ctx, row);
-            ZUIEndRow(ctx);
-            if (s.Flags & ZUI_SignalClicked)
-                secure_strncpy(m_type_filter, sizeof(m_type_filter), kCategories[i], sizeof(m_type_filter) - 1);
-            ZUISpacer(ctx, 3.f);
+            ZUIEndPopup(ctx);
         }
-
-        ZUIEndScrollRegion(ctx);
     }
 
     // Content grid (right area)
     void ProjectViewPanel::DrawGrid(ZUIContext* ctx, float pw)
     {
         // Card constants
-        static const float kThumbSz      = 96.f; // wider: more icon room (was 80)
-        static const float kPadding      = 20.f;
-        static const float kCardW        = kThumbSz + kPadding; // 116px
-        static const float kRounding     = 6.f;
-        static const float kIconRatio    = 0.85f;
-        static const float kFolderCol[4] = {0.85f, 0.65f, 0.15f, 1.f};
-
-        float              fh            = ZUIGetFrameHeight(ctx);
-        float              footer_h      = fh * 2.f + 18.f; // more vertical breathing room
-        float              card_h        = kThumbSz + footer_h;
-        int                col_count     = (int) (pw / kCardW);
+        static const float kTileW    = 110.f; // Figma "Asset tile"
+        static const float kTileGap  = 10.f;
+        static const float kCardW    = kTileW + kTileGap;
+        float              card_h    = 128.f;
+        int                col_count = (int) (pw / kCardW);
         if (col_count < 1)
             col_count = 1;
 
         // ~13 chars/line × 2 lines = 26 (wider card allows more before ellipsis)
-        static constexpr int kMaxNameChars    = 26;
+        static constexpr int kMaxNameChars    = 18;
 
         // Collect filtered entries
         int                  vis[kMaxEntries] = {};
@@ -588,7 +439,8 @@ namespace Tetragrama::Panels
                 vis[nvis++] = i;
 
         ZUIBox* grid_scroll = ZUIBeginScrollRegion(ctx, "##pv_grid_scroll", ZFill(), ZFill());
-        ZUISpacer(ctx, 16.f);
+        grid_scroll->Flags  = grid_scroll->Flags | ZUI_NavList;
+        ZUISpacer(ctx, 9.f);
 
         // HOT PATH — runs every frame, no heap allocation allowed.
         for (int r = 0; r * col_count < nvis; ++r)
@@ -596,7 +448,7 @@ namespace Tetragrama::Panels
             char rk[32] = {};
             snprintf(rk, sizeof(rk), "##pvrow_%d", r);
             ZUIBeginRow(ctx, rk, ZFill(), ZPx(card_h));
-            ZUISpacer(ctx, 8.f);
+            ZUISpacer(ctx, 12.f);
 
             for (int c = 0; c < col_count; ++c)
             {
@@ -605,56 +457,38 @@ namespace Tetragrama::Panels
                 {
                     char fk[32] = {};
                     snprintf(fk, sizeof(fk), "##pvfl_%d_%d", r, c);
-                    ZUIBox* fil  = ZUIPushBox(ctx, fk, (uint32_t) strlen(fk), ZUI_None);
-                    fil->Size[0] = ZPx(kCardW - 8.f);
+                    ZUIBox* fil  = ZUIPushBox(ctx, fk, (uint32_t) ZEngine::Helpers::secure_strlen(fk), ZUI_None);
+                    fil->Size[0] = ZPx(kCardW);
                     ZUIPopBox(ctx);
                 }
                 else
                 {
-                    const Entry& e   = m_entries[vis[ei]];
-                    bool         sel = (strcmp(m_selected_path, e.full_path) == 0);
-                    bool         hov;
+                    const Entry& e      = m_entries[vis[ei]];
+                    bool         sel    = (ZEngine::Helpers::secure_strcmp(m_selected_path, e.full_path) == 0);
+                    bool         hov    = {};
 
-                    // Card column
+                    // Figma "Asset tile": 110 x 128, 1 px border, 79 px thumbnail, 3 px type strip, 38 px metadata.
                     char         ck[32] = {};
                     snprintf(ck, sizeof(ck), "##pvc_%d_%d", r, c);
-                    float   cw     = kCardW - 8.f;
-                    ZUIBox* card   = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
-                    card->Flags    = card->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-                    hov            = (ctx->HotKey == card->Key);
-                    bool  pressing = !sel && (ctx->ActiveKey == card->Key);
-
-                    // Card bg: solid dark — pressing < hover < rest
-                    float rb       = pressing ? 0.22f : hov ? 0.25f : 0.16f;
-                    float gb       = pressing ? 0.22f : hov ? 0.25f : 0.16f;
-                    float bb       = pressing ? 0.26f : hov ? 0.30f : 0.19f;
-                    ZUIBoxSetColor(card, rb, gb, bb, 1.f);
-                    ZUIBoxSetCornerRadius(card, kRounding);
+                    float   cw   = kTileW;
+                    ZUIBox* card = ZUIBeginColumn(ctx, ck, ZPx(cw), ZPx(card_h));
+                    card->Flags  = card->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable | ZUI_ClipChildren | ZUI_KeyboardActivate;
+                    hov          = (ctx->HotKey == card->Key);
+                    ZUIBoxSetColorArr(card, ctx->Theme.ButtonBg);
+                    ZUIBoxSetCornerRadius(card, 4.f);
                     card->EdgeSoftness = 0.5f;
-
-                    // Card border — always-visible 1px subtle edge (#3)
-                    // Selected: bright teal 2px ring (#4)
-                    if (sel)
                     {
-                        card->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
-                        card->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
-                        card->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                        card->BorderColor[3]  = 1.f;
-                        card->BorderThickness = 2.f;
-                    }
-                    else
-                    {
-                        card->BorderColor[0]  = 1.f;
-                        card->BorderColor[1]  = 1.f;
-                        card->BorderColor[2]  = 1.f;
-                        card->BorderColor[3]  = 0.08f; // 8% white — subtle always-on border
+                        const float  sel_border[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BorderSelected);
+                        const float* bc            = sel ? sel_border : ctx->Theme.PanelBorder;
+                        for (int k = 0; k < 4; ++k)
+                            card->BorderColor[k] = bc[k];
                         card->BorderThickness = 1.f;
                     }
 
-                    // Helper: truncated name
+                    // Truncated name (tile text is 100 px wide at 11 px)
                     char display[256] = {};
                     {
-                        if ((int) strlen(e.name) > kMaxNameChars)
+                        if ((int) ZEngine::Helpers::secure_strlen(e.name) > kMaxNameChars)
                         {
                             secure_strncpy(display, sizeof(display), e.name, (size_t) (kMaxNameChars - 3));
                             display[kMaxNameChars - 3] = '.';
@@ -666,121 +500,86 @@ namespace Tetragrama::Panels
                             secure_strncpy(display, sizeof(display), e.name, sizeof(display) - 1);
                     }
 
+                    const char* category = e.is_dir ? "Folder" : TypeCategory(e.name);
+                    ZUIIcon     glyph    = ZUIIcon::Square;
+                    float       strip[4] = ZUI_TOKEN(ZEngine::UI::Tokens::TextSecondary);
+                    const char* kind     = "File";
                     if (e.is_dir)
                     {
-                        // Folder card — UE5 style
-                        // Card splits into: icon zone (top 62%) + name zone (bottom 38%).
-                        // Uniform card background throughout — no dark band.
-                        // Icon is perfectly centered within its zone.
-                        float icon_zone = card_h * 0.62f;
-                        float name_zone = card_h - icon_zone;
-
-                        // Icon: sized to fit comfortably in its zone, centered H+V
-                        float icon_sz   = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
-                        float side_pad  = (cw - icon_sz) * 0.5f;
-                        float top_pad   = (icon_zone - icon_sz) * 0.5f;
-
-                        // Icon zone
-                        ZUISpacer(ctx, top_pad);
-                        {
-                            char rk2[32] = {};
-                            snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
-                            ZUIBeginRow(ctx, rk2, ZFill(), ZPx(icon_sz));
-                            ZUISpacer(ctx, side_pad);
-                            char ik[32] = {};
-                            snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
-                            ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
-                            ico->Size[0]      = ZPx(icon_sz);
-                            ico->Size[1]      = ZPx(icon_sz);
-                            ico->TextColor[0] = kFolderCol[0];
-                            ico->TextColor[1] = kFolderCol[1];
-                            ico->TextColor[2] = kFolderCol[2];
-                            ico->TextColor[3] = kFolderCol[3];
-                            auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
-                            if (ips)
-                                ips->UserData = ZUI_ICON_FOLDER;
-                            ZUIPopBox(ctx);
-                            ZUISpacer(ctx, side_pad);
-                            ZUIEndRow(ctx);
-                        }
-                        ZUISpacer(ctx, top_pad * 0.3f); // slight gap between icon and name
-
-                        // Name zone — plain centered text, no background band
-                        {
-                            float v_pad = (name_zone - fh) * 0.5f;
-                            ZUISpacer(ctx, v_pad);
-                            char fnk[32] = {};
-                            snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
-                            uint32_t nl      = (uint32_t) strlen(display);
-                            ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
-                            lb->Size[0]      = ZFill();
-                            lb->Size[1]      = ZPx(fh);
-                            lb->Label        = ZUIPushStr(&ctx->FrameArena, display, nl);
-                            lb->TextAlign    = ZUITextAlign::Center;
-                            lb->TextColor[0] = ctx->Theme.TextDefault[0];
-                            lb->TextColor[1] = ctx->Theme.TextDefault[1];
-                            lb->TextColor[2] = ctx->Theme.TextDefault[2];
-                            lb->TextColor[3] = ctx->Theme.TextDefault[3];
-                            ZUIPopBox(ctx);
-                        }
+                        glyph = ZUIIcon::Folder;
+                        kind  = "Folder";
                     }
-                    else
+                    else if (ZEngine::Helpers::secure_strcmp(category, "Models") == 0)
                     {
+                        glyph = ZUIIcon::Box;
+                        kind  = "Static Mesh";
+                    }
+                    else if (ZEngine::Helpers::secure_strcmp(category, "Textures") == 0)
+                    {
+                        glyph = ZUIIcon::Image;
+                        kind  = "Texture";
+                    }
+                    else if (ZEngine::Helpers::secure_strcmp(category, "Scenes") == 0)
+                    {
+                        glyph = ZUIIcon::Map;
+                        kind  = "Level";
+                    }
+                    else if (ZEngine::Helpers::secure_strcmp(category, "Scripts") == 0)
+                    {
+                        glyph               = ZUIIcon::Code;
+                        kind                = "Script";
+                        const float blue[4] = ZUI_TOKEN(ZEngine::UI::Tokens::AccentBlue);
+                        for (int k = 0; k < 4; ++k)
+                            strip[k] = blue[k];
+                    }
+                    else if (ZEngine::Helpers::secure_strcmp(category, "Materials") == 0 || ZEngine::Helpers::secure_strcmp(category, "Shaders") == 0)
+                    {
+                        glyph                = ZUIIcon::Workflow;
+                        kind                 = ZEngine::Helpers::secure_strcmp(category, "Materials") == 0 ? "Material" : "Shader";
+                        const float green[4] = ZUI_TOKEN(ZEngine::UI::Tokens::AccentGreen);
+                        for (int k = 0; k < 4; ++k)
+                            strip[k] = green[k];
+                    }
 
-                        // File card — same structure as folder: icon zone + plain name
-                        {
-                            float        icon_zone = card_h * 0.62f;
-                            float        name_zone = card_h - icon_zone;
-                            float        isz       = fmaxf(fminf(icon_zone * 0.72f, cw * 0.68f), 28.f);
-                            float        side_pad  = (cw - isz) * 0.5f;
-                            float        top_pad   = (icon_zone - isz) * 0.5f;
-                            const float* icon_col  = ExtColor(e.name);
-
-                            ZUISpacer(ctx, top_pad);
-                            {
-                                char rk2[32] = {};
-                                snprintf(rk2, sizeof(rk2), "##pvicr_%d_%d", r, c);
-                                ZUIBeginRow(ctx, rk2, ZFill(), ZPx(isz));
-                                ZUISpacer(ctx, side_pad);
-                                char ik[32] = {};
-                                snprintf(ik, sizeof(ik), "##pvico_%d_%d", r, c);
-                                ZUIBox* ico       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
-                                ico->Size[0]      = ZPx(isz);
-                                ico->Size[1]      = ZPx(isz);
-                                ico->TextColor[0] = icon_col[0];
-                                ico->TextColor[1] = icon_col[1];
-                                ico->TextColor[2] = icon_col[2];
-                                ico->TextColor[3] = icon_col[3];
-                                auto* ips         = ZUIStateGetOrInsert(&ctx->StateStore, ico->Key);
-                                if (ips)
-                                    ips->UserData = ExtIconType(e.name);
-                                ZUIPopBox(ctx);
-                                ZUISpacer(ctx, side_pad);
-                                ZUIEndRow(ctx);
-                            }
-                            ZUISpacer(ctx, top_pad * 0.3f);
-
-                            // Name — plain centered text, no dark band
-                            {
-                                float v_pad = (name_zone - fh) * 0.5f;
-                                ZUISpacer(ctx, v_pad);
-                                char fnk[32] = {};
-                                snprintf(fnk, sizeof(fnk), "##pvfn_%d_%d", r, c);
-                                uint32_t nl      = (uint32_t) strlen(display);
-                                ZUIBox*  lb      = ZUIPushBox(ctx, fnk, (uint32_t) strlen(fnk), ZUI_DrawText);
-                                lb->Size[0]      = ZFill();
-                                lb->Size[1]      = ZPx(fh);
-                                lb->Label        = ZUIPushStr(&ctx->FrameArena, display, nl);
-                                lb->TextAlign    = ZUITextAlign::Center;
-                                lb->TextColor[0] = ctx->Theme.TextDefault[0];
-                                lb->TextColor[1] = ctx->Theme.TextDefault[1];
-                                lb->TextColor[2] = ctx->Theme.TextDefault[2];
-                                lb->TextColor[3] = ctx->Theme.TextDefault[3];
-                                ZUIPopBox(ctx);
-                            }
-                        }
-
-                    } // end file card
+                    // Thumbnail
+                    {
+                        char tk[32] = {};
+                        snprintf(tk, sizeof(tk), "##pvth_%d_%d", r, c);
+                        ZUIBox* th       = ZUIBeginColumn(ctx, tk, ZFill(), ZPx(79.f));
+                        th->Flags        = th->Flags | ZUI_DrawBackground;
+                        th->MainAlign    = ZUIAlign::Center;
+                        th->CrossAlign   = ZUIAlign::Center;
+                        th->EdgeSoftness = 0.f;
+                        ZUIBoxSetColorArr(th, ctx->Theme.ThumbnailBg);
+                        const float* gc = e.is_dir ? ExtColor(".dir") : ctx->Theme.TextDim;
+                        ZUIIconBox(ctx, glyph, 38.f, gc);
+                        ZUIEndColumn(ctx);
+                    }
+                    {
+                        char sk[32] = {};
+                        snprintf(sk, sizeof(sk), "##pvst_%d_%d", r, c);
+                        ZUIBox* st  = ZUIPushBox(ctx, sk, (uint32_t) ZEngine::Helpers::secure_strlen(sk), ZUI_DrawBackground);
+                        st->Size[0] = ZFill();
+                        st->Size[1] = ZPx(3.f);
+                        ZUIBoxSetColorArr(st, strip);
+                        st->EdgeSoftness = 0.f;
+                        ZUIPopBox(ctx);
+                    }
+                    // Metadata
+                    {
+                        char mk[32] = {};
+                        snprintf(mk, sizeof(mk), "##pvmd_%d_%d", r, c);
+                        ZUIBox* md     = ZUIBeginColumn(ctx, mk, ZFill(), ZFill());
+                        md->Flags      = md->Flags | ZUI_DrawBackground;
+                        md->Padding[0] = md->Padding[2] = 5.f;
+                        md->Padding[1]                  = 6.f;
+                        md->Gap                         = 4.f;
+                        md->EdgeSoftness                = 0.f;
+                        ZUIBoxSetColorArr(md, sel ? ctx->Theme.ButtonActiveBg : ctx->Theme.ButtonBg);
+                        ZUILabelTight(ctx, display, ctx->Theme.TextDefault, ZUIFontSize::Body);
+                        ZUILabelTight(ctx, kind, ctx->Theme.TextDim, ZUIFontSize::Body);
+                        ZUIEndColumn(ctx);
+                    }
 
                     ZUISignal card_sig = ZUISignalFromBox(ctx, card);
                     ZUIEndColumn(ctx); // card
@@ -790,7 +589,7 @@ namespace Tetragrama::Panels
                     {
                         secure_strncpy(m_selected_path, sizeof(m_selected_path), e.full_path, sizeof(m_selected_path) - 1);
                         float now = ctx->Time;
-                        if (strcmp(m_last_click_path, e.full_path) == 0 && now - m_last_click_time < 0.30f && e.is_dir)
+                        if (ZEngine::Helpers::secure_strcmp(m_last_click_path, e.full_path) == 0 && now - m_last_click_time < 0.30f && e.is_dir)
                         {
                             auto pr = VFSPath::Parse(e.full_path);
                             if (pr.Succeeded())
@@ -810,7 +609,7 @@ namespace Tetragrama::Panels
 
                     // Drag source for files
                     if (!e.is_dir)
-                        ZUIBeginDragSource(ctx, card, e.full_path, (uint32_t) strlen(e.full_path) + 1);
+                        ZUIBeginDragSource(ctx, card, e.full_path, (uint32_t) ZEngine::Helpers::secure_strlen(e.full_path), ZUIDragPayloadKind::VFSPath);
 
                     // Right-click context menu — unique key per card (row/col), so
                     // opening one card's menu doesn't also open every other card's.
@@ -830,7 +629,7 @@ namespace Tetragrama::Panels
                                 m_current_dir   = pr.Value();
                                 m_needs_refresh = true;
                             }
-                            if (ZUIMenuItem(ctx, "Rename") && pr.Succeeded())
+                            if (ZUIMenuItemEx(ctx, "Rename", "F2") && pr.Succeeded())
                             {
                                 m_modal        = Modal::RenameItem;
                                 m_modal_target = pr.Value();
@@ -838,7 +637,7 @@ namespace Tetragrama::Panels
                                 secure_strncpy(m_modal_buf, sizeof(m_modal_buf), e.name, sizeof(m_modal_buf) - 1);
                                 m_modal_opened = false;
                             }
-                            if (ZUIMenuItem(ctx, "Delete") && pr.Succeeded())
+                            if (ZUIMenuItemEx(ctx, "Delete", "Del", false, true, (int) ZUIIcon::X) && pr.Succeeded())
                             {
                                 m_modal        = Modal::DeleteItem;
                                 m_modal_target = pr.Value();
@@ -848,7 +647,7 @@ namespace Tetragrama::Panels
                         }
                         else
                         {
-                            if (ZUIMenuItem(ctx, "Rename") && pr.Succeeded())
+                            if (ZUIMenuItemEx(ctx, "Rename", "F2") && pr.Succeeded())
                             {
                                 m_modal        = Modal::RenameItem;
                                 m_modal_target = pr.Value();
@@ -856,7 +655,7 @@ namespace Tetragrama::Panels
                                 secure_strncpy(m_modal_buf, sizeof(m_modal_buf), e.name, sizeof(m_modal_buf) - 1);
                                 m_modal_opened = false;
                             }
-                            if (ZUIMenuItem(ctx, "Delete") && pr.Succeeded())
+                            if (ZUIMenuItemEx(ctx, "Delete", "Del", false, true, (int) ZUIIcon::X) && pr.Succeeded())
                             {
                                 m_modal        = Modal::DeleteItem;
                                 m_modal_target = pr.Value();
@@ -867,10 +666,10 @@ namespace Tetragrama::Panels
                         ZUIEndPopup(ctx);
                     }
                 }
-                ZUISpacer(ctx, 8.f);
+                ZUISpacer(ctx, kTileGap);
             }
             ZUIEndRow(ctx);
-            ZUISpacer(ctx, 8.f);
+            ZUISpacer(ctx, kTileGap);
         }
 
         ZUISpacer(ctx, 16.f); // bottom margin inside scroll
@@ -881,14 +680,14 @@ namespace Tetragrama::Panels
         ZUISignal bg_sig = ZUISignalFromBox(ctx, grid_scroll);
         if (ZUIBeginPopupContextItem(ctx, "##pv_grid_bgctx", bg_sig))
         {
-            if (ZUIMenuItem(ctx, "New File"))
+            if (ZUIMenuItemEx(ctx, "New File", nullptr, false, true, (int) ZUIIcon::Plus))
             {
                 m_modal        = Modal::CreateFile;
                 m_modal_target = m_current_dir;
                 secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFile.txt", sizeof("NewFile.txt") - 1);
                 m_modal_opened = false;
             }
-            if (ZUIMenuItem(ctx, "New Folder"))
+            if (ZUIMenuItemEx(ctx, "New Folder", nullptr, false, true, (int) ZUIIcon::FolderPlus))
             {
                 m_modal        = Modal::CreateFolder;
                 m_modal_target = m_current_dir;
@@ -953,7 +752,7 @@ namespace Tetragrama::Panels
             ZUIClosePopup(ctx);
         }
 
-        float              fh                = ZUIGetFrameHeight(ctx);
+        const float        button_row_height = fmaxf(ZUIGetFrameHeight(ctx), Metrics::HeightControl);
         static const float kErrCol[4]        = {1.f, 0.40f, 0.35f, 1.f}; // red error text
         // Right-aligns whatever is pushed next: an invisible box that fills the
         // remaining row width (same trick ZUIBeginPopup uses for its min-width sizer).
@@ -979,7 +778,7 @@ namespace Tetragrama::Panels
                     ZUILabel(ctx, m_modal_error, kErrCol);
                 }
                 ZUISpacer(ctx, 8.f);
-                ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
+                ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(button_row_height));
                 push_right_filler();
                 bool can_submit = m_modal_buf[0] != '\0';
                 if (!can_submit)
@@ -1013,8 +812,8 @@ namespace Tetragrama::Panels
                     }
                     if (ok)
                     {
-                        m_needs_refresh = true;
-                        m_modal         = Modal::None;
+                        RequestRefresh();
+                        m_modal = Modal::None;
                         ZUIClosePopup(ctx);
                     }
                 }
@@ -1038,7 +837,7 @@ namespace Tetragrama::Panels
                     ZUILabel(ctx, m_modal_error, kErrCol);
                 }
                 ZUISpacer(ctx, 8.f);
-                ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
+                ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(button_row_height));
                 push_right_filler();
                 bool rename_can_submit = m_modal_buf[0] != '\0';
                 if (!rename_can_submit)
@@ -1062,8 +861,8 @@ namespace Tetragrama::Panels
                         secure_strncpy(m_modal_error, sizeof(m_modal_error), "Name must not contain path separators", sizeof(m_modal_error) - 1);
                     if (ok)
                     {
-                        m_needs_refresh = true;
-                        m_modal         = Modal::None;
+                        RequestRefresh();
+                        m_modal = Modal::None;
                         ZUIClosePopup(ctx);
                     }
                 }
@@ -1092,29 +891,10 @@ namespace Tetragrama::Panels
                     ZUILabel(ctx, m_modal_error, kErrCol);
                 }
                 ZUISpacer(ctx, 8.f);
-                ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(fh));
+                ZUIBeginRow(ctx, "##pv_mbtns", ZFill(), ZPx(button_row_height));
                 push_right_filler();
-                bool delete_clicked;
-                {
-                    // Destructive styling: override the theme colors temporarily instead
-                    // of adding a color param to ZUIButton, which every button shares.
-                    static const float kDangerBg[4]        = {0.55f, 0.16f, 0.16f, 1.f};
-                    static const float kDangerHoveredBg[4] = {0.70f, 0.20f, 0.20f, 1.f};
-                    static const float kDangerActiveBg[4]  = {0.45f, 0.12f, 0.12f, 1.f};
-                    float              save_bg[4], save_hovered[4], save_active[4];
-                    secure_memcpy(save_bg, sizeof(save_bg), ctx->Theme.ButtonBg, sizeof(save_bg));
-                    secure_memcpy(save_hovered, sizeof(save_hovered), ctx->Theme.ButtonHoveredBg, sizeof(save_hovered));
-                    secure_memcpy(save_active, sizeof(save_active), ctx->Theme.ButtonActiveBg, sizeof(save_active));
-                    secure_memcpy(ctx->Theme.ButtonBg, sizeof(ctx->Theme.ButtonBg), kDangerBg, sizeof(kDangerBg));
-                    secure_memcpy(ctx->Theme.ButtonHoveredBg, sizeof(ctx->Theme.ButtonHoveredBg), kDangerHoveredBg, sizeof(kDangerHoveredBg));
-                    secure_memcpy(ctx->Theme.ButtonActiveBg, sizeof(ctx->Theme.ButtonActiveBg), kDangerActiveBg, sizeof(kDangerActiveBg));
-
-                    delete_clicked = ZUIButton(ctx, "Delete##pvd").Flags & ZUI_SignalClicked;
-
-                    secure_memcpy(ctx->Theme.ButtonBg, sizeof(ctx->Theme.ButtonBg), save_bg, sizeof(save_bg));
-                    secure_memcpy(ctx->Theme.ButtonHoveredBg, sizeof(ctx->Theme.ButtonHoveredBg), save_hovered, sizeof(save_hovered));
-                    secure_memcpy(ctx->Theme.ButtonActiveBg, sizeof(ctx->Theme.ButtonActiveBg), save_active, sizeof(save_active));
-                }
+                // ZUIButton uses the shared Figma recipe, not the legacy surface slots.
+                const bool delete_clicked = ZUIButton(ctx, "Delete##pvd").Flags & ZUI_SignalClicked;
                 if (delete_clicked)
                 {
                     m_modal_error[0] = '\0';
@@ -1122,15 +902,15 @@ namespace Tetragrama::Panels
                     if (vfs)
                     {
                         ok = (m_modal_is_dir ? vfs->RemoveAll(m_modal_target) : vfs->Remove(m_modal_target)).Succeeded();
-                        if (ok && m_modal_target.CStr() && m_current_dir.CStr() && strcmp(m_modal_target.CStr(), m_current_dir.CStr()) == 0)
+                        if (ok && m_modal_target.CStr() && m_current_dir.CStr() && ZEngine::Helpers::secure_strcmp(m_modal_target.CStr(), m_current_dir.CStr()) == 0)
                             m_current_dir = m_current_dir.Parent();
                         if (!ok)
                             secure_strncpy(m_modal_error, sizeof(m_modal_error), "Delete failed — check permissions", sizeof(m_modal_error) - 1);
                     }
                     if (ok)
                     {
-                        m_needs_refresh = true;
-                        m_modal         = Modal::None;
+                        RequestRefresh();
+                        m_modal = Modal::None;
                         ZUIClosePopup(ctx);
                     }
                 }
@@ -1165,14 +945,22 @@ namespace Tetragrama::Panels
         if (m_needs_refresh)
             RefreshListing(vfs);
 
-        float fh   = ZUIGetFrameHeight(ctx);
         float pw   = (rect[2] - rect[0] > 1.f) ? rect[2] - rect[0] : 400.f;
 
-        // Count visible entries for status bar
+        // Count visible entries for the status row
         int   nvis = 0;
         for (int i = 0; i < m_nentries; ++i)
             if (PassesFilters(m_entries[i], m_search, m_type_filter))
                 ++nvis;
+
+        auto hline = [&](const char* key) {
+            ZUIBox* d  = ZUIPushBox(ctx, key, (uint32_t) ZEngine::Helpers::secure_strlen(key), ZUI_DrawBackground);
+            d->Size[0] = ZFill();
+            d->Size[1] = ZPx(1.f);
+            ZUIBoxSetColorArr(d, ctx->Theme.PanelBorder);
+            d->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+        };
 
         // Outer column (panel background)
         ZUIBox* bg = ZUIBeginColumn(ctx, "##pv_bg", ZFill(), ZFill());
@@ -1180,55 +968,123 @@ namespace Tetragrama::Panels
         ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
         bg->EdgeSoftness = 0.f;
 
-        // Top bar: breadcrumb navigation
-        DrawBreadcrumb(ctx, fh);
-        ZUISeparator(ctx);
+        // Figma "Content toolbar": 36 px, Add / Import / Save All, back-forward, path, Settings.
+        {
+            ZUIBox* tb     = ZUIBeginRow(ctx, "##pv_toolbar", ZFill(), ZPx(35.f));
+            tb->Padding[0] = 10.f;
+            tb->Padding[2] = 10.f;
+            tb->Gap        = 8.f;
+            tb->CrossAlign = ZUIAlign::Center;
 
-        // Three-column body
-        static constexpr float kSourcesW = 180.f;
-        static constexpr float kFiltersW = 110.f;
+            if (ZUIEditorControl(ctx, "##pv_add", ZUIIcon::Plus, "Add", true, true, nullptr, false, true).Flags & ZUI_SignalClicked)
+                ZUIOpenPopup(ctx, "##pv_add_menu");
+            if (ZUIEditorControl(ctx, "##pv_import", ZUIIcon::Upload, "Import", false).Flags & ZUI_SignalClicked)
+            {
+                auto* ed = (m_layer && m_layer->CurrentApp) ? reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp) : nullptr;
+                if (ed && ed->Configuration)
+                {
+                    ed->Configuration->ShowImporter  = true;
+                    ed->Configuration->FocusImporter = true;
+                }
+            }
+            ZUIEditorControl(ctx, "##pv_saveall", ZUIIcon::Save, "Save All", false);
 
+            // History: back goes to the parent directory; forward is inert (no history yet).
+            ZUISpacer(ctx, 0.f);
+            {
+                const bool can_back = !m_current_dir.IsRoot();
+                ZUIBox*    bk       = ZUIPushBox(ctx, "##pv_back", 9, ZUI_DrawIcon | (can_back ? ZUI_Clickable | ZUI_KeyboardActivate : ZUI_None));
+                bk->Size[0]         = ZPx(13.f);
+                bk->Size[1]         = ZPx(13.f);
+                bk->IconId          = (uint16_t) ZUIIcon::ChevronLeft;
+                const float* bc     = can_back ? ctx->Theme.TextDefault : ctx->Theme.TextDim;
+                for (int k = 0; k < 4; ++k)
+                    bk->TextColor[k] = bc[k];
+                ZUISignal bs = ZUISignalFromBox(ctx, bk);
+                ZUIPopBox(ctx);
+                if (can_back && (bs.Flags & ZUI_SignalClicked))
+                {
+                    m_current_dir   = m_current_dir.Parent();
+                    m_needs_refresh = true;
+                }
+                ZUIIconBox(ctx, ZUIIcon::ChevronRight, 13.f, ctx->Theme.TextDim);
+            }
+            ZUIIconBox(ctx, ZUIIcon::Folder, 14.f, ctx->Theme.TextDim);
+            {
+                char path[300] = {};
+                snprintf(path, sizeof(path), "Content%s%s", m_current_dir.IsRoot() ? "" : " / ", m_current_dir.IsRoot() ? "" : (m_current_dir.CStr() ? m_current_dir.CStr() : ""));
+                ZUILabelTight(ctx, path, ctx->Theme.TextDefault, ZUIFontSize::Large);
+            }
+            {
+                ZUIBox* fill  = ZUIPushBox(ctx, "##pv_tb_fill", 12, ZUI_None);
+                fill->Size[0] = ZFill();
+                fill->Size[1] = ZPx(1.f);
+                ZUIPopBox(ctx);
+            }
+            ZUIEditorControl(ctx, "##pv_settings", ZUIIcon::Settings, "Settings", false);
+            ZUIEndRow(ctx);
+
+            if (ZUIBeginPopup(ctx, "##pv_add_menu"))
+            {
+                if (ZUIMenuItemEx(ctx, "New File", nullptr, false, true, (int) ZUIIcon::Plus))
+                {
+                    m_modal        = Modal::CreateFile;
+                    m_modal_target = m_current_dir;
+                    secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFile.txt", sizeof("NewFile.txt") - 1);
+                    m_modal_opened = false;
+                }
+                if (ZUIMenuItemEx(ctx, "New Folder", nullptr, false, true, (int) ZUIIcon::FolderPlus))
+                {
+                    m_modal        = Modal::CreateFolder;
+                    m_modal_target = m_current_dir;
+                    secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFolder", sizeof("NewFolder") - 1);
+                    m_modal_opened = false;
+                }
+                ZUIEndPopup(ctx);
+            }
+        }
+        hline("##pv_tb_line");
+
+        // Body: folder tree (210) | asset library (fill)
+        static constexpr float kTreeW = 210.f;
         ZUIBeginRow(ctx, "##pv_body", ZFill(), ZFill());
 
-        // Left: Sources tree
         {
-            ZUIBox* sc = ZUIBeginColumn(ctx, "##pv_src", ZPx(kSourcesW), ZFill());
+            ZUIBox* sc = ZUIBeginColumn(ctx, "##pv_src", ZPx(kTreeW), ZFill());
             sc->Flags  = sc->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(sc, ctx->Theme.TitleBarBg);
             sc->EdgeSoftness = 0.f;
 
-            ZUISpacer(ctx, 4.f);
-            ZUIBeginRow(ctx, "##pv_src_hdr", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Sources", ctx->Theme.TextDefault);
-            ZUIEndRow(ctx);
-            ZUISeparator(ctx);
-
-            ZUIBeginScrollRegion(ctx, "##pv_src_scroll", ZFill(), ZFill());
-            ZUISpacer(ctx, 4.f);
-
-            // Root "Assets /" row
+            ZUIBox* fs       = ZUIBeginRow(ctx, "##pv_folder_search", ZFill(), ZPx(39.f));
+            fs->Padding[0] = fs->Padding[2] = 7.f;
+            fs->CrossAlign                  = ZUIAlign::Center;
+            if (ZUISearchBox(ctx, "##pv_folder_q", m_folder_search, sizeof(m_folder_search), "Search folders", ZFill()))
             {
-                static const float kSelBg[4] = {0.26f, 0.44f, 0.70f, 0.30f};
-                bool               is_root   = m_current_dir.IsRoot();
-                char               rk[32]    = "##pv_root_row";
-                ZUIBox*            row       = ZUIBeginColumn(ctx, rk, ZFill(), ZPx(fh));
-                row->EdgeSoftness            = 0.f;
-                if (is_root)
-                {
-                    row->Flags = row->Flags | ZUI_DrawBackground;
-                    ZUIBoxSetColorArr(row, kSelBg);
-                }
-                const char* proj_name = "Assets";
-                if (m_layer && m_layer->CurrentApp)
-                {
-                    auto* ed = reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp);
-                    if (ed->Configuration && !ed->Configuration->ProjectName.empty())
-                        proj_name = ed->Configuration->ProjectName.c_str();
-                }
-                bool clicked = ZUISelectable(ctx, proj_name, nullptr, ZPx(fh));
-                ZUIEndColumn(ctx);
-                if (clicked)
+                auto* scroll = ZUIStateGetOrInsert(&ctx->StateStore, ZUIHashStr("##pv_src_scroll", 15));
+                if (scroll)
+                    scroll->ScrollY = scroll->ScrollYTarget = 0.f;
+            }
+            ZUIEndRow(ctx);
+
+            auto* sources  = ZUIBeginScrollRegion(ctx, "##pv_src_scroll", ZFill(), ZFill());
+            sources->Flags = sources->Flags | ZUI_NavList;
+
+            // "All" row: the content root.
+            {
+                const bool is_root  = m_current_dir.IsRoot();
+                ZUIBox*    row      = ZUIBeginRow(ctx, "##pv_root_row", ZFill(), ZPx(23.f));
+                row->Flags          = row->Flags | ZUI_DrawBackground | ZUI_Clickable | ZUI_KeyboardActivate;
+                row->Padding[0]     = 9.f + 16.f;
+                row->Gap            = 7.f;
+                row->CrossAlign     = ZUIAlign::Center;
+                row->EdgeSoftness   = 0.f;
+                const float rest[4] = {0.f, 0.f, 0.f, 0.f};
+                ZUIBoxSetColorArr(row, is_root ? ctx->Theme.ButtonActiveBg : (ctx->HotKey == row->Key ? ctx->Theme.ButtonHoveredBg : rest));
+                ZUIIconBox(ctx, ZUIIcon::Folder, 13.f, is_root ? ctx->Theme.TextDefault : ctx->Theme.TextDim);
+                ZUILabelTight(ctx, "All", ctx->Theme.TextDefault, ZUIFontSize::Body);
+                ZUISignal rs = ZUISignalFromBox(ctx, row);
+                ZUIEndRow(ctx);
+                if (rs.Flags & ZUI_SignalClicked)
                 {
                     m_current_dir   = VFSPath::Root();
                     m_needs_refresh = true;
@@ -1242,96 +1098,72 @@ namespace Tetragrama::Panels
             ZUIEndColumn(ctx);
         }
 
-        // Divider
         {
             ZUIBox* d  = ZUIPushBox(ctx, "##pv_d1", 7, ZUI_DrawBackground);
             d->Size[0] = ZPx(1.f);
             d->Size[1] = ZFill();
-            ZUIBoxSetColor(d, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 0.4f);
+            ZUIBoxSetColorArr(d, ctx->Theme.PanelBorder);
             d->EdgeSoftness = 0.f;
             ZUIPopBox(ctx);
         }
 
-        // Middle: Filters
-        {
-            ZUIBox* fc = ZUIBeginColumn(ctx, "##pv_flt", ZPx(kFiltersW), ZFill());
-            fc->Flags  = fc->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(fc, ctx->Theme.TitleBarBg);
-            fc->EdgeSoftness = 0.f;
-
-            ZUISpacer(ctx, 4.f);
-            ZUIBeginRow(ctx, "##pv_flt_hdr", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "Filters", ctx->Theme.TextDefault);
-            ZUIEndRow(ctx);
-            ZUISeparator(ctx);
-
-            DrawFilters(ctx);
-            ZUIEndColumn(ctx);
-        }
-
-        // Divider
-        {
-            ZUIBox* d  = ZUIPushBox(ctx, "##pv_d2", 7, ZUI_DrawBackground);
-            d->Size[0] = ZPx(1.f);
-            d->Size[1] = ZFill();
-            ZUIBoxSetColor(d, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 0.4f);
-            d->EdgeSoftness = 0.f;
-            ZUIPopBox(ctx);
-        }
-
-        // Right: Search + Grid + Status
+        // Asset library: filters + search, then the tile grid
         {
             ZUIBeginColumn(ctx, "##pv_right", ZFill(), ZFill());
 
-            // Search row
-            ZUISpacer(ctx, 4.f);
-            ZUIBeginRow(ctx, "##pv_search_row", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUISearchBox(ctx, "##pv_search", m_search, sizeof(m_search), "Search...", ZFill());
-            ZUISpacer(ctx, 4.f);
-            if (ZUISmallButton(ctx, "+File##pv").Flags & ZUI_SignalClicked)
-            {
-                m_modal        = Modal::CreateFile;
-                m_modal_target = m_current_dir;
-                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFile.txt", sizeof("NewFile.txt") - 1);
-                m_modal_opened = false;
-            }
-            ZUISpacer(ctx, 4.f);
-            if (ZUISmallButton(ctx, "+Dir##pv").Flags & ZUI_SignalClicked)
-            {
-                m_modal        = Modal::CreateFolder;
-                m_modal_target = m_current_dir;
-                secure_strncpy(m_modal_buf, sizeof(m_modal_buf), "NewFolder", sizeof("NewFolder") - 1);
-                m_modal_opened = false;
-            }
-            ZUISpacer(ctx, 8.f);
+            ZUIBox* sr     = ZUIBeginRow(ctx, "##pv_search_row", ZFill(), ZPx(33.f));
+            sr->Padding[0] = 12.f;
+            sr->Padding[2] = 12.f;
+            sr->Padding[1] = 0.f;
+            sr->Gap        = 8.f;
+            sr->CrossAlign = ZUIAlign::Center;
+            if (ZUIEditorControl(ctx, "##pv_filters", ZUIIcon::ListFilter, "Filters", true).Flags & ZUI_SignalClicked)
+                ZUIOpenPopup(ctx, "##pv_filter_menu");
+            ZUISearchBox(ctx, "##pv_search", m_search, sizeof(m_search), "Search Content", ZFill());
+            ZUIIconBox(ctx, ZUIIcon::SlidersHorizontal, 14.f);
             ZUIEndRow(ctx);
-            ZUISpacer(ctx, 4.f);
-            ZUISeparator(ctx);
+            DrawFilters(ctx);
 
-            // Content grid (fills remaining height - status bar)
-            DrawGrid(ctx, pw - kSourcesW - kFiltersW - 2.f); // 2 dividers × 1px each
-
-            // Status bar
-            ZUISeparator(ctx);
-            ZUIBox* sb = ZUIBeginRow(ctx, "##pv_status", ZFill(), ZPx(fh));
-            sb->Flags  = sb->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColorArr(sb, ctx->Theme.TitleBarBg);
-            sb->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 8.f);
-            {
-                char st[64]  = {};
-                bool has_sel = (m_selected_path[0] != '\0');
-                snprintf(st, sizeof(st), "%d item%s%s", nvis, nvis == 1 ? "" : "s", has_sel ? " (1 selected)" : "");
-                ZUILabel(ctx, st, ctx->Theme.TextDim);
-            }
-            ZUIEndRow(ctx);
+            // Content grid (fills remaining height - status row)
+            DrawGrid(ctx, pw - kTreeW - 1.f - 12.f);
 
             ZUIEndColumn(ctx);
         }
 
         ZUIEndRow(ctx); // end body split
+
+        // Figma "Content status": 26 px, item count left; selection path, thumbnail size right.
+        hline("##pv_st_line");
+        {
+            ZUIBox* sb     = ZUIBeginRow(ctx, "##pv_status", ZFill(), ZPx(25.f));
+            sb->Padding[0] = 12.f;
+            sb->Padding[2] = 12.f;
+            sb->Gap        = 10.f;
+            sb->CrossAlign = ZUIAlign::Center;
+            char st[64]    = {};
+            bool has_sel   = (m_selected_path[0] != '\0');
+            snprintf(st, sizeof(st), "%d item%s%s", nvis, nvis == 1 ? "" : "s", has_sel ? " (1 selected)" : "");
+            ZUILabelTight(ctx, st, ctx->Theme.TextDim, ZUIFontSize::Body);
+            {
+                ZUIBox* fill  = ZUIPushBox(ctx, "##pv_st_fill", 12, ZUI_None);
+                fill->Size[0] = ZFill();
+                fill->Size[1] = ZPx(1.f);
+                ZUIPopBox(ctx);
+            }
+            if (has_sel)
+                ZUILabelTight(ctx, m_selected_path, ctx->Theme.TextDim, ZUIFontSize::Body);
+            ZUIIconBox(ctx, ZUIIcon::Grid2x2, 12.f, ctx->Theme.TextDim);
+            ZUILabelTight(ctx, "Thumbnail size", ctx->Theme.TextDim, ZUIFontSize::Body);
+            {
+                ZUIBox* track  = ZUIPushBox(ctx, "##pv_st_slider", 13, ZUI_DrawBackground);
+                track->Size[0] = ZPx(56.f);
+                track->Size[1] = ZPx(3.f);
+                ZUIBoxSetColorArr(track, ctx->Theme.TextDim);
+                ZUIBoxSetCornerRadius(track, 1.5f);
+                ZUIPopBox(ctx);
+            }
+            ZUIEndRow(ctx);
+        }
         ZUIEndColumn(ctx);
 
         // Modals (outside main layout so they float freely)

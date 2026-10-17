@@ -1,12 +1,22 @@
 #pragma once
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/UI/ZUIBox.h>
+#include <ZEngine/UI/ZUIColorState.h>
 #include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/UI/ZUIFont.h>
+#include <ZEngine/UI/ZUITokens.h>
 #include <cstdint>
 
 namespace ZEngine::UI
 {
+    /// Path namespaces are explicit: a logical VFS path must never be opened as a native filename.
+    enum class ZUIDragPayloadKind : uint8_t
+    {
+        Opaque,
+        NativePath,
+        VFSPath,
+    };
+
     /// @brief UI input ownership consumed by application-level input clients.
     struct ZUIInputCapture
     {
@@ -16,100 +26,100 @@ namespace ZEngine::UI
 
     /// @brief Single source of truth for all UI colors.
     ///
+    /// Defaults are the Figma "Editor tokens" (Dark) set: every value below is a Tokens::
+    /// reference (see ZUITokens.h) so the editor can be diffed against the design by name.
+    /// Entries marked "derived" have no Figma counterpart yet; they are built from tokens.
     /// Swap the whole struct at runtime to change the entire editor theme.
-    /// Values are sRGB linear [0,1] RGBA floats; pack with ZUIPackColor for rendering.
+    /// Values are sRGB [0,1] RGBA floats; pack with ZUIPackColor for rendering.
     struct ZUITheme
     {
-        // ZodiacEngine Dark — cool blue-dark palette with teal #4EC9B0 accent.
-        // Inspired by VS Code Dark+, GitHub Dark Dimmed and One Dark.
-        // Subtle +5% blue tint on backgrounds avoids flat gray monotony.
-        // All values sRGB [0,1]; hex refs are approximate.
+        // Backgrounds
+        float WindowBg[4]             = ZUI_TOKEN(Tokens::BgWindow);   // bg/window   editor area, menu bar, tab strip
+        float WindowBackdrop[4]       = ZUI_TOKEN(Tokens::BgBackdrop); // frame fill visible in the gaps between docks
+        float PanelBg[4]              = ZUI_TOKEN(Tokens::BgPanel);    // bg/panel    panel content, toolbar
+        float PanelBgAlt[4]           = ZUI_TOKEN(Tokens::BgSurface);  // bg/surface  alt rows / headers
+        float TitleBarBg[4]           = ZUI_TOKEN(Tokens::BgWindow);   // bg/window   tab strip, status bar (unfocused panel)
+        float TitleBgActive[4]        = ZUI_TOKEN(Tokens::BgPanel);    // bg/panel    panel header (focused panel)
+        float HeaderBg[4]             = ZUI_TOKEN(Tokens::BgSurface);  // bg/surface  collapsing / section header
+        float MenuBarBg[4]            = ZUI_TOKEN(Tokens::BgWindow);   // bg/window   menu bar
+        float ThumbnailBg[4]          = ZUI_TOKEN(Tokens::BgControl);  // bg/control  asset thumbnail well
+        float InputBg[4]              = ZUI_TOKEN(Tokens::BgWindow);   // bg/window   input fields
 
-        // Backgrounds (darkest → lightest)
-        float WindowBg[4]             = {0.067f, 0.067f, 0.082f, 1.00f}; // #111115  editor area
-        float PanelBg[4]              = {0.102f, 0.102f, 0.125f, 1.00f}; // #1a1a20  panel content
-        float PanelBgAlt[4]           = {0.133f, 0.133f, 0.161f, 1.00f}; // #222229  alt rows / headers
-        float TitleBarBg[4]           = {0.157f, 0.157f, 0.192f, 1.00f}; // #282831  tab bar (unfocused panel)
-        float TitleBgActive[4]        = {0.176f, 0.176f, 0.216f, 1.00f}; // slightly lighter — focused panel
-        float HeaderBg[4]             = {0.306f, 0.788f, 0.690f, 0.18f}; // teal 18% collapsing header
-        float MenuBarBg[4]            = {0.180f, 0.180f, 0.220f, 1.00f}; // #2e2e38  menu + toolbar bars
-        float InputBg[4]              = {0.180f, 0.180f, 0.220f, 1.00f}; // #2e2e38  input fields
-
-        // Buttons — teal family
-        float ButtonBg[4]             = {0.035f, 0.384f, 0.322f, 1.00f}; // #093e35  rest (dark teal)
-        float ButtonHoveredBg[4]      = {0.055f, 0.529f, 0.431f, 1.00f}; // #0e876e  hover
-        float ButtonActiveBg[4]       = {0.192f, 0.627f, 0.541f, 1.00f}; // #31a08a  active
+        // Buttons
+        float ButtonBg[4]             = ZUI_TOKEN(Tokens::BgSurface);       // bg/surface          rest (toolbar buttons, sampled #292929)
+        float ButtonHoveredBg[4]      = ZUI_TOKEN(Tokens::BgHover);         // bg/hover            hover
+        float ButtonActiveBg[4]       = ZUI_TOKEN(Tokens::AccentSelection); // accent/selection    pressed / toggled on
 
         // Input interactive states
-        float InputHoveredBg[4]       = {0.216f, 0.216f, 0.259f, 1.00f}; // #373742
-        float InputActiveBg[4]        = {0.216f, 0.216f, 0.259f, 1.00f}; // same
-        float HeaderHoveredBg[4]      = {0.306f, 0.788f, 0.690f, 0.50f}; // teal 50% — ImGui ~0.80
-        float HeaderActiveBg[4]       = {0.306f, 0.788f, 0.690f, 0.70f}; // teal 70%
+        float InputHoveredBg[4]       = ZUI_TOKEN(Tokens::BgSurface);       // derived: one step above the field
+        float InputActiveBg[4]        = ZUI_TOKEN(Tokens::BgSurface);       // derived
+        float HeaderHoveredBg[4]      = ZUI_TOKEN(Tokens::BgHover);         // bg/hover
+        float HeaderActiveBg[4]       = ZUI_TOKEN(Tokens::AccentSelection); // accent/selection
 
-        // Tabs (4-state machine matching ImGui ImGuiCol_Tab* exactly)
-        // Visual hierarchy lightest→darkest:
-        // TabHoveredBg > TabInactiveBg > TitleBarBg(bar) > TabDimmedBg > TabDimmedSelectedBg > TabActiveBg
-        float TabActiveBg[4]          = {0.102f, 0.102f, 0.125f, 1.00f}; // selected, focused — = PanelBg (sinks into content)
-        float TabInactiveBg[4]        = {0.180f, 0.180f, 0.220f, 0.90f}; // inactive, focused — lighter than bar (floats on it)
-        float TabHoveredBg[4]         = {0.196f, 0.196f, 0.240f, 1.00f}; // hovered inactive — even lighter
-        float TabDimmedBg[4]          = {0.145f, 0.145f, 0.178f, 0.85f}; // inactive, unfocused panel — muted
-        float TabDimmedSelectedBg[4]  = {0.118f, 0.118f, 0.147f, 1.00f}; // selected, unfocused panel
-        float TabActiveBorder[4]      = {0.306f, 0.788f, 0.690f, 1.00f}; // #4EC9B0  teal overline
-        float TabInactiveBorder[4]    = {0.235f, 0.235f, 0.280f, 0.40f}; // subtle border
-        float TabAccent[4]            = {0.306f, 0.788f, 0.690f, 1.00f}; // teal
+        // Tabs. In the design the active tab sinks into the panel with a 2px accent overline;
+        // inactive tabs have no fill and sit directly on the tab strip.
+        float TabActiveBg[4]          = ZUI_TOKEN(Tokens::BgPanel);                          // bg/panel
+        float TabInactiveBg[4]        = ZUI_TOKEN(Tokens::WithAlpha(Tokens::BgWindow, 0.f)); // no fill
+        float TabHoveredBg[4]         = ZUI_TOKEN(Tokens::BgSurface);                        // derived
+        float TabDimmedBg[4]          = ZUI_TOKEN(Tokens::WithAlpha(Tokens::BgWindow, 0.f)); // no fill, unfocused panel
+        float TabDimmedSelectedBg[4]  = ZUI_TOKEN(Tokens::BgPanel);                          // bg/panel, unfocused panel
+        float TabActiveBorder[4]      = ZUI_TOKEN(Tokens::AccentBlue);                       // accent/blue  overline
+        float TabInactiveBorder[4]    = ZUI_TOKEN(Tokens::WithAlpha(Tokens::BorderSubtle, 0.f));
+        float TabAccent[4]            = ZUI_TOKEN(Tokens::AccentBlue); // accent/blue
 
         // Rows
-        float RowHoverBg[4]           = {0.306f, 0.788f, 0.690f, 0.09f}; // teal 9%
-        float RowSelectedBg[4]        = {0.306f, 0.788f, 0.690f, 0.22f}; // teal 22%
-        float RowRootBg[4]            = {0.306f, 0.788f, 0.690f, 0.11f}; // teal 11%
-        float SelectionBg[4]          = {0.207f, 0.514f, 0.894f, 0.45f}; // text selection (VS Code blue)
+        float RowHoverBg[4]           = ZUI_TOKEN(Tokens::BgSurface);       // derived
+        float RowSelectedBg[4]        = ZUI_TOKEN(Tokens::AccentSelection); // accent/selection
+        float RowRootBg[4]            = ZUI_TOKEN(Tokens::BgSurface);       // derived
+        float SelectionBg[4]          = ZUI_TOKEN(Tokens::AccentSelection); // accent/selection  text selection
 
         // Status bar
-        float StatusBarBg[4]          = {0.200f, 0.627f, 0.537f, 1.00f}; // slightly dark teal
+        float StatusBarBg[4]          = ZUI_TOKEN(Tokens::BgWindow); // bg/window
 
         // Text
-        float TextDefault[4]          = {0.843f, 0.843f, 0.886f, 1.00f}; // #d7d7e2  cool near-white
-        float TextDim[4]              = {0.431f, 0.431f, 0.510f, 1.00f}; // #6e6e82  blue-gray
-        float TextAccent[4]           = {0.306f, 0.788f, 0.690f, 1.00f}; // #4EC9B0  teal
-        float TextWarn[4]             = {0.949f, 0.741f, 0.141f, 1.00f}; // #f2bd24
-        float TextError[4]            = {0.937f, 0.325f, 0.314f, 1.00f}; // #ef5350
+        float TextDefault[4]          = ZUI_TOKEN(Tokens::TextPrimary);   // text/primary
+        float TextDim[4]              = ZUI_TOKEN(Tokens::TextSecondary); // text/secondary
+        float TextAccent[4]           = ZUI_TOKEN(Tokens::AccentBlue);    // accent/blue
+        float TextWarn[4]             = ZUI_TOKEN(Tokens::AccentOrange);  // accent/orange
+        float TextError[4]            = ZUI_TOKEN(Tokens::AccentRed);     // accent/red
 
         // Widget accent marks
-        float CheckMark[4]            = {0.306f, 0.788f, 0.690f, 1.00f}; // teal
-        float SliderGrab[4]           = {0.200f, 0.627f, 0.537f, 1.00f}; // teal dark
-        float SliderGrabActive[4]     = {0.306f, 0.788f, 0.690f, 1.00f}; // teal full
+        float CheckMark[4]            = ZUI_TOKEN(Tokens::TextSecondary); // text/secondary (the design's check icon colour)
+        float SliderGrab[4]           = ZUI_TOKEN(Tokens::TextPrimary);   // text/primary       thumb
+        float SliderGrabActive[4]     = ZUI_TOKEN(Tokens::TextPrimary);   // text/primary
 
-        // Scrollbar
+        // Figma Scrollbar: transparent track, bg/hover thumb, border/strong on interaction.
         float ScrollbarBg[4]          = {0.000f, 0.000f, 0.000f, 0.00f}; // transparent
-        float ScrollbarGrab[4]        = {0.420f, 0.420f, 0.420f, 0.40f}; // VS Code scrollbarSlider.background
-        float ScrollbarGrabHov[4]     = {0.620f, 0.620f, 0.620f, 0.65f}; // VS Code scrollbarSlider.hoverBackground
-        float ScrollbarGrabAct[4]     = {0.740f, 0.740f, 0.740f, 0.80f}; // VS Code scrollbarSlider.activeBackground
+        float ScrollbarGrab[4]        = ZUI_TOKEN(Tokens::BgHover);
+        float ScrollbarGrabHov[4]     = ZUI_TOKEN(Tokens::BorderStrong);
+        float ScrollbarGrabAct[4]     = ZUI_TOKEN(Tokens::BorderStrong);
 
-        // Plot
-        float PlotLines[4]            = {0.306f, 0.788f, 0.690f, 0.80f};
-        float PlotLinesHov[4]         = {0.306f, 0.788f, 0.690f, 1.00f};
-        float PlotHistogram[4]        = {0.200f, 0.627f, 0.537f, 0.90f};
-        float PlotHistogramHov[4]     = {0.306f, 0.788f, 0.690f, 1.00f};
+        // Plot (derived from the accent)
+        float PlotLines[4]            = ZUI_TOKEN(Tokens::WithAlpha(Tokens::AccentBlue, 0.80f));
+        float PlotLinesHov[4]         = ZUI_TOKEN(Tokens::AccentBlue);
+        float PlotHistogram[4]        = ZUI_TOKEN(Tokens::WithAlpha(Tokens::AccentBlue, 0.90f));
+        float PlotHistogramHov[4]     = ZUI_TOKEN(Tokens::AccentBlue);
 
         // Table
         float TableRowBgAlt[4]        = {1.000f, 1.000f, 1.000f, 0.03f};
 
         // Borders
-        float PanelBorder[4]          = {0.235f, 0.235f, 0.290f, 1.00f}; // cool gray border
-        float PanelFocusBorder[4]     = {0.306f, 0.788f, 0.690f, 1.00f}; // teal focus strip
+        float PanelBorder[4]          = ZUI_TOKEN(Tokens::BorderSubtle); // border/subtle
+        float PanelFocusBorder[4]     = ZUI_TOKEN(Tokens::AccentBlue);   // accent/blue
         float PanelInactiveOverlay[4] = {0.000f, 0.000f, 0.000f, 0.05f}; // 5% dim
         float ButtonBorder[4]         = {0.000f, 0.000f, 0.000f, 0.00f}; // none
-        float InputBorder[4]          = {0.235f, 0.235f, 0.290f, 0.80f}; // cool gray
-        float InputFocusBorder[4]     = {0.306f, 0.788f, 0.690f, 1.00f}; // teal
-        float Separator[4]            = {0.235f, 0.235f, 0.290f, 0.50f}; // cool gray 50%
+        float InputBorder[4]          = ZUI_TOKEN(Tokens::BorderField);  // border/field
+        float InputFocusBorder[4]     = ZUI_TOKEN(Tokens::AccentBlue);   // accent/blue
+        float Separator[4]            = ZUI_TOKEN(Tokens::BorderSubtle); // border/subtle
 
-        // Popup
-        float PopupBg[4]              = {0.184f, 0.184f, 0.224f, 1.00f}; // ImGui: ImGuiCol_PopupBg
+        // Popup / menu
+        float PopupBg[4]              = ZUI_TOKEN(Tokens::BgPanel);      // bg/panel
+        float PopupBorder[4]          = ZUI_TOKEN(Tokens::BorderStrong); // border/strong  (menus and flyouts)
 
         // DataTable
-        float TableHeaderBg[4]        = {0.165f, 0.165f, 0.204f, 1.00f}; // header row background
-        float TableBorderLight[4]     = {0.220f, 0.220f, 0.270f, 1.00f}; // inner cell borders
-        float TableBorderStrong[4]    = {0.350f, 0.350f, 0.420f, 1.00f}; // outer border / resize grip
+        float TableHeaderBg[4]        = ZUI_TOKEN(Tokens::BgSurface);    // bg/surface  header row background
+        float TableBorderLight[4]     = ZUI_TOKEN(Tokens::BorderSubtle); // border/subtle  inner cell borders
+        float TableBorderStrong[4]    = ZUI_TOKEN(Tokens::BorderStrong); // border/strong  outer border / resize grip
     };
 
     /// @brief Per-frame style metrics and behavioral properties.
@@ -120,24 +130,25 @@ namespace ZEngine::UI
     {
         // Global
         float Alpha                      = 1.f;
-        float DisabledAlpha              = 0.38f; // ImGui: DisabledAlpha
 
         // Font
-        float FontSize                   = 13.f; // ImGui: g.FontSize — sync after ZUIFontAtlasBake
+        float FontSize                   = 11.f; // body size (Figma Inter 11) — sync after ZUIFontAtlasBake
 
         // Padding / Spacing
         float WindowPadding[2]           = {8.f, 8.f};
-        float FramePadding[2]            = {4.f, 3.f}; // ImGui: FramePadding
-        float ItemSpacing[2]             = {8.f, 4.f}; // ImGui: ItemSpacing
-        float ItemInnerSpacing[2]        = {4.f, 4.f}; // ImGui: ItemInnerSpacing
-        float CellPadding[2]             = {4.f, 2.f}; // ImGui: CellPadding
+        float FramePadding[2]            = {8.f, 5.5f}; // Figma field: 8 px horizontal, 22 px tall at 11 px text
+        float ItemSpacing[2]             = {8.f, 4.f};  // ImGui: ItemSpacing
+        float ItemInnerSpacing[2]        = {4.f, 4.f};  // ImGui: ItemInnerSpacing
+        float MenuBarHeight              = 28.f;        // Figma: application menu row
+        float CellPadding[2]             = {4.f, 2.f};  // ImGui: CellPadding
+        bool  DataTableColumnLines       = false;       // vertical separators between data-table columns (Figma tables have none)
 
         // Rounding
         float WindowRounding             = 0.f;
         float ChildRounding              = 0.f;
         float FrameRounding              = 3.f; // ImGui: FrameRounding
-        float PopupRounding              = 4.f; // ImGui: PopupRounding
-        float ScrollbarRounding          = 9.f; // ImGui: ScrollbarRounding
+        float PopupRounding              = 6.f; // ImGui: PopupRounding
+        float ScrollbarRounding          = Metrics::Radius3;
         float GrabRounding               = 3.f; // ImGui: GrabRounding
         float TabRounding                = 3.f; // ImGui: TabRounding (top corners only)
 
@@ -155,9 +166,9 @@ namespace ZEngine::UI
         float TabMinWidthForClose        = 0.f; // ImGui: TabMinWidthForCloseButton
 
         // Scrollbar
-        float ScrollbarSize              = 10.f;  // VS Code: 10px thin scrollbar
-        float ScrollbarMinThumbPx        = 20.f;  // VS Code: reasonable minimum thumb
-        float ScrollbarAutoHideAlpha     = 0.15f; // floor alpha at rest — VS Code sidebar keeps a faint hint
+        float ScrollbarSize              = Metrics::Space10; // Hit lane; the visible thumb is 6 px.
+        float ScrollbarMinThumbPx        = 20.f;             // VS Code: reasonable minimum thumb
+        float ScrollbarAutoHideAlpha     = 0.15f;            // floor alpha at rest — VS Code sidebar keeps a faint hint
 
         // Grab
         float GrabMinSize                = 12.f; // ImGui: GrabMinSize
@@ -174,23 +185,27 @@ namespace ZEngine::UI
 
         // Popup
         float PopupMinWidth              = 200.f;
-        float PopupInnerPaddingX         = 2.f;
+        float PopupInnerPaddingX         = 4.f;
 
         // Docking (tab/panel specifics)
+        float TabBarHeight               = 30.f;  // Figma 'Panel tab strip'
+        float TabWidth                   = 180.f; // Figma 'Active panel tab'
+        float DockGap                    = 4.f;   // backdrop visible between docked panels
         float TabIconSize                = 8.f;   // colored icon dot size in tab/title strip
         float TabGhostContentH           = 39.f;  // drag ghost content area height
         float DataTableDefaultColumnW    = 100.f; // ZUIDataTable fallback column width
 
         // Animation
-        float HoverAnimSpeed             = 50.f; // expf(-HoverAnimSpeed * dt)  ~65ms to 95%
-        float ActiveAnimSpeed            = 60.f; // expf(-ActiveAnimSpeed * dt) ~50ms to 95%
-        float CursorBlinkRate            = 1.f;  // text cursor blink period in seconds
+        float HoverAnimSpeed             = 50.f;  // expf(-HoverAnimSpeed * dt)  ~65ms to 95%
+        float ActiveAnimSpeed            = 60.f;  // expf(-ActiveAnimSpeed * dt) ~50ms to 95%
+        float CursorBlinkRate            = 1.f;   // text cursor blink period in seconds
+        bool  ReducedMotion              = false; // Snap hover, press, thumb and scroll animations.
 
         // Docking
-        float DockingSeparatorSize       = 2.f; // ImGui: DockingSeparatorSize
-        float DockingSeparatorSizeRest   = 1.f;
-        float DockingGrabWidth           = 6.f;
-        float DockingHoverBandWidth      = 6.f; ///< Width of the tinted band shown on divider hover (px). Set to 0 to disable.
+        float DockingSeparatorSize       = 4.f;
+        float DockingSeparatorSizeRest   = 4.f;
+        float DockingGrabWidth           = 8.f;
+        float DockingHoverBandWidth      = 8.f; ///< Width of the tinted band shown on divider hover (px). Set to 0 to disable.
         float DockingDropZoneEdge        = 0.25f;
         float DockingDropPreviewAlpha    = 0.12f;
         float DockingDragThreshold       = 8.f;
@@ -199,12 +214,16 @@ namespace ZEngine::UI
         float DockingMinTabWidth         = 40.f;
         float DockingFocusBorderWidth    = 2.f;
         // Show a left-edge accent strip on the focused panel.
-        // Default false: the active tab's teal overline is sufficient visual focus indicator.
+        // Default false: the active tab's blue overline is sufficient visual focus indicator.
         bool  ShowFocusBorder            = false;
 
-        // Renderer
-        float DropShadowOffset           = 4.f;
-        float DropShadowAlpha            = 0.38f;
+        // Renderer — Figma Shadow/Menu and Shadow/Modal (logical px).
+        float MenuShadowOffsetY          = 10.f;
+        float MenuShadowBlur             = 28.f;
+        float MenuShadowAlpha            = 0.55f;
+        float ModalShadowOffsetY         = 8.f;
+        float ModalShadowBlur            = 24.f;
+        float ModalShadowAlpha           = 0.50f;
         float HoverOverlayAlpha          = 0.15f;
         float MouseScrollSpeed           = 48.f; // px per scroll unit (VS Code uses ~50)
         float ScrollSmoothSpeed          = 50.f; // exponential-lerp speed — 50 → 57% first-frame, ~66ms settle
@@ -216,7 +235,7 @@ namespace ZEngine::UI
         bool  DefaultAutoHideTabBar      = false; // ImGui default: always show tab bar
 
         // Derived — set by ZUIStyleUpdate(), never manually
-        float FrameHeight                = 19.f; // = FontSize + FramePadding[1] * 2
+        float FrameHeight                = 22.f; // = FontSize + FramePadding[1] * 2
     };
 
     /// @brief Recompute derived style fields (FrameHeight) after changing FontSize or FramePadding.
@@ -236,7 +255,6 @@ namespace ZEngine::UI
     enum ZUIStyleVar : uint32_t
     {
         ZUIStyleVar_Alpha                   = 0,  ///< Maps to ZUIStyle::Alpha.
-        ZUIStyleVar_DisabledAlpha           = 1,  ///< Maps to ZUIStyle::DisabledAlpha.
         ZUIStyleVar_FramePaddingX           = 2,  ///< Maps to ZUIStyle::FramePadding[0].
         ZUIStyleVar_FramePaddingY           = 3,  ///< Maps to ZUIStyle::FramePadding[1].
         ZUIStyleVar_ItemSpacingX            = 4,  ///< Maps to ZUIStyle::ItemSpacing[0].
@@ -268,21 +286,23 @@ namespace ZEngine::UI
     /// The layout solver writes ScreenMin/ScreenMax each frame for boxes that have ZUI_Clickable.
     struct ZUIPersistentState
     {
-        float   HotT               = 0.f;
-        float   ActiveT            = 0.f;
-        float   ScrollX            = 0.f; // current (animated) scroll position
-        float   ScrollY            = 0.f;
-        float   ScrollXTarget      = 0.f; // destination; wheel input writes here; ScrollX lerps toward it
-        float   ScrollYTarget      = 0.f;
-        float   MaxScrollY         = 0.f; // set by layout solver; clamped in interaction pass
-        float   ScrollbarShowTimer = 0.f; // seconds remaining; reset on scroll/drag; drives scrollbar alpha
-        float   UserData           = -1.f;
-        float   ScreenMinX         = 0.f;
-        float   ScreenMinY         = 0.f;
-        float   ScreenMaxX         = 0.f;
-        float   ScreenMaxY         = 0.f;
-        float   MaxScrollX         = 0.f; // set by layout solver for ZUI_Scrollable+LayoutAxis::X
-        int32_t SelectStart        = -1;  // text selection anchor (-1 = no selection)
+        float                HotT               = 0.f;
+        float                ActiveT            = 0.f;
+        float                ToggleT            = -1.f; ///< -1 initializes to the model state without an entrance animation.
+        float                ScrollX            = 0.f;  // current (animated) scroll position
+        float                ScrollY            = 0.f;
+        float                ScrollXTarget      = 0.f; // destination; wheel input writes here; ScrollX lerps toward it
+        float                ScrollYTarget      = 0.f;
+        float                MaxScrollY         = 0.f; // set by layout solver; clamped in interaction pass
+        float                ScrollbarShowTimer = 0.f; // seconds remaining; reset on scroll/drag; drives scrollbar alpha
+        float                UserData           = -1.f;
+        float                ScreenMinX         = 0.f;
+        float                ScreenMinY         = 0.f;
+        float                ScreenMaxX         = 0.f;
+        float                ScreenMaxY         = 0.f;
+        float                MaxScrollX         = 0.f;     // set by layout solver for ZUI_Scrollable+LayoutAxis::X
+        int32_t              SelectStart        = -1;      // text selection anchor (-1 = no selection)
+        ZUIColorWidgetState* ColorState         = nullptr; ///< Lazily allocated, keyed color editing state.
     };
 
     /// @brief One bucket in the open-addressing persistent state hash table.
@@ -310,20 +330,29 @@ namespace ZEngine::UI
     /// One context per window; created by ZUIContextInit, destroyed by ZUIContextDestroy.
     struct ZUIContext
     {
+        uint64_t                              FrameIndex                   = 0;
+        ZUIColorModel                         ColorModel                   = ZUIColorModel::RGB; ///< Shared by color pickers in this window/session.
+        ColorMath::RGBA                       RecentColors[24]             = {};
+        uint32_t                              RecentColorCount             = 0;
+        static constexpr uint32_t             ColorUndoCapacity            = 64;
+        ZUIColorUndoEntry                     ColorUndo[ColorUndoCapacity] = {};
+        uint32_t                              ColorUndoCount               = 0;
+        uint32_t                              ColorUndoCursor              = 0;
         // sub-arenas carved from the engine's main arena via ZUIContextInit
-        ZEngine::Core::Memory::ArenaAllocator FrameArena      = {}; // Clear()-ed each BeginFrame; all ZUIBox* are stale after
-        ZEngine::Core::Memory::ArenaAllocator PersistentArena = {}; // never cleared; holds the persistent state table
+        ZEngine::Core::Memory::ArenaAllocator FrameArena                   = {}; // Clear()-ed each BeginFrame; all ZUIBox* are stale after
+        ZEngine::Core::Memory::ArenaAllocator PersistentArena              = {}; // never cleared; holds the persistent state table
 
         // box tree — all pointers into FrameArena
-        ZUIBox*                               Root            = nullptr;
-        ZUIBox*                               Current         = nullptr;
+        ZUIBox*                               Root                         = nullptr;
+        ZUIBox*                               Current                      = nullptr;
+        ZUIBox*                               ForegroundRoot               = nullptr; ///< Frame-local, non-interactive decorations; promoted above the shell at EndFrame.
 
         // persistent state — open-addressing hash table in PersistentArena
-        ZUIPersistentStore                    StateStore      = {};
+        ZUIPersistentStore                    StateStore                   = {};
 
         // Single shared font atlas (ImGui approach: one texture, all fonts).
         // Set by Editor::OnInitialized after ZUIFontAtlasBake.
-        ZUIFontAtlas*                         Atlas           = nullptr;
+        ZUIFontAtlas*                         Atlas                        = nullptr;
 
         // Convenience accessors — delegate to Atlas
         ZUIFont*                              GetFont(ZUIFontSize size) const
@@ -336,6 +365,12 @@ namespace ZEngine::UI
                 return Atlas->Small;
             if (size == ZUIFontSize::Header && Atlas->Header)
                 return Atlas->Header;
+            if (size == ZUIFontSize::Heading && Atlas->Heading)
+                return Atlas->Heading;
+            if (size == ZUIFontSize::Tiny && Atlas->Tiny)
+                return Atlas->Tiny;
+            if (size == ZUIFontSize::Large && Atlas->Large)
+                return Atlas->Large;
             return Atlas->Body;
         }
 
@@ -355,6 +390,12 @@ namespace ZEngine::UI
         uint64_t HotKey              = 0;
         uint64_t ActiveKey           = 0;
         uint64_t FocusKey            = 0;
+        bool     KeyboardFocus       = false; ///< Mouse presses hide focus rings without disabling text editing.
+        uint64_t PreferredFocusScope = 0;     ///< Active dock panel; start here when no control owns focus.
+        uint64_t FocusTrapKey        = 0;     ///< Innermost popup/modal from the last completed frame.
+        uint64_t SavedFocusKey       = 0;     ///< Focus to restore when the overlay closes.
+        uint64_t TooltipHoverKey     = 0;
+        float    TooltipHoverTime    = 0.f;
 
         // text input — written by OnTextInputRaised
         char     TextInput[32]       = {};
@@ -402,12 +443,17 @@ namespace ZEngine::UI
         uint64_t                  DragSourceKey        = 0;
         char                      DragPayload[512]     = {};
         uint32_t                  DragPayloadLen       = 0;
+        ZUIDragPayloadKind        DragPayloadKind      = ZUIDragPayloadKind::Opaque;
         bool                      DragDropFired        = false;
         uint64_t                  DragTargetKey        = 0;
 
         // Written by ViewportPanel each UI frame; consumed by the next application update
         // to identify the scene viewport's pointer target.
         bool                      ViewportHovered      = false;
+        // Field presentation knobs set by a panel around its widgets (restored by the panel).
+        bool                      FlatInputs           = false;   ///< Drag fields draw without a border and with a 3 px radius.
+        int                       DragFloatDecimals    = 3;       ///< Digits after the point shown by ZUIDragFloat.
+        const char*               DragFloatSuffix      = nullptr; ///< Appended to ZUIDragFloat's display text (e.g. a degree sign).
         uint64_t                  ViewportInputKey     = 0;
         int                       ResizeCursor         = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
 
@@ -446,12 +492,6 @@ namespace ZEngine::UI
         bool                      ArrowDownHeld        = false;
         bool                      DeleteHeld           = false;
         float                     ArrowRepeatTimer     = 0.f;
-        // Per-frame tracking updated in ZUISignalFromBox during the build pass
-        uint64_t                  TabNavNextKey        = 0; // first clickable after FocusKey
-        uint64_t                  TabNavPrevKey        = 0; // last clickable before FocusKey
-        uint64_t                  TabNavFirstKey       = 0; // first clickable seen (wraparound)
-        uint64_t                  TabNavLastKey        = 0; // last clickable seen (Shift+Tab wrap)
-        bool                      TabNavSeenFocus      = false;
 
         // Input repeat — ZUIEndFrame advances the timer; after RepeatDelay
         // it fires BackspacePressed / ArrowPressed at RepeatRate hz
@@ -459,7 +499,7 @@ namespace ZEngine::UI
         static constexpr float    kRepeatDelay         = 0.45f; // s before first repeat
         static constexpr float    kRepeatRate          = 0.04f; // s between repeats
 
-        // ZUIBeginDisabled / ZUIEndDisabled — widgets skip Clickable and dim colours
+        // ZUIBeginDisabled / ZUIEndDisabled — no interaction; dedicated disabled tokens.
         bool                      Disabled             = false;
         int                       DisabledDepth        = 0; // supports nesting
 
@@ -473,17 +513,24 @@ namespace ZEngine::UI
         static constexpr uint32_t kMaxPopupDepth       = 8;
         struct ZUIPopupEntry
         {
-            uint64_t Key         = 0;
-            ZUIBox*  Box         = nullptr; // set by ZUIBeginPopup; valid this frame
-            ZUIBox*  SavedParent = nullptr; // ctx->Current before popup opened; restored on End
-            float    PosX        = 0.f;
-            float    PosY        = 0.f;
+            uint64_t Key             = 0;
+            ZUIBox*  Box             = nullptr; // set by ZUIBeginPopup; valid this frame
+            ZUIBox*  SavedParent     = nullptr; // ctx->Current before popup opened; restored on End
+            float    PosX            = 0.f;
+            float    PosY            = 0.f;
+            uint64_t OwnerFocusKey   = 0; // restore the opener when returning to a parent overlay
+            // Last completed layout; popup boxes are not clickable and therefore
+            // do not publish their bounds to the widget-state store.
+            float    ScreenMin[2]    = {};
+            float    ScreenMax[2]    = {};
+            bool     MouseNavigation = false; // A submenu follows pointer dismissal after mouse takeover.
         };
         ZUIPopupEntry PopupStack[kMaxPopupDepth] = {};
         uint32_t      PopupStackSize             = 0; // active popup count
         uint32_t      PopupBuildDepth            = 0; // current render depth (reset in BeginFrame)
         uint64_t      PendingPopupKey            = 0; // queued by ZUIOpenPopup, applied in EndFrame
         uint32_t      PendingPopupDepth          = 0;
+        uint64_t      PendingPopupOwnerFocusKey  = 0;
         float         PendingPopupPosX           = 0.f;
         float         PendingPopupPosY           = 0.f;
         uint64_t      ActiveModalKey             = 0; // modal (cannot close by clicking outside)
@@ -616,6 +663,14 @@ namespace ZEngine::UI
     /// @brief Pop the current box — moves ctx->Current back to its parent.
     /// @param ctx Active ZUI context.
     void                ZUIPopBox(ZUIContext* ctx);
+
+    /// @brief Portal screen-positioned decorations out of panel clipping into the foreground.
+    /// @details Requires an existing root. Do not put interactive widgets in this layer.
+    /// @return Saved build parent; pass it to ZUIEndForeground after building decorations.
+    ZUIBox*             ZUIBeginForeground(ZUIContext* ctx);
+
+    /// @brief Restore the build parent saved by ZUIBeginForeground.
+    void                ZUIEndForeground(ZUIContext* ctx, ZUIBox* saved_parent);
 
     // Utilities
 

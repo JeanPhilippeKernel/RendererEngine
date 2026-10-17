@@ -15,10 +15,15 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/UI/ZUITokens.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <fmt/format.h>
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 using namespace ZEngine::UI;
@@ -28,18 +33,34 @@ using namespace ZEngine::Importers;
 
 namespace Tetragrama::Panels
 {
-    static constexpr float kBg[4]    = {0.09f, 0.09f, 0.095f, 1.f};
-    static constexpr float kWhite[4] = {0.80f, 0.80f, 0.80f, 1.0f};
-    static constexpr float kGreen[4] = {0.30f, 1.00f, 0.40f, 1.0f};
-    static constexpr float kRed[4]   = {1.00f, 0.30f, 0.30f, 1.0f};
+    // Figma tokens (Editor tokens / Dark)
+    static const float  kBg[4]    = ZUI_TOKEN(Tokens::BgPanel);
+    static const float  kWhite[4] = ZUI_TOKEN(Tokens::TextPrimary);
+    static const float  kGreen[4] = ZUI_TOKEN(Tokens::AccentGreen);
+    static const float  kRed[4]   = ZUI_TOKEN(Tokens::AccentRed);
+
+    // Figma "Button / Kind=Primary": accent/selection fill, 26 px, radius 4.
+    static const float* Tokens_AccentBlue()
+    {
+        static const float c[4] = ZUI_TOKEN(Tokens::AccentBlue);
+        return c;
+    }
+
+    static ZUISignal PrimaryButton(ZUIContext* ctx, const char* key, const char* label, ZUISize w)
+    {
+        char button_key[128] = {};
+        snprintf(button_key, sizeof(button_key), "%s%s", label, key);
+        return ZUIButton(ctx, button_key, w, ZPx(Metrics::HeightControl), ZUIButtonKind::Primary);
+    }
 
     // Initialize
 
-    void                   AssetImporterPanel::Initialize(Tetragrama::Layers::ZUILayer* layer, ProjectViewPanel* project_view)
+    void AssetImporterPanel::Initialize(Tetragrama::Layers::ZUILayer* layer, ProjectViewPanel* project_view)
     {
         m_layer        = layer;
         m_project_view = project_view;
-        if (!layer)
+        auto* engine   = ZEngine::Engine::GetContext();
+        if (!layer || !engine)
             return;
 
         // Scratch arena for ImportConfiguration strings — carved from layer arena
@@ -47,7 +68,7 @@ namespace Tetragrama::Panels
         layer->LocalArena.CreateSubArena(ZKilo(64), &m_local_arena, "EditorContext/AssetImporterPanelScratch");
         // Importer arenas carved from the engine's ImportPipeline budget so all
         // import memory — engine importers and editor importers — is budget-tracked.
-        auto* import_arena = &ZEngine::Engine::GetContext()->ImportPipelineArena;
+        auto* import_arena = &engine->ImportPipelineArena;
         // Publication results can contain one entry per material and texture. Keep
         // them outside the 64 KiB configuration scratch arena and reuse storage on
         // the next import. The layer's shared local arena is only 4 MiB, so use the
@@ -88,13 +109,25 @@ namespace Tetragrama::Panels
             app->Configuration->PendingImportPath[0] = '\0';
             app->Configuration->PendingImportName[0] = '\0';
             m_add_to_scene                           = true;
+            m_state.value.store(ImporterState::Options, std::memory_order_release);
             StartImport();
         }
 
         ZUIBox* bg = ZUIBeginColumn(ctx, "##imp_bg", ZFill(), ZFill());
-        bg->Flags  = bg->Flags | ZUI_DrawBackground | ZUI_Scrollable;
+        bg->Flags  = bg->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
         ZUIBoxSetColorArr(bg, kBg);
         bg->EdgeSoftness = 0.f;
+
+        if (m_error[0])
+        {
+            auto* error       = ZUIBeginRow(ctx, "##imp_error", ZFill(), ZFit());
+            error->Flags      = error->Flags | ZUI_Clickable | ZUI_NoKeyboardFocus;
+            error->Padding[0] = error->Padding[2] = Metrics::Space12;
+            error->Padding[1] = error->Padding[3] = Metrics::Space6;
+            ZUILabelTight(ctx, m_error, kRed);
+            ZUISetTooltip(ctx, ZUISignalFromBox(ctx, error), m_error);
+            ZUIEndRow(ctx);
+        }
 
         switch (m_state.value.load(std::memory_order_acquire))
         {
@@ -112,489 +145,445 @@ namespace Tetragrama::Panels
         ZUIEndColumn(ctx);
     }
 
-    // BuildIdle
+    // Section chrome reuses the shared disclosure widget, with the importer
+    // specimen's 28 px surface header and 12 px semibold label.
+    static void ImportSection(ZUIContext* ctx, const char* label, bool* open)
+    {
+        const float surface[4] = ZUI_TOKEN(Tokens::BgSurface);
+        ZUICollapsingHeader(ctx, label, open, surface);
+        auto* header       = ctx->Current->LastChild;
+        header->Size[1]    = ZPx(Metrics::HeightRow);
+        header->Padding[0] = header->Padding[2] = Metrics::Space12;
+        header->CrossAlign                      = ZUIAlign::Center;
+        auto* arrow                             = header->FirstChild;
+        arrow->Size[0] = arrow->Size[1] = ZPx(Metrics::Space10);
+        arrow->NextSib->Size[0]         = ZPx(Metrics::Space8);
+        header->LastChild->FontSize     = ZUIFontSize::Header;
+        header->LastChild->TextAlign    = ZUITextAlign::Center;
+    }
+
+    static void BeginImportProperty(ZUIContext* ctx, const char* key, const char* label)
+    {
+        auto* row       = ZUIBeginRow(ctx, key, ZFill(), ZPx(30.f));
+        row->Padding[0] = Metrics::Space20;
+        row->Padding[2] = Metrics::Space12;
+        row->CrossAlign = ZUIAlign::Center;
+        row->Gap        = Metrics::Space12;
+        ZUIBeginColumn(ctx, "##imp_property_label", ZPx(120.f), ZFit());
+        ZUILabelTight(ctx, label);
+        ZUIEndColumn(ctx);
+    }
+
+    static bool ImportCheckbox(ZUIContext* ctx, const char* key, const char* label, bool* value)
+    {
+        auto* row             = ZUIBeginRow(ctx, key, ZFill(), ZPx(Metrics::HeightRowCheck));
+        row->Padding[0]       = Metrics::Space20;
+        row->Padding[2]       = Metrics::Space12;
+        row->CrossAlign       = ZUIAlign::Center;
+        char control_key[128] = {};
+        snprintf(control_key, sizeof(control_key), "%s%s", label, key);
+        const bool changed = ZUICheckbox(ctx, control_key, value, 120.f);
+        ZUIEndRow(ctx);
+        return changed;
+    }
 
     void AssetImporterPanel::BuildIdle(ZUIContext* ctx)
     {
-        float fh = ZUIGetFrameHeight(ctx);
-        ZUISpacer(ctx, 10.f);
+        ZUISpacer(ctx, Metrics::Space12);
+        auto* controls       = ZUIBeginColumn(ctx, "##imp_idle_controls", ZFill(), ZFit());
+        controls->Padding[0] = controls->Padding[2] = Metrics::Space12;
+        controls->Gap                               = Metrics::Space8;
 
-        // "+ Import File" button
+        auto* dz                                    = ZUIBeginColumn(ctx, "##imp_dz", ZFill(), ZPx(140.f));
+        dz->Flags                                   = dz->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DashedBorder | ZUI_Clickable | ZUI_KeyboardActivate | ZUI_ClipChildren;
+        const float dz_bg[4]                        = ZUI_TOKEN(Tokens::BgWindow);
+        const float dz_border[4]                    = ZUI_TOKEN(Tokens::BorderField);
+        ZUIBoxSetColorArr(dz, dz_bg);
+        secure_memcpy(dz->BorderColor, sizeof(dz->BorderColor), dz_border, sizeof(dz_border));
+        dz->BorderThickness = 1.f;
+        ZUIBoxSetCornerRadius(dz, Metrics::Radius6);
+        dz->MainAlign = dz->CrossAlign = ZUIAlign::Center;
+        dz->Gap                        = Metrics::Space8;
+        ZUIIconBox(ctx, ZUIIcon::Upload, 24.f, ctx->Theme.TextDim);
+        ZUILabelTight(ctx, "Drag a 3D file here");
+        // USD is in the mockup but is not supported by the import pipeline.
+        ZUILabelTight(ctx, "FBX, glTF, GLB, OBJ", ctx->Theme.TextDim, ZUIFontSize::Tiny);
+        char               dropped[sizeof(m_path_buf)] = {};
+        ZUIDragPayloadKind kind                        = ZUIDragPayloadKind::Opaque;
+        if (ZUIAcceptDrop(ctx, dz, dropped, sizeof(dropped), &kind))
         {
-            ZUIBeginRow(ctx, "##imp_idle_r", ZFill(), ZPx(fh + 6.f));
-            ZUISpacer(ctx, 8.f);
-            ZUISignal btn = ZUIButton(ctx, "+ Import File##imp_browse");
+            auto* app                        = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+            auto* engine                     = ZEngine::Engine::GetContext();
+            char  native[sizeof(m_path_buf)] = {};
+            if (ResolveDroppedFile(dropped, kind, app && app->Configuration ? app->Configuration->WorkingSpacePath.c_str() : nullptr, engine ? engine->EngineAssetsNativeRoot : nullptr, native, sizeof(native)))
+                SelectSource(native);
+        }
+        const auto source_signal = ZUISignalFromBox(ctx, dz);
+        ZUIEndColumn(ctx);
+        if (source_signal.Flags & ZUI_SignalClicked)
+            BrowseFile();
+        const auto browse = PrimaryButton(ctx, "##imp_browse", "Import File", ZFill());
+        if (browse.Flags & ZUI_SignalClicked)
+            BrowseFile();
+        ZUIEndColumn(ctx);
+        ZUISpacer(ctx, Metrics::Space12);
+
+        ImportSection(ctx, "Recent Imports", &m_history_open);
+        if (!m_history_open)
+            return;
+        auto* history  = ZUIBeginScrollRegion(ctx, "##imp_history", ZFill(), ZFill());
+        history->Flags = history->Flags | ZUI_DrawBackground;
+        ZUIBoxSetColorArr(history, kBg);
+        if (!m_hist_count)
+        {
+            auto* empty       = ZUIBeginRow(ctx, "##imp_history_empty", ZFill(), ZPx(26.f));
+            empty->Padding[0] = Metrics::Space20;
+            empty->CrossAlign = ZUIAlign::Center;
+            ZUILabelTight(ctx, "No recent imports", ctx->Theme.TextDim, ZUIFontSize::Tiny);
             ZUIEndRow(ctx);
-            if (btn.Flags & ZUI_SignalClicked)
-                BrowseFile();
         }
-
-        ZUISpacer(ctx, 6.f);
+        for (int i = 0; i < m_hist_count; ++i)
         {
-            ZUIBeginRow(ctx, "##imp_drop_hint", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, "or drag a 3D file onto the viewport", ctx->Theme.TextDim);
+            const auto& entry   = m_history[m_hist_count - 1 - i];
+            char        key[32] = {};
+            snprintf(key, sizeof(key), "##imp_history_%d", i);
+            auto* row       = ZUIBeginRow(ctx, key, ZFill(), ZPx(26.f));
+            row->Padding[0] = Metrics::Space20;
+            row->Padding[2] = Metrics::Space12;
+            row->Gap        = Metrics::Space8;
+            row->CrossAlign = ZUIAlign::Center;
+            row->Flags      = row->Flags | ZUI_ClipChildren | ZUI_Clickable | ZUI_NoKeyboardFocus;
+            ZUIIconBox(ctx, entry.ok ? ZUIIcon::Check : ZUIIcon::X, 12.f, entry.ok ? kGreen : kRed);
+            auto* name  = ZUIBeginColumn(ctx, "##imp_history_name", ZFill(), ZFit());
+            name->Flags = name->Flags | ZUI_ClipChildren;
+            ZUILabelTight(ctx, entry.name);
+            ZUIEndColumn(ctx);
+            ZUILabelTight(ctx, entry.ok ? "Imported" : "Failed", entry.ok ? ctx->Theme.TextDim : kRed, ZUIFontSize::Tiny);
+            const auto signal = ZUISignalFromBox(ctx, row);
             ZUIEndRow(ctx);
+            if (!entry.ok)
+                ZUISetTooltip(ctx, signal, entry.message);
         }
-
-        // Recent imports
-        if (m_hist_count > 0)
-        {
-            ZUISpacer(ctx, 12.f);
-            ZUISeparator(ctx);
-            ZUISpacer(ctx, 6.f);
-            {
-                ZUIBeginRow(ctx, "##imp_hist_hdr", ZFill(), ZPx(fh));
-                ZUISpacer(ctx, 8.f);
-                ZUILabel(ctx, "Recent Imports", ctx->Theme.TextDim);
-                ZUIEndRow(ctx);
-            }
-            ZUISpacer(ctx, 4.f);
-
-            // Newest-first (ring buffer: head-1 = newest)
-            static const char* kRowKeys[kHistMax] = {
-                "##hr0",
-                "##hr1",
-                "##hr2",
-                "##hr3",
-                "##hr4",
-                "##hr5",
-                "##hr6",
-                "##hr7",
-                "##hr8",
-                "##hr9",
-                "##hra",
-                "##hrb",
-                "##hrc",
-                "##hrd",
-                "##hre",
-                "##hrf",
-            };
-            for (int i = 0; i < m_hist_count; ++i)
-            {
-                int              idx = (m_hist_count - 1 - i) % kHistMax;
-                const HistEntry& e   = m_history[idx];
-                char             buf[320];
-                if (e.ok)
-                    snprintf(buf, sizeof(buf), "[OK]  %s", e.name);
-                else
-                    snprintf(buf, sizeof(buf), "[ERR] %s  (%s)", e.name, e.message);
-                ZUIBeginRow(ctx, kRowKeys[i], ZFill(), ZPx(fh));
-                ZUISpacer(ctx, 8.f);
-                ZUILabel(ctx, buf, e.ok ? kGreen : kRed);
-                ZUIEndRow(ctx);
-                ZUISpacer(ctx, 2.f);
-            }
-        }
+        ZUIEndScrollRegion(ctx);
     }
 
-    // BuildOptions
+    void AssetImporterPanel::CancelSelection()
+    {
+        m_path_buf[0]      = '\0';
+        m_instance_name[0] = '\0';
+        m_error[0]         = '\0';
+        m_add_to_scene     = false;
+        m_state.value.store(ImporterState::Idle, std::memory_order_release);
+    }
 
     void AssetImporterPanel::BuildOptions(ZUIContext* ctx)
     {
-        float fh = ZUIGetFrameHeight(ctx);
-        ZUISpacer(ctx, 8.f);
-
-        // Header: filename stem + X close button
+        char       stem[256] = {};
+        const auto parsed    = VFSPath::Parse(m_path_buf);
+        if (parsed.Succeeded())
         {
-            char stem_buf[256] = {};
-            auto pr            = VFSPath::Parse(m_path_buf);
-            if (pr.Succeeded())
-            {
-                auto s = pr.Value().Stem();
-                snprintf(stem_buf, sizeof(stem_buf), "%.*s", (int) s.Length, s.Data);
-            }
-            ZUIBeginRow(ctx, "##imp_opt_hdr", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, stem_buf, ctx->Theme.TextDefault);
-
-            ZUIBox* fill  = ZUIPushBox(ctx, "##imp_hfill", 11, ZUI_None);
-            fill->Size[0] = ZFill();
-            fill->Size[1] = ZPx(1.f);
-            ZUIPopBox(ctx);
-
-            ZUIBox* xb    = ZUIPushBox(ctx, "##imp_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-            xb->Size[0]   = ZPx(fh);
-            xb->Size[1]   = ZPx(fh);
-            xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
-            xb->TextAlign = ZUITextAlign::Center;
-            bool xhov     = (ctx->HotKey == xb->Key);
-            ZUIBoxSetColor(xb, xhov ? 0.82f : 0.f, xhov ? 0.15f : 0.f, xhov ? 0.15f : 0.f, xhov ? 1.f : 0.f);
-            xb->TextColor[0] = ctx->Theme.TextDim[0];
-            xb->TextColor[1] = ctx->Theme.TextDim[1];
-            xb->TextColor[2] = ctx->Theme.TextDim[2];
-            xb->TextColor[3] = 1.f;
-            ZUISignal xsig   = ZUISignalFromBox(ctx, xb);
-            ZUIPopBox(ctx);
-            ZUIEndRow(ctx);
-
-            if (xsig.Flags & ZUI_SignalClicked)
-            {
-                m_path_buf[0] = '\0';
-                m_state.value.store(ImporterState::Idle, std::memory_order_release);
-            }
+            const auto source_stem = parsed.Value().Stem();
+            snprintf(stem, sizeof(stem), "%.*s", static_cast<int>(source_stem.Length), source_stem.Data);
+        }
+        auto* header       = ZUIBeginRow(ctx, "##imp_opt_hdr", ZFill(), ZPx(36.f));
+        header->Padding[0] = Metrics::Space12;
+        header->Padding[2] = Metrics::Space8;
+        header->Gap        = Metrics::Space8;
+        header->CrossAlign = ZUIAlign::Center;
+        header->Flags      = header->Flags | ZUI_ClipChildren;
+        ZUIIconBox(ctx, ZUIIcon::Hexagon, 16.f, Tokens_AccentBlue());
+        auto* name  = ZUIBeginColumn(ctx, "##imp_hname", ZFill(), ZFit());
+        name->Flags = name->Flags | ZUI_ClipChildren;
+        ZUILabelTight(ctx, stem, nullptr, ZUIFontSize::Header);
+        ZUIEndColumn(ctx);
+        const auto close     = ZUIButton(ctx, "##imp_close", ZPx(25.f), ZPx(25.f));
+        auto*      close_box = ctx->Current->LastChild;
+        // Icon-only buttons need the entire fixed-size content area, not the
+        // horizontal text padding and text-driven width of ZUIButton.
+        close_box->Size[0] = close_box->Size[1] = ZPx(25.f);
+        for (float& padding : close_box->Padding)
+            padding = 0.f;
+        close_box->MainAlign = close_box->CrossAlign = ZUIAlign::Center;
+        ctx->Current                                 = close_box;
+        ZUIIconBox(ctx, ZUIIcon::X, 13.f, close_box->TextColor);
+        ZUIPopBox(ctx);
+        ZUISetTooltip(ctx, close, "Cancel import");
+        ZUIEndRow(ctx);
+        if (close.Flags & ZUI_SignalClicked)
+        {
+            CancelSelection();
+            return;
         }
 
-        ZUISeparator(ctx);
-        ZUISpacer(ctx, 6.f);
-
-        // Filter pill row — same visual style as InspectorPanel category pills
+        // Only this body scrolls: the file header and actions remain reachable
+        // in short docks. Flexible field widths also accommodate narrow docks.
+        auto* body  = ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
+        body->Flags = body->Flags | ZUI_DrawBackground;
+        ZUIBoxSetColorArr(body, kBg);
+        ImportSection(ctx, "Mesh", &m_mesh_open);
+        if (m_mesh_open)
         {
-            static const float kPillAct[4]  = {0.22f, 0.63f, 0.69f, 1.f}; // teal active
-            static const float kPillHov[4]  = {0.28f, 0.28f, 0.33f, 1.f}; // hover
-            static const float kPillRest[4] = {0.20f, 0.20f, 0.24f, 1.f}; // dark inactive
-            static const char* kPills[]     = {"General", "Mesh", "Material", "Animation", "LOD", "All"};
-            static const char* kPillKeys[]  = {"##pf0", "##pf1", "##pf2", "##pf3", "##pf4", "##pf5"};
+            BeginImportProperty(ctx, "##imp_aname_r", "Instance name");
+            if (m_use_source_name)
+                ZUIBeginDisabled(ctx);
+            ZUITextField(ctx, m_use_source_name ? "##imp_name_dis" : "##imp_name", m_use_source_name ? stem : m_instance_name, sizeof(m_instance_name), 240.f);
+            ctx->Current->LastChild->Size[0].Strictness = 0.f;
+            if (m_use_source_name)
+                ZUIEndDisabled(ctx);
+            ZUIEndRow(ctx);
 
-            ZUIBeginRow(ctx, "##imp_filter_row", ZFill(), ZPx(fh + 4.f));
-            ZUISpacer(ctx, 6.f);
-            for (int pi = 0; pi < 6; ++pi)
+            if (ImportCheckbox(ctx, "##imp_usn", "Use source name", &m_use_source_name) && !m_use_source_name && !m_instance_name[0])
+                secure_strcpy(m_instance_name, sizeof(m_instance_name), stem);
+            // Preserve the existing, functional scale option (not in the specimen).
+            BeginImportProperty(ctx, "##imp_scale_r", "Uniform scale");
+            ZUIInputFloat(ctx, "##imp_scale", &m_scale, 80.f);
+            ZUIEndRow(ctx);
+
+            BeginImportProperty(ctx, "##imp_axis_r", "Up axis");
+            static const char* axes[]      = {"Y-Up", "Z-Up"};
+            const ZUISize      combo_width = {ZUISizeKind::Pixels, 200.f, 0.f};
+            const int          axis        = m_axis_index >= 0 && m_axis_index < 2 ? m_axis_index : 0;
+            if (ZUIBeginCombo(ctx, "##imp_axis", axes[axis], combo_width))
             {
-                bool disabled = (pi == 3 || pi == 4);
-                if (disabled)
-                    ZUIBeginDisabled(ctx);
-
-                bool     act    = (m_options_filter == pi);
-                uint32_t plen   = (uint32_t) strlen(kPills[pi]);
-                float    pill_w = fmaxf((float) plen * 7.f + 10.f, 40.f);
-
-                ZUIBox*  pb     = ZUIPushBox(ctx, kPillKeys[pi], (uint32_t) strlen(kPillKeys[pi]), ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-                pb->Size[0]     = ZPx(pill_w);
-                pb->Size[1]     = ZPx(fh);
-                pb->Label       = ZUIPushStr(&ctx->FrameArena, kPills[pi], plen);
-                pb->TextAlign   = ZUITextAlign::Center;
-                bool pill_hov   = !act && !disabled && (ctx->HotKey == pb->Key);
-                ZUIBoxSetColorArr(pb, act ? kPillAct : pill_hov ? kPillHov : kPillRest);
-                ZUIBoxSetCornerRadius(pb, 3.f);
-                pb->TextColor[0] = pb->TextColor[1] = pb->TextColor[2] = pb->TextColor[3] = 1.f;
-                ZUISignal psig                                                            = ZUISignalFromBox(ctx, pb);
-                ZUIPopBox(ctx);
-                ZUISpacer(ctx, 4.f);
-                if (!disabled && (psig.Flags & ZUI_SignalClicked))
-                    m_options_filter = pi;
-
-                if (disabled)
-                    ZUIEndDisabled(ctx);
+                for (int i = 0; i < 2; ++i)
+                    if (ZUIComboItem(ctx, axes[i], m_axis_index == i))
+                        m_axis_index = i;
+                ZUIEndCombo(ctx);
             }
             ZUIEndRow(ctx);
+
+            BeginImportProperty(ctx, "##imp_nrm_r", "Normals");
+            // Mode 0 keeps source normals; modes 1/2 generate missing normals.
+            static const char* normals[] = {"Import from file", "Generate flat", "Generate smooth"};
+            const int          normal    = m_normals_mode >= 0 && m_normals_mode < 3 ? m_normals_mode : 0;
+            if (ZUIBeginCombo(ctx, "##imp_normals", normals[normal], combo_width))
+            {
+                for (int i = 0; i < 3; ++i)
+                    if (ZUIComboItem(ctx, normals[i], m_normals_mode == i))
+                        m_normals_mode = i;
+                ZUIEndCombo(ctx);
+            }
+            ZUIEndRow(ctx);
+            ImportCheckbox(ctx, "##imp_mv", "Merge vertices", &m_merge_vertices);
+            ImportCheckbox(ctx, "##imp_fuv", "Flip UVs", &m_flip_uvs);
         }
-        ZUISeparator(ctx);
-
-        // Filtered settings (scroll region)
-        ZUIBeginScrollRegion(ctx, "##imp_opt_scroll", ZFill(), ZFill());
+        ImportSection(ctx, "Materials", &m_materials_open);
+        if (m_materials_open)
         {
-            static constexpr float kLblW = 140.f;
-            // 2-column row helper (label left, widget fills right)
-#define IMP_ROW_BEGIN(key)                         \
-    ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); \
-    ZUISpacer(ctx, 8.f);                           \
-    ZUIBeginColumn(ctx, key "_l", ZPx(kLblW), ZFill());
-#define IMP_ROW_MID(label)                        \
-    ZUILabel(ctx, label, ctx->Theme.TextDefault); \
-    ZUIEndColumn(ctx);
-#define IMP_ROW_END      \
-    ZUISpacer(ctx, 8.f); \
-    ZUIEndRow(ctx);      \
-    ZUISpacer(ctx, 3.f);
-            // Checkbox row (checkbox left, label right)
-#define IMP_CB_ROW_BEGIN(key)                      \
-    ZUIBeginRow(ctx, key, ZFill(), ZPx(fh + 4.f)); \
-    ZUISpacer(ctx, 8.f);
-#define IMP_CB_ROW_END(label)                     \
-    ZUISpacer(ctx, 8.f);                          \
-    ZUILabel(ctx, label, ctx->Theme.TextDefault); \
-    ZUIEndRow(ctx);                               \
-    ZUISpacer(ctx, 3.f);
-
-            bool        show_gen   = (m_options_filter == 0 || m_options_filter == 5);
-            bool        show_mesh  = (m_options_filter == 1 || m_options_filter == 5);
-            bool        show_mat   = (m_options_filter == 2 || m_options_filter == 5);
-            bool        show_anim  = (m_options_filter == 3 || m_options_filter == 5);
-            bool        show_lod   = (m_options_filter == 4 || m_options_filter == 5);
-
-            // Collapse state per section (persist within session)
-            static bool s_gen_open = true, s_mesh_open = true, s_mat_open = true;
-            static bool s_anim_open = true, s_lod_open = true;
-
-            // General / Common
-            if (show_gen)
-            {
-                ZUICollapsingHeader(ctx, "Common", &s_gen_open);
-                if (s_gen_open)
-                {
-                    IMP_CB_ROW_BEGIN("##imp_usn_r")
-                    ZUICheckbox(ctx, "##imp_usn", &m_use_source_name);
-                    IMP_CB_ROW_END("Use Source Name for Asset")
-
-                    // Asset Name — always show field; disabled when using source name
-                    IMP_ROW_BEGIN("##imp_aname_r")
-                    IMP_ROW_MID("Asset Name")
-                    {
-                        char fn_buf[256] = {};
-                        if (m_use_source_name)
-                        {
-                            auto pr = VFSPath::Parse(m_path_buf);
-                            if (pr.Succeeded())
-                            {
-                                auto s = pr.Value().Stem();
-                                snprintf(fn_buf, sizeof(fn_buf), "%.*s", (int) s.Length, s.Data);
-                            }
-                            ZUIBeginDisabled(ctx);
-                            ZUITextField(ctx, "##imp_name_dis", fn_buf, sizeof(fn_buf), 0.f);
-                            ZUIEndDisabled(ctx);
-                        }
-                        else
-                            ZUITextField(ctx, "##imp_name", m_instance_name, sizeof(m_instance_name), 0.f);
-                    }
-                    IMP_ROW_END
-
-                    // Offset Uniform Scale — fixed-width input (not full-width drag)
-                    IMP_ROW_BEGIN("##imp_scale_r")
-                    IMP_ROW_MID("Offset Uniform Scale")
-                    ZUIInputFloat(ctx, "##imp_scale", &m_scale, 80.f);
-                    IMP_ROW_END
-
-                    // Axis Up — fixed-width combo
-                    IMP_ROW_BEGIN("##imp_axis_r")
-                    IMP_ROW_MID("Axis Up")
-                    {
-                        static const char* kAxes[] = {"Y-Up", "Z-Up"};
-                        ctx->PopupDesiredW         = 120.f;
-                        if (ZUIBeginCombo(ctx, "##imp_axis", kAxes[m_axis_index], ZPx(160.f)))
-                        {
-                            for (int i = 0; i < 2; ++i)
-                                if (ZUIComboItem(ctx, kAxes[i], m_axis_index == i))
-                                    m_axis_index = i;
-                            ZUIEndCombo(ctx);
-                        }
-                    }
-                    IMP_ROW_END
-                    ZUISpacer(ctx, 4.f);
-                } // s_gen_open
-            } // show_gen
-
-            // Mesh
-            if (show_mesh)
-            {
-                ZUICollapsingHeader(ctx, "Common Meshes", &s_mesh_open);
-                if (s_mesh_open)
-                {
-                    // Normals — fixed-width combo
-                    IMP_ROW_BEGIN("##imp_nrm_r")
-                    IMP_ROW_MID("Normals")
-                    {
-                        static const char* kNrm[] = {"Off", "Flat", "Smooth"};
-                        ctx->PopupDesiredW        = 120.f;
-                        if (ZUIBeginCombo(ctx, "##imp_normals", kNrm[m_normals_mode], ZPx(160.f)))
-                        {
-                            for (int i = 0; i < 3; ++i)
-                                if (ZUIComboItem(ctx, kNrm[i], m_normals_mode == i))
-                                    m_normals_mode = i;
-                            ZUIEndCombo(ctx);
-                        }
-                    }
-                    IMP_ROW_END
-
-                    IMP_CB_ROW_BEGIN("##imp_mv_r")
-                    ZUICheckbox(ctx, "##imp_mv", &m_merge_vertices);
-                    IMP_CB_ROW_END("Merge Identical Vertices")
-
-                    IMP_CB_ROW_BEGIN("##imp_fuv_r")
-                    ZUICheckbox(ctx, "##imp_fuv", &m_flip_uvs);
-                    IMP_CB_ROW_END("Flip UVs")
-
-                    {
-                        static bool s_keep_sections = false;
-                        ZUIBeginDisabled(ctx);
-                        IMP_CB_ROW_BEGIN("##imp_ks_r")
-                        ZUICheckbox(ctx, "##imp_ks", &s_keep_sections);
-                        IMP_CB_ROW_END("Keep Sections Separate")
-                        ZUIEndDisabled(ctx);
-                    }
-                    ZUISpacer(ctx, 4.f);
-                } // s_mesh_open
-            } // show_mesh
-
-            // Material
-            if (show_mat)
-            {
-                ZUICollapsingHeader(ctx, "Materials", &s_mat_open);
-                if (s_mat_open)
-                {
-                    IMP_CB_ROW_BEGIN("##imp_imat_r")
-                    ZUICheckbox(ctx, "##imp_imat", &m_import_materials);
-                    IMP_CB_ROW_END("Import Materials")
-
-                    IMP_CB_ROW_BEGIN("##imp_itex_r")
-                    ZUICheckbox(ctx, "##imp_itex", &m_import_textures);
-                    IMP_CB_ROW_END("Import Textures")
-                    ZUISpacer(ctx, 4.f);
-                } // s_mat_open
-            } // show_mat
-
-            // Animation (disabled)
-            if (show_anim)
-            {
-                ZUIBeginDisabled(ctx);
-                ZUICollapsingHeader(ctx, "Common Skeletal Meshes and Animations", &s_anim_open);
-                if (s_anim_open)
-                {
-                    static bool s_import_anims = true, s_only_anims = false, s_bone_tracks = true;
-                    IMP_CB_ROW_BEGIN("##imp_ia_r") ZUICheckbox(ctx, "##imp_ia", &s_import_anims);
-                    IMP_CB_ROW_END("Import Animations")
-                    IMP_CB_ROW_BEGIN("##imp_ioa_r") ZUICheckbox(ctx, "##imp_ioa", &s_only_anims);
-                    IMP_CB_ROW_END("Import Only Animations")
-                    IMP_CB_ROW_BEGIN("##imp_ibt_r") ZUICheckbox(ctx, "##imp_ibt", &s_bone_tracks);
-                    IMP_CB_ROW_END("Import Bone Tracks")
-                    ZUISpacer(ctx, 4.f);
-                    ZUIBeginRow(ctx, "##imp_anim_hint", ZFill(), ZPx(fh));
-                    ZUISpacer(ctx, 8.f);
-                    ZUILabel(ctx, "Animation import requires skeletal mesh support.", ctx->Theme.TextDim);
-                    ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 4.f);
-                }
-                ZUIEndDisabled(ctx);
-            }
-
-            // LOD (disabled)
-            if (show_lod)
-            {
-                ZUIBeginDisabled(ctx);
-                ZUICollapsingHeader(ctx, "LOD", &s_lod_open);
-                if (s_lod_open)
-                {
-                    static bool s_import_lods = false;
-                    static int  s_max_lods    = 4;
-                    IMP_CB_ROW_BEGIN("##imp_il_r") ZUICheckbox(ctx, "##imp_il", &s_import_lods);
-                    IMP_CB_ROW_END("Import LODs")
-                    IMP_ROW_BEGIN("##imp_lod_n_r") IMP_ROW_MID("Max LOD Count") ZUIInputFloat(ctx, "##imp_lod_n", (float*) &s_max_lods, 80.f);
-                    IMP_ROW_END
-                    ZUISpacer(ctx, 4.f);
-                    ZUIBeginRow(ctx, "##imp_lod_hint", ZFill(), ZPx(fh));
-                    ZUISpacer(ctx, 8.f);
-                    ZUILabel(ctx, "LOD support requires virtual geometry streaming.", ctx->Theme.TextDim);
-                    ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 4.f);
-                }
-                ZUIEndDisabled(ctx);
-            }
-
-#undef IMP_ROW_BEGIN
-#undef IMP_ROW_MID
-#undef IMP_ROW_END
-#undef IMP_CB_ROW_BEGIN
-#undef IMP_CB_ROW_END
+            ImportCheckbox(ctx, "##imp_imat", "Import materials", &m_import_materials);
+            ImportCheckbox(ctx, "##imp_itex", "Import textures", &m_import_textures);
+        }
+        ImportSection(ctx, "Animation", &m_animation_open);
+        if (m_animation_open)
+        {
+            auto* hint       = ZUIBeginRow(ctx, "##imp_anim_hint", ZFill(), ZFit());
+            hint->Padding[0] = Metrics::Space20;
+            hint->Padding[1] = hint->Padding[3] = Metrics::Space6;
+            const float disabled[4]             = ZUI_TOKEN(Tokens::TextDisabled);
+            ZUILabelTight(ctx, "Animation import requires skeletal mesh support.", disabled, ZUIFontSize::Tiny);
+            ZUIEndRow(ctx);
         }
         ZUIEndScrollRegion(ctx);
 
-        ZUISeparator(ctx);
-        ZUISpacer(ctx, 6.f);
+        auto* footer           = ZUIBeginColumn(ctx, "##imp_footer_col", ZFill(), ZFit());
+        footer->Flags          = footer->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
+        const float surface[4] = ZUI_TOKEN(Tokens::BgSurface);
+        ZUIBoxSetColorArr(footer, surface);
+        footer->EdgeSoftness = 0.f;
+        footer->Padding[0] = footer->Padding[2] = Metrics::Space12;
+        footer->Padding[1] = footer->Padding[3] = Metrics::Space10;
+        footer->Gap                             = Metrics::Space8;
         ZUICheckbox(ctx, "Use same settings for subsequent files##imp_ss", &m_same_settings);
-        ZUISpacer(ctx, 8.f);
-
-        // Footer buttons
-        {
-            ZUIBeginRow(ctx, "##imp_footer", ZFill(), ZPx(fh + 4.f));
-            ZUISpacer(ctx, 8.f);
-            ZUISignal imp_btn = ZUIButton(ctx, "Import All##imp_do");
-            ZUISpacer(ctx, 6.f);
-            ZUIBeginDisabled(ctx);
-            ZUIButton(ctx, "Preview...##imp_prev");
-            ZUIEndDisabled(ctx);
-            ZUISpacer(ctx, 6.f);
-            ZUISignal cancel = ZUIButton(ctx, "Cancel##imp_cancel");
-            ZUIEndRow(ctx);
-
-            if (imp_btn.Flags & ZUI_SignalClicked)
-                StartImport();
-            if (cancel.Flags & ZUI_SignalClicked)
-            {
-                m_path_buf[0] = '\0';
-                m_state.value.store(ImporterState::Idle, std::memory_order_release);
-            }
-        }
-        ZUISpacer(ctx, 8.f);
+        ctx->Current->LastChild->Size[1] = ZPx(16.f);
+        auto* buttons                    = ZUIBeginRow(ctx, "##imp_footer", ZFill(), ZPx(Metrics::HeightControl));
+        buttons->MainAlign               = ZUIAlign::End;
+        buttons->Gap                     = Metrics::Space8;
+        const auto cancel                = ZUIButton(ctx, "Cancel##imp_cancel", ZPx(84.f));
+        auto*      preview_help          = ZUIBeginRow(ctx, "##imp_preview_help", ZPx(84.f), ZPx(Metrics::HeightControl));
+        preview_help->Flags              = preview_help->Flags | ZUI_Clickable | ZUI_NoKeyboardFocus;
+        ZUIBeginDisabled(ctx);
+        ZUIButton(ctx, "Preview...##imp_prev", ZFill());
+        ZUIEndDisabled(ctx);
+        ZUISetTooltip(ctx, ZUISignalFromBox(ctx, preview_help), "Import preview is not supported yet.");
+        ZUIEndRow(ctx);
+        const auto import = PrimaryButton(ctx, "##imp_do", "Import All", ZPx(84.f));
+        for (auto* button = buttons->FirstChild; button; button = button->NextSib)
+            button->Size[0].Strictness = 0.f;
+        ZUIEndRow(ctx);
+        ZUIEndColumn(ctx);
+        if (cancel.Flags & ZUI_SignalClicked)
+            CancelSelection();
+        else if (import.Flags & ZUI_SignalClicked)
+            StartImport();
     }
-
-    // BuildImporting
 
     void AssetImporterPanel::BuildImporting(ZUIContext* ctx)
     {
-        float fh = ZUIGetFrameHeight(ctx);
-        ZUISpacer(ctx, 8.f);
+        ZUISpacer(ctx, 24.f);
+        auto* content       = ZUIBeginColumn(ctx, "##imp_progress_content", ZFill(), ZFit());
+        content->Padding[0] = content->Padding[2]   = 24.f;
+        content->Gap                                = Metrics::Space10;
+        char       heading[sizeof(m_path_buf) + 16] = {};
+        const auto parsed                           = VFSPath::Parse(m_path_buf);
+        const auto filename                         = parsed.Succeeded() ? parsed.Value().Filename() : VFSPathComponent{};
+        snprintf(heading, sizeof(heading), "Importing %.*s", filename.Length ? static_cast<int>(filename.Length) : 3, filename.Length ? filename.Data : "...");
+        ZUILabelTight(ctx, heading, nullptr, ZUIFontSize::Header);
 
-        // "Importing <filename>"
-        {
-            char stem_buf[256] = {};
-            auto pr            = VFSPath::Parse(m_path_buf);
-            if (pr.Succeeded())
-            {
-                auto s = pr.Value().Stem();
-                snprintf(stem_buf, sizeof(stem_buf), "Importing %.*s", (int) s.Length, s.Data);
-            }
-            else
-                secure_strncpy(stem_buf, sizeof(stem_buf), "Importing...", 12);
-            ZUIBeginRow(ctx, "##imp_ing_hdr", ZFill(), ZPx(fh));
-            ZUISpacer(ctx, 8.f);
-            ZUILabel(ctx, stem_buf, ctx->Theme.TextDefault);
-            ZUIEndRow(ctx);
-        }
-        ZUISpacer(ctx, 6.f);
-
-        // Progress bar
-        {
-            ZUIBeginRow(ctx, "##imp_prog_r", ZFill(), ZPx(18.f));
-            ZUISpacer(ctx, 8.f);
-            ZUIProgressBar(ctx, "##imp_prog", m_progress.value.load(std::memory_order_relaxed));
-            ZUISpacer(ctx, 8.f);
-            ZUIEndRow(ctx);
-        }
-
-        ZUISpacer(ctx, 6.f);
-        ZUISeparator(ctx);
-        ZUISpacer(ctx, 4.f);
-
-        // Log scroll region
-        ZUIBeginScrollRegion(ctx, "##imp_log_scroll", ZFill(), ZFill());
+        const float raw_progress = m_progress.value.load(std::memory_order_relaxed);
+        const float progress     = std::isfinite(raw_progress) ? std::clamp(raw_progress, 0.f, 1.f) : 0.f;
+        ZUIProgressBar(ctx, "##imp_prog", progress, ZFill(), ZPx(6.f));
+        char status[sizeof(m_status) + 16] = {};
         {
             std::lock_guard<std::mutex> lock(m_log_mutex);
-            int                         start = (m_log_count < kLogMax) ? 0 : m_log_head; // oldest first
-            // HOT PATH — runs every frame during import, no heap allocation allowed.
-            for (int i = 0; i < m_log_count; ++i)
-            {
-                int  idx = (start + i) % kLogMax;
-                char line[270];
-                snprintf(line, sizeof(line), "> %s", m_log[idx].text);
-                ZUILabel(ctx, line, m_log[idx].color);
-            }
+            secure_strcpy(status, sizeof(status), m_status[0] ? m_status : "Processing...");
         }
-        ZUIEndScrollRegion(ctx);
+        const size_t status_length = secure_strlen(status);
+        snprintf(status + status_length, sizeof(status) - status_length, " %.0f%%", progress * 100.f);
+        ZUILabelTight(ctx, status, ctx->Theme.TextDim, ZUIFontSize::Tiny);
+        auto* cancel_help  = ZUIBeginRow(ctx, "##imp_cancel_help", ZPx(84.f), ZPx(Metrics::HeightControl));
+        cancel_help->Flags = cancel_help->Flags | ZUI_Clickable | ZUI_NoKeyboardFocus;
+        ZUIBeginDisabled(ctx);
+        ZUIButton(ctx, "Cancel##imp_cancel_running", ZFill());
+        ZUIEndDisabled(ctx);
+        ZUISetTooltip(ctx, ZUISignalFromBox(ctx, cancel_help), "Cancellation is unavailable while the import is running.");
+        ZUIEndRow(ctx);
+        ZUIEndColumn(ctx);
     }
 
     // File browse
 
     std::future<void> AssetImporterPanel::BrowseFileAsync()
     {
-        if (!m_layer || !m_layer->CurrentApp)
-            co_return;
-        auto                          window  = m_layer->CurrentApp->CurrentWindow;
-        std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
-        std::string                   picked  = co_await window->OpenFileDialogAsync(filters, {}, "Select a 3D asset file");
-        if (!picked.empty())
+        if (!m_layer || !m_layer->CurrentApp || !m_layer->CurrentApp->CurrentWindow)
         {
-            secure_strncpy(m_path_buf, sizeof(m_path_buf), picked.c_str(), sizeof(m_path_buf) - 1);
-            m_instance_name[0] = '\0';
-            m_add_to_scene     = false;
-            if (m_same_settings)
-                StartImport();
-            else
-                m_state.value.store(ImporterState::Options, std::memory_order_release);
+            m_browse_pending = false;
+            co_return;
         }
+        try
+        {
+            auto                          window  = m_layer->CurrentApp->CurrentWindow;
+            std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
+            std::string                   picked  = co_await window->OpenFileDialogAsync(filters, {}, "Select a 3D asset file");
+            if (!picked.empty())
+                SelectSource(picked.c_str());
+        }
+        catch (const std::exception& error)
+        {
+            snprintf(m_error, sizeof(m_error), "Unable to open the file dialog: %s", error.what());
+        }
+        m_browse_pending = false;
+    }
+
+    bool AssetImporterPanel::TryGetImporterKind(const VFSPath& path, ImporterKind& kind)
+    {
+        const auto ext          = path.Extension();
+        char       extension[8] = {};
+        if (ext.Length >= sizeof(extension))
+            return false;
+        for (size_t i = 0; i < ext.Length; ++i)
+            extension[i] = (char) std::tolower((unsigned char) ext.Data[i]);
+        if (ZEngine::Helpers::secure_strcmp(extension, ".glb") == 0 || ZEngine::Helpers::secure_strcmp(extension, ".gltf") == 0)
+            kind = ImporterKind::Gltf;
+        else if (ZEngine::Helpers::secure_strcmp(extension, ".fbx") == 0)
+            kind = ImporterKind::Fbx;
+        else if (ZEngine::Helpers::secure_strcmp(extension, ".obj") == 0)
+            kind = ImporterKind::Assimp;
+        else
+            return false;
+        return true;
+    }
+
+    bool AssetImporterPanel::SelectSource(const char* path)
+    {
+        if (!path || ZEngine::Helpers::secure_strlen(path) >= sizeof(m_path_buf) || m_state.value.load(std::memory_order_acquire) != ImporterState::Idle)
+            return false;
+        const auto   parsed = VFSPath::Parse(path);
+        ImporterKind kind   = {};
+        if (parsed.Failed() || !TryGetImporterKind(parsed.Value(), kind))
+        {
+            secure_strcpy(m_error, sizeof(m_error), "Select a GLB, glTF, FBX or OBJ file.");
+            return false;
+        }
+        ZEngine::Helpers::secure_memcpy(m_path_buf, sizeof(m_path_buf), path, ZEngine::Helpers::secure_strlen(path) + 1);
+        m_error[0]         = '\0';
+        m_instance_name[0] = '\0';
+        m_add_to_scene     = false;
+        // Keep failed preflight/queue submissions recoverable in Options, even
+        // when the user opted to reuse settings for subsequent files.
+        m_state.value.store(ImporterState::Options, std::memory_order_release);
+        if (m_same_settings)
+            StartImport();
+        return true;
     }
 
     void AssetImporterPanel::BrowseFile()
     {
+        if (m_browse_pending || m_state.value.load(std::memory_order_acquire) != ImporterState::Idle || !m_layer || !m_layer->CurrentApp || !m_layer->CurrentApp->CurrentWindow)
+            return;
+        m_browse_pending = true;
         ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<AssetImporterPanel*>(ctx)->BrowseFileAsync(); });
+    }
+
+    bool AssetImporterPanel::BuildImportConfiguration(AssetCodec::ImportConfiguration& config, IVFSContext* vfs)
+    {
+        m_error[0]        = '\0';
+        auto*      app    = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
+        const auto source = VFSPath::Parse(m_path_buf);
+        if (!app || !app->Configuration || source.Failed())
+        {
+            secure_strcpy(m_error, sizeof(m_error), "Import requires a project and a valid source path.");
+            return false;
+        }
+        const auto     stem            = source.Value().Stem();
+        const char*    name            = m_use_source_name ? stem.Data : m_instance_name;
+        const size_t   name_length     = m_use_source_name ? stem.Length : secure_strlen(m_instance_name);
+        constexpr char suffix[]        = ".zemesh";
+        char           asset_name[256] = {};
+        char           asset_file[256] = {};
+        bool           valid_name      = name_length > 0 && name_length + sizeof(suffix) <= sizeof(asset_file);
+        for (size_t i = 0; i < name_length && valid_name; ++i)
+        {
+            const unsigned char c = static_cast<unsigned char>(name[i]);
+            valid_name            = c >= 32 && c != 127 && !strchr("/\\:*?\"<>|", c);
+        }
+        valid_name = valid_name && name[name_length - 1] != '.' && name[name_length - 1] != ' ';
+        if (!valid_name)
+        {
+            secure_strcpy(m_error, sizeof(m_error), "Asset name must be 1-248 characters, without path separators, reserved characters or a trailing dot/space.");
+            return false;
+        }
+        if (!std::isfinite(m_scale) || m_scale <= 0.f || m_axis_index < 0 || m_axis_index > 1 || m_normals_mode < 0 || m_normals_mode > 2)
+        {
+            secure_strcpy(m_error, sizeof(m_error), "Use a finite, positive scale and valid axis/normal options.");
+            return false;
+        }
+        secure_strncpy(asset_name, sizeof(asset_name), name, name_length);
+        snprintf(asset_file, sizeof(asset_file), "%s%s", asset_name, suffix);
+
+        m_local_arena.Clear();
+        config          = {};
+        const auto& cfg = *app->Configuration;
+        config.OutputWorkingSpacePath.init(&m_local_arena, cfg.WorkingSpacePath.c_str());
+        config.OutputTextureFilesPath.init(&m_local_arena, cfg.TexturePath.c_str());
+        config.OutputAssetsPath.init(&m_local_arena, cfg.MeshPath.c_str());
+        config.OutputMaterialPath.init(&m_local_arena, cfg.MaterialPath.c_str());
+        config.AssetName.init(&m_local_arena, asset_name);
+        config.OutputAssetFile.init(&m_local_arena, asset_file);
+        config.InputBaseAssetFilePath.init(&m_local_arena, source.Value().Parent().CStr());
+        config.VFS                     = vfs;
+        config.Options.UniformScale    = m_scale;
+        config.Options.AxisUpIsZ       = m_axis_index == 1;
+        config.Options.NormalsMode     = static_cast<uint8_t>(m_normals_mode);
+        config.Options.MergeVertices   = m_merge_vertices;
+        config.Options.ImportMaterials = m_import_materials;
+        config.Options.ImportTextures  = m_import_textures;
+        config.Options.FlipUVs         = m_flip_uvs;
+        if (AssetCodec::ValidateImportConfiguration(config).Failed())
+        {
+            secure_strcpy(m_error, sizeof(m_error), "The project import destinations are invalid or unavailable.");
+            return false;
+        }
+        return true;
     }
 
     // StartImport
@@ -614,38 +603,30 @@ namespace Tetragrama::Panels
         auto vfs_result = VFSPath::Parse(m_path_buf);
         if (vfs_result.Failed())
             return;
+        ImporterKind kind = {};
+        if (!TryGetImporterKind(vfs_result.Value(), kind))
+            return;
 
-        auto& vfs_value  = vfs_result.Value();
-        auto  asset_name = vfs_value.Stem();
-        auto  parent_dir = vfs_value.Parent();
+        auto*                           engine = ZEngine::Engine::GetContext();
+        AssetCodec::ImportConfiguration config = {};
+        if (!BuildImportConfiguration(config, engine ? engine->VFS : nullptr))
+            return;
+        std::error_code source_error = {};
+        if (!std::filesystem::is_regular_file(std::filesystem::path(m_path_buf), source_error))
+        {
+            secure_strcpy(m_error, sizeof(m_error), "The selected source file is missing or cannot be read.");
+            return;
+        }
 
-        char  asset_file_buf[256];
-        snprintf(asset_file_buf, sizeof(asset_file_buf), "%.*s.zemesh", (int) asset_name.Length, asset_name.Data);
+        const auto& vfs_value = vfs_result.Value();
 
-        m_local_arena.Clear();
+        {
+            std::lock_guard<std::mutex> lock(m_log_mutex);
+            m_log_head = m_log_count = 0;
+            m_status[0]              = '\0';
+        }
 
-        auto*       config = ZPushStruct(&m_local_arena, ZEngine::Importers::AssetCodec::ImportConfiguration);
-        const auto& cfg    = *app->Configuration;
-        config->OutputWorkingSpacePath.init(&m_local_arena, cfg.WorkingSpacePath.c_str());
-        config->OutputTextureFilesPath.init(&m_local_arena, cfg.TexturePath.c_str());
-        config->OutputAssetsPath.init(&m_local_arena, cfg.MeshPath.c_str());
-        config->OutputMaterialPath.init(&m_local_arena, cfg.MaterialPath.c_str());
-        if (!m_use_source_name && m_instance_name[0] != '\0')
-            config->AssetName.init(&m_local_arena, m_instance_name);
-        else
-            config->AssetName.init(&m_local_arena, asset_name.Data);
-        config->OutputAssetFile.init(&m_local_arena, asset_file_buf);
-        config->InputBaseAssetFilePath.init(&m_local_arena, parent_dir.CStr());
-        config->VFS                     = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
-        config->Options.UniformScale    = m_scale;
-        config->Options.AxisUpIsZ       = (m_axis_index == 1);
-        config->Options.NormalsMode     = static_cast<uint8_t>(m_normals_mode);
-        config->Options.MergeVertices   = m_merge_vertices;
-        config->Options.ImportMaterials = m_import_materials;
-        config->Options.ImportTextures  = m_import_textures;
-        config->Options.FlipUVs         = m_flip_uvs;
-
-        char msg[512];
+        char msg[512] = {};
         snprintf(msg, sizeof(msg), "Importing %.*s", (int) vfs_value.Filename().Length, vfs_value.Filename().Data);
         PushLog(msg, kWhite[0], kWhite[1], kWhite[2]);
 
@@ -658,33 +639,21 @@ namespace Tetragrama::Panels
         m_import_task.Outcome                           = ImportTaskOutcome::Pending;
         m_import_task.Publication                       = {};
         m_import_task.Panel                             = this;
-        m_import_task.Configuration                     = *config;
+        m_import_task.Configuration                     = config;
         m_import_task.Configuration.ArtifactContext     = &m_import_task;
         m_import_task.Configuration.OnArtifactPublished = &AssetImporterPanel::OnImportArtifactPublished;
         if (m_import_task.Configuration.VFS)
             m_import_task.Publication = m_import_task.Configuration.VFS->BeginImportPublication();
         secure_strncpy(m_import_task.SourcePath, sizeof(m_import_task.SourcePath), m_path_buf, secure_strlen(m_path_buf));
 
-        const auto ext = vfs_value.Extension();
-
-        if (secure_strcmp(ext.Data, ".glb") == 0 || secure_strcmp(ext.Data, ".gltf") == 0)
-        {
-            m_import_task.Kind = ImporterKind::Gltf;
-        }
-        else if (secure_strcmp(ext.Data, ".fbx") == 0)
-        {
-            m_import_task.Kind = ImporterKind::Fbx;
-        }
-        else
-        {
-            m_import_task.Kind = ImporterKind::Assimp;
-        }
+        m_import_task.Kind = kind;
 
         if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&m_import_task, &AssetImporterPanel::RunImportTask))
         {
             EndImportPublication(m_import_task);
             m_state.value.store(ImporterState::Options, std::memory_order_release);
-            PushLog("Import task rejected because the thread pool is shutting down", kRed[0], kRed[1], kRed[2]);
+            secure_strcpy(m_error, sizeof(m_error), "Import task rejected because the thread pool is shutting down.");
+            PushLog(m_error, kRed[0], kRed[1], kRed[2]);
         }
     }
 
@@ -1058,7 +1027,8 @@ namespace Tetragrama::Panels
         if (!self)
             return;
 
-        char msg[128];
+        pct           = std::isfinite(pct) ? std::clamp(pct, 0.f, 1.f) : 0.f;
+        char msg[128] = {};
         snprintf(msg, sizeof(msg), "Processing... %.0f%%", pct * 100.f);
         self->PushLog(msg, kWhite[0], kWhite[1], kWhite[2]);
         self->m_progress.value.store(pct, std::memory_order_relaxed);
@@ -1080,7 +1050,7 @@ namespace Tetragrama::Panels
         auto* self               = reinterpret_cast<AssetImporterPanel*>(ctx);
         self->m_add_to_scene     = false;
         self->m_instance_name[0] = '\0';
-        char msg[512];
+        char msg[512]            = {};
         snprintf(msg, sizeof(msg), "Error: %.*s", (int) err.size(), err.data());
         self->PushLog(msg, kRed[0], kRed[1], kRed[2]);
         char fn[256] = {};
@@ -1103,8 +1073,12 @@ namespace Tetragrama::Panels
         if (!self)
             return;
 
-        char buf[256];
+        char buf[256] = {};
         snprintf(buf, sizeof(buf), "%.*s", (int) msg.size(), msg.data());
+        {
+            std::lock_guard<std::mutex> lock(self->m_log_mutex);
+            secure_strcpy(self->m_status, sizeof(self->m_status), buf);
+        }
         self->PushLog(buf, kWhite[0], kWhite[1], kWhite[2]);
     }
 

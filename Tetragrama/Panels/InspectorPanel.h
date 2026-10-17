@@ -1,5 +1,6 @@
 #pragma once
 #include <Tetragrama/Layers/ZUILayer.h>
+#include <ZEngine/UI/ZUIIcons.h>
 #include <ZEngine/UI/ZUIPanel.h>
 
 namespace Tetragrama::Panels
@@ -18,7 +19,8 @@ namespace Tetragrama::Panels
     {
         InspectorPanel()
         {
-            Title = "Inspector";
+            Title = "Details";
+            Icon  = (int) ZEngine::UI::ZUIIcon::SlidersHorizontal;
         }
 
         Tetragrama::Layers::ZUILayer* m_layer        = nullptr;
@@ -26,6 +28,7 @@ namespace Tetragrama::Panels
         char                          m_category[64] = "All"; // active category pill ("All" = no filter)
         bool                          m_sec_open[64] = {};    // per TypeID, initialized to true
         bool                          m_sec_init     = false;
+        bool                          m_renaming     = false; // actor name is being edited in place
 
         /// @brief Builds the inspector UI for the currently selected actor.
         /// @param ctx ZUI context for the current frame.

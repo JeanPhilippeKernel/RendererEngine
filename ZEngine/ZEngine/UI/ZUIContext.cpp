@@ -28,10 +28,12 @@ namespace ZEngine::UI
 
     void ZUIBeginFrame(ZUIContext* ctx, float dt)
     {
+        ++ctx->FrameIndex;
         ZUIStyleUpdate(&ctx->Style); // recompute FrameHeight = FontSize + FramePadding.y*2
         ctx->FrameArena.Clear();
         ctx->Root              = nullptr;
         ctx->Current           = nullptr;
+        ctx->ForegroundRoot    = nullptr;
         ctx->DeltaTime         = dt;
         ctx->Time             += dt;
         ctx->ResizeCursor      = 0;
@@ -45,6 +47,10 @@ namespace ZEngine::UI
         for (uint32_t i = 0; i < ctx->PopupStackSize; i++)
             ctx->PopupStack[i].Box = nullptr;
         ctx->ModalBox = nullptr; // re-set each frame by whoever owns the active modal
+        if (ctx->MousePressed[0] || ctx->MousePressed[1] || ctx->MousePressed[2])
+            ctx->KeyboardFocus = false;
+        else if (ctx->TabPressed || ctx->ShiftTabPressed || ctx->ArrowUpPressed || ctx->ArrowDownPressed || ctx->ArrowLeftPressed || ctx->ArrowRightPressed || ctx->EnterPressed || ctx->SpacePressed)
+            ctx->KeyboardFocus = true;
         // TextInputLen, BackspacePressed, MousePressed/Released, ScrollDelta are NOT
         // cleared here — GLFW events fire before BeginFrame (in window->PollEvent) and
         // must survive until ZUIEndFrame runs the interaction pass and widget logic.
@@ -59,7 +65,42 @@ namespace ZEngine::UI
         // ViewportHovered is written fresh each BuildUI; reset it so a missing panel = false
         ctx->ViewportHovered = false;
 
+        // Components can build chrome/popups after a drag decoration was emitted.
+        // Promote its shared, floated canvas once, in O(1), after all builders finish.
+        auto* foreground     = ctx->ForegroundRoot;
+        if (foreground && ctx->Root && foreground->Parent == ctx->Root && ctx->Root->LastChild != foreground)
+        {
+            if (foreground->PrevSib)
+                foreground->PrevSib->NextSib = foreground->NextSib;
+            else
+                ctx->Root->FirstChild = foreground->NextSib;
+            if (foreground->NextSib)
+                foreground->NextSib->PrevSib = foreground->PrevSib;
+            foreground->PrevSib           = ctx->Root->LastChild;
+            foreground->NextSib           = nullptr;
+            ctx->Root->LastChild->NextSib = foreground;
+            ctx->Root->LastChild          = foreground;
+        }
+
+        // A hidden/removed owner no longer builds its popup. Drop its stale
+        // entry before input gating, or an invisible popup captures all input.
+        for (uint32_t i = 0; i < ctx->PopupStackSize; ++i)
+            if (!ctx->PopupStack[i].Box)
+            {
+                ctx->PopupStackSize = i;
+                break;
+            }
+
         ZUILayoutSolve(ctx);
+        for (uint32_t i = 0; i < ctx->PopupStackSize; ++i)
+        {
+            auto& entry = ctx->PopupStack[i];
+            for (int axis = 0; axis < 2; ++axis)
+            {
+                entry.ScreenMin[axis] = entry.Box->ScreenMin[axis];
+                entry.ScreenMax[axis] = entry.Box->ScreenMax[axis];
+            }
+        }
         ZUIInteractionPass(ctx);
 
         // Save mouse position before clearing edge states — used for drag delta next frame
@@ -107,59 +148,32 @@ namespace ZEngine::UI
         if (!any_arrow)
             ctx->ArrowRepeatTimer = 0.f;
 
-        // Escape / Enter: clear focus
-        if (ctx->EscapePressed || ctx->EnterPressed)
-        {
-            ctx->FocusKey = 0;
-        }
-        ctx->EscapePressed = false;
-        ctx->EnterPressed  = false;
-        ctx->SpacePressed  = false;
-
-        // Popup keyboard navigation (applies to the innermost open popup)
+        // Dismiss overlays before resolving focus. Tab stays inside the open
+        // menu/modal; Enter activates controls without dropping their focus.
         if (ctx->PopupStackSize > 0)
         {
-            int count = ctx->PopupBuildCount > 0 ? ctx->PopupBuildCount : 1;
-            if (ctx->ArrowDownPressed)
-                ctx->PopupNavIdx = (ctx->PopupNavIdx + 1) % count;
-            if (ctx->ArrowUpPressed)
-                ctx->PopupNavIdx = (ctx->PopupNavIdx <= 0) ? (count - 1) : (ctx->PopupNavIdx - 1);
             if (ctx->ArrowLeftPressed && ctx->PopupStackSize > 1)
             {
                 ctx->PopupStackSize--; // close innermost submenu
                 ctx->PopupNavIdx = -1;
             }
-            if (ctx->EscapePressed || ctx->TabPressed || ctx->ShiftTabPressed)
+            if (ctx->EscapePressed)
             {
                 ctx->PopupStackSize = 0; // close all popups on escape
                 ctx->PopupNavIdx    = -1;
             }
         }
 
-        // Tab focus navigation — apply after interaction pass so click-focus wins
-        if (ctx->TabPressed)
-        {
-            uint64_t next = ctx->TabNavNextKey ? ctx->TabNavNextKey : ctx->TabNavFirstKey;
-            if (next)
-            {
-                ctx->FocusKey = next;
-            }
-        }
-        if (ctx->ShiftTabPressed)
-        {
-            uint64_t prev = ctx->TabNavPrevKey ? ctx->TabNavPrevKey : ctx->TabNavLastKey;
-            if (prev)
-            {
-                ctx->FocusKey = prev;
-            }
-        }
+        // Text editing still commits/deactivates on Enter (rename callers rely
+        // on focus leaving), while ordinary buttons keep their keyboard focus.
+        if (ctx->EnterPressed && ctx->TextInputActive && !ctx->PopupStackSize)
+            ctx->FocusKey = 0;
+        ZUIFocusPass(ctx);
+        ctx->EscapePressed   = false;
+        ctx->EnterPressed    = false;
+        ctx->SpacePressed    = false;
         ctx->TabPressed      = false;
         ctx->ShiftTabPressed = false;
-        ctx->TabNavNextKey   = 0;
-        ctx->TabNavPrevKey   = 0;
-        ctx->TabNavFirstKey  = 0;
-        ctx->TabNavLastKey   = 0;
-        ctx->TabNavSeenFocus = false;
 
         // Clear per-frame edge states now that the interaction pass has consumed them
         for (int i = 0; i < 3; ++i)
@@ -189,13 +203,35 @@ namespace ZEngine::UI
         if (ctx->PendingPopupKey != 0)
         {
             uint32_t depth = ctx->PendingPopupDepth;
-            if (depth <= ctx->PopupStackSize) // can only open at/above current depth
+            if (depth <= ctx->PopupStackSize && depth < ZUIContext::kMaxPopupDepth) // can only open at/above current depth
             {
                 ctx->PopupStackSize                    = depth; // close any deeper popups
-                ctx->PopupStack[ctx->PopupStackSize++] = {ctx->PendingPopupKey, nullptr, nullptr, ctx->PendingPopupPosX, ctx->PendingPopupPosY};
+                ctx->PopupStack[ctx->PopupStackSize++] = {ctx->PendingPopupKey, nullptr, nullptr, ctx->PendingPopupPosX, ctx->PendingPopupPosY, ctx->PendingPopupOwnerFocusKey};
             }
             ctx->PendingPopupKey = 0;
         }
+    }
+
+    ZUIBox* ZUIBeginForeground(ZUIContext* ctx)
+    {
+        ZENGINE_VALIDATE_ASSERT(ctx && ctx->Root, "ZUIBeginForeground requires a frame root");
+        ZUIBox* saved_parent = ctx->Current;
+        if (!ctx->ForegroundRoot)
+        {
+            ctx->Current              = ctx->Root;
+            constexpr char key[]      = "##zui_foreground";
+            auto*          foreground = ZUIPushBox(ctx, key, sizeof(key) - 1, ZUI_FloatX | ZUI_FloatY);
+            foreground->Size[0]       = {ZUISizeKind::Pixels, (float) ctx->ScreenW, 1.f};
+            foreground->Size[1]       = {ZUISizeKind::Pixels, (float) ctx->ScreenH, 1.f};
+            ctx->ForegroundRoot       = foreground;
+        }
+        ctx->Current = ctx->ForegroundRoot;
+        return saved_parent;
+    }
+
+    void ZUIEndForeground(ZUIContext* ctx, ZUIBox* saved_parent)
+    {
+        ctx->Current = saved_parent;
     }
 
     ZUIBox* ZUIPushBox(ZUIContext* ctx, const char* key, uint32_t key_len, ZUIBoxFlags flags)
@@ -219,6 +255,17 @@ namespace ZEngine::UI
 
         box->Key   = ZUIHashStr(hash_start, key_len);
         box->Label = (label_len > 0) ? ZUIPushStr(&ctx->FrameArena, key, label_len) : ZUIStr{nullptr, 0};
+
+        if (ctx->Disabled)
+        {
+            box->Flags = ZUIBoxFlags((box->Flags | ZUI_Disabled) & ~ZUI_Clickable);
+            if (ctx->FocusKey == box->Key)
+                ctx->FocusKey = 0;
+            if (ctx->ActiveKey == box->Key)
+                ctx->ActiveKey = 0;
+            if (ctx->HotKey == box->Key)
+                ctx->HotKey = 0;
+        }
 
         // link into tree
         if (ctx->Current)
@@ -263,9 +310,9 @@ namespace ZEngine::UI
             {
                 slot->Key = key;
                 ++store->Count;
-                // Arena zero-fills memory, overriding C++ default initializers.
-                // Explicitly set the sentinel so first-use detection works.
-                slot->State.UserData = -1.f;
+                // Arena storage is zero-filled, not constructed. Apply every
+                // declared default, including the cursor and selection sentinels.
+                slot->State = {};
                 return &slot->State;
             }
             if (slot->Key == key)
@@ -279,12 +326,63 @@ namespace ZEngine::UI
         return nullptr;
     }
 
+    // Text is rendered byte-per-glyph. The few multi-byte characters the UI uses are folded to the
+    // single-byte slots baked by the font atlas (see ZUI_GLYPH_* in ZUIFont.h); other bytes pass through.
+    static uint8_t ZUIFoldUtf8(const char* s, uint32_t remaining, uint32_t* consumed)
+    {
+        const uint8_t b0 = (uint8_t) s[0];
+        if (b0 == 0xC2 && remaining >= 2)
+        {
+            const uint8_t b1 = (uint8_t) s[1];
+            if (b1 == 0xB0 || b1 == 0xB7) // degree, middle dot
+            {
+                *consumed = 2;
+                return b1;
+            }
+        }
+        else if (b0 == 0xE2 && remaining >= 3)
+        {
+            const uint16_t tail = (uint16_t) (((uint8_t) s[1] << 8) | (uint8_t) s[2]);
+            switch (tail)
+            {
+                case 0x80A6:
+                    *consumed = 3;
+                    return 0x85; // ellipsis
+                case 0x80A2:
+                    *consumed = 3;
+                    return 0x95; // bullet
+                case 0x8093:
+                    *consumed = 3;
+                    return 0x96; // en dash
+                case 0x8094:
+                    *consumed = 3;
+                    return 0x97; // em dash
+                case 0x8691:
+                    *consumed = 3;
+                    return 0x8F; // up arrow
+                case 0x8693:
+                    *consumed = 3;
+                    return 0x8E; // down arrow
+                default:
+                    break;
+            }
+        }
+        *consumed = 1;
+        return b0;
+    }
+
     ZUIStr ZUIPushStr(ArenaAllocator* arena, const char* str, uint32_t len)
     {
-        char* buf = ZPushString(arena, len + 1);
-        memcpy(buf, str, len);
-        buf[len] = '\0';
-        return {buf, len};
+        char*    buf = ZPushString(arena, len + 1);
+        uint32_t out = 0;
+        for (uint32_t i = 0; i < len;)
+        {
+            uint32_t used  = 1;
+            buf[out++]     = (char) ((str[i] & 0x80) ? ZUIFoldUtf8(str + i, len - i, &used) : (uint8_t) str[i]);
+            i             += used;
+        }
+        buf[out] = '\0';
+        return {buf, out};
     }
 
     // FNV-1a 64-bit
@@ -309,8 +407,6 @@ namespace ZEngine::UI
         {
             case ZUIStyleVar_Alpha:
                 return &s->Alpha;
-            case ZUIStyleVar_DisabledAlpha:
-                return &s->DisabledAlpha;
             case ZUIStyleVar_FramePaddingX:
                 return &s->FramePadding[0];
             case ZUIStyleVar_FramePaddingY:
