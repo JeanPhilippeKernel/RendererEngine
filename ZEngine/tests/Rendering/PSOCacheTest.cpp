@@ -1,14 +1,34 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSMemoryBackend.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <gtest/gtest.h>
 
 using namespace ZEngine::Core::Memory;
+using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Rendering::Renderers::Pipelines;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
     struct PSOCacheTestAccess
     {
+        static void SetDevice(PSOCache& cache, ZEngine::Hardwares::VulkanDevice* device)
+        {
+            cache.m_device = device;
+        }
+
+        static void AddWarmupRecipe(PSOCache& cache, const PSOWarmupRecipe& recipe)
+        {
+            cache.RecordWarmupRecipe(recipe);
+        }
+
+        static uint32_t WarmupRecipeCount(const PSOCache& cache)
+        {
+            return cache.m_warmup_recipe_count;
+        }
+
         static bool RetainsPinnedInvalidatedComputePipeline()
         {
             const VkShaderModule  module                     = reinterpret_cast<VkShaderModule>(uintptr_t(1));
@@ -85,7 +105,233 @@ namespace
             return *Cache;
         }
     };
+
+    struct WarmupRecipeFile : IVFSFile
+    {
+        enum class PayloadReadMode : uint8_t
+        {
+            Complete,
+            Short,
+            Failure,
+        };
+
+        IVFSFile*         File     = nullptr;
+        PayloadReadMode   ReadMode = PayloadReadMode::Complete;
+
+        VFSResult<size_t> Read(ZEngine::Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset) override
+        {
+            if (offset >= 64 && ReadMode != PayloadReadMode::Complete)
+            {
+                if (ReadMode == PayloadReadMode::Failure)
+                    return VFSResult<size_t>::Fail(VFSError::IOError);
+                return File->Read({buffer.data(), buffer.size() / 2}, offset);
+            }
+            return File->Read(buffer, offset);
+        }
+
+        VFSResult<size_t> Write(ZEngine::Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) override
+        {
+            return File->Write(buffer, offset);
+        }
+        VFSResult<uint64_t> Size() const override
+        {
+            return File->Size();
+        }
+        VFSResult<VFSFileStat> Stat() const override
+        {
+            return File->Stat();
+        }
+        VFSResult<void> Flush() override
+        {
+            return File->Flush();
+        }
+        const VFSPath& Path() const override
+        {
+            return File->Path();
+        }
+        VFSResult<void> Close() override
+        {
+            return File->Close();
+        }
+    };
+
+    // Simulate persistent shader allocations while resolving a warmup recipe,
+    // without requiring a Vulkan device or a real shader module.
+    struct WarmupAllocationContext : VFSContext
+    {
+        static constexpr uint64_t kPersistentValue       = 0x680000000068;
+
+        ArenaAllocator*           DeviceArena            = nullptr;
+        ArenaAllocator            ShaderArena            = {};
+        uint64_t*                 PersistentValue        = nullptr;
+        size_t                    ExpectedCurrentOffset  = 0;
+        size_t                    ExpectedPreviousOffset = 0;
+        WarmupRecipeFile          RecipeFile             = {};
+
+        VFSResult<IVFSFile*>      Open(const VFSPath& path, VFSOpenFlags flags) override
+        {
+            if (DeviceArena && !PersistentValue && HasFlag(flags, VFSOpenFlags::Read) && path.Extension().Equals(".spv"))
+            {
+                DeviceArena->CreateSubArena(ZKilo(4), &ShaderArena, "PSOCacheTest/Shader");
+                PersistentValue        = ZPushStruct(&ShaderArena, uint64_t);
+                *PersistentValue       = kPersistentValue;
+                ExpectedCurrentOffset  = DeviceArena->m_current_offset;
+                ExpectedPreviousOffset = DeviceArena->m_previous_offset;
+            }
+            auto opened = VFSContext::Open(path, flags);
+            if (opened.Succeeded() && HasFlag(flags, VFSOpenFlags::Read) && path.Extension().Equals(".bin"))
+            {
+                RecipeFile.File = opened.Value();
+                return VFSResult<IVFSFile*>::Ok(&RecipeFile);
+            }
+            return opened;
+        }
+
+        void Close(IVFSFile* file) override
+        {
+            if (file == &RecipeFile)
+            {
+                VFSContext::Close(RecipeFile.File);
+                RecipeFile.File = nullptr;
+                return;
+            }
+            VFSContext::Close(file);
+        }
+    };
 } // namespace
+
+class PSOCacheWarmupTest : public ::testing::Test
+{
+protected:
+    MemoryManager                     Memory      = {};
+    ArenaAllocator                    DeviceArena = {};
+    VFSMemoryBackend                  Backend     = {};
+    WarmupAllocationContext           Context     = {};
+    ZEngine::Hardwares::VulkanDevice* Device      = nullptr;
+    PSOCache*                         Cache       = nullptr;
+
+    void                              SetUp() override
+    {
+        Memory.Initialize(ZMega(64), {});
+        Memory.MainArena.CreateSubArena(ZMega(4), &DeviceArena, "PSOCacheTest/Device");
+        Device        = ZPushStructCtor(&Memory.MainArena, ZEngine::Hardwares::VulkanDevice);
+        Device->Arena = &DeviceArena;
+        Cache         = ZPushStructCtor(&Memory.MainArena, PSOCache);
+        PSOCacheTestAccess::SetDevice(*Cache, Device);
+        Backend.Initialize(&Memory.MainArena);
+        Context.Initialize(&Memory.MainArena, 4);
+        ASSERT_TRUE(Context.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
+        Context.DeviceArena = &DeviceArena;
+    }
+
+    void TearDown() override
+    {
+        Context.Shutdown();
+    }
+
+    void SaveRecipeWithMissingShader()
+    {
+        PSOWarmupRecipe recipe   = {};
+        recipe.ShaderContentHash = 1;
+        ZEngine::Helpers::secure_strcpy(recipe.ShaderName, sizeof(recipe.ShaderName), "missing_warmup_shader");
+        PSOCacheTestAccess::AddWarmupRecipe(*Cache, recipe);
+        ASSERT_TRUE(Cache->SaveWarmupRecipes(Context));
+    }
+};
+
+TEST_F(PSOCacheWarmupTest, PreservesPersistentAllocationsMadeWhileResolvingRecipes)
+{
+    ASSERT_NO_FATAL_FAILURE(SaveRecipeWithMissingShader());
+    ASSERT_TRUE(Cache->LoadWarmupRecipes(Context));
+    ASSERT_NE(Context.PersistentValue, nullptr);
+    EXPECT_EQ(DeviceArena.m_current_offset, Context.ExpectedCurrentOffset);
+    EXPECT_EQ(DeviceArena.m_previous_offset, Context.ExpectedPreviousOffset);
+
+    void* unrelated = DeviceArena.Allocate(ZKilo(64));
+    ASSERT_NE(unrelated, nullptr);
+    EXPECT_EQ(ZEngine::Helpers::secure_memset(unrelated, 0xFF, ZKilo(64), ZKilo(64)), ZEngine::Helpers::MEMORY_OP_SUCCESS);
+    EXPECT_EQ(*Context.PersistentValue, WarmupAllocationContext::kPersistentValue);
+    EXPECT_EQ(PSOCacheTestAccess::WarmupRecipeCount(*Cache), 0u);
+    EXPECT_EQ(Cache->GetTelemetry().WarmupRecipeSkips, 1u);
+}
+
+TEST_F(PSOCacheWarmupTest, RepeatedLoadsDoNotConsumeDeviceArenaStorage)
+{
+    ASSERT_NO_FATAL_FAILURE(SaveRecipeWithMissingShader());
+    ASSERT_TRUE(Cache->LoadWarmupRecipes(Context));
+    ASSERT_NE(Context.PersistentValue, nullptr);
+
+    for (uint32_t iteration = 0; iteration < 8; ++iteration)
+    {
+        ASSERT_TRUE(Cache->LoadWarmupRecipes(Context));
+        EXPECT_EQ(DeviceArena.m_current_offset, Context.ExpectedCurrentOffset);
+        EXPECT_EQ(DeviceArena.m_previous_offset, Context.ExpectedPreviousOffset);
+        EXPECT_EQ(*Context.PersistentValue, WarmupAllocationContext::kPersistentValue);
+    }
+    EXPECT_EQ(Cache->GetTelemetry().WarmupRecipeLoadSuccesses, 9u);
+}
+
+TEST_F(PSOCacheWarmupTest, LoadsEmptyRecipeFileWithoutDeviceArenaAllocations)
+{
+    ASSERT_TRUE(Cache->SaveWarmupRecipes(Context));
+    const size_t current_offset  = DeviceArena.m_current_offset;
+    const size_t previous_offset = DeviceArena.m_previous_offset;
+    EXPECT_TRUE(Cache->LoadWarmupRecipes(Context));
+    EXPECT_EQ(DeviceArena.m_current_offset, current_offset);
+    EXPECT_EQ(DeviceArena.m_previous_offset, previous_offset);
+    EXPECT_EQ(Context.PersistentValue, nullptr);
+    EXPECT_EQ(PSOCacheTestAccess::WarmupRecipeCount(*Cache), 0u);
+}
+
+TEST_F(PSOCacheWarmupTest, RejectsCorruptPayloadWithoutResolvingShadersOrDroppingExistingRecipes)
+{
+    ASSERT_NO_FATAL_FAILURE(SaveRecipeWithMissingShader());
+    const auto path = VFSPath::Parse("/cache/pso/vulkan-pipeline-warmup.bin");
+    ASSERT_TRUE(path.Succeeded());
+    auto opened = Context.Open(path.Value(), VFSOpenFlags::Write);
+    ASSERT_TRUE(opened.Succeeded());
+    const uint8_t corrupt_byte = 0xFF;
+    auto          written      = opened.Value()->Write({&corrupt_byte, 1}, 64);
+    Context.Close(opened.Value());
+    ASSERT_TRUE(written.Succeeded());
+    ASSERT_EQ(written.Value(), 1u);
+
+    const size_t current_offset  = DeviceArena.m_current_offset;
+    const size_t previous_offset = DeviceArena.m_previous_offset;
+    EXPECT_FALSE(Cache->LoadWarmupRecipes(Context));
+    EXPECT_EQ(DeviceArena.m_current_offset, current_offset);
+    EXPECT_EQ(DeviceArena.m_previous_offset, previous_offset);
+    EXPECT_EQ(Context.PersistentValue, nullptr);
+    EXPECT_EQ(PSOCacheTestAccess::WarmupRecipeCount(*Cache), 1u);
+}
+
+TEST_F(PSOCacheWarmupTest, RejectsShortAndFailedPayloadReadsAndRecovers)
+{
+    ASSERT_NO_FATAL_FAILURE(SaveRecipeWithMissingShader());
+    const size_t current_offset  = DeviceArena.m_current_offset;
+    const size_t previous_offset = DeviceArena.m_previous_offset;
+
+    for (auto mode : {WarmupRecipeFile::PayloadReadMode::Short, WarmupRecipeFile::PayloadReadMode::Failure})
+    {
+        SCOPED_TRACE(static_cast<uint8_t>(mode));
+        Context.RecipeFile.ReadMode = mode;
+        EXPECT_FALSE(Cache->LoadWarmupRecipes(Context));
+        EXPECT_EQ(Context.RecipeFile.File, nullptr);
+        EXPECT_EQ(Context.PersistentValue, nullptr);
+        EXPECT_EQ(DeviceArena.m_current_offset, current_offset);
+        EXPECT_EQ(DeviceArena.m_previous_offset, previous_offset);
+        EXPECT_EQ(PSOCacheTestAccess::WarmupRecipeCount(*Cache), 1u);
+        EXPECT_EQ(Cache->GetTelemetry().WarmupRecipeLoadSuccesses, 0u);
+    }
+
+    Context.RecipeFile.ReadMode = WarmupRecipeFile::PayloadReadMode::Complete;
+    EXPECT_TRUE(Cache->LoadWarmupRecipes(Context));
+    EXPECT_EQ(Context.RecipeFile.File, nullptr);
+    EXPECT_NE(Context.PersistentValue, nullptr);
+    EXPECT_EQ(DeviceArena.m_current_offset, Context.ExpectedCurrentOffset);
+    EXPECT_EQ(DeviceArena.m_previous_offset, Context.ExpectedPreviousOffset);
+    EXPECT_EQ(Cache->GetTelemetry().WarmupRecipeLoadSuccesses, 1u);
+}
 
 TEST(PSOCacheInvalidationTest, RetainsPinnedComputePipeline)
 {

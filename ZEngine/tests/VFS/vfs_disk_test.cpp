@@ -4,8 +4,10 @@
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <thread>
 
 using namespace ZEngine::Core::VFS;
 using ZEngine::Core::Containers::Array;
@@ -291,6 +293,53 @@ TEST_F(VFSDiskBackendTest, CreateDirAndListIt)
     EXPECT_TRUE(stat.Value().IsDirectory);
 }
 
+TEST_F(VFSDiskBackendTest, ExclusiveDirectoryCreationRejectsExistingNamesAndRequiresAnExistingParent)
+{
+    const auto path = VFSPath::Parse("/exclusive").Value();
+    ASSERT_TRUE(m_backend.CreateDirExclusive(path).Succeeded());
+    EXPECT_EQ(m_backend.CreateDirExclusive(path).Error(), VFSError::AlreadyExists);
+    // Recursive CreateDir retains its idempotent importer/cache contract.
+    EXPECT_TRUE(m_backend.CreateDir(path).Succeeded());
+    WriteFile("/file.txt", "keep");
+    EXPECT_EQ(m_backend.CreateDirExclusive(VFSPath::Parse("/file.txt").Value()).Error(), VFSError::AlreadyExists);
+    EXPECT_EQ(m_backend.CreateDirExclusive(VFSPath::Parse("/absent/child").Value()).Error(), VFSError::NotFound);
+    EXPECT_FALSE(m_backend.Exists(VFSPath::Parse("/absent").Value()));
+    EXPECT_EQ(m_backend.CreateDirExclusive(VFSPath{}).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(m_backend.CreateDirExclusive(VFSPath::Root()).Error(), VFSError::AlreadyExists);
+}
+
+TEST_F(VFSDiskBackendTest, ConcurrentExclusiveDirectoryCreationHasOneWinner)
+{
+    constexpr int     workers          = 8;
+    std::thread       threads[workers] = {};
+    std::atomic<int>  ready{0}, created{0}, conflicts{0}, failures{0};
+    std::atomic<bool> start{false};
+    const auto        path        = VFSPath::Parse("/concurrent-directory").Value();
+    const auto        arena_bytes = m_manager.MainArena.m_current_offset;
+    for (auto& thread : threads)
+        thread = std::thread([&]() {
+            ++ready;
+            while (!start.load())
+                std::this_thread::yield();
+            const auto result = m_backend.CreateDirExclusive(path);
+            if (result.Succeeded())
+                ++created;
+            else if (result.Error() == VFSError::AlreadyExists)
+                ++conflicts;
+            else
+                ++failures;
+        });
+    while (ready.load() != workers)
+        std::this_thread::yield();
+    start = true;
+    for (auto& thread : threads)
+        thread.join();
+    EXPECT_EQ(created.load(), 1);
+    EXPECT_EQ(conflicts.load(), workers - 1);
+    EXPECT_EQ(failures.load(), 0);
+    EXPECT_EQ(m_manager.MainArena.m_current_offset, arena_bytes);
+}
+
 TEST_F(VFSDiskBackendTest, RemoveDeletesFile)
 {
     WriteFile("/gone.txt", "bye");
@@ -307,6 +356,151 @@ TEST_F(VFSDiskBackendTest, RenameMovesFile)
     ASSERT_TRUE(m_backend.Rename(VFSPath::Parse("/from.txt").Value(), VFSPath::Parse("/to.txt").Value()).Succeeded());
     EXPECT_FALSE(m_backend.Exists(VFSPath::Parse("/from.txt").Value()));
     EXPECT_TRUE(m_backend.Exists(VFSPath::Parse("/to.txt").Value()));
+}
+
+TEST_F(VFSDiskBackendTest, ExclusiveCreateNeverTruncatesAnExistingNameOrLeaksFileSlots)
+{
+    const auto path  = VFSPath::Parse("/existing.txt").Value();
+    const auto flags = VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive;
+    WriteFile(path.CStr(), "keep these bytes");
+    for (int attempt = 0; attempt < 300; ++attempt)
+    {
+        auto result = m_backend.Open(path, flags | VFSOpenFlags::Truncate);
+        ASSERT_TRUE(result.Failed());
+        EXPECT_EQ(result.Error(), VFSError::AlreadyExists);
+    }
+    auto existing = m_backend.Open(path, VFSOpenFlags::Read);
+    ASSERT_TRUE(existing.Succeeded());
+    auto buffer = ReadBuffer(32);
+    auto read   = existing.Value()->Read({buffer.data(), buffer.size()}, 0);
+    ASSERT_TRUE(read.Succeeded());
+    EXPECT_TRUE(BytesEqual(buffer.data(), read.Value(), "keep these bytes"));
+    m_backend.Close(existing.Value());
+    const auto fresh   = VFSPath::Parse("/fresh.txt").Value();
+    auto       created = m_backend.Open(fresh, flags);
+    ASSERT_TRUE(created.Succeeded());
+    m_backend.Close(created.Value());
+    EXPECT_EQ(m_backend.Open(fresh, flags).Error(), VFSError::AlreadyExists);
+    EXPECT_EQ(m_backend.Open(fresh, VFSOpenFlags::Exclusive | VFSOpenFlags::Read).Error(), VFSError::Unsupported);
+}
+
+TEST_F(VFSDiskBackendTest, ConcurrentExclusiveCreatesHaveExactlyOneWinner)
+{
+    const auto       path       = VFSPath::Parse("/contended.txt").Value();
+    std::atomic<int> successes  = 0;
+    std::atomic<int> conflicts  = 0;
+    std::thread      workers[8] = {};
+    for (auto& worker : workers)
+        worker = std::thread([&]() {
+            auto opened = m_backend.Open(path, VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive);
+            if (opened.Succeeded())
+            {
+                ++successes;
+                m_backend.Close(opened.Value());
+            }
+            else if (opened.Error() == VFSError::AlreadyExists)
+                ++conflicts;
+        });
+    for (auto& worker : workers)
+        worker.join();
+    EXPECT_EQ(successes.load(), 1);
+    EXPECT_EQ(conflicts.load(), 7);
+}
+
+TEST_F(VFSDiskBackendTest, ExhaustedFilePoolFailsBeforeCreatingAFileAndRecovers)
+{
+    WriteFile("/existing.txt", "keep");
+    IVFSFile* handles[kVFSMaxOpenFiles] = {};
+    for (auto& handle : handles)
+    {
+        const auto opened = m_backend.Open(VFSPath::Parse("/existing.txt").Value(), VFSOpenFlags::Read);
+        ASSERT_TRUE(opened.Succeeded());
+        handle = opened.Value();
+    }
+    const auto fresh = VFSPath::Parse("/fresh.txt").Value();
+    const auto flags = VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive;
+    EXPECT_EQ(m_backend.Open(fresh, flags).Error(), VFSError::OutOfMemory);
+    EXPECT_FALSE(m_backend.Exists(fresh));
+    for (auto* handle : handles)
+        m_backend.Close(handle);
+    const auto opened = m_backend.Open(fresh, flags);
+    ASSERT_TRUE(opened.Succeeded());
+    m_backend.Close(opened.Value());
+}
+
+TEST_F(VFSDiskBackendTest, ConcurrentNoReplaceRenamesHaveExactlyOneWinner)
+{
+    VFSPath sources[8] = {};
+    for (size_t i = 0; i < std::size(sources); ++i)
+    {
+        char path[32] = {};
+        snprintf(path, sizeof(path), "/source-%zu.txt", i);
+        sources[i] = VFSPath::Parse(path).Value();
+        WriteFile(path, "keep");
+    }
+    const auto       target     = VFSPath::Parse("/winner.txt").Value();
+    std::atomic<int> successes  = 0;
+    std::atomic<int> conflicts  = 0;
+    std::thread      workers[8] = {};
+    for (size_t i = 0; i < std::size(workers); ++i)
+        workers[i] = std::thread([&, i]() {
+            const auto renamed = m_backend.RenameNoReplace(sources[i], target);
+            if (renamed.Succeeded())
+                ++successes;
+            else if (renamed.Error() == VFSError::AlreadyExists)
+                ++conflicts;
+        });
+    for (auto& worker : workers)
+        worker.join();
+    EXPECT_EQ(successes.load(), 1);
+    EXPECT_EQ(conflicts.load(), 7);
+    int retained = 0;
+    for (const auto& source : sources)
+        retained += m_backend.Exists(source) ? 1 : 0;
+    EXPECT_EQ(retained, 7);
+    const auto opened = m_backend.Open(target, VFSOpenFlags::Read);
+    ASSERT_TRUE(opened.Succeeded());
+    uint8_t buffer[4] = {};
+    EXPECT_EQ(opened.Value()->Read({buffer, sizeof(buffer)}, 0).Value(), sizeof(buffer));
+    EXPECT_TRUE(BytesEqual(buffer, sizeof(buffer), "keep"));
+    m_backend.Close(opened.Value());
+}
+
+TEST_F(VFSDiskBackendTest, NoReplaceRenamePreservesConflictingFilesAndDirectories)
+{
+    const auto source = VFSPath::Parse("/source.txt").Value();
+    const auto target = VFSPath::Parse("/target.txt").Value();
+    WriteFile(source.CStr(), "source");
+    WriteFile(target.CStr(), "target");
+    EXPECT_EQ(m_backend.RenameNoReplace(source, target).Error(), VFSError::AlreadyExists);
+    EXPECT_TRUE(m_backend.Exists(source));
+    auto opened = m_backend.Open(target, VFSOpenFlags::Read);
+    ASSERT_TRUE(opened.Succeeded());
+    auto buffer = ReadBuffer(16);
+    auto read   = opened.Value()->Read({buffer.data(), buffer.size()}, 0);
+    ASSERT_TRUE(read.Succeeded());
+    EXPECT_TRUE(BytesEqual(buffer.data(), read.Value(), "target"));
+    m_backend.Close(opened.Value());
+    const auto directory = VFSPath::Parse("/directory").Value();
+    ASSERT_TRUE(m_backend.CreateDir(directory).Succeeded());
+    EXPECT_EQ(m_backend.RenameNoReplace(source, directory).Error(), VFSError::AlreadyExists);
+    EXPECT_TRUE(m_backend.Stat(directory).Value().IsDirectory);
+    const auto moved = VFSPath::Parse("/moved.txt").Value();
+    ASSERT_TRUE(m_backend.RenameNoReplace(source, moved).Succeeded());
+    EXPECT_FALSE(m_backend.Exists(source));
+    EXPECT_TRUE(m_backend.Exists(moved));
+    EXPECT_EQ(m_backend.RenameNoReplace(source, VFSPath::Parse("/missing.txt").Value()).Error(), VFSError::NotFound);
+    EXPECT_EQ(m_backend.RenameNoReplace(VFSPath::Root(), moved).Error(), VFSError::InvalidPath);
+}
+
+TEST_F(VFSDiskBackendTest, NoReplaceDirectoryRenameMovesTheWholeSubtree)
+{
+    ASSERT_TRUE(m_backend.CreateDir(VFSPath::Parse("/old/child").Value()).Succeeded());
+    WriteFile("/old/child/asset.txt", "asset");
+    EXPECT_EQ(m_backend.RenameNoReplace(VFSPath::Parse("/old").Value(), VFSPath::Parse("/old/nested").Value()).Error(), VFSError::InvalidPath);
+    ASSERT_TRUE(m_backend.RenameNoReplace(VFSPath::Parse("/old").Value(), VFSPath::Parse("/new").Value()).Succeeded());
+    EXPECT_FALSE(m_backend.Exists(VFSPath::Parse("/old").Value()));
+    EXPECT_TRUE(m_backend.Exists(VFSPath::Parse("/new/child/asset.txt").Value()));
 }
 
 TEST_F(VFSDiskBackendTest, CapabilitiesAndType)

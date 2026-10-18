@@ -2254,27 +2254,34 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             return false;
         }
 
-        const uint32_t                           recipe_count = ReadUint32LE(header + WarmupRecipeCountOffset);
-        const uint64_t                           payload_size = ReadUint64LE(header + WarmupRecipePayloadBytesOffset);
-        auto                                     scratch      = ZGetScratch(m_device->Arena);
-        Core::Containers::Array<PSOWarmupRecipe> recipes      = {};
+        const uint32_t               recipe_count = ReadUint32LE(header + WarmupRecipeCountOffset);
+        const uint64_t               payload_size = ReadUint64LE(header + WarmupRecipePayloadBytesOffset);
+        // Warmup creates persistent shader names and sub-arenas in the device arena.
+        // Recipe scratch must have independent ownership so its release cannot rewind
+        // those allocations. The validated header bounds this temporary reservation.
+        Core::Memory::ArenaAllocator recipe_arena = {};
+        PSOWarmupRecipe*             recipes      = nullptr;
         if (recipe_count > 0)
         {
-            recipes.init(scratch.Arena, recipe_count, recipe_count);
-            if (!ReadFileExactly(*file, reinterpret_cast<uint8_t*>(recipes.data()), static_cast<size_t>(payload_size), kWarmupRecipeHeaderBytes))
+            recipe_arena.Initialize(payload_size, m_device->Arena->m_mem_page_size, "PSOCache/WarmupRecipes");
+            if (!recipe_arena.m_memory)
             {
                 vfs.Close(file);
-                ZReleaseScratch(scratch);
+                return false;
+            }
+            // The exact read initializes every byte before CRC or typed access;
+            // clearing this bounded file buffer first would be a redundant pass.
+            recipes = static_cast<PSOWarmupRecipe*>(recipe_arena.AllocateNoZero(static_cast<size_t>(payload_size), ZAlignof(PSOWarmupRecipe)));
+            if (!recipes || !ReadFileExactly(*file, reinterpret_cast<uint8_t*>(recipes), static_cast<size_t>(payload_size), kWarmupRecipeHeaderBytes))
+            {
+                vfs.Close(file);
                 return false;
             }
         }
         vfs.Close(file);
 
-        if (CRC32(reinterpret_cast<const uint8_t*>(recipes.data()), static_cast<size_t>(payload_size)) != ReadUint32LE(header + WarmupRecipeCrc32Offset))
-        {
-            ZReleaseScratch(scratch);
+        if (CRC32(reinterpret_cast<const uint8_t*>(recipes), static_cast<size_t>(payload_size)) != ReadUint32LE(header + WarmupRecipeCrc32Offset))
             return false;
-        }
 
         m_warmup_recipe_count = 0;
         for (uint32_t index = 0; index < recipe_count; ++index)
@@ -2312,7 +2319,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             RecordWarmupRecipe(recipe);
         }
 
-        ZReleaseScratch(scratch);
         ++m_telemetry.WarmupRecipeLoadSuccesses;
         return true;
     }

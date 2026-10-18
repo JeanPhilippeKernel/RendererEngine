@@ -1,5 +1,6 @@
 #pragma once
 #include <Tetragrama/Layers/ZUILayer.h>
+#include <Tetragrama/Panels/FolderTreeCache.h>
 #include <ZEngine/Core/VFS/IVFSBackend.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
@@ -9,11 +10,9 @@
 namespace Tetragrama::Panels
 {
     // ProjectViewPanel
-    // Three-column content browser — matches UE5 Content Browser layout:
-    //   [Sources tree | Filters | Search + Icon grid]
+    // Content browser: sources tree beside a filter/search toolbar and tile grid.
 
-    /// @brief Three-column content browser panel.  Displays the VFS as a sources
-    ///        tree (left), a type filter list (middle), and an icon grid (right).
+    /// @brief Displays the VFS as a sources tree and a filtered, virtualized tile grid.
     ///        Supports create/rename/delete file operations via inline modals, a
     ///        search bar, drag-source for assets, and double-click navigation.
     struct ProjectViewPanel : ZEngine::UI::ZUIPanelView
@@ -31,50 +30,45 @@ namespace Tetragrama::Panels
         void                          RequestRefresh();
 
     private:
+        friend struct ProjectViewPanelTestAccess;
+
         // Navigation
-        ZEngine::Core::VFS::VFSPath m_current_dir = {};
-        bool                        m_root_init   = false;
+        ZEngine::Core::VFS::VFSPath m_current_dir                                                 = {};
+        bool                        m_root_init                                                   = false;
+        static constexpr uint32_t   kHistoryCapacity                                              = 64;
+        char                        m_history[kHistoryCapacity][ZEngine::Core::VFS::VFS_MAX_PATH] = {};
+        uint32_t                    m_history_start                                               = 0;
+        uint32_t                    m_history_count                                               = 0;
+        uint32_t                    m_history_cursor                                              = 0;
+        bool                        m_reset_grid_scroll                                           = false;
 
         // Grid listing cache
         struct Entry
         {
-            char name[256]      = {};
-            char full_path[512] = {};
-            bool is_dir         = false;
+            char name[ZEngine::Core::VFS::VFS_MAX_PATH]      = {};
+            char full_path[ZEngine::Core::VFS::VFS_MAX_PATH] = {};
+            bool is_dir                                      = false;
         };
-        static constexpr int kMaxEntries            = 512;
-        Entry                m_entries[kMaxEntries] = {};
-        int                  m_nentries             = 0;
-        bool                 m_needs_refresh        = true;
+        static constexpr int kMaxEntries                                         = 512;
+        Entry                m_entries[kMaxEntries]                              = {};
+        int                  m_nentries                                          = 0;
+        bool                 m_needs_refresh                                     = true;
+        bool                 m_listing_valid                                     = false;
+        bool                 m_truncated                                         = false;
+        float                m_thumbnail_scale                                   = 1.f;
+        bool                 m_reset_grid_input                                  = false;
 
-        // Sources tree per-directory listing cache
-        // Avoids live vfs->List() calls every frame per open tree node.
-        // Invalidated alongside the grid listing on m_needs_refresh.
-        struct TreeDirEntry
-        {
-            char name[256]      = {};
-            char full_path[512] = {};
-        };
-        static constexpr int kMaxTreeEntries = 128; // subdirs per cached dir
-        static constexpr int kMaxCachedDirs  = 48;
-        struct TreeDirCache
-        {
-            char         key[512]                 = {};
-            TreeDirEntry entries[kMaxTreeEntries] = {};
-            int          count                    = 0;
-            bool         valid                    = false;
-        };
-        TreeDirCache m_tree_cache[kMaxCachedDirs] = {};
-        int          m_tree_cache_count           = 0;
+        FolderTreeCache      m_folder_tree                                       = {};
 
         // Search + type filter
-        char         m_search[256]                = {};
-        char         m_type_filter[32]            = "All";
+        char                 m_search[256]                                       = {};
+        char                 m_folder_search[128]                                = {};
+        char                 m_type_filter[32]                                   = "All";
 
         // Selection + double-click
-        char         m_selected_path[512]         = {};
-        char         m_last_click_path[512]       = {};
-        float        m_last_click_time            = -1.f;
+        char                 m_selected_path[ZEngine::Core::VFS::VFS_MAX_PATH]   = {};
+        char                 m_last_click_path[ZEngine::Core::VFS::VFS_MAX_PATH] = {};
+        float                m_last_click_time                                   = -1.f;
 
         // Modals
         enum class Modal
@@ -85,29 +79,45 @@ namespace Tetragrama::Panels
             RenameItem   = 3, ///<  Rename dialog.
             DeleteItem   = 4, ///<  Delete confirmation.
         };
-        Modal                       m_modal            = Modal::None;
-        ZEngine::Core::VFS::VFSPath m_modal_target     = {};
-        bool                        m_modal_is_dir     = false;
-        char                        m_modal_buf[512]   = {};
-        char                        m_modal_error[128] = {}; // non-empty = show error
-        bool                        m_modal_opened     = false;
+        Modal                       m_modal                                       = Modal::None;
+        ZEngine::Core::VFS::VFSPath m_modal_target                                = {};
+        bool                        m_modal_is_dir                                = false;
+        char                        m_modal_buf[ZEngine::Core::VFS::VFS_MAX_PATH] = {};
+        char                        m_modal_error[128]                            = {}; // non-empty = show error
+        bool                        m_modal_opened                                = false;
+        bool                        m_modal_input_pending                         = false;
 
         // Helpers
+        /// @brief Navigate once, clearing stale selection/input and recording a bounded visit history.
+        bool                        NavigateTo(const ZEngine::Core::VFS::VFSPath& path, bool record_history = true);
+        bool                        NavigateHistory(int direction);
+        void                        OpenItemModal(Modal modal, const ZEngine::Core::VFS::VFSPath& target, bool is_dir);
+        void                        DrawCreateMenu(ZEngine::UI::ZUIContext* ctx, const ZEngine::Core::VFS::VFSPath& parent);
+        void                        DrawItemMenu(ZEngine::UI::ZUIContext* ctx, const ZEngine::Core::VFS::VFSPath& target, bool is_dir);
+        bool                        SubmitModal(ZEngine::Core::VFS::IVFSContext* vfs);
+        void                        UpdateNavigationAfterMutation(const ZEngine::Core::VFS::VFSPath& source, const ZEngine::Core::VFS::VFSPath* destination);
+        void                        DrawToolbar(ZEngine::UI::ZUIContext* ctx, float width);
         /// @brief Refresh the current directory file listing.
         void                        RefreshListing(ZEngine::Core::VFS::IVFSContext* vfs);
+        /// @brief Copy and sort a listing once; frame builders only filter this bounded cache.
+        void                        CacheListing(const ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSDirEntry>& listing);
+        static bool                 EntryLess(const Entry& a, const Entry& b);
         /// @brief Draw the path breadcrumb navigation bar.
-        void                        DrawBreadcrumb(ZEngine::UI::ZUIContext* ctx, float fh);
+        void                        DrawBreadcrumb(ZEngine::UI::ZUIContext* ctx, float width);
         /// @brief Draw the left-side sources/bookmarks tree.
         void                        DrawSourcesTree(ZEngine::UI::ZUIContext* ctx, ZEngine::Core::VFS::IVFSContext* vfs);
         /// @brief Draw the file-type filter toolbar.
         void                        DrawFilters(ZEngine::UI::ZUIContext* ctx);
-        /// @brief Draw the main file grid content area.
-        void                        DrawGrid(ZEngine::UI::ZUIContext* ctx, float pw);
+        void                        DrawFilterControl(ZEngine::UI::ZUIContext* ctx);
+        /// @brief Handle asset actions only when a browser control owns focus and no editor/overlay is active.
+        void                        HandleShortcuts(ZEngine::UI::ZUIContext* ctx, const ZEngine::UI::ZUIBox* root);
+        /// @brief Draw the centered empty-folder or filtered-no-results message.
+        void                        DrawEmptyState(ZEngine::UI::ZUIContext* ctx, float width);
+        /// @brief Draw visible tile rows and return the filtered item count.
+        int                         DrawGrid(ZEngine::UI::ZUIContext* ctx, float pw, float height);
+        void                        DrawStatus(ZEngine::UI::ZUIContext* ctx, int visible_count, float width);
         /// @brief Draw any open modal dialogs (rename, delete, etc.).
         void                        DrawModals(ZEngine::UI::ZUIContext* ctx, ZEngine::Core::VFS::IVFSContext* vfs);
-
-        /// @brief Return (and cache) the subdirectory list for a given path.
-        const TreeDirEntry*         GetCachedSubdirs(ZEngine::Core::VFS::IVFSContext* vfs, const ZEngine::Core::VFS::VFSPath& dir, int* out_count);
 
         /// @brief Returns the icon color for a file given its name/extension.
         /// @param name File name (may include path).

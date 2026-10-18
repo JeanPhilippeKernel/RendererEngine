@@ -49,11 +49,21 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
+        // Atomically create one directory; never treat an existing name as success.
+        [[nodiscard]] virtual VFSResult<void> CreateDirExclusive(const VFSPath&)
+        {
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         [[nodiscard]] virtual VFSResult<void> Remove(const VFSPath& path)
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
         [[nodiscard]] virtual VFSResult<void> Rename(const VFSPath& from, const VFSPath& to)
+        {
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
+        // Never fall back to Exists + Rename: that can overwrite a concurrent creation.
+        [[nodiscard]] virtual VFSResult<void> RenameNoReplace(const VFSPath&, const VFSPath&)
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }

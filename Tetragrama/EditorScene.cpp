@@ -21,7 +21,7 @@ namespace Tetragrama
     {
         uuids::uuid GenerateEntityUUID()
         {
-            std::random_device           random_device;
+            std::random_device           random_device{};
             std::mt19937                 generator(random_device());
             uuids::uuid_random_generator uuid_generator(generator);
             return uuid_generator();
@@ -201,6 +201,51 @@ namespace Tetragrama
     bool EditorScene::IsDirty()
     {
         return Dirty.value.load(std::memory_order_acquire);
+    }
+
+    ZEngine::ECS::ActorHandle EditorScene::CreateActor(ZEngine::ECS::ActorManager& actors, const char* name)
+    {
+        if (!name || actors.Count() >= ZEngine::ECS::ActorManager::MAX_ACTORS)
+            return {};
+        const auto handle = actors.Create();
+        auto*      actor  = actors.Access(handle);
+        if (!actor)
+            return {};
+        NameComponent nc = {};
+        ZEngine::Helpers::secure_strncpy(nc.Value, sizeof(nc.Value), name, sizeof(nc.Value) - 1);
+        actor->AddComponent<NameComponent>(nc);
+        actor->AddComponent<TransformComponent>({});
+        UUIDComponent identity = {};
+        identity.Value         = GenerateEntityUUID();
+        actor->AddComponent<UUIDComponent>(identity);
+        SelectedActorHandle = handle;
+        MarkDirty(true);
+        return handle;
+    }
+
+    bool EditorScene::ResetActorTransform(ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle)
+    {
+        auto* actor     = actors.Access(handle);
+        auto* transform = actor ? actor->GetComponent<TransformComponent>() : nullptr;
+        if (!transform)
+            return false;
+        if (transform->Position.x == 0.f && transform->Position.y == 0.f && transform->Position.z == 0.f && transform->Rotation.x == 0.f && transform->Rotation.y == 0.f && transform->Rotation.z == 0.f && transform->Scale.x == 1.f && transform->Scale.y == 1.f && transform->Scale.z == 1.f)
+            return false;
+        transform->Position = {};
+        transform->Rotation = {};
+        transform->Scale    = {1.f, 1.f, 1.f};
+        MarkDirty(true);
+        return true;
+    }
+
+    bool EditorScene::TryGetActorWorldPosition(const ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle, ZEngine::Core::Maths::Vec3f& position)
+    {
+        const auto* actor     = actors.Access(handle);
+        const auto* transform = actor ? actor->GetComponent<TransformComponent>() : nullptr;
+        if (!transform)
+            return false;
+        position = {transform->WorldTransform(0, 3), transform->WorldTransform(1, 3), transform->WorldTransform(2, 3)};
+        return true;
     }
 
     void EditorScene::Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)

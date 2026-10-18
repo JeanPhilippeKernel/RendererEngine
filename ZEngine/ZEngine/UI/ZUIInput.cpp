@@ -99,6 +99,8 @@ namespace ZEngine::UI
                 ctx->KeyRepeatTimer = 0.f;
             }
         }
+        if (key == ZUIKey::F2 && pressed)
+            ctx->F2Pressed = true;
     }
 
 } // namespace ZEngine::UI

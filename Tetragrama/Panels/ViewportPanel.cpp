@@ -12,6 +12,7 @@
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/UI/ZUIFont.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
 #include <cstring>
@@ -153,7 +154,7 @@ namespace Tetragrama::Panels
         bg->EdgeSoftness  = 0.f;
 
         // Scene image — fills the column, drag-drop target
-        ZUIBox* img       = ZUIPushBox(ctx, "##vp_img", 8, ZUI_DrawBackground | ZUI_Clickable);
+        ZUIBox* img       = ZUIPushBox(ctx, "##vp_img", 8, ZUI_DrawBackground | ZUI_Clickable | ZUI_NoKeyboardFocus);
         img->Size[0]      = ZFill();
         img->Size[1]      = ZFill();
         img->TextureIndex = m_scene_texture.Valid() ? (uint32_t) m_scene_texture.Index : 0xFFFFFFFFu;
@@ -171,31 +172,40 @@ namespace Tetragrama::Panels
         }
 
         // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).
-        ctx->ViewportHovered = (img_sig.Flags & ZUI_SignalHovered) != 0;
+        ctx->ViewportHovered             = (img_sig.Flags & ZUI_SignalHovered) != 0;
 
         // Drag-drop: accept scene files and raw mesh formats
-        char drop_buf[512]   = {};
-        if (ZUIAcceptDrop(ctx, img, drop_buf, (uint32_t) sizeof(drop_buf)) && secure_strlen(drop_buf) > 0)
+        char               drop_buf[512] = {};
+        ZUIDragPayloadKind drop_kind     = ZUIDragPayloadKind::Opaque;
+        if (ZUIAcceptDrop(ctx, img, drop_buf, (uint32_t) sizeof(drop_buf), &drop_kind) && drop_kind != ZUIDragPayloadKind::Opaque && secure_strlen(drop_buf) > 0)
         {
-            const char* dot = strrchr(drop_buf, '.');
-            if (dot && strcmp(dot, ".zescene") == 0)
+            const auto parsed        = ZEngine::Core::VFS::VFSPath::Parse(drop_buf);
+            const auto ext           = parsed.Succeeded() ? parsed.Value().Extension() : ZEngine::Core::VFS::VFSPathComponent{};
+            char       extension[12] = {};
+            if (ext.Length < sizeof(extension))
+                for (size_t i = 0; i < ext.Length; ++i)
+                    extension[i] = ext.Data[i] >= 'A' && ext.Data[i] <= 'Z' ? ext.Data[i] + ('a' - 'A') : ext.Data[i];
+            // Cooked assets are loaded through the VFS; native files are only accepted by importers.
+            if (drop_kind == ZUIDragPayloadKind::VFSPath && ZEngine::Helpers::secure_strcmp(extension, ".zescene") == 0)
             {
                 secure_strncpy(m_pending_scene_drop, sizeof(m_pending_scene_drop), drop_buf, sizeof(m_pending_scene_drop) - 1);
                 ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<ViewportPanel*>(ctx)->OpenDroppedScene(); });
             }
-            else if (dot && strcmp(dot, ".zemesh") == 0)
+            else if (drop_kind == ZUIDragPayloadKind::VFSPath && ZEngine::Helpers::secure_strcmp(extension, ".zemesh") == 0)
             {
                 secure_strncpy(m_pending_mesh_drop, sizeof(m_pending_mesh_drop), drop_buf, sizeof(m_pending_mesh_drop) - 1);
                 ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<ViewportPanel*>(ctx)->SpawnDroppedMesh(); });
             }
-            else if (app->Configuration && dot && (strcmp(dot, ".glb") == 0 || strcmp(dot, ".gltf") == 0 || strcmp(dot, ".fbx") == 0 || strcmp(dot, ".obj") == 0))
+            else if (app->Configuration && (ZEngine::Helpers::secure_strcmp(extension, ".glb") == 0 || ZEngine::Helpers::secure_strcmp(extension, ".gltf") == 0 || ZEngine::Helpers::secure_strcmp(extension, ".fbx") == 0 || ZEngine::Helpers::secure_strcmp(extension, ".obj") == 0))
             {
-                secure_strncpy(app->Configuration->PendingImportPath, sizeof(app->Configuration->PendingImportPath), drop_buf, sizeof(app->Configuration->PendingImportPath) - 1);
-                const char* fname = strrchr(drop_buf, '/');
-                fname             = fname ? fname + 1 : drop_buf;
-                secure_strncpy(app->Configuration->PendingImportName, sizeof(app->Configuration->PendingImportName), fname, sizeof(app->Configuration->PendingImportName) - 1);
-                app->Configuration->ShowImporter  = true;
-                app->Configuration->FocusImporter = true;
+                auto* eng = ZEngine::Engine::GetContext();
+                if (ResolveDroppedFile(drop_buf, drop_kind, app->Configuration->WorkingSpacePath.c_str(), eng ? eng->EngineAssetsNativeRoot : nullptr, app->Configuration->PendingImportPath, sizeof(app->Configuration->PendingImportPath)))
+                {
+                    const auto name = parsed.Value().Filename();
+                    secure_strncpy(app->Configuration->PendingImportName, sizeof(app->Configuration->PendingImportName), name.Data, name.Length < sizeof(app->Configuration->PendingImportName) ? name.Length : sizeof(app->Configuration->PendingImportName) - 1);
+                    app->Configuration->ShowImporter  = true;
+                    app->Configuration->FocusImporter = true;
+                }
             }
         }
 
@@ -211,133 +221,83 @@ namespace Tetragrama::Panels
             }
         }
 
-        // Overlay toolbar: vertical, floated top-left at (8, 8)
+        // Figma viewport overlays: display controls top-left, transform/snapping controls top-right,
+        // scene info bottom-left, performance readout bottom-right.
         {
-            static constexpr float kBtnSz  = 28.f; // button height (also min draw size)
-            static constexpr float kTbW    = 36.f; // toolbar width — 4px padding each side
-            static constexpr float kSepH   = 1.f;
-            static constexpr float kPad    = 5.f; // top / bottom inner padding
-            static constexpr float kGap    = 4.f; // gap between buttons
-            static constexpr float kSepGap = 4.f; // gap on each side of separator
-            float                  tb_h    = kPad + kBtnSz + kSepGap + kSepH + kSepGap + kBtnSz + kGap + kBtnSz + kGap + kBtnSz + kPad;
+            ZUIBox* top      = ZUIBeginRow(ctx, "##vp_top", ZPx(sw - 16.f), ZPx(26.f));
+            top->Flags       = top->Flags | ZUI_FloatX | ZUI_FloatY;
+            top->FloatPos[0] = 8.f;
+            top->FloatPos[1] = 8.f;
+            top->MainAlign   = ZUIAlign::SpaceBetween;
 
-            ZUIBox*                tb      = ZUIBeginColumn(ctx, "##vp_tb", ZPx(kTbW), ZPx(tb_h));
-            tb->Flags                      = tb->Flags | ZUI_FloatX | ZUI_FloatY;
-            tb->FloatPos[0]                = 8.f;
-            tb->FloatPos[1]                = 8.f;
+            ZUIBox* left     = ZUIBeginRow(ctx, "##vp_display", ZFit(), ZPx(26.f));
+            left->Gap        = 5.f;
+            ZUIEditorControl(ctx, "##vp_menu", ZUIIcon::Menu, nullptr, false);
+            ZUIEditorControl(ctx, "##vp_persp", ZUIIcon::Box, "Perspective", true);
+            ZUIEditorControl(ctx, "##vp_lit", ZUIIcon::Sun, "Lit", true);
+            ZUIEditorControl(ctx, "##vp_show", ZUIIcon::Count, "Show", true);
+            ZUIEndRow(ctx);
 
-            ZUISpacer(ctx, kPad);
+            ZUIBox* right = ZUIBeginRow(ctx, "##vp_transform", ZFit(), ZPx(26.f));
+            right->Gap    = 4.f;
+            if (ZUIEditorControl(ctx, "##vp_sel", ZUIIcon::MousePointer2, nullptr, false, m_gizmo_op == kGizmoNone).Flags & ZUI_SignalClicked)
+                m_gizmo_op = kGizmoNone;
+            if (ZUIEditorControl(ctx, "##vp_move", ZUIIcon::Move, nullptr, false, m_gizmo_op == kGizmoTranslate).Flags & ZUI_SignalClicked)
+                m_gizmo_op = kGizmoTranslate;
+            if (ZUIEditorControl(ctx, "##vp_rot", ZUIIcon::Rotate3D, nullptr, false, m_gizmo_op == kGizmoRotate).Flags & ZUI_SignalClicked)
+                m_gizmo_op = kGizmoRotate;
+            if (ZUIEditorControl(ctx, "##vp_scale", ZUIIcon::Scaling, nullptr, false, m_gizmo_op == kGizmoScale).Flags & ZUI_SignalClicked)
+                m_gizmo_op = kGizmoScale;
+            ZUIEditorControl(ctx, "##vp_space", ZUIIcon::Globe, nullptr, false);
+            if (ZUIEditorControl(ctx, "##vp_grid", ZUIIcon::Grid3x3, "10", true, m_grid_enabled).Flags & ZUI_SignalClicked)
+                m_grid_enabled = !m_grid_enabled;
+            ZUIEditorControl(ctx, "##vp_snaprot", ZUIIcon::RotateCw, "10\xB0", true);
+            ZUIEditorControl(ctx, "##vp_snapscale", ZUIIcon::Maximize, "0.25", true);
+            ZUIEditorControl(ctx, "##vp_cam", ZUIIcon::Camera, "4", true);
+            ZUIEndRow(ctx);
 
-            // Grid toggle button — cyan theme
-            {
-                static const float kCol[4] = {0.78f, 0.78f, 0.80f, 1.f};
-                bool               act     = m_grid_enabled;
-                ZUIBox*            b       = ZUIPushBox(ctx, "##vp_bg0", 8, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
-                b->Size[0]                 = ZFill(); // fills toolbar width — icon renderer uses sz=min(w,h)=kBtnSz
-                b->Size[1]                 = ZPx(kBtnSz);
-                bool hov                   = (ctx->HotKey == b->Key);
-                bool pressing              = !act && (ctx->ActiveKey == b->Key);
-                if (act)
-                    ZUIBoxSetColor(b, kCol[0] * 0.25f, kCol[1] * 0.25f, kCol[2] * 0.25f, 0.92f);
-                else if (pressing)
-                    ZUIBoxSetColor(b, 0.20f, 0.20f, 0.20f, 0.95f);
-                else if (hov)
-                    ZUIBoxSetColor(b, 0.30f, 0.30f, 0.30f, 0.90f);
-                else
-                    ZUIBoxSetColor(b, 0.12f, 0.12f, 0.12f, 0.70f);
-                float dim       = (act || hov || pressing) ? 1.f : 0.55f;
-                b->TextColor[0] = kCol[0] * dim;
-                b->TextColor[1] = kCol[1] * dim;
-                b->TextColor[2] = kCol[2] * dim;
-                b->TextColor[3] = 1.f;
-                ZUIBoxSetCornerRadius(b, 3.f);
-                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, b->Key);
-                if (ps)
-                    ps->UserData = ZUI_ICON_GRID;
-                ZUISignal sig = ZUISignalFromBox(ctx, b);
-                ZUIPopBox(ctx);
-                if (sig.Flags & ZUI_SignalClicked)
-                    m_grid_enabled = !m_grid_enabled;
-            }
-
-            // Separator with breathing room
-            ZUISpacer(ctx, kSepGap);
-            {
-                ZUIBox* sep  = ZUIPushBox(ctx, "##vp_sep", 8, ZUI_DrawBackground);
-                sep->Size[0] = ZFill();
-                sep->Size[1] = ZPx(kSepH);
-                ZUIBoxSetColor(sep, 0.30f, 0.30f, 0.32f, 0.50f);
-                ZUIPopBox(ctx);
-            }
-            ZUISpacer(ctx, kSepGap);
-
-            // Translate / Rotate / Scale buttons
-            struct BtnDef
-            {
-                const char* key;
-                int         op;
-                float       col[4];
-                float       icon;
-            };
-            static const BtnDef kBtns[3] = {
-                {"##vp_bt", kGizmoTranslate, {0.33f, 0.60f, 1.00f, 1.f}, ZUI_ICON_TRANSLATE},
-                {"##vp_br",    kGizmoRotate, {1.00f, 0.60f, 0.20f, 1.f},    ZUI_ICON_ROTATE},
-                {"##vp_bs",     kGizmoScale, {0.30f, 0.85f, 0.40f, 1.f},     ZUI_ICON_SCALE},
-            };
-
-            for (int i = 0; i < 3; ++i)
-            {
-                if (i > 0)
-                    ZUISpacer(ctx, kGap);
-                const BtnDef& d   = kBtns[i];
-                bool          act = (m_gizmo_op == d.op);
-                ZUIBox*       b   = ZUIPushBox(ctx, d.key, (uint32_t) strlen(d.key), ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawActorIcon);
-                b->Size[0]        = ZFill(); // fills toolbar width
-                b->Size[1]        = ZPx(kBtnSz);
-                bool hov          = (ctx->HotKey == b->Key);
-                bool pressing     = !act && (ctx->ActiveKey == b->Key);
-                if (act)
-                    ZUIBoxSetColor(b, d.col[0] * 0.25f, d.col[1] * 0.25f, d.col[2] * 0.25f, 0.92f);
-                else if (pressing)
-                    ZUIBoxSetColor(b, 0.20f, 0.20f, 0.20f, 0.95f);
-                else if (hov)
-                    ZUIBoxSetColor(b, 0.30f, 0.30f, 0.30f, 0.90f);
-                else
-                    ZUIBoxSetColor(b, 0.12f, 0.12f, 0.12f, 0.70f);
-                float dim       = (act || hov || pressing) ? 1.f : 0.55f;
-                b->TextColor[0] = d.col[0] * dim;
-                b->TextColor[1] = d.col[1] * dim;
-                b->TextColor[2] = d.col[2] * dim;
-                b->TextColor[3] = 1.f;
-                ZUIBoxSetCornerRadius(b, 3.f);
-                auto* ps = ZUIStateGetOrInsert(&ctx->StateStore, b->Key);
-                if (ps)
-                    ps->UserData = d.icon;
-                ZUISignal sig = ZUISignalFromBox(ctx, b);
-                ZUIPopBox(ctx);
-                if (sig.Flags & ZUI_SignalClicked)
-                    m_gizmo_op = act ? kGizmoNone : d.op;
-            }
-
-            ZUISpacer(ctx, kPad);
-            ZUIEndColumn(ctx);
+            ZUIEndRow(ctx);
         }
 
-        // FPS overlay: floated top-right — uses render-thread SmoothedDeltaTime
-        // (same source as the status bar counter, includes vsync wait).
         {
-            const float smooth_dt = ZEngine::Engine::GetContext()->SmoothedDeltaTime;
-            const float fps       = smooth_dt > 0.f ? 1.f / smooth_dt : 0.f;
-            char        fps_buf[32];
-            snprintf(fps_buf, sizeof(fps_buf), "%.0f fps", (double) fps);
+            // Scene information, bottom-left.
+            const char* scene_name = (app->Configuration && !app->Configuration->ActiveSceneName.empty()) ? app->Configuration->ActiveSceneName.c_str() : "Untitled";
+            char        info[200]  = {};
+            snprintf(info, sizeof(info), "%s  •  Persistent Scene", scene_name);
+            ZUIBox* row      = ZUIBeginRow(ctx, "##vp_scene", ZFit(), ZPx(13.f));
+            row->Flags       = row->Flags | ZUI_FloatX | ZUI_FloatY;
+            row->FloatPos[0] = 12.f;
+            row->FloatPos[1] = sh - 12.f - 13.f;
+            row->Gap         = 8.f;
+            row->CrossAlign  = ZUIAlign::Center;
+            ZUIIconBox(ctx, ZUIIcon::Map, 12.f);
+            ZUILabelTight(ctx, info, ctx->Theme.TextDefault, ZUIFontSize::Body);
+            ZUIEndRow(ctx);
+        }
 
-            static constexpr float kFpsW   = 64.f;
-            ZUIBox*                fps_row = ZUIBeginRow(ctx, "##vp_fps", ZPx(kFpsW), ZPx(22.f));
-            fps_row->Flags                 = fps_row->Flags | ZUI_FloatX | ZUI_FloatY;
-            fps_row->FloatPos[0]           = sw - kFpsW - 8.f;
-            fps_row->FloatPos[1]           = 8.f;
-            ZUIBoxSetColor(fps_row, 0.f, 0.f, 0.f, 0.f);
-            ZUILabel(ctx, fps_buf, ctx->Theme.TextDim);
+        {
+            // Performance readout, bottom-right: render-thread SmoothedDeltaTime (includes vsync wait).
+            const float smooth_dt   = ZEngine::Engine::GetContext()->SmoothedDeltaTime;
+            const float fps         = smooth_dt > 0.f ? 1.f / smooth_dt : 0.f;
+            char        fps_buf[24] = {};
+            char        ms_buf[24]  = {};
+            snprintf(fps_buf, sizeof(fps_buf), "%.1f FPS", (double) fps);
+            snprintf(ms_buf, sizeof(ms_buf), "%.2f ms", (double) (smooth_dt * 1000.f));
+
+            ZUIBox* row      = ZUIBeginRow(ctx, "##vp_perf", ZFit(), ZPx(12.f));
+            row->Flags       = row->Flags | ZUI_FloatX | ZUI_FloatY;
+            row->FloatPos[0] = sw - 14.f - 99.f;
+            row->FloatPos[1] = sh - 12.f - 12.f;
+            row->Gap         = 8.f;
+            row->CrossAlign  = ZUIAlign::Center;
+            ZUILabelTight(ctx, fps_buf, ctx->Theme.TextDefault, ZUIFontSize::Body);
+            ZUIBox* sep  = ZUIPushBox(ctx, "##vp_perf_sep", 13, ZUI_DrawBackground);
+            sep->Size[0] = ZPx(1.f);
+            sep->Size[1] = ZPx(12.f);
+            ZUIBoxSetColorArr(sep, ctx->Theme.TextDim);
+            sep->EdgeSoftness = 0.f;
+            ZUIPopBox(ctx);
+            ZUILabelTight(ctx, ms_buf, ctx->Theme.TextDefault, ZUIFontSize::Body);
             ZUIEndRow(ctx);
         }
 
