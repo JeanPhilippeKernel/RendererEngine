@@ -23,11 +23,14 @@ namespace ZEngine::UI
         uint32_t Flags        = ZUI_SignalNone; ///< Bitmask of ZUISignalFlags.
         float    DragDelta[2] = {};             ///< Mouse delta (px) this frame when ZUI_SignalHeld.
         float    ScrollDelta  = 0.f;            ///< Wheel delta when ZUI_SignalScrolled.
+        uint64_t Key          = 0;              ///< Stable owner identity (tooltips must not key off text pointers).
     };
 
     /// @brief Called from ZUIEndFrame — DFS hit-test walk that updates HotKey / ActiveKey on ctx.
     /// @param ctx Active ZUI context.
     void      ZUIInteractionPass(ZUIContext* ctx);
+    /// @brief Resolve reading/dock order and trap/restore focus after layout and pointer input.
+    void      ZUIFocusPass(ZUIContext* ctx);
 
     /// @brief Query interaction state for @p box after the build phase.
     ///

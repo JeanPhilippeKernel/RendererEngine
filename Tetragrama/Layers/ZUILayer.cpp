@@ -116,6 +116,56 @@ namespace Tetragrama::Layers
         }
     }
 
+    void ZUILayer::UpdateModifiers(ZENGINE_KEYCODE key, bool pressed)
+    {
+        // Track each side separately: releasing one modifier must not cancel
+        // another that is still held. CtrlDown is ZUI's shortcut modifier;
+        // macOS also accepts Command for native text editing and color undo.
+        uint8_t mask = 0;
+        switch (key)
+        {
+            case ZENGINE_KEY_LEFT_CONTROL:
+                mask = 1u << 0;
+                break;
+            case ZENGINE_KEY_RIGHT_CONTROL:
+                mask = 1u << 1;
+                break;
+            case ZENGINE_KEY_LEFT_SHIFT:
+                mask = 1u << 2;
+                break;
+            case ZENGINE_KEY_RIGHT_SHIFT:
+                mask = 1u << 3;
+                break;
+            case ZENGINE_KEY_LEFT_ALT:
+                mask = 1u << 4;
+                break;
+            case ZENGINE_KEY_RIGHT_ALT:
+                mask = 1u << 5;
+                break;
+            case ZENGINE_KEY_LEFT_SUPER:
+                mask = 1u << 6;
+                break;
+            case ZENGINE_KEY_RIGHT_SUPER:
+                mask = 1u << 7;
+                break;
+            default:
+                return;
+        }
+        if (pressed)
+            m_modifier_keys |= mask;
+        else
+            m_modifier_keys &= static_cast<uint8_t>(~mask);
+        constexpr uint8_t control_mask = 0x03;
+#if defined(__APPLE__)
+        constexpr uint8_t shortcut_mask = control_mask | 0xc0;
+#else
+        constexpr uint8_t shortcut_mask = control_mask;
+#endif
+        m_ctx->CtrlDown  = (m_modifier_keys & shortcut_mask) != 0;
+        m_ctx->ShiftDown = (m_modifier_keys & 0x0c) != 0;
+        m_ctx->AltDown   = (m_modifier_keys & 0x30) != 0;
+    }
+
     bool ZUILayer::OnKeyPressed(KeyPressedEvent& e)
     {
         if (!m_ctx)
@@ -124,13 +174,8 @@ namespace Tetragrama::Layers
         }
         auto key = e.GetKeyCode();
 
-        // Modifier tracking
-        if (key == ZENGINE_KEY_LEFT_CONTROL || key == ZENGINE_KEY_RIGHT_CONTROL)
-            m_ctx->CtrlDown = true;
-        if (key == ZENGINE_KEY_LEFT_SHIFT || key == ZENGINE_KEY_RIGHT_SHIFT)
-            m_ctx->ShiftDown = true;
-        if (key == ZENGINE_KEY_LEFT_ALT || key == ZENGINE_KEY_RIGHT_ALT)
-            m_ctx->AltDown = true;
+        UpdateModifiers(key, true);
+        const bool shortcut = m_ctx->CtrlDown && !m_ctx->AltDown;
 
         // Backspace (also starts key-repeat timer)
         if (key == ZENGINE_KEY_BACKSPACE)
@@ -170,6 +215,8 @@ namespace Tetragrama::Layers
             m_ctx->HomePressed = true;
         if (key == ZENGINE_KEY_END)
             m_ctx->EndPressed = true;
+        if (key == ZENGINE_KEY_F2)
+            m_ctx->F2Pressed = true;
         if (key == ZENGINE_KEY_DELETE)
         {
             m_ctx->DeletePressed    = true;
@@ -197,23 +244,23 @@ namespace Tetragrama::Layers
             m_ctx->ArrowRepeatTimer = 0.f;
         }
 
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
             m_ctx->CtrlCPressed = true;
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_X)
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_X)
             m_ctx->CtrlXPressed = true;
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_A)
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_A)
             m_ctx->CtrlAPressed = true;
-        if (m_ctx->CtrlDown && !m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)
+        if (shortcut && !m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)
             m_ctx->CtrlZPressed = true;
-        if (m_ctx->CtrlDown && (key == ZEngine::Windows::Inputs::GlfwKey::KEY_Y || (m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)))
+        if (shortcut && (key == ZEngine::Windows::Inputs::GlfwKey::KEY_Y || (m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)))
             m_ctx->CtrlYPressed = true;
 
         // Ctrl+Backspace → delete word before cursor
-        if (m_ctx->CtrlDown && key == ZENGINE_KEY_BACKSPACE)
+        if (shortcut && key == ZENGINE_KEY_BACKSPACE)
             m_ctx->CtrlBackspacePressed = true;
 
         // Clipboard paste: Ctrl+V → inject clipboard text into TextInput
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
         {
             if (CurrentApp && CurrentApp->CurrentWindow)
             {
@@ -238,12 +285,7 @@ namespace Tetragrama::Layers
             return false;
         }
         auto key = e.GetKeyCode();
-        if (key == ZENGINE_KEY_LEFT_CONTROL || key == ZENGINE_KEY_RIGHT_CONTROL)
-            m_ctx->CtrlDown = false;
-        if (key == ZENGINE_KEY_LEFT_SHIFT || key == ZENGINE_KEY_RIGHT_SHIFT)
-            m_ctx->ShiftDown = false;
-        if (key == ZENGINE_KEY_LEFT_ALT || key == ZENGINE_KEY_RIGHT_ALT)
-            m_ctx->AltDown = false;
+        UpdateModifiers(key, false);
         if (key == ZENGINE_KEY_BACKSPACE)
         {
             m_ctx->BackspaceHeld  = false;
@@ -317,6 +359,17 @@ namespace Tetragrama::Layers
         {
             return false;
         }
+        // Shortcut keys may also produce character events (including native
+        // Command shortcuts). Never insert those letters into the active field.
+        // Ctrl+Alt remains text-producing for AltGr layouts on Windows/Linux;
+        // macOS uses Option for text and Command/Control for shortcuts.
+#if defined(__APPLE__)
+        const bool shortcut = m_ctx->CtrlDown;
+#else
+        const bool shortcut = m_ctx->CtrlDown && !m_ctx->AltDown;
+#endif
+        if (shortcut)
+            return false;
         for (unsigned char c : e.GetText())
         {
             if (m_ctx->TextInputLen < 31)

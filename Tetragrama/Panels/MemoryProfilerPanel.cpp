@@ -1,6 +1,7 @@
 #include <Tetragrama/Panels/MemoryProfilerPanel.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
 #include <cstring>
@@ -62,7 +63,7 @@ namespace Tetragrama::Panels
         float                                        content_w = rect[2] - rect[0];
 
         // Fetch stats — array must be init'd with an arena before GetStats pushes into it
-        ZEngine::Core::Containers::Array<ArenaStats> stats;
+        ZEngine::Core::Containers::Array<ArenaStats> stats     = {};
         stats.init(&ctx->FrameArena, 32);
         MemoryProfiler::GetStats(stats);
 
@@ -86,16 +87,17 @@ namespace Tetragrama::Panels
         // Header
         ZUISpacer(ctx, 6.f);
         {
-            ZUIBeginRow(ctx, "##mp_hdr", ZFill(), ZPx(fh));
+            auto* header       = ZUIBeginRow(ctx, "##mp_hdr", ZFill(), ZPx(fmaxf(fh, Metrics::HeightControl)));
+            header->CrossAlign = ZUIAlign::Center;
             ZUISpacer(ctx, 10.f);
 
             if (arena_count > 0)
             {
-                char buf_used[32], buf_cap[32];
+                char buf_used[32] = {}, buf_cap[32] = {};
                 FormatBytes(buf_used, sizeof(buf_used), cpu_current);
                 FormatBytes(buf_cap, sizeof(buf_cap), cpu_capacity);
                 float cpu_pct = (cpu_capacity > 0) ? (float) cpu_current / (float) cpu_capacity * 100.f : 0.f;
-                char  hdr[96];
+                char  hdr[96] = {};
                 snprintf(hdr, sizeof(hdr), "Named CPU owners: %s / %s  (%.0f%%)", buf_used, buf_cap, cpu_pct);
                 ZUILabel(ctx, hdr, ctx->Theme.TextDefault);
             }
@@ -156,11 +158,11 @@ namespace Tetragrama::Panels
 
             // Stats line
             {
-                char b_used[32], b_cap[32], b_peak[32];
+                char b_used[32] = {}, b_cap[32] = {}, b_peak[32] = {};
                 FormatBytes(b_used, sizeof(b_used), s.CurrentOffset);
                 FormatBytes(b_cap, sizeof(b_cap), s.Capacity);
                 FormatBytes(b_peak, sizeof(b_peak), s.PeakOffset);
-                char stats_buf[128];
+                char stats_buf[128] = {};
                 snprintf(stats_buf, sizeof(stats_buf), "  %s / %s   peak: %s   %.0f%%", b_used, b_cap, b_peak, fraction * 100.f);
                 ZUIBeginRow(ctx, "##mp_sr", ZFill(), ZPx(fh));
                 ZUISpacer(ctx, 10.f);
@@ -192,7 +194,7 @@ namespace Tetragrama::Panels
                 ZUIBoxSetCornerRadius(bg_b, 3.f);
                 bg_b->EdgeSoftness = 0.f;
                 // Fill
-                ZUIBox* fill_b     = ZUIPushBox(ctx, kFillKeys[i], (uint32_t) strlen(kFillKeys[i]), ZUI_DrawBackground);
+                ZUIBox* fill_b     = ZUIPushBox(ctx, kFillKeys[i], (uint32_t) ZEngine::Helpers::secure_strlen(kFillKeys[i]), ZUI_DrawBackground);
                 fill_b->Size[0]    = ZPx(fill_w);
                 fill_b->Size[1]    = ZFill();
                 ZUIBoxSetColorArr(fill_b, col);
@@ -228,33 +230,33 @@ namespace Tetragrama::Panels
         }
         else
         {
-            char vma_allocated[32], vma_blocks[32], heap_usage[32], heap_budget[32];
+            char vma_allocated[32] = {}, vma_blocks[32] = {}, heap_usage[32] = {}, heap_budget[32] = {};
             FormatBytes(vma_allocated, sizeof(vma_allocated), renderer_memory.Vma.AllocationBytes);
             FormatBytes(vma_blocks, sizeof(vma_blocks), renderer_memory.Vma.BlockBytes);
             FormatBytes(heap_usage, sizeof(heap_usage), renderer_memory.Vma.HeapUsageBytes);
             FormatBytes(heap_budget, sizeof(heap_budget), renderer_memory.Vma.HeapBudgetBytes);
-            char vma_text[192];
+            char vma_text[192] = {};
             snprintf(vma_text, sizeof(vma_text), "VMA allocations: %s; VMA blocks: %s; %s heap use: %s / %s (%u heap%s)", vma_allocated, vma_blocks, renderer_memory.Vma.UsesDriverBudgetTelemetry ? "driver" : "VMA fallback", heap_usage, heap_budget, renderer_memory.Vma.HeapCount, renderer_memory.Vma.HeapCount == 1 ? "" : "s");
             ZUIBeginRow(ctx, "##mp_vma", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 10.f);
             ZUILabel(ctx, vma_text, ctx->Theme.TextDim);
             ZUIEndRow(ctx);
 
-            char environment_reserved[32], environment_budget[32];
+            char environment_reserved[32] = {}, environment_budget[32] = {};
             FormatBytes(environment_reserved, sizeof(environment_reserved), renderer_memory.EnvironmentReservedBytes);
             FormatBytes(environment_budget, sizeof(environment_budget), renderer_memory.EnvironmentBudgetBytes);
-            char environment_text[160];
+            char environment_text[160] = {};
             snprintf(environment_text, sizeof(environment_text), "Persistent environment resources: %s / %s policy cap", environment_reserved, environment_budget);
             ZUIBeginRow(ctx, "##mp_environment", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 10.f);
             ZUILabel(ctx, environment_text, ctx->Theme.TextDim);
             ZUIEndRow(ctx);
 
-            char transient_virtual[32], transient_physical[32], transient_saving[32];
+            char transient_virtual[32] = {}, transient_physical[32] = {}, transient_saving[32] = {};
             FormatBytes(transient_virtual, sizeof(transient_virtual), renderer_memory.TransientVirtualBytes());
             FormatBytes(transient_physical, sizeof(transient_physical), renderer_memory.TransientPhysicalBytes());
             FormatBytes(transient_saving, sizeof(transient_saving), renderer_memory.TransientAliasingSavings());
-            char transient_text[192];
+            char transient_text[192] = {};
             snprintf(transient_text, sizeof(transient_text), "Render-graph transients: virtual %s; physical %s; aliasing saved %s (%u image, %u buffer backing%s)", transient_virtual, transient_physical, transient_saving, renderer_memory.TransientImageBackingCount, renderer_memory.TransientBufferBackingCount, renderer_memory.TransientImageBackingCount + renderer_memory.TransientBufferBackingCount == 1 ? "" : "s");
             ZUIBeginRow(ctx, "##mp_transients", ZFill(), ZPx(fh));
             ZUISpacer(ctx, 10.f);

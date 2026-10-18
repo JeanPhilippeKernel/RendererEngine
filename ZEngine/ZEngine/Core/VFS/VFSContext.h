@@ -64,9 +64,11 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>                           Mount(IVFSBackend* backend, const VFSPath& logical_root, int priority) override;
         [[nodiscard]] VFSResult<void>                           Unmount(const VFSPath& logical_root) override;
         [[nodiscard]] VFSResult<void>                           CreateDir(const VFSPath& absolute_path) override;
+        [[nodiscard]] VFSResult<void>                           CreateDirExclusive(const VFSPath& absolute_path) override;
         [[nodiscard]] VFSResult<void>                           Remove(const VFSPath& absolute_path) override;
         [[nodiscard]] VFSResult<void>                           RemoveAll(const VFSPath& absolute_path) override;
         [[nodiscard]] VFSResult<void>                           Rename(const VFSPath& src, const VFSPath& dst) override;
+        [[nodiscard]] VFSResult<void>                           RenameNoReplace(const VFSPath& src, const VFSPath& dst) override;
         void                                                    Shutdown() override;
 
     private:

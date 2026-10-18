@@ -590,6 +590,15 @@ namespace ZEngine::Core::VFS
         return hit.Backend->CreateDir(hit.RelativePath);
     }
 
+    VFSResult<void> VFSContext::CreateDirExclusive(const VFSPath& absolute_path)
+    {
+        const auto writable = ResolveWritable(absolute_path);
+        if (writable.Failed())
+            return VFSResult<void>::Fail(writable.Error());
+        const auto& hit = writable.Value();
+        return hit.Backend->CreateDirExclusive(hit.RelativePath);
+    }
+
     VFSResult<void> VFSContext::Remove(const VFSPath& absolute_path)
     {
         VFSResult<ResolveResult> writable = ResolveWritable(absolute_path);
@@ -633,6 +642,25 @@ namespace ZEngine::Core::VFS
         return src_hit.Value().Backend->Rename(src_hit.Value().RelativePath, dst_hit.Value().RelativePath);
     }
 
+    VFSResult<void> VFSContext::RenameNoReplace(const VFSPath& src, const VFSPath& dst)
+    {
+        if (!src.IsValid() || !dst.IsValid() || src.IsRoot() || dst.IsRoot() || src.IsPrefixOf(dst))
+            return VFSResult<void>::Fail(VFSError::InvalidPath);
+        // Resolve the actual owning mounts, not a less-specific writable fallback.
+        // A read-only mounted asset must never rename an unrelated shadowed file.
+        const auto source = m_mount_table.Resolve(src);
+        if (source.Failed())
+            return VFSResult<void>::Fail(source.Error());
+        const auto destination = m_mount_table.Resolve(dst);
+        if (destination.Failed())
+            return VFSResult<void>::Fail(destination.Error());
+        if (source.Value().Backend != destination.Value().Backend)
+            return VFSResult<void>::Fail(VFSError::Unsupported);
+        if (!HasCap(source.Value().Backend->Capabilities(), VFSBackendCaps::Write))
+            return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        return source.Value().Backend->RenameNoReplace(source.Value().RelativePath, destination.Value().RelativePath);
+    }
+
     void VFSContext::Shutdown()
     {
         ShutdownWatcher();
@@ -642,31 +670,17 @@ namespace ZEngine::Core::VFS
 
     VFSResult<ResolveResult> VFSContext::ResolveWritable(const VFSPath& path) const
     {
-        std::lock_guard<std::mutex>      arena_lock(m_arena_mutex);
-        auto                             scratch = ZGetScratch(m_arena);
-
-        Containers::Array<ResolveResult> matches;
-        matches.init(scratch.Arena, 8);
-
-        VFSResult<void> resolved = m_mount_table.ResolveAll(path, matches);
+        if (!path.IsValid())
+            return VFSResult<ResolveResult>::Fail(VFSError::InvalidPath);
+        // Mutations must use the same owning mount as Open/Stat. Falling through
+        // a read-only mount can delete or create an unrelated shadowed asset.
+        // A single resolution also avoids scratch allocations and the arena lock.
+        const auto resolved = m_mount_table.Resolve(path);
         if (resolved.Failed())
-        {
-            ZReleaseScratch(scratch);
             return VFSResult<ResolveResult>::Fail(resolved.Error());
-        }
-
-        for (size_t i = 0; i < matches.size(); ++i)
-        {
-            if (HasCap(matches[i].Backend->Capabilities(), VFSBackendCaps::Write))
-            {
-                ResolveResult hit = matches[i];
-                ZReleaseScratch(scratch);
-                return VFSResult<ResolveResult>::Ok(hit);
-            }
-        }
-
-        ZReleaseScratch(scratch);
-        return VFSResult<ResolveResult>::Fail(VFSError::PermissionDenied);
+        if (!HasCap(resolved.Value().Backend->Capabilities(), VFSBackendCaps::Write))
+            return VFSResult<ResolveResult>::Fail(VFSError::PermissionDenied);
+        return resolved;
     }
 
 } // namespace ZEngine::Core::VFS

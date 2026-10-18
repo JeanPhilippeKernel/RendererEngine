@@ -12,7 +12,9 @@
 #include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Rendering/Cameras/FlyCamera.h>
 #include <ZEngine/UI/ZUIWidgets.h>
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -25,6 +27,20 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Panels
 {
+    // Case-insensitive three-way compare used by the sibling sort.
+    static int ZUICompareCI(const char* a, const char* b)
+    {
+        while (*a && *b)
+        {
+            const int d = tolower((unsigned char) *a) - tolower((unsigned char) *b);
+            if (d != 0)
+                return d;
+            ++a;
+            ++b;
+        }
+        return tolower((unsigned char) *a) - tolower((unsigned char) *b);
+    }
+
     static bool ContainsCI(const char* haystack, const char* needle)
     {
         if (!haystack)
@@ -46,9 +62,23 @@ namespace Tetragrama::Panels
         return false;
     }
 
+    static void TypeLabel(ZUIContext* ctx, const char* text)
+    {
+        // Match the header's text inset and the actor label's row center.
+        // Text is vertically centered by the renderer; no per-row wrapper or
+        // text measurement is needed for this fill-sized label.
+        auto* label    = ZUIPushBox(ctx, "##hier_type", 11, ZUI_DrawText);
+        label->Size[0] = label->Size[1] = ZFill();
+        label->Padding[0]               = ctx->Style.FramePadding[0];
+        label->Label                    = ZUIPushStr(&ctx->FrameArena, text, static_cast<uint32_t>(secure_strlen(text)));
+        secure_memcpy(label->TextColor, sizeof(label->TextColor), ctx->Theme.TextDefault, sizeof(label->TextColor));
+        ZUIPopBox(ctx);
+    }
+
     HierarchyPanel::HierarchyPanel()
     {
-        Title = "Hierarchy";
+        Title = "Outliner";
+        Icon  = (int) ZEngine::UI::ZUIIcon::ListTree;
     }
 
     bool HierarchyPanel::IsCollapsed(ZEngine::ECS::EntityID id) const
@@ -90,72 +120,62 @@ namespace Tetragrama::Panels
             return;
         }
 
-        float   fh = ZUIGetFrameHeight(ctx);
-        float   pw = (rect[2] - rect[0] > 1.f) ? rect[2] - rect[0] : 200.f;
+        const float pw = (rect[2] - rect[0] > 1.f) ? rect[2] - rect[0] : 200.f;
+        BuildHierarchy(ctx, pw, app, scene, eng);
+    }
 
+    void HierarchyPanel::BuildHierarchy(ZUIContext* ctx, float pw, Editor* app, EditorScene* scene, EngineContext* eng)
+    {
         ZUIBox* bg = ZUIBeginColumn(ctx, "##hier_bg", ZFill(), ZFill());
         bg->Flags  = bg->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
         bg->EdgeSoftness = 0.f;
 
-        // Toolbar — row height = fh so search box and button align exactly
-        ZUISpacer(ctx, 4.f);
-        ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(fh));
-        ZUISpacer(ctx, 8.f);
-        ZUISearchBox(ctx, "##hier_search", m_search, sizeof(m_search), "Search...", ZFill());
-        ZUISpacer(ctx, 4.f);
-        // "New Collection" — folder+plus icon (same height as search box = fh)
+        // Figma "Outliner search": 41 px band, 8 px padding, search field then a 16 px filter icon.
         {
-            ZUIBox* btn       = ZUIPushBox(ctx, "##btn_add", 9, ZUI_Clickable | ZUI_DrawActorIcon);
-            btn->Size[0]      = ZPx(fh);
-            btn->Size[1]      = ZPx(fh);
-            bool hov          = (ctx->HotKey == btn->Key);
-            btn->TextColor[0] = hov ? 0.85f : 0.55f;
-            btn->TextColor[1] = hov ? 0.85f : 0.58f;
-            btn->TextColor[2] = hov ? 0.90f : 0.65f;
-            btn->TextColor[3] = 1.f;
-            auto* bps         = ZUIStateGetOrInsert(&ctx->StateStore, btn->Key);
-            if (bps)
-                bps->UserData = ZUI_ICON_COLLECTION_ADD;
-            ZUISignal bsig = ZUISignalFromBox(ctx, btn);
-            ZUIPopBox(ctx);
-            if (bsig.Flags & ZUI_SignalClicked)
-            {
-                ActorHandle nh = eng->ActorManager->Create();
-                Actor*      na = eng->ActorManager->Access(nh);
-                if (na)
-                {
-                    NameComponent nc_new = {};
-                    secure_strncpy(nc_new.Value, sizeof(nc_new.Value), "Collection", 10);
-                    na->AddComponent<NameComponent>(nc_new);
-                    na->AddComponent<TransformComponent>({});
-                    scene->SelectedActorHandle = nh;
-                }
-            }
+            ZUIBox* tb     = ZUIBeginRow(ctx, "##hier_tb", ZFill(), ZPx(41.f));
+            tb->Padding[0] = tb->Padding[2] = 8.f;
+            tb->Gap                         = 8.f;
+            tb->CrossAlign                  = ZUIAlign::Center;
+            ZUISearchBox(ctx, "##hier_search", m_search, sizeof(m_search), "Search actors", ZFill());
+            // "New collection": 25 px bordered icon button (Figma node 39:980).
+            ZUIBox* nb          = ZUIBeginRow(ctx, "##hier_new_collection", ZPx(25.f), ZPx(25.f));
+            nb->Flags           = nb->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable | ZUI_KeyboardActivate;
+            nb->MainAlign       = ZUIAlign::Center;
+            nb->CrossAlign      = ZUIAlign::Center;
+            nb->BorderThickness = 1.f;
+            ZUIBoxSetCornerRadius(nb, 4.f);
+            ZUIBoxSetColorArr(nb, ctx->Theme.InputBg);
+            ZEngine::Helpers::secure_memcpy(nb->BorderColor, sizeof(nb->BorderColor), ctx->Theme.PanelBorder, sizeof(nb->BorderColor));
+            ZUIIconBox(ctx, ZUIIcon::FolderPlus, 13.f, ctx->Theme.TextDim);
+            ZUISignal nsig = ZUISignalFromBox(ctx, nb);
+            ZUIBoxSetColorArr(nb, ctx->HotKey == nb->Key ? ctx->Theme.ButtonHoveredBg : ctx->Theme.InputBg);
+            ZUIEndRow(ctx);
+            if (nsig.Flags & ZUI_SignalClicked)
+                scene->CreateActor(*eng->ActorManager, "Collection");
+            ZUIIconBox(ctx, ZUIIcon::ListFilter, 16.f);
+            ZUIEndRow(ctx);
         }
-        ZUISpacer(ctx, 8.f);
-        ZUIEndRow(ctx);
-        ZUISpacer(ctx, 4.f);
 
-        // 3-column table — Type and Level are fixed; Item Label stretches
-        static constexpr float kTypeW     = 72.f;
-        static constexpr float kLevelW    = 64.f;
-        static constexpr float kLabelMinW = 220.f; // Item Label never compresses below this
-        ZUIDataTableColumn     cols[3]    = {
-            {"Item Label", fmaxf(pw - kTypeW - kLevelW, kLabelMinW), kLabelMinW, true, false},
+        // Two-column table — Type is fixed; Actor Label stretches.
+        static constexpr float kTypeW     = 126.f; // Figma: Type text starts 258 px into the 380 px panel (4 px cell padding)
+        static constexpr float kLabelMinW = 180.f; // Item Label never compresses below this
+        ZUIDataTableColumn     cols[2]    = {
+            {"Actor Label", fmaxf(pw - kTypeW, kLabelMinW), kLabelMinW, true, false},
             {"Type", kTypeW, 0.f, true, false},
-            {"Level", kLevelW, 0.f, false, false},
         };
 
-        // O(n) DFS tree build — exact develop algorithm
+        // O(n) tree construction and traversal, plus O(n log n) sorting.
         uint32_t actor_total = eng->ActorManager->Count();
         uint32_t cap         = actor_total > 0 ? actor_total : 1; // min 1 to avoid 0-size alloc
 
         struct OutlinerNode
         {
-            ActorHandle Handle;
-            EntityID    EID;
-            EntityID    Parent;
+            ActorHandle Handle   = {};
+            EntityID    EID      = {};
+            EntityID    Parent   = INVALID_ENTITY;
+            const char* Name     = "Actor"; // sort key (column 0)
+            int         TypeRank = {};      // sort key (column 1): 0 Collection, 1 Light, 2 Camera, 3 Static Mesh, 4 Actor
         };
         OutlinerNode* nodes       = ZPushArray(&ctx->FrameArena, OutlinerNode, cap);
         uint32_t*     first_child = ZPushArray(&ctx->FrameArena, uint32_t, cap);
@@ -168,17 +188,95 @@ namespace Tetragrama::Panels
             next_sib[i]    = UINT32_MAX;
         }
         eng->ActorManager->ForEach([&](ActorHandle h, Actor* actor) {
-            auto* pc            = actor->GetComponent<ParentComponent>();
-            nodes[node_count++] = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY};
+            auto*       pc        = actor->GetComponent<ParentComponent>();
+            const auto* nm        = actor->GetComponent<NameComponent>();
+            const bool  is_light  = actor->HasComponent<LightComponent>();
+            const bool  is_cam    = actor->HasComponent<CameraComponent>();
+            const bool  is_mesh   = actor->HasComponent<MeshComponent>();
+            const int   type_rank = (!is_mesh && !is_light && !is_cam) ? 0 : (is_light ? 1 : (is_cam ? 2 : 3));
+            nodes[node_count++]   = {h, actor->GetEntityID(), (pc && pc->Parent != INVALID_ENTITY) ? pc->Parent : INVALID_ENTITY, (nm && nm->Value[0]) ? nm->Value : "Actor", type_rank};
+        });
+
+        // Icon / type colors
+        static const float kDim[4]                 = {0.55f, 0.55f, 0.60f, 1.f};
+
+        // Deferred mutations — applied after DFS to avoid tree invalidation
+        ActorHandle        pending_delete          = {};
+        ActorHandle        pending_reset_xform     = {};
+        ActorHandle        pending_reparent_child  = {};
+        EntityID           pending_reparent_parent = INVALID_ENTITY;
+        bool               drop_handled            = false; // prevents dual-path double-mutation
+        // Detach-to-root (World drop + "Remove from Parent" menu) routes through
+        // pending_reparent_parent = INVALID_ENTITY — single path, exact develop.
+
+        // Scroll region + DataTable
+        auto*              hierarchy_list          = ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
+        hierarchy_list->Flags                      = hierarchy_list->Flags | ZUI_NavList;
+        // Filtering/collapsing can shrink the list below its previous scroll
+        // destination. Do not resume that stale destination when rows return.
+        if (auto* state = ZUIStateGetOrInsert(&ctx->StateStore, hierarchy_list->Key))
+            state->ScrollYTarget = std::clamp(state->ScrollYTarget, 0.f, fmaxf(state->MaxScrollY, 0.f));
+        // The scroll viewport fills the panel; its table must retain the full
+        // row height so overflow is measurable instead of clipped internally.
+        ZUIBeginDataTable(ctx, "##hier_tbl", 2, cols, ZFit());
+        // Item Label always fills remaining space — override stored width so
+        // panel resize never squeezes all columns simultaneously.
+        if (ctx->DT_ColWidths && ctx->DT_ColCount >= 2)
+            ctx->DT_ColWidths[0] = fmaxf(pw - ctx->DT_ColWidths[1], cols[0].MinWidth);
+
+        // Sibling sort (Figma "Actor Label ↑"): unsorted state behaves as Actor Label ascending.
+        // The table state is loaded by ZUIBeginDataTable, so the tree is linked after it.
+        const int  sort_col = m_sort_col;
+        const bool sort_asc = m_sort_asc;
+        // Actor iteration is handle-index ordered. An explicit tie-break retains
+        // that order without stable_sort's per-frame temporary heap allocation.
+        std::sort(nodes, nodes + node_count, [&](const OutlinerNode& l, const OutlinerNode& r) {
+            int c = (sort_col == 1) ? (l.TypeRank - r.TypeRank) : 0;
+            if (c == 0)
+                c = ZUICompareCI(l.Name, r.Name);
+            if (c == 0)
+                return l.Handle.Index < r.Handle.Index;
+            return sort_asc ? c < 0 : c > 0;
         });
 
         // O(1) parent lookup — exact develop UnorderedHashMap pattern
-        ZEngine::Core::Containers::UnorderedHashMap<EntityID, uint32_t> eid_to_idx;
-        eid_to_idx.init(&ctx->FrameArena, node_count * 2 + 1);
+        ZEngine::Core::Containers::UnorderedHashMap<EntityID, uint32_t> eid_to_idx = {};
+        // init rounds up to a power of two (minimum 16). Exactly twice the
+        // live count already satisfies its <= 50% load contract; adding one
+        // doubles the allocation whenever the actor count is a power of two.
+        eid_to_idx.init(&ctx->FrameArena, node_count * 2);
         for (uint32_t i = 0; i < node_count; ++i)
             eid_to_idx.insert(nodes[i].EID, i);
 
-        // Prepend-to-front-of-child-list linkage (exact develop)
+        // Resolve the original target even when it is filtered/collapsed or no
+        // longer selected. Never apply its buffer to another actor.
+        const auto finish_rename = [&](bool commit) {
+            const auto* index = commit && m_rename_buf[0] ? eid_to_idx.find(m_rename_id) : nullptr;
+            auto*       actor = index ? eng->ActorManager->Access(nodes[*index].Handle) : nullptr;
+            auto*       name  = actor ? actor->GetComponent<NameComponent>() : nullptr;
+            if (name && secure_strcmp(name->Value, m_rename_buf) != 0 && secure_strcpy(name->Value, sizeof(name->Value), m_rename_buf) >= 0)
+                scene->MarkDirty(true);
+            if (m_rename_fkey && ctx->FocusKey == m_rename_fkey)
+                ctx->FocusKey = 0;
+            m_rename_id      = {};
+            m_rename_fkey    = 0;
+            m_rename_started = false;
+        };
+        const auto begin_rename = [&](EntityID id, const NameComponent* name) {
+            if (m_rename_id.IsValid())
+                finish_rename(true);
+            secure_strcpy(m_rename_buf, sizeof(m_rename_buf), name ? name->Value : "");
+            m_rename_id      = id;
+            m_rename_started = true;
+        };
+        if (m_rename_id.IsValid() && !eid_to_idx.find(m_rename_id))
+            finish_rename(false);
+        const EntityID rename_on_entry = m_rename_id;
+        bool           rename_drawn    = false;
+
+        // Reverse-sorted child links can be pushed directly onto the LIFO
+        // traversal stack: they are then visited in sorted order without a
+        // fixed-size temporary child array or a second reversal pass.
         for (uint32_t i = 0; i < node_count; ++i)
         {
             if (nodes[i].Parent == INVALID_ENTITY)
@@ -193,97 +291,76 @@ namespace Tetragrama::Panels
         // DFS stack — roots pushed backward so first root is processed first (exact develop)
         struct DFSEntry
         {
-            uint32_t idx;
-            int      depth;
+            uint32_t idx   = {};
+            int      depth = {};
         };
-        DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, node_count * 2 + 2);
+        // Each actor has at most one parent, so pending entries never exceed
+        // the actor count. Entries are fully assigned before they are read.
+        DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, cap);
         int       sp  = 0;
         for (int i = (int) node_count - 1; i >= 0; --i)
             if (nodes[i].Parent == INVALID_ENTITY)
                 stk[sp++] = {(uint32_t) i, 0};
 
-        // Icon / type colors
-        static const float kColLight[4]            = {1.00f, 0.85f, 0.20f, 1.f};
-        static const float kColCamera[4]           = {0.45f, 0.85f, 0.55f, 1.f};
-        static const float kColMesh[4]             = {0.55f, 0.75f, 0.90f, 1.f};
-        static const float kColColl[4]             = {0.85f, 0.65f, 0.15f, 1.f};
-        static const float kColActor[4]            = {0.55f, 0.55f, 0.60f, 1.f};
-        static const float kWorldIcon[4]           = {0.35f, 0.80f, 0.45f, 1.f};
-        static const float kDim[4]                 = {0.55f, 0.55f, 0.60f, 1.f};
-
-        // Deferred mutations — applied after DFS to avoid tree invalidation
-        ActorHandle        pending_delete          = {};
-        ActorHandle        pending_reparent_child  = {};
-        EntityID           pending_reparent_parent = INVALID_ENTITY;
-        bool               drop_handled            = false; // prevents dual-path double-mutation
-        // Detach-to-root (World drop + "Remove from Parent" menu) routes through
-        // pending_reparent_parent = INVALID_ENTITY — single path, exact develop.
-
-        // Scroll region + DataTable
-        ZUIBeginScrollRegion(ctx, "##hier_scroll", ZFill(), ZFill());
-        ZUIBeginDataTable(ctx, "##hier_tbl", 3, cols, ZFill());
-        // Item Label always fills remaining space — override stored width so
-        // panel resize never squeezes all columns simultaneously.
-        if (ctx->DT_ColWidths && ctx->DT_ColCount >= 3)
-            ctx->DT_ColWidths[0] = fmaxf(pw - ctx->DT_ColWidths[1] - ctx->DT_ColWidths[2], cols[0].MinWidth);
-
         // Custom header — UE5 style: bright TextDefault labels, eye icon, sort arrows
         // ctx->DT_ColWidths is populated by ZUIBeginDataTable above.
         {
-            static const char* kColNames[] = {"Item Label", "Type", "Level"};
-            ZUIBox*            hrow        = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(fh));
-            hrow->Flags                    = hrow->Flags | ZUI_DrawBackground;
+            static const char* kColNames[] = {"Actor Label", "Type"};
+            (void) 0;
+            ZUIBox* hrow     = ZUIBeginRow(ctx, "##hier_hdr", ZFill(), ZPx(24.f));
+            hrow->CrossAlign = ZUIAlign::Center;
+            hrow->Flags      = hrow->Flags | ZUI_DrawBackground;
             ZUIBoxSetColorArr(hrow, ctx->Theme.TableHeaderBg);
             hrow->EdgeSoftness = 0.f;
 
             // Column header cells — each cell is ZPx(cw) wide starting at x=0,
             // exactly matching data column cell boundaries (no prefix offset).
             // Eye icon lives INSIDE column 0 (same as develop branch).
-            for (int ci = 0; ci < 3; ++ci)
+            for (int ci = 0; ci < 2; ++ci)
             {
-                float       cw    = ctx->DT_ColWidths ? ctx->DT_ColWidths[ci] : cols[ci].InitWidth;
-                const char* lbl   = kColNames[ci];
-                uint32_t    llen  = (uint32_t) strlen(lbl);
-                bool        is_sc = (ctx->DT_SortCol == ci);
+                float       cw        = ctx->DT_ColWidths ? ctx->DT_ColWidths[ci] : cols[ci].InitWidth;
+                const char* lbl       = kColNames[ci];
+                uint32_t    llen      = (uint32_t) ZEngine::Helpers::secure_strlen(lbl);
+                bool        is_sc     = (m_sort_col == ci);
 
                 // Cell container (X-axis row inside the header row)
-                char        cellk[32];
+                char        cellk[32] = {};
                 snprintf(cellk, sizeof(cellk), "##hcell_%d", ci);
-                ZUIBox* cell_row = ZUIBeginRow(ctx, cellk, ZPx(cw), ZPx(fh));
-                (void) cell_row;
+                ZUIBox* cell_row     = ZUIBeginRow(ctx, cellk, ZPx(cw), ZPx(24.f));
+                cell_row->CrossAlign = ZUIAlign::Center;
 
                 // Column 0: decorative eye icon (no ZUI_Clickable — not yet interactive).
                 // ZUIStateGetOrInsert is required to set UserData for the icon renderer.
                 if (ci == 0)
                 {
-                    ZUISpacer(ctx, 4.f);
-                    ZUIBox* eye       = ZUIPushBox(ctx, "##hdr_eye", 9, ZUI_DrawActorIcon);
-                    eye->Size[0]      = ZPx(fh * 0.7f);
-                    eye->Size[1]      = ZPx(fh);
-                    eye->TextColor[0] = ctx->Theme.TextDim[0];
-                    eye->TextColor[1] = ctx->Theme.TextDim[1];
-                    eye->TextColor[2] = ctx->Theme.TextDim[2];
-                    eye->TextColor[3] = ctx->Theme.TextDim[3];
-                    auto* eps         = ZUIStateGetOrInsert(&ctx->StateStore, eye->Key);
-                    if (eps)
-                        eps->UserData = ZUI_ICON_WORLD;
-                    ZUIPopBox(ctx);
-                    ZUISpacer(ctx, 4.f);
+                    ZUISpacer(ctx, 10.f);
+                    ZUIIconBox(ctx, ZUIIcon::Eye, 12.f, ctx->Theme.TextDim);
+                    ZUISpacer(ctx, 9.f);
                 }
                 else
                 {
-                    ZUISpacer(ctx, 6.f); // same left indent as data Padding[0]
+                    ZUISpacer(ctx, 4.f);
                 }
 
-                // Label — teal if sort column, bright otherwise
-                ZUIBox* lbox       = ZUIPushBox(ctx, lbl, llen, ZUI_DrawText | ZUI_Clickable);
-                lbox->Size[0]      = ZText();
-                lbox->Size[1]      = ZPx(fh);
-                lbox->Label        = ZUIPushStr(&ctx->FrameArena, lbl, llen);
+                // Label — blue if sort column, bright otherwise
+                ZUIBox* lbox  = ZUIPushBox(ctx, lbl, llen, ZUI_DrawText | ZUI_Clickable | ZUI_KeyboardActivate);
+                lbox->Size[0] = ZText();
+                lbox->Size[1] = ZPx(24.f);
+                {
+                    // The active sort column carries an arrow (Figma "Actor Label ↑").
+                    const bool active_col = is_sc;
+                    const bool asc        = m_sort_asc;
+                    char       shown[48]  = {};
+                    if (active_col)
+                        snprintf(shown, sizeof(shown), "%s %s", lbl, asc ? "\xe2\x86\x91" : "\xe2\x86\x93");
+                    else
+                        snprintf(shown, sizeof(shown), "%s", lbl);
+                    lbox->Label = ZUIPushStr(&ctx->FrameArena, shown, (uint32_t) ZEngine::Helpers::secure_strlen(shown));
+                }
                 bool lhov          = !is_sc && (ctx->HotKey == lbox->Key);
-                lbox->TextColor[0] = is_sc ? ctx->Theme.TabActiveBorder[0] : lhov ? 1.f : ctx->Theme.TextDefault[0];
-                lbox->TextColor[1] = is_sc ? ctx->Theme.TabActiveBorder[1] : lhov ? 1.f : ctx->Theme.TextDefault[1];
-                lbox->TextColor[2] = is_sc ? ctx->Theme.TabActiveBorder[2] : lhov ? 1.f : ctx->Theme.TextDefault[2];
+                lbox->TextColor[0] = (is_sc || lhov) ? ctx->Theme.TextDefault[0] : ctx->Theme.TextDim[0];
+                lbox->TextColor[1] = (is_sc || lhov) ? ctx->Theme.TextDefault[1] : ctx->Theme.TextDim[1];
+                lbox->TextColor[2] = (is_sc || lhov) ? ctx->Theme.TextDefault[2] : ctx->Theme.TextDim[2];
                 lbox->TextColor[3] = 1.f;
                 ZUISignal csig     = ZUISignalFromBox(ctx, lbox);
                 ZUIPopBox(ctx);
@@ -292,12 +369,12 @@ namespace Tetragrama::Panels
 
                 if (cols[ci].Sortable && (csig.Flags & ZUI_SignalClicked))
                 {
-                    if (ctx->DT_SortCol == ci)
-                        ctx->DT_SortAsc = !ctx->DT_SortAsc;
+                    if (m_sort_col == ci)
+                        m_sort_asc = !m_sort_asc;
                     else
                     {
-                        ctx->DT_SortCol = ci;
-                        ctx->DT_SortAsc = true;
+                        m_sort_col = ci;
+                        m_sort_asc = true;
                     }
                 }
             }
@@ -307,52 +384,48 @@ namespace Tetragrama::Panels
         // World root row
         {
             ZUIDataTableNextRow(ctx, false);
-            ZUIDataTableSetColumn(ctx, 0);
-            ZUIBeginRow(ctx, "##tr0_root", ZFill(), ZFill());
-
-            // Chevron
+            if (ctx->FocusKey == ctx->DT_RowBox->Key)
             {
-                ZUIBox* arr       = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawTriArrow | ZUI_Clickable);
-                arr->Size[0]      = ZPx(fh);
-                arr->Size[1]      = ZPx(fh);
-                bool arr_hov      = (ctx->HotKey == arr->Key);
-                arr->TextColor[0] = arr_hov ? ctx->Theme.TextDefault[0] : kDim[0];
-                arr->TextColor[1] = arr_hov ? ctx->Theme.TextDefault[1] : kDim[1];
-                arr->TextColor[2] = arr_hov ? ctx->Theme.TextDefault[2] : kDim[2];
-                arr->TextColor[3] = arr_hov ? ctx->Theme.TextDefault[3] : kDim[3];
-                auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
-                if (ps)
-                    ps->UserData = m_root_open ? 2.f : 3.f;
+                if (ctx->SpacePressed || ctx->EnterPressed)
+                    m_root_open = !m_root_open;
+                if (ctx->ArrowRightPressed)
+                    m_root_open = true;
+                if (ctx->ArrowLeftPressed)
+                    m_root_open = false;
+            }
+            ZUIDataTableSetColumn(ctx, 0);
+            ZUIBox* root_row     = ZUIBeginRow(ctx, "##tr0_root", ZFill(), ZFill());
+            root_row->CrossAlign = ZUIAlign::Center;
+
+            // Figma "Actor row": [10][eye 11][6][chevron 9][5][glyph 12][5][label]
+            ZUISpacer(ctx, 10.f);
+            ZUIIconBox(ctx, ZUIIcon::Eye, 11.f, ctx->Theme.TextDim);
+            ZUISpacer(ctx, 6.f);
+            {
+                ZUIBox* arr  = ZUIPushBox(ctx, "##arr_root", 10, ZUI_DrawIcon | ZUI_Clickable | ZUI_NoKeyboardFocus);
+                arr->Size[0] = ZPx(9.f);
+                arr->Size[1] = ZPx(9.f);
+                arr->IconId  = (uint16_t) (m_root_open ? ZUIIcon::ChevronDown : ZUIIcon::ChevronRight);
+                for (int k = 0; k < 4; ++k)
+                    arr->TextColor[k] = ctx->Theme.TextDim[k];
                 ZUISignal asig = ZUISignalFromBox(ctx, arr);
                 ZUIPopBox(ctx);
                 if (asig.Flags & ZUI_SignalClicked)
                     m_root_open = !m_root_open;
             }
-            // World icon
-            {
-                ZUIBox* icon       = ZUIPushBox(ctx, "##ti_root", 9, ZUI_DrawActorIcon);
-                icon->Size[0]      = ZPx(14.f);
-                icon->Size[1]      = ZPx(14.f);
-                icon->TextColor[0] = kWorldIcon[0];
-                icon->TextColor[1] = kWorldIcon[1];
-                icon->TextColor[2] = kWorldIcon[2];
-                icon->TextColor[3] = kWorldIcon[3];
-                auto* ps           = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
-                if (ps)
-                    ps->UserData = ZUI_ICON_WORLD;
-                ZUIPopBox(ctx);
-            }
-            ZUISpacer(ctx, 4.f);
+            ZUISpacer(ctx, 5.f);
+            ZUIIconBox(ctx, ZUIIcon::Map, 12.f, ctx->Theme.TextDim);
+            ZUISpacer(ctx, 5.f);
             const char* sname = (scene->Name && scene->Name[0]) ? scene->Name : "Scene";
-            ZUILabel(ctx, sname);
+            ZUILabelTight(ctx, sname, ctx->Theme.TextDefault, ZUIFontSize::Body);
             ZUIEndRow(ctx);
 
             ZUIDataTableSetColumn(ctx, 1);
-            ZUILabel(ctx, "World", kDim);
-            ZUIDataTableSetColumn(ctx, 2);
+            TypeLabel(ctx, "World");
             // World root accepts drops to detach an actor from its parent
-            char drop_root[sizeof(ActorHandle)] = {};
-            if (!drop_handled && ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_root, sizeof(drop_root)))
+            char               drop_root[sizeof(ActorHandle)] = {};
+            ZUIDragPayloadKind drop_kind                      = ZUIDragPayloadKind::Opaque;
+            if (!drop_handled && ZUIAcceptDrop(ctx, ctx->DT_RowBox, drop_root, sizeof(drop_root), &drop_kind) && drop_kind == ZUIDragPayloadKind::Opaque && ctx->DragPayloadLen == sizeof(ActorHandle))
             {
                 ActorHandle dragged = {};
                 secure_memcpy(&dragged, sizeof(dragged), drop_root, sizeof(drop_root));
@@ -377,51 +450,39 @@ namespace Tetragrama::Panels
                 if (!actor)
                     continue;
 
-                auto*        nc_comp     = actor->GetComponent<NameComponent>();
-                const char*  label       = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
-                bool         label_match = !m_search[0] || ContainsCI(label, m_search);
+                auto*       nc_comp     = actor->GetComponent<NameComponent>();
+                const char* label       = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
+                bool        label_match = !m_search[0] || ContainsCI(label, m_search);
 
                 // Type — exact develop: is_collection = !Mesh && !Light && !Camera
-                bool         is_coll     = !actor->HasComponent<MeshComponent>() && !actor->HasComponent<LightComponent>() && !actor->HasComponent<CameraComponent>();
-                const float* type_col;
-                const char*  type_str;
-                float        icon_type;
+                bool        is_coll     = !actor->HasComponent<MeshComponent>() && !actor->HasComponent<LightComponent>() && !actor->HasComponent<CameraComponent>();
+                const char* type_str    = {};
                 if (is_coll)
                 {
-                    type_col  = kColColl;
-                    type_str  = "Collection";
-                    icon_type = ZUI_ICON_FOLDER;
+                    type_str = "Collection";
                 }
                 else if (actor->HasComponent<LightComponent>())
                 {
-                    type_col  = kColLight;
-                    type_str  = "Light";
-                    icon_type = ZUI_ICON_LIGHT;
+                    type_str = "Light";
                 }
                 else if (actor->HasComponent<CameraComponent>())
                 {
-                    type_col  = kColCamera;
-                    type_str  = "Camera";
-                    icon_type = ZUI_ICON_CAMERA;
+                    type_str = "Camera";
                 }
                 else if (actor->HasComponent<MeshComponent>())
                 {
-                    type_col  = kColMesh;
-                    type_str  = "Static Mesh";
-                    icon_type = ZUI_ICON_MESH;
+                    type_str = "Static Mesh";
                 }
                 else
                 {
-                    type_col  = kColActor;
-                    type_str  = "Actor";
-                    icon_type = ZUI_ICON_ACTOR;
+                    type_str = "Actor";
                 }
 
                 bool  has_ch    = (first_child[ni] != UINT32_MAX);
                 bool  collapsed = has_ch && IsCollapsed(nodes[ni].EID); // exact develop naming
                 bool  selected  = (scene->SelectedActorHandle.Index == nodes[ni].Handle.Index && scene->SelectedActorHandle.Generation == nodes[ni].Handle.Generation);
                 bool  renaming  = (m_rename_id == nodes[ni].EID && m_rename_id.IsValid());
-                float indent    = (float) (e.depth + 1) * ctx->Style.IndentSpacing;
+                float indent    = (float) (e.depth + 1) * 10.f; // Figma: 10 px per level
 
                 // Render the row only when it matches the search filter;
                 // always push children so descendant matches are reachable.
@@ -431,8 +492,10 @@ namespace Tetragrama::Panels
                     // Row
                     bool      row_clicked = ZUIDataTableNextRow(ctx, selected);
                     ZUISignal row_sig     = ZUIDataTableRowSignal(ctx);
+                    if (has_ch && ctx->FocusKey == ctx->DT_RowBox->Key && ((ctx->ArrowLeftPressed && !collapsed) || (ctx->ArrowRightPressed && collapsed)))
+                        ToggleCollapsed(nodes[ni].EID);
 
-                    // Drop-target teal border — use prev-frame ScreenRect since HotKey frozen during drag
+                    // Drop-target blue border — use prev-frame ScreenRect since HotKey frozen during drag
                     if (ctx->DragSourceKey != 0 && ctx->DT_RowBox)
                     {
                         auto* rps = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
@@ -442,7 +505,7 @@ namespace Tetragrama::Panels
                             ctx->DT_RowBox->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
                             ctx->DT_RowBox->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
                             ctx->DT_RowBox->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                            ctx->DT_RowBox->BorderColor[3]  = 0.85f;
+                            ctx->DT_RowBox->BorderColor[3]  = ctx->Theme.TabActiveBorder[3];
                             ctx->DT_RowBox->BorderThickness = 1.f;
                         }
                     }
@@ -450,27 +513,26 @@ namespace Tetragrama::Panels
                     // Col 0: [indent][chevron or spacer][icon][name or rename field]
                     ZUIDataTableSetColumn(ctx, 0);
                     {
-                        char rk0[64];
-                        snprintf(rk0, sizeof(rk0), "##tr0_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        ZUIBeginRow(ctx, rk0, ZFill(), ZFill());
+                        char rk0[64] = {};
+                        snprintf(rk0, sizeof(rk0), "##tr0_%llu_%llu", (unsigned long long) nodes[ni].Handle.Index, (unsigned long long) nodes[ni].Handle.Generation);
+                        ZUIBox* arow     = ZUIBeginRow(ctx, rk0, ZFill(), ZFill());
+                        arow->CrossAlign = ZUIAlign::Center;
                     }
-                    ZUISpacer(ctx, indent);
+                    ZUISpacer(ctx, 10.f);
+                    ZUIIconBox(ctx, ZUIIcon::Eye, 11.f, ctx->Theme.TextDim);
+                    ZUISpacer(ctx, 6.f + indent);
 
                     if (has_ch)
                     {
-                        char arr_key[64];
-                        snprintf(arr_key, sizeof(arr_key), "##arr_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        ZUIBox* arr       = ZUIPushBox(ctx, arr_key, (uint32_t) strlen(arr_key), ZUI_DrawTriArrow | ZUI_Clickable);
-                        arr->Size[0]      = ZPx(fh);
-                        arr->Size[1]      = ZPx(fh);
-                        bool arr_hov      = (ctx->HotKey == arr->Key);
-                        arr->TextColor[0] = arr_hov ? ctx->Theme.TextDefault[0] : kDim[0];
-                        arr->TextColor[1] = arr_hov ? ctx->Theme.TextDefault[1] : kDim[1];
-                        arr->TextColor[2] = arr_hov ? ctx->Theme.TextDefault[2] : kDim[2];
-                        arr->TextColor[3] = arr_hov ? ctx->Theme.TextDefault[3] : kDim[3];
-                        auto* ps          = ZUIStateGetOrInsert(&ctx->StateStore, arr->Key);
-                        if (ps)
-                            ps->UserData = !collapsed ? 2.f : 3.f; // ∨ expanded / › collapsed
+                        char arr_key[64] = {};
+                        snprintf(arr_key, sizeof(arr_key), "##arr_%llu_%llu", (unsigned long long) nodes[ni].Handle.Index, (unsigned long long) nodes[ni].Handle.Generation);
+                        ZUIBox* arr  = ZUIPushBox(ctx, arr_key, (uint32_t) ZEngine::Helpers::secure_strlen(arr_key), ZUI_DrawIcon | ZUI_Clickable | ZUI_NoKeyboardFocus);
+                        arr->Size[0] = ZPx(9.f);
+                        arr->Size[1] = ZPx(9.f);
+                        arr->IconId  = (uint16_t) (!collapsed ? ZUIIcon::ChevronDown : ZUIIcon::ChevronRight);
+                        bool arr_hov = (ctx->HotKey == arr->Key);
+                        for (int k = 0; k < 4; ++k)
+                            arr->TextColor[k] = arr_hov ? ctx->Theme.TextDefault[k] : ctx->Theme.TextDim[k];
                         ZUISignal asig = ZUISignalFromBox(ctx, arr);
                         ZUIPopBox(ctx);
                         if (asig.Flags & ZUI_SignalClicked)
@@ -478,77 +540,78 @@ namespace Tetragrama::Panels
                     }
                     else
                     {
-                        ZUISpacer(ctx, fh);
+                        ZUIIconBox(ctx, ZUIIcon::Minus, 9.f, ctx->Theme.TextDim);
                     }
+                    ZUISpacer(ctx, 5.f);
 
-                    // Type icon
+                    // Type glyph
                     {
-                        char ik[32];
-                        snprintf(ik, sizeof(ik), "##ti_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
-                        ZUIBox* icon       = ZUIPushBox(ctx, ik, (uint32_t) strlen(ik), ZUI_DrawActorIcon);
-                        icon->Size[0]      = ZPx(14.f);
-                        icon->Size[1]      = ZPx(14.f);
-                        icon->TextColor[0] = type_col[0];
-                        icon->TextColor[1] = type_col[1];
-                        icon->TextColor[2] = type_col[2];
-                        icon->TextColor[3] = type_col[3];
-                        auto* ps           = ZUIStateGetOrInsert(&ctx->StateStore, icon->Key);
-                        if (ps)
-                            ps->UserData = icon_type;
-                        ZUIPopBox(ctx);
+                        ZUIIcon glyph = ZUIIcon::Box;
+                        if (is_coll)
+                            glyph = (has_ch && !collapsed) ? ZUIIcon::FolderOpen : ZUIIcon::Folder;
+                        else if (actor->HasComponent<LightComponent>())
+                            glyph = ZUIIcon::Sun;
+                        else if (actor->HasComponent<CameraComponent>())
+                            glyph = ZUIIcon::Camera;
+                        ZUIIconBox(ctx, glyph, 12.f, ctx->Theme.TextDim);
                     }
-                    ZUISpacer(ctx, 4.f);
+                    ZUISpacer(ctx, 5.f);
 
                     // Name or inline rename
                     if (renaming)
                     {
-                        char tf_key[64];
-                        snprintf(tf_key, sizeof(tf_key), "##ren_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                        rename_drawn    = true;
+                        char tf_key[64] = {};
+                        snprintf(tf_key, sizeof(tf_key), "##ren_%llu_%llu", (unsigned long long) nodes[ni].Handle.Index, (unsigned long long) nodes[ni].Handle.Generation);
 
-                        // On the first frame: auto-focus the field immediately.
-                        // Previous approach waited for the user to click — if they clicked
-                        // elsewhere instead, m_rename_fkey stayed 0 and rename never committed.
+                        // Begin a fresh editing session, without stale cursor,
+                        // selection or undo history from a previous rename.
                         if (m_rename_started)
                         {
-                            m_rename_fkey    = ZUIHashStr(tf_key, (uint32_t) strlen(tf_key));
+                            m_rename_fkey    = ZUIHashStr(tf_key, (uint32_t) ZEngine::Helpers::secure_strlen(tf_key));
                             ctx->FocusKey    = m_rename_fkey;
                             m_rename_started = false;
+                            if (auto* state = ZUIStateGetOrInsert(&ctx->StateStore, m_rename_fkey))
+                            {
+                                state->UserData    = static_cast<float>(secure_strlen(m_rename_buf));
+                                state->SelectStart = 0;
+                            }
+                            ctx->UndoFieldKey = m_rename_fkey;
+                            ctx->UndoTop = ctx->RedoTop = 0;
                         }
 
-                        ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
-
-                        // Commit when focus leaves the field (Enter clears FocusKey via ZUIEndFrame)
-                        if (m_rename_fkey != 0 && ctx->FocusKey != m_rename_fkey)
+                        const bool focused = ctx->FocusKey == m_rename_fkey;
+                        if (focused && ctx->EscapePressed)
                         {
-                            if (nc_comp && m_rename_buf[0])
+                            finish_rename(false);
+                            ctx->EscapePressed = false;
+                            ZUILabelTight(ctx, label, ctx->Theme.TextDefault, ZUIFontSize::Body);
+                        }
+                        else
+                        {
+                            // Scrollable empty space deliberately retains focus;
+                            // detect outside presses directly instead of waiting
+                            // for the global interaction pass to blur the field.
+                            const auto* state   = ZUIStateGetOrInsert(&ctx->StateStore, m_rename_fkey);
+                            const bool  outside = (ctx->MousePressed[0] || ctx->MousePressed[1]) && (!state || ctx->MousePos[0] < state->ScreenMinX || ctx->MousePos[0] >= state->ScreenMaxX || ctx->MousePos[1] < state->ScreenMinY || ctx->MousePos[1] >= state->ScreenMaxY);
+                            ZUITextField(ctx, tf_key, m_rename_buf, sizeof(m_rename_buf), 150.f);
+                            if (!focused || outside || ctx->EnterPressed)
                             {
-                                if (secure_strncpy(nc_comp->Value, sizeof(nc_comp->Value), m_rename_buf, sizeof(m_rename_buf) - 1) >= 0)
-                                {
-                                    m_rename_id   = {};
-                                    m_rename_fkey = 0;
-                                }
-                                // On copy failure keep rename active so user can retry
-                            }
-                            else
-                            {
-                                m_rename_id   = {};
-                                m_rename_fkey = 0;
+                                finish_rename(true);
+                                if (focused)
+                                    ctx->EnterPressed = false;
                             }
                         }
                     }
                     else
                     {
-                        ZUILabel(ctx, label);
+                        ZUILabelTight(ctx, label, ctx->Theme.TextDefault, ZUIFontSize::Body);
                     }
                     ZUIEndRow(ctx); // close horizontal layout
 
                     // Col 1: type
                     ZUIDataTableSetColumn(ctx, 1);
-                    ZUILabel(ctx, type_str, kDim);
-
-                    // Col 2: level
-                    ZUIDataTableSetColumn(ctx, 2);
-                    ZUILabel(ctx, "Default", kDim);
+                    TypeLabel(ctx, type_str);
 
                     // Selection + panel-level double-click tracking.
                     // ZUISignalFromBox is called twice per row (DataTableNextRow + DataTableRowSignal)
@@ -562,12 +625,9 @@ namespace Tetragrama::Panels
                             // Double-click on name/icon area → start rename
                             if (!renaming)
                             {
-                                m_rename_id      = nodes[ni].EID;
-                                m_rename_started = true;
-                                m_rename_fkey    = 0;
-                                secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                                begin_rename(nodes[ni].EID, nc_comp);
                             }
-                            m_last_click_idx = UINT32_MAX; // consume
+                            m_last_click_idx = UINT64_MAX; // consume
                         }
                         else
                         {
@@ -580,29 +640,64 @@ namespace Tetragrama::Panels
                     // Context menu — unique key per actor so the popup only opens
                     // for the right-clicked row (shared key causes all rows to match
                     // the open popup in the same frame, overwriting pending_delete).
-                    char ctx_key[48];
-                    snprintf(ctx_key, sizeof(ctx_key), "##ctx_%u_%u", nodes[ni].Handle.Index, nodes[ni].Handle.Generation);
+                    char ctx_key[48] = {};
+                    snprintf(ctx_key, sizeof(ctx_key), "##ctx_%llu_%llu", (unsigned long long) nodes[ni].Handle.Index, (unsigned long long) nodes[ni].Handle.Generation);
+                    ctx->PopupDesiredW = 250.f;
                     if (ZUIBeginPopupContextItem(ctx, ctx_key, row_sig))
                     {
-                        if (ZUIMenuItem(ctx, "Rename"))
+                        if (ZUIMenuItemEx(ctx, "Rename", "F2"))
                         {
-                            m_rename_id      = nodes[ni].EID;
-                            m_rename_started = true;
-                            m_rename_fkey    = 0;
-                            secure_strncpy(m_rename_buf, sizeof(m_rename_buf), (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "", sizeof(m_rename_buf) - 1);
+                            begin_rename(nodes[ni].EID, nc_comp);
                         }
+                        if (ZUIMenuItemEx(ctx, "Focus Selected", "F"))
+                        {
+                            ZEngine::Core::Maths::Vec3f position = {};
+                            if (EditorScene::TryGetActorWorldPosition(*eng->ActorManager, nodes[ni].Handle, position) && app->CameraController)
+                                if (auto* fly = static_cast<ZEngine::Rendering::Cameras::FlyCamera*>(app->CameraController->GetCamera()))
+                                    fly->FocusOn(position);
+                        }
+                        ZUISeparator(ctx);
+                        if (ZUIBeginSubMenu(ctx, "Transform", true, (int) ZUIIcon::Move))
+                        {
+                            if (ZUIMenuItemEx(ctx, "Reset Transform", nullptr))
+                                pending_reset_xform = nodes[ni].Handle;
+                            ZUIEndSubMenu(ctx);
+                        }
+                        ZUIBeginSubMenu(ctx, "Pivot", false, (int) ZUIIcon::Maximize);
+                        if (ZUIBeginSubMenu(ctx, "Attach To", node_count > 1, (int) ZUIIcon::Layers))
+                        {
+                            for (uint32_t ai = 0, shown = 0; ai < node_count && shown < 12; ++ai)
+                            {
+                                if (ai == ni)
+                                    continue;
+                                char         at_label[96] = {};
+                                const Actor* at_actor     = eng->ActorManager->Access(nodes[ai].Handle);
+                                const auto*  at_name      = at_actor ? at_actor->GetComponent<NameComponent>() : nullptr;
+                                snprintf(at_label, sizeof(at_label), "%s##att%u", at_name ? at_name->Value : "Actor", ai);
+                                if (ZUIMenuItemEx(ctx, at_label, nullptr))
+                                {
+                                    pending_reparent_child  = nodes[ni].Handle;
+                                    pending_reparent_parent = nodes[ai].EID;
+                                }
+                                ++shown;
+                            }
+                            ZUIEndSubMenu(ctx);
+                        }
+                        ZUISeparator(ctx);
+                        if (ZUIMenuItemEx(ctx, "Properties...", "Alt+Enter", false, true, (int) ZUIIcon::Settings))
+                            scene->SelectedActorHandle = nodes[ni].Handle;
+                        ZUISeparator(ctx);
                         if (nodes[ni].Parent != INVALID_ENTITY && ZUIMenuItem(ctx, "Remove from Parent"))
                         {
                             pending_reparent_child  = nodes[ni].Handle;
                             pending_reparent_parent = INVALID_ENTITY;
                         }
-                        if (ZUIMenuItem(ctx, "Delete"))
+                        if (ZUIMenuItemEx(ctx, "Delete", "Del", false, true, (int) ZUIIcon::X))
                             pending_delete = nodes[ni].Handle;
                         ZUIEndPopup(ctx);
                     }
 
-                    // Drag source — store handle in panel state (DragPayloadLen is cleared by
-                    // ZUIInteractionPass on release, before the next BuildContent sees DragDropFired)
+                    // Keep the actor and ghost label in panel state throughout the drag.
                     ZUIBeginDragSource(ctx, ctx->DT_RowBox, (const char*) &nodes[ni].Handle, sizeof(ActorHandle));
                     if (ctx->DragSourceKey != 0 && ctx->DT_RowBox && ctx->DragSourceKey == ctx->DT_RowBox->Key)
                     {
@@ -629,16 +724,8 @@ namespace Tetragrama::Panels
                 // Push children — always unconditional so filtered subtrees remain reachable.
                 if (has_ch && !collapsed)
                 {
-                    uint32_t tmp[1024];
-                    int      tc = 0;
-                    uint32_t c  = first_child[ni];
-                    while (c != UINT32_MAX && tc < 1024)
-                    {
-                        tmp[tc++] = c;
-                        c         = next_sib[c];
-                    }
-                    for (int ci = tc - 1; ci >= 0; --ci)
-                        stk[sp++] = {tmp[ci], e.depth + 1};
+                    for (uint32_t c = first_child[ni]; c != UINT32_MAX; c = next_sib[c])
+                        stk[sp++] = {c, e.depth + 1};
                 }
             }
         }
@@ -658,15 +745,14 @@ namespace Tetragrama::Panels
                     ctx->DT_RowBox->BorderColor[0]  = ctx->Theme.TabActiveBorder[0];
                     ctx->DT_RowBox->BorderColor[1]  = ctx->Theme.TabActiveBorder[1];
                     ctx->DT_RowBox->BorderColor[2]  = ctx->Theme.TabActiveBorder[2];
-                    ctx->DT_RowBox->BorderColor[3]  = 0.85f;
+                    ctx->DT_RowBox->BorderColor[3]  = ctx->Theme.TabActiveBorder[3];
                     ctx->DT_RowBox->BorderThickness = 1.f;
                 }
             }
             ZUILabel(ctx, "Drop here to detach from parent", kDim);
             ZUIEndRow(ctx);
             ZUIDataTableSetColumn(ctx, 1);
-            ZUIDataTableSetColumn(ctx, 2);
-            // Root drop zone — use m_dragging_actor (DragPayloadLen=0 on drop frame)
+            // Root drop zone — use the actor owned by this panel's drag.
             if (!drop_handled && ctx->DragDropFired && m_dragging_actor.Valid() && ctx->DT_RowBox)
             {
                 auto* rzps    = ZUIStateGetOrInsert(&ctx->StateStore, ctx->DT_RowBox->Key);
@@ -683,28 +769,17 @@ namespace Tetragrama::Panels
         ZUIEndDataTable(ctx);
         ZUIEndScrollRegion(ctx);
 
-        // Drag tooltip — "Move: [name]" near cursor (matches develop ImGui::Text)
+        // Hidden rows cannot observe focus loss. Finish an existing session,
+        // but let a newly requested rename build its field next frame.
+        if (rename_on_entry.IsValid() && m_rename_id == rename_on_entry && !rename_drawn)
+            finish_rename(!ctx->EscapePressed);
+
+        // Foreground Tooltip recipe, 12 px right of and below the cursor.
         if (ctx->DragSourceKey != 0 && m_drag_label[0])
         {
-            char tip_buf[140];
+            char tip_buf[140] = {};
             snprintf(tip_buf, sizeof(tip_buf), "Move: %s", m_drag_label);
-            uint32_t tlen    = (uint32_t) strlen(tip_buf);
-            float    tip_x   = ctx->MousePos[0] - rect[0] + 12.f;
-            float    tip_y   = fmaxf(0.f, ctx->MousePos[1] - rect[1] - ZUIGetFrameHeight(ctx) - 4.f);
-            ZUIBox*  tip     = ZUIPushBox(ctx, "##drag_tip", 10, ZUI_DrawBackground | ZUI_DrawText | ZUI_FloatX | ZUI_FloatY | ZUI_DropShadow);
-            tip->FloatPos[0] = tip_x;
-            tip->FloatPos[1] = tip_y;
-            tip->Size[0]     = ZText();
-            tip->Size[1]     = ZText();
-            tip->Label       = ZUIPushStr(&ctx->FrameArena, tip_buf, tlen);
-            tip->Padding[0]  = 6.f;
-            tip->Padding[2]  = 6.f;
-            ZUIBoxSetColorArr(tip, ctx->Theme.MenuBarBg);
-            tip->TextColor[0] = ctx->Theme.TextDefault[0];
-            tip->TextColor[1] = ctx->Theme.TextDefault[1];
-            tip->TextColor[2] = ctx->Theme.TextDefault[2];
-            tip->TextColor[3] = ctx->Theme.TextDefault[3];
-            ZUIPopBox(ctx);
+            ZUIDragLabel(ctx, tip_buf);
         }
         else if (ctx->DragSourceKey == 0)
         {
@@ -745,7 +820,9 @@ namespace Tetragrama::Panels
                     }
                 }
 
-                if (!cycle)
+                const auto*    previous_parent = child->GetComponent<ParentComponent>();
+                const EntityID old_parent      = previous_parent ? previous_parent->Parent : INVALID_ENTITY;
+                if (!cycle && old_parent != pending_reparent_parent)
                 {
                     if (pending_reparent_parent == INVALID_ENTITY)
                     {
@@ -761,9 +838,13 @@ namespace Tetragrama::Panels
                         else
                             child->AddComponent<ParentComponent>(pc_new);
                     }
+                    scene->MarkDirty(true);
                 }
             }
         }
+
+        if (pending_reset_xform.Valid())
+            scene->ResetActorTransform(*eng->ActorManager, pending_reset_xform);
 
         // Delete actor — re-root children first to prevent orphaned subtrees.
         if (pending_delete.Valid())
@@ -797,28 +878,27 @@ namespace Tetragrama::Panels
                 if (scene->SelectedActorHandle.Index == pending_delete.Index && scene->SelectedActorHandle.Generation == pending_delete.Generation)
                     scene->SelectedActorHandle = {};
                 if (m_rename_id.IsValid() && m_rename_id == delete_eid)
-                {
-                    m_rename_id   = {};
-                    m_rename_fkey = 0;
-                }
+                    finish_rename(false);
                 eng->ActorManager->Destroy(pending_delete);
+                scene->MarkDirty(true);
             }
         }
 
         // Status bar
         ZUISeparator(ctx);
-        ZUIBox* sb = ZUIBeginRow(ctx, "##hier_sb", ZFill(), ZPx(fh));
+        ZUIBox* sb = ZUIBeginRow(ctx, "##hier_sb", ZFill(), ZPx(25.f));
         sb->Flags  = sb->Flags | ZUI_DrawBackground;
-        ZUIBoxSetColorArr(sb, ctx->Theme.TitleBarBg);
-        ZUISpacer(ctx, 6.f);
+        ZUIBoxSetColorArr(sb, ctx->Theme.PanelBg);
+        sb->CrossAlign = ZUIAlign::Center;
+        ZUISpacer(ctx, 10.f);
         {
-            char status[64];
-            int  total = (int) eng->ActorManager->Count();
+            char status[64] = {};
+            int  total      = (int) eng->ActorManager->Count();
             if (scene->SelectedActorHandle.Valid())
                 snprintf(status, sizeof(status), "%d actor%s (1 selected)", total, total == 1 ? "" : "s");
             else
                 snprintf(status, sizeof(status), "%d actor%s", total, total == 1 ? "" : "s");
-            ZUILabel(ctx, status, kDim);
+            ZUILabelTight(ctx, status, ctx->Theme.TextDim, ZUIFontSize::Body);
         }
         ZUIEndRow(ctx);
 

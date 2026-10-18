@@ -27,6 +27,7 @@ namespace ZEngine::ECS
         String,
         Enum,
         Struct,
+        Color3f, ///< Three scene-linear RGB floats, presented by the shared color editor.
     };
 
 } // namespace ZEngine::ECS

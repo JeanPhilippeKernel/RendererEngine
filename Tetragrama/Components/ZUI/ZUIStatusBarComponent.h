@@ -27,7 +27,7 @@ namespace Tetragrama::Components
         ZEngine::UI::ZUIPanelManager* ShellPanelManager = nullptr;
 
     private:
-        static constexpr float kBarH = 28.f;
+        static constexpr float kBarH = 26.f; // Figma: status bar row
     };
     ZDEFINE_PTR(ZUIStatusBarComponent);
 } // namespace Tetragrama::Components

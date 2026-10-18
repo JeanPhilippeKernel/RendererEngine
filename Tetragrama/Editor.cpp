@@ -11,6 +11,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIFont.h>
+#include <ZEngine/UI/ZUIIcons.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -96,8 +97,11 @@ namespace Tetragrama
         // coordinates are also in physical pixels — the NDC transform handles the rest.
         if (RenderPipeline && RenderPipeline->ZUICtx && RenderPipeline->ZUIRenderPass)
         {
-            constexpr const char* kFontPath       = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-Regular.ttf";
-            constexpr const char* kHeaderFontPath = "/ZodiacEngine/Settings/Fonts/OpenSans/OpenSans-SemiBold.ttf";
+            constexpr const char* kFontPath       = "/ZodiacEngine/Settings/Fonts/Inter/Inter-Regular.ttf";
+            constexpr const char* kHeaderFontPath = "/ZodiacEngine/Settings/Fonts/Inter/Inter-SemiBold.ttf";
+            constexpr const char* kIconFontPath   = "/ZodiacEngine/Settings/Fonts/Lucide/lucide.ttf";
+            constexpr const char* kAssetIconsPath = "/ZodiacEngine/Settings/Icons/ContentBrowser/thumbnails.png";
+            constexpr float       kIconLogical    = 16.f; // Figma icon slot
             auto*                 ctx             = RenderPipeline->ZUICtx;
 
             // Font atlas is always baked at 2× the logical base size so that
@@ -110,17 +114,23 @@ namespace Tetragrama
             //
             // UIScale (fb/win ratio) is set each frame by BeginOverlayFrame and
             // handles the physical pixel density independently of the font atlas.
-            constexpr float       kBase           = 13.f;                // logical body size in px
+            // Figma type ramp (Inter): caption 10, body / heading 11, large title 12.
+            constexpr float       kBase           = 11.f;                // logical body size in px
+            constexpr float       kSmallLogical   = 10.f;                // logical small size in px
+            constexpr float       kHeaderLogical  = 12.f;                // large title, semibold
+            constexpr float       kHeadingLogical = 11.f;                // section heading, semibold
+            constexpr float       kTinyLogical    = 9.f;                 // logical caption size in px
+            constexpr float       kLargeLogical   = 12.f;                // logical regular 12 px
             constexpr float       kOversample     = 2.f;                 // always 2× — sharp on every display
-            const float           kBake           = kBase * kOversample; // 26 px atlas
-            const float           kSmall          = kBase * 0.80f * kOversample;
-            const float           kHeader         = kBase * 1.30f * kOversample;
+            const float           kBake           = kBase * kOversample; // 22 px atlas
+            const float           kSmall          = kSmallLogical * kOversample;
+            const float           kHeader         = kHeaderLogical * kOversample;
             const float           kFontScale      = 1.f / kOversample; // 0.5
 
             ZENGINE_CORE_INFO("[ZUI] FontBake body={:.0f} small={:.0f} header={:.0f}  FontScale={:.2f}", kBake, kSmall, kHeader, kFontScale);
 
             auto scratch = ZGetScratch(&EditorArena);
-            ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBake, kHeader, 32, 96, kHeaderFontPath);
+            ctx->Atlas   = ZEngine::UI::ZUIFontAtlasBake(&ctx->PersistentArena, scratch.Arena, RenderPipeline->Device, kFontPath, kSmall, kBake, kHeader, 32, 224, kHeaderFontPath, kIconFontPath, ZEngine::UI::kZUIIconCodepoints, (uint32_t) ZEngine::UI::ZUIIcon::Count, kIconLogical * kOversample, kTinyLogical * kOversample, kLargeLogical * kOversample, kHeadingLogical * kOversample, kAssetIconsPath);
             ZReleaseScratch(scratch);
 
             if (ctx->Atlas)
@@ -131,8 +141,16 @@ namespace Tetragrama
                     ctx->Atlas->Body->FontScale = kFontScale;
                 if (ctx->Atlas->Header)
                     ctx->Atlas->Header->FontScale = kFontScale;
+                if (ctx->Atlas->Heading)
+                    ctx->Atlas->Heading->FontScale = kFontScale;
+                if (ctx->Atlas->Icon)
+                    ctx->Atlas->Icon->FontScale = kFontScale;
+                if (ctx->Atlas->Tiny)
+                    ctx->Atlas->Tiny->FontScale = kFontScale;
+                if (ctx->Atlas->Large)
+                    ctx->Atlas->Large->FontScale = kFontScale;
 
-                // Style.FontSize = logical body size → FrameHeight = 13 + 3*2 = 19 px
+                // Style.FontSize = logical body size → FrameHeight = 11 + 5.5*2 = 22 px (Figma field height)
                 ctx->Style.FontSize = kBase;
                 ZUIStyleUpdate(&ctx->Style);
                 ZENGINE_CORE_INFO("[ZUI] Style.FontSize={:.0f}  FrameHeight={:.0f}", ctx->Style.FontSize, ctx->Style.FrameHeight);

@@ -88,10 +88,13 @@ TEST(ZUIInputCaptureTest, PortaledPopupInsideModalRemainsMouseInteractive)
     ZUIBox item           = {};
 
     root.FirstChild       = &modal;
+    root.LastChild        = &popup;
     modal.Parent          = &root;
     modal.NextSib         = &popup;
     popup.Parent          = &root;
+    popup.PrevSib         = &modal;
     popup.FirstChild      = &item;
+    popup.LastChild       = &item;
     item.Parent           = &popup;
     item.Key              = 42;
     item.Flags            = ZUI_Clickable;

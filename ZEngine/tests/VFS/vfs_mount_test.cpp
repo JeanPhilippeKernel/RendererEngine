@@ -18,9 +18,10 @@ namespace
 
     struct MockBackend : IVFSBackend
     {
-        const char*    Name;
-        VFSBackendCaps Caps;
-        VFSPath        LastOpen;
+        const char*    Name          = nullptr;
+        VFSBackendCaps Caps          = VFSBackendCaps::None;
+        VFSPath        LastOpen      = {};
+        uint32_t       MutationCalls = 0;
 
         explicit MockBackend(const char* name, VFSBackendCaps caps = VFSBackendCaps::Read) : Name(name), Caps(caps) {}
 
@@ -37,6 +38,26 @@ namespace
         bool Exists(const VFSPath&) const override
         {
             return false;
+        }
+        VFSResult<void> CreateDir(const VFSPath&) override
+        {
+            ++MutationCalls;
+            return VFSResult<void>::Ok();
+        }
+        VFSResult<void> Remove(const VFSPath&) override
+        {
+            ++MutationCalls;
+            return VFSResult<void>::Ok();
+        }
+        VFSResult<void> RemoveAll(const VFSPath&) override
+        {
+            ++MutationCalls;
+            return VFSResult<void>::Ok();
+        }
+        VFSResult<void> Rename(const VFSPath&, const VFSPath&) override
+        {
+            ++MutationCalls;
+            return VFSResult<void>::Ok();
         }
         VFSResult<Array<VFSDirEntry>> List(ArenaAllocator*, const VFSPath&) const override
         {
@@ -199,4 +220,55 @@ TEST_F(VFSContextTest, WriteOpsRequireWritableBackend)
     ASSERT_TRUE(m_ctx.Mount(&read_only, P("/ro"), 0).Succeeded());
 
     EXPECT_EQ(m_ctx.CreateDir(P("/ro/newdir")).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.CreateDirExclusive(P("/ro/newdir")).Error(), VFSError::PermissionDenied);
+}
+
+TEST_F(VFSContextTest, ExclusiveDirectoryCreationFailsClosedForUnsupportedBackends)
+{
+    MockBackend backend("base", VFSBackendCaps::Read | VFSBackendCaps::Write);
+    ASSERT_TRUE(m_ctx.Mount(&backend, VFSPath::Root(), 0).Succeeded());
+    EXPECT_EQ(m_ctx.CreateDirExclusive(P("/newdir")).Error(), VFSError::Unsupported);
+    EXPECT_EQ(m_ctx.CreateDirExclusive(VFSPath{}).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(backend.MutationCalls, 0u);
+}
+
+TEST_F(VFSContextTest, NoReplaceRenameFailsClosedForReadOnlyCrossMountAndUnsupportedBackends)
+{
+    MockBackend base("base", VFSBackendCaps::Read | VFSBackendCaps::Write);
+    MockBackend read_only("read-only", VFSBackendCaps::Read);
+    ASSERT_TRUE(m_ctx.Mount(&base, VFSPath::Root(), 0).Succeeded());
+    ASSERT_TRUE(m_ctx.Mount(&read_only, P("/readonly"), 10).Succeeded());
+    EXPECT_EQ(m_ctx.RenameNoReplace(P("/file"), P("/other")).Error(), VFSError::Unsupported);
+    EXPECT_EQ(m_ctx.RenameNoReplace(P("/readonly/file"), P("/readonly/other")).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.RenameNoReplace(P("/file"), P("/readonly/file")).Error(), VFSError::Unsupported);
+    EXPECT_EQ(m_ctx.RenameNoReplace(VFSPath::Root(), P("/other")).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(m_ctx.RenameNoReplace(P("/file"), P("/file/child")).Error(), VFSError::InvalidPath);
+}
+
+TEST_F(VFSContextTest, MutationsNeverFallThroughAReadOnlyOwningMount)
+{
+    MockBackend base("base", VFSBackendCaps::Read | VFSBackendCaps::Write);
+    MockBackend read_only("read-only", VFSBackendCaps::Read);
+    // Specificity, not priority, determines the mount the user sees.
+    ASSERT_TRUE(m_ctx.Mount(&base, VFSPath::Root(), 100).Succeeded());
+    ASSERT_TRUE(m_ctx.Mount(&read_only, P("/readonly"), 0).Succeeded());
+    const auto arena_bytes = m_manager.MainArena.m_current_offset;
+    for (int attempt = 0; attempt < 64; ++attempt)
+    {
+        EXPECT_EQ(m_ctx.CreateDir(P("/readonly/new")).Error(), VFSError::PermissionDenied);
+        EXPECT_EQ(m_ctx.CreateDirExclusive(P("/readonly/new")).Error(), VFSError::PermissionDenied);
+        EXPECT_EQ(m_ctx.Remove(P("/readonly/file")).Error(), VFSError::PermissionDenied);
+        EXPECT_EQ(m_ctx.RemoveAll(P("/readonly/folder")).Error(), VFSError::PermissionDenied);
+        EXPECT_EQ(m_ctx.Rename(P("/readonly/file"), P("/other")).Error(), VFSError::PermissionDenied);
+        EXPECT_EQ(m_ctx.Rename(P("/file"), P("/readonly/other")).Error(), VFSError::PermissionDenied);
+        EXPECT_EQ(m_manager.MainArena.m_current_offset, arena_bytes);
+    }
+    EXPECT_EQ(base.MutationCalls, 0u);
+    EXPECT_EQ(read_only.MutationCalls, 0u);
+    EXPECT_EQ(m_ctx.Remove(VFSPath{}).Error(), VFSError::InvalidPath);
+    EXPECT_TRUE(m_ctx.CreateDir(P("/writable")).Succeeded());
+    EXPECT_TRUE(m_ctx.Remove(P("/writable/file")).Succeeded());
+    EXPECT_TRUE(m_ctx.RemoveAll(P("/writable/folder")).Succeeded());
+    EXPECT_TRUE(m_ctx.Rename(P("/writable/file"), P("/other")).Succeeded());
+    EXPECT_EQ(base.MutationCalls, 4u);
 }

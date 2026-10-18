@@ -20,6 +20,8 @@ namespace Tetragrama
 
     struct EditorScene : public ZEngine::Rendering::Scenes::RenderScene
     {
+        EditorScene()                                                                       = default;
+
         cstring                                                         Name                = "";
         PaddedAtomic<bool>                                              Dirty               = {};
         PaddedAtomic<bool>                                              HasPendingChanges   = {};
@@ -49,6 +51,13 @@ namespace Tetragrama
         /// @return False when @p handle is stale or does not name a directional light.
         bool                      SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle);
         void                      ClearPrimaryCelestialLight();
+
+        /// @brief Creates and selects an empty actor, with a fresh identity, and marks the scene dirty.
+        ZEngine::ECS::ActorHandle CreateActor(ZEngine::ECS::ActorManager& actors, const char* name);
+        /// @brief Resets local TRS; returns true and marks dirty only when a live actor changes.
+        bool                      ResetActorTransform(ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle);
+        /// @brief Reads the hierarchy system's computed world-space position, without traversing parents.
+        static bool               TryGetActorWorldPosition(const ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle, ZEngine::Core::Maths::Vec3f& position);
 
         // Create a fully wired Actor: registers with RenderScene and adds
         // NameComponent + TransformComponent + MeshComponent in one call.
