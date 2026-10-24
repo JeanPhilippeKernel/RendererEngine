@@ -19,13 +19,18 @@ namespace ZEngine::Windows::Events
         EVENT_CATEGORY(Keyboard | Core::EventCategory::Input)
 
     protected:
-        ZENGINE_KEYCODE m_keycode;
+        ZENGINE_KEYCODE m_keycode = {};
     };
 
     class KeyPressedEvent : public KeyEvent
     {
     public:
         KeyPressedEvent(ZENGINE_KEYCODE key, int repeat_count) : KeyEvent(key), m_repeat_count(repeat_count) {}
+
+        int GetRepeatCount() const
+        {
+            return m_repeat_count;
+        }
 
         EVENT_TYPE(KeyPressed)
 

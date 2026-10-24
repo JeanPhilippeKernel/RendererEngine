@@ -18,6 +18,7 @@ namespace ZEngine::Controllers
         Rendering::Cameras::CameraPtr GetCamera() const override;
         Core::Maths::Vec3f            GetPosition() const override;
         void                          SetPosition(const Core::Maths::Vec3f&) override;
+        [[nodiscard]] bool            SetProjectionType(Rendering::Cameras::CameraType type) override;
         void                          SetViewport(float logicalW, float logicalH) override;
         void                          SetViewportOrigin(float x, float y) override;
         /// @brief Update the viewport screen rect used for self-contained hover detection.

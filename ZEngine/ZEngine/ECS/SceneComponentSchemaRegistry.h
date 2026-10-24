@@ -10,6 +10,10 @@
 
 namespace ZEngine::ECS
 {
+    namespace SceneYAML
+    {
+        class Node;
+    }
     class Scene;
 
     class SceneValue;
@@ -61,11 +65,23 @@ namespace ZEngine::ECS
 
     struct SceneComponentCodecFns
     {
-        void* Context                                                                                                                                          = nullptr;
-        bool (*Capture)(void* context, EntityID entity, const Scene& scene, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics)                      = nullptr;
-        bool (*PopulateCandidate)(void* context, EntityID entity, Scene& candidate, const SceneValue& payload, SceneDiagnostics* diagnostics)                  = nullptr;
-        bool (*EncodeBinary)(void* context, const SceneValue& payload, SceneBinaryWriter* writer, SceneDiagnostics* diagnostics)                               = nullptr;
-        bool (*DecodeBinary)(void* context, uint32_t encoded_version, SceneBinaryReader* reader, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics) = nullptr;
+        void* Context                                                                                                                                                                              = nullptr;
+        bool (*Capture)(void* context, EntityID entity, const Scene& scene, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics)                                                          = nullptr;
+        bool (*PopulateCandidate)(void* context, EntityID entity, Scene& candidate, const SceneValue& payload, SceneDiagnostics* diagnostics)                                                      = nullptr;
+        bool (*EncodeBinary)(void* context, const SceneValue& payload, SceneBinaryWriter* writer, SceneDiagnostics* diagnostics)                                                                   = nullptr;
+        bool (*DecodeBinary)(void* context, uint32_t encoded_version, SceneBinaryReader* reader, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics)                                     = nullptr;
+        bool (*EncodeYAML)(void* context, const SceneValue& payload, SceneYAML::Node* out_payload, SceneDiagnostics* diagnostics)                                                                  = nullptr;
+        bool (*DecodeYAML)(void* context, uint32_t encoded_version, const SceneYAML::Node& payload, SceneValueWriter* out_payload, SceneDiagnostics* diagnostics)                                  = nullptr;
+        // Optional second stage, after every candidate UUID has a runtime entity.
+        bool (*ResolveCandidateReferences)(void* context, EntityID entity, Scene& candidate, const SceneValue& payload, const struct SceneEntityResolver& resolver, SceneDiagnostics* diagnostics) = nullptr;
+        // Conservative arena storage/growth bound, not a persisted native-layout contract.
+        size_t (*CandidateMemoryBound)(uint32_t component_count)                                                                                                                                   = nullptr;
+    };
+
+    struct SceneEntityResolver
+    {
+        void* Context                                            = nullptr;
+        EntityID (*Find)(void* context, const uuids::uuid& uuid) = nullptr;
     };
 
     struct SceneComponentSchemaDesc

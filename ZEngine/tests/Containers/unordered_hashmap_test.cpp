@@ -34,6 +34,41 @@ TEST_F(HashMapTest, InitialState)
     EXPECT_GE(map.capacity(), 10u);
 }
 
+TEST_F(HashMapTest, CheckedInitializationPreservesExistingMapAndArenaOnFailure)
+{
+    UnorderedHashMap<int, int> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    map.insert(7, 9);
+    const auto before = manager.MainArena.m_current_offset;
+    EXPECT_FALSE(map.try_init(nullptr));
+    EXPECT_FALSE(map.try_init(&manager.MainArena, SIZE_MAX));
+    EXPECT_EQ(manager.MainArena.m_current_offset, before);
+    ASSERT_NE(map.find(7), nullptr);
+    EXPECT_EQ(*map.find(7), 9);
+    ArenaAllocator tiny = {};
+    manager.MainArena.CreateSubArena(128, &tiny, "CheckedMapTest");
+    EXPECT_FALSE(map.try_init(&tiny, 16));
+    EXPECT_EQ(tiny.m_current_offset, 0u);
+    ASSERT_NE(map.find(7), nullptr);
+    EXPECT_EQ(*map.find(7), 9);
+}
+
+TEST_F(HashMapTest, CheckedInitializationRoundsCapacityAndReplacesPreviousEntries)
+{
+    UnorderedHashMap<int, int> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 1));
+    EXPECT_EQ(map.capacity(), 16u);
+    map.insert(7, 9);
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 17));
+    EXPECT_EQ(map.capacity(), 32u);
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.find(7), nullptr);
+    for (int i = 0; i < 16; ++i)
+        map.insert(i, i * 2);
+    for (int i = 0; i < 16; ++i)
+        EXPECT_EQ(*map.find(i), i * 2);
+}
+
 TEST_F(HashMapTest, CapacityAlwaysPowerOfTwo)
 {
     for (int req : {1, 2, 3, 5, 7, 10, 17, 100, 906})

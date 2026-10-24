@@ -26,6 +26,61 @@ TEST(AllocatorTest, ArenaInit)
     manager.Shutdown();
 }
 
+TEST(AllocatorBorrowedTest, CheckedViewPreservesBackingAndBoundsAcrossMoveAndShutdown)
+{
+    alignas(16) uint8_t backing[256] = {};
+    ArenaAllocator      arena        = {};
+    ASSERT_TRUE(arena.InitializeBorrowed(backing, sizeof(backing), "TestBorrowed"));
+    ASSERT_EQ(arena.AllocateNoZero(32, 16), backing);
+    backing[0]        = 73;
+    const auto cursor = arena.m_current_offset;
+    EXPECT_EQ(arena.AllocateNoZero(sizeof(backing), 16), nullptr);
+    EXPECT_EQ(arena.m_current_offset, cursor);
+    EXPECT_NE(arena.LastFailure().Kind, ArenaAllocationFailureKind::None);
+    ASSERT_NE(arena.AllocateNoZero(16, 16), nullptr);
+    EXPECT_EQ(arena.LastFailure().Kind, ArenaAllocationFailureKind::None);
+    EXPECT_FALSE(arena.InitializeBorrowed(backing, sizeof(backing)));
+    ArenaAllocator moved = std::move(arena);
+    EXPECT_EQ(arena.m_memory, nullptr);
+    EXPECT_TRUE(moved.m_is_borrowed);
+    moved.Shutdown();
+    EXPECT_EQ(backing[0], 73);
+    EXPECT_EQ(moved.m_memory, nullptr);
+    EXPECT_FALSE(moved.m_is_borrowed);
+    ASSERT_TRUE(moved.InitializeBorrowed(backing, sizeof(backing)));
+    EXPECT_EQ(moved.AllocateNoZero(sizeof(backing), 1), backing);
+}
+
+TEST(AllocatorBorrowedTest, ChildViewAndTempRollbackNeverReleaseOrClearCallerStorage)
+{
+    alignas(16) uint8_t backing[256] = {};
+    ArenaAllocator      arena = {}, child = {};
+    ASSERT_TRUE(arena.InitializeBorrowed(backing, sizeof(backing)));
+    arena.CreateSubArena(64, &child, "BorrowedChild");
+    EXPECT_TRUE(child.m_is_borrowed);
+    EXPECT_EQ(child.AllocateNoZero(64, 1), backing);
+    backing[0]      = 17;
+    const auto mark = BeginTempArena(&arena);
+    ASSERT_NE(arena.AllocateNoZero(64, 16), nullptr);
+    EndTempArena(mark);
+    EXPECT_EQ(arena.m_current_offset, 64u);
+    child.Shutdown();
+    EXPECT_EQ(backing[0], 17);
+    arena.Clear();
+    EXPECT_EQ(arena.AllocateNoZero(256, 1), backing);
+}
+
+TEST(AllocatorBorrowedTest, InvalidViewLeavesAnUninitializedArenaUnchanged)
+{
+    uint8_t        backing[16] = {};
+    ArenaAllocator arena       = {};
+    EXPECT_FALSE(arena.InitializeBorrowed(nullptr, 1));
+    EXPECT_FALSE(arena.InitializeBorrowed(backing, 0));
+    EXPECT_FALSE(arena.InitializeBorrowed(backing, SIZE_MAX));
+    EXPECT_EQ(arena.m_memory, nullptr);
+    EXPECT_EQ(arena.m_current_offset, 0u);
+}
+
 TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
 {
     const MemoryBudgetConfig default_budget = MemoryBudgetConfig::Default();
@@ -353,6 +408,62 @@ TEST(AllocatorTest, ArenaResizeNullDelegatesToAllocate)
     void* ptr   = arena->Resize(nullptr, 0, sizeof(int));
     EXPECT_NE(ptr, nullptr);
     manager.Shutdown();
+}
+
+TEST(AllocatorTest, CheckedResizeFailurePreservesAllocationAndCursors)
+{
+    ArenaAllocator arena = {};
+    arena.Initialize(128, 4096);
+    auto* memory = static_cast<uint8_t*>(arena.Allocate(32));
+    ASSERT_NE(memory, nullptr);
+    memory[0]           = 71;
+    const auto current  = arena.m_current_offset;
+    const auto previous = arena.m_previous_offset;
+    EXPECT_EQ(arena.TryResize(memory, 32, SIZE_MAX), nullptr);
+    EXPECT_EQ(arena.m_current_offset, current);
+    EXPECT_EQ(arena.m_previous_offset, previous);
+    EXPECT_EQ(memory[0], 71);
+    EXPECT_EQ(arena.LastFailure().Kind, ArenaAllocationFailureKind::CapacityExceeded);
+    EXPECT_EQ(arena.TryResize(memory, 32, 64), memory);
+    EXPECT_EQ(memory[0], 71);
+    for (size_t i = 32; i < 64; ++i)
+        EXPECT_EQ(memory[i], 0);
+}
+
+TEST(AllocatorTest, CheckedResizeRejectsInvalidRangesAndAlignments)
+{
+    ArenaAllocator arena = {};
+    arena.Initialize(128, 4096);
+    auto* memory = static_cast<uint8_t*>(arena.Allocate(32));
+    ASSERT_NE(memory, nullptr);
+    uint8_t foreign = 0;
+    EXPECT_EQ(arena.TryResize(&foreign, 1, 32), nullptr);
+    EXPECT_EQ(arena.TryResize(memory, 33, 64), nullptr);
+    EXPECT_EQ(arena.TryResize(memory, 32, 64, 3), nullptr);
+    EXPECT_EQ(arena.TryResize(memory, 32, 0), nullptr);
+    EXPECT_EQ(arena.m_current_offset, 32u);
+    EXPECT_EQ(arena.TryResize(memory, 32, 64), memory);
+}
+
+TEST(AllocatorTest, CheckedResizeSlowPathPreservesBothExistingAllocations)
+{
+    ArenaAllocator arena = {};
+    arena.Initialize(128, 4096);
+    auto* first  = static_cast<uint8_t*>(arena.Allocate(16));
+    auto* second = static_cast<uint8_t*>(arena.Allocate(16));
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(second, nullptr);
+    first[0]           = 41;
+    second[0]          = 53;
+    const auto current = arena.m_current_offset;
+    EXPECT_EQ(arena.TryResize(first, 16, 128), nullptr);
+    EXPECT_EQ(arena.m_current_offset, current);
+    auto* resized = static_cast<uint8_t*>(arena.TryResize(first, 16, 32));
+    ASSERT_NE(resized, nullptr);
+    EXPECT_NE(resized, first);
+    EXPECT_EQ(resized[0], 41);
+    EXPECT_EQ(first[0], 41);
+    EXPECT_EQ(second[0], 53);
 }
 
 TEST(AllocatorTest, ArenaShutdownIdempotent)
@@ -883,6 +994,24 @@ TEST(AllocatorTest, PoolAllocateFreeAllocateManyTimes)
         pool.Free(p);
     }
     manager.Shutdown();
+}
+
+TEST(AllocatorTest, StandaloneArenaDetectsNativePageSizeWhenRequested)
+{
+    ArenaAllocator arena;
+    arena.Initialize(ZKilo(64), 0, "AllocatorTest/NativePageSize");
+    ASSERT_NE(arena.m_memory, nullptr);
+    EXPECT_GT(arena.m_mem_page_size, 0u);
+    EXPECT_EQ(arena.m_mem_page_size & (arena.m_mem_page_size - 1), 0u);
+    EXPECT_EQ(arena.m_reserved_size % arena.m_mem_page_size, 0u);
+    auto* first = static_cast<uint8_t*>(arena.TryResize(nullptr, 0, 1, 1));
+    ASSERT_NE(first, nullptr);
+    *first       = 17;
+    auto* second = static_cast<uint8_t*>(arena.TryResize(nullptr, 0, arena.m_mem_page_size, 1));
+    ASSERT_NE(second, nullptr);
+    second[arena.m_mem_page_size - 1] = 29;
+    EXPECT_EQ(*first, 17);
+    EXPECT_EQ(second[arena.m_mem_page_size - 1], 29);
 }
 
 // Double-free detection — debug builds only

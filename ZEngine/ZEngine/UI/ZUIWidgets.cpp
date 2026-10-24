@@ -107,6 +107,29 @@ namespace ZEngine::UI
         ZUIPopBox(ctx);
     }
 
+    static void ApplyScrollbarDrag(ZUIContext* ctx, uint64_t region_key, ZUIPersistentState& state, int axis)
+    {
+        if (ctx->Disabled || !ctx->ActiveKey || !ctx->MouseDown[0])
+            return;
+        const float extent  = axis ? state.ScreenMaxY - state.ScreenMinY : state.ScreenMaxX - state.ScreenMinX;
+        const float maximum = axis ? state.MaxScrollY : state.MaxScrollX;
+        if (!(extent > 0.f) || !(maximum > 1.f))
+            return;
+        char key[64] = {};
+        snprintf(key, sizeof(key), axis ? "##sbthm_%llu" : "##hsbthm_%llu", static_cast<unsigned long long>(region_key));
+        if (ctx->ActiveKey != ZUIHashStr(key, static_cast<uint32_t>(Helpers::secure_strlen(key))))
+            return;
+        const float delta = ctx->MousePos[axis] - ctx->PrevMousePos[axis];
+        if (!std::isfinite(delta) || delta == 0.f)
+            return;
+        const float thumb    = std::clamp(extent * extent / (extent + maximum), fminf(ctx->Style.ScrollbarMinThumbPx, extent), extent);
+        const float ratio    = extent > thumb ? maximum / (extent - thumb) : 0.f;
+        float&      position = axis ? state.ScrollY : state.ScrollX;
+        float&      target   = axis ? state.ScrollYTarget : state.ScrollXTarget;
+        position = target        = std::clamp(position + delta * ratio, 0.f, maximum);
+        state.ScrollbarShowTimer = .5f;
+    }
+
     ZUIBox* ZUIBeginScrollRegion(ZUIContext* ctx, const char* key, ZUISize w, ZUISize h)
     {
         uint32_t len           = (uint32_t) ZEngine::Helpers::secure_strlen(key);
@@ -145,6 +168,11 @@ namespace ZEngine::UI
                 ps->ScrollX = 0.f;
             if (ps->ScrollX > ps->MaxScrollX)
                 ps->ScrollX = ps->MaxScrollX;
+            // Finalize immediate thumb motion before children choose a virtual
+            // window. Applying it at EndScrollRegion makes those rows disappear
+            // for a frame when layout sees a different scroll offset.
+            ApplyScrollbarDrag(ctx, box->Key, *ps, 1);
+            ApplyScrollbarDrag(ctx, box->Key, *ps, 0);
         }
 
         return box;
@@ -200,12 +228,12 @@ namespace ZEngine::UI
                 // Transparent 10 px hit lane; only its 6 px child is visible.
                 char        thm[64]   = {};
                 snprintf(thm, sizeof(thm), "##sbthm_%llu", (unsigned long long) sb->Key);
-                ZUIBox* thumb       = ZUIPushBox(ctx, thm, (uint32_t) ZEngine::Helpers::secure_strlen(thm), ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY | ZUI_NoKeyboardFocus);
-                thumb->Size[0]      = ZPx(kBarW);
-                thumb->Size[1]      = ZPx(thumb_h);
-                thumb->FloatPos[0]  = bar_x;
-                thumb->FloatPos[1]  = thumb_y - sy0; // relative to scroll region top
-                ZUISignal    tsig   = ZUISignalFromBox(ctx, thumb);
+                ZUIBox* thumb      = ZUIPushBox(ctx, thm, (uint32_t) ZEngine::Helpers::secure_strlen(thm), ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY | ZUI_NoKeyboardFocus);
+                thumb->Size[0]     = ZPx(kBarW);
+                thumb->Size[1]     = ZPx(thumb_h);
+                thumb->FloatPos[0] = bar_x;
+                thumb->FloatPos[1] = thumb_y - sy0; // relative to scroll region top
+                (void) ZUISignalFromBox(ctx, thumb);
                 const bool   active = ctx->ActiveKey == thumb->Key;
                 const bool   hot    = ctx->HotKey == thumb->Key;
                 const float* grab   = active ? ctx->Theme.ScrollbarGrabAct : (hot ? ctx->Theme.ScrollbarGrabHov : ctx->Theme.ScrollbarGrab);
@@ -223,19 +251,6 @@ namespace ZEngine::UI
                 ZUIBoxSetCornerRadius(visual, ctx->Style.ScrollbarRounding);
                 ZUIPopBox(ctx);
 
-                if ((tsig.Flags & ZUI_SignalHeld) && tsig.DragDelta[1] != 0.f)
-                {
-                    float ratio      = (track_h - thumb_h) > 0.f ? ps->MaxScrollY / (track_h - thumb_h) : 0.f;
-                    float new_scroll = ps->ScrollY + tsig.DragDelta[1] * ratio;
-                    if (new_scroll < 0.f)
-                        new_scroll = 0.f;
-                    if (new_scroll > ps->MaxScrollY)
-                        new_scroll = ps->MaxScrollY;
-                    // Sync both: immediate position (no lerp lag while dragging) + target
-                    ps->ScrollY            = new_scroll;
-                    ps->ScrollYTarget      = new_scroll;
-                    ps->ScrollbarShowTimer = kScrollbarShowDuration;
-                }
                 ZUIPopBox(ctx);
             }
 
@@ -265,7 +280,7 @@ namespace ZEngine::UI
                 hthumb->Size[1]     = ZPx(kBarH);
                 hthumb->FloatPos[0] = thumb_x_rel;
                 hthumb->FloatPos[1] = bar_y_h;
-                ZUISignal    htsig  = ZUISignalFromBox(ctx, hthumb);
+                (void) ZUISignalFromBox(ctx, hthumb);
                 const bool   active = ctx->ActiveKey == hthumb->Key;
                 const bool   hot    = ctx->HotKey == hthumb->Key;
                 const float* grab   = active ? ctx->Theme.ScrollbarGrabAct : (hot ? ctx->Theme.ScrollbarGrabHov : ctx->Theme.ScrollbarGrab);
@@ -283,19 +298,6 @@ namespace ZEngine::UI
                 ZUIBoxSetCornerRadius(visual, ctx->Style.ScrollbarRounding);
                 ZUIPopBox(ctx);
 
-                if ((htsig.Flags & ZUI_SignalHeld) && htsig.DragDelta[0] != 0.f)
-                {
-                    float ratio      = (track_w - thumb_w) > 0.f ? ps->MaxScrollX / (track_w - thumb_w) : 0.f;
-                    float new_scroll = ps->ScrollX + htsig.DragDelta[0] * ratio;
-                    if (new_scroll < 0.f)
-                        new_scroll = 0.f;
-                    if (new_scroll > ps->MaxScrollX)
-                        new_scroll = ps->MaxScrollX;
-                    // Sync both so the lerp doesn't snap back to the old target on release
-                    ps->ScrollX            = new_scroll;
-                    ps->ScrollXTarget      = new_scroll;
-                    ps->ScrollbarShowTimer = kScrollbarShowDuration;
-                }
                 ZUIPopBox(ctx);
             }
         }
@@ -1158,7 +1160,7 @@ namespace ZEngine::UI
         track->CrossAlign          = ZUIAlign::Center;
 
         const bool  is_focused     = enabled && ctx->FocusKey == track->Key;
-        ZUISignal   sig            = enabled ? ZUISignalFromBox(ctx, track) : ZUISignal{};
+        ZUISignal   sig            = ZUISignalFromBox(ctx, track); // Disabled fields also retire stale input ownership.
         const float previous_value = *value;
         if (enabled)
         {
@@ -4197,7 +4199,43 @@ namespace ZEngine::UI
         }
     }
 
-    bool ZUIDataTableNextRow(ZUIContext* ctx, bool selected)
+    float ZUIDataTableRowHeight()
+    {
+        return kDT_RowH;
+    }
+
+    uint64_t ZUIDataTableRowKey(const ZUIContext* ctx, uint64_t identity)
+    {
+        char key[80] = {};
+        if (identity)
+            snprintf(key, sizeof(key), "##dtrowid_%llu_%llu", static_cast<unsigned long long>(ctx->DT_Key), static_cast<unsigned long long>(identity));
+        else
+            snprintf(key, sizeof(key), "##dtrow_%llu_%d", static_cast<unsigned long long>(ctx->DT_Key), ctx->DT_RowIndex);
+        return ZUIHashStr(key, static_cast<uint32_t>(Helpers::secure_strlen(key)));
+    }
+
+    void ZUIDataTableSkipRows(ZUIContext* ctx, uint32_t count)
+    {
+        if (!count || !ctx->DT_ColCount)
+            return;
+        ZENGINE_VALIDATE_ASSERT(ctx->DT_RowIndex >= 0 && count <= uint32_t(std::numeric_limits<int>::max() - ctx->DT_RowIndex), "Data table row count overflow")
+        if (ctx->DT_InRow)
+        {
+            if (ctx->DT_CurCol >= 0)
+                ZUIEndColumn(ctx);
+            ZUIEndRow(ctx);
+        }
+        ctx->DT_InRow   = false;
+        ctx->DT_CurCol  = -1;
+        ctx->DT_RowBox  = nullptr;
+        auto* spacer    = ZUIPushBox(ctx, "##dt_virtual_rows", 17, ZUI_None);
+        spacer->Size[0] = ZFill();
+        spacer->Size[1] = ZPx(kDT_RowH * float(count));
+        ZUIPopBox(ctx);
+        ctx->DT_RowIndex += int(count);
+    }
+
+    bool ZUIDataTableNextRow(ZUIContext* ctx, bool selected, uint64_t identity)
     {
         float row_h = kDT_RowH;
 
@@ -4238,8 +4276,11 @@ namespace ZEngine::UI
             bg[3] = 0.f;
         }
 
-        char rk[48] = {};
-        snprintf(rk, sizeof(rk), "##dtrow_%llu_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex);
+        char rk[80] = {};
+        if (identity)
+            snprintf(rk, sizeof(rk), "##dtrowid_%llu_%llu", (unsigned long long) ctx->DT_Key, (unsigned long long) identity);
+        else
+            snprintf(rk, sizeof(rk), "##dtrow_%llu_%d", (unsigned long long) ctx->DT_Key, ctx->DT_RowIndex);
         ZUIBox* row     = ZUIPushBox(ctx, rk, (uint32_t) ZEngine::Helpers::secure_strlen(rk), ZUI_DrawBackground | ZUI_Clickable | ZUI_KeyboardActivate);
         row->Size[0]    = ZFill();
         row->Size[1]    = ZPx(row_h);
@@ -4317,7 +4358,7 @@ namespace ZEngine::UI
                 snprintf(sk, sizeof(sk), "##dtvsep_%llu_%d", (unsigned long long) ctx->DT_Key, i);
                 ZUIBox* sep      = ZUIPushBox(ctx, sk, (uint32_t) ZEngine::Helpers::secure_strlen(sk), ZUI_DrawBackground | ZUI_FloatX | ZUI_FloatY);
                 sep->Size[0]     = ZPx(1.f);
-                sep->Size[1]     = ZPx(9999.f); // clipped by outer ZUI_ClipChildren
+                sep->Size[1]     = ZPct(1.f); // full logical height, including virtualized rows
                 sep->FloatPos[0] = x;
                 sep->FloatPos[1] = 0.f;
                 ZUIBoxSetColorArr(sep, ctx->Theme.TableBorderStrong);

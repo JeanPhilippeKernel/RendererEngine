@@ -190,6 +190,41 @@ namespace ZEngine::Core::Maths
     {
         using Matrix<T, 3, 3>::m_data;
 
+        // Columns are packed scalars, not Vec3 objects (which have four lanes).
+        // Borrow only the actual elements; const reads return independent values.
+        struct Column
+        {
+            explicit Column(T* values) : x(values[0]), y(values[1]), z(values[2]) {}
+
+            operator Vec3<T>() const
+            {
+                return {x, y, z};
+            }
+
+            Column& operator=(const Vec3<T>& value)
+            {
+                x = value.x;
+                y = value.y;
+                z = value.z;
+                return *this;
+            }
+
+            Column& operator=(const Column& other)
+            {
+                return *this = Vec3<T>(other);
+            }
+
+            T& operator[](size_t row) const
+            {
+                ZENGINE_VALIDATE_ASSERT(row < 3, "Index out of range");
+                return row == 0 ? x : row == 1 ? y : z;
+            }
+
+            T& x;
+            T& y;
+            T& z;
+        };
+
         Mat3()
         {
             Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
@@ -246,29 +281,31 @@ namespace ZEngine::Core::Maths
             return *this;
         }
 
-        Vec3<T>& operator[](int j)
+        Column operator[](int j)
         {
-            return (*reinterpret_cast<Vec3<T>*>(m_data[j]));
+            ZENGINE_VALIDATE_ASSERT(j >= 0 && j < 3, "Index out of range");
+            return Column(m_data[j]);
         }
 
-        const Vec3<T>& operator[](int j) const
+        Vec3<T> operator[](int j) const
         {
-            return (*reinterpret_cast<const Vec3<T>*>(m_data[j]));
+            ZENGINE_VALIDATE_ASSERT(j >= 0 && j < 3, "Index out of range");
+            return {m_data[j][0], m_data[j][1], m_data[j][2]};
         }
 
         Mat3 Inverse() const
         {
-            auto&          M      = *this;
+            auto&         M      = *this;
 
-            const Vec3<T>& a      = M[0];
-            const Vec3<T>& b      = M[1];
-            const Vec3<T>& c      = M[2];
+            const Vec3<T> a      = M[0];
+            const Vec3<T> b      = M[1];
+            const Vec3<T> c      = M[2];
 
-            Vec3<T>        r0     = cross3d(b, c);
-            Vec3<T>        r1     = cross3d(c, a);
-            Vec3<T>        r2     = cross3d(a, b);
+            Vec3<T>       r0     = cross3d(b, c);
+            Vec3<T>       r1     = cross3d(c, a);
+            Vec3<T>       r2     = cross3d(a, b);
 
-            float          invDet = 1.0f / dot(r2, c);
+            float         invDet = 1.0f / dot(r2, c);
 
             return Mat3<T>(r0.x * invDet, r0.y * invDet, r0.z * invDet, r1.x * invDet, r1.y * invDet, r1.z * invDet, r2.x * invDet, r2.y * invDet, r2.z * invDet);
         };
@@ -278,6 +315,44 @@ namespace ZEngine::Core::Maths
     struct Mat4 : public Matrix<T, 4, 4>
     {
         using Matrix<T, 4, 4>::m_data;
+
+        // A packed matrix may have scalar alignment; never expose its storage as
+        // an over-aligned Vec4 reference or change its GPU-facing layout.
+        struct Column
+        {
+            explicit Column(T* values) : x(values[0]), y(values[1]), z(values[2]), w(values[3]) {}
+
+            operator Vec4<T>() const
+            {
+                return {x, y, z, w};
+            }
+
+            Column& operator=(const Vec4<T>& value)
+            {
+                x = value.x;
+                y = value.y;
+                z = value.z;
+                w = value.w;
+                return *this;
+            }
+
+            Column& operator=(const Column& other)
+            {
+                return *this = Vec4<T>(other);
+            }
+
+            T& operator[](size_t row) const
+            {
+                ZENGINE_VALIDATE_ASSERT(row < 4, "Index out of range");
+                return row == 0 ? x : row == 1 ? y : row == 2 ? z : w;
+            }
+
+            T& x;
+            T& y;
+            T& z;
+            T& w;
+        };
+
         Mat4()
         {
             Helpers::secure_memset(m_data, 0, sizeof(m_data), sizeof(m_data));
@@ -334,7 +409,9 @@ namespace ZEngine::Core::Maths
             Mat4<T> working = *this;
             Mat4<T> inverse = {};
             for (size_t index = 0; index < 4; ++index)
+            {
                 inverse(index, index) = T(1);
+            }
 
             // Partial pivoting makes this valid for both affine transforms and
             // projective matrices such as a camera view-projection transform.
@@ -355,7 +432,9 @@ namespace ZEngine::Core::Maths
 
                 ZENGINE_VALIDATE_ASSERT(pivot_magnitude != T(0), "Matrix is singular and cannot be inverted");
                 if (pivot_magnitude == T(0))
+                {
                     return inverse;
+                }
 
                 if (pivot_row != column)
                 {
@@ -381,11 +460,15 @@ namespace ZEngine::Core::Maths
                 for (size_t row = 0; row < 4; ++row)
                 {
                     if (row == column)
+                    {
                         continue;
+                    }
 
                     const T factor = working(row, column);
                     if (factor == T(0))
+                    {
                         continue;
+                    }
 
                     for (size_t index = 0; index < 4; ++index)
                     {
@@ -397,14 +480,16 @@ namespace ZEngine::Core::Maths
 
             return inverse;
         }
-        Vec4<T>& operator[](int j)
+        Column operator[](int j)
         {
-            return (*reinterpret_cast<Vec4<T>*>(m_data[j]));
+            ZENGINE_VALIDATE_ASSERT(j >= 0 && j < 4, "Index out of range");
+            return Column(m_data[j]);
         }
 
-        const Vec4<T>& operator[](int j) const
+        Vec4<T> operator[](int j) const
         {
-            return (*reinterpret_cast<const Vec4<T>*>(m_data[j]));
+            ZENGINE_VALIDATE_ASSERT(j >= 0 && j < 4, "Index out of range");
+            return {m_data[j][0], m_data[j][1], m_data[j][2], m_data[j][3]};
         }
     };
 
@@ -515,7 +600,9 @@ namespace ZEngine::Core::Maths
     {
         Mat4f LocalMatrix(transform);
         if (epsilonEqual(LocalMatrix(3, 3), static_cast<float>(0)))
+        {
             return false;
+        }
 
         if (epsilonNotEqual(LocalMatrix(0, 3), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 1), static_cast<float>(0.0f)) || epsilonNotEqual(LocalMatrix(3, 2), static_cast<float>(0.0f)))
         {
@@ -529,8 +616,12 @@ namespace ZEngine::Core::Maths
 
         Vec3f Row[3], Pdum3;
         for (int i = 0; i < 3; ++i)
+        {
             for (int j = 0; j < 3; ++j)
+            {
                 Row[i][j] = LocalMatrix(i, j);
+            }
+        }
 
         scale.x    = Row[0].magnitude();
         Row[0]     = Row[0].normalize();

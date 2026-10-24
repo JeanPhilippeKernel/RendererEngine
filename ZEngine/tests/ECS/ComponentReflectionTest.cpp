@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/ECS/ArchetypeMask.h>
 #include <ZEngine/ECS/Components/CameraComponent.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MaterialComponent.h>
@@ -51,6 +52,20 @@ namespace
         return nullptr;
     }
 } // namespace
+
+TEST(ArchetypeMaskTest, UnsupportedComponentIdsNeverShiftOrAliasLiveComponents)
+{
+    const auto ends = MaskBit(0) | MaskBit(ARCHETYPE_MASK_CAPACITY - 1);
+    for (ComponentTypeID id = 0; id < ARCHETYPE_MASK_CAPACITY; ++id)
+        EXPECT_EQ(MaskHas(ends, id), id == 0 || id == ARCHETYPE_MASK_CAPACITY - 1);
+    const ComponentTypeID invalid[] = {ARCHETYPE_MASK_CAPACITY, ARCHETYPE_MASK_CAPACITY + 1, 9999, UINT32_MAX};
+    for (const auto id : invalid)
+    {
+        EXPECT_FALSE(MaskHas(0, id));
+        EXPECT_FALSE(MaskHas(~ArchetypeMask(0), id));
+        EXPECT_FALSE(MaskHas(ends, id));
+    }
+}
 
 TEST(ComponentReflection, AllEightBuiltInsAreRegistered)
 {

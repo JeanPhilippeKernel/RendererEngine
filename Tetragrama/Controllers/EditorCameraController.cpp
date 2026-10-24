@@ -3,6 +3,7 @@
 #include <Tetragrama/EditorScene.h>
 #include <ZEngine/Core/Maths/MathUtils.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Rendering/Scenes/SceneRayQuery.h>
 #include <cmath>
@@ -19,7 +20,9 @@ namespace
 
         auto* app                                        = static_cast<ZEngine::Applications::GameApplication*>(context);
         if (!app || !app->CurrentScene)
+        {
             return miss;
+        }
 
         return ZEngine::Rendering::Scenes::RaycastSceneBounds(*app->CurrentScene, origin, direction, max_distance);
     }
@@ -30,31 +33,50 @@ namespace
 
         auto* app = static_cast<ZEngine::Applications::GameApplication*>(context);
         if (!app || !app->CurrentScene)
+        {
             return false;
+        }
 
-        auto* scene = static_cast<Tetragrama::EditorScene*>(app->CurrentScene);
-        if (!scene || !scene->SelectedActorHandle.Valid())
-            return false;
-
+        auto* scene       = static_cast<Tetragrama::EditorScene*>(app->CurrentScene);
+        Vec3f grid_origin = {};
+        if (scene->TryGetSelectedGridOrigin(grid_origin))
+        {
+            out_center = grid_origin;
+            // Match the existing non-mesh point-target focus policy. The
+            // infinite plane deliberately never contributes a scene bound.
+            out_radius = 0.5f;
+            return true;
+        }
         auto* engine = ZEngine::Engine::GetContext();
-        if (!engine || !engine->ActorManager)
+        if (!engine || !engine->Scene)
+        {
             return false;
+        }
 
-        auto* actor = engine->ActorManager->Access(scene->SelectedActorHandle);
-        if (!actor)
+        const auto entity = scene->SelectedEntity(engine->ActorManager);
+        if (!engine->Scene->IsAlive(entity))
+        {
             return false;
+        }
 
-        const auto* mesh = actor->GetComponent<ZEngine::ECS::Components::MeshComponent>();
-        if (!mesh || mesh->RenderInstanceId == UINT32_MAX)
-            return false;
-
+        const auto*        mesh   = engine->Scene->GetComponent<ZEngine::ECS::Components::MeshComponent>(entity);
         SceneRaycastBounds bounds = {};
-        if (!TryGetSceneInstanceBounds(*scene, mesh->RenderInstanceId, bounds))
-            return false;
+        if (mesh && mesh->RenderInstanceId != UINT32_MAX && TryGetSceneInstanceBounds(*scene, mesh->RenderInstanceId, bounds))
+        {
+            out_center = bounds.Center;
+            out_radius = bounds.Radius;
+            return true;
+        }
 
-        out_center = bounds.Center;
-        out_radius = bounds.Radius;
-        return true;
+        // Non-mesh and not-yet-resident entities still have a useful focus target.
+        const auto* transform = engine->Scene->GetComponent<ZEngine::ECS::Components::TransformComponent>(entity);
+        if (!transform)
+        {
+            return false;
+        }
+        out_center = {transform->WorldTransform(0, 3), transform->WorldTransform(1, 3), transform->WorldTransform(2, 3)};
+        out_radius = 0.5f;
+        return std::isfinite(out_center.x) && std::isfinite(out_center.y) && std::isfinite(out_center.z);
     }
 
     bool GetEditorSceneBounds(void* context, Vec3f& out_center, float& out_radius)
@@ -63,11 +85,15 @@ namespace
 
         auto* app = static_cast<ZEngine::Applications::GameApplication*>(context);
         if (!app || !app->CurrentScene)
+        {
             return false;
+        }
 
         SceneRaycastBounds bounds = {};
         if (!TryGetSceneBounds(*app->CurrentScene, bounds))
+        {
             return false;
+        }
 
         out_center = bounds.Center;
         out_radius = bounds.Radius;
@@ -78,17 +104,23 @@ namespace
     {
         auto* editor = static_cast<Tetragrama::Editor*>(context);
         if (!editor || !editor->ConstrainCameraToAtmosphereGround || !editor->CurrentScene)
+        {
             return false;
+        }
 
         auto* scene = static_cast<Tetragrama::EditorScene*>(editor->CurrentScene);
         if (!scene || !scene->Sky.IsAtmosphere())
+        {
             return false;
+        }
 
         const auto& atmosphere                = scene->Sky.Atmosphere;
         const float world_units_per_kilometer = atmosphere.WorldUnitsPerMeter * 1000.0f;
         const float radius                    = atmosphere.PlanetRadiusKilometers * world_units_per_kilometer;
         if (!std::isfinite(atmosphere.PlanetCenterWorld[0]) || !std::isfinite(atmosphere.PlanetCenterWorld[1]) || !std::isfinite(atmosphere.PlanetCenterWorld[2]) || !std::isfinite(radius) || radius <= 0.0f)
+        {
             return false;
+        }
 
         out_center = {atmosphere.PlanetCenterWorld[0], atmosphere.PlanetCenterWorld[1], atmosphere.PlanetCenterWorld[2]};
         out_radius = radius;

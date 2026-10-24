@@ -41,6 +41,17 @@ namespace
         while (!blocking->Release.load(std::memory_order_acquire))
             std::this_thread::yield();
     }
+
+    struct ReleaseBlockedWorker
+    {
+        BlockingTaskContext* Context = nullptr;
+
+        ~ReleaseBlockedWorker()
+        {
+            if (Context)
+                Context->Release.store(true, std::memory_order_release);
+        }
+    };
 } // namespace
 
 class ThreadPoolTest : public ::testing::Test
@@ -129,8 +140,12 @@ TEST_F(ThreadPoolTest, SubmitToWorker)
 
 TEST_F(ThreadPoolTest, SubmitToWorkerRejectsAFilledQueue)
 {
-    ThreadPool          pool(1);
-    BlockingTaskContext blocking = {};
+    BlockingTaskContext  blocking = {};
+    std::atomic<int>     counter  = 0;
+    // Contexts outlive pool shutdown. Release before waiting for the worker,
+    // including when a fatal assertion exits the test early.
+    ThreadPool           pool(1);
+    ReleaseBlockedWorker release = {&blocking};
     ASSERT_TRUE(pool.SubmitToWorker(0, &blocking, &BlockWorker));
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -138,7 +153,6 @@ TEST_F(ThreadPoolTest, SubmitToWorkerRejectsAFilledQueue)
         std::this_thread::yield();
     ASSERT_TRUE(blocking.Started.load(std::memory_order_acquire));
 
-    std::atomic<int> counter = 0;
     for (uint32_t i = 0; i < ThreadPool::MAX_TASKS_PER_WORKER; ++i)
         ASSERT_TRUE(pool.SubmitToWorker(0, &counter, &Increment));
     EXPECT_FALSE(pool.SubmitToWorker(0, &counter, &Increment));

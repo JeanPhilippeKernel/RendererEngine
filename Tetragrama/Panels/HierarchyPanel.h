@@ -1,5 +1,7 @@
 #pragma once
+#include <Tetragrama/EditorTarget.h>
 #include <Tetragrama/Layers/ZUILayer.h>
+#include <ZEngine/Core/Containers/FixedArray.h>
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/ECS/EntityID.h>
 #include <ZEngine/UI/ZUIPanel.h>
@@ -22,7 +24,7 @@ namespace Tetragrama::Panels
     // drag-and-drop reparenting, search filter, and two-column layout.
     // VS Code chevrons (∨/›) via ZUI_DrawTriArrow + UserData 2.f/3.f.
 
-    /// @brief ECS actor outliner panel.  Renders the scene hierarchy as a
+    /// @brief ECS entity outliner panel. Renders actor-backed and pure entities as a
     ///        two-column DataTable (Actor Label, Type) with per-frame DFS
     ///        traversal, search filtering, inline rename, drag-reparent, and a
     ///        deferred-mutation delete path.
@@ -39,6 +41,8 @@ namespace Tetragrama::Panels
         // Inline rename state
         ZEngine::ECS::EntityID        m_rename_id                = {};
         char                          m_rename_buf[128]          = {};
+        char                          m_rename_original[128]     = {};
+        EntityTarget                  m_rename_target            = {};
         bool                          m_rename_started           = false;
         uint64_t                      m_rename_fkey              = 0;
 
@@ -50,9 +54,12 @@ namespace Tetragrama::Panels
         int                           m_sort_col                 = 0; ///< 0 = Actor Label, 1 = Type (kept here: the data table reloads its own sort state every frame)
         bool                          m_sort_asc                 = true;
 
-        // Drag-reparent: keep the source actor stable while rebuilding the tree.
-        ZEngine::ECS::ActorHandle     m_dragging_actor           = {};
+        // UUID/epoch identity plus the complete runtime ID; never an actor-only drag.
+        EntityTarget                  m_dragging_target          = {};
         char                          m_drag_label[128]          = {};
+        const ZEngine::ECS::Scene*    m_view_scene               = nullptr;
+        uint64_t                      m_view_epoch               = 0;
+        EntityTarget                  m_selection_anchor         = {};
 
         // Panel-level double-click tracking (ZUISignalFromBox is called twice per row,
         // so we track in the panel to avoid double-firing)
@@ -76,6 +83,17 @@ namespace Tetragrama::Panels
 
     private:
         friend struct HierarchyPanelTestAccess;
-        void BuildHierarchy(ZEngine::UI::ZUIContext* ctx, float width, Editor* app, EditorScene* scene, ZEngine::EngineContext* eng);
+        struct RowState
+        {
+            ZEngine::ECS::EntityID Entity = {};
+            uint64_t               Row = 0, Arrow = 0, Rename = 0;
+        };
+        // At least 16 boxes per row: this exceeds the rows an 8,192-box UI can
+        // emit, while keeping retained state independent of the entity count.
+        static constexpr uint32_t                                        MaxRenderedRows = 512;
+        ZEngine::Core::Containers::FixedArray<RowState, MaxRenderedRows> m_rows          = {};
+        uint32_t                                                         m_row_count     = 0;
+        uint64_t                                                         m_rows_epoch    = 0;
+        void                                                             BuildHierarchy(ZEngine::UI::ZUIContext* ctx, float width, float height, Editor* app, EditorScene* scene, ZEngine::EngineContext* eng);
     };
 } // namespace Tetragrama::Panels

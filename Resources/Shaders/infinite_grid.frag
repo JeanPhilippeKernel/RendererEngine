@@ -1,82 +1,142 @@
 #version 460
-#extension GL_GOOGLE_include_directive : require
-#include "utility.glsl"
+layout(location = 0) in vec2 Ndc;
+layout(location = 0) out vec4 OutColor;
 
-layout(location = 0) in vec2 uv;
-layout(location = 1) in vec2 camXZ;
-layout(location = 2) in float camHeight;
+layout(set = 0, binding = 0) uniform UBCamera
+{
+    mat4 View;
+    mat4 Projection;
+    vec4 Position;
+    mat4 InvViewProj;
+}
+Camera;
 
-layout(location = 0) out vec4 outColor;
+layout(set = 2, binding = 0) uniform texture2D SceneDepth;
+layout(set = 2, binding = 1) uniform sampler DepthSampler;
 
 layout(push_constant) uniform GridSettings
 {
-    vec4  colorThin;
-    vec4  colorThick;
-    vec4  colorXAxis;
-    vec4  colorZAxis;
-    float cellSize;
-    float fadeStrength;
-    float fadeRadius;
-    float lineWidth;
-    int   maxLOD;
-    float groundY;
-    vec2  _pad;
+    vec4  OriginAndLogSpacing;
+    vec4  Orientation;
+    vec4  ColorThin;
+    vec4  ColorThick;
+    vec4  ColorUAxis;
+    vec4  ColorVAxis;
+    vec4  Style;
+    uvec4 Controls;
 }
-Settings;
+Grid;
+
+const float DepthEpsilon = 2.0e-6;
+const float LogLODStride = 3.32192809489; // log2(10), independent of major cadence
+
+bool        finite3(vec3 value)
+{
+    return !any(isnan(value)) && !any(isinf(value));
+}
+
+vec3 rotate_axis(vec3 axis)
+{
+    vec4 q = Grid.Orientation;
+    return axis + 2.0 * cross(q.xyz, cross(q.xyz, axis) + q.w * axis);
+}
+
+float line_coverage(vec2 uv, vec2 footprint, float log_spacing)
+{
+    // Out-of-range spacing/phase has no resolvable repeated lines; axes still
+    // draw. Avoid zero/inf modulo and phase precision lost beyond float integers.
+    if (log_spacing < -100.0 || log_spacing > 100.0)
+        return 0.0;
+    float spacing = exp2(log_spacing);
+    vec2  phase   = uv / spacing;
+    if (any(greaterThan(abs(phase), vec2(8388608.0))))
+        return 0.0;
+    // Multiply before dividing: spacing/footprint alone can overflow even
+    // when an exactly-on-line distance is zero and perfectly representable.
+    vec2 distance_in_pixels = (abs(fract(phase + 0.5) - 0.5) * spacing) / footprint;
+    vec2 coverage           = clamp(vec2(min(Grid.Style.z, 1.0e20) * 0.5 + 0.5) - distance_in_pixels, 0.0, 1.0);
+    return max(coverage.x, coverage.y);
+}
 
 void main()
 {
-    vec2 dudv             = vec2(length(vec2(dFdx(uv.x), dFdy(uv.x))), length(vec2(dFdx(uv.y), dFdy(uv.y))));
-    dudv                  = max(dudv, vec2(0.0001));
-
-    // LOD level clamped to maxLOD — grid fades out entirely beyond the cap
-    float rawLOD          = max(0.0, log_10((length(dudv) * 2.0) / Settings.cellSize) + 1.0);
-    float lodLevel        = clamp(rawLOD, 0.0, float(Settings.maxLOD));
-    float lodFade         = smoothstep(0.0, 1.0, fract(lodLevel));
-
-    // Smooth fade-out as lodLevel approaches maxLOD
-    float lodCapFade      = 1.0 - smoothstep(float(Settings.maxLOD) - 1.0, float(Settings.maxLOD), rawLOD);
-
-    float lod0            = Settings.cellSize * pow(10.0, floor(lodLevel));
-    float lod1            = Settings.cellSize * pow(10.0, floor(lodLevel + 1.0));
-    float lod2            = Settings.cellSize * pow(10.0, floor(lodLevel + 2.0));
-
-    dudv                 *= Settings.lineWidth;
-
-    float lod0a           = max2(vec2(1.0) - abs(satv(mod(uv, lod0) / dudv) * 2.0 - vec2(1.0)));
-    float lod1a           = max2(vec2(1.0) - abs(satv(mod(uv, lod1) / dudv) * 2.0 - vec2(1.0)));
-    float lod2a           = max2(vec2(1.0) - abs(satv(mod(uv, lod2) / dudv) * 2.0 - vec2(1.0)));
-
-    vec4  c               = lod2a > 0.0 ? Settings.colorThick : lod1a > 0.0 ? mix(Settings.colorThick, Settings.colorThin, lodFade) : Settings.colorThin;
-
-    // Distance fade measured from camera XZ position, not world origin
-    float dist            = length(uv - camXZ);
-    float opacityFalloff  = pow(1.0 - satf(dist / Settings.fadeRadius), Settings.fadeStrength);
-
-    // Fade out when camera is nearly coplanar with the grid (within 2 world units)
-    float angleFade       = satf(abs(camHeight) / 2.0);
-
-    c.a                   = lod2a > 0.0 ? lod2a : lod1a > 0.0 ? lod1a : (lod0a * (1.0 - lodFade));
-    c.a                  *= opacityFalloff * angleFade * lodCapFade;
-
-    // Axis lines: override color for X (uv.y == 0) and Z (uv.x == 0) axes
-    float axisWidth       = length(dudv) * 0.5;
-    float onXAxis         = satf(1.0 - abs(uv.y) / axisWidth);
-    float onZAxis         = satf(1.0 - abs(uv.x) / axisWidth);
-
-    if (onZAxis > 0.5)
-    {
-        c.rgb = mix(c.rgb, Settings.colorZAxis.rgb, onZAxis);
-        c.a   = max(c.a, onZAxis * opacityFalloff * angleFade * lodCapFade);
-    }
-    if (onXAxis > 0.5)
-    {
-        c.rgb = mix(c.rgb, Settings.colorXAxis.rgb, onXAxis);
-        c.a   = max(c.a, onXAxis * opacityFalloff * angleFade * lodCapFade);
-    }
-
-    if (c.a < 0.001)
+    // Take screen derivatives before any divergent rejection. The plane
+    // homography below gives exact local derivatives even along occlusion/horizon
+    // boundaries; no derivatives of values from a discarded neighbour are used.
+    vec2 ndc_dx     = dFdx(Ndc);
+    vec2 ndc_dy     = dFdy(Ndc);
+    vec3 u          = rotate_axis(vec3(1.0, 0.0, 0.0));
+    vec3 v          = rotate_axis(vec3(0.0, 0.0, 1.0));
+    vec3 n          = cross(v, u); // default U=+X, V=+Z, N=+Y
+    vec4 plane      = vec4(n, -dot(n, Grid.OriginAndLogSpacing.xyz));
+    vec4 clip_plane = transpose(Camera.InvViewProj) * plane;
+    if (isnan(clip_plane.z) || isinf(clip_plane.z) || abs(clip_plane.z) < 1.0e-20)
         discard;
 
-    outColor = c;
+    // Intersect the pixel's projective camera line with the plane. No far
+    // endpoint is divided by zero: infinite-far and orthographic projections use
+    // the same homogeneous expression. Vulkan clip depth is always [0,1].
+    float depth = -(dot(clip_plane.xy, Ndc) + clip_plane.w) / clip_plane.z;
+    if (isnan(depth) || isinf(depth) || depth < 0.0 || depth > 1.0)
+        discard;
+    vec4 hit_h = Camera.InvViewProj * vec4(Ndc, depth, 1.0);
+    if (isnan(hit_h.w) || isinf(hit_h.w) || hit_h.w <= 1.0e-20)
+        discard;
+    vec3 hit  = hit_h.xyz / hit_h.w;
+    vec4 dx_h = Camera.InvViewProj * vec4(ndc_dx, -dot(clip_plane.xy, ndc_dx) / clip_plane.z, 0.0);
+    vec4 dy_h = Camera.InvViewProj * vec4(ndc_dy, -dot(clip_plane.xy, ndc_dy) / clip_plane.z, 0.0);
+    vec3 dx   = (dx_h.xyz - hit * dx_h.w) / hit_h.w;
+    vec3 dy   = (dy_h.xyz - hit * dy_h.w) / hit_h.w;
+    if (!finite3(hit) || !finite3(dx) || !finite3(dy))
+        discard;
+    vec3 relative  = hit - Grid.OriginAndLogSpacing.xyz;
+    vec2 uv        = vec2(dot(relative, u), dot(relative, v));
+    vec2 footprint = max(vec2(length(vec2(dot(dx, u), dot(dy, u))), length(vec2(dot(dx, v), dot(dy, v)))), vec2(1.0e-20));
+    if (any(isnan(uv)) || any(isinf(uv)) || any(isnan(footprint)) || any(isinf(footprint)))
+        discard;
+    float scene_depth = texelFetch(sampler2D(SceneDepth, DepthSampler), ivec2(gl_FragCoord.xy), 0).r;
+    bool  reverse_z   = Grid.Controls.y != 0u;
+    if (isnan(scene_depth) || isinf(scene_depth) || (reverse_z ? depth + DepthEpsilon < scene_depth : depth > scene_depth + DepthEpsilon))
+        discard;
+
+    float lod           = max(0.0, (log2(max(footprint.x, footprint.y)) + 1.0 - Grid.OriginAndLogSpacing.w) / LogLODStride);
+    float cap_fade      = 1.0 - smoothstep(Grid.Style.w, Grid.Style.w + 1.0, lod);
+    float level         = min(lod, Grid.Style.w);
+    float spacing       = Grid.OriginAndLogSpacing.w + floor(level) * LogLODStride;
+    float blend         = fract(level);
+    float minor         = mix(line_coverage(uv, footprint, spacing), line_coverage(uv, footprint, spacing + LogLODStride), blend);
+    float major_spacing = spacing + log2(float(Grid.Controls.x));
+    float major         = mix(line_coverage(uv, footprint, major_spacing), line_coverage(uv, footprint, major_spacing + LogLODStride), blend);
+    // Compose authored alpha in premultiplied form, converting once at output
+    // for the pipeline's straight-alpha blend. A transparent axis or major
+    // line must not recolor a visible minor line underneath it.
+    float minor_alpha   = Grid.ColorThin.a * minor * cap_fade;
+    float major_alpha   = Grid.ColorThick.a * major * cap_fade;
+    vec4  color         = vec4(Grid.ColorThin.rgb * minor_alpha, minor_alpha);
+    color               = vec4(Grid.ColorThick.rgb * major_alpha, major_alpha) + color * (1.0 - major_alpha);
+
+    vec2  axis_distance = abs(uv) / footprint;
+    float on_u          = clamp(min(Grid.Style.z, 1.0e20) * 0.5 + 0.5 - axis_distance.y, 0.0, 1.0);
+    float on_v          = clamp(min(Grid.Style.z, 1.0e20) * 0.5 + 0.5 - axis_distance.x, 0.0, 1.0);
+    float v_alpha       = Grid.ColorVAxis.a * on_v;
+    float u_alpha       = Grid.ColorUAxis.a * on_u;
+    color               = vec4(Grid.ColorVAxis.rgb * v_alpha, v_alpha) + color * (1.0 - v_alpha);
+    color               = vec4(Grid.ColorUAxis.rgb * u_alpha, u_alpha) + color * (1.0 - u_alpha);
+
+    vec3 camera_offset  = hit - Camera.Position.xyz;
+    vec2 camera_uv      = vec2(dot(camera_offset, u), dot(camera_offset, v));
+    if (!finite3(camera_offset) || any(isnan(camera_uv)) || any(isinf(camera_uv)))
+        discard;
+    float largest           = max(abs(camera_uv.x), abs(camera_uv.y));
+    float log_distance      = largest > 0.0 ? log2(largest) + 0.5 * log2(dot(camera_uv / largest, camera_uv / largest)) : -200.0;
+    float relative_distance = exp2(clamp(log_distance - Grid.Style.x, -100.0, 100.0));
+    if (relative_distance >= 1.0 || isnan(relative_distance))
+        discard;
+    float falloff = Grid.Style.y == 0.0 ? 1.0 : pow(max(0.0, 1.0 - relative_distance), Grid.Style.y);
+    float alpha   = color.a * falloff;
+    if (alpha <= 0.001 || isnan(alpha) || isinf(alpha) || !finite3(color.rgb))
+        discard;
+    // FrameColor is display-encoded after tone mapping; authored overlay colors
+    // already use that space. Never tone-map or encode them a second time.
+    OutColor = vec4(color.rgb / color.a, alpha);
 }

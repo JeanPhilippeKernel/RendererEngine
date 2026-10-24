@@ -12,6 +12,10 @@ file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
     UI/*.cpp
 )
 
+if(APPLE)
+    list(APPEND TEST_SOURCES Input/MacOSFileDialog_test.mm)
+endif()
+
 # macOS and Windows are multi-config
 if (((APPLE) OR (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")))
     if ("Release" IN_LIST CMAKE_CONFIGURATION_TYPES)
@@ -33,6 +37,23 @@ endif()
 
 add_executable(ZEngineTests)
 target_sources(ZEngineTests PRIVATE ${TEST_SOURCES})
+
+# Embed the real production GLSL, not a second test shader. Installed test
+# executables then need neither the source tree nor a runtime fixture directory.
+set(GIZMO_VERTEX_SOURCE "${CMAKE_SOURCE_DIR}/Resources/Shaders/gizmo.vert")
+set(GIZMO_FRAGMENT_SOURCE "${CMAKE_SOURCE_DIR}/Resources/Shaders/gizmo.frag")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GIZMO_VERTEX_SOURCE}" "${GIZMO_FRAGMENT_SOURCE}")
+file(READ "${GIZMO_VERTEX_SOURCE}" GIZMO_VERTEX_SOURCE)
+file(READ "${GIZMO_FRAGMENT_SOURCE}" GIZMO_FRAGMENT_SOURCE)
+configure_file(Rendering/GizmoShaderSources.h.in "generated/GizmoShaderSources.h" @ONLY)
+set(GRID_LABEL_VERTEX_SOURCE "${CMAKE_SOURCE_DIR}/Resources/Shaders/grid_labels.vert")
+set(GRID_LABEL_FRAGMENT_SOURCE "${CMAKE_SOURCE_DIR}/Resources/Shaders/grid_labels.frag")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GRID_LABEL_VERTEX_SOURCE}" "${GRID_LABEL_FRAGMENT_SOURCE}")
+file(READ "${GRID_LABEL_VERTEX_SOURCE}" GRID_LABEL_VERTEX_SOURCE)
+file(READ "${GRID_LABEL_FRAGMENT_SOURCE}" GRID_LABEL_FRAGMENT_SOURCE)
+configure_file(Rendering/GridLabelShaderSources.h.in "generated/GridLabelShaderSources.h" @ONLY)
+set_property(SOURCE Rendering/GpuAllocatorTest.cpp APPEND PROPERTY
+    INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 target_link_libraries(ZEngineTests PRIVATE
     zEngineLib

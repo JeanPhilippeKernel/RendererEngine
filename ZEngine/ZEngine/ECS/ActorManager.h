@@ -75,6 +75,15 @@ namespace ZEngine::ECS
             return static_cast<uint32_t>(m_handles.Size());
         }
 
+        const Scene* BoundScene() const
+        {
+            return m_scene;
+        }
+        const Core::Memory::ArenaAllocator* Arena() const
+        {
+            return m_arena;
+        }
+
         // Visit every live Actor. Fn signature: void(ActorHandle, Actor*).
         template <typename Fn>
         void ForEach(Fn&& fn)
@@ -85,7 +94,9 @@ namespace ZEngine::ECS
                 ActorHandle h   = m_handles.ToHandle(i);
                 Actor**     ptr = m_handles.Access(h);
                 if (ptr && *ptr)
+                {
                     fn(h, *ptr);
+                }
             }
         }
 

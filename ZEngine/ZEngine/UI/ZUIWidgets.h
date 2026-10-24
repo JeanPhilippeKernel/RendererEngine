@@ -347,11 +347,15 @@ namespace ZEngine::UI
     ///              swatch, hex text and popup all use the same sRGB values.
     /// @param width Defaults to the Settings width; ZFill() shares the available
     ///              row width between the channel fields in compact panels.
+    /// @param binding_identity Nonzero owner revision for copied/reused storage;
+    ///                         a change retires stale input and local color undo.
     /// @return true when changed.
-    bool        ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4], ZUIColorSpace space = ZUIColorSpace::Srgb, ZUISize width = ZPx(342.f));
+    bool        ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4], ZUIColorSpace space = ZUIColorSpace::Srgb, ZUISize width = ZPx(342.f), uintptr_t binding_identity = 0);
 
     /// RGB-only counterpart (262px wide). Never accesses an alpha component.
-    bool        ZUIColorEdit3(ZUIContext* ctx, const char* key, float color[3], ZUIColorSpace space = ZUIColorSpace::Srgb, ZUISize width = ZPx(262.f));
+    /// A nonzero binding_identity lets an owner reuse presentation storage safely:
+    /// changing it retires stale interaction/undo state without retaining a model pointer.
+    bool        ZUIColorEdit3(ZUIContext* ctx, const char* key, float color[3], ZUIColorSpace space = ZUIColorSpace::Srgb, ZUISize width = ZPx(262.f), uintptr_t binding_identity = 0);
 
     /// @brief Animated loading arc driven by ctx->Time.
     /// @param ctx Active ZUI context.
@@ -607,44 +611,53 @@ namespace ZEngine::UI
     /// @param col_count Number of columns.
     /// @param cols Array of ZUIDataTableColumn descriptors.
     /// @return false if the table is off-screen (still call ZUIEndDataTable).
-    bool             ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h = ZFill(), uint32_t flags = ZUIDataTableFlags_None);
+    bool                   ZUIBeginDataTable(ZUIContext* ctx, const char* key, int col_count, const ZUIDataTableColumn* cols, ZUISize h = ZFill(), uint32_t flags = ZUIDataTableFlags_None);
 
     /// @brief Render the sticky header row with labels and sort arrows.
     /// @note Must be called once before any ZUIDataTableNextRow calls.
-    void             ZUIDataTableHeadersRow(ZUIContext* ctx);
+    void                   ZUIDataTableHeadersRow(ZUIContext* ctx);
 
     /// @brief Advance to the next data row.
     /// @param ctx Active ZUI context.
     /// @param selected Tints the row with RowSelectedBg when true.
+    /// @param identity Optional stable nonzero row identity; zero uses the visible row index.
     /// @return true if the row was clicked.
-    bool             ZUIDataTableNextRow(ZUIContext* ctx, bool selected = false);
+    bool                   ZUIDataTableNextRow(ZUIContext* ctx, bool selected = false, uint64_t identity = 0);
+
+    /// Fixed logical height shared by emitted and virtualized data rows.
+    [[nodiscard]] float    ZUIDataTableRowHeight();
+    /// Predict a stable row key without emitting a box (for virtual-list focus).
+    [[nodiscard]] uint64_t ZUIDataTableRowKey(const ZUIContext* ctx, uint64_t identity);
+    /// Close the current cell/row and preserve count/height with one inert spacer.
+    /// Skipped rows create no interaction or persistent widget state.
+    void                   ZUIDataTableSkipRows(ZUIContext* ctx, uint32_t count);
 
     /// @brief Set the active column cell for the current row.
-    void             ZUIDataTableSetColumn(ZUIContext* ctx, int col);
+    void                   ZUIDataTableSetColumn(ZUIContext* ctx, int col);
     /// @brief End the data table opened by ZUIBeginDataTable.
     /// @param ctx Active ZUI context.
-    void             ZUIEndDataTable(ZUIContext* ctx);
+    void                   ZUIEndDataTable(ZUIContext* ctx);
 
     /// @return Current sort specification; Changed==true the frame a header was clicked.
-    ZUITableSortSpec ZUIDataTableGetSortSpecs(ZUIContext* ctx);
+    ZUITableSortSpec       ZUIDataTableGetSortSpecs(ZUIContext* ctx);
 
     /// @brief Full interaction signal for the current row — click, double-click, drag, scroll.
     /// Call any time after ZUIDataTableNextRow and before the next ZUIDataTableNextRow call.
-    ZUISignal        ZUIDataTableRowSignal(ZUIContext* ctx);
+    ZUISignal              ZUIDataTableRowSignal(ZUIContext* ctx);
 
     // ZUIGridView — icon grid for content browsers
 
     /// @brief Push an auto-wrapping icon grid.
     /// @param item_w Cell width in logical px.
     /// @param item_h Cell height in logical px.
-    ZUIBox*          ZUIBeginGridView(ZUIContext* ctx, const char* key, float item_w, float item_h, ZUISize w = ZFill(), ZUISize h = ZFill());
+    ZUIBox*                ZUIBeginGridView(ZUIContext* ctx, const char* key, float item_w, float item_h, ZUISize w = ZFill(), ZUISize h = ZFill());
 
     /// @brief Advance to the next grid cell.
     /// @param selected Tints the cell background.
     /// @return true when the cell is clicked.
-    bool             ZUIGridViewNextItem(ZUIContext* ctx, const char* item_key, bool selected = false);
-    void             ZUIGridViewEndItem(ZUIContext* ctx);
-    void             ZUIEndGridView(ZUIContext* ctx);
+    bool                   ZUIGridViewNextItem(ZUIContext* ctx, const char* item_key, bool selected = false);
+    void                   ZUIGridViewEndItem(ZUIContext* ctx);
+    void                   ZUIEndGridView(ZUIContext* ctx);
 
     // Drag-and-drop
 
@@ -653,7 +666,7 @@ namespace ZEngine::UI
     /// When the box is held and the mouse has moved, records
     /// ctx->DragSourceKey and copies @p payload so the next ZUIAcceptDrop
     /// call can retrieve it.
-    void             ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box, const char* payload, uint32_t payload_len, ZUIDragPayloadKind kind = ZUIDragPayloadKind::Opaque);
+    void                   ZUIBeginDragSource(ZUIContext* ctx, const ZUIBox* box, const char* payload, uint32_t payload_len, ZUIDragPayloadKind kind = ZUIDragPayloadKind::Opaque);
 
     /// @brief Accept a drop on @p box.
     ///
@@ -662,11 +675,11 @@ namespace ZEngine::UI
     /// @param out_size Capacity of @p out_buf.
     /// @param kind Receives the payload namespace; opaque/binary payloads are not filenames.
     /// Oversized payloads are rejected rather than truncated into a different filename.
-    bool             ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box, char* out_buf, uint32_t out_size, ZUIDragPayloadKind* kind = nullptr);
+    bool                   ZUIAcceptDrop(ZUIContext* ctx, const ZUIBox* box, char* out_buf, uint32_t out_size, ZUIDragPayloadKind* kind = nullptr);
 
     /// @brief Display a texture in a box.
     /// @param texture_index Bindless array slot (e.g. TextureHandle::Index).
-    void             ZUIImage(ZUIContext* ctx, const char* key, uint32_t texture_index, ZUISize w = ZFill(), ZUISize h = ZFill());
+    void                   ZUIImage(ZUIContext* ctx, const char* key, uint32_t texture_index, ZUISize w = ZFill(), ZUISize h = ZFill());
 
     /// @brief Single-line editable text field with full selection and undo/redo.
     ///
@@ -679,7 +692,7 @@ namespace ZEngine::UI
     /// @param buf_size Capacity including the null terminator.
     /// @param width_px Field width in logical pixels.
     /// @return true if @p buf changed this frame.
-    bool             ZUITextField(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, float width_px = 160.f);
+    bool                   ZUITextField(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, float width_px = 160.f);
 
     /// @brief Search box — ZUITextField with a dim icon and placeholder text.
     /// @param ctx Active ZUI context.
@@ -687,7 +700,7 @@ namespace ZEngine::UI
     /// @param buf Buffer holding the current text.
     /// @param buf_size Size of @p buf in bytes.
     /// @param placeholder Shown when @p buf is empty.
-    bool             ZUISearchBox(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, const char* placeholder = "Search...", ZUISize w = ZFill(), bool clear_button = false);
+    bool                   ZUISearchBox(ZUIContext* ctx, const char* key, char* buf, uint32_t buf_size, const char* placeholder = "Search...", ZUISize w = ZFill(), bool clear_button = false);
 
     /// @brief Thin invisible resize strip for manual splitter controls.
     ///
@@ -701,6 +714,6 @@ namespace ZEngine::UI
     /// @param max_v Maximum allowed value.
     /// @param horizontal True for horizontal resize, false for vertical.
     /// @return true when actively dragging.
-    bool             ZUIResizeHandle(ZUIContext* ctx, const char* key, float* value, float min_v, float max_v, bool horizontal);
+    bool                   ZUIResizeHandle(ZUIContext* ctx, const char* key, float* value, float min_v, float max_v, bool horizontal);
 
 } // namespace ZEngine::UI

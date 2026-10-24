@@ -9,6 +9,7 @@ namespace ZEngine::UI
     struct ZUIBox;
     struct ZUIDrawList;
     using ZUIDrawFn = void (*)(ZUIDrawList*, const ZUIBox*, const void*);
+    using ZUIHitFn  = bool (*)(const ZUIBox*, const float[2], const void*);
     /// @brief Lightweight non-owning string view (pointer + byte length).
     /// @note Ptr is valid only for the current frame — all ZUIStr values are
     ///       arena-allocated in FrameArena and become stale after ZUIBeginFrame.
@@ -170,67 +171,74 @@ namespace ZEngine::UI
     /// are written by ZUILayoutSolve at the start of ZUIEndFrame.
     struct ZUIBox
     {
-        uint64_t      Key             = 0;  ///< FNV-1a hash of the key string; 0 = unnamed.
-        ZUIStr        Label           = {}; ///< Visible text (FrameArena slice; may be null).
+        uint64_t      Key               = 0;  ///< FNV-1a hash of the key string; 0 = unnamed.
+        ZUIStr        Label             = {}; ///< Visible text (FrameArena slice; may be null).
 
         // tree — arena pointers valid for one frame only
-        ZUIBox*       Parent          = nullptr;
-        ZUIBox*       FirstChild      = nullptr;
-        ZUIBox*       LastChild       = nullptr;
-        ZUIBox*       NextSib         = nullptr;
-        ZUIBox*       PrevSib         = nullptr;
+        ZUIBox*       Parent            = nullptr;
+        ZUIBox*       FirstChild        = nullptr;
+        ZUIBox*       LastChild         = nullptr;
+        ZUIBox*       NextSib           = nullptr;
+        ZUIBox*       PrevSib           = nullptr;
 
         // build-time spec
-        ZUIBoxFlags   Flags           = ZUI_None;
-        ZUISize       Size[2]         = {};
-        float         MinSize[2]      = {}; ///< Intrinsic-size floor; controls can hug growing labels above a design minimum.
-        ZUIAxis       LayoutAxis      = ZUIAxis::Y;
-        ZUIAlign      MainAlign       = ZUIAlign::Start; ///< Children placement along LayoutAxis.
-        ZUIAlign      CrossAlign      = ZUIAlign::Start; ///< Children placement across LayoutAxis.
-        float         Gap             = 0.f;             ///< Spacing between consecutive in-flow children (logical px).
-        ZUITextAlign  TextAlign       = ZUITextAlign::Left;
-        ZUIFontSize   FontSize        = ZUIFontSize::Body;
+        ZUIBoxFlags   Flags             = ZUI_None;
+        ZUISize       Size[2]           = {};
+        float         MinSize[2]        = {}; ///< Intrinsic-size floor; controls can hug growing labels above a design minimum.
+        ZUIAxis       LayoutAxis        = ZUIAxis::Y;
+        ZUIAlign      MainAlign         = ZUIAlign::Start; ///< Children placement along LayoutAxis.
+        ZUIAlign      CrossAlign        = ZUIAlign::Start; ///< Children placement across LayoutAxis.
+        float         Gap               = 0.f;             ///< Spacing between consecutive in-flow children (logical px).
+        ZUITextAlign  TextAlign         = ZUITextAlign::Left;
+        ZUIFontSize   FontSize          = ZUIFontSize::Body;
 
         // Per-corner colors (RAD approach).
         // Colors[0]=TL  [1]=TR  [2]=BL  [3]=BR, each RGBA float[4].
         // Use ZUIBoxSetColor / ZUIBoxSetGradientV helpers below.
-        float         Colors[4][4]    = {}; // all transparent by default
-        float         TextColor[4]    = {};
-        float         BorderColor[4]  = {};
+        float         Colors[4][4]      = {}; // all transparent by default
+        float         TextColor[4]      = {};
+        float         BorderColor[4]    = {};
 
         // Per-corner radii + edge softness (RAD SDF renderer).
         // CornerRadii[0]=TL [1]=TR [2]=BL [3]=BR.
         // EdgeSoftness: AA ramp width in pixels (0.5 = 1 pixel, 0 = hard edge).
-        float         CornerRadii[4]  = {};
-        float         EdgeSoftness    = 0.5f;
+        float         CornerRadii[4]    = {};
+        float         EdgeSoftness      = 0.5f;
 
-        float         BorderThickness = 0.f;
-        ZUIShadowKind ShadowKind      = ZUIShadowKind::Menu;
-        float         FloatPos[2]     = {};
-        float         FloatAnchor[2]  = {};          ///< Parent-size fraction added to FloatPos on floating axes (resolved this frame).
-        float         MinHitSize[2]   = {0.f, 22.f}; ///< Centered hit rectangle, independent of draw geometry; ancestors still clip it.
-        uint32_t      NavOrder        = 0;           ///< Dock traversal order on ZUI_NavScope roots.
-        ZUIBox*       FocusRingTarget = nullptr;     ///< Optional composite frame (e.g. search field), valid this frame only.
-        float         Padding[4]      = {};          // left, top, right, bottom
-        uint32_t      TextureIndex    = 0xFFFFFFFFu;
-        bool          TextureFlipV    = false; ///< Sample TextureIndex upside down (file-decoded images vs render targets).
-        uint16_t      IconId          = 0;     ///< ZUIIcon for ZUI_DrawIcon (index into ZUIFontAtlas::Icon).
-        bool          ArrowFitBounds  = false; ///< ZUI_DrawTriArrow: exact box silhouette for color-bar markers.
+        float         BorderThickness   = 0.f;
+        ZUIShadowKind ShadowKind        = ZUIShadowKind::Menu;
+        float         FloatPos[2]       = {};
+        float         FloatAnchor[2]    = {};          ///< Parent-size fraction added to FloatPos on floating axes (resolved this frame).
+        float         MinHitSize[2]     = {0.f, 22.f}; ///< Centered hit rectangle, independent of draw geometry; ancestors still clip it.
+        uint32_t      NavOrder          = 0;           ///< Dock traversal order on ZUI_NavScope roots.
+        ZUIBox*       FocusRingTarget   = nullptr;     ///< Optional composite frame (e.g. search field), valid this frame only.
+        float         Padding[4]        = {};          // left, top, right, bottom
+        uint32_t      TextureIndex      = 0xFFFFFFFFu;
+        bool          TextureFlipV      = false; ///< Sample TextureIndex upside down (file-decoded images vs render targets).
+        uint16_t      IconId            = 0;     ///< ZUIIcon for ZUI_DrawIcon (index into ZUIFontAtlas::Icon).
+        bool          ArrowFitBounds    = false; ///< ZUI_DrawTriArrow: exact box silhouette for color-bar markers.
         // Per-box text multiplier, sharing the atlas. Placed in alignment padding
         // so the 64-bit frame box stays the same size.
-        float         TextScale       = 1.f;
+        float         TextScale         = 1.f;
 
         /// Frame-local drawing, after background and before border/text. The
         /// renderer supplies solved coordinates and the current ancestor clip.
-        ZUIDrawFn     CustomDraw      = nullptr;
-        const void*   CustomDrawData  = nullptr;
+        ZUIDrawFn     CustomDraw        = nullptr;
+        const void*   CustomDrawData    = nullptr;
+
+        /// Optional frame-local shape filter in logical screen pixels. Called
+        /// only inside the box's hit rectangle and ancestor clips, after popup /
+        /// modal gating. May narrow, never enlarge, that rectangle. The callback
+        /// must not mutate the tree; its non-owning data must survive EndFrame.
+        ZUIHitFn      CustomHitTest     = nullptr;
+        const void*   CustomHitTestData = nullptr;
 
         // layout output — filled by ZUILayout::Solve
-        float         ComputedSize[2] = {};
-        float         ScreenMin[2]    = {};
-        float         ScreenMax[2]    = {};
-        float         FlowOffset      = 0.f; ///< Resolved main-axis offset of the first child (MainAlign Center/End).
-        float         FlowGap         = 0.f; ///< Resolved spacing between children (Gap, plus SpaceBetween share).
+        float         ComputedSize[2]   = {};
+        float         ScreenMin[2]      = {};
+        float         ScreenMax[2]      = {};
+        float         FlowOffset        = 0.f; ///< Resolved main-axis offset of the first child (MainAlign Center/End).
+        float         FlowGap           = 0.f; ///< Resolved spacing between children (Gap, plus SpaceBetween share).
     };
 
     // Inline helpers — set colors and radii in a single call

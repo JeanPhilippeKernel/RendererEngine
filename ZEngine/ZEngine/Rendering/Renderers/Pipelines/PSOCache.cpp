@@ -1272,7 +1272,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             destination.stencilLoadOp       = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             destination.stencilStoreOp      = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             destination.initialLayout       = VK_IMAGE_LAYOUT_UNDEFINED;
-            destination.finalLayout         = VK_IMAGE_LAYOUT_UNDEFINED;
+            // Compatibility ignores initial/final layouts, but vkCreateRenderPass
+            // still forbids an undefined final layout. Reuse the legal subpass
+            // reference layout already represented by this compatibility key.
+            destination.finalLayout         = static_cast<VkImageLayout>(source.ReferenceLayout);
 
             VkAttachmentReference reference = {.attachment = i, .layout = static_cast<VkImageLayout>(source.ReferenceLayout)};
             if (i == key.DepthAttachmentIndex)

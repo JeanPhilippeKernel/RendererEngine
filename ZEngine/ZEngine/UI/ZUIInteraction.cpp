@@ -24,47 +24,28 @@ namespace ZEngine::UI
         for (int axis = 0; axis < 2; ++axis)
         {
             const float pad = fmaxf(0.f, (box->MinHitSize[axis] - (box->ScreenMax[axis] - box->ScreenMin[axis])) * 0.5f);
-            if (pt[axis] < box->ScreenMin[axis] - pad || pt[axis] > box->ScreenMax[axis] + pad)
+            if (!(pt[axis] >= box->ScreenMin[axis] - pad && pt[axis] <= box->ScreenMax[axis] + pad))
                 return false;
         }
         return true;
     }
 
-    void ZUIInteractionPass(ZUIContext* ctx)
+    ZUIPointerQuery ZUIQueryPointer(const ZUIContext* ctx, const float point[2])
     {
-        if (!ctx->Root)
+        ZUIPointerQuery query = {};
+        if (!ctx || !ctx->Root || !point || !std::isfinite(point[0]) || !std::isfinite(point[1]))
+            return query;
+        bool          hot_exact = false;
+        const ZUIBox* box       = ctx->Root;
+        uint32_t      visited   = 0;
+        while (box && visited++ < ctx->MaxBoxesPerFrame)
         {
-            ctx->HotKey = 0;
-            return;
-        }
-
-        uint32_t max             = ctx->MaxBoxesPerFrame;
-        auto     scratch         = ZGetScratch(&ctx->FrameArena);
-        ZUIBox** stack           = ZPushArray(&ctx->FrameArena, ZUIBox*, max);
-        uint32_t stack_top       = 0;
-
-        uint64_t new_hot         = 0;
-        ZUIBox*  hot_box         = nullptr;
-        bool     hot_exact       = false;
-        uint64_t new_scroll_key  = 0;
-        ZUIAxis  new_scroll_axis = ZUIAxis::Y; // axis of the nearest scrollable box
-
-        // HOT PATH — runs every frame, no heap allocation allowed.
-        stack[stack_top++]       = ctx->Root;
-        while (stack_top > 0)
-        {
-            ZUIBox* box = stack[--stack_top];
-            if (!box)
-            {
-                continue;
-            }
-
-            const bool exact        = PointInBox(ctx->MousePos, box);
-            bool       under_cursor = (box->Flags & ZUI_Clickable) ? PointInHitBox(ctx->MousePos, box) : exact;
+            const bool exact        = PointInBox(point, box);
+            bool       under_cursor = (box->Flags & ZUI_Clickable) ? PointInHitBox(point, box) : exact;
             // Clipped-away tabs/widgets must not steal clicks or drops from
             // neighboring controls even though their layout rect still exists.
             for (const ZUIBox* parent = box->Parent; parent && under_cursor; parent = parent->Parent)
-                if ((parent->Flags & ZUI_ClipChildren) && !PointInBox(ctx->MousePos, parent))
+                if ((parent->Flags & ZUI_ClipChildren) && !PointInBox(point, parent))
                     under_cursor = false;
 
             if (under_cursor)
@@ -75,7 +56,7 @@ namespace ZEngine::UI
                 // Determine both memberships before applying the modal/popup gates.
                 bool inside_modal = false;
                 bool inside_popup = false;
-                for (ZUIBox* p = box; p && (!inside_modal || !inside_popup); p = p->Parent)
+                for (const ZUIBox* p = box; p && (!inside_modal || !inside_popup); p = p->Parent)
                 {
                     if (p == ctx->ModalBox)
                         inside_modal = true;
@@ -86,41 +67,51 @@ namespace ZEngine::UI
 
                 bool can_hover = (!ctx->ModalBox || inside_modal || inside_popup) && (!ctx->PopupStackSize || inside_popup);
 
-                if (can_hover)
+                if (can_hover && !(box->Flags & ZUI_Disabled) && (!box->CustomHitTest || box->CustomHitTest(box, point, box->CustomHitTestData)))
                 {
-                    if ((box->Flags & ZUI_Clickable) && !(box->Flags & ZUI_Disabled))
+                    if (box->Flags & ZUI_Clickable)
                     {
                         // Padding may win over its own container, but never steal
                         // a neighboring control's actual rectangle.
-                        if (!hot_box || exact || !hot_exact || DescendantOf(box, hot_box))
+                        if (!query.HotBox || exact || !hot_exact || DescendantOf(box, query.HotBox))
                         {
-                            new_hot   = box->Key;
-                            hot_box   = box;
-                            hot_exact = exact;
+                            query.HotBox = box;
+                            hot_exact    = exact;
                         }
                     }
                     if ((box->Flags & ZUI_Scrollable) && exact)
                     {
-                        new_scroll_key  = box->Key;
-                        new_scroll_axis = box->LayoutAxis;
+                        query.ScrollBox = box;
                     }
                 }
             }
 
-            // Match paint order: later-painted siblings (such as overlay
-            // scrollbars) must win over clickable content beneath them.
-            // The stack is LIFO, so push children in reverse sibling order.
-            for (ZUIBox* child = box->LastChild; child; child = child->PrevSib)
+            // FirstChild/NextSib/Parent give the same paint-order DFS without
+            // allocating MaxBoxesPerFrame pointers on every query.
+            if (box->FirstChild)
+                box = box->FirstChild;
+            else
             {
-                if (stack_top < max)
-                {
-                    stack[stack_top++] = child;
-                }
-                // else: subtree silently skipped (acceptable degradation, not corruption)
+                while (box != ctx->Root && !box->NextSib)
+                    box = box->Parent;
+                box = box == ctx->Root ? nullptr : box->NextSib;
             }
         }
+        return query;
+    }
 
-        ZReleaseScratch(scratch);
+    void ZUIInteractionPass(ZUIContext* ctx)
+    {
+        if (!ctx->Root)
+        {
+            ctx->HotKey = 0;
+            return;
+        }
+        const auto     query           = ZUIQueryPointer(ctx, ctx->MousePos);
+        const auto*    hot_box         = query.HotBox;
+        const uint64_t new_hot         = hot_box ? hot_box->Key : 0;
+        const uint64_t new_scroll_key  = query.ScrollBox ? query.ScrollBox->Key : 0;
+        const ZUIAxis  new_scroll_axis = query.ScrollBox ? query.ScrollBox->LayoutAxis : ZUIAxis::Y;
 
         // Scroll input — both wheel and keyboard write to ScrollYTarget.
         // ZUIBeginScrollRegion lerps ScrollY toward ScrollYTarget each frame (smooth scroll).

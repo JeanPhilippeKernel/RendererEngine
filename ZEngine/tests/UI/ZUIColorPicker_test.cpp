@@ -79,6 +79,24 @@ protected:
         ZUIEndFrame(&ctx);
         return changed;
     }
+    bool RGBFrame(uintptr_t binding)
+    {
+        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        ZUIBeginColumn(&ctx, "root", ZPx(800), ZPx(900));
+        const bool changed = ZUIColorEdit3(&ctx, "p", color, ZUIColorSpace::Srgb, ZPx(262.f), binding);
+        ZUIEndColumn(&ctx);
+        ZUIEndFrame(&ctx);
+        return changed;
+    }
+    bool RGBAFrame(uintptr_t binding)
+    {
+        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        ZUIBeginColumn(&ctx, "root", ZPx(800), ZPx(900));
+        const bool changed = ZUIColorEdit4(&ctx, "p", color, ZUIColorSpace::Srgb, ZPx(342.f), binding);
+        ZUIEndColumn(&ctx);
+        ZUIEndFrame(&ctx);
+        return changed;
+    }
     void Move(const char* part, int index, float x, float y)
     {
         auto* box = Find(Key(part, index));
@@ -122,6 +140,90 @@ protected:
         ctx.EnterPressed = true;
     }
 };
+
+TEST_F(ZUIColorPickerTest, ExplicitRgbBindingRetiresStaleTextPointerAndPopupStateOnReusedStorage)
+{
+    const std::array before = {color[0], color[1], color[2], color[3]};
+    EXPECT_FALSE(RGBFrame(1));
+    ZUIOpenPopup(&ctx, "p", 0.f, 22.f);
+    EXPECT_FALSE(RGBFrame(1));
+    ASSERT_EQ(ctx.PopupStackSize, 1u);
+    State().DragKey            = Key("field");
+    ctx.ActiveKey              = State().DragKey;
+    ctx.FocusKey               = Key("number");
+    ctx.MouseDown[0]           = true;
+    ctx.KeyboardFocus          = true;
+    State().Numbers[0].Editing = true;
+    secure_strcpy(State().Numbers[0].Buffer, sizeof(State().Numbers[0].Buffer), "0");
+    ctx.EnterPressed = true;
+    EXPECT_FALSE(RGBFrame(2));
+    EXPECT_EQ(State().BindingIdentity, 2u);
+    EXPECT_EQ(State().DragKey, 0u);
+    EXPECT_FALSE(State().Numbers[0].Editing);
+    EXPECT_EQ(ctx.FocusKey, 0u);
+    EXPECT_EQ(ctx.ActiveKey, 0u);
+    EXPECT_EQ(ctx.PopupStackSize, 0u);
+    for (size_t i = 0; i < before.size(); ++i)
+        EXPECT_EQ(color[i], before[i]);
+    EXPECT_EQ(ctx.ColorUndoCount, 0u);
+}
+
+TEST_F(ZUIColorPickerTest, ExplicitRgbBindingDoesNotReplayUndoFromAnEqualColoredPreviousModel)
+{
+    EXPECT_FALSE(RGBFrame(41));
+    const std::array before = {color[0], color[1], color[2], 1.f};
+    const auto       owner  = ZUIHashStr("p", 1);
+    ctx.ColorUndo[0]        = {
+        owner, {0.f, 0.f, 0.f, 1.f},
+         before, ZUIColorSpace::Srgb, false, 41
+    };
+    ctx.ColorUndoCount = ctx.ColorUndoCursor = 1;
+    ctx.FocusKey                             = Key("swatch");
+    ctx.CtrlZPressed                         = true;
+    EXPECT_FALSE(RGBFrame(42));
+    ctx.FocusKey     = Key("swatch");
+    ctx.CtrlZPressed = true;
+    EXPECT_FALSE(RGBFrame(42));
+    EXPECT_EQ(ctx.ColorUndoCursor, 1u);
+    for (size_t i = 0; i < 3; ++i)
+        EXPECT_EQ(color[i], before[i]);
+}
+
+TEST_F(ZUIColorPickerTest, ExplicitRgbaBindingRetiresReusedStorageAndCannotUndoAnotherScene)
+{
+    const std::array before = {color[0], color[1], color[2], color[3]};
+    EXPECT_FALSE(RGBAFrame(1));
+    ZUIOpenPopup(&ctx, "p", 0.f, 22.f);
+    EXPECT_FALSE(RGBAFrame(1));
+    ASSERT_EQ(ctx.PopupStackSize, 1u);
+    State().DragKey            = Key("field");
+    ctx.ActiveKey              = State().DragKey;
+    ctx.FocusKey               = Key("number");
+    ctx.MouseDown[0]           = true;
+    ctx.KeyboardFocus          = true;
+    State().Numbers[0].Editing = true;
+    secure_strcpy(State().Numbers[0].Buffer, sizeof(State().Numbers[0].Buffer), "0");
+    ctx.EnterPressed = true;
+    const auto owner = ZUIHashStr("p", 1);
+    ctx.ColorUndo[0] = {
+        owner, {0.f, 0.f, 0.f, 0.f},
+         before, ZUIColorSpace::Srgb, true, 1
+    };
+    ctx.ColorUndoCount = ctx.ColorUndoCursor = 1;
+    EXPECT_FALSE(RGBAFrame(2));
+    EXPECT_EQ(State().BindingIdentity, 2u);
+    EXPECT_EQ(State().DragKey, 0u);
+    EXPECT_FALSE(State().Numbers[0].Editing);
+    EXPECT_EQ(ctx.FocusKey, 0u);
+    EXPECT_EQ(ctx.ActiveKey, 0u);
+    EXPECT_EQ(ctx.PopupStackSize, 0u);
+    ctx.FocusKey     = Key("swatch");
+    ctx.CtrlZPressed = true;
+    EXPECT_FALSE(RGBAFrame(2));
+    EXPECT_EQ(ctx.ColorUndoCursor, 1u);
+    for (uint32_t i = 0; i < 4; ++i)
+        EXPECT_EQ(color[i], before[i]);
+}
 
 TEST_F(ZUIColorPickerTest, FieldUsesFrozenOriginLivePreviewAndOneUndoEntryOnRelease)
 {

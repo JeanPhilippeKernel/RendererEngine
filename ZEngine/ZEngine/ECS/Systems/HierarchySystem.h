@@ -5,10 +5,10 @@ namespace ZEngine::ECS::Systems
 {
     // Propagates local→world transforms top-down each frame.
     //
-    // Two passes per frame:
-    //   Pass 1 — roots (no ParentComponent): WorldTransform = ComposeTransformMatrix(local)
-    //   Pass 2 — children: WorldTransform = parent.WorldTransform × ComposeTransformMatrix(local)
-    //            Repeated until stable to handle arbitrary hierarchy depth.
+    // Cached, iterative parent-before-child order: O(V + E), with no recursion or
+    // per-frame allocations. Transformless groups inherit their parent frame.
+    // Invalid links/cycles use finite local fallback poses and invalid edit frames;
+    // authored hierarchy/TRS are never silently repaired. Every matrix lane updates.
     //
     // Must run before SyncECSToRenderScene and SyncECSToLights.
     void SyncHierarchy(Scene& scene);

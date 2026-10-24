@@ -53,8 +53,9 @@ namespace Tetragrama::Components
         // Scene Settings window
         bool                                        m_settings_open        = false;
         bool                                        m_settings_just_opened = false; // skip click-outside on the opening frame
-        int                                         m_settings_page        = 0;     // 0=Grid, 1=Sky, 2=Renderer, 3=Theme, 4=Layout
-        float                                       m_modal_x              = -1.f;  // -1 = not yet positioned (centers on first open)
+        uint64_t                                    m_settings_epoch       = 0;
+        int                                         m_settings_page        = 0;    // 0=Grid, 1=Sky, 2=Renderer, 3=Theme, 4=Layout
+        float                                       m_modal_x              = -1.f; // -1 = not yet positioned (centers on first open)
         float                                       m_modal_y              = -1.f;
         float                                       m_modal_w              = 760.f;
         float                                       m_modal_h              = 520.f;

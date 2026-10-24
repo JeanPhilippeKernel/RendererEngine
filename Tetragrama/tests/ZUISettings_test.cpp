@@ -2,7 +2,12 @@
 #include <Tetragrama/Components/ZUI/ZUIRecentScenes.h>
 #include <Tetragrama/Editor.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
+#include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/UI/ZUIInput.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <gtest/gtest.h>
 #include <chrono>
@@ -31,7 +36,9 @@ namespace Tetragrama::Components
         static void OpenAll(ZUIDockspaceComponent& component)
         {
             for (auto& open : component.m_sky_sections)
+            {
                 open = true;
+            }
         }
         static bool Section(const ZUIDockspaceComponent& component, int index)
         {
@@ -55,6 +62,8 @@ protected:
     Tetragrama::Layers::ZUILayer                  layer         = {};
     Tetragrama::Components::ZUIDockspaceComponent component     = {};
     ZUIPanelManager                               panels        = {};
+    ZEngine::ECS::Scene                           world         = {};
+    std::unique_ptr<ZEngine::EngineContext>       engine        = {};
 
     void                                          SetUp() override
     {
@@ -64,16 +73,30 @@ protected:
         ctx.ScreenH     = 900;
         ctx.MousePos[0] = ctx.MousePos[1] = -100.f;
         for (auto& glyph : glyphs)
+        {
             glyph.AdvanceX = 5.5f;
+        }
         font.Glyphs     = glyphs;
         font.GlyphCount = 96;
         font.LineHeight = 13.f;
         atlas.Body = atlas.Small = atlas.Large = atlas.Header = atlas.Heading = atlas.Tiny = &font;
         ctx.Atlas                                                                          = &atlas;
         editor                                                                             = std::make_unique<Tetragrama::Editor>();
-        editor->CurrentScene                                                               = &scene;
-        editor->Configuration                                                              = &configuration;
-        layer.CurrentApp                                                                   = editor.get();
+        world.Initialize(&memory.MainArena);
+        ASSERT_TRUE(editor->Session.Initialize(&memory.MainArena, {.MaxTargets = 8, .HistoryEntries = 8, .HistoryBytes = 4096}));
+        ASSERT_TRUE(editor->Session.BeginMutationPhase());
+        ASSERT_TRUE(editor->Session.BindScene(&world));
+        editor->Session.EndMutationPhase();
+        scene.UUID    = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
+        scene.Session = &editor->Session;
+        engine        = std::make_unique<ZEngine::EngineContext>();
+        engine->Scene = &world;
+        ASSERT_TRUE(editor->Session.BeginMutationPhase());
+        ASSERT_TRUE(scene.AttachSession(editor->Session, *engine));
+        editor->Session.EndMutationPhase();
+        editor->CurrentScene  = &scene;
+        editor->Configuration = &configuration;
+        layer.CurrentApp      = editor.get();
         component.Initialize(&layer);
         Access::Open(component, 1);
         panels.Init(&memory.MainArena);
@@ -81,8 +104,20 @@ protected:
     }
     void TearDown() override
     {
+        editor->OnClosing();
+        world.Shutdown();
         panels.Shutdown();
         ZUIContextDestroy(&ctx);
+    }
+    bool ProcessSettings()
+    {
+        if (!editor->Session.BeginMutationPhase(!scene.SourceReadOnly))
+        {
+            return false;
+        }
+        const bool result = editor->Session.ProcessRequests() && editor->ProcessSceneSettings(*engine);
+        editor->Session.EndMutationPhase();
+        return result;
     }
     uint64_t Key(const char* key)
     {
@@ -94,15 +129,23 @@ protected:
         for (auto* box = ctx.Root; box;)
         {
             if (box->Key == hash)
+            {
                 return box;
+            }
             if (box->FirstChild)
+            {
                 box = box->FirstChild;
+            }
             else
             {
                 while (box && !box->NextSib)
+                {
                     box = box->Parent;
+                }
                 if (box)
+                {
                     box = box->NextSib;
+                }
             }
         }
         return nullptr;
@@ -129,10 +172,14 @@ protected:
     std::string Text(ZUIBox* box = nullptr)
     {
         if (!box)
+        {
             box = ctx.Root;
+        }
         std::string result = box->Label.Ptr ? std::string(box->Label.Ptr, box->Label.Len) : "";
         for (auto* child = box->FirstChild; child; child = child->NextSib)
+        {
             result += Text(child);
+        }
         return result;
     }
 };
@@ -166,6 +213,27 @@ TEST_F(ZUISettingsTest, ShellUsesSceneTerminologyAndPreservesDirtySceneTitles)
     EXPECT_EQ(Text().find("Scene_A*"), std::string::npos);
 }
 
+TEST_F(ZUISettingsTest, ShellUsesTheCurrentDocumentNameAfterSceneReplacement)
+{
+    struct SceneView : ZUIPanelView
+    {
+        SceneView()
+        {
+            Title      = "Viewport";
+            Chromeless = true;
+        }
+        void BuildContent(ZUIContext*, float[4]) override {}
+    } view = {};
+    Access::Close(component);
+    auto* panel = panels.AddPanel(100);
+    panels.AddView(panel, &view);
+    configuration.ActiveSceneName.init(&memory.MainArena, "Startup Scene");
+    scene.Name = "Untitled Scene";
+    Frame();
+    EXPECT_NE(Text().find("Untitled Scene"), std::string::npos);
+    EXPECT_EQ(Text().find("Startup Scene"), std::string::npos);
+}
+
 TEST_F(ZUISettingsTest, FileAndRecentMenusUseSceneTerminology)
 {
     Access::Close(component);
@@ -188,6 +256,17 @@ TEST_F(ZUISettingsTest, FileAndRecentMenusUseSceneTerminology)
 
 namespace
 {
+    struct TemporaryProjectConfiguration
+    {
+        std::filesystem::path Root = std::filesystem::current_path() / ("zui-project-config-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+
+        ~TemporaryProjectConfiguration()
+        {
+            std::error_code error = {};
+            std::filesystem::remove_all(Root, error);
+        }
+    };
+
     struct RecentHistoryFile
     {
         std::filesystem::path Path = std::filesystem::temp_directory_path() / ("zui-recent-scenes-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
@@ -198,6 +277,36 @@ namespace
         }
     };
 } // namespace
+
+TEST(EditorConfigurationTest, RelativeWorkingSpaceUsesTheAbsoluteProjectRoot)
+{
+    TemporaryProjectConfiguration project = {};
+    std::error_code               error   = {};
+    ASSERT_TRUE(std::filesystem::create_directories(project.Root / "Scenes", error));
+    ASSERT_FALSE(error);
+    const auto config_path = project.Root / "project.json";
+    {
+        std::ofstream config(config_path);
+        ASSERT_TRUE(config.is_open());
+        config << R"({
+            "projectName": "TestProject",
+            "workingSpace": ".",
+            "sceneDir": "$(workingSpace)/Scenes",
+            "sceneList": [{"name": "DefaultScene", "isDefault": true}]
+        })";
+    }
+
+    ZEngine::Core::Memory::MemoryManager memory        = {};
+    Tetragrama::EditorConfiguration      configuration = {};
+    memory.Initialize(ZMega(4), {});
+    const auto relative_config = std::filesystem::relative(config_path, std::filesystem::current_path(), error);
+    ASSERT_FALSE(error);
+    configuration.ReadConfig(&memory.MainArena, relative_config.string().c_str());
+
+    EXPECT_EQ(std::filesystem::path(configuration.WorkingSpacePath.c_str()), std::filesystem::absolute(project.Root));
+    EXPECT_STREQ(configuration.ScenePath.c_str(), "Scenes");
+    memory.Shutdown();
+}
 
 TEST(RecentScenesTest, ExistingHistoryFormatRoundtripsWithoutLosingScenePaths)
 {
@@ -251,7 +360,9 @@ TEST(RecentScenesTest, PushIsAliasSafeRejectsInvalidPathsAndStaysWithinCapacity)
     using Tetragrama::Components::RecentScenes;
     RecentScenes recent = {};
     for (int i = 0; i < RecentScenes::kMax + 2; ++i)
+    {
         recent.Push(("/Scene" + std::to_string(i) + ".zescene").c_str());
+    }
     ASSERT_EQ(recent.Count, RecentScenes::kMax);
     EXPECT_STREQ(recent.Items[0].Path, "/Scene9.zescene");
     EXPECT_STREQ(recent.Items[7].Path, "/Scene2.zescene");
@@ -261,7 +372,9 @@ TEST(RecentScenesTest, PushIsAliasSafeRejectsInvalidPathsAndStaysWithinCapacity)
     EXPECT_STREQ(recent.Items[1].Path, "/Scene9.zescene");
     const char* invalid_paths[] = {nullptr, "", "/bad\tname.zescene", "/bad\nname.zescene", "/bad\rname.zescene"};
     for (const char* path : invalid_paths)
+    {
         recent.Push(path);
+    }
     recent.Push(std::string(sizeof(RecentScenes::Entry::Path), 'x').c_str());
     EXPECT_EQ(recent.Count, RecentScenes::kMax);
     EXPECT_STREQ(recent.Items[0].Path, "/Scene6.zescene");
@@ -271,7 +384,9 @@ TEST(RecentScenesTest, PushIsAliasSafeRejectsInvalidPathsAndStaysWithinCapacity)
     {
         EXPECT_EQ(item.Time, 0);
         for (char ch : item.Path)
+        {
             EXPECT_EQ(ch, '\0');
+        }
     }
 }
 
@@ -329,7 +444,9 @@ TEST_F(ZUISettingsTest, DefaultsAndModeSwitchesPreserveEverySectionFlag)
 {
     Frame();
     for (int i = 0; i < 11; ++i)
+    {
         EXPECT_EQ(Access::Section(component, i), i == 0 || i == 1 || i == 10);
+    }
     EXPECT_NE(Find("##sky_mode_r"), nullptr);
     EXPECT_EQ(Find("##sky_atm_planet_center_r"), nullptr);
     EXPECT_EQ(Find("##ch_Gradient"), nullptr);
@@ -440,6 +557,13 @@ TEST_F(ZUISettingsTest, ResetSkyRestoresAllModesMarksDirtyAndKeepsApplicationCam
     editor->ConstrainCameraToAtmosphereGround   = true;
     const auto revision                         = scene.SkyRevision.value.load();
     Toggle("Reset##stg_reset");
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 10.f);
+    EXPECT_FLOAT_EQ(scene.Sky.Atmosphere.PlanetRadiusKilometers, 7000.f);
+    EXPECT_FALSE(scene.Sky.Sphere.ShowSunDisc);
+    EXPECT_EQ(scene.SkyRevision.value.load(), revision);
+    EXPECT_FALSE(scene.IsDirty());
+    EXPECT_FLOAT_EQ(editor->SceneSkyForUI().EnvironmentIntensity, 1.f);
+    ASSERT_TRUE(ProcessSettings());
     EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 1.f);
     EXPECT_FLOAT_EQ(scene.Sky.Atmosphere.PlanetRadiusKilometers, 6360.f);
     EXPECT_TRUE(scene.Sky.Sphere.ShowSunDisc);
@@ -553,4 +677,337 @@ TEST_F(ZUISettingsTest, AllSkyHeadersToggleWithoutLosingValuesAndSphereSunValues
     EXPECT_TRUE(Find("##sky_sphere_radius_track")->Flags & ZUI_Clickable);
     EXPECT_FALSE(Find("##sky_sphere_radius_track")->Flags & ZUI_Disabled);
     EXPECT_TRUE(Find("##sky_sphere_intensity_track")->Flags & ZUI_Clickable);
+}
+
+TEST_F(ZUISettingsTest, ReadOnlyPagesDisableAuthoredControlsButNotSectionsCameraPreferenceOrClose)
+{
+    scene.SourceReadOnly = true;
+    Access::OpenAll(component);
+    Frame();
+    EXPECT_EQ(ctx.DisabledDepth, 0);
+    EXPECT_FALSE(ctx.Disabled);
+    ASSERT_NE(Find("##sky_intensity_track"), nullptr);
+    EXPECT_TRUE(Find("##sky_intensity_track")->Flags & ZUI_Disabled);
+    EXPECT_TRUE(Find("Reset##stg_reset")->Flags & ZUI_Disabled);
+    EXPECT_FALSE(Find("Close##stg_closebtn")->Flags & ZUI_Disabled);
+    EXPECT_FALSE(Find("##ch_Source")->Flags & ZUI_Disabled);
+    ASSERT_NE(Find("##sky_atm_camera_ground_cb"), nullptr);
+    EXPECT_FALSE(Find("##sky_atm_camera_ground_cb")->Flags & ZUI_Disabled);
+    scene.Sky.EnvironmentIntensity = 9.f;
+    Toggle("Reset##stg_reset");
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 9.f);
+    Access::Open(component, 0);
+    Frame();
+    EXPECT_TRUE(Find("##sg_cs_s")->Flags & ZUI_Disabled);
+    EXPECT_EQ(ctx.DisabledDepth, 0);
+    EXPECT_FALSE(ctx.Disabled);
+}
+
+TEST_F(ZUISettingsTest, OpeningGridWithValidValuesOutsideTheCompactControlRangeDoesNotAuthorChanges)
+{
+    Access::Open(component, 0);
+    scene.AuthoredGrid.BaseSpacing  = 4.f;
+    scene.AuthoredGrid.Origin.y     = 500.f;
+    scene.AuthoredGrid.FadeRadius   = 10000.f;
+    scene.AuthoredGrid.LineWidth    = 8.f;
+    scene.AuthoredGrid.FadeStrength = 0.f;
+    const auto before               = scene.AuthoredGrid;
+    Frame();
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_TRUE(ZEngine::ECS::EqualSceneGridSettings(scene.AuthoredGrid, before));
+    EXPECT_FALSE(scene.IsDirty());
+}
+
+TEST_F(ZUISettingsTest, GridSettingsUsePlaneAndUVTerminologyRatherThanFixedGroundAxes)
+{
+    Access::Open(component, 0);
+    Frame();
+    const auto text = Text();
+    EXPECT_NE(text.find("Plane Origin Y"), std::string::npos);
+    EXPECT_NE(text.find("U Axis"), std::string::npos);
+    EXPECT_NE(text.find("V Axis"), std::string::npos);
+    EXPECT_EQ(text.find("Ground Y"), std::string::npos);
+    EXPECT_EQ(text.find("X Axis"), std::string::npos);
+    EXPECT_EQ(text.find("Z Axis"), std::string::npos);
+}
+
+TEST_F(ZUISettingsTest, OpeningAndHoveringGridOrActivatingAnotherPageDoesNotSelectTheGrid)
+{
+    Access::Open(component, 0);
+    const auto revision = editor->Session.Selection().Revision();
+    Frame();
+    auto* nav = Find("##nav_0");
+    ASSERT_NE(nav, nullptr);
+    ZUIFeedMousePos(&ctx, (nav->ScreenMin[0] + nav->ScreenMax[0]) * .5f, (nav->ScreenMin[1] + nav->ScreenMax[1]) * .5f);
+    Frame();
+    Frame();
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 0u);
+    EXPECT_EQ(editor->Session.Selection().Revision(), revision);
+    Toggle("##nav_1");
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 0u);
+    EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::None);
+    EXPECT_EQ(editor->Session.Selection().Revision(), revision);
+    EXPECT_FALSE(scene.IsDirty());
+}
+
+TEST_F(ZUISettingsTest, ExplicitGridRowMouseEnterAndSpaceQueueSelectionWithoutAuthoringDuringBuild)
+{
+    using namespace ZEngine::ECS;
+    using namespace ZEngine::ECS::Components;
+    const auto entity   = world.CreateEntity();
+    const auto identity = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
+    world.AddComponent<UUIDComponent>(entity, {identity});
+    world.AddComponent<TransformComponent>(entity, {});
+    for (uint32_t activation = 0; activation < 3; ++activation)
+    {
+        ASSERT_TRUE(editor->Session.BeginMutationPhase());
+        ASSERT_TRUE(editor->Session.Select(entity));
+        editor->Session.EndMutationPhase();
+        const auto revision = editor->Session.DocumentRevision();
+        const auto before   = scene.AuthoredGrid;
+        Access::Open(component, 0);
+        Frame();
+        auto* nav = Find("##nav_0");
+        ASSERT_NE(nav, nullptr);
+        EXPECT_FLOAT_EQ(nav->ComputedSize[1], 28.f);
+        EXPECT_FALSE(nav->Flags & ZUI_Disabled);
+        if (activation == 0)
+        {
+            ZUIFeedMousePos(&ctx, (nav->ScreenMin[0] + nav->ScreenMax[0]) * .5f, (nav->ScreenMin[1] + nav->ScreenMax[1]) * .5f);
+            Frame();
+            ZUIFeedMouseButton(&ctx, 0, true);
+            Frame();
+            ZUIFeedMouseButton(&ctx, 0, false);
+            Frame();
+        }
+        else
+        {
+            Toggle("##nav_0", activation == 2);
+        }
+        EXPECT_EQ(editor->Session.PendingRequestCount(), 1u);
+        EXPECT_EQ(editor->Session.Selection().ActiveUUID(), identity);
+        EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::None);
+        EXPECT_EQ(editor->Session.DocumentRevision(), revision);
+        EXPECT_TRUE(EqualSceneGridSettings(scene.AuthoredGrid, before));
+        EXPECT_FALSE(scene.IsDirty());
+        ASSERT_TRUE(ProcessSettings());
+        EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::Grid);
+        EXPECT_TRUE(editor->Session.Selection().Entities().empty());
+        EXPECT_EQ(editor->Session.History().UndoCount(), 0u);
+        EXPECT_EQ(editor->Session.DocumentRevision(), revision);
+        EXPECT_FALSE(scene.IsDirty());
+    }
+}
+
+TEST_F(ZUISettingsTest, ExplicitGridSelectionCancelsPreviewAtMutationTimeWithoutDiscardingRedo)
+{
+    using namespace ZEngine::ECS;
+    using namespace ZEngine::ECS::Components;
+    const auto entity = world.CreateEntity();
+    world.AddComponent<UUIDComponent>(entity, {*uuids::uuid::from_string("22222222-2222-4222-8222-222222222222")});
+    world.AddComponent<TransformComponent>(entity, {});
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.Select(entity));
+    const auto target = editor->Session.TargetFor(entity);
+    ASSERT_TRUE(editor->Session.BeginTransform({&target, 1}));
+    LocalTransformValue value = {};
+    value.Position.x          = 4.f;
+    ASSERT_TRUE(editor->Session.PreviewTransforms({&value, 1}));
+    ASSERT_TRUE(editor->Session.Commit());
+    ASSERT_TRUE(editor->Session.Undo());
+    ASSERT_TRUE(editor->Session.BeginTransform({&target, 1}));
+    value.Position.x = 9.f;
+    ASSERT_TRUE(editor->Session.PreviewTransforms({&value, 1}));
+    editor->Session.EndMutationPhase();
+    Access::Open(component, 0);
+    Frame();
+    Toggle("##nav_0");
+    EXPECT_TRUE(editor->Session.Active());
+    EXPECT_FLOAT_EQ(world.GetComponent<TransformComponent>(entity)->Position.x, 9.f);
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_FALSE(editor->Session.Active());
+    EXPECT_FLOAT_EQ(world.GetComponent<TransformComponent>(entity)->Position.x, 0.f);
+    EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::Grid);
+    EXPECT_EQ(editor->Session.History().UndoCount(), 0u);
+    EXPECT_EQ(editor->Session.History().RedoCount(), 1u);
+    EXPECT_FALSE(scene.IsDirty());
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.Redo());
+    editor->Session.EndMutationPhase();
+    EXPECT_FLOAT_EQ(world.GetComponent<TransformComponent>(entity)->Position.x, 4.f);
+}
+
+TEST_F(ZUISettingsTest, ReadOnlyGridRemainsExplicitlySelectableWithoutEnablingAuthoredControls)
+{
+    scene.SourceReadOnly = true;
+    Access::Open(component, 0);
+    Frame();
+    Toggle("##nav_0", true);
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 1u);
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::Grid);
+    EXPECT_FALSE(editor->Session.Editable());
+    EXPECT_EQ(editor->Session.History().UndoCount(), 0u);
+    EXPECT_FALSE(scene.IsDirty());
+    Frame();
+    ASSERT_NE(Find("##sg_cs_s"), nullptr);
+    EXPECT_TRUE(Find("##sg_cs_s")->Flags & ZUI_Disabled);
+    EXPECT_FALSE(Find("##nav_0")->Flags & ZUI_Disabled);
+}
+
+TEST_F(ZUISettingsTest, RetainedGridNavigationCannotSelectANewEpochUntilExplicitlyReactivated)
+{
+    Access::Open(component, 0);
+    Frame();
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.BindScene(&world));
+    ASSERT_TRUE(scene.AttachSession(editor->Session, *engine));
+    editor->Session.EndMutationPhase();
+    Toggle("##nav_0");
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 0u);
+    EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::None);
+    Toggle("##nav_0", true);
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 1u);
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::Grid);
+}
+
+TEST_F(ZUISettingsTest, AGridRowPressCannotCompleteAgainstAReplacementScene)
+{
+    Access::Open(component, 0);
+    Frame();
+    const auto* nav = Find("##nav_0");
+    ASSERT_NE(nav, nullptr);
+    ZUIFeedMousePos(&ctx, (nav->ScreenMin[0] + nav->ScreenMax[0]) * .5f, (nav->ScreenMin[1] + nav->ScreenMax[1]) * .5f);
+    Frame();
+    ZUIFeedMouseButton(&ctx, 0, true);
+    Frame();
+    ASSERT_EQ(ctx.ActiveKey, Key("##nav_0"));
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.BindScene(&world));
+    ASSERT_TRUE(scene.AttachSession(editor->Session, *engine));
+    editor->Session.EndMutationPhase();
+    Frame();
+    EXPECT_EQ(ctx.ActiveKey, 0u);
+    EXPECT_TRUE(Find("##nav_0")->Flags & ZUI_Disabled);
+    ZUIFeedMouseButton(&ctx, 0, false);
+    Frame();
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 0u);
+    EXPECT_EQ(editor->Session.Selection().ActiveSceneTarget(), Tetragrama::SceneTarget::None);
+    EXPECT_FALSE(Find("##nav_0")->Flags & ZUI_Disabled);
+    EXPECT_EQ(ctx.DisabledDepth, 0);
+    EXPECT_FALSE(ctx.Disabled);
+}
+
+TEST_F(ZUISettingsTest, GridResetQueuesAuthoredValuesThenSynchronizesRuntimeWithoutResettingSky)
+{
+    Access::Open(component, 0);
+    scene.AuthoredGrid.BaseSpacing = .7f;
+    scene.AuthoredGrid.Origin.y    = 42.f;
+    scene.Sky.EnvironmentIntensity = 9.f;
+    Frame();
+    Toggle("Reset##stg_reset");
+    EXPECT_FLOAT_EQ(scene.AuthoredGrid.BaseSpacing, .7f);
+    EXPECT_FLOAT_EQ(scene.AuthoredGrid.Origin.y, 42.f);
+    EXPECT_TRUE(ZEngine::ECS::EqualSceneGridSettings(editor->SceneGridForUI(), {}));
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_TRUE(ZEngine::ECS::EqualSceneGridSettings(scene.AuthoredGrid, {}));
+    EXPECT_FLOAT_EQ(scene.Grid.Origin.y, 0.f);
+    EXPECT_FLOAT_EQ(scene.Grid.CellSize, .025f);
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 9.f);
+    EXPECT_TRUE(scene.IsDirty());
+    EXPECT_EQ(editor->Session.History().UndoCount(), 1u);
+    EXPECT_EQ(scene.ExternalRevision(), 0u);
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.Undo());
+    editor->Session.EndMutationPhase();
+    EXPECT_FLOAT_EQ(scene.AuthoredGrid.BaseSpacing, .7f);
+    EXPECT_FLOAT_EQ(scene.AuthoredGrid.Origin.y, 42.f);
+    EXPECT_FLOAT_EQ(scene.Grid.Origin.y, 42.f);
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 9.f);
+    EXPECT_FALSE(scene.IsDirty());
+}
+
+TEST_F(ZUISettingsTest, PrimaryLightPickerListsPureECSLightsAndQueuesSelectionWithoutCreatingIdentity)
+{
+    using namespace ZEngine::ECS;
+    using namespace ZEngine::ECS::Components;
+    const auto identity = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
+    const auto entity   = world.CreateEntity();
+    world.AddComponent<UUIDComponent>(entity, {identity});
+    world.AddComponent<TransformComponent>(entity, {});
+    world.AddComponent<LightComponent>(entity, {});
+    world.AddComponent<NameComponent>(entity, {"Pure ECS Sun"});
+    const auto anonymous = world.CreateEntity();
+    world.AddComponent<LightComponent>(anonymous, {});
+    world.AddComponent<TransformComponent>(anonymous, {});
+    world.AddComponent<NameComponent>(anonymous, {"Anonymous Sun"});
+    Frame();
+    ASSERT_NE(Find("##combo_btn_##sky_light"), nullptr);
+    Toggle("##combo_btn_##sky_light");
+    ctx.EnterPressed = false;
+    Frame();
+    EXPECT_NE(Text().find("Pure ECS Sun"), std::string::npos);
+    EXPECT_EQ(Text().find("Anonymous Sun"), std::string::npos);
+    EXPECT_FALSE(world.HasComponent<UUIDComponent>(anonymous));
+    char item[196] = {};
+    snprintf(item, sizeof(item), "Pure ECS Sun##sky_light_%u_%u", entity.Index, entity.Generation);
+    ASSERT_NE(Find(item), nullptr);
+    Toggle(item);
+    EXPECT_TRUE(scene.Sky.PrimaryCelestialLight.is_nil());
+    EXPECT_EQ(editor->SceneSkyForUI().PrimaryCelestialLight, identity);
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_EQ(scene.Sky.PrimaryCelestialLight, identity);
+    ctx.EnterPressed = false;
+    Frame();
+    EXPECT_NE(Text().find("Pure ECS Sun"), std::string::npos);
+}
+
+TEST_F(ZUISettingsTest, RepeatedSliderInputAccumulatesInPendingViewWithoutAuthoredWritesDuringBuild)
+{
+    Frame();
+    const auto revision = scene.SkyRevision.value.load();
+    for (uint32_t i = 0; i < 3; ++i)
+    {
+        ctx.FocusKey          = Key("##sky_intensity_track");
+        ctx.KeyboardFocus     = true;
+        ctx.ArrowRightPressed = true;
+        Frame();
+        EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 1.f);
+        EXPECT_FLOAT_EQ(editor->SceneSkyForUI().EnvironmentIntensity, 1.f + .32f * float(i + 1));
+        EXPECT_EQ(scene.SkyRevision.value.load(), revision);
+        EXPECT_FALSE(scene.IsDirty());
+    }
+    ctx.ArrowRightPressed = false;
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 1.96f);
+    EXPECT_EQ(scene.SkyRevision.value.load(), revision + 1);
+    EXPECT_TRUE(scene.IsDirty());
+}
+
+TEST_F(ZUISettingsTest, SceneRebindRetiresOldSliderOwnershipAndPrimaryPopupWithoutEditingTheNewScene)
+{
+    Frame();
+    ZUIOpenPopup(&ctx, "##sky_light", 0.f, 22.f);
+    Frame();
+    ASSERT_EQ(ctx.PopupStackSize, 1u);
+    ctx.ActiveKey = ctx.FocusKey = ctx.HotKey = Key("##sky_intensity_track");
+    ctx.MouseDown[0]                          = true;
+    ctx.ArrowRightPressed                     = true;
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.BindScene(&world));
+    editor->Session.EndMutationPhase();
+    Frame();
+    EXPECT_EQ(ctx.PopupStackSize, 0u);
+    EXPECT_EQ(ctx.ActiveKey, 0u);
+    EXPECT_NE(ctx.FocusKey, Key("##sky_intensity_track"));
+    EXPECT_FLOAT_EQ(editor->SceneSkyForUI().EnvironmentIntensity, 1.f);
+    ASSERT_TRUE(ProcessSettings());
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 1.f);
+    EXPECT_FALSE(scene.IsDirty());
+    ctx.ArrowRightPressed = false;
+    Frame();
+    EXPECT_FALSE(Find("##sky_intensity_track")->Flags & ZUI_Disabled);
+    EXPECT_FLOAT_EQ(scene.Sky.EnvironmentIntensity, 1.f);
 }

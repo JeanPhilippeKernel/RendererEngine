@@ -64,6 +64,60 @@ TEST_F(AssetRegistryTest, UUIDLookupReturnsCorrectRecord)
     EXPECT_STREQ(rec->Path.CStr(), "/project/mesh.glb");
 }
 
+TEST_F(AssetRegistryTest, WorkerSnapshotIsOwnedAndRejectsRenamedOrRecycledMeshIdentity)
+{
+    const auto mesh      = MakeUUID();
+    const auto hierarchy = MakeUUID();
+    const auto path      = P("/mesh.zemesh");
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    AssetRecordSnapshot snapshot = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &snapshot));
+    m_registry.OnAssetRenamed(path, P("/renamed.zemesh"));
+    EXPECT_EQ(snapshot.Record.Path, path);
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(snapshot, hierarchy, 0u, 0x30000000u));
+    EXPECT_EQ(m_registry.FindByUUID(hierarchy), nullptr);
+    ASSERT_TRUE(m_registry.Remove(mesh));
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(snapshot, hierarchy, 0u, 0x30000000u));
+    EXPECT_EQ(m_registry.FindByUUID(hierarchy), nullptr);
+    EXPECT_EQ(m_registry.FindByUUID(mesh)->State, AssetState::Registered);
+}
+
+TEST_F(AssetRegistryTest, CheckedMeshPairBindingUpdatesNeitherRecordOnMismatchAndPreservesSourceMetadata)
+{
+    const auto   mesh      = MakeUUID();
+    const auto   hierarchy = MakeUUID();
+    MetaFileData meta      = {};
+    meta.AssetUUID         = mesh;
+    meta.SourceHash        = 73;
+    const auto path        = P("/mesh.zemesh");
+    ASSERT_TRUE(m_registry.Register(mesh, Managers::AssetType::MESH, path, meta).IsOk());
+    AssetRecordSnapshot snapshot = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &snapshot));
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(snapshot, hierarchy, 0x10000000u, 0x30000000u));
+    EXPECT_EQ(m_registry.FindByUUID(hierarchy), nullptr);
+    EXPECT_EQ(m_registry.FindByUUID(mesh)->State, AssetState::Registered);
+    EXPECT_FALSE(m_registry.TryReadRecord(mesh, nullptr));
+    ASSERT_TRUE(m_registry.TryBindLoadedMesh(snapshot, hierarchy, 4u, 0x30000007u));
+    AssetRecordSnapshot loaded = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &loaded));
+    EXPECT_EQ(loaded.Record.Path, path);
+    EXPECT_EQ(loaded.Record.Meta.SourceHash, 73u);
+    EXPECT_EQ(loaded.Record.SlotHandle, 4u);
+    EXPECT_EQ(loaded.Record.State, AssetState::Loaded);
+    Managers::AssetHandle slot = 99;
+    EXPECT_FALSE(m_registry.TryReadSlot(mesh, Managers::AssetType::MATERIAL, &slot));
+    EXPECT_EQ(slot, 99u);
+    EXPECT_FALSE(m_registry.TryReadSlot(mesh, Managers::AssetType::MESH, nullptr));
+    EXPECT_TRUE(m_registry.TryReadSlot(mesh, Managers::AssetType::MESH, &slot));
+    EXPECT_EQ(slot, 4u);
+    ASSERT_NE(m_registry.FindByUUID(hierarchy), nullptr);
+    EXPECT_EQ(m_registry.FindByUUID(hierarchy)->SlotHandle, 0x30000007u);
+    EXPECT_EQ(m_registry.FindByUUID(hierarchy)->Type, Managers::AssetType::MESH_HIERARCHY);
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(snapshot, MakeUUID(), 5u, 0x30000008u));
+    EXPECT_EQ(m_registry.RecordCount(), 2u);
+}
+
 // Test 2 — VFSPath lookup returns correct record
 TEST_F(AssetRegistryTest, PathLookupReturnsCorrectRecord)
 {

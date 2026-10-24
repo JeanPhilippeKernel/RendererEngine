@@ -4,6 +4,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/ZEngineDef.h>
 #include <cstddef>
+#include <new>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -64,9 +65,13 @@ namespace ZEngine::Core::Containers
         value_type operator*() const
         {
             if constexpr (IsConst)
+            {
                 return {m_entries[m_index].key, m_entries[m_index].value};
+            }
             else
+            {
                 return {m_entries[m_index].key, const_cast<V&>(m_entries[m_index].value)};
+            }
         }
 
         const K& key() const
@@ -78,7 +83,9 @@ namespace ZEngine::Core::Containers
         void skip_to_occupied()
         {
             while (m_index < m_capacity && m_entries[m_index].state != EntryState::Occupied)
+            {
                 ++m_index;
+            }
         }
 
         EntryPointer m_entries;
@@ -107,6 +114,36 @@ namespace ZEngine::Core::Containers
             m_entries.init(arena, cap, cap);
             Helpers::secure_memset(m_entries.data(), 0, cap * sizeof(Entry), cap * sizeof(Entry));
             m_size = 0;
+        }
+
+        /// Checked initialization for value-like entries. Failure preserves this
+        /// map; callers can roll back an exclusive temporary arena transaction.
+        [[nodiscard]] bool try_init(Memory::ArenaAllocator* arena, size_type slot_capacity = 16)
+        {
+            static_assert(std::is_trivially_copyable_v<Entry>);
+            if (!arena || slot_capacity > (size_type(1) << (sizeof(size_type) * 8 - 1)))
+            {
+                return false;
+            }
+            const size_type cap     = next_pow2(slot_capacity < 16 ? 16 : slot_capacity);
+            Array<Entry>    entries = {};
+            entries.m_allocator     = arena;
+            if (!entries.try_reserve(cap))
+            {
+                return false;
+            }
+            for (size_type i = 0; i < cap; ++i)
+            {
+                new (&entries.m_data[i]) Entry{};
+            }
+            entries.m_size  = cap;
+            auto previous   = std::move(m_entries);
+            m_entries       = std::move(entries);
+            m_allocator     = arena;
+            m_slab          = nullptr;
+            m_capacity_mask = cap - 1;
+            m_size          = 0;
+            return true;
         }
 
         /// @brief Init backed by a TLSFSlab — rehash reallocates in-place when possible.
@@ -209,7 +246,9 @@ namespace ZEngine::Core::Containers
         {
             size_type new_cap = next_pow2(new_count);
             if (new_cap > capacity())
+            {
                 rehash(new_cap);
+            }
         }
 
         iterator begin()
@@ -243,7 +282,9 @@ namespace ZEngine::Core::Containers
         static size_type           next_pow2(size_type n)
         {
             if (n == 0)
+            {
                 return 1;
+            }
             --n;
             n |= n >> 1;
             n |= n >> 2;
@@ -251,38 +292,54 @@ namespace ZEngine::Core::Containers
             n |= n >> 8;
             n |= n >> 16;
             if constexpr (sizeof(size_type) > 4)
+            {
                 n |= n >> 32;
+            }
             return n + 1;
         }
 
         bool key_eq(const K& a, const K& b) const
         {
             if constexpr (std::is_same_v<K, const char*>)
+            {
                 return Helpers::secure_strcmp(a, b) == 0;
+            }
             else
+            {
                 return a == b;
+            }
         }
 
         size_type hash_of(const K& key) const
         {
             if constexpr (std::is_same_v<K, const char*>)
+            {
                 return rapidhash(key, Helpers::secure_strlen(key));
+            }
             else
+            {
                 return rapidhash(&key, sizeof(K));
+            }
         }
 
         size_type probe_find(const K& key) const
         {
             if (m_entries.empty())
+            {
                 return npos;
+            }
             size_type idx = hash_of(key) & m_capacity_mask;
             for (size_type i = 0; i <= m_capacity_mask; ++i)
             {
                 const Entry& e = m_entries[idx];
                 if (e.state == EntryState::Empty)
+                {
                     return npos;
+                }
                 if (e.state == EntryState::Occupied && key_eq(e.key, key))
+                {
                     return idx;
+                }
                 idx = (idx + 1) & m_capacity_mask;
             }
             return npos;
@@ -297,15 +354,23 @@ namespace ZEngine::Core::Containers
             {
                 Entry& e = m_entries[idx];
                 if (e.state == EntryState::Occupied && key_eq(e.key, key))
+                {
                     return idx;
+                }
                 if (e.state == EntryState::Empty)
+                {
                     return tombstone != npos ? tombstone : idx;
+                }
                 if (e.state == EntryState::Deleted && tombstone == npos)
+                {
                     tombstone = idx;
+                }
                 idx = (idx + 1) & m_capacity_mask;
             }
             if (tombstone != npos)
+            {
                 return tombstone;
+            }
             ZENGINE_VALIDATE_ASSERT(false, "UnorderedHashMap: table full — pre-size with init(arena, 2*count)")
             return npos;
         }
@@ -313,7 +378,9 @@ namespace ZEngine::Core::Containers
         void guard_load()
         {
             if (m_entries.empty())
+            {
                 return;
+            }
             ZENGINE_VALIDATE_ASSERT(static_cast<float>(m_size + 1) / static_cast<float>(capacity()) <= 0.75f, "UnorderedHashMap: load > 75% — call reserve() or increase init() capacity")
         }
 
@@ -323,7 +390,9 @@ namespace ZEngine::Core::Containers
             guard_load();
             size_type idx = probe_insert(key);
             if (idx == npos)
+            {
                 return;
+            }
             Entry& e = m_entries[idx];
             if (e.state != EntryState::Occupied)
             {
@@ -341,9 +410,13 @@ namespace ZEngine::Core::Containers
 
             m_capacity_mask      = new_cap - 1;
             if (m_slab)
+            {
                 m_entries.init(m_slab, new_cap, new_cap);
+            }
             else
+            {
                 m_entries.init(m_allocator, new_cap, new_cap);
+            }
             Helpers::secure_memset(m_entries.data(), 0, new_cap * sizeof(Entry), new_cap * sizeof(Entry));
             m_size = 0;
 

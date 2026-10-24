@@ -46,13 +46,13 @@ namespace ZEngine::Importers::AssetCodec
 
     struct ImportConfiguration
     {
-        Core::Containers::String AssetName;
-        Core::Containers::String OutputAssetFile;
-        Core::Containers::String OutputAssetsPath;
-        Core::Containers::String OutputMaterialPath;
-        Core::Containers::String InputBaseAssetFilePath;
-        Core::Containers::String OutputWorkingSpacePath;
-        Core::Containers::String OutputTextureFilesPath;
+        Core::Containers::String AssetName                                               = {};
+        Core::Containers::String OutputAssetFile                                         = {};
+        Core::Containers::String OutputAssetsPath                                        = {};
+        Core::Containers::String OutputMaterialPath                                      = {};
+        Core::Containers::String InputBaseAssetFilePath                                  = {};
+        Core::Containers::String OutputWorkingSpacePath                                  = {};
+        Core::Containers::String OutputTextureFilesPath                                  = {};
         Core::VFS::IVFSContext*  VFS                                                     = nullptr;
         // Called synchronously after an artifact commits. This remains separate from
         // the completion callback so a failed import can still report partial output.
@@ -104,6 +104,26 @@ namespace ZEngine::Importers::AssetCodec
         float    Exposure        = 1.0f;
         uint32_t ImporterVersion = ENVIRONMENT_MAP_IMPORTER_VERSION;
     };
+
+    struct MeshAssetReadLimits
+    {
+        uint64_t MaxFileBytes        = ZMega(512ULL);
+        size_t   MaxDecodedBytes     = ZMega(512ULL);
+        uint32_t MaxVertices         = 8 * 1024 * 1024;
+        uint32_t MaxIndices          = 64 * 1024 * 1024;
+        uint32_t MaxSubMeshes        = 8192;
+        uint32_t MaxNodes            = 65536;
+        uint32_t MaxNames            = 65536;
+        uint32_t MaxStringBytes      = 4096;
+        size_t   MaxStringTotalBytes = ZMega(8ULL);
+    };
+
+    /// Bounded v1 (64-bit little-endian) mesh readers. No active scene/cache mutation.
+    /// The caller exclusively owns arena for the call and the lifetime of the result.
+    /// Failure preserves both outputs and restores the arena's allocation cursors.
+    /// A non-nil expected UUID prevents a stale/substituted file binding another asset.
+    [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAssetFileVFS(Core::Memory::ArenaAllocator* arena, Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
+    [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* path, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
 
     [[nodiscard]] Core::VFS::VFSResult<AssetImporterOutput> SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config);
 

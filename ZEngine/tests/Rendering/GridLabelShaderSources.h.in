@@ -1,0 +1,7 @@
+#pragma once
+
+namespace ZEngine::Tests::GridLabelShaders
+{
+    inline constexpr char Vertex[]   = R"ZEGridLabels(@GRID_LABEL_VERTEX_SOURCE@)ZEGridLabels";
+    inline constexpr char Fragment[] = R"ZEGridLabels(@GRID_LABEL_FRAGMENT_SOURCE@)ZEGridLabels";
+} // namespace ZEngine::Tests::GridLabelShaders

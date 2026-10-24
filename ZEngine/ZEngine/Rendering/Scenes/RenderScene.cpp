@@ -1,3 +1,4 @@
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <cstring>
@@ -22,12 +23,12 @@ namespace ZEngine::Rendering::Scenes
 
         SeqBeginWrite();
 
-        MeshInstance inst;
-        inst.Id        = id;
-        inst.MeshUUID  = uuid;
-        inst.Transform = Core::Maths::Identity<Core::Maths::Mat4f>();
+        MeshInstance inst = {};
+        inst.Id           = id;
+        inst.MeshUUID     = uuid;
+        inst.Transform    = Core::Maths::Identity<Core::Maths::Mat4f>();
         if (name)
-            ::strncpy(inst.Name, name, sizeof(inst.Name) - 1);
+            Helpers::secure_strncpy(inst.Name, sizeof(inst.Name), name, sizeof(inst.Name) - 1);
 
         Instances.push(inst);
 
@@ -38,7 +39,7 @@ namespace ZEngine::Rendering::Scenes
 
     void RenderScene::RemoveMeshInstance(uint32_t id, Rendering::RenderResourceManager* rrm)
     {
-        uuids::uuid freed_uuid;
+        uuids::uuid freed_uuid = {};
 
         SeqBeginWrite();
 

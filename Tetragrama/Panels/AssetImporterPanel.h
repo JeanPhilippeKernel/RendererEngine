@@ -11,11 +11,18 @@
 #include <ZEngine/Importers/GltfImporter.h>
 #include <ZEngine/UI/ZUIIcons.h>
 #include <ZEngine/UI/ZUIPanel.h>
+#include <ZEngine/Windows/FileDialogRequest.h>
 #include <uuid.h>
-#include <future>
+#include <atomic>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
+
+namespace ZEngine
+{
+    struct EngineContext;
+}
 
 namespace Tetragrama::Panels
 {
@@ -33,6 +40,10 @@ namespace Tetragrama::Panels
             Key         = ZEngine::UI::ZUIHashStr("Importer", 8);
             Icon        = static_cast<int>(ZEngine::UI::ZUIIcon::Folder);
         }
+        ~AssetImporterPanel() override
+        {
+            ZENGINE_VALIDATE_ASSERT(!m_task_pending, "Importer workers must be joined and results released before panel destruction")
+        }
 
         /// @brief Allocates importers and arenas; must be called once before first use.
         /// @param layer Owning ZUI layer (provides arena and app pointers).
@@ -43,6 +54,12 @@ namespace Tetragrama::Panels
         /// @param ctx ZUI context for the current frame.
         /// @param rect Panel bounding rect [x0, y0, x1, y1].
         void BuildContent(ZEngine::UI::ZUIContext* ctx, float rect[4]) override;
+        /// Main-thread completion polling, independent of panel visibility/overlay slots.
+        void Poll(ZEngine::EngineContext* engine = nullptr);
+        /// Stop accepting UI work; running workers retain their storage until joined.
+        void Close();
+        /// Engine calls this after joining workers and before releasing VFS/import arenas.
+        void ShutdownAfterWorkersJoined();
 
     private:
         friend struct AssetImporterPanelTestAccess;
@@ -94,8 +111,17 @@ namespace Tetragrama::Panels
             ZEngine::Core::VFS::VFSImportPublication                      Publication                     = {};
             std::string                                                   Error                           = {};
             ImportTaskOutcome                                             Outcome                         = ImportTaskOutcome::Pending;
+            uuids::uuid                                                   Scene                           = {};
+            uint64_t                                                      Epoch                           = 0;
+            char                                                          InstanceName[256]               = {};
+            bool                                                          PlaceInScene                    = false;
+            std::atomic<bool>                                             Ready                           = false;
         };
-        ImportTask m_import_task = {};
+        ImportTask      m_import_task        = {};
+        bool            m_task_pending       = false;
+        bool            m_closed             = false;
+        uint64_t        m_import_scene_epoch = 0;
+        std::thread::id m_owner              = std::this_thread::get_id();
 
         // State machine (shared across main and background threads)
         enum class ImporterState : uint8_t
@@ -104,31 +130,32 @@ namespace Tetragrama::Panels
             Options   = 1, ///< Displaying import options to the user.
             Importing = 2  ///< Import is running.
         };
-        PaddedAtomic<ImporterState> m_state              = {};
-        PaddedAtomic<float>         m_progress           = {};
+        PaddedAtomic<ImporterState>         m_state              = {};
+        PaddedAtomic<float>                 m_progress           = {};
 
         // Import settings
-        char                        m_path_buf[1024]     = {};
-        char                        m_error[256]         = {};
-        bool                        m_browse_pending     = false;
-        bool                        m_add_to_scene       = false; // true when triggered by viewport drag-drop
-        char                        m_instance_name[256] = {};
-        bool                        m_use_source_name    = true;
-        float                       m_scale              = 1.f;
-        int                         m_axis_index         = 0; // 0=Y-Up, 1=Z-Up
-        int                         m_normals_mode       = 1; // 0=Off, 1=Flat, 2=Smooth
-        bool                        m_merge_vertices     = true;
-        bool                        m_flip_uvs           = false;
-        bool                        m_import_materials   = true;
-        bool                        m_import_textures    = true;
-        bool                        m_same_settings      = false;
-        bool                        m_mesh_open          = true;
-        bool                        m_materials_open     = true;
-        bool                        m_animation_open     = true;
-        bool                        m_history_open       = true;
+        char                                m_path_buf[1024]     = {};
+        char                                m_error[256]         = {};
+        bool                                m_browse_pending     = false;
+        ZEngine::Windows::FileDialogRequest m_file_picker        = {};
+        bool                                m_add_to_scene       = false; // true when triggered by viewport drag-drop
+        char                                m_instance_name[256] = {};
+        bool                                m_use_source_name    = true;
+        float                               m_scale              = 1.f;
+        int                                 m_axis_index         = 0; // 0=Y-Up, 1=Z-Up
+        int                                 m_normals_mode       = 1; // 0=Off, 1=Flat, 2=Smooth
+        bool                                m_merge_vertices     = true;
+        bool                                m_flip_uvs           = false;
+        bool                                m_import_materials   = true;
+        bool                                m_import_textures    = true;
+        bool                                m_same_settings      = false;
+        bool                                m_mesh_open          = true;
+        bool                                m_materials_open     = true;
+        bool                                m_animation_open     = true;
+        bool                                m_history_open       = true;
 
         // Import history ring buffer (Idle state, newest first)
-        static constexpr int        kHistMax             = 16;
+        static constexpr int                kHistMax             = 16;
         struct HistEntry
         {
             char name[256]    = {};
@@ -145,56 +172,55 @@ namespace Tetragrama::Panels
             char  text[256] = {};
             float color[4]  = {0.8f, 0.8f, 0.8f, 1.f};
         };
-        LogEntry          m_log[kLogMax] = {};
-        int               m_log_head     = 0;
-        int               m_log_count    = 0;
-        std::mutex        m_log_mutex    = {};
-        char              m_status[256]  = {};
+        LogEntry    m_log[kLogMax] = {};
+        int         m_log_head     = 0;
+        int         m_log_count    = 0;
+        std::mutex  m_log_mutex    = {};
+        char        m_status[256]  = {};
 
         // Build helpers
         /// @brief Build the idle state UI (file selection).
-        void              BuildIdle(ZEngine::UI::ZUIContext* ctx);
+        void        BuildIdle(ZEngine::UI::ZUIContext* ctx);
         /// @brief Build the options state UI (import settings).
-        void              BuildOptions(ZEngine::UI::ZUIContext* ctx);
+        void        BuildOptions(ZEngine::UI::ZUIContext* ctx);
         /// @brief Build the in-progress state UI (progress bar and latest worker status).
-        void              BuildImporting(ZEngine::UI::ZUIContext* ctx);
-        void              CancelSelection();
+        void        BuildImporting(ZEngine::UI::ZUIContext* ctx);
+        void        CancelSelection();
 
         /// @brief Open the file browser dialog synchronously.
-        void              BrowseFile();
+        void        BrowseFile();
         /// @brief Open the file browser dialog asynchronously.
-        std::future<void> BrowseFileAsync();
+        void        PollFileDialog();
+        void        ConsumePendingImport();
         /// @brief Validates a source selected by browsing or dropping, then shows import options.
-        bool              SelectSource(const char* path);
+        bool        SelectSource(const char* path);
         /// @brief Validates names/options and builds a coherent configuration in the scratch arena.
-        bool              BuildImportConfiguration(ZEngine::Importers::AssetCodec::ImportConfiguration& config, ZEngine::Core::VFS::IVFSContext* vfs);
+        bool        BuildImportConfiguration(ZEngine::Importers::AssetCodec::ImportConfiguration& config, ZEngine::Core::VFS::IVFSContext* vfs);
         /// @brief Begin the import process with the current settings.
-        void              StartImport();
-        /// @brief Add an imported mesh instance to the ECS scene on the main thread.
-        void              CreateMeshActor(uuids::uuid mesh_uuid, uint32_t render_instance_id, const char* name);
+        void        StartImport();
         /// @brief Append a log message to the import log.
-        void              PushLog(const char* text, float r, float g, float b);
+        void        PushLog(const char* text, float r, float g, float b);
         /// @brief Record the completed import in the history list.
-        void              PushHistory(const char* name, bool ok, const char* msg);
+        void        PushHistory(const char* name, bool ok, const char* msg);
 
         /// @brief Runs one import on a worker through the C-style task API.
-        static void       RunImportTask(void* context);
+        static void RunImportTask(void* context);
         /// @brief Consumes a completed worker task on the main thread.
-        static void       FinalizeImportTask(void* context);
+        void        FinalizeImportTask(ZEngine::EngineContext* engine);
 
         // Static callbacks for ImportFile. They execute on a worker, so they only
         // copy the result into ImportTask; FinalizeImportTask performs editor work.
-        static void       OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
-        static void       OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType type, const char* path);
-        static void       OnImportProgress(void* ctx, float pct);
-        static void       OnImportError(void* ctx, std::string_view err);
-        static void       OnImportLog(void* ctx, std::string_view msg);
+        static void OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        static void OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType type, const char* path);
+        static void OnImportProgress(void* ctx, float pct);
+        static void OnImportError(void* ctx, std::string_view err);
+        static void OnImportLog(void* ctx, std::string_view msg);
 
         // Main-thread-only completion handlers.
-        static void       CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
-        static void       CompleteImportErrorOnMainThread(void* ctx, std::string_view err);
-        static void       RecordPublishedPath(ImportTask& task, const char* path);
-        static void       EndImportPublication(ImportTask& task);
+        void        CompleteImportOnMainThread(ZEngine::EngineContext* engine, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        static void CompleteImportErrorOnMainThread(void* ctx, std::string_view err);
+        static void RecordPublishedPath(ImportTask& task, const char* path);
+        static void EndImportPublication(ImportTask& task);
     };
 
 } // namespace Tetragrama::Panels
