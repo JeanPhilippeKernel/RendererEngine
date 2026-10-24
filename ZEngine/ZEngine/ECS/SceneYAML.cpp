@@ -5,7 +5,6 @@
 #include <charconv>
 #include <climits>
 #include <cmath>
-#include <limits>
 #include <new>
 
 namespace ZEngine::ECS::SceneYAML
@@ -82,7 +81,9 @@ namespace ZEngine::ECS::SceneYAML
     Node Storage::Float(float value)
     {
         char       text[64] = {};
-        const auto result   = std::to_chars(text, text + sizeof(text), value, std::chars_format::general, std::numeric_limits<float>::max_digits10);
+        // The default general format selects the shortest representation that
+        // round-trips to this float, keeping authored scene diffs readable.
+        const auto result   = std::to_chars(text, text + sizeof(text), value);
         if (!std::isfinite(value) || result.ec != std::errc{})
         {
             Fail();

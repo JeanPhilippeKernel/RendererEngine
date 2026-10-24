@@ -213,6 +213,32 @@ TEST_F(SceneDocumentTest, CanonicalOrderDoesNotDependOnEntityCreationOrComponent
     EXPECT_EQ(Emit(), canonical);
 }
 
+TEST_F(SceneDocumentTest, FloatsUseShortestExactText)
+{
+    const auto entity                                         = Add(FirstUUID);
+    Source.GetComponent<TransformComponent>(entity)->Position = {1.f, 1.5f, -2.25f};
+    Source.GetComponent<TransformComponent>(entity)->Scale.x  = .1f;
+    ASSERT_TRUE(Capture());
+    const auto text = Emit();
+    EXPECT_NE(text.find("\"position\": [1, 1.5, -2.25]"), std::string::npos);
+    EXPECT_NE(text.find("\"scale\": [0.1, 1, 1]"), std::string::npos);
+    EXPECT_EQ(text.find("0.100000001"), std::string::npos);
+}
+
+TEST_F(SceneDocumentTest, AmbiguousStringsAreQuotedAndRemainStrings)
+{
+    Settings.Name = "null";
+    Add(FirstUUID, "true");
+    ASSERT_TRUE(Capture());
+    const auto text = Emit();
+    EXPECT_NE(text.find("\"name\": \"null\""), std::string::npos);
+    EXPECT_NE(text.find("\"value\": \"true\""), std::string::npos);
+    ASSERT_TRUE(Parse(text));
+    ASSERT_TRUE(Document.PopulateCandidate(Candidate, Schemas, &Diagnostics));
+    EXPECT_EQ(Document.Settings()->Name, "null");
+    EXPECT_STREQ(Candidate.GetComponent<NameComponent>(Find(Candidate, FirstUUID))->Value, "true");
+}
+
 TEST_F(SceneDocumentTest, SortingShuffledComponentRecordsCannotAliasOrReplaceAnotherPayload)
 {
     const auto entity                                         = Add(FirstUUID, "Not a transform");
