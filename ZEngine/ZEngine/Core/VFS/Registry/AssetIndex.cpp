@@ -11,7 +11,9 @@ namespace ZEngine::Core::VFS
         m_by_uuid.init(arena, MAX_ASSETS);
         m_by_path.init(arena, MAX_ASSETS);
         for (uint8_t i = 0; i < ASSET_TYPE_COUNT; ++i)
+        {
             m_by_type[i].init(arena, MAX_ASSETS / ASSET_TYPE_COUNT);
+        }
     }
 
     RegisterResult AssetIndex::Register(const uuids::uuid& uuid, Managers::AssetType type, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
@@ -19,15 +21,21 @@ namespace ZEngine::Core::VFS
         std::unique_lock lock(m_mutex);
 
         if (m_by_uuid.contains(uuid))
+        {
             return {.Error = RegisterError::DuplicateUUID};
+        }
 
         // Only check path uniqueness when a real path is provided.
         if (path.IsValid() && m_by_path.contains(path.Hash()))
+        {
             return {.Error = RegisterError::DuplicatePath};
+        }
 
         Helpers::Handle<AssetRecord> handle = m_handles.Create();
         if (!handle.Valid())
+        {
             return {.Error = RegisterError::SlotExhausted};
+        }
 
         AssetRecord& rec    = m_handles[handle];
         rec.UUID            = uuid;
@@ -50,11 +58,15 @@ namespace ZEngine::Core::VFS
 
         m_by_uuid.insert(uuid, handle);
         if (path.IsValid())
+        {
             m_by_path.insert(path.Hash(), handle);
+        }
 
         uint8_t type_idx = static_cast<uint8_t>(type);
         if (type_idx < ASSET_TYPE_COUNT)
+        {
             m_by_type[type_idx].push(handle);
+        }
 
         return {handle, RegisterError::None};
     }
@@ -64,11 +76,95 @@ namespace ZEngine::Core::VFS
         std::unique_lock lock(m_mutex);
         AssetRecord*     rec = m_handles.Access(handle);
         if (!rec)
+        {
             return false;
+        }
         rec->Meta.SourceHash = new_meta.SourceHash;
         Helpers::secure_strcpy(rec->Meta.ImporterName, sizeof(rec->Meta.ImporterName), new_meta.ImporterName);
         Helpers::secure_strcpy(rec->Meta.ArtifactPath, sizeof(rec->Meta.ArtifactPath), new_meta.ArtifactPath);
         rec->State = new_state;
+        return true;
+    }
+
+    bool AssetIndex::TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const
+    {
+        if (!out)
+        {
+            return false;
+        }
+        std::shared_lock lock(m_mutex);
+        const auto*      handle = m_by_uuid.find(uuid);
+        const auto*      record = handle ? const_cast<Helpers::HandleManager<AssetRecord>&>(m_handles).Access(*handle) : nullptr;
+        if (!record)
+        {
+            return false;
+        }
+        *out = {.Handle = *handle, .Record = *record};
+        return true;
+    }
+
+    bool AssetIndex::SetLoadedHandle(Helpers::Handle<AssetRecord> handle, Managers::AssetHandle slot)
+    {
+        std::unique_lock lock(m_mutex);
+        auto*            record = m_handles.Access(handle);
+        if (!record)
+        {
+            return false;
+        }
+        record->SlotHandle = slot;
+        record->State      = AssetState::Loaded;
+        return true;
+    }
+
+    bool AssetIndex::TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const
+    {
+        if (!out)
+        {
+            return false;
+        }
+        std::shared_lock lock(m_mutex);
+        const auto*      handle = m_by_uuid.find(uuid);
+        const auto*      record = handle ? const_cast<Helpers::HandleManager<AssetRecord>&>(m_handles).Access(*handle) : nullptr;
+        if (!record || record->Type != type)
+        {
+            return false;
+        }
+        *out = record->SlotHandle;
+        return true;
+    }
+
+    bool AssetIndex::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot)
+    {
+        std::unique_lock lock(m_mutex);
+        const auto*      handle = m_by_uuid.find(expected.Record.UUID);
+        auto*            mesh   = handle ? m_handles.Access(*handle) : nullptr;
+        if (!mesh || handle->Index != expected.Handle.Index || handle->Generation != expected.Handle.Generation || mesh->Type != Managers::AssetType::MESH || mesh->Type != expected.Record.Type || mesh->Path != expected.Record.Path || mesh->State != expected.Record.State || mesh->State == AssetState::Loaded || mesh->SlotHandle != expected.Record.SlotHandle || mesh->Meta.SourceHash != expected.Record.Meta.SourceHash || hierarchy.is_nil() || m_by_uuid.contains(hierarchy) || (mesh_slot >> 28) != uint32_t(Managers::AssetType::MESH) ||
+            (hierarchy_slot >> 28) != uint32_t(Managers::AssetType::MESH_HIERARCHY))
+        {
+            return false;
+        }
+        auto& by_type = m_by_type[uint8_t(Managers::AssetType::MESH_HIERARCHY)];
+        // No growth here: the fixed index/handle storage was reserved at initialization.
+        // In particular, do not assert or allocate from a shared arena under asset load.
+        if ((m_by_uuid.size() + 1) * 4 > m_by_uuid.capacity() * 3 || by_type.size() == by_type.capacity())
+        {
+            return false;
+        }
+        const auto hierarchy_handle = m_handles.Create();
+        if (!hierarchy_handle.Valid())
+        {
+            return false;
+        }
+        auto& record      = m_handles[hierarchy_handle];
+        record            = {};
+        record.UUID       = hierarchy;
+        record.Type       = Managers::AssetType::MESH_HIERARCHY;
+        record.SlotHandle = hierarchy_slot;
+        record.State      = AssetState::Loaded;
+        m_by_uuid.insert(hierarchy, hierarchy_handle);
+        by_type.push(hierarchy_handle);
+        mesh->SlotHandle = mesh_slot;
+        mesh->State      = AssetState::Loaded;
         return true;
     }
 
@@ -77,7 +173,9 @@ namespace ZEngine::Core::VFS
         std::unique_lock lock(m_mutex);
         AssetRecord*     rec = m_handles.Access(handle);
         if (!rec)
+        {
             return false;
+        }
         rec->State = new_state;
         return true;
     }
@@ -87,7 +185,9 @@ namespace ZEngine::Core::VFS
         std::unique_lock lock(m_mutex);
         AssetRecord*     rec = m_handles.Access(handle);
         if (!rec)
+        {
             return false;
+        }
 
         m_by_uuid.remove(rec->UUID);
         m_by_path.remove(rec->Path.Hash());
@@ -116,7 +216,9 @@ namespace ZEngine::Core::VFS
         std::unique_lock lock(m_mutex);
         AssetRecord*     rec = m_handles.Access(handle);
         if (!rec)
+        {
             return false;
+        }
 
         m_by_path.remove(rec->Path.Hash());
         rec->Path = new_path;
@@ -165,7 +267,9 @@ namespace ZEngine::Core::VFS
     {
         uint8_t idx = static_cast<uint8_t>(type);
         if (idx >= ASSET_TYPE_COUNT)
+        {
             return {};
+        }
         std::shared_lock lock(m_mutex);
         const auto&      bucket = m_by_type[idx];
         return std::span<const Helpers::Handle<AssetRecord>>(bucket.data(), bucket.size());
@@ -174,7 +278,9 @@ namespace ZEngine::Core::VFS
     uint32_t AssetIndex::FindByNameSubstring(const char* substr, Core::Containers::Array<Helpers::Handle<AssetRecord>>& out) const
     {
         if (!substr || substr[0] == '\0')
+        {
             return 0;
+        }
 
         uint32_t         count = 0;
         auto&            hm    = const_cast<Helpers::HandleManager<AssetRecord>&>(m_handles);
@@ -185,10 +291,14 @@ namespace ZEngine::Core::VFS
         {
             Helpers::Handle<AssetRecord> h = hm.ToHandle(i);
             if (!h.Valid())
+            {
                 continue;
+            }
             const AssetRecord* rec = hm.Access(h);
             if (!rec)
+            {
                 continue;
+            }
             if (std::strstr(rec->Name, substr) != nullptr)
             {
                 out.push(h);
@@ -213,10 +323,14 @@ namespace ZEngine::Core::VFS
         {
             Helpers::Handle<AssetRecord> h = hm.ToHandle(i);
             if (!h.Valid())
+            {
                 continue;
+            }
             const AssetRecord* rec = hm.Access(h);
             if (rec)
+            {
                 visitor(ctx, h, *rec);
+            }
         }
     }
 

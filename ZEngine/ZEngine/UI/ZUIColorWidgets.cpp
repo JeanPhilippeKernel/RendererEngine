@@ -653,10 +653,56 @@ namespace ZEngine::UI
             }
         }
 
-        void PrepareBinding(ZUIContext* ctx, ZUIColorWidgetState& state, uint64_t owner, const float* color, bool alpha, ZUIColorSpace space)
+        void RetireBindingInput(ZUIContext* ctx, uint64_t owner)
         {
-            const auto identity = reinterpret_cast<uintptr_t>(color);
+            struct Part
+            {
+                const char* Name  = nullptr;
+                int         Count = 0;
+            };
+            constexpr Part parts[] = {
+                {      "swatch",  1},
+                {      "number",  4},
+                {       "model",  3},
+                {       "field",  1},
+                {         "bar",  2},
+                {"channelTrack",  4},
+                {"channelValue",  4},
+                {         "hex",  1},
+                {      "recent", 24},
+                {         "hue",  1},
+                {      "vertex",  6}
+            };
+            for (const auto& part : parts)
+                for (int i = 0; i < part.Count; ++i)
+                {
+                    char key[64] = {};
+                    Key(key, owner, part.Name, i);
+                    const auto hash = ZUIHashStr(key, static_cast<uint32_t>(Helpers::secure_strlen(key)));
+                    if (ctx->FocusKey == hash)
+                        ctx->FocusKey = 0;
+                    if (ctx->ActiveKey == hash)
+                        ctx->ActiveKey = 0;
+                    if (ctx->HotKey == hash)
+                        ctx->HotKey = 0;
+                }
+            // An explicit open queued for this build belongs to the new binding;
+            // retire an inherited popup, not a newly requested one.
+            if (ctx->PendingPopupKey != owner)
+                for (uint32_t depth = 0; depth < ctx->PopupStackSize; ++depth)
+                    if (ctx->PopupStack[depth].Key == owner)
+                    {
+                        ctx->PopupStackSize = depth;
+                        break;
+                    }
+        }
+
+        void PrepareBinding(ZUIContext* ctx, ZUIColorWidgetState& state, uint64_t owner, const float* color, bool alpha, ZUIColorSpace space, uintptr_t binding_identity = 0)
+        {
+            const auto identity = binding_identity ? binding_identity : reinterpret_cast<uintptr_t>(color);
             const bool rebound  = state.BoundAlpha != alpha || state.BoundSpace != space || (state.LastStorageFrame && state.BindingIdentity != identity);
+            if (rebound && state.LastStorageFrame)
+                RetireBindingInput(ctx, owner);
             const bool frameGap = state.LastStorageFrame && state.LastStorageFrame + 1 != ctx->FrameIndex;
             const bool external = state.LastStorageFrame && !Same(state.LastStored, Snapshot(color, alpha));
             // A hidden widget can miss the release event. Its live value is
@@ -1146,7 +1192,7 @@ namespace ZEngine::UI
             state->LastDisplay = Snapshot(color);
         }
 
-        bool Edit(ZUIContext* ctx, const char* key, float* color, ZUIColorSpace space, bool alpha, ZUISize width)
+        bool Edit(ZUIContext* ctx, const char* key, float* color, ZUIColorSpace space, bool alpha, ZUISize width, uintptr_t binding_identity = 0)
         {
             if (!color || !key)
                 return false;
@@ -1154,7 +1200,7 @@ namespace ZEngine::UI
             auto*          state = State(ctx, owner);
             if (!state)
                 return false;
-            PrepareBinding(ctx, *state, owner, color, alpha, space);
+            PrepareBinding(ctx, *state, owner, color, alpha, space, binding_identity);
             const bool undone = Undo(ctx, *state, owner, color, alpha, space);
             if (undone)
                 state->Initialized = false;
@@ -1250,14 +1296,14 @@ namespace ZEngine::UI
         }
     } // namespace
 
-    bool ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4], ZUIColorSpace space, ZUISize width)
+    bool ZUIColorEdit4(ZUIContext* ctx, const char* key, float color[4], ZUIColorSpace space, ZUISize width, uintptr_t binding_identity)
     {
-        return Edit(ctx, key, color, space, true, width);
+        return Edit(ctx, key, color, space, true, width, binding_identity);
     }
 
-    bool ZUIColorEdit3(ZUIContext* ctx, const char* key, float color[3], ZUIColorSpace space, ZUISize width)
+    bool ZUIColorEdit3(ZUIContext* ctx, const char* key, float color[3], ZUIColorSpace space, ZUISize width, uintptr_t binding_identity)
     {
-        return Edit(ctx, key, color, space, false, width);
+        return Edit(ctx, key, color, space, false, width, binding_identity);
     }
 
     bool ZUIColorPicker4(ZUIContext* ctx, const char* key, float color[4])

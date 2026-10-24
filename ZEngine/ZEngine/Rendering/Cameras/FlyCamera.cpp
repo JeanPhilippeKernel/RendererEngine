@@ -180,6 +180,19 @@ namespace ZEngine::Rendering::Cameras
         m_viewDirty       = true;
     }
 
+    void FlyCamera::StopMotion()
+    {
+        Input.Reset();
+        m_targetPos       = Position;
+        m_targetPitch     = Pitch;
+        m_targetYaw       = Yaw;
+        m_targetOrbitDist = m_orbitDist;
+        State             = FlyCameraState::Free;
+        m_stateBeforePan = m_stateBeforeAnim = FlyCameraState::Free;
+        // Do not recompute/constrain the pose or projection: the interaction
+        // captured this exact camera frame, not an eventual animation endpoint.
+    }
+
     // OnUpdate — main entry point called once per frame by the controller
 
     void FlyCamera::OnUpdate(float dt)

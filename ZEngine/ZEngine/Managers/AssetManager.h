@@ -8,10 +8,12 @@
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Managers/AssetTypes.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
+#include <atomic>
 #include <mutex>
 
 namespace ZEngine::Managers
@@ -46,75 +48,109 @@ namespace ZEngine::Managers
         // false match for any material at slot 0).
         Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           UUIDToMaterialSlot      = {};
 
+        struct MeshCacheAllocation
+        {
+            Core::Memory::ArenaAllocator Arena = {};
+            Core::Memory::TLSFSlab*      Slab  = nullptr;
+            void*                        Block = nullptr;
+            ~MeshCacheAllocation()
+            {
+                Arena.Shutdown();
+                if (Slab)
+                {
+                    Slab->Free(Block);
+                }
+            }
+        };
+        // Immutable checked-load payloads share the existing bounded asset slab.
+        // Their arena views stay at stable addresses while cache arrays can grow.
+        Core::Containers::Array<MeshCacheAllocation*> MeshCacheAllocations  = {};
+
         // (255, 20, 147) fallback handle used when a texture file cannot be resolved.
-        Rendering::Textures::TextureHandle                                                  FallbackTextureHandle   = {};
+        Rendering::Textures::TextureHandle            FallbackTextureHandle = {};
 
         // Recursive so IngestMaterial can call IngestTexture while holding the lock.
-        mutable std::recursive_mutex                                                        IngestMutex;
+        mutable std::recursive_mutex                  IngestMutex;
+        // At most one checked decode workspace per cache. A competing explicit
+        // load fails retryably; rendering and ordinary cached queries never take it.
+        std::mutex                                    MeshLoadMutex;
 
         // Pending texture releases — written from any thread via ReleaseTexture, drained by
         // FlushTextureReleases on the render thread.
-        static constexpr uint32_t                                                           MAX_PENDING_TEXTURE_RELEASES                         = 256;
-        uuids::uuid                                                                         PendingTextureReleases[MAX_PENDING_TEXTURE_RELEASES] = {};
-        uint32_t                                                                            PendingTextureReleaseCount                           = 0;
-        std::mutex                                                                          PendingTextureReleaseMutex;
+        static constexpr uint32_t                     MAX_PENDING_TEXTURE_RELEASES                         = 256;
+        uuids::uuid                                   PendingTextureReleases[MAX_PENDING_TEXTURE_RELEASES] = {};
+        uint32_t                                      PendingTextureReleaseCount                           = 0;
+        std::mutex                                    PendingTextureReleaseMutex;
 
-        Hardwares::VulkanDevice*                                                            Device   = nullptr;
-        ::ZEngine::Core::VFS::AssetRegistry*                                                Registry = nullptr;
+        Hardwares::VulkanDevice*                      Device   = nullptr;
+        ::ZEngine::Core::VFS::AssetRegistry*          Registry = nullptr;
 
-        Importers::AssetMesh*                                                               GetMeshAsset(const uuids::uuid& id);
+        /// Borrowed CPU data: caller holds IngestMutex until all result use ends.
+        /// Prefer the copied/checked helpers for editor bounds and load queries.
+        Importers::AssetMesh*                         GetMeshAsset(const uuids::uuid& id);
         /// @brief Copies one loaded mesh's local-space bounds under the ingest lock.
         /// @details Safe for editor scene queries while an importer may update mesh data.
-        [[nodiscard]] bool                                                                  TryGetMeshBounds(const uuids::uuid& id, Core::Maths::Vec3f& out_center, float& out_radius);
-        Importers::AssetNodeHierarchy*                                                      GetMeshNodeHierarchy(const uuids::uuid& mesh_id);
-        AssetHandle                                                                         GetMeshNodeHierarchyHandle(const uuids::uuid& id);
+        [[nodiscard]] bool                            TryGetMeshBounds(const uuids::uuid& id, Core::Maths::Vec3f& out_center, float& out_radius);
+        /// Tries to copy a loaded mesh's runtime AABB without waiting on ingestion. Degenerate
+        /// boxes are valid. Failure leaves both outputs unchanged; CPU availability
+        /// does not imply GPU residency. No mesh-buffer pointers escape the lock.
+        [[nodiscard]] bool                            TryGetMeshAABB(const uuids::uuid& id, Core::Maths::Vec3f& out_min, Core::Maths::Vec3f& out_max);
+        /// Copies the complete CPU draw count under the ingest lock. Scanner-only
+        /// registrations, mismatched slots and incomplete submesh ranges fail closed.
+        [[nodiscard]] bool                            TryGetMeshDrawCount(const uuids::uuid& id, uint32_t* out_draws);
+        /// Explicit worker/load-time operation, never per-frame. Bounded decoding
+        /// and staging occur outside IngestMutex. Reuses complete CPU bindings;
+        /// never hot-reloads a live one. Failure publishes no partial mesh pair.
+        [[nodiscard]] Core::VFS::VFSResult<uint32_t>  LoadMeshAsset(Core::VFS::IVFSContext& vfs, const uuids::uuid& uuid, const Importers::AssetCodec::MeshAssetReadLimits& limits = {}, const std::atomic<bool>* cancelled = nullptr);
+        Importers::AssetNodeHierarchy*                GetMeshNodeHierarchy(const uuids::uuid& mesh_id);
+        AssetHandle                                   GetMeshNodeHierarchyHandle(const uuids::uuid& id);
 
-        static AssetManager*                                                                Instance();
-        static AssetHandle                                                                  CreateHandle(uint32_t index, AssetType type);
-        static void                                                                         InitFallbackTexture(); // call after RRM is assigned to Device
-        static uint32_t                                                                     ReadAssetHandleIndex(AssetHandle h);
-        static AssetType                                                                    ReadAssetHandleType(AssetHandle h);
+        static AssetManager*                          Instance();
+        static AssetHandle                            CreateHandle(uint32_t index, AssetType type);
+        static void                                   InitFallbackTexture(); // call after RRM is assigned to Device
+        static uint32_t                               ReadAssetHandleIndex(AssetHandle h);
+        static AssetType                              ReadAssetHandleType(AssetHandle h);
 
-        static void                                                                         Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
-        static void                                                                         Shutdown();
+        static void                                   Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path);
+        static void                                   Shutdown();
 
-        static AssetHandle                                                                  RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path = {}, const Core::VFS::MetaFileData& meta = {});
+        static AssetHandle                            RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path = {}, const Core::VFS::MetaFileData& meta = {});
 
         // Returns true if uuid is already registered — used by Ingest* for deduplication.
-        static bool                                                                         IsRegistered(const uuids::uuid& id);
+        static bool                                   IsRegistered(const uuids::uuid& id);
 
         // Direct ingest — called from ImportCoordinator thread after AssetCodec cooks the file.
         // Each method deduplicates (no-ops if uuid is already registered), copies data into
         // arena-backed flat buffers, and calls RegisterAsset. Thread-safe via IngestMutex.
-        static void                                                                         IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy);
-        static Rendering::Textures::TextureHandle                                           IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path);
-        static void                                                                         IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
-        static void                                                                         IngestMaterial(Importers::AssetMaterial&& material);
+        static void                                   IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy);
+        static Rendering::Textures::TextureHandle     IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path);
+        static void                                   IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
+        static void                                   IngestMaterial(Importers::AssetMaterial&& material);
 
         /// @brief Single-UUID counterpart to ReloadFromDisk's material block — resolves,
         ///        deserializes, and ingests one material (and its textures) by UUID.
         ///        No-op if uuid is nil, unregistered, or already ingested.
-        static void                                                                         IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid);
+        static void                                   IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid);
 
         /// @brief Thread-safe lookup of a texture's current handle by UUID.
-        static Rendering::Textures::TextureHandle                                           FindTextureHandle(const uuids::uuid& uuid);
+        static Rendering::Textures::TextureHandle     FindTextureHandle(const uuids::uuid& uuid);
 
         /// @brief Resolve a material's texture map field to a bindless index.
         /// @details UUID lookup first, else ingest from path, else INVALID_MAP_HANDLE.
-        static uint32_t                                                                     ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path);
+        static uint32_t                               ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path);
 
         /// @brief Thread-safe enqueue: patches every referencing material to the sentinel
         ///        once FlushTextureReleases drains it.
-        static void                                                                         ReleaseTexture(const uuids::uuid& uuid);
+        static void                                   ReleaseTexture(const uuids::uuid& uuid);
 
         /// @brief Render-thread drain of ReleaseTexture's queue.
-        static void                                                                         FlushTextureReleases();
+        static void                                   FlushTextureReleases();
 
-        static uuids::uuid                                                                  GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name);
+        static uuids::uuid                            GetOrCreateUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& asset_path, const char* importer_name);
 
         // Reload all .zemesh and .zematerial assets already registered by the VFSScanner
         // but not yet ingested (second launch / project reopen). Safe to call every scan.
-        static void                                                                         ReloadFromDisk(Core::Memory::ArenaAllocator* scratch);
+        static void                                   ReloadFromDisk(Core::Memory::ArenaAllocator* scratch);
 
         template <typename T, typename K>
         static T* GetAsset(K key)
@@ -154,24 +190,24 @@ namespace ZEngine::Managers
     template <>
     inline Importers::AssetMesh* AssetManager::GetAsset<Importers::AssetMesh, uuids::uuid>(uuids::uuid id)
     {
-        if (!Instance()->Registry)
-            return nullptr;
-        const auto* rec = Instance()->Registry->FindByUUID(id);
-        if (!rec)
-            return nullptr;
-        return GetAsset<Importers::AssetMesh, AssetHandle>(rec->SlotHandle);
+        auto* manager = Instance();
+        return manager ? manager->GetMeshAsset(id) : nullptr;
     }
 
     template <>
     inline Importers::AssetMaterial* AssetManager::GetAsset<Importers::AssetMaterial, uuids::uuid>(uuids::uuid id)
     {
         if (!Instance()->Registry)
+        {
             return nullptr;
+        }
         const auto* rec = Instance()->Registry->FindByUUID(id);
         // VFSScanner pre-registers every .zematerial UUID with SlotHandle=0 before any
         // ingest happens — IsLoaded() tells a real ingest apart from that placeholder.
         if (!rec || !rec->IsLoaded())
+        {
             return nullptr;
+        }
         return GetAsset<Importers::AssetMaterial, AssetHandle>(rec->SlotHandle);
     }
 
@@ -179,10 +215,14 @@ namespace ZEngine::Managers
     inline Importers::AssetTexture* AssetManager::GetAsset<Importers::AssetTexture, uuids::uuid>(uuids::uuid id)
     {
         if (!Instance()->Registry)
+        {
             return nullptr;
+        }
         const auto* rec = Instance()->Registry->FindByUUID(id);
         if (!rec)
+        {
             return nullptr;
+        }
         return GetAsset<Importers::AssetTexture, AssetHandle>(rec->SlotHandle);
     }
 
@@ -190,10 +230,14 @@ namespace ZEngine::Managers
     inline Importers::AssetNodeHierarchy* AssetManager::GetAsset<Importers::AssetNodeHierarchy, uuids::uuid>(uuids::uuid id)
     {
         if (!Instance()->Registry)
+        {
             return nullptr;
+        }
         const auto* rec = Instance()->Registry->FindByUUID(id);
         if (!rec)
+        {
             return nullptr;
+        }
         return GetAsset<Importers::AssetNodeHierarchy, AssetHandle>(rec->SlotHandle);
     }
 

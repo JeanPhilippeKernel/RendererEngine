@@ -554,6 +554,62 @@ TEST_F(ZUIShadowTest, DashedRoundedBorderIsBoundedBatchedAndRejectsInvalidGeomet
     EXPECT_EQ(draw.VtxCount, count);
 }
 
+TEST_F(ZUIShadowTest, InvisibleImagesDoNotConsumeGeometryOrStarveLaterChrome)
+{
+    auto& draw = ctx.DrawList;
+    ZUIDrawListInit(&draw, &ctx.FrameArena, 16, 24, 0.f, 0.f, 7);
+    ZUIDrawListPushClipRect(&draw, 0.f, 0.f, 100.f, 100.f);
+    const auto arena_cursor = ctx.FrameArena.m_current_offset;
+    const auto commands     = draw.CmdCount;
+    // A full Console can contain more hidden glyphs than the uint16_t vertex
+    // budget. GPU scissoring alone is too late to preserve subsequent chrome.
+    for (uint32_t i = 0; i < 20000; ++i)
+        ZUIDrawListAddImage(&draw, 7, 0.f, 200.f, 8.f, 212.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    EXPECT_EQ(draw.VtxCount, 0u);
+    EXPECT_EQ(draw.IdxCount, 0u);
+    EXPECT_EQ(draw.CmdCount, commands);
+    EXPECT_EQ(ctx.FrameArena.m_current_offset, arena_cursor);
+
+    ZUIDrawListAddImage(&draw, 7, 10.f, 10.f, 18.f, 22.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ASSERT_EQ(draw.VtxCount, 4u);
+    ASSERT_EQ(draw.IdxCount, 6u);
+    EXPECT_FLOAT_EQ(draw.Vtx[0].x, 10.f);
+    EXPECT_FLOAT_EQ(draw.Vtx[0].y, 10.f);
+}
+
+TEST_F(ZUIShadowTest, ImageClipCullingPreservesPartialQuadUvsAndRejectsEmptyBounds)
+{
+    auto& draw = ctx.DrawList;
+    ZUIDrawListInit(&draw, &ctx.FrameArena, 16, 24, 0.f, 0.f, 7);
+    ZUIDrawListPushClipRect(&draw, 10.f, 20.f, 50.f, 60.f);
+    ZUIDrawListAddImage(&draw, 42, 0.f, 30.f, 20.f, 40.f, 1.f, 0.8f, 0.f, 0.2f, 0xffffffffu);
+    ASSERT_EQ(draw.VtxCount, 4u);
+    EXPECT_FLOAT_EQ(draw.Vtx[0].x, 0.f);
+    EXPECT_FLOAT_EQ(draw.Vtx[0].u, 1.f);
+    EXPECT_FLOAT_EQ(draw.Vtx[0].v, 0.8f);
+    EXPECT_FLOAT_EQ(draw.Vtx[2].x, 20.f);
+    EXPECT_FLOAT_EQ(draw.Vtx[2].u, 0.f);
+    EXPECT_FLOAT_EQ(draw.Vtx[2].v, 0.2f);
+
+    const float outside[4][4] = {
+        { 0.f, 30.f, 10.f, 40.f},
+        {50.f, 30.f, 60.f, 40.f},
+        {20.f,  0.f, 30.f, 20.f},
+        {20.f, 60.f, 30.f, 70.f}
+    };
+    for (const auto& bounds : outside)
+        ZUIDrawListAddImage(&draw, 42, bounds[0], bounds[1], bounds[2], bounds[3], 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ZUIDrawListAddImage(&draw, 42, 20.f, 30.f, 20.f, 40.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ZUIDrawListAddImage(&draw, 42, 30.f, 30.f, 20.f, 40.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ZUIDrawListAddImage(&draw, 42, 20.f, 40.f, 30.f, 30.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ZUIDrawListAddImage(&draw, 42, std::numeric_limits<float>::quiet_NaN(), 30.f, 30.f, 40.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ZUIDrawListAddImage(&draw, 42, 20.f, 30.f, std::numeric_limits<float>::infinity(), 40.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    ZUIDrawListPushClipRect(&draw, 20.f, 30.f, 20.f, 40.f);
+    ZUIDrawListAddImage(&draw, 42, 10.f, 20.f, 30.f, 50.f, 0.f, 0.f, 1.f, 1.f, 0xffffffffu);
+    EXPECT_EQ(draw.VtxCount, 4u);
+    EXPECT_EQ(draw.IdxCount, 6u);
+}
+
 TEST_F(ZUIShadowTest, ColorFieldUsesOneQuadAndSeparatesEffectsAndModelParameters)
 {
     auto& draw = ctx.DrawList;

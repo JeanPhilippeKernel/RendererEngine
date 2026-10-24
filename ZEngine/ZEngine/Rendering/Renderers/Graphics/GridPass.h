@@ -8,39 +8,41 @@ namespace ZEngine::Rendering::Renderers
 {
     struct GridPushConstantData
     {
-        float ColorThin[4]  = {0.6f, 0.6f, 0.6f, 1.0f};
-        float ColorThick[4] = {0.3f, 0.3f, 0.3f, 1.0f};
-        float ColorXAxis[4] = {0.9f, 0.2f, 0.2f, 1.0f};
-        float ColorZAxis[4] = {0.2f, 0.4f, 1.0f, 1.0f};
-        float CellSize      = 0.025f;
-        float FadeStrength  = 0.5f;
-        float FadeRadius    = 500.0f;
-        float LineWidth     = 1.5f;
-        int   MaxLOD        = 5;
-        float GroundY       = 0.0f;
-        float _pad[2]       = {};
+        Core::Containers::FixedArray<float, 4>    OriginAndLogSpacing = {};
+        Core::Containers::FixedArray<float, 4>    Orientation         = {};
+        Core::Containers::FixedArray<float, 4>    ColorThin           = {};
+        Core::Containers::FixedArray<float, 4>    ColorThick          = {};
+        Core::Containers::FixedArray<float, 4>    ColorUAxis          = {};
+        Core::Containers::FixedArray<float, 4>    ColorVAxis          = {};
+        /// log2(fade radius), fade exponent, line width, maximum LOD.
+        Core::Containers::FixedArray<float, 4>    Style               = {};
+        /// Major cadence, reverse-Z flag, label policy, reserved zero.
+        Core::Containers::FixedArray<uint32_t, 4> Controls            = {};
     };
+    static_assert(sizeof(GridPushConstantData) == 128, "Grid constants must match GLSL and Vulkan's minimum push-constant budget");
+    static_assert(offsetof(GridPushConstantData, Orientation) == 16 && offsetof(GridPushConstantData, Style) == 96 && offsetof(GridPushConstantData, Controls) == 112);
 
-    struct GridPass : public IRenderGraphCallbackPass
+    struct GridPass final : public IRenderGraphCallbackPass
     {
-        GridPushConstantData                 PushData = {};
-        bool                                 Enabled  = true;
-
-        /// @brief Builds the static PSO recipe used by the infinite-grid effect.
+        GridPass();
+        /// Invalid/disabled snapshots retire the pass; they never draw the last valid plane.
+        void                                 SetConfig(const Scenes::SceneGridRenderSnapshot& config);
+        void                                 SetCameraDepthConvention(bool reverse_z);
+        /// Pure, bounded packing. Invalid input preserves the entire output.
+        [[nodiscard]] static bool            Pack(const Scenes::SceneGridRenderSnapshot& config, bool reverse_z, GridPushConstantData& output);
         Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
-
-        bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
-        void                                 Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
-        void                                 Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                                 Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
+        void                                 Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene, RenderGraphResourceInspectorPtr inspector, RenderPasses::RenderPass* pass) override;
+        void                                 Execute(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
+        bool                                 RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
         bool                                 SupportsSecondaryRecording() const override
         {
             return true;
         }
 
     private:
-        uint32_t m_vtx_offset          = 0;
-        uint32_t m_idx_offset          = 0;
-        bool     m_geometry_registered = false;
+        GridPushConstantData m_push      = {};
+        bool                 m_enabled   = false;
+        bool                 m_reverse_z = false;
     };
 } // namespace ZEngine::Rendering::Renderers

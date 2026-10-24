@@ -334,6 +334,42 @@ namespace ZEngine::UI
         return nullptr;
     }
 
+    bool ZUIStateEraseTransient(ZUIPersistentStore* store, uint64_t key)
+    {
+        if (!store || !store->Slots || !store->Capacity || !key)
+            return false;
+        const uint32_t mask = store->Capacity - 1;
+        uint32_t       hole = static_cast<uint32_t>(key) & mask;
+        for (uint32_t probes = 0; probes < store->Capacity; ++probes, hole = (hole + 1) & mask)
+        {
+            auto& slot = store->Slots[hole];
+            if (!slot.Key)
+                return false;
+            if (slot.Key != key)
+                continue;
+            if (slot.State.ColorState || slot.State.FloatInputState)
+                return false;
+            // Keep every displaced key reachable from its home bucket, including
+            // a collision cluster that wraps across the end of the table.
+            for (uint32_t scan = (hole + 1) & mask, moved = 0; moved < store->Capacity - 1; scan = (scan + 1) & mask, ++moved)
+            {
+                const auto& candidate = store->Slots[scan];
+                if (!candidate.Key)
+                    break;
+                const uint32_t home = static_cast<uint32_t>(candidate.Key) & mask;
+                if (((hole - home) & mask) < ((scan - home) & mask))
+                {
+                    store->Slots[hole] = candidate;
+                    hole               = scan;
+                }
+            }
+            store->Slots[hole] = {};
+            --store->Count;
+            return true;
+        }
+        return false;
+    }
+
     // Text is rendered byte-per-glyph. The few multi-byte characters the UI uses are folded to the
     // single-byte slots baked by the font atlas (see ZUI_GLYPH_* in ZUIFont.h); other bytes pass through.
     static uint8_t ZUIFoldUtf8(const char* s, uint32_t remaining, uint32_t* consumed)
@@ -353,6 +389,9 @@ namespace ZEngine::UI
             const uint16_t tail = (uint16_t) (((uint8_t) s[1] << 8) | (uint8_t) s[2]);
             switch (tail)
             {
+                case 0x8892:
+                    *consumed = 3;
+                    return 0x90; // typographic minus
                 case 0x80A6:
                     *consumed = 3;
                     return 0x85; // ellipsis

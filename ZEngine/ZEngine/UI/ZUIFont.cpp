@@ -31,6 +31,8 @@ namespace ZEngine::UI
     {
         switch (byte_value)
         {
+            case 0x90:
+                return 0x2212; // typographic minus
             case 0x85:
                 return 0x2026; // ellipsis
             case 0x93:

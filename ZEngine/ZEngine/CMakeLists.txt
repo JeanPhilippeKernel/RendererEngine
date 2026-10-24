@@ -149,7 +149,7 @@ if(ZENGINE_TRACY)
     target_compile_definitions(zEngineLib PRIVATE ZENGINE_TRACY=1)
 endif()
 
-# Editor-only engine code (YAMLSceneSerializer).
+# Editor-only engine code.
 option(ZENGINE_BUILD_EDITOR "Compile editor-only engine code" ON)
 if (ZENGINE_BUILD_EDITOR)
     target_compile_definitions(zEngineLib PUBLIC ZENGINE_EDITOR=1)
@@ -175,13 +175,12 @@ target_compile_definitions (zEngineLib
 	PUBLIC
 		$<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:ZENGINE_PROFILING=1>
 		ZENGINE_PLATFORM
-		YAML_CPP_STATIC_DEFINE
 )
 
 target_link_libraries (zEngineLib PUBLIC imported::ZEngine_External_Dependencies)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	target_link_libraries (zEngineLib PUBLIC imported::cppwinrt_headers WindowsApp.lib DbgHelp.lib User32.lib)
+	target_link_libraries (zEngineLib PUBLIC imported::cppwinrt_headers WindowsApp.lib DbgHelp.lib User32.lib Ole32.lib Shell32.lib Uuid.lib)
     target_compile_definitions(zEngineLib PUBLIC NOMINMAX GLFW_EXPOSE_NATIVE_WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(zEngineLib PUBLIC stdc++fs dl)

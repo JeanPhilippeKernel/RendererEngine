@@ -14,6 +14,7 @@
 #include <ZEngine/Windows/CoreWindow.h>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -24,7 +25,7 @@ namespace
     // Each plane is stored as (nx, ny, nz, d) — normalized so distance = dot(n,p)+d.
     struct FrustumPlane
     {
-        float x, y, z, w;
+        float x = 0.f, y = 0.f, z = 0.f, w = 0.f;
     };
 
     void ExtractFrustumPlanes(const Mat4f& vp, FrustumPlane out[6])
@@ -36,7 +37,9 @@ namespace
         auto normalize = [](FrustumPlane p) -> FrustumPlane {
             float len = Vec3f(p.x, p.y, p.z).magnitude();
             if (len < 1e-6f)
+            {
                 return p;
+            }
             return {p.x / len, p.y / len, p.z / len, p.w / len};
         };
 
@@ -86,9 +89,10 @@ namespace ZEngine::Applications
         }
 
         // UIContext arena: created by Engine::Initialize via MemoryBudgetConfig::Editor().UIContext
-        // (128 MB budgeted, ~60 MB committed: FrameArena 32 MB · PersistentArena 1 MB · ZUIPayloadArenas 9 MB × 3)
+        // (128 MB budgeted: UI arenas ~60 MB, immutable scene-instance slots ~15 MB).
         auto* ui_arena = &Engine::GetContext()->UIContextArena;
-        ZUICtx         = ZPushStructCtor(ui_arena, ZEngine::UI::ZUIContext);
+        InitializeFrameStorage(ui_arena);
+        ZUICtx = ZPushStructCtor(ui_arena, ZEngine::UI::ZUIContext);
         ZEngine::UI::ZUIContextInit(ZUICtx, ui_arena, ZMega(32), ZMega(1), 8192, 8192);
         for (uint32_t i = 0; i < MaxOverlayBufferCount; ++i)
         {
@@ -121,23 +125,31 @@ namespace ZEngine::Applications
     void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
     {
         if (w > 0 && h > 0 && SceneRenderer && SceneRenderer->RenderGraph)
+        {
             SceneRenderer->RenderGraph->Resize(w, h);
+        }
     }
 
     bool AppRenderPipeline::BeginFrame()
     {
         Device->FlushShaderReloadRequests();
         if (Device->PipelineStateCache)
+        {
             Device->PipelineStateCache->FlushAsyncPipelineJobs();
+        }
 
         auto swapchain = Device->SwapchainPtr;
 
         swapchain->AcquireNextImage(CurrentFrameContextIndex);
         if (!swapchain->IsFrameValid())
+        {
             return false;
+        }
 
         if (Device->RRM)
+        {
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
+        }
         swapchain->FrameAsyncOperations.clear();
         swapchain->TraceSubmission = false;
         swapchain->CollectAsyncGPUOperations();
@@ -147,11 +159,15 @@ namespace ZEngine::Applications
         {
             Device->CommandBufferMgr->ResetPool(swapchain->CurrentFrame->Index, thread_idx);
             if (Device->RRM)
+            {
                 static_cast<Rendering::RenderResourceManager*>(Device->RRM)->RetireTextureSlots(swapchain->CurrentFrame->Index, thread_idx);
+            }
         }
 
         if (Device->RRM)
+        {
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->CompleteDeferrals(swapchain->CurrentFrame->Index);
+        }
 
         CurrentCmdBuf = Device->CommandBufferMgr->GetCommandBuffer(Rendering::QueueType::GRAPHIC_QUEUE, swapchain->CurrentFrame->Index, RenderMainThreadIndex, 0, false);
         vkResetCommandBuffer(CurrentCmdBuf->GetHandle(), 0);
@@ -169,7 +185,9 @@ namespace ZEngine::Applications
             return;
         }
         if (Device->RRM)
+        {
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->EndFrame();
+        }
 
         // A frame without UI geometry never enters dynamic rendering. The acquired
         // image must still be in PRESENT_SRC_KHR before the presentation bridge.
@@ -181,54 +199,54 @@ namespace ZEngine::Applications
         // queues and are waited on by the next frame's submit_1, not the current one.
         Device->SwapchainPtr->Present();
         if (Device->RRM)
+        {
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->SubmitAsyncUploads();
+        }
     }
 
-    void AppRenderPipeline::RenderScene(const Rendering::Cameras::CameraFrameData& camera, Rendering::Scenes::RenderScenePtr scene, const Rendering::Scenes::SkyConfig& sky, const Rendering::Scenes::SkyCelestialLight& celestial_light, uint64_t sky_revision, const Rendering::Renderers::ZUIRenderPayload* overlay)
+    void AppRenderPipeline::RenderScene(const RenderFrameState& state, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
-        auto swpachain    = Device->SwapchainPtr;
-        auto frame_index  = swpachain->CurrentFrame->Index;
-        auto thread_index = RenderMainThreadIndex;
+        const auto& camera       = state.Camera;
+        const auto& scene        = state.Scene;
+        auto        swpachain    = Device->SwapchainPtr;
+        auto        frame_index  = swpachain->CurrentFrame->Index;
+        auto        thread_index = RenderMainThreadIndex;
 
-        SceneRenderer->ApplySkyConfig(sky, celestial_light, sky_revision);
-
-        if (scene->GridDirty[frame_index].value.exchange(false, std::memory_order_acquire))
-        {
-            SceneRenderer->ApplyGridConfig(scene->Grid);
-        }
+        SceneRenderer->ApplySkyConfig(state.Sky, state.CelestialLight, state.SkyRevision);
+        SceneRenderer->ApplyGridConfig(scene.Grid);
+        Rendering::Renderers::GridLabelFrameData grid_labels = {};
+        (void) Rendering::Renderers::BuildGridLabelFrame(scene.Grid, camera, state.GridLabelFont, state.RenderTargetW, state.RenderTargetH, grid_labels);
+        SceneRenderer->ApplyGridLabels(grid_labels);
+        SceneRenderer->ApplyGizmo(state.Gizmo);
 
         auto* gpu = SceneRenderer->RenderSceneData;
 
-        // Clear the dirty flag — data is rebuilt every frame so culling tracks camera movement.
-        scene->InstancesDirty[frame_index].value.exchange(false, std::memory_order_acquire);
-
         {
-            auto*                                                    rrm     = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
-            auto*                                                    mgr     = Managers::AssetManager::Instance();
-            auto                                                     scratch = ZGetScratch(&Engine::GetContext()->UIContextArena);
-
-            Core::Containers::Array<Rendering::Scenes::MeshInstance> instances;
-            scene->GetInstancesSnapshot(scratch.Arena, instances);
+            auto*        rrm       = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+            auto*        mgr       = Managers::AssetManager::Instance();
+            auto         scratch   = ZGetScratch(&Engine::GetContext()->UIContextArena);
 
             // Extract camera frustum once for this frame.
-            Mat4f        vp = camera.Projection * camera.View;
-            FrustumPlane planes[6];
+            Mat4f        vp        = camera.Projection * camera.View;
+            FrustumPlane planes[6] = {};
             ExtractFrustumPlanes(vp, planes);
 
             Core::Containers::Array<Rendering::Meshes::SubMeshAllocation>   allocs;
             Core::Containers::Array<Rendering::Scenes::FrustumCullingInput> culling_inputs;
             Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
-            allocs.init(scratch.Arena, instances.size() * 4);
-            culling_inputs.init(scratch.Arena, instances.size() * 4);
-            transforms.init(scratch.Arena, instances.size());
+            allocs.init(scratch.Arena, scene.InstanceCount * 4);
+            culling_inputs.init(scratch.Arena, scene.InstanceCount * 4);
+            transforms.init(scratch.Arena, scene.InstanceCount);
 
-            for (uint32_t inst_i = 0; inst_i < instances.size(); ++inst_i)
+            for (uint32_t inst_i = 0; inst_i < scene.InstanceCount; ++inst_i)
             {
-                const auto& inst   = instances[inst_i];
+                const auto& inst   = scene.Instances[inst_i];
 
                 auto        handle = rrm ? rrm->FindMeshBuffer(inst.MeshUUID) : Rendering::BufferHandle{};
                 if (!handle.IsValid())
+                {
                     continue;
+                }
 
                 // Skip non-resident meshes — either upload still in flight (Pending) or the
                 // slot was evicted (Unloaded). For evicted slots, enqueue a reload so the
@@ -244,9 +262,19 @@ namespace ZEngine::Applications
                 uint32_t vtx_base = 0, idx_base = 0;
                 rrm->GetMeshOffsets(handle, vtx_base, idx_base);
 
-                auto* mesh = mgr ? mgr->GetMeshAsset(inst.MeshUUID) : nullptr;
-                if (!mesh)
+                if (!mgr)
+                {
                     continue;
+                }
+                // CPU descriptors/material slots can grow while an uncached scene
+                // asset is published. Keep borrowed data inside the ingest lease;
+                // GPU lookups above and buffer submissions below hold no lease.
+                std::lock_guard asset_lock(mgr->IngestMutex);
+                auto*           mesh = mgr->GetMeshAsset(inst.MeshUUID);
+                if (!mesh)
+                {
+                    continue;
+                }
 
                 // Build a world-space sphere for the GPU culling pass. A mesh with
                 // no authored bound is deliberately retained as always visible.
@@ -287,14 +315,22 @@ namespace ZEngine::Applications
             ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
 
             if (rrm && gpu->TransformBuffers[frame_index].Handle && transforms.size() > 0)
+            {
                 rrm->UpdateBuffer(gpu->TransformBuffers[frame_index], transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
+            }
             if (rrm && gpu->RenderDataBuffers[frame_index].Handle && allocs.size() > 0)
+            {
                 rrm->UpdateBuffer(gpu->RenderDataBuffers[frame_index], allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
+            }
             if (rrm && gpu->CullingInputBuffers[frame_index].Handle && culling_inputs.size() > 0)
+            {
                 rrm->UpdateBuffer(gpu->CullingInputBuffers[frame_index], culling_inputs.data(), culling_inputs.size() * sizeof(Rendering::Scenes::FrustumCullingInput));
+            }
 
             for (uint32_t i = 0; i < 6; ++i)
+            {
                 gpu->CullingPushConstants.FrustumPlanes[i] = Vec4f(planes[i].x, planes[i].y, planes[i].z, planes[i].w);
+            }
             gpu->CullingPushConstants.DrawCount = gpu->IndirectCommandCount;
 
             ZReleaseScratch(scratch);
@@ -306,7 +342,9 @@ namespace ZEngine::Applications
             auto* gpu_data = SceneRenderer->RenderSceneData;
             // Mark global buffers ready so draw guard allows rendering.
             if (!gpu_data->RMMVertexHandle.IsValid() && rrm->GlobalBuffersReady())
+            {
                 gpu_data->RMMVertexHandle = {0, 1}; // sentinel — just needs IsValid() == true
+            }
         }
 
         if (Device->RRM)
@@ -314,7 +352,9 @@ namespace ZEngine::Applications
             auto* rrm     = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
             auto* gpu_buf = SceneRenderer->RenderSceneData;
             if (gpu_buf->LightBuffers[frame_index].Handle)
-                rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &scene->PendingLights, sizeof(Rendering::Scenes::LightArrayUBO));
+            {
+                rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &scene.Lights, sizeof(Rendering::Scenes::LightArrayUBO));
+            }
         }
 
         ZUIRenderPass->SetPayload(overlay);
@@ -342,7 +382,9 @@ namespace ZEngine::Applications
                     glfwGetWindowContentScale(native, &xs, &ys);
                     content_scale = (xs > ys ? xs : ys);
                     if (content_scale < 0.5f)
+                    {
                         content_scale = 1.f;
+                    }
                 }
 
                 // GLFW's content scale is the UI-metric scale.  On Wayland and macOS it
@@ -404,21 +446,49 @@ namespace ZEngine::Applications
         }
     }
 
-    void AppRenderPipeline::PublishFrameState(const RenderFrameState& state)
+    void AppRenderPipeline::InitializeFrameStorage(Core::Memory::ArenaAllocator* arena, uint32_t max_instances)
     {
-        constexpr uint32_t free_state      = static_cast<uint32_t>(PayloadSlotState::Free);
-        constexpr uint32_t ready_state     = static_cast<uint32_t>(PayloadSlotState::Ready);
-        constexpr uint32_t writing_state   = static_cast<uint32_t>(PayloadSlotState::Writing);
+        ZENGINE_VALIDATE_ASSERT(arena && m_frame_instance_capacity == 0 && max_instances > 0 && max_instances <= Rendering::Scenes::SceneFrameData::MaxInstances, "Invalid frame snapshot storage initialization")
+        for (auto& instances : m_frame_instances)
+        {
+            instances = static_cast<Rendering::Scenes::SceneDrawInstance*>(arena->AllocateNoZero(sizeof(Rendering::Scenes::SceneDrawInstance) * max_instances, alignof(Rendering::Scenes::SceneDrawInstance)));
+            ZENGINE_VALIDATE_ASSERT(instances, "Unable to allocate bounded frame snapshot storage")
+        }
+        m_frame_instance_capacity = max_instances;
+    }
+
+    bool AppRenderPipeline::PublishFrameState(const RenderFrameState& state, const Rendering::Scenes::RenderScene* source_scene)
+    {
+        constexpr uint32_t free_state    = static_cast<uint32_t>(PayloadSlotState::Free);
+        constexpr uint32_t ready_state   = static_cast<uint32_t>(PayloadSlotState::Ready);
+        constexpr uint32_t writing_state = static_cast<uint32_t>(PayloadSlotState::Writing);
+
+        // Reject before claiming a slot: an invalid frame must not evict valid unread data.
+        if (!state.Gizmo.ValidCounts() || !state.Gizmo.ValidMeshLineGroups())
+        {
+            return false;
+        }
+        const auto instance_count = source_scene ? source_scene->Instances.size() : 0;
+        if (source_scene && (!m_frame_instance_capacity || instance_count > m_frame_instance_capacity))
+        {
+            if (!m_snapshot_capacity_reported)
+                ZENGINE_CORE_WARN("Render snapshot requires {} instances; capacity is {}. Scene publication rejected without truncation.", instance_count, m_frame_instance_capacity)
+            m_snapshot_capacity_reported = true;
+            return false;
+        }
+        m_snapshot_capacity_reported = false;
 
         // Prefer a free slot, then replace the oldest unread state.
-        uint32_t           selected_slot   = MaxFrameStateBufferCount;
-        uint64_t           oldest_sequence = std::numeric_limits<uint64_t>::max();
+        uint32_t selected_slot       = MaxFrameStateBufferCount;
+        uint64_t oldest_sequence     = std::numeric_limits<uint64_t>::max();
+        bool     claimed             = false;
         for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
         {
             uint32_t expected = free_state;
             if (FrameStateSlots[slot].value.compare_exchange_strong(expected, writing_state, std::memory_order_acq_rel, std::memory_order_acquire))
             {
                 selected_slot = slot;
+                claimed       = true;
                 break;
             }
 
@@ -431,15 +501,43 @@ namespace ZEngine::Applications
         }
 
         if (selected_slot == MaxFrameStateBufferCount)
-            return;
+        {
+            return false;
+        }
 
         uint32_t expected = ready_state;
-        if (FrameStateSlots[selected_slot].value.load(std::memory_order_acquire) != writing_state && !FrameStateSlots[selected_slot].value.compare_exchange_strong(expected, writing_state, std::memory_order_acq_rel, std::memory_order_acquire))
-            return;
+        if (!claimed && !FrameStateSlots[selected_slot].value.compare_exchange_strong(expected, writing_state, std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return false;
+        }
 
-        FrameStates[selected_slot] = state;
+        auto& destination = FrameStates[selected_slot];
+        destination       = state;
+        // Source access is exclusively main-thread, after hierarchy/light synchronization.
+        // The render consumer sees no borrowed scene, even when that source is later destroyed.
+        destination.Scene = {};
+        if (source_scene)
+        {
+            auto*          instances = m_frame_instances[selected_slot];
+            const uint32_t count     = static_cast<uint32_t>(instance_count);
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                const auto& source = source_scene->Instances[i];
+                std::construct_at(instances + i, Rendering::Scenes::SceneDrawInstance{source.Transform, source.MeshUUID});
+            }
+            destination.Scene.Instances     = instances;
+            destination.Scene.InstanceCount = count;
+            destination.Scene.Lights        = source_scene->PendingLights;
+            destination.Scene.Grid          = source_scene->Grid;
+            destination.Scene.Grid.Enabled  = source_scene->Grid.Enabled && state.ShowGrid;
+            destination.Scene.HasScene      = true;
+            destination.Sky                 = source_scene->Sky;
+            destination.CelestialLight      = source_scene->CelestialLight;
+            destination.SkyRevision         = source_scene->SkyRevision.value.load(std::memory_order_acquire);
+        }
         FrameStateSequences[selected_slot].value.store(m_next_frame_state_sequence++, std::memory_order_relaxed);
         FrameStateSlots[selected_slot].value.store(ready_state, std::memory_order_release);
+        return true;
     }
 
     bool AppRenderPipeline::TryReadFrameState(RenderFrameState& state)
@@ -466,25 +564,55 @@ namespace ZEngine::Applications
             }
 
             if (newest_slot == MaxFrameStateBufferCount)
+            {
                 return false;
+            }
 
             uint32_t expected = ready_state;
             if (!FrameStateSlots[newest_slot].value.compare_exchange_strong(expected, reading_state, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
                 continue;
+            }
 
+            // A producer can replace Ready while we scan. Inspect the actual sequence only
+            // after acquiring ownership, and never return a state older than the last read.
+            newest_sequence = FrameStateSequences[newest_slot].value.load(std::memory_order_relaxed);
+            if (newest_sequence <= m_last_read_frame_sequence)
+            {
+                FrameStateSlots[newest_slot].value.store(free_state, std::memory_order_release);
+                continue;
+            }
             state = FrameStates[newest_slot];
 
-            // Older ready states cannot be observed again, so recycle them.
+            // Claim before checking age to avoid an ABA race discarding a newly published
+            // state. A newer racing publication must remain available for the next read.
             for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
             {
                 if (slot == newest_slot)
+                {
                     continue;
+                }
                 expected = ready_state;
-                FrameStateSlots[slot].value.compare_exchange_strong(expected, free_state, std::memory_order_acq_rel, std::memory_order_acquire);
+                if (FrameStateSlots[slot].value.compare_exchange_strong(expected, reading_state, std::memory_order_acq_rel, std::memory_order_acquire))
+                {
+                    const auto sequence = FrameStateSequences[slot].value.load(std::memory_order_relaxed);
+                    FrameStateSlots[slot].value.store(sequence <= newest_sequence ? free_state : ready_state, std::memory_order_release);
+                }
             }
 
-            FrameStateSlots[newest_slot].value.store(free_state, std::memory_order_release);
+            ReleaseFrameState();
+            m_retained_frame_slot      = newest_slot;
+            m_last_read_frame_sequence = newest_sequence;
             return true;
+        }
+    }
+
+    void AppRenderPipeline::ReleaseFrameState()
+    {
+        if (m_retained_frame_slot < MaxFrameStateBufferCount)
+        {
+            FrameStateSlots[m_retained_frame_slot].value.store(static_cast<uint32_t>(PayloadSlotState::Free), std::memory_order_release);
+            m_retained_frame_slot = MaxFrameStateBufferCount;
         }
     }
 
@@ -569,7 +697,9 @@ namespace ZEngine::Applications
                 for (uint32_t slot = 0; slot < MaxOverlayBufferCount; ++slot)
                 {
                     if (slot == newest_slot)
+                    {
                         continue;
+                    }
                     expected = ready_state;
                     OverlayPayloadStates[slot].value.compare_exchange_strong(expected, free_state, std::memory_order_acq_rel, std::memory_order_acquire);
                 }
@@ -617,16 +747,26 @@ namespace ZEngine::Applications
                 static GLFWcursor* s_hresize = nullptr;
                 static GLFWcursor* s_vresize = nullptr;
                 if (!s_hresize)
+                {
                     s_hresize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+                }
                 if (!s_vresize)
+                {
                     s_vresize = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
+                }
 
                 if (req == 1 && s_hresize)
+                {
                     glfwSetCursor(gw, s_hresize);
+                }
                 else if (req == 2 && s_vresize)
+                {
                     glfwSetCursor(gw, s_vresize);
+                }
                 else
+                {
                     glfwSetCursor(gw, nullptr); // restore default
+                }
             }
         }
     }

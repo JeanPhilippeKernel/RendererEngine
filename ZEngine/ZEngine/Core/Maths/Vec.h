@@ -40,7 +40,9 @@ namespace ZEngine::Core::Maths
             return true;
         }
 
-        T x, y, z, w;
+        // All vector specializations share four storage lanes. Initialize even the unused
+        // lanes so copying a Vec2/Vec3 never propagates indeterminate state into snapshots.
+        T x = {}, y = {}, z = {}, w = {};
     };
 
     template <typename T>
@@ -82,8 +84,7 @@ namespace ZEngine::Core::Maths
 
         bool operator==(const Vec2& other) const
         {
-            auto& base = Vec<T, 2>::IsEqual;
-            return base(x, other.x) && base(y, other.y);
+            return Vec<T, 2>::IsEqual(x, other.x) && Vec<T, 2>::IsEqual(y, other.y);
         }
 
         Vec2& operator+=(const Vec2& other)
@@ -154,8 +155,7 @@ namespace ZEngine::Core::Maths
 
         bool operator==(const Vec3& other) const
         {
-            auto& base = Vec<T, 3>::IsEqual;
-            return base(x, other.x) && base(y, other.y) && base(z, other.z);
+            return Vec<T, 3>::IsEqual(x, other.x) && Vec<T, 3>::IsEqual(y, other.y) && Vec<T, 3>::IsEqual(z, other.z);
         }
 
         bool operator!=(const Vec3& other) const
@@ -268,8 +268,7 @@ namespace ZEngine::Core::Maths
 
         bool operator==(const Vec4& other) const
         {
-            auto& base = Vec<T, 4>::IsEqual;
-            return base(x, other.x) && base(y, other.y) && base(z, other.z) && base(w, other.w);
+            return Vec<T, 4>::IsEqual(x, other.x) && Vec<T, 4>::IsEqual(y, other.y) && Vec<T, 4>::IsEqual(z, other.z) && Vec<T, 4>::IsEqual(w, other.w);
         }
 
         bool operator!=(const Vec4& other) const

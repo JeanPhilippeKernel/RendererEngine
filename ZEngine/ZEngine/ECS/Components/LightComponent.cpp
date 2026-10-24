@@ -18,7 +18,7 @@ namespace ZEngine::ECS::Components
         {.Name = "LightType", .Type = FieldType::Enum, .Offset = offsetof(LC, LightType), .Size = sizeof(LC::Type), .EnumValues = kLightTypes, .EnumCount = static_cast<uint32_t>(sizeof(kLightTypes) / sizeof(kLightTypes[0])), .ReadOnly = true},
         {.Name = "Intensity", .Type = FieldType::Float, .Offset = offsetof(LC, Intensity), .Size = sizeof(float)},
         {.Name = "Range", .Type = FieldType::Float, .Offset = offsetof(LC, Range), .Size = sizeof(float), .Tooltip = "Point and spot only"},
-        {.Name = "SpotAngle", .Type = FieldType::Float, .Offset = offsetof(LC, SpotAngle), .Size = sizeof(float), .Tooltip = "Spot only, degrees"},
+        {.Name = "SpotAngle", .Type = FieldType::Float, .Offset = offsetof(LC, SpotAngle), .Size = sizeof(float), .Tooltip = "Spot only: full outer aperture, degrees"},
         {.Name = "Color", .Type = FieldType::Color3f, .Offset = offsetof(LC, Color), .Size = sizeof(LC::Color)},
     };
 

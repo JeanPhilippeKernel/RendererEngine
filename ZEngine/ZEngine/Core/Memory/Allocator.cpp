@@ -2,11 +2,13 @@
 #include <windows.h>
 #else
 #include <sys/mman.h>
+#include <unistd.h>
 #include <cerrno>
 #endif
 
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <algorithm>
 #include <limits>
 
 namespace ZEngine::Core::Memory
@@ -21,7 +23,9 @@ namespace ZEngine::Core::Memory
     static bool RoundUpToPage(size_t value, size_t page_size, size_t* result)
     {
         if (value > std::numeric_limits<size_t>::max() - (page_size - 1))
+        {
             return false;
+        }
         *result = (value + page_size - 1) & ~(page_size - 1);
         return true;
     }
@@ -77,7 +81,9 @@ namespace ZEngine::Core::Memory
     static void DestroyCommitTracker(ArenaCommitTracker* tracker)
     {
         if (!tracker)
+        {
             return;
+        }
 #ifdef _WIN32
         VirtualFree(tracker, 0, MEM_RELEASE);
 #else
@@ -87,6 +93,16 @@ namespace ZEngine::Core::Memory
 
     bool CommitAllocationPages(ArenaAllocator* arena, size_t allocation_offset, size_t allocation_size)
     {
+        if (arena->m_is_borrowed)
+        {
+            if (allocation_offset > arena->m_total_size || allocation_size > arena->m_total_size - allocation_offset)
+            {
+                SetAllocationFailure(arena, ArenaAllocationFailureKind::CapacityExceeded, allocation_size);
+                return false;
+            }
+            ClearAllocationFailure(arena);
+            return true;
+        }
         if (!arena->m_commit_tracker)
         {
             SetAllocationFailure(arena, ArenaAllocationFailureKind::ArenaNotInitialized, allocation_size);
@@ -141,9 +157,30 @@ namespace ZEngine::Core::Memory
 
     void ArenaAllocator::Initialize(uint64_t size, size_t page_size, cstring owner_name)
     {
-        m_owner_name         = owner_name ? owner_name : "UnnamedArena";
-        m_last_failure       = {};
-        m_mem_page_size      = page_size ? page_size : 4096;
+        m_owner_name   = owner_name ? owner_name : "UnnamedArena";
+        m_last_failure = {};
+        // Standalone bounded owners may not have a MemoryManager to pass the
+        // native page size. In particular, macOS arm64 uses 16 KiB pages.
+        if (!page_size)
+        {
+#ifdef _WIN32
+            SYSTEM_INFO system_info = {};
+            GetSystemInfo(&system_info);
+            page_size = system_info.dwPageSize;
+#else
+            const long native_page_size = sysconf(_SC_PAGESIZE);
+            if (native_page_size > 0)
+            {
+                page_size = static_cast<size_t>(native_page_size);
+            }
+#endif
+        }
+        if (!page_size || (page_size & (page_size - 1)))
+        {
+            SetAllocationFailure(this, ArenaAllocationFailureKind::ReservationFailed, static_cast<size_t>(size));
+            return;
+        }
+        m_mem_page_size      = page_size;
 
         size_t reserved_size = 0;
         if (size == 0 || size > std::numeric_limits<size_t>::max() || !RoundUpToPage(static_cast<size_t>(size), m_mem_page_size, &reserved_size))
@@ -163,7 +200,9 @@ namespace ZEngine::Core::Memory
         m_memory                    = static_cast<uint8_t*>(mmap(nullptr, reserved_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
         const int reservation_error = m_memory == MAP_FAILED ? errno : 0;
         if (m_memory == MAP_FAILED)
+        {
             m_memory = nullptr;
+        }
 #endif
         if (!m_memory)
         {
@@ -196,6 +235,22 @@ namespace ZEngine::Core::Memory
         m_owns_commit_tracker     = true;
     }
 
+    bool ArenaAllocator::InitializeBorrowed(void* memory, size_t bytes, cstring owner_name)
+    {
+        if (m_memory || !memory || !bytes || bytes > UINTPTR_MAX - reinterpret_cast<uintptr_t>(memory))
+        {
+            return false;
+        }
+        m_memory     = static_cast<uint8_t*>(memory);
+        m_total_size = m_reserved_size = m_committed_size = bytes;
+        m_current_offset = m_previous_offset = m_initial_current_offset = m_initial_previous_offset = 0;
+        m_mem_page_size                                                                             = 1; // Already committed; sub-arena boundaries need no OS-page rounding.
+        m_is_borrowed                                                                               = true;
+        m_owner_name                                                                                = owner_name;
+        m_last_failure                                                                              = {};
+        return true;
+    }
+
     void ArenaAllocator::Shutdown()
     {
         // Not thread-safe: external synchronization is required if the arena is shared across threads.
@@ -211,11 +266,12 @@ namespace ZEngine::Core::Memory
         m_root_offset             = 0;
         m_owns_commit_tracker     = false;
 
-        if (m_is_sub_arena)
+        if (m_is_sub_arena || m_is_borrowed)
         {
             // Sub-arenas do not own the memory, so we don't free it
             m_memory       = nullptr;
             m_is_sub_arena = false;
+            m_is_borrowed  = false;
             return;
         }
 
@@ -229,7 +285,9 @@ namespace ZEngine::Core::Memory
             m_memory = nullptr;
         }
         if (owns_tracker)
+        {
             DestroyCommitTracker(tracker);
+        }
     }
 
     // Internal bump-pointer allocator — shared by Allocate and AllocateNoZero.
@@ -253,7 +311,9 @@ namespace ZEngine::Core::Memory
         }
 
         if (!CommitAllocationPages(a, static_cast<size_t>(offset), size))
+        {
             return nullptr;
+        }
 
         void* ptr            = &a->m_memory[offset];
         a->m_previous_offset = offset;
@@ -268,7 +328,9 @@ namespace ZEngine::Core::Memory
 
         void* ptr = ArenaAllocateRaw(this, size, alignment);
         if (ptr)
+        {
             Helpers::secure_memset(ptr, 0, size, size);
+        }
         return ptr;
     }
 
@@ -288,49 +350,55 @@ namespace ZEngine::Core::Memory
     {
         ZENGINE_VALIDATE_ASSERT(Helpers::is_power_of_two(alignment), "Alignment should be power of 2")
         ZENGINE_VALIDATE_ASSERT(new_size > 0, "ArenaAllocator::Resize: new_size must be > 0")
+        return TryResize(old_memory, old_size, new_size, alignment);
+    }
 
-        uint8_t* old_mem = reinterpret_cast<uint8_t*>(old_memory);
-        if (old_mem == nullptr || old_size == 0)
+    void* ArenaAllocator::TryResize(void* old_memory, size_t old_size, size_t new_size, size_t alignment)
+    {
+        if (!Helpers::is_power_of_two(alignment) || new_size == 0)
+        {
+            return nullptr;
+        }
+        if (!old_memory || old_size == 0)
         {
             return Allocate(new_size, alignment);
         }
-        else if ((m_memory <= old_mem) && old_mem < (m_memory + m_total_size))
+        const uintptr_t base    = reinterpret_cast<uintptr_t>(m_memory);
+        const uintptr_t address = reinterpret_cast<uintptr_t>(old_memory);
+        if (!m_memory || address < base || address - base > m_current_offset || old_size > m_current_offset - (address - base) || address % alignment != 0)
         {
-            if ((m_memory + m_previous_offset) == old_mem)
-            {
-                if ((m_previous_offset + new_size) <= m_total_size)
-                {
-                    if (new_size > old_size)
-                    {
-                        if (!CommitAllocationPages(this, m_previous_offset, new_size))
-                            return nullptr;
-
-                        void*  dst       = &m_memory[m_previous_offset + old_size];
-                        size_t zero_size = new_size - old_size;
-                        Helpers::secure_memset(dst, 0, zero_size, zero_size);
-                    }
-                    else
-                    {
-                        void*  dst       = &m_memory[m_previous_offset + new_size];
-                        size_t zero_size = old_size - new_size;
-                        Helpers::secure_memset(dst, 0, zero_size, zero_size);
-                    }
-
-                    m_current_offset = m_previous_offset + new_size;
-                    return old_memory;
-                }
-                // fast path capacity exceeded — fall through to slow path
-            }
-
-            auto new_mem = Allocate(new_size, alignment);
-            ZENGINE_VALIDATE_ASSERT(new_mem != nullptr, "ArenaAllocator::Resize: arena out of memory")
-            size_t copy_size = old_size < new_size ? old_size : new_size;
-            Helpers::secure_memcpy(new_mem, new_size, old_memory, copy_size);
-            return new_mem;
+            return nullptr;
         }
-
-        ZENGINE_VALIDATE_ASSERT(false, "ArenaAllocator::Resize: pointer not owned by this arena")
-        return nullptr;
+        const size_t offset = address - base;
+        if (offset == m_previous_offset)
+        {
+            if (new_size <= m_total_size - offset)
+            {
+                if (new_size > old_size)
+                {
+                    if (!CommitAllocationPages(this, offset, new_size))
+                    {
+                        return nullptr;
+                    }
+                    const size_t zero_size = new_size - old_size;
+                    Helpers::secure_memset(m_memory + offset + old_size, 0, zero_size, zero_size);
+                }
+                else
+                {
+                    const size_t zero_size = old_size - new_size;
+                    Helpers::secure_memset(m_memory + offset + new_size, 0, zero_size, zero_size);
+                }
+                m_current_offset = offset + new_size;
+                return old_memory;
+            }
+        }
+        void* new_memory = Allocate(new_size, alignment);
+        if (!new_memory)
+        {
+            return nullptr;
+        }
+        Helpers::secure_memcpy(new_memory, new_size, old_memory, std::min(old_size, new_size));
+        return new_memory;
     }
 
     void ArenaAllocator::Clear()
@@ -363,6 +431,7 @@ namespace ZEngine::Core::Memory
 
         out_arena->m_memory                  = m_memory + offset;
         out_arena->m_is_sub_arena            = true;
+        out_arena->m_is_borrowed             = m_is_borrowed;
         out_arena->m_owns_commit_tracker     = false;
         out_arena->m_commit_tracker          = m_commit_tracker;
         out_arena->m_root_offset             = m_root_offset + static_cast<size_t>(offset);
@@ -375,7 +444,7 @@ namespace ZEngine::Core::Memory
         out_arena->m_total_size              = size;
         out_arena->m_reserved_size           = reserved_size;
         out_arena->m_mem_page_size           = m_mem_page_size;
-        out_arena->m_committed_size          = 0;
+        out_arena->m_committed_size          = m_is_borrowed ? size : 0;
 
         // Advance the parent's cursor to reserve the sub-arena's address range.
         // No page is committed until the owning arena allocates from its range.

@@ -12,6 +12,47 @@
 
 namespace ZEngine::Core::VFS
 {
+    namespace
+    {
+#if defined(_WIN32)
+        bool WindowsPathFromUtf8(cstring text, wchar_t* output)
+        {
+            size_t length = 0;
+            if (!text || !output)
+                return false;
+            while (length < MAX_FILE_PATH_COUNT && text[length])
+                ++length;
+            output[0] = L'\0';
+            // The byte budget is unchanged. UTF-16 cannot exceed that many
+            // code units; include the terminator and reject malformed input.
+            return length > 0 && length < MAX_FILE_PATH_COUNT && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, static_cast<int>(length + 1), output, MAX_FILE_PATH_COUNT) > 0;
+        }
+#endif
+
+        bool FilenameToUtf8(const std::filesystem::path& path, char (&output)[MAX_FILE_PATH_COUNT])
+        {
+            const auto  filename = path.filename();
+            const auto& name     = filename.native();
+            if (name.empty() || name.size() >= MAX_FILE_PATH_COUNT)
+            {
+                return false;
+            }
+#if defined(_WIN32)
+            const int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name.data(), static_cast<int>(name.size()), output, MAX_FILE_PATH_COUNT - 1, nullptr, nullptr);
+            if (count <= 0)
+                return false;
+            output[count] = '\0';
+#else
+            if (Helpers::secure_memcpy(output, sizeof(output), name.data(), name.size()) != Helpers::MEMORY_OP_SUCCESS)
+            {
+                return false;
+            }
+            output[name.size()] = '\0';
+#endif
+            return true;
+        }
+    } // namespace
+
     VFSResult<size_t> VFSDiskFile::Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset)
     {
 #if defined(_WIN32)
@@ -166,7 +207,7 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void*>::Fail(VFSError::IOError);
         }
-        HANDLE mapping = CreateFileMappingA(m_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
+        HANDLE mapping = CreateFileMappingW(m_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
         if (!mapping)
         {
             return VFSResult<void*>::Fail(VFSError::IOError);
@@ -234,8 +275,12 @@ namespace ZEngine::Core::VFS
         m_file_pool.Initialize(m_arena, file_stride * max_open_files, file_stride, ZAlignof(VFSDiskFile));
     }
 
-    bool VFSDiskBackend::ResolveNativePath(const VFSPath& relative, char* out_buf) const
+    bool VFSDiskBackend::ResolveNativePath(const VFSPath& relative, NativePathChar* out_buf) const
     {
+        if (!out_buf || !relative.IsValid())
+        {
+            return false;
+        }
         char native[MAX_FILE_PATH_COUNT] = {};
         relative.ToNative(native, sizeof(native));
 
@@ -245,24 +290,35 @@ namespace ZEngine::Core::VFS
             return false;
         }
 
-        Helpers::secure_memcpy(out_buf, MAX_FILE_PATH_COUNT, m_native_root, m_native_root_len);
-        Helpers::secure_memcpy(out_buf + m_native_root_len, MAX_FILE_PATH_COUNT - m_native_root_len, native, native_len);
-        out_buf[m_native_root_len + native_len] = '\0';
+#if defined(_WIN32)
+        char utf8[MAX_FILE_PATH_COUNT] = {};
+#else
+        char* utf8 = out_buf;
+#endif
+        if (Helpers::secure_memcpy(utf8, MAX_FILE_PATH_COUNT, m_native_root, m_native_root_len) != Helpers::MEMORY_OP_SUCCESS || Helpers::secure_memcpy(utf8 + m_native_root_len, MAX_FILE_PATH_COUNT - m_native_root_len, native, native_len) != Helpers::MEMORY_OP_SUCCESS)
+        {
+            return false;
+        }
+        utf8[m_native_root_len + native_len] = '\0';
 
         // Defense-in-depth: verify the composed path stays within m_native_root.
         // VFSPath::Parse already rejects '..' segments, but this backend must not rely
         // solely on every upstream caller using Parse — any future code path that
         // constructs a VFSPath from raw bytes could bypass that check.
-        if (std::memcmp(out_buf, m_native_root, m_native_root_len) != 0)
+        if (Helpers::secure_memcmp(utf8, MAX_FILE_PATH_COUNT, m_native_root, sizeof(m_native_root), m_native_root_len) != 0)
         {
             return false;
         }
-        const char next = out_buf[m_native_root_len];
+        const char next = utf8[m_native_root_len];
         if (next != '\0' && next != '/' && next != '\\')
         {
             return false;
         }
+#if defined(_WIN32)
+        return WindowsPathFromUtf8(utf8, out_buf);
+#else
         return true;
+#endif
     }
 
     bool VFSDiskBackend::ProbeCaseSensitivity(cstring native_root)
@@ -285,8 +341,13 @@ namespace ZEngine::Core::VFS
             }
         }
 
-        std::error_code ec;
+        std::error_code ec = {};
+#if defined(_WIN32)
+        wchar_t native_probe[MAX_FILE_PATH_COUNT] = {};
+        return !WindowsPathFromUtf8(probe, native_probe) || !std::filesystem::exists(native_probe, ec);
+#else
         return !std::filesystem::exists(probe, ec);
+#endif
 #else
         (void) native_root;
         return true;
@@ -297,8 +358,10 @@ namespace ZEngine::Core::VFS
     {
         const bool exclusive = HasFlag(flags, VFSOpenFlags::Exclusive);
         if (exclusive && (!HasFlag(flags, VFSOpenFlags::Write) || !HasFlag(flags, VFSOpenFlags::Create)))
+        {
             return VFSResult<IVFSFile*>::Fail(VFSError::Unsupported);
-        char native[MAX_FILE_PATH_COUNT] = {};
+        }
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(relative_path, native))
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
@@ -314,7 +377,9 @@ namespace ZEngine::Core::VFS
         {
             std::lock_guard<std::mutex> lock(m_file_pool_mutex);
             if (!m_file_pool.head)
+            {
                 return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
+            }
             mem = m_file_pool.Allocate();
         }
         if (!mem)
@@ -339,7 +404,7 @@ namespace ZEngine::Core::VFS
             creation = OPEN_ALWAYS; // create if absent, open if present
         else
             creation = OPEN_EXISTING;
-        file->m_handle = CreateFileA(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
+        file->m_handle = CreateFileW(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file->m_handle == INVALID_HANDLE_VALUE)
         {
             const DWORD native_error = GetLastError();
@@ -357,13 +422,21 @@ namespace ZEngine::Core::VFS
 #else
         int oflags = wants_write ? O_RDWR : O_RDONLY;
         if (HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Create))
+        {
             oflags |= O_CREAT;
+        }
         if (HasFlag(flags, VFSOpenFlags::Truncate))
+        {
             oflags |= O_TRUNC;
+        }
         if (HasFlag(flags, VFSOpenFlags::Append))
+        {
             oflags |= O_CREAT | O_APPEND;
+        }
         if (exclusive)
+        {
             oflags |= O_EXCL;
+        }
         file->m_fd = ::open(native, oflags, 0644);
         if (file->m_fd < 0)
         {
@@ -396,20 +469,20 @@ namespace ZEngine::Core::VFS
 
     VFSResult<VFSFileStat> VFSDiskBackend::Stat(const VFSPath& path) const
     {
-        char native[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(path, native))
         {
             return VFSResult<VFSFileStat>::Fail(VFSError::InvalidPath);
         }
 
-        std::error_code              ec;
+        std::error_code              ec     = {};
         std::filesystem::file_status status = std::filesystem::status(native, ec);
         if (ec || !std::filesystem::exists(status))
         {
             return VFSResult<VFSFileStat>::Fail(VFSError::NotFound);
         }
 
-        VFSFileStat stat;
+        VFSFileStat stat = {};
         stat.IsDirectory = std::filesystem::is_directory(status);
         if (!stat.IsDirectory)
         {
@@ -431,48 +504,59 @@ namespace ZEngine::Core::VFS
 
     bool VFSDiskBackend::Exists(const VFSPath& path) const
     {
-        char native[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(path, native))
         {
             return false;
         }
-        std::error_code ec;
+        std::error_code ec = {};
         return std::filesystem::exists(native, ec) && !ec;
     }
 
     VFSResult<Core::Containers::Array<VFSDirEntry>> VFSDiskBackend::List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const
     {
-        using ResultT                    = VFSResult<Core::Containers::Array<VFSDirEntry>>;
+        using ResultT                              = VFSResult<Core::Containers::Array<VFSDirEntry>>;
 
-        char native[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(dir, native))
         {
             return ResultT::Fail(VFSError::InvalidPath);
         }
 
-        std::error_code ec;
+        std::error_code ec = {};
         if (!std::filesystem::is_directory(native, ec) || ec)
         {
             return ResultT::Fail(VFSError::NotADirectory);
         }
 
-        Core::Containers::Array<VFSDirEntry> entries;
+        std::filesystem::directory_iterator iterator(native, ec);
+        if (ec)
+        {
+            return ResultT::Fail(VFSError::IOError);
+        }
+        Core::Containers::Array<VFSDirEntry> entries = {};
         entries.init(arena, 16);
-
-        for (const std::filesystem::directory_entry& de : std::filesystem::directory_iterator(native, ec))
+        const std::filesystem::directory_iterator end = {};
+        for (; iterator != end; iterator.increment(ec))
         {
             if (ec)
             {
-                break;
+                return ResultT::Fail(VFSError::IOError);
+            }
+            const auto& de                            = *iterator;
+            char        filename[MAX_FILE_PATH_COUNT] = {};
+            if (!FilenameToUtf8(de.path(), filename))
+            {
+                continue;
             }
 
-            VFSResult<VFSPath> child = dir.Append(de.path().filename().string().c_str());
+            VFSResult<VFSPath> child = dir.Append(filename);
             if (child.Failed())
             {
                 continue;
             }
 
-            VFSDirEntry entry;
+            VFSDirEntry entry      = {};
             entry.Path             = child.Value();
             entry.IsDirectory      = de.is_directory(ec);
             entry.Stat.IsDirectory = entry.IsDirectory;
@@ -486,6 +570,10 @@ namespace ZEngine::Core::VFS
             }
             entries.push(entry);
         }
+        if (ec)
+        {
+            return ResultT::Fail(VFSError::IOError);
+        }
 
         return ResultT::Ok(std::move(entries));
     }
@@ -496,12 +584,12 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
-        char native[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(relative_path, native))
         {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
-        std::error_code ec;
+        std::error_code ec = {};
         std::filesystem::create_directories(native, ec);
         if (ec)
         {
@@ -513,18 +601,26 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSDiskBackend::CreateDirExclusive(const VFSPath& relative_path)
     {
         if (!HasCap(m_caps, VFSBackendCaps::Write))
+        {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
         if (!relative_path.IsValid())
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
-        char native[MAX_FILE_PATH_COUNT] = {};
+        }
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(relative_path, native))
+        {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
         // create_directory issues a single native mkdir, not an Exists + create.
         // Keep recursive, idempotent CreateDir unchanged for importer/cache callers.
         std::error_code error   = {};
         const bool      created = std::filesystem::create_directory(native, error);
         if (!error)
+        {
             return created ? VFSResult<void>::Ok() : VFSResult<void>::Fail(VFSError::AlreadyExists);
+        }
         return VFSResult<void>::Fail(error == std::errc::file_exists ? VFSError::AlreadyExists : error == std::errc::no_such_file_or_directory ? VFSError::NotFound : error == std::errc::not_a_directory ? VFSError::NotADirectory : error == std::errc::permission_denied || error == std::errc::operation_not_permitted ? VFSError::PermissionDenied : VFSError::IOError);
     }
 
@@ -534,12 +630,12 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
-        char native[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(relative_path, native))
         {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
-        std::error_code ec;
+        std::error_code ec = {};
         if (!std::filesystem::remove(native, ec) || ec)
         {
             return VFSResult<void>::Fail(VFSError::IOError);
@@ -553,12 +649,12 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
-        char native[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(relative_path, native))
         {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
-        std::error_code ec;
+        std::error_code ec = {};
         std::filesystem::remove_all(native, ec);
         return ec ? VFSResult<void>::Fail(VFSError::IOError) : VFSResult<void>::Ok();
     }
@@ -569,19 +665,19 @@ namespace ZEngine::Core::VFS
         {
             return VFSResult<void>::Fail(VFSError::Unsupported);
         }
-        char native_src[MAX_FILE_PATH_COUNT] = {};
-        char native_dst[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native_src[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native_dst[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(rel_src, native_src) || !ResolveNativePath(rel_dst, native_dst))
         {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
 #if defined(_WIN32)
-        if (!MoveFileExA(native_src, native_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        if (!MoveFileExW(native_src, native_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
         {
             return VFSResult<void>::Fail(VFSError::IOError);
         }
 #else
-        std::error_code ec;
+        std::error_code ec = {};
         std::filesystem::rename(native_src, native_dst, ec);
         if (ec)
         {
@@ -594,18 +690,24 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSDiskBackend::RenameNoReplace(const VFSPath& rel_src, const VFSPath& rel_dst)
     {
         if (!HasCap(m_caps, VFSBackendCaps::Write))
+        {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
         if (!rel_src.IsValid() || !rel_dst.IsValid() || rel_src.IsRoot() || rel_dst.IsRoot() || rel_src.IsPrefixOf(rel_dst))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
-        char native_src[MAX_FILE_PATH_COUNT] = {};
-        char native_dst[MAX_FILE_PATH_COUNT] = {};
+        }
+        NativePathChar native_src[MAX_FILE_PATH_COUNT] = {};
+        NativePathChar native_dst[MAX_FILE_PATH_COUNT] = {};
         if (!ResolveNativePath(rel_src, native_src) || !ResolveNativePath(rel_dst, native_dst))
+        {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
 #if defined(_WIN32)
-        if (MoveFileExA(native_src, native_dst, MOVEFILE_WRITE_THROUGH))
+        if (MoveFileExW(native_src, native_dst, MOVEFILE_WRITE_THROUGH))
             return VFSResult<void>::Ok();
         const DWORD error = GetLastError();
-        if (error == ERROR_ACCESS_DENIED && GetFileAttributesA(native_dst) != INVALID_FILE_ATTRIBUTES)
+        if (error == ERROR_ACCESS_DENIED && GetFileAttributesW(native_dst) != INVALID_FILE_ATTRIBUTES)
             return VFSResult<void>::Fail(VFSError::AlreadyExists);
         return VFSResult<void>::Fail(error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS ? VFSError::AlreadyExists : error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? VFSError::NotFound : error == ERROR_ACCESS_DENIED ? VFSError::PermissionDenied : VFSError::IOError);
 #else
@@ -618,7 +720,9 @@ namespace ZEngine::Core::VFS
 #endif
 #if defined(__APPLE__) || (defined(__linux__) && defined(SYS_renameat2))
         if (result == 0)
+        {
             return VFSResult<void>::Ok();
+        }
         const int error = errno;
         return VFSResult<void>::Fail(error == EEXIST || error == ENOTEMPTY ? VFSError::AlreadyExists : error == ENOENT ? VFSError::NotFound : error == EACCES || error == EPERM ? VFSError::PermissionDenied : error == ENOSYS || error == ENOTSUP || error == EINVAL ? VFSError::Unsupported : VFSError::IOError);
 #endif

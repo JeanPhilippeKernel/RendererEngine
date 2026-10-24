@@ -5,6 +5,8 @@
 #include <ZEngine/ECS/WorldTick.h>
 #include <gtest/gtest.h>
 #include <atomic>
+#include <chrono>
+#include <thread>
 
 using namespace ZEngine;
 using namespace ZEngine::ECS;
@@ -208,4 +210,43 @@ TEST_F(SchedulerFixture, ParallelSpawnCallbacks_IndicesRemappedCorrectly)
     EXPECT_NE(s_from_a, s_from_b) << "each spawn must produce a distinct entity";
     EXPECT_TRUE(m_scene.IsAlive(s_from_a));
     EXPECT_TRUE(m_scene.IsAlive(s_from_b));
+}
+
+TEST_F(SchedulerFixture, RepeatedFastParallelWavesRetireTheirStackTasksBeforeReuse)
+{
+    static std::atomic<uint32_t> completed = 0;
+    auto                         spawner   = [](Scene&, float, WorldCommands& commands) { commands.SpawnEntity({nullptr, [](void*, EntityID) { completed.fetch_add(1, std::memory_order_relaxed); }}); };
+    (void) m_tick.RegisterSystem(spawner, {.UsesCommands = true});
+    (void) m_tick.RegisterSystem(spawner, {.UsesCommands = true});
+    m_tick.Commit();
+    completed.store(0, std::memory_order_relaxed);
+    for (uint32_t iteration = 0; iteration < 256; ++iteration)
+    {
+        SCOPED_TRACE(iteration);
+        m_tick.Tick(m_scene, .016f, m_commands);
+        m_commands.Flush(m_scene);
+        EXPECT_EQ(completed.load(std::memory_order_relaxed), 2 * (iteration + 1));
+        EXPECT_EQ(m_scene.AliveCount(), 2 * (iteration + 1));
+    }
+}
+
+TEST_F(SchedulerFixture, SlowParallelWavePublishesEveryCallbackBeforeReturning)
+{
+    static std::atomic<uint32_t> completed = 0;
+    auto                         fast      = [](Scene&, float, WorldCommands& commands) { commands.SpawnEntity({nullptr, [](void*, EntityID) { completed.fetch_add(1, std::memory_order_relaxed); }}); };
+    auto                         slow      = [](Scene&, float, WorldCommands& commands) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        commands.SpawnEntity({nullptr, [](void*, EntityID) { completed.fetch_add(1, std::memory_order_relaxed); }});
+    };
+    (void) m_tick.RegisterSystem(fast, {.UsesCommands = true});
+    (void) m_tick.RegisterSystem(slow, {.UsesCommands = true});
+    m_tick.Commit();
+    completed.store(0, std::memory_order_relaxed);
+    for (uint32_t iteration = 0; iteration < 16; ++iteration)
+    {
+        m_tick.Tick(m_scene, .016f, m_commands);
+        m_commands.Flush(m_scene);
+        EXPECT_EQ(completed.load(std::memory_order_relaxed), 2 * (iteration + 1));
+        EXPECT_EQ(m_scene.AliveCount(), 2 * (iteration + 1));
+    }
 }

@@ -9,6 +9,8 @@
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/EnvironmentBackgroundPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GizmoPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GridLabelPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
@@ -144,7 +146,12 @@ namespace ZEngine::Rendering::Renderers
         auto aerial_pass                 = ZPushStructCtor(Device->Arena, AerialPerspectivePass);
         auto sky_composite_pass          = ZPushStructCtor(Device->Arena, SkyCompositePass);
         auto grid_pass                   = ZPushStructCtor(Device->Arena, GridPass);
-        auto tone_mapping_pass           = ZPushStructCtor(Device->Arena, ToneMappingPass);
+        auto grid_label_pass             = ZPushStructCtor(Device->Arena, GridLabelPass);
+        m_grid_label_pass                = grid_label_pass;
+        auto gizmo_pass                  = ZPushStructCtor(Device->Arena, GizmoPass);
+        gizmo_pass->Initialize(Device);
+        m_gizmo_pass           = gizmo_pass;
+        auto tone_mapping_pass = ZPushStructCtor(Device->Arena, ToneMappingPass);
 
         RenderGraph->Initialize(Device, RenderSceneData);
         RenderGraph->ImportBuffer(RendererBufferName::Transform, &RenderSceneData->TransformBuffers[0]);
@@ -212,6 +219,8 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass);
         RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
+        RenderGraph->AddCallbackPass("Grid Labels Pass", grid_label_pass);
+        RenderGraph->AddCallbackPass("Gizmo Pass", gizmo_pass);
         RenderGraph->Setup();
         RenderGraph->Compile();
         PublishMemoryStatistics();
@@ -233,6 +242,7 @@ namespace ZEngine::Rendering::Renderers
             DiscardSkyResources(retired_sky_resources);
         m_lighting_pass                            = nullptr;
         m_grid_pass                                = nullptr;
+        m_gizmo_pass                               = nullptr;
         m_environment_background_pass              = nullptr;
         m_sky_sphere_pass                          = nullptr;
         m_sky_view_lut_pass                        = nullptr;
@@ -285,7 +295,7 @@ namespace ZEngine::Rendering::Renderers
             rrm->UpdateBuffer(RenderSceneData->MaterialBuffers[frame_index], asset_manager->GPUMeshMaterials.data(), asset_manager->GPUMeshMaterials.size() * sizeof(asset_manager->GPUMeshMaterials[0]));
         }
 
-        // Light buffer is uploaded by AppRenderPipeline::RenderScene from scene->PendingLights.
+        // Light buffer is uploaded by AppRenderPipeline::RenderScene from the retained frame snapshot.
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
         auto& heap                             = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
@@ -447,6 +457,7 @@ namespace ZEngine::Rendering::Renderers
         m_sky_sphere_pass->SetCameraDepthConvention(camera.UsesReverseZ);
         m_environment_background_pass->SetUseSolidColorFallback(false);
         m_environment_background_pass->SetCameraDepthConvention(camera.UsesReverseZ);
+        m_grid_pass->SetCameraDepthConvention(camera.UsesReverseZ);
         m_tone_mapping_pass->SetUseCompositedSceneColor(false);
         m_environment_background_pass->SetActive(true);
         if (!snapshot)
@@ -992,26 +1003,23 @@ namespace ZEngine::Rendering::Renderers
             renderer->m_sky_environment.MarkGpuBakeStageSubmitted(bake->Revision, timeline_value);
     }
 
-    void GraphicRenderer::ApplyGridConfig(const Scenes::GridConfig& cfg)
+    void GraphicRenderer::ApplyGizmo(const GizmoFrameData& frame)
+    {
+        if (m_gizmo_pass)
+            m_gizmo_pass->SetFrame(frame);
+    }
+
+    void GraphicRenderer::ApplyGridLabels(const GridLabelFrameData& frame)
+    {
+        if (m_grid_label_pass)
+            m_grid_label_pass->SetFrame(frame);
+    }
+
+    void GraphicRenderer::ApplyGridConfig(const Scenes::SceneGridRenderSnapshot& cfg)
     {
         auto* pass = RenderGraph->GetPass("Grid Pass");
         if (!pass)
             return;
-        auto* grid_pass    = static_cast<GridPass*>(pass->Callback);
-        grid_pass->Enabled = cfg.Enabled;
-        if (!cfg.Enabled)
-            return;
-
-        auto& p        = grid_pass->PushData;
-        p.CellSize     = cfg.CellSize;
-        p.FadeRadius   = cfg.FadeRadius;
-        p.FadeStrength = cfg.FadeStrength;
-        p.LineWidth    = cfg.LineWidth;
-        p.MaxLOD       = cfg.MaxLOD;
-        p.GroundY      = cfg.GroundY;
-        secure_memcpy(p.ColorThin, sizeof(p.ColorThin), cfg.ColorThin, sizeof(cfg.ColorThin));
-        secure_memcpy(p.ColorThick, sizeof(p.ColorThick), cfg.ColorThick, sizeof(cfg.ColorThick));
-        secure_memcpy(p.ColorXAxis, sizeof(p.ColorXAxis), cfg.ColorXAxis, sizeof(cfg.ColorXAxis));
-        secure_memcpy(p.ColorZAxis, sizeof(p.ColorZAxis), cfg.ColorZAxis, sizeof(cfg.ColorZAxis));
+        static_cast<GridPass*>(pass->Callback)->SetConfig(cfg);
     }
 } // namespace ZEngine::Rendering::Renderers

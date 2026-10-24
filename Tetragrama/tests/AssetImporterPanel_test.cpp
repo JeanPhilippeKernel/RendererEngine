@@ -3,9 +3,13 @@
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
+#include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <gtest/gtest.h>
@@ -14,6 +18,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <thread>
 
 using namespace ZEngine::UI;
 
@@ -41,7 +46,9 @@ namespace Tetragrama::Panels
             panel.m_use_source_name = !custom_name;
             panel.m_scale           = scale;
             if (custom_name)
+            {
                 ZEngine::Helpers::secure_strcpy(panel.m_instance_name, sizeof(panel.m_instance_name), custom_name);
+            }
             return panel.BuildImportConfiguration(config, vfs);
         }
         static const char* Error(const AssetImporterPanel& panel)
@@ -84,6 +91,58 @@ namespace Tetragrama::Panels
         {
             return panel.m_hist_count && panel.m_history[panel.m_hist_count - 1].ok;
         }
+        static const char* LastMessage(const AssetImporterPanel& panel)
+        {
+            return panel.m_hist_count ? panel.m_history[panel.m_hist_count - 1].message : "";
+        }
+        static const char* LastName(const AssetImporterPanel& panel)
+        {
+            return panel.m_hist_count ? panel.m_history[panel.m_hist_count - 1].name : "";
+        }
+        static bool Pending(const AssetImporterPanel& panel)
+        {
+            return panel.m_task_pending;
+        }
+        static uint64_t DropEpoch(const AssetImporterPanel& panel)
+        {
+            return panel.m_import_scene_epoch;
+        }
+        static void Prepare(AssetImporterPanel& panel, ZEngine::Core::VFS::IVFSContext& vfs, ZEngine::Core::Memory::ArenaAllocator& arena, bool place = false)
+        {
+            if (!panel.m_import_task.PublishedPaths.capacity())
+            {
+                panel.m_import_result_slab.Init(&arena, ZMega(1));
+                panel.m_import_task.PublishedPaths.init(&panel.m_import_result_slab, 8);
+            }
+            auto& task             = panel.m_import_task;
+            task.Panel             = &panel;
+            task.Configuration     = {};
+            task.Configuration.VFS = &vfs;
+            task.Kind              = Kind::Assimp;
+            task.Outcome           = AssetImporterPanel::ImportTaskOutcome::Pending;
+            task.Outputs.clear();
+            task.PublishedPaths.clear();
+            task.Error.clear();
+            task.Scene        = {};
+            task.Epoch        = 1;
+            task.PlaceInScene = place;
+            task.Publication  = vfs.BeginImportPublication();
+            task.Ready.store(false, std::memory_order_relaxed);
+            ZEngine::Helpers::secure_strcpy(task.SourcePath, sizeof(task.SourcePath), "/Source/Original.OBJ");
+            ZEngine::Helpers::secure_strcpy(task.InstanceName, sizeof(task.InstanceName), "Imported actor");
+            panel.m_task_pending = true;
+            panel.m_state.value.store(AssetImporterPanel::ImporterState::Importing);
+        }
+        static void Complete(AssetImporterPanel& panel, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
+        {
+            AssetImporterPanel::OnImportFileComplete(&panel.m_import_task, outputs);
+            panel.m_import_task.Ready.store(true, std::memory_order_release);
+        }
+        static void CaptureScene(AssetImporterPanel& panel, const uuids::uuid& scene, uint64_t epoch)
+        {
+            panel.m_import_task.Scene = scene;
+            panel.m_import_task.Epoch = epoch;
+        }
         static void Import(AssetImporterPanel& panel, ZEngine::Importers::AssimpImporter& importer, ZEngine::Importers::AssetCodec::ImportConfiguration& config, ZEngine::Core::Memory::ArenaAllocator& arena)
         {
             if (!panel.m_import_task.PublishedPaths.capacity())
@@ -101,7 +160,10 @@ namespace Tetragrama::Panels
             task.Outcome                           = AssetImporterPanel::ImportTaskOutcome::Pending;
             task.Outputs.clear();
             task.Error.clear();
-            task.Publication = config.VFS->BeginImportPublication();
+            task.PublishedPaths.clear();
+            task.Ready.store(false, std::memory_order_relaxed);
+            panel.m_task_pending = true;
+            task.Publication     = config.VFS->BeginImportPublication();
             ZEngine::Helpers::secure_strcpy(task.SourcePath, sizeof(task.SourcePath), panel.m_path_buf);
             panel.m_state.value.store(AssetImporterPanel::ImporterState::Importing);
             AssetImporterPanel::RunImportTask(&task);
@@ -111,13 +173,47 @@ namespace Tetragrama::Panels
 
 namespace
 {
+    struct ImportVFS : ZEngine::Core::VFS::VFSContext
+    {
+        int                                      Begins       = 0;
+        int                                      Ends         = 0;
+        int                                      Recorded     = 0;
+        bool                                     DenyWrite    = false;
+        bool                                     DenyMetaRead = false;
+        ZEngine::Core::VFS::VFSImportPublication BeginImportPublication() override
+        {
+            ++Begins;
+            return VFSContext::BeginImportPublication();
+        }
+        void EndImportPublication(ZEngine::Core::VFS::VFSImportPublication publication) override
+        {
+            ++Ends;
+            VFSContext::EndImportPublication(publication);
+        }
+        void RecordImportPublicationArtifact(ZEngine::Core::VFS::VFSImportPublication publication, const ZEngine::Core::VFS::VFSPath& path) override
+        {
+            ++Recorded;
+            VFSContext::RecordImportPublicationArtifact(publication, path);
+        }
+        ZEngine::Core::VFS::VFSResult<ZEngine::Core::VFS::IVFSFile*> Open(const ZEngine::Core::VFS::VFSPath& path, ZEngine::Core::VFS::VFSOpenFlags flags) override
+        {
+            using namespace ZEngine::Core::VFS;
+            if ((DenyWrite && HasFlag(flags, VFSOpenFlags::Write)) || (DenyMetaRead && HasFlag(flags, VFSOpenFlags::Read) && path.Extension().Equals(".meta")))
+            {
+                return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
+            }
+            return VFSContext::Open(path, flags);
+        }
+    };
+
     // Ready futures exercise the real browse coroutine without native GUI or a
     // scheduler polling thread. The only replaced dependency is the file picker.
     struct ImportFilePicker : ZEngine::Windows::CoreWindow
     {
-        std::string Selection = {};
-        int         Requests  = 0;
-        uint32_t    GetHeight() const override
+        std::string                         Selection = {};
+        int                                 Requests  = 0;
+        ZEngine::Windows::FileDialogRequest Result    = {};
+        uint32_t                            GetHeight() const override
         {
             return 600;
         }
@@ -185,12 +281,17 @@ namespace
         {
             return false;
         }
-        std::future<std::string> OpenFileDialogAsync(std::span<std::string_view>, std::string_view, std::string_view) override
+        ZEngine::Windows::FileDialogRequest OpenFileDialogAsync(std::span<std::string_view>, std::string_view, std::string_view) override
         {
             ++Requests;
-            std::promise<std::string> result = {};
-            result.set_value(Selection);
-            return result.get_future();
+            Result = ZEngine::Windows::FileDialogRequest::Create();
+            return Result;
+        }
+        ZEngine::Windows::FileDialogRequest SaveFileDialogAsync(std::span<std::string_view>, std::string_view, std::string_view, std::string_view) override
+        {
+            auto result = ZEngine::Windows::FileDialogRequest::Create();
+            result.Complete({});
+            return result;
         }
     };
 } // namespace
@@ -208,13 +309,18 @@ protected:
     ZUIGlyph                               glyphs[96] = {};
     ZUIFont                                font       = {};
     ZUIFontAtlas                           atlas      = {};
+    ZEngine::Core::VFS::VFSMemoryBackend   backend    = {};
+    ImportVFS                              vfs        = {};
+    const uuids::uuid                      asset_id   = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
 
     void                                   SetUp() override
     {
         memory.Initialize(ZMega(256), {});
         ZUIContextInit(&ctx, &memory.MainArena, ZMega(2), ZMega(1), 1024, 1024);
         for (auto& glyph : glyphs)
+        {
             glyph.AdvanceX = 5.5f;
+        }
         font.Glyphs     = glyphs;
         font.GlyphCount = 96;
         font.LineHeight = 14.f;
@@ -229,11 +335,28 @@ protected:
         // can be exercised without running an import or creating a window.
         importer.Initialize(&layer, nullptr);
         Tetragrama::Panels::AssetImporterPanelTestAccess::InitializeScratch(importer, memory.MainArena);
+        backend.Initialize(&memory.MainArena);
+        vfs.Initialize(&memory.MainArena);
+        ASSERT_TRUE(vfs.Mount(&backend, ZEngine::Core::VFS::VFSPath::Root(), 0).Succeeded());
     }
     void TearDown() override
     {
+        importer.ShutdownAfterWorkersJoined();
+        vfs.Shutdown();
         ZUIContextDestroy(&ctx);
         ZEngine::Core::MainThreadScheduler::Shutdown();
+    }
+
+    void WriteMeshIdentity(const char* path)
+    {
+        using namespace ZEngine::Core::VFS;
+        uint8_t        header[24] = {};
+        const uint32_t magic      = ZEMESH_MAGIC;
+        const uint32_t version    = ASSET_FILE_VERSION;
+        ASSERT_EQ(ZEngine::Helpers::secure_memcpy(header, sizeof(header), &magic, sizeof(magic)), 0);
+        ASSERT_EQ(ZEngine::Helpers::secure_memcpy(header + 4, sizeof(header) - 4, &version, sizeof(version)), 0);
+        ASSERT_EQ(ZEngine::Helpers::secure_memcpy(header + 8, sizeof(header) - 8, &asset_id, 16), 0);
+        ASSERT_TRUE(WriteFileAtomically(vfs, VFSPath::Parse(path).Value(), {header, sizeof(header)}).Succeeded());
     }
 
     void Build(const char* drop = nullptr, ZUIDragPayloadKind kind = ZUIDragPayloadKind::NativePath)
@@ -250,7 +373,9 @@ protected:
             ctx.DragPayloadKind = kind;
         }
         else
+        {
             ctx.DragDropFired = false;
+        }
         float rect[4] = {0, 0, 800, 600};
         importer.BuildContent(&ctx, rect);
     }
@@ -261,14 +386,20 @@ protected:
         ZUIBox*    stack[1024] = {};
         uint32_t   count       = 0;
         if (ctx.Root)
+        {
             stack[count++] = ctx.Root;
+        }
         while (count)
         {
             auto* box = stack[--count];
             if (box->Key == hash)
+            {
                 return box;
+            }
             for (auto* child = box->FirstChild; child; child = child->NextSib)
+            {
                 stack[count++] = child;
+            }
         }
         return nullptr;
     }
@@ -295,8 +426,10 @@ TEST_F(AssetImporterPanelTest, KeyboardDropZoneAndBrowseButtonSelectFilesAndReco
     Build();
     Build(); // A second activation before draining cannot open a second dialog.
     EXPECT_TRUE(Access::BrowsePending(importer));
-    ZEngine::Core::MainThreadScheduler::Drain();
     EXPECT_EQ(picker.Requests, 1);
+    ctx.EnterPressed = false;
+    EXPECT_TRUE(picker.Result.Complete({}));
+    Build();
     EXPECT_FALSE(Access::BrowsePending(importer));
     EXPECT_TRUE(Access::Idle(importer));
 
@@ -305,8 +438,10 @@ TEST_F(AssetImporterPanelTest, KeyboardDropZoneAndBrowseButtonSelectFilesAndReco
     ctx.FocusKey            = ZUIHashStr(button, sizeof(button) - 1);
     ctx.SpacePressed        = true;
     Build();
-    ZEngine::Core::MainThreadScheduler::Drain();
     EXPECT_EQ(picker.Requests, 2);
+    ctx.SpacePressed = false;
+    EXPECT_TRUE(picker.Result.Complete(picker.Selection));
+    Build();
     EXPECT_FALSE(Access::BrowsePending(importer));
     ctx.EnterPressed = ctx.SpacePressed = false;
     Build();
@@ -350,7 +485,9 @@ TEST_F(AssetImporterPanelTest, ImportNamesUseTheStemAndCustomNamesConsistently)
     const std::string too_long(249, 'a');
     EXPECT_FALSE(Access::Configure(importer, result, &vfs, too_long.c_str()));
     for (float scale : {0.f, -1.f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+    {
         EXPECT_FALSE(Access::Configure(importer, result, &vfs, "Ship", scale));
+    }
     EXPECT_TRUE(Access::Configure(importer, result, &vfs, "Ship"));
     EXPECT_STREQ(Access::Error(importer), "");
 }
@@ -405,7 +542,9 @@ TEST_F(AssetImporterPanelTest, HistoryIsNewestFirstRightAlignedAndScrollsWithout
 {
     using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
     for (int i = 0; i < 20; ++i)
+    {
         Access::History(importer, "Very long imported filename for history.fbx", true);
+    }
     Access::History(importer, "Failed.obj", false);
     Build();
     Layout(420.f, 300.f);
@@ -484,7 +623,9 @@ TEST_F(AssetImporterPanelTest, SectionDisclosuresUseSquareCenteredLucideChevrons
     Build();
     Layout();
     for (const char* label : {"Mesh", "Materials", "Animation"})
+    {
         check(label);
+    }
 }
 
 TEST_F(AssetImporterPanelTest, CloseIconRemainsCenteredAndUnclippedBesideLongFilenames)
@@ -622,7 +763,9 @@ TEST_F(AssetImporterPanelTest, RealObjImportCompletesOnMainThreadAndRecoversFrom
             VFS.Shutdown();
             std::error_code error = {};
             if (!Directory.empty())
+            {
                 std::filesystem::remove_all(Directory, error);
+            }
         }
     } workspace = {};
     workspace.Backend.Initialize(&memory.MainArena);
@@ -650,6 +793,8 @@ TEST_F(AssetImporterPanelTest, RealObjImportCompletesOnMainThreadAndRecoversFrom
     EXPECT_FALSE(Access::Idle(importer));
     EXPECT_EQ(Access::HistoryCount(importer), 0);
     ZEngine::Core::MainThreadScheduler::Drain();
+    EXPECT_FALSE(Access::Idle(importer)); // Completion no longer depends on scheduler callbacks.
+    importer.Poll();
     ASSERT_TRUE(Access::Idle(importer));
     EXPECT_FALSE(Access::LastImportSucceeded(importer));
     const auto missing = workspace.VFS.Exists(destination);
@@ -665,14 +810,307 @@ TEST_F(AssetImporterPanelTest, RealObjImportCompletesOnMainThreadAndRecoversFrom
     {
         Access::Import(importer, model_importer, import_config, memory.MainArena);
         EXPECT_FALSE(Access::Idle(importer));
-        ZEngine::Core::MainThreadScheduler::Drain();
+        importer.Poll();
         ASSERT_TRUE(Access::Idle(importer));
         EXPECT_TRUE(Access::LastImportSucceeded(importer));
         const auto exists = workspace.VFS.Exists(destination);
         ASSERT_TRUE(exists.Succeeded());
         EXPECT_TRUE(exists.Value());
         EXPECT_EQ(Access::HistoryCount(importer), attempt + 2);
+        const auto metadata = MetaFileIO::Read(workspace.VFS, destination);
+        ASSERT_TRUE(metadata.Succeeded());
+        EXPECT_FALSE(metadata.Value().AssetUUID.is_nil());
+        EXPECT_STREQ(metadata.Value().SourcePath, source.c_str());
+        EXPECT_STREQ(metadata.Value().ImporterName, "AssimpImporter");
     }
+}
+
+TEST_F(AssetImporterPanelTest, HiddenPanelPollUsesCapturedVFSAndSourceForEveryArtifact)
+{
+    using namespace ZEngine::Core::VFS;
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    using namespace ZEngine::Importers;
+    WriteMeshIdentity("/meshes/one.zemesh");
+    WriteMeshIdentity("/meshes/two.zemesh");
+    const auto        material = VFSPath::Parse("/materials/one.zematerial").Value();
+    const std::string json     = "{\"uuid\":\"" + uuids::to_string(asset_id) + "\"}";
+    ASSERT_TRUE(WriteFileAtomically(vfs, material, {reinterpret_cast<const uint8_t*>(json.data()), json.size()}).Succeeded());
+    AssetImporterOutput outputs[] = {
+        {    .Type = AssetFileType::MESH, .Path = "/meshes/one.zemesh"},
+        {.Type = AssetFileType::MATERIAL,      .Path = material.CStr()},
+        {    .Type = AssetFileType::MESH, .Path = "/meshes/two.zemesh"},
+    };
+    Access::Prepare(importer, vfs, memory.MainArena, true);
+    Access::Complete(importer, outputs);
+    Build("/Different/NewSource.glb"); // Must not redirect metadata/history to UI state.
+    EXPECT_EQ(Access::HistoryCount(importer), 0);
+    importer.Poll(); // No engine, workspace path, panel build or overlay needed.
+    EXPECT_TRUE(Access::Idle(importer));
+    EXPECT_TRUE(Access::LastImportSucceeded(importer));
+    EXPECT_NE(std::string_view(Access::LastMessage(importer)).find("multiple mesh"), std::string_view::npos);
+    EXPECT_STREQ(Access::LastName(importer), "Original.OBJ");
+    EXPECT_EQ(vfs.Ends, 1);
+    EXPECT_EQ(vfs.Recorded, 3);
+    for (const auto& output : outputs)
+    {
+        const auto meta = MetaFileIO::Read(vfs, VFSPath::Parse(output.Path.c_str()).Value());
+        ASSERT_TRUE(meta.Succeeded());
+        EXPECT_EQ(meta.Value().AssetUUID, asset_id);
+        EXPECT_STREQ(meta.Value().SourcePath, "/Source/Original.OBJ");
+        EXPECT_STREQ(meta.Value().ArtifactPath, output.Path.c_str());
+        EXPECT_STREQ(meta.Value().ImporterName, "AssimpImporter");
+    }
+    importer.Poll();
+    EXPECT_EQ(Access::HistoryCount(importer), 1);
+    EXPECT_EQ(vfs.Ends, 1);
+}
+
+TEST_F(AssetImporterPanelTest, MetadataRegistersDependenciesWithoutBindingRuntimeAssetsOrRedirectingVFS)
+{
+    using namespace ZEngine::Core::VFS;
+    using ZEngine::Managers::AssetManager;
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    struct RuntimeAssets
+    {
+        ZEngine::Core::Memory::MemoryManager Memory = {};
+        RuntimeAssets()
+        {
+            Memory.Initialize(ZMega(512), {});
+            AssetManager::Initialize(&Memory.MainArena, nullptr, "/project");
+        }
+        ~RuntimeAssets()
+        {
+            AssetManager::Shutdown();
+        }
+    } runtime;
+    auto engine = std::make_unique<ZEngine::EngineContext>();
+    WriteMeshIdentity("/mesh.zemesh");
+    const auto        material    = VFSPath::Parse("/material.zematerial").Value();
+    const auto        material_id = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
+    const std::string json        = "{\"uuid\":\"" + uuids::to_string(material_id) + "\"}";
+    ASSERT_TRUE(WriteFileAtomically(vfs, material, {reinterpret_cast<const uint8_t*>(json.data()), json.size()}).Succeeded());
+    ZEngine::Importers::AssetImporterOutput outputs[] = {
+        {    .Type = ZEngine::Importers::AssetFileType::MESH,  .Path = "/mesh.zemesh"},
+        {.Type = ZEngine::Importers::AssetFileType::MATERIAL, .Path = material.CStr()},
+    };
+    for (bool original_vfs : {false, true})
+    {
+        engine->VFS = original_vfs ? &vfs : nullptr;
+        Access::Prepare(importer, vfs, memory.MainArena);
+        Access::Complete(importer, outputs);
+        importer.Poll(engine.get());
+        ASSERT_TRUE(Access::LastImportSucceeded(importer));
+        EXPECT_EQ(AssetManager::Instance()->Registry->RecordCount(), original_vfs ? 2u : 0u);
+        EXPECT_TRUE(AssetManager::Instance()->Meshes.empty());
+        EXPECT_TRUE(AssetManager::Instance()->UUIDToMaterialSlot.empty());
+    }
+    const auto* registered = AssetManager::Instance()->Registry->FindByUUID(material_id);
+    ASSERT_NE(registered, nullptr);
+    EXPECT_EQ(registered->Path, material);
+    EXPECT_EQ(registered->Type, ZEngine::Managers::AssetType::MATERIAL);
+    EXPECT_FALSE(registered->IsLoaded());
+    EXPECT_STREQ(registered->Meta.ImporterName, "AssimpImporter");
+
+    // A cooked artifact can conflict with an already registered identity without
+    // turning successful cooking into a scene write or a false cooking failure.
+    WriteMeshIdentity("/conflict.zemesh");
+    outputs[0].Path = "/conflict.zemesh";
+    Access::Prepare(importer, vfs, memory.MainArena, true);
+    Access::Complete(importer, outputs);
+    importer.Poll(engine.get());
+    EXPECT_TRUE(Access::LastImportSucceeded(importer));
+    EXPECT_NE(std::string_view(Access::LastMessage(importer)).find("identity conflict"), std::string_view::npos);
+    EXPECT_FALSE(editor->MeshDrop.Pending());
+}
+
+TEST_F(AssetImporterPanelTest, AssetImportSuccessDoesNotClaimScenePlacementWhenOriginIsUnavailable)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    WriteMeshIdentity("/mesh.zemesh");
+    ZEngine::Importers::AssetImporterOutput output = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+    Access::Prepare(importer, vfs, memory.MainArena, true);
+    Access::Complete(importer, {&output, 1});
+    importer.Poll();
+    EXPECT_TRUE(Access::LastImportSucceeded(importer));
+    EXPECT_NE(std::string_view(Access::LastMessage(importer)).find("placement skipped"), std::string_view::npos);
+    EXPECT_FALSE(editor->MeshDrop.Pending());
+    EXPECT_EQ(vfs.Ends, 1);
+}
+
+TEST_F(AssetImporterPanelTest, CompletionQueuesOnlyForTheOriginalEditableSceneAndVFS)
+{
+    using Access                                          = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    ZEngine::Core::Memory::MemoryManager placement_memory = {};
+    placement_memory.Initialize(ZMega(512), {});
+    ZEngine::ECS::Scene world = {};
+    world.Initialize(&memory.MainArena);
+    ZEngine::ECS::ActorManager actors = {};
+    actors.Initialize(&memory.MainArena, world);
+    auto engine                   = std::make_unique<ZEngine::EngineContext>();
+    engine->Scene                 = &world;
+    engine->ActorManager          = &actors;
+    engine->VFS                   = &vfs;
+    Tetragrama::EditorScene owner = {};
+    owner.UUID                    = asset_id;
+    owner.Instances.init(&memory.MainArena, 1);
+    struct Retire
+    {
+        Tetragrama::Editor&         App;
+        ZEngine::ECS::ActorManager& Actors;
+        ZEngine::ECS::Scene&        World;
+        ~Retire()
+        {
+            App.MeshDrop.ShutdownAfterWorkersJoined();
+            App.Session.Shutdown();
+            App.CurrentScene = nullptr;
+            Actors.Shutdown();
+            World.Shutdown();
+        }
+    } retire{*editor, actors, world};
+    ASSERT_TRUE(editor->MeshDrop.Initialize(placement_memory.MainArena));
+    ASSERT_TRUE(editor->Session.Initialize(&memory.MainArena, {.MaxTargets = 8, .HistoryEntries = 8, .HistoryBytes = 4096}));
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.BindScene(&world));
+    ASSERT_TRUE(owner.AttachSession(editor->Session, *engine));
+    editor->Session.EndMutationPhase();
+    editor->CurrentScene = &owner;
+    WriteMeshIdentity("/mesh.zemesh");
+    ZEngine::Importers::AssetImporterOutput output = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+
+    for (int mode = 0; mode < 5; ++mode)
+    {
+        SCOPED_TRACE(mode);
+        Access::Prepare(importer, vfs, memory.MainArena, true);
+        Access::CaptureScene(importer, owner.UUID, editor->Session.SceneEpoch());
+        if (mode == 1)
+        {
+            ASSERT_TRUE(editor->Session.BeginMutationPhase());
+            ASSERT_TRUE(editor->Session.BindScene(nullptr));
+            ASSERT_TRUE(editor->Session.BindScene(&world));
+            ASSERT_TRUE(owner.AttachSession(editor->Session, *engine));
+            editor->Session.EndMutationPhase();
+        }
+        if (mode == 2)
+        {
+            engine->VFS = nullptr;
+        }
+        if (mode == 3)
+        {
+            owner.SourceReadOnly = true;
+        }
+        if (mode == 4)
+        {
+            engine->CloseRequested.value.store(true);
+        }
+        Access::Complete(importer, {&output, 1});
+        importer.Poll(engine.get());
+        EXPECT_TRUE(Access::LastImportSucceeded(importer));
+        EXPECT_EQ(editor->MeshDrop.Pending(), mode == 0);
+        EXPECT_NE(std::string_view(Access::LastMessage(importer)).find(mode == 0 ? "placement queued" : "placement skipped"), std::string_view::npos);
+        EXPECT_TRUE(owner.Instances.empty());
+        EXPECT_EQ(actors.Count(), 0u);
+        EXPECT_EQ(vfs.Ends, mode + 1);
+        editor->MeshDrop.Cancel();
+        engine->VFS          = &vfs;
+        owner.SourceReadOnly = false;
+        engine->CloseRequested.value.store(false);
+    }
+}
+
+TEST_F(AssetImporterPanelTest, InvalidArtifactOrMetadataFailureReleasesPublicationWithoutClaimingSuccess)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    for (int mode = 0; mode < 5; ++mode)
+    {
+        WriteMeshIdentity("/mesh.zemesh");
+        ZEngine::Importers::AssetImporterOutput output = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+        if (mode == 0)
+        {
+            output.Path = "/../../invalid.zemesh";
+        }
+        if (mode == 1)
+        {
+            const uint8_t invalid[] = {0};
+            ASSERT_TRUE(ZEngine::Core::VFS::WriteFileAtomically(vfs, ZEngine::Core::VFS::VFSPath::Parse(output.Path.c_str()).Value(), invalid).Succeeded());
+        }
+        vfs.DenyWrite    = mode == 2;
+        vfs.DenyMetaRead = mode == 3;
+        Access::Prepare(importer, vfs, memory.MainArena);
+        Access::Complete(importer, {&output, mode == 4 ? size_t{0} : size_t{1}});
+        importer.Poll();
+        EXPECT_TRUE(Access::Idle(importer));
+        EXPECT_FALSE(Access::LastImportSucceeded(importer));
+        EXPECT_EQ(vfs.Ends, mode + 1);
+        EXPECT_FALSE(Access::Pending(importer));
+        vfs.DenyWrite = vfs.DenyMetaRead = false;
+    }
+}
+
+TEST_F(AssetImporterPanelTest, CloseRetainsWorkerStorageUntilJoinedAndReleasesOnceEvenWithoutPolling)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    WriteMeshIdentity("/mesh.zemesh");
+    ZEngine::Importers::AssetImporterOutput output = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+    Access::Prepare(importer, vfs, memory.MainArena);
+    importer.Close();
+    EXPECT_TRUE(Access::Pending(importer));
+    std::thread worker([&] { Access::Complete(importer, {&output, 1}); });
+    worker.join();
+    importer.Poll();
+    EXPECT_EQ(Access::HistoryCount(importer), 0);
+    EXPECT_EQ(vfs.Ends, 0);
+    importer.ShutdownAfterWorkersJoined();
+    EXPECT_FALSE(Access::Pending(importer));
+    EXPECT_EQ(vfs.Ends, 1);
+    importer.ShutdownAfterWorkersJoined();
+    EXPECT_EQ(vfs.Ends, 1);
+}
+
+TEST_F(AssetImporterPanelTest, JoinedPoolMayAbandonAQueuedTaskWithoutLeakingPublication)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    Access::Prepare(importer, vfs, memory.MainArena);
+    importer.ShutdownAfterWorkersJoined(); // The callback never started or published Ready.
+    EXPECT_EQ(vfs.Ends, 1);
+    EXPECT_FALSE(Access::Pending(importer));
+    EXPECT_EQ(Access::HistoryCount(importer), 0);
+    importer.Poll();
+    EXPECT_EQ(vfs.Ends, 1);
+}
+
+TEST_F(AssetImporterPanelTest, WrongThreadCannotFinalizeOrCloseAnImport)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    WriteMeshIdentity("/mesh.zemesh");
+    ZEngine::Importers::AssetImporterOutput output = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+    Access::Prepare(importer, vfs, memory.MainArena);
+    std::thread worker([&] {
+        Access::Complete(importer, {&output, 1});
+        importer.Poll();
+        importer.Close();
+        importer.ShutdownAfterWorkersJoined();
+    });
+    worker.join();
+    EXPECT_EQ(vfs.Ends, 0);
+    EXPECT_EQ(Access::HistoryCount(importer), 0);
+    importer.Poll();
+    EXPECT_EQ(vfs.Ends, 1);
+    EXPECT_TRUE(Access::LastImportSucceeded(importer));
+}
+
+TEST_F(AssetImporterPanelTest, PendingRawDropIsConsumedWithoutBuildingPanelAndKeepsOriginalEpoch)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    ZEngine::Helpers::secure_strcpy(config.PendingImportPath, sizeof(config.PendingImportPath), "/Source/Delayed.OBJ");
+    config.PendingImportEpoch = 47;
+    editor->AssetImporter     = &importer;
+    editor->OnUpdate(0.f); // No initialized importers: source remains recoverable in Options.
+    EXPECT_STREQ(config.PendingImportPath, "");
+    EXPECT_EQ(config.PendingImportEpoch, 0u);
+    EXPECT_STREQ(Access::SourcePath(importer), "/Source/Delayed.OBJ");
+    EXPECT_EQ(Access::DropEpoch(importer), 47u);
+    EXPECT_FALSE(Access::Idle(importer));
+    editor->AssetImporter = nullptr;
 }
 
 TEST_F(AssetImporterPanelTest, DropZoneSelectsSupportedSourceAndShowsOptions)
@@ -779,5 +1217,7 @@ TEST(AssetImporterSourceTest, ValidationAndDispatchShareCaseInsensitiveFormatSel
     ASSERT_TRUE(Access::SourceKind("/Ship.OBJ", kind));
     EXPECT_EQ(kind, Access::Kind::Assimp);
     for (const char* path : {"/Ship", "/Ship.gltf.backup", "/Ship.png", "/Ship.unsupported"})
+    {
         EXPECT_FALSE(Access::SourceKind(path, kind));
+    }
 }

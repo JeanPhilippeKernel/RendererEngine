@@ -7,6 +7,9 @@
 
 namespace ZEngine::Importers
 {
+    /// Append a parent-before-child node with identity transforms. Returns -1
+    /// without publishing partial prefixes on invalid input/capacity failure.
+    /// Fresh sibling chains append in O(1); legacy missing tails are resolved once.
     int AddNode(AssetNodeHierarchy& hierarchy, int parent, int depth);
 
     // Lightweight per-format importer interface used by ImportCoordinator.

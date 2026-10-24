@@ -13,6 +13,10 @@ namespace ZEngine::ECS
         WaveTask* task = static_cast<WaveTask*>(context);
         task->Fn(*task->ScenePtr, task->DeltaTime, *task->Staging);
 
+        // Publish completion under the waiter's mutex. Besides closing the
+        // predicate-to-wait notification gap, this lets the caller join the
+        // final notification before retiring these stack-owned task pointers.
+        std::lock_guard<std::mutex> lock(*task->CompletionMutex);
         if (task->Remaining->fetch_sub(1, std::memory_order_acq_rel) == 1)
             task->CompletionCV->notify_one();
     }
@@ -234,14 +238,15 @@ namespace ZEngine::ECS
 
             for (size_t i = 0; i < wave.size(); ++i)
             {
-                uint32_t  node_idx = wave[i];
-                WaveTask& task     = tasks[i];
-                task.ScenePtr      = &scene;
-                task.DeltaTime     = dt;
-                task.Fn            = m_nodes[node_idx].Fn;
-                task.Staging       = &m_staging[node_idx];
-                task.Remaining     = &remaining;
-                task.CompletionCV  = &cv;
+                uint32_t  node_idx   = wave[i];
+                WaveTask& task       = tasks[i];
+                task.ScenePtr        = &scene;
+                task.DeltaTime       = dt;
+                task.Fn              = m_nodes[node_idx].Fn;
+                task.Staging         = &m_staging[node_idx];
+                task.Remaining       = &remaining;
+                task.CompletionMutex = &mtx;
+                task.CompletionCV    = &cv;
 
                 if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&task, &WorldTick::RunWaveTask))
                     RunWaveTask(&task);
@@ -255,13 +260,17 @@ namespace ZEngine::ECS
                 std::this_thread::yield();
             }
 
-            // Phase 2: cv.wait fallback for slow waves.
-            if (remaining.load(std::memory_order_acquire) != 0)
+            // Always acquire, even when spinning observed zero: the last
+            // worker may still be notifying through our stack-owned CV. Its
+            // unlock must happen before these synchronization objects retire.
             {
                 std::unique_lock<std::mutex> lock(mtx);
-                static constexpr int         kWaveTimeoutSeconds = 30;
-                bool                         completed           = cv.wait_for(lock, std::chrono::seconds(kWaveTimeoutSeconds), [&remaining] { return remaining.load(std::memory_order_relaxed) == 0; });
-                ZENGINE_VALIDATE_ASSERT(completed, "WorldTick::Tick: wave timed out — a system has hung or crashed")
+                if (remaining.load(std::memory_order_acquire) != 0)
+                {
+                    static constexpr int kWaveTimeoutSeconds = 30;
+                    const bool           completed           = cv.wait_for(lock, std::chrono::seconds(kWaveTimeoutSeconds), [&remaining] { return remaining.load(std::memory_order_acquire) == 0; });
+                    ZENGINE_VALIDATE_ASSERT(completed, "WorldTick::Tick: wave timed out — a system has hung or crashed")
+                }
             }
 
             // Merge staging buffers into the authoritative buffer in submission order.

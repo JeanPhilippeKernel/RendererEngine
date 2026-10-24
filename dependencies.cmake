@@ -59,13 +59,23 @@ FetchContent_Declare(
    
   )
 
+# Scene YAML parsing/emission uses status-returning C APIs, not C++ exceptions.
 FetchContent_Declare(
-  yaml-cpp
-  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp
+  libyaml
+  GIT_REPOSITORY https://github.com/yaml/libyaml.git
   GIT_SHALLOW TRUE
-  GIT_TAG yaml-cpp-0.9.0
+  GIT_TAG 0.2.5
   )
-
+function(zengine_make_libyaml_available)
+  # The upstream release uses generic options. Scope them to this dependency so
+  # its command-line test programs and shared-library setting do not affect us.
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+  set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+  set(BUILD_TESTING OFF)
+  set(BUILD_SHARED_LIBS OFF)
+  FetchContent_MakeAvailable(libyaml)
+endfunction()
+zengine_make_libyaml_available()
 
 FetchContent_Declare(
   spirv_cross_core
@@ -104,7 +114,6 @@ FetchContent_Declare(
     GIT_TAG vulkan-sdk-1.3.296.0
 )
 
-set(YAML_MSVC_SHARED_RT ON CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 Fetchcontent_Declare(
     GTest
@@ -242,7 +251,6 @@ FetchContent_MakeAvailable(
   spdlog
   assimp
   stduuid
-  yaml-cpp
   VulkanMemoryAllocator
   SPIRV-Headers
   spirv_cross_core
@@ -316,7 +324,7 @@ target_link_libraries(External_libs
          spdlog::spdlog
          assimp::assimp
          stduuid
-         yaml-cpp::yaml-cpp
+         yaml
          spirv-cross-core
          SPIRV-Tools-opt
          glslang::glslang

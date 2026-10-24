@@ -1,0 +1,7 @@
+#pragma once
+
+namespace ZEngine::Tests::GizmoShaders
+{
+    inline constexpr char Vertex[]   = R"ZEngineGizmo(@GIZMO_VERTEX_SOURCE@)ZEngineGizmo";
+    inline constexpr char Fragment[] = R"ZEngineGizmo(@GIZMO_FRAGMENT_SOURCE@)ZEngineGizmo";
+} // namespace ZEngine::Tests::GizmoShaders

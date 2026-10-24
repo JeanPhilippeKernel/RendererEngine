@@ -17,6 +17,11 @@ namespace ZEngine::ECS
         }
         [[nodiscard]] bool IsAlive() const;
 
+        [[nodiscard]] bool SetParent(EntityID parent)
+        {
+            return m_scene && m_scene->SetParent(m_entity_id, parent);
+        }
+
         template <typename T>
         void AddComponent(T component)
         {

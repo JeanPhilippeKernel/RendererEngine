@@ -6,6 +6,7 @@
 #include <ZEngine/ECS/WorldCommands.h>
 #include <atomic>
 #include <condition_variable>
+#include <mutex>
 
 namespace ZEngine::ECS
 {
@@ -68,12 +69,13 @@ namespace ZEngine::ECS
 
         struct WaveTask
         {
-            Scene*                   ScenePtr     = nullptr;
-            float                    DeltaTime    = 0.f;
-            SystemFn                 Fn           = nullptr;
-            WorldCommands*           Staging      = nullptr;
-            std::atomic<uint32_t>*   Remaining    = nullptr;
-            std::condition_variable* CompletionCV = nullptr;
+            Scene*                   ScenePtr        = nullptr;
+            float                    DeltaTime       = 0.f;
+            SystemFn                 Fn              = nullptr;
+            WorldCommands*           Staging         = nullptr;
+            std::atomic<uint32_t>*   Remaining       = nullptr;
+            std::mutex*              CompletionMutex = nullptr;
+            std::condition_variable* CompletionCV    = nullptr;
         };
 
         Core::Containers::Array<SystemNode>                        m_nodes;

@@ -1,4 +1,5 @@
 #include <Tetragrama/EditorScene.h>
+#include <Tetragrama/EditorSession.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
@@ -59,6 +60,61 @@ TEST_F(EditorActionsTest, InvalidCreationAndNoOpResetLeaveSavedSceneClean)
     actors.Destroy(handle);
     EXPECT_FALSE(scene.ResetActorTransform(actors, handle));
     EXPECT_FALSE(scene.IsDirty());
+}
+
+TEST_F(EditorActionsTest, AttachedSessionIsTheOnlySelectionOwnerIncludingPureECSEntities)
+{
+    const auto handle       = scene.CreateActor(actors, "Actor");
+    const auto actor_entity = actors.Access(handle)->GetEntityID();
+    scene.MarkDirty(false);
+    Tetragrama::EditorSession session = {};
+    ASSERT_TRUE(session.Initialize(&memory.MainArena, {.MaxTargets = 8, .HistoryEntries = 8, .HistoryBytes = 4096}));
+    ASSERT_TRUE(session.BeginMutationPhase());
+    ASSERT_TRUE(session.BindScene(&ecs));
+    scene.Session = &session;
+    // A retained compatibility handle must not imply selection in an attached scene.
+    EXPECT_FALSE(scene.SelectedEntity(&actors).IsValid());
+    EXPECT_FALSE(scene.IsSelected(actor_entity, &actors));
+    session.EndMutationPhase();
+    ASSERT_TRUE(scene.SelectActor(actors, handle));
+    EXPECT_FALSE(scene.SelectedEntity(&actors).IsValid());
+    ASSERT_TRUE(session.BeginMutationPhase());
+    ASSERT_TRUE(session.ProcessRequests());
+    EXPECT_EQ(scene.SelectedEntity(&actors), actor_entity);
+    EXPECT_TRUE(scene.IsSelected(actor_entity, &actors));
+    const auto pure = ecs.CreateEntity();
+    ecs.AddComponent<UUIDComponent>(pure, {uuids::uuid::from_string("578347c9-b8b0-4f29-a731-c503ee1bbabc").value()});
+    ecs.AddComponent<TransformComponent>(pure, {});
+    ASSERT_TRUE(session.Select(pure));
+    EXPECT_EQ(scene.SelectedEntity(), pure);
+    EXPECT_TRUE(scene.IsSelected(pure));
+    EXPECT_FALSE(scene.IsSelected(actor_entity, &actors));
+    EXPECT_FALSE(scene.IsDirty());
+    session.Shutdown();
+    scene.Session = nullptr;
+}
+
+TEST_F(EditorActionsTest, SharedHistoryDirtyStateIsVisibleToSceneChrome)
+{
+    const auto handle = scene.CreateActor(actors, "Actor");
+    const auto entity = actors.Access(handle)->GetEntityID();
+    scene.MarkDirty(false);
+    Tetragrama::EditorSession session = {};
+    ASSERT_TRUE(session.Initialize(&memory.MainArena, {.MaxTargets = 8, .HistoryEntries = 8, .HistoryBytes = 4096}));
+    ASSERT_TRUE(session.BeginMutationPhase());
+    ASSERT_TRUE(session.BindScene(&ecs));
+    scene.Session     = &session;
+    const auto target = session.TargetFor(entity);
+    ASSERT_TRUE(session.BeginTransform({&target, 1}));
+    ZEngine::ECS::LocalTransformValue value = {};
+    value.Position.x                        = 3.f;
+    ASSERT_TRUE(session.PreviewTransforms({&value, 1}));
+    ASSERT_TRUE(session.Commit());
+    EXPECT_TRUE(scene.IsDirty());
+    ASSERT_TRUE(session.Undo());
+    EXPECT_FALSE(scene.IsDirty());
+    session.Shutdown();
+    scene.Session = nullptr;
 }
 
 TEST_F(EditorActionsTest, ResetChangesLocalTRSWithoutOverwritingComputedWorldTransform)

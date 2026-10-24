@@ -1103,16 +1103,9 @@ namespace ZEngine::Importers
         }
         std::rotate(outputs.begin(), outputs.end() - 1, outputs.end());
 
-        auto* mgr = Managers::AssetManager::Instance();
-        if (mgr)
-        {
-            if (config.Options.ImportTextures && config.Options.ImportMaterials)
-                Managers::AssetManager::IngestTextures(std::move(textures));
-            if (config.Options.ImportMaterials)
-                for (size_t i = 0; i < materials.size(); ++i)
-                    Managers::AssetManager::IngestMaterial(std::move(materials[i]));
-            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
-        }
+        // ImportFile cooks artifacts only. The editor validates its originating
+        // scene before binding them on the main thread. Runtime Import() retains
+        // the separate coordinator-owned ingest path.
 
         if (on_progress)
             on_progress(context, 1.0f);

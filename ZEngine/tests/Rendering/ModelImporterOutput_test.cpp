@@ -5,16 +5,20 @@
 #include <ZEngine/Importers/AssimpImporter.h>
 #include <ZEngine/Importers/FbxImporter.h>
 #include <ZEngine/Importers/GltfImporter.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include <stb/stb_image_write.h>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <limits>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace ZEngine::Core::VFS;
@@ -388,15 +392,41 @@ Connections: {
         return filename;
     }
 
+    std::string WritePolygonFbx(uint32_t meshes, uint32_t corners)
+    {
+        const auto    filename = (TempDirectory / "polygons.fbx").string();
+        std::ofstream file(filename);
+        file << "; FBX 7.4.0 project file\nFBXHeaderExtension: { FBXHeaderVersion: 1003\nFBXVersion: 7400\n}\nObjects: {\n";
+        for (uint32_t mesh = 0; mesh < meshes; ++mesh)
+        {
+            file << "Geometry: " << 2 * mesh + 1 << ", \"Geometry::Polygon" << mesh << "\", \"Mesh\" {\nVertices: *" << 3 * corners << " { a: ";
+            for (uint32_t vertex = 0; vertex < corners; ++vertex)
+            {
+                const double angle = 6.283185307179586 * vertex / corners;
+                if (vertex)
+                    file << ',';
+                file << std::cos(angle) << ',' << std::sin(angle) << ",0";
+            }
+            file << " }\nPolygonVertexIndex: *" << corners << " { a: ";
+            for (uint32_t vertex = 0; vertex < corners; ++vertex)
+            {
+                if (vertex)
+                    file << ',';
+                file << (vertex + 1 == corners ? -int32_t(vertex) - 1 : int32_t(vertex));
+            }
+            file << " }\n}\nModel: " << 2 * mesh + 2 << ", \"Model::Polygon" << mesh << "\", \"Mesh\" {\nVersion: 232\nProperties70: {\nP: \"Lcl Translation\", \"Lcl Translation\", \"\", \"A\", " << 10 * mesh << ",0,0\n}\n}\n";
+        }
+        file << "}\nConnections: {\n";
+        for (uint32_t mesh = 0; mesh < meshes; ++mesh)
+            file << "C: \"OO\"," << 2 * mesh + 1 << ',' << 2 * mesh + 2 << "\nC: \"OO\"," << 2 * mesh + 2 << ",0\n";
+        file << "}\n";
+        return filename;
+    }
+
     void ReadCookedMesh(AssetMesh& mesh, AssetNodeHierarchy& hierarchy)
     {
-        const auto bytes    = ReadFile("/meshes/triangle.zemesh");
-        const auto filename = (TempDirectory / "triangle.zemesh").string();
-        {
-            std::ofstream file(filename, std::ios::binary);
-            file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        }
-        DeserializeMeshAssetFile(&Arena, filename.c_str(), mesh, hierarchy);
+        const auto result = ReadMeshAssetFileVFS(&Arena, Context, Path("/meshes/triangle.zemesh"), &mesh, &hierarchy);
+        ASSERT_TRUE(result.Succeeded()) << static_cast<uint32_t>(result.Error());
     }
 
     template <typename ModelImporter>
@@ -813,6 +843,391 @@ TEST_F(ModelImporterOutputTest, MeshOnlyGltfArtifactRoundTrips)
     EXPECT_EQ(mesh.SubMeshes[0].VertexCount, 3u);
     EXPECT_EQ(mesh.SubMeshes[0].IndexCount, 3u);
     EXPECT_TRUE(hierarchy.MaterialNames.empty());
+}
+
+TEST_F(ModelImporterOutputTest, MultiNodeGltfRuntimeBoxUsesTheSameFlattenedVertexSpaceAsDraws)
+{
+    const auto                  filename = WriteGltf();
+    auto                        document = nlohmann::json::parse(std::ifstream(filename));
+    const std::array<float, 18> vertices = {-3.f, -2.f, -1.f, -1.f, -2.f, -1.f, -3.f, 1.f, -1.f, 4.f, 5.f, 6.f, 9.f, 5.f, 6.f, 4.f, 8.f, 6.f};
+    {
+        std::ofstream file(TempDirectory / "triangle.bin", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(vertices.data()), sizeof(vertices));
+    }
+    document["buffers"][0]["byteLength"]     = sizeof(vertices);
+    document["bufferViews"][0]["byteLength"] = sizeof(vertices);
+    document["accessors"][0]["min"]          = {-3, -2, -1};
+    document["accessors"][0]["max"]          = {-1, 1, -1};
+    document["accessors"].push_back({
+        {   "bufferView",         0},
+        {   "byteOffset",        36},
+        {"componentType",      5126},
+        {        "count",         3},
+        {         "type",    "VEC3"},
+        {          "min", {4, 5, 6}},
+        {          "max", {9, 8, 6}}
+    });
+    document["meshes"].push_back({
+        {"primitives", {{{"attributes", {{"POSITION", 1}}}}}}
+    });
+    document["nodes"][0]["translation"] = {100, 200, 300};
+    document["nodes"].push_back({
+        {       "mesh",                  1},
+        {"translation", {-100, -200, -300}}
+    });
+    document["scenes"][0]["nodes"] = {0, 1};
+    std::ofstream(filename) << document.dump();
+    ImportGltf(filename);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    AssetMesh          mesh      = {};
+    AssetNodeHierarchy hierarchy = {};
+    ReadCookedMesh(mesh, hierarchy);
+    ASSERT_EQ(mesh.SubMeshes.size(), 2u);
+    ASSERT_EQ(hierarchy.NodeMeshes.size(), 2u);
+    bool positive_node = false, negative_node = false;
+    for (const auto& local : hierarchy.LocalTransforms)
+    {
+        positive_node = positive_node || local(0, 3) == 100.f;
+        negative_node = negative_node || local(0, 3) == -100.f;
+    }
+    EXPECT_TRUE(positive_node);
+    EXPECT_TRUE(negative_node);
+    struct RuntimeAssets
+    {
+        ZEngine::Core::Memory::MemoryManager Memory = {};
+        RuntimeAssets()
+        {
+            Memory.Initialize(ZMega(512), {});
+            ZEngine::Managers::AssetManager::Initialize(&Memory.MainArena, nullptr, "/project");
+        }
+        ~RuntimeAssets()
+        {
+            ZEngine::Managers::AssetManager::Shutdown();
+        }
+    } runtime     = {};
+    const auto id = mesh.MeshUUID;
+    ZEngine::Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
+    auto* assets = ZEngine::Managers::AssetManager::Instance();
+    using namespace ZEngine::Core::Maths;
+    Vec3f minimum = {}, maximum = {};
+    ASSERT_TRUE(assets->TryGetMeshAABB(id, minimum, maximum));
+    EXPECT_EQ(minimum.x, -3.f);
+    EXPECT_EQ(minimum.y, -2.f);
+    EXPECT_EQ(minimum.z, -1.f);
+    EXPECT_EQ(maximum.x, 9.f);
+    EXPECT_EQ(maximum.y, 8.f);
+    EXPECT_EQ(maximum.z, 6.f);
+    // AppRenderPipeline uses one entity matrix for every submesh. Verify the
+    // corresponding world box without pretending node-transform rendering is
+    // implemented here. This is a CPU draw-space contract, not a GPU capture.
+    const auto world     = ComposeTransformMatrix({20.f, -30.f, 40.f}, {0.3f, -0.7f, 1.2f}, {-2.f, 3.f, 0.5f});
+    auto       transform = [&](const Vec3f& point) { return Vec3f(world(0, 0) * point.x + world(0, 1) * point.y + world(0, 2) * point.z + world(0, 3), world(1, 0) * point.x + world(1, 1) * point.y + world(1, 2) * point.z + world(1, 3), world(2, 0) * point.x + world(2, 1) * point.y + world(2, 2) * point.z + world(2, 3)); };
+    Vec3f      box_min = {}, box_max = {};
+    for (uint32_t corner = 0; corner < 8; ++corner)
+    {
+        const auto point = transform({corner & 1 ? maximum.x : minimum.x, corner & 2 ? maximum.y : minimum.y, corner & 4 ? maximum.z : minimum.z});
+        for (uint32_t axis = 0; axis < 3; ++axis)
+        {
+            box_min[axis] = corner ? std::min(box_min[axis], point[axis]) : point[axis];
+            box_max[axis] = corner ? std::max(box_max[axis], point[axis]) : point[axis];
+        }
+    }
+    const auto* owned = assets->GetMeshAsset(id);
+    for (const auto& sub : owned->SubMeshes)
+        for (uint32_t i = 0; i < sub.IndexCount; ++i)
+        {
+            const size_t offset = size_t(sub.VertexOffset + owned->Indices[sub.IndexOffset + i]) * 8;
+            const auto   point  = transform({owned->Vertices[offset], owned->Vertices[offset + 1], owned->Vertices[offset + 2]});
+            for (uint32_t axis = 0; axis < 3; ++axis)
+            {
+                EXPECT_GE(point[axis], box_min[axis] - 1e-4f);
+                EXPECT_LE(point[axis], box_max[axis] + 1e-4f);
+            }
+        }
+}
+
+TEST_F(ModelImporterOutputTest, FileCookingNeverMutatesLiveRuntimeBindingsForAnyModelFormat)
+{
+    using ZEngine::Managers::AssetManager;
+    struct RuntimeAssets
+    {
+        ZEngine::Core::Memory::MemoryManager Memory = {};
+        RuntimeAssets()
+        {
+            Memory.Initialize(ZMega(512), {});
+            AssetManager::Initialize(&Memory.MainArena, nullptr, "/project");
+        }
+        ~RuntimeAssets()
+        {
+            AssetManager::Shutdown();
+        }
+    };
+    {
+        RuntimeAssets runtime = {};
+        const auto*   assets  = AssetManager::Instance();
+        ASSERT_NE(assets, nullptr);
+        const auto materials           = assets->Materials.size();
+        const auto textures            = assets->Textures.size();
+        const auto records             = assets->Registry->RecordCount();
+        Config.Options.ImportMaterials = true;
+        auto verify                    = [&](auto& importer, const std::string& filename) {
+            Callbacks = {};
+            // Run the actual file cooker off-thread with a real asset manager
+            // present. Completion may own paths, but must not bind/reload assets.
+            std::thread worker([&] { importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr); });
+            worker.join();
+            ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+            EXPECT_EQ(Callbacks.Failed, 0);
+            EXPECT_TRUE(assets->Meshes.empty());
+            EXPECT_TRUE(assets->NodeHierarchies.empty());
+            EXPECT_EQ(assets->Materials.size(), materials);
+            EXPECT_EQ(assets->Textures.size(), textures);
+            EXPECT_EQ(assets->Registry->RecordCount(), records);
+        };
+        verify(Importer, WriteGltf(1));
+        FbxImporter fbx = {};
+        fbx.Initialize(&Arena);
+        verify(fbx, WriteFbx(true));
+        AssimpImporter assimp = {};
+        assimp.Initialize(&Arena);
+        verify(assimp, WriteObj());
+    }
+    EXPECT_EQ(AssetManager::Instance(), nullptr);
+    AssetManager::Shutdown();
+    EXPECT_EQ(AssetManager::Instance(), nullptr);
+}
+
+TEST_F(ModelImporterOutputTest, FbxCookedGeometryAndHierarchyPassTheCheckedReader)
+{
+    const auto filename            = WriteFbx(true);
+    Config.Options.ImportMaterials = true;
+    FbxImporter importer           = {};
+    importer.Initialize(&Arena);
+    importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    ASSERT_EQ(Callbacks.Failed, 0);
+    AssetMesh          mesh      = {};
+    AssetNodeHierarchy hierarchy = {};
+    const auto         read      = ReadMeshAssetFileVFS(&Arena, Context, Path("/meshes/triangle.zemesh"), &mesh, &hierarchy);
+    ASSERT_TRUE(read.Succeeded()) << static_cast<uint32_t>(read.Error());
+    EXPECT_NE(hierarchy.NodeHierarchyUUID, mesh.MeshUUID);
+    EXPECT_EQ(hierarchy.MeshUUID, mesh.MeshUUID);
+    EXPECT_EQ(hierarchy.Hierarchies.size(), hierarchy.LocalTransforms.size());
+    EXPECT_EQ(hierarchy.Hierarchies.size(), hierarchy.GlobalTransforms.size());
+    ASSERT_EQ(mesh.SubMeshes.size(), 1u);
+    EXPECT_EQ(hierarchy.NodeMeshes.size(), 1u);
+    EXPECT_EQ(hierarchy.NodeMaterials.size(), 1u);
+    EXPECT_FALSE(mesh.SubMeshes[0].MaterialUUID.is_nil());
+    EXPECT_EQ(mesh.SubMeshes[0].TotalByteSize, 108u);
+}
+
+TEST_F(ModelImporterOutputTest, FbxMultipleMeshesUseLocalIndicesAndKeepSourceTransforms)
+{
+    const auto  filename = WritePolygonFbx(2, 3);
+    FbxImporter importer = {};
+    importer.Initialize(&Arena);
+    Config.Options.UniformScale = 2.f;
+    importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    ASSERT_EQ(Callbacks.Failed, 0);
+    AssetMesh          mesh      = {};
+    AssetNodeHierarchy hierarchy = {};
+    const auto         read      = ReadMeshAssetFileVFS(&Arena, Context, Path("/meshes/triangle.zemesh"), &mesh, &hierarchy);
+    ASSERT_TRUE(read.Succeeded()) << static_cast<uint32_t>(read.Error());
+    ASSERT_EQ(mesh.SubMeshes.size(), 2u);
+    EXPECT_EQ(mesh.SubMeshes[1].VertexOffset, 3u);
+    EXPECT_EQ(mesh.SubMeshes[1].IndexOffset, 3u);
+    for (const auto& submesh : mesh.SubMeshes)
+        for (uint32_t i = 0; i < submesh.IndexCount; ++i)
+            EXPECT_LT(mesh.Indices[submesh.IndexOffset + i], submesh.VertexCount);
+    uint32_t bindings = 0;
+    for (const auto& [node, submesh] : hierarchy.NodeMeshes)
+    {
+        ASSERT_LT(node, hierarchy.GlobalTransforms.size());
+        // FBX defaults to centimetres; ufbx converts the root to metres.
+        EXPECT_NEAR(hierarchy.GlobalTransforms[node](0, 3), .2f * submesh, 1.e-5f);
+        EXPECT_NEAR(hierarchy.GlobalTransforms[node](0, 0), .01f, 1.e-5f);
+        ++bindings;
+    }
+    EXPECT_EQ(bindings, 2u);
+    for (size_t node = 0; node < hierarchy.Hierarchies.size(); ++node)
+    {
+        const auto parent   = hierarchy.Hierarchies[node].Parent;
+        const auto expected = parent == -1 ? hierarchy.LocalTransforms[node] : hierarchy.GlobalTransforms[parent] * hierarchy.LocalTransforms[node];
+        for (uint32_t column = 0; column < 4; ++column)
+            for (uint32_t row = 0; row < 4; ++row)
+                EXPECT_NEAR(hierarchy.GlobalTransforms[node](row, column), expected(row, column), 1.e-5f);
+    }
+}
+
+TEST_F(ModelImporterOutputTest, FbxInstancesShareGeometryWithoutInheritingGeometricOffsets)
+{
+    const auto filename = (TempDirectory / "instances.fbx").string();
+    {
+        std::ofstream file(filename);
+        file << R"(; FBX 7.4.0 project file
+FBXHeaderExtension: { FBXHeaderVersion: 1003
+FBXVersion: 7400
+}
+Objects: {
+    Geometry: 1, "Geometry::Triangle", "Mesh" {
+        Vertices: *9 { a: 0,0,0,1,0,0,0,1,0 }
+        PolygonVertexIndex: *3 { a: 0,1,-3 }
+    }
+    Model: 2, "Model::First", "Mesh" {
+        Version: 232
+        Properties70: {
+            P: "Lcl Translation", "Lcl Translation", "", "A", 10,0,0
+            P: "GeometricTranslation", "Vector3D", "Vector", "", 2,0,0
+        }
+    }
+    Model: 3, "Model::Second", "Mesh" {
+        Version: 232
+        Properties70: { P: "Lcl Translation", "Lcl Translation", "", "A", 20,0,0 }
+    }
+    Model: 4, "Model::Child", "Null" {
+        Version: 232
+        Properties70: { P: "Lcl Translation", "Lcl Translation", "", "A", 3,0,0 }
+    }
+}
+Connections: {
+    C: "OO",1,2
+    C: "OO",1,3
+    C: "OO",2,0
+    C: "OO",3,0
+    C: "OO",4,2
+}
+)";
+    }
+    FbxImporter importer = {};
+    importer.Initialize(&Arena);
+    importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    ASSERT_EQ(Callbacks.Failed, 0);
+    AssetMesh          mesh      = {};
+    AssetNodeHierarchy hierarchy = {};
+    ASSERT_TRUE(ReadMeshAssetFileVFS(&Arena, Context, Path("/meshes/triangle.zemesh"), &mesh, &hierarchy).Succeeded());
+    ASSERT_EQ(mesh.SubMeshes.size(), 1u);
+    ASSERT_EQ(hierarchy.NodeMeshes.size(), 2u);
+    bool first = false, second = false, child = false;
+    for (const auto& [node, submesh] : hierarchy.NodeMeshes)
+    {
+        EXPECT_EQ(submesh, 0u);
+        const auto x  = hierarchy.GlobalTransforms[node](0, 3);
+        first        |= std::abs(x - .12f) < 1.e-5f;
+        second       |= std::abs(x - .2f) < 1.e-5f;
+    }
+    for (const auto& [node, name] : hierarchy.NodeNames)
+        if (ZEngine::Helpers::secure_strcmp(hierarchy.Names[name].c_str(), "Child") == 0)
+        {
+            EXPECT_NEAR(hierarchy.GlobalTransforms[node](0, 3), .13f, 1.e-5f);
+            child = true;
+        }
+    EXPECT_TRUE(first);
+    EXPECT_TRUE(second);
+    EXPECT_TRUE(child);
+}
+
+TEST_F(ModelImporterOutputTest, FbxLargePolygonIsNotTruncatedByATriangleBufferLimit)
+{
+    const auto  filename = WritePolygonFbx(1, 200);
+    FbxImporter importer = {};
+    importer.Initialize(&Arena);
+    importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    ASSERT_EQ(Callbacks.Failed, 0);
+    AssetMesh          mesh      = {};
+    AssetNodeHierarchy hierarchy = {};
+    const auto         read      = ReadMeshAssetFileVFS(&Arena, Context, Path("/meshes/triangle.zemesh"), &mesh, &hierarchy);
+    ASSERT_TRUE(read.Succeeded()) << static_cast<uint32_t>(read.Error());
+    ASSERT_EQ(mesh.SubMeshes.size(), 1u);
+    EXPECT_EQ(mesh.SubMeshes[0].IndexCount, 3u * 198u);
+    EXPECT_EQ(mesh.Indices.size(), 3u * 198u);
+}
+
+TEST_F(ModelImporterOutputTest, FbxWorkspaceExhaustionDoesNotPublishAndAllowsRetry)
+{
+    const auto  filename = WritePolygonFbx(1, 200);
+    FbxImporter importer = {};
+    importer.Initialize(&Arena);
+    const auto capacity         = importer.Arena.m_total_size;
+    importer.Arena.m_total_size = ZKilo(4);
+    importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    importer.Arena.m_total_size = capacity;
+    EXPECT_EQ(Callbacks.Completed, 0);
+    EXPECT_EQ(Callbacks.Failed, 1);
+    EXPECT_FALSE(Exists("/meshes/triangle.zemesh"));
+    EXPECT_EQ(importer.Arena.m_current_offset, importer.Arena.m_initial_current_offset);
+    Callbacks = {};
+    importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    EXPECT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    EXPECT_EQ(Callbacks.Failed, 0);
+    EXPECT_EQ(importer.Arena.m_current_offset, importer.Arena.m_initial_current_offset);
+}
+
+TEST_F(ModelImporterOutputTest, FbxInvalidScaleAndParseFailureReleaseTheirWorkspace)
+{
+    const auto  filename = WriteFbx();
+    FbxImporter importer = {};
+    importer.Initialize(&Arena);
+    for (const float scale : {0.f, -1.f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+    {
+        Config.Options.UniformScale = scale;
+        Callbacks                   = {};
+        importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+        EXPECT_EQ(Callbacks.Completed, 0);
+        EXPECT_EQ(Callbacks.Failed, 1);
+        EXPECT_FALSE(Exists("/meshes/triangle.zemesh"));
+        EXPECT_EQ(importer.Arena.m_current_offset, importer.Arena.m_initial_current_offset);
+    }
+    Config.Options.UniformScale = 1.f;
+    Callbacks                   = {};
+    importer.ImportFile((TempDirectory / "missing.fbx").string().c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+    EXPECT_EQ(Callbacks.Completed, 0);
+    EXPECT_EQ(Callbacks.Failed, 1);
+    EXPECT_EQ(importer.Arena.m_current_offset, importer.Arena.m_initial_current_offset);
+}
+
+TEST_F(ModelImporterOutputTest, RepeatedFbxCooksKeepIdentityAndReuseTheirWorkspace)
+{
+    const auto filename            = WriteFbx(true);
+    Config.Options.ImportMaterials = true;
+    FbxImporter importer           = {};
+    importer.Initialize(&Arena);
+    ArenaAllocator decode = {};
+    Arena.CreateSubArena(ZMega(1), &decode, "ModelImporterTest/Decode");
+    uuids::uuid identity = {};
+    uuids::uuid material = {};
+    for (uint32_t i = 0; i < 20; ++i)
+    {
+        Callbacks = {};
+        importer.ImportFile(filename.c_str(), Config, &Arena, &Callbacks, ImportCallbacks::Complete, ImportCallbacks::Advance, ImportCallbacks::Fail, nullptr);
+        ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+        ASSERT_EQ(Callbacks.Failed, 0);
+        EXPECT_EQ(importer.Arena.m_current_offset, importer.Arena.m_initial_current_offset);
+        decode.Clear();
+        AssetMesh          mesh      = {};
+        AssetNodeHierarchy hierarchy = {};
+        ASSERT_TRUE(ReadMeshAssetFileVFS(&decode, Context, Path("/meshes/triangle.zemesh"), &mesh, &hierarchy).Succeeded());
+        if (i == 0)
+        {
+            identity               = mesh.MeshUUID;
+            material               = mesh.SubMeshes[0].MaterialUUID;
+            // Production indexing owns sidecar creation. Mirror that step;
+            // cookers restore existing metadata rather than inventing new IDs.
+            MetaFileData mesh_meta = {};
+            mesh_meta.AssetUUID    = identity;
+            ASSERT_TRUE(MetaFileIO::Write(Context, Path(Callbacks.Outputs[0].Path.c_str()), mesh_meta).Succeeded());
+            MetaFileData material_meta = {};
+            material_meta.AssetUUID    = material;
+            ASSERT_TRUE(MetaFileIO::Write(Context, Path(Callbacks.Outputs[1].Path.c_str()), material_meta).Succeeded());
+        }
+        EXPECT_EQ(mesh.MeshUUID, identity);
+        EXPECT_EQ(mesh.SubMeshes[0].MaterialUUID, material);
+        EXPECT_EQ(Callbacks.Outputs[0].Path, "/meshes/triangle.zemesh");
+        EXPECT_EQ(Callbacks.Outputs[0].RootPath, "/project");
+    }
+    decode.Shutdown();
 }
 
 TEST_F(ModelImporterOutputTest, MaterialWriteFailureNeverReportsSuccess)

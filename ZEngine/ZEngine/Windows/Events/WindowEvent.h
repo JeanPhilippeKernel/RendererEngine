@@ -4,6 +4,60 @@
 
 namespace ZEngine::Windows::Events
 {
+    class WindowFocusLostEvent : public Core::CoreEvent
+    {
+    public:
+        WindowFocusLostEvent()
+        {
+            m_name = "WindowFocusLost";
+        }
+
+        Core::EventType GetType() const override
+        {
+            return GetStaticType();
+        }
+
+        int GetCategory() const override
+        {
+            return GetStaticCategory();
+        }
+
+        std::string ToString() const override
+        {
+            return "WindowFocusLostEvent";
+        }
+
+        EVENT_CATEGORY(Engine)
+        EVENT_TYPE(WindowFocusLost)
+    };
+
+    class WindowFocusGainedEvent : public Core::CoreEvent
+    {
+    public:
+        WindowFocusGainedEvent()
+        {
+            m_name = "WindowFocusGained";
+        }
+
+        Core::EventType GetType() const override
+        {
+            return GetStaticType();
+        }
+
+        int GetCategory() const override
+        {
+            return GetStaticCategory();
+        }
+
+        std::string ToString() const override
+        {
+            return "WindowFocusGainedEvent";
+        }
+
+        EVENT_CATEGORY(Engine)
+        EVENT_TYPE(WindowFocusGained)
+    };
+
     class WindowRestoredEvent : public Core::CoreEvent
     {
     public:

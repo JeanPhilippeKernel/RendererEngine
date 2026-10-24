@@ -1,96 +1,110 @@
-#include <ZEngine/Engine.h>
-#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/ECS/SceneGridSettings.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
-
-using namespace ZEngine::Helpers;
-using namespace ZEngine::Rendering::Specifications;
-using namespace ZEngine::Core::Containers;
+#include <cmath>
 
 namespace ZEngine::Rendering::Renderers
 {
-    Specifications::GraphicsPipelineDesc GridPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const
+    GridPass::GridPass()
     {
-        Specifications::GraphicsPipelineDesc desc = {};
-        desc.DebugName                            = "Infinite-Grid-Pipeline";
-        desc.EnableDepthTest                      = true;
-        desc.EnableDepthWrite                     = false;
-        desc.DepthCompareOp                       = 3;
-        desc.EnableBlending                       = true;
-        desc.CullMode                             = 0;
-        desc.ShaderSpecificationValue.Name        = "infinite_grid";
-
-        desc.VertexInputBindingSpecifications.init(arena, 1, 1);
-        desc.VertexInputBindingSpecifications[0] = {.Stride = sizeof(float) * 8, .Rate = VK_VERTEX_INPUT_RATE_VERTEX, .Binding = 0};
-        desc.VertexInputAttributeSpecifications.init(arena, 1, 1);
-        desc.VertexInputAttributeSpecifications[0] = {.Location = 0, .Binding = 0, .Offset = 0, .Format = Specifications::ImageFormat::R32G32B32_SFLOAT};
-        return desc;
+        SetConfig({});
     }
 
-    bool GridPass::Register(Hardwares::VulkanDevicePtr const /*device*/, cstring /*name*/, const RenderGraphFrameContext& /*frame_context*/, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr /*res_inspector*/)
+    bool GridPass::Pack(const Scenes::SceneGridRenderSnapshot& config, bool reverse_z, GridPushConstantData& output)
     {
-        if (!Enabled)
+        ECS::SceneGridSettings value = {};
+        if (!Scenes::ReadSceneGridRenderSnapshot(config, value))
             return false;
-
-        // Quad vertex layout: position, upward normal, and XZ UVs.
-        static constexpr float verts[] = {
-            -1000.f, 0.f, -1000.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1000.f, 0.f, -1000.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1000.f, 0.f, 1000.f, 0.f, 1.f, 0.f, 1.f, 1.f, -1000.f, 0.f, 1000.f, 0.f, 1.f, 0.f, 0.f, 1.f,
-        };
-        static constexpr uint32_t idxs[] = {0, 1, 2, 2, 3, 0};
-
-        if (!m_geometry_registered)
+        GridPushConstantData push = {};
+        // Log-space positive values survive GPU denormal flushing and avoid
+        // overflowing reciprocal spacing/LOD intermediates for valid extremes.
+        push.OriginAndLogSpacing  = {value.Origin.x, value.Origin.y, value.Origin.z, float(std::log2(double(value.BaseSpacing)))};
+        const auto& q             = value.Orientation;
+        push.Orientation          = {q.x, q.y, q.z, q.w};
+        push.Style                = {float(std::log2(double(value.FadeRadius))), value.FadeStrength, value.LineWidth, float(value.MaxLOD)};
+        push.Controls             = {value.MajorLineEvery, reverse_z ? 1u : 0u, uint32_t(value.Labels), 0u};
+        for (uint32_t i = 0; i < 4; ++i)
         {
-            auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
-            ZENGINE_VALIDATE_ASSERT(rrm, "GridPass::Register: RenderResourceManager not available")
-            rrm->RegisterBuiltinGeometry(verts, sizeof(verts), idxs, 6, m_vtx_offset, m_idx_offset);
-            m_geometry_registered = true;
+            push.ColorThin[i]  = value.MinorColor[i];
+            push.ColorThick[i] = value.MajorColor[i];
+            push.ColorUAxis[i] = value.UColor[i];
+            push.ColorVAxis[i] = value.VColor[i];
         }
-
-        res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = LoadOperation::LOAD});
+        output = push;
         return true;
     }
 
-    void GridPass::Prepare(Hardwares::VulkanDevicePtr const /*device*/, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
+    void GridPass::SetConfig(const Scenes::SceneGridRenderSnapshot& config)
     {
-        if (!scene || !pass)
-            return;
-
-        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
-        gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+        m_enabled = config.Enabled && Pack(config, m_reverse_z, m_push);
     }
 
-    void GridPass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
+    void GridPass::SetCameraDepthConvention(bool reverse_z)
     {
-        if (!Enabled)
-            return;
-        if (!framebuffer || framebuffer->Handle == VK_NULL_HANDLE)
-            return;
+        m_reverse_z        = reverse_z;
+        m_push.Controls[1] = reverse_z ? 1u : 0u;
+    }
 
+    Specifications::GraphicsPipelineDesc GridPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const
+    {
+        Specifications::GraphicsPipelineDesc desc = {};
+        desc.DebugName                            = "Infinite-Grid-Pipeline";
+        // Scene depth is sampled explicitly, so one immutable PSO works for
+        // normal and reverse-Z. No depth attachment or depth write.
+        desc.EnableDepthTest                      = false;
+        desc.EnableDepthWrite                     = false;
+        desc.EnableBlending                       = true;
+        desc.CullMode                             = VK_CULL_MODE_NONE;
+        desc.ShaderSpecificationValue.Name        = "infinite_grid";
+        return desc;
+    }
+
+    bool GridPass::Register(Hardwares::VulkanDevicePtr, cstring, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr)
+    {
+        if (!m_enabled || !builder || !context.RenderWidth || !context.RenderHeight)
+            return false;
+        builder->ReadTexture(RendererResourceName::FrameDepthRenderTargetName, "SceneDepth");
+        builder->UpdateColorAttachment(RendererResourceName::FrameColorRenderTargetName, {.LoadOp = Specifications::LoadOperation::LOAD});
+        return true;
+    }
+
+    void GridPass::Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene, RenderGraphResourceInspectorPtr inspector, RenderPasses::RenderPass* pass)
+    {
+        if (!m_enabled || !device || !scene || !inspector || !pass)
+            return;
+        auto*      gp    = static_cast<RenderPasses::GraphicPass*>(pass);
+        const auto depth = inspector->GetRenderTarget(RendererResourceName::FrameDepthRenderTargetName);
+        gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+        if (depth.Valid())
+            gp->SetTexture("SceneDepth", depth);
+        // texelFetch does not filter: reuse this sampler, never allocate one.
+        gp->SetSampler("DepthSampler", device->GlobalLinearClampToEdgeSamplerImageInfo);
+    }
+
+    void GridPass::Execute(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer)
+    {
+        if (!m_enabled || !device || !scene || !pass || !command_buffer || !framebuffer || framebuffer->Handle == VK_NULL_HANDLE)
+            return;
         auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
         if (!command_buffer->BeginRenderPass(gp, framebuffer->Handle, false))
             return;
-        RecordDraw(device, res_inspector, scene, pass, framebuffer, command_buffer);
+        RecordDraw(device, inspector, scene, pass, framebuffer, command_buffer);
         command_buffer->EndRenderPass();
     }
 
-    bool GridPass::RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const /*framebuffer*/, Hardwares::CommandBufferPtr const command_buffer)
+    bool GridPass::RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr command_buffer)
     {
-        if (!Enabled)
+        if (!m_enabled || !device || !device->SwapchainPtr || !device->SwapchainPtr->CurrentFrame || !scene || !pass || !command_buffer || !inspector || !inspector->GetRenderTarget(RendererResourceName::FrameDepthRenderTargetName).Valid())
             return false;
-
-        auto* gp  = static_cast<RenderPasses::GraphicPass*>(pass);
-        auto* rrm = ZEngine::Engine::GetContext()->RenderResourceManager;
-        if (!rrm)
+        auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
+        if (!gp->GetRenderAreaWidth() || !gp->GetRenderAreaHeight())
             return false;
         command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         command_buffer->BindPipeline(gp->Pipeline);
-        command_buffer->BindVertexBuffer(*rrm->GetBuiltinVertexBuffer());
-        command_buffer->BindIndexBuffer(*rrm->GetBuiltinIndexBuffer(), VK_INDEX_TYPE_UINT32);
-        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, scene ? &scene->CameraHeapOffset : nullptr, scene ? 1u : 0u);
-        command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(GridPushConstantData), &PushData);
-        command_buffer->DrawIndexed(6, 1, m_idx_offset, static_cast<int32_t>(m_vtx_offset), 0);
+        command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1);
+        command_buffer->PushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(m_push), &m_push);
+        command_buffer->Draw(3, 1, 0, 0);
         return true;
     }
 } // namespace ZEngine::Rendering::Renderers

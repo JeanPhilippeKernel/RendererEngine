@@ -13,26 +13,27 @@ namespace ZEngine::Windows
         GameWindow() {}
         virtual ~GameWindow();
 
-        uint32_t                         GetHeight() const override;
-        uint32_t                         GetWidth() const override;
-        Core::Containers::StringView     GetTitle() const override;
-        bool                             IsMinimized() const override;
-        void                             SetTitle(Core::Containers::StringView title) override;
-        bool                             IsVSyncEnable() const override;
-        void                             SetVSync(bool value) override;
-        void                             SetCallbackFunction(const EventCallbackFn& callback) override;
-        void*                            GetNativeWindow() const override;
-        virtual const WindowProperty&    GetWindowProperty() const override;
+        uint32_t                                    GetHeight() const override;
+        uint32_t                                    GetWidth() const override;
+        Core::Containers::StringView                GetTitle() const override;
+        bool                                        IsMinimized() const override;
+        void                                        SetTitle(Core::Containers::StringView title) override;
+        bool                                        IsVSyncEnable() const override;
+        void                                        SetVSync(bool value) override;
+        void                                        SetCallbackFunction(const EventCallbackFn& callback) override;
+        void*                                       GetNativeWindow() const override;
+        virtual const WindowProperty&               GetWindowProperty() const override;
 
-        virtual void                     Initialize(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg);
+        virtual void                                Initialize(Core::Memory::ArenaAllocator* arena, const WindowConfiguration& cfg);
 
-        virtual void                     PollEvent() override;
-        virtual float                    GetTime() override;
-        virtual float                    GetDeltaTime() override;
+        virtual void                                PollEvent() override;
+        virtual float                               GetTime() override;
+        virtual float                               GetDeltaTime() override;
 
-        virtual std::future<std::string> OpenFileDialogAsync(std::span<std::string_view> type_filters = {}, std::string_view default_dir = {}, std::string_view message = {}) override;
+        virtual ZEngine::Windows::FileDialogRequest OpenFileDialogAsync(std::span<std::string_view> type_filters = {}, std::string_view default_dir = {}, std::string_view message = {}) override;
+        virtual ZEngine::Windows::FileDialogRequest SaveFileDialogAsync(std::span<std::string_view> type_filters = {}, std::string_view default_dir = {}, std::string_view filename = {}, std::string_view message = {}) override;
 
-        virtual bool                     CreateSurface(void* instance, void** out_window_surface) override;
+        virtual bool                                CreateSurface(void* instance, void** out_window_surface) override;
 
     public:
         bool OnEvent(Core::CoreEvent& event) override;
@@ -60,7 +61,8 @@ namespace ZEngine::Windows
         static void  __OnGlfwFrameBufferSizeChanged(GLFWwindow*, int width, int height);
 
     private:
-        GLFWwindow* m_native_window = nullptr;
+        ZEngine::Windows::FileDialogRequest FileDialogAsync(bool save, std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view filename, std::string_view message);
+        GLFWwindow*                         m_native_window = nullptr;
     };
 
 } // namespace ZEngine::Windows
