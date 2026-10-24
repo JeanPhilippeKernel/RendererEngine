@@ -27,7 +27,7 @@ subsystem. The complete set is available here:
 ### Editor, runtime, and tooling
 
 - [Animation system](future-plan/animation-system.md), [audio system](future-plan/audio-system.md), [input system](future-plan/input-system.md), [physics system](future-plan/physics-system.md), [networking](future-plan/networking.md), and [scripting](future-plan/scripting.md)
-- [Scene serialization](future-plan/scene-serialization.md), [editor entity selection](future-plan/editor-entity-selection.md), [editor undo / redo](future-plan/editor-undo-redo.md), [editor play mode](future-plan/editor-play-mode.md), [editor grid](future-plan/editor-grid.md), and [3D gizmo pass](future-plan/gizmo-3d-pass.md)
+- [Scene serialization](future-plan/scene-serialization.md), [editor entity selection](future-plan/editor-entity-selection.md), [editor undo / redo](future-plan/editor-undo-redo.md), and [editor play mode](future-plan/editor-play-mode.md)
 - [Component reflection](future-plan/component-reflection.md), [game/runtime boundary](future-plan/game-runtime-boundary.md), [save system](future-plan/save-system.md), and [Panzerfaust integration](future-plan/panzerfaust.md)
 - [Build integration](future-plan/build-integration.md), [cook pipeline](future-plan/cook-pipeline.md), [import pipeline](future-plan/import-pipeline.md), [shader asset pipeline](future-plan/shader-asset-pipeline.md), and [thumbnail generation](future-plan/thumbnail-generation.md)
 
@@ -48,6 +48,7 @@ subsystem. The complete set is available here:
 - [Actor–ECS architecture](completed/actor-ecs-architecture.md), [asset manager](completed/asset-manager.md), [bindless descriptor architecture](completed/bindless-descriptor-architecture.md), [crash handler](completed/crash-handler.md), and [engine lifecycle](completed/engine-lifecycle.md)
 - [Fly camera redesign](completed/fly-camera-redesign.md), [game loop](completed/game-loop.md), [logging policy](completed/logging-policy.md), [memory allocator audit](completed/memory-allocator-audit.md), and [migration plan](completed/migration-plan.md)
 - [Obelisk / Tetragrama impact](completed/obelisk-tetragrama-impact.md), [PSO cache architecture](completed/pso-cache-architecture.md), [render-graph redesign](completed/render-graph-redesign.md), [rendering flow](completed/rendering-flow.md), and [system scheduler](completed/system-scheduler.md)
+- [Serialized editor grid](completed/editor-grid.md) and [native 3D gizmo](completed/gizmo-3d-pass.md)
 - [TLSF allocator integration](completed/tlsf-allocator-integration.md), [UI system](completed/ui-system.md), [VFS design](completed/vfs-design.md), [VFS mount backends](completed/vfs-ticket2-mount-backends.md), [VFS scanner and memory backend](completed/vfs-ticket3-scanner-memory-backend.md), [VFS file watcher](completed/vfs-ticket4-filewatcher.md), [VFS metadata and UUID](completed/vfs-ticket5-meta-uuid.md), and [VFS asset registry](completed/vfs-ticket6-asset-registry.md)
 
 ## Historical presentations

@@ -1,10 +1,14 @@
 # ZEngine — Serialized Editor Grid
 
 **Priority:** P2 — shared scene-authoring feature
-**Status:** Design
+**Status:** Completed — serialized arbitrary-axis Grid delivery merged in [#864](https://github.com/JeanPhilippeKernel/RendererEngine/pull/864)
 **Depends on:** scene-serialization.md, editor-undo-redo.md,
 editor-entity-selection.md, gizmo-3d-pass.md, render-graph-integration.md
 **Blocks:** production replacement of the current XZ-only finite grid
+
+!!! success "Completion scope"
+    The scene-owned Grid is serialized, validated, editable through the shared transaction/gizmo
+    path, published as immutable render data, and rendered as an analytic arbitrary-axis overlay.
 
 ## 1. Goal
 
@@ -111,10 +115,10 @@ an explicit x-ray/grid-through-geometry mode would be a separate setting.
 
 ## 7. Delivery checklist
 
-- [ ] SceneGridSettings schema, codec, validation, and migration
-- [ ] Scene Settings UI and SceneTarget::Grid selection
-- [ ] Undoable inspector and translate/rotate gizmo adapter
-- [ ] Immutable grid render snapshot
-- [ ] Analytic ray-plane derivative renderer and depth integration
-- [ ] Local-frame labels and accessibility settings
-- [ ] Serializer, transaction, visual-reference, and validation-layer tests
+- [x] SceneGridSettings schema, codec, validation, and migration
+- [x] Scene Settings UI and SceneTarget::Grid selection
+- [x] Undoable inspector and translate/rotate gizmo adapter
+- [x] Immutable grid render snapshot
+- [x] Analytic ray-plane derivative renderer and depth integration
+- [x] Local-frame labels and accessibility settings
+- [x] Serializer, transaction, visual-reference, and validation-layer tests

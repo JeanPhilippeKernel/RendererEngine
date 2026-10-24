@@ -13,10 +13,13 @@ not define shipped behavior. Implemented contracts belong in the
 - [Editor selection](../design/future-plan/editor-entity-selection.md)
 - [Editor undo / redo](../design/future-plan/editor-undo-redo.md)
 - [Editor play mode](../design/future-plan/editor-play-mode.md)
-- [3D gizmo](../design/future-plan/gizmo-3d-pass.md)
-- [Serialized editor grid](../design/future-plan/editor-grid.md)
 - [Render resource manager](../design/future-plan/render-resource-manager.md)
 - [Build and distribution integration](../design/future-plan/build-integration.md)
+
+## Recently completed designs
+
+- [3D gizmo](../design/completed/gizmo-3d-pass.md)
+- [Serialized editor grid](../design/completed/editor-grid.md)
 
 ## Engine-system proposals
 

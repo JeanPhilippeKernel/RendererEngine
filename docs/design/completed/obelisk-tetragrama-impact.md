@@ -10,7 +10,7 @@
 > Use `rendering-flow.md`, `actor-ecs-architecture.md`,
 > `../future-plan/scene-serialization.md`,
 > `../future-plan/editor-entity-selection.md`, `../future-plan/editor-undo-redo.md`,
-> `../future-plan/gizmo-3d-pass.md`, and `../future-plan/editor-grid.md` for active
+> `gizmo-3d-pass.md`, and `editor-grid.md` for current or completed
 > implementation decisions. This record is retained for migration history.
 
 ---

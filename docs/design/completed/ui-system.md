@@ -3,7 +3,7 @@
 **Priority:** P1 — Editor shell, in-game HUD, menus, debug overlay
 **Status:** Done — merged to `develop` via PR #679 (2026-08-31)
 **Depends on:** `ArenaAllocator` (done), `Array<T>` (done), `UnorderedHashMap` (done), `VulkanDevice` (done), `RenderGraph` (done), `InputManager` (done), FreeType (font rasterization) + stb_rect_pack (atlas layout only, vendored via stb FetchContent), rapidhash (vendored via FetchContent)
-**Unblocks:** Gizmo 3D pass (`gizmo-3d-pass.md`), floating window docking (`ui-docking-floating-windows.md`), DebugOverlay, in-game HUD, main menu
+**Unblocks:** Native 3D gizmo (completed in `gizmo-3d-pass.md`), floating window docking (`ui-docking-floating-windows.md`), DebugOverlay, in-game HUD, main menu
 
 ---
 
@@ -91,7 +91,7 @@ Only `ZUIDockspaceComponent` and `ZUIStatusBarComponent` remain under
 | Project view | `Tetragrama/Panels/ProjectViewPanel.h/.cpp` | Content browser |
 | Console/log | `Tetragrama/Panels/ConsolePanel.h/.cpp` | Log output |
 | Status bar | `Tetragrama/Components/ZUI/ZUIStatusBarComponent.h/.cpp` | Bottom bar |
-| Scene viewport | `Tetragrama/Panels/ViewportPanel.h/.cpp` | 3D view — no ImGui/ImGuizmo references; gizmo integration is still the `gizmo-3d-pass.md` follow-up |
+| Scene viewport | `Tetragrama/Panels/ViewportPanel.h/.cpp` | 3D view — no ImGui/ImGuizmo references; native gizmo integration is documented in `gizmo-3d-pass.md` |
 | Memory profiler | `Tetragrama/Panels/MemoryProfilerPanel.h/.cpp` | Not in the original plan |
 | Asset importer | `Tetragrama/Panels/AssetImporterPanel.h/.cpp` | Not in the original plan |
 
@@ -135,7 +135,7 @@ references. Repo-wide, the only mention of `ImGui::` is inside a comment in `Hie
 ImGui and ImGuizmo remain as CMake `FetchContent` dependencies and cached shaders but are not
 wired into the active editor render path — the ZUI system fully replaced ImGui in the editor,
 contrary to the "permanent coexistence" plan below. Gizmo integration is tracked separately as a
-ZUI-native follow-up in `gizmo-3d-pass.md`, not as an ImGui dependency.
+ZUI-native gizmo implementation in `gizmo-3d-pass.md`, not as an ImGui dependency.
 
 ---
 
