@@ -9,8 +9,8 @@
 > WorldTick, WorldCommands, ECS components, hierarchy sync, and transform/light render
 > synchronization are live. Current editor authoring work follows
 > `../future-plan/scene-serialization.md`, `../future-plan/editor-undo-redo.md`,
-> `../future-plan/editor-entity-selection.md`, `../future-plan/gizmo-3d-pass.md`,
-> `../future-plan/editor-grid.md`, and `../execution-plan.md`.
+> `../future-plan/editor-entity-selection.md`, `gizmo-3d-pass.md`,
+> `editor-grid.md`, and `../execution-plan.md`.
 
 ---
 

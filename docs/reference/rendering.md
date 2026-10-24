@@ -175,7 +175,7 @@ sequenceDiagram
 
 Sky and compatibility-grid geometry reside in dedicated 1 MiB built-in vertex/index buffers so
 streaming reset, eviction, and compaction cannot invalidate their offsets. The production editor
-grid remains an analytic overlay described in `docs/design/future-plan/editor-grid.md` and must
+grid remains an analytic overlay described in `docs/design/completed/editor-grid.md` and must
 not rely on the finite compatibility mesh.
 
 ---
