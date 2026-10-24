@@ -29,6 +29,7 @@ namespace ZEngine::Core::VFS
         uint64_t MetasCreated  = 0; // .meta generated for the first time
         uint64_t MetasUpdated  = 0; // .meta existed but source SHA changed
         uint64_t MetasUpToDate = 0; // .meta existed and SHA matched
+        uint64_t Errors        = 0; // failed directory/asset operations; affected sidecars are preserved
     };
 
     struct VFSScanner
@@ -74,6 +75,7 @@ namespace ZEngine::Core::VFS
         bool        TryAcquireTask(uint32_t& out_slot);
         void        ReleaseTask(uint32_t slot);
         void        OnTaskComplete(bool cancelled);
+        void        ReportError(const VFSPath& path, const char* operation, VFSError error);
         static void RunScanTask(void* context);
 
         int         AcquireSlot();
@@ -90,6 +92,7 @@ namespace ZEngine::Core::VFS
         PaddedAtomic<uint64_t>                         m_metas_created{};
         PaddedAtomic<uint64_t>                         m_metas_updated{};
         PaddedAtomic<uint64_t>                         m_metas_up_to_date{};
+        PaddedAtomic<uint64_t>                         m_errors{};
         std::chrono::steady_clock::time_point          m_scan_start{};
 
         std::counting_semaphore<MaxConcurrentDirLists> m_dir_semaphore{MaxConcurrentDirLists};

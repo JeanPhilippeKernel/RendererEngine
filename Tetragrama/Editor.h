@@ -1,15 +1,28 @@
 #pragma once
+#include <Tetragrama/EditorMeshDrop.h>
 #include <Tetragrama/EditorScene.h>
+#include <Tetragrama/EditorSceneCandidate.h>
+#include <Tetragrama/EditorSceneChange.h>
+#include <Tetragrama/EditorSession.h>
+#include <Tetragrama/Gizmo/GizmoViewport.h>
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/Containers/FixedArray.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/UI/ZUIKey.h>
 
 namespace Tetragrama::Serializers
 {
     struct EditorSceneSerializer;
 } // namespace Tetragrama::Serializers
+
+namespace Tetragrama::Panels
+{
+    struct AssetImporterPanel;
+}
 
 namespace Tetragrama
 {
@@ -39,6 +52,7 @@ namespace Tetragrama
         bool                                  FocusImporter            = false;
         char                                  PendingImportPath[1024]  = {};
         char                                  PendingImportName[256]   = {};
+        uint64_t                              PendingImportEpoch       = 0;
 
         void                                  ReadConfig(ZEngine::Core::Memory::ArenaAllocator* arena, const char* file);
     };
@@ -49,42 +63,210 @@ namespace Tetragrama
 
         EditorConfigurationPtr Configuration = nullptr;
 
-        virtual ~Editor() {}
+        Editor();
+        ~Editor() override;
 
         Layers::ZUILayer*                     ZUIUILayer                        = nullptr;
+        Panels::AssetImporterPanel*           AssetImporter                     = nullptr;
 
         /// @brief Editor-only navigation aid; it never changes game-camera behavior.
         bool                                  ConstrainCameraToAtmosphereGround = false;
+        // Explicit WP2 fixture. Production authored dragging stays gated by M0.
+        bool                                  EnableGizmoDebug                  = false;
+        float                                 GizmoLogicalViewportHeight        = 0.f;
 
         ZEngine::Core::VFS::VFSDiskBackend    WorkingSpaceBackend               = {};
         // All editor-owned persistent CPU state is bounded by the Editor budget.
         ZEngine::Core::Memory::ArenaAllocator EditorArena                       = {};
+        EditorSession                         Session                           = {};
+        EditorMeshDrop                        MeshDrop                          = {};
+        Gizmo::Viewport                       GizmoViewport                     = {};
 
-        virtual void                          OnInitializing() override;
-        virtual void                          OverrideWindowConfiguration() override;
-        virtual void                          OnInitialized() override;
+        /// @brief Drains synthetic/UI history flags without stealing widget undo/redo.
+        /// Native shortcuts are queued at event time to preserve their order/count.
+        /// Both routes are independent from the presentation mailbox.
+        void                                  ProcessHistoryShortcuts(ZEngine::UI::ZUIContext* ctx);
+        [[nodiscard]] bool                    ProcessGizmoShortcut(const ZEngine::UI::ZUIContext* ctx, ZEngine::UI::ZUIKey key);
+        /// @brief Process queued edits and interaction termination independently from UI publishing.
+        void                                  UpdateSessionInput(ZEngine::UI::ZUIContext* ctx, bool focused, ZEngine::EngineContext* engine = nullptr);
+        void                                  UpdateGizmoInput(ZEngine::UI::ZUIContext* ctx, bool focused);
+        void                                  RefreshGizmoHitFrame(const ZEngine::UI::ZUIContext* ctx);
+        [[nodiscard]] SceneChangePrompt       SceneChangePromptState() const
+        {
+            return m_scene_change.Prompt();
+        }
+        [[nodiscard]] bool                                  ChooseSceneChange(SceneChangeChoice choice, uint64_t prompt_serial);
+        void                                                BuildSceneChangePrompt(ZEngine::UI::ZUIContext* ctx);
+        /// Synchronize modal capture even when an overlay cannot be rebuilt.
+        void                                                SyncSceneChangeCapture(ZEngine::UI::ZUIContext* ctx);
+        /// Copied settings views include accepted pending UI changes, never authored writes.
+        [[nodiscard]] ZEngine::Rendering::Scenes::SkyConfig SceneSkyForUI() const;
+        [[nodiscard]] ZEngine::ECS::SceneGridSettings       SceneGridForUI() const;
+        [[nodiscard]] bool                                  RequestSceneSkySettings(const ZEngine::Rendering::Scenes::SkyConfig& value);
+        [[nodiscard]] bool                                  RequestSceneGridSettings(const ZEngine::ECS::SceneGridSettings& value);
+        /// Explicit scene-local selection intent; Settings builds never apply it directly.
+        /// Read-only scenes remain selectable, but cannot begin an authored interaction.
+        [[nodiscard]] bool                                  RequestSceneGridSelection();
+        [[nodiscard]] bool                                  ProcessSceneSettings(ZEngine::EngineContext& engine, ZEngine::ECS::SceneDiagnostics* diagnostics = nullptr);
+        void                                                DiscardSceneSettings();
 
-        virtual void                          OnUpdate(float dt) override;
-        virtual void                          OnEvent(ZEngine::Core::CoreEvent&) override;
+        virtual void                                        OnInitializing() override;
+        virtual void                                        OverrideWindowConfiguration() override;
+        virtual void                                        OnInitialized() override;
 
-        void                                  ProcessEvent(ZEngine::Core::CoreEvent&) override;
+        virtual void                                        OnUpdate(float dt) override;
+        virtual void                                        OnEvent(ZEngine::Core::CoreEvent&) override;
 
-        virtual void                          OnPreRender() override;
-        virtual void                          OnPostRender() override;
-        virtual void                          OnRenderUI() override;
+        void                                                ProcessEvent(ZEngine::Core::CoreEvent&) override;
 
-        virtual void                          OnClosing() override;
-        virtual void                          OnClosed() override;
+        virtual void                                        OnPreRender() override;
+        virtual void                                        OnPostRender() override;
+        virtual void                                        OnRenderUI() override;
+        void                                                PrepareScene(ZEngine::Applications::RenderFrameState& state) override;
 
-        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
-        void                                  SaveScene();
+        virtual void                                        OnClosing() override;
+        virtual void                                        OnClosed() override;
+        void                                                OnWorldShutdown(ZEngine::EngineContext& engine) override;
+        bool                                                OnCloseRequested() override;
+        /// The authoring world never simulates. Play requires a separate, complete
+        /// snapshot/restore lifecycle before this policy can be changed.
+        [[nodiscard]] bool                                  ShouldSimulate() const final
+        {
+            return false;
+        }
+        [[nodiscard]] bool ProcessCloseRequest(ZEngine::EngineContext& engine);
 
-        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
-        void                                  SaveSceneAs();
+        /// @brief Enqueue an atomic source save; unnamed scenes open the native Save As picker.
+        void               SaveScene();
 
-        /// @brief Stub — scene serialization is being rebuilt from scratch (#713-#719).
-        /// @param path Native filesystem path to the scene file.
-        void                                  OpenScene(const char* path);
+        /// @brief Opens the native save picker on the main thread, outside UI construction.
+        void               SaveSceneAs();
+        [[nodiscard]] bool RequestSceneSave(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
+        /// @brief Called only within the session mutation phase, after queued edits.
+        [[nodiscard]] bool ProcessSceneSave(ZEngine::EngineContext& engine);
+        /// @brief Owner-thread polling; picker results retain the original scene/project binding.
+        void               PollSceneSaveDialog();
+        /// @brief Queued whole-scene reset. Dirty scenes are preserved, never silently discarded.
+        [[nodiscard]] bool RequestNewScene();
+        [[nodiscard]] bool ProcessNewScene(ZEngine::EngineContext& engine);
+
+        /// Native dialog invocation is scheduled outside UI construction; completion
+        /// is polled on the owner thread and retains the requesting scene/project binding.
+        void               OpenSceneDialog();
+        void               PollSceneOpenDialog();
+        /// Queue a project-native source path on the session owner thread; never
+        /// replaces the world inline. Dispatch captures project/service identities;
+        /// stale work retires before preview cancellation or candidate publication.
+        void               OpenScene(const char* path);
+        [[nodiscard]] bool RequestSceneOpen(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
+        [[nodiscard]] bool ProcessSceneOpen(ZEngine::EngineContext& engine);
+        [[nodiscard]] bool SceneOpenPending() const;
+        /// Copies a drop intent with its original scene epoch; no I/O or authored write.
+        [[nodiscard]] bool RequestMeshDrop(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
+        /// Import completion queues placement; only the shared mutation-point loader creates entities.
+        [[nodiscard]] bool RequestImportedMesh(const ZEngine::EngineContext& engine, const ZEngine::Core::VFS::VFSPath& path, std::string_view name, const uuids::uuid& scene, uint64_t expected_epoch);
+        /// Complete, unpublished candidate only. Must run in the mutation phase;
+        /// rejection preserves both the candidate and current committed content.
+        [[nodiscard]] bool PublishSceneCandidate(ZEngine::EngineContext& engine, ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, uint64_t expected_epoch);
+
+    private:
+        enum class SceneFileDrag : uint8_t
+        {
+            None,
+            Control,
+            Viewport,
+        };
+        void                        ProcessHistoryShortcut(ZEngine::UI::ZUIContext* ctx, bool redo);
+        [[nodiscard]] SceneFileDrag SceneFileDragOwner(const ZEngine::UI::ZUIContext* ctx) const;
+        [[nodiscard]] bool          CanUseSceneFileShortcut(const ZEngine::UI::ZUIContext* ctx, SceneFileDrag drag) const;
+        void                        QueueSceneFileShortcut(const ZEngine::UI::ZUIContext* ctx, int keycode);
+        void                        ProcessSceneFileInput(ZEngine::UI::ZUIContext* ctx, bool focused, bool before_requests = false);
+
+        enum class SceneFileCommand : uint8_t
+        {
+            None,
+            New,
+            Open,
+            Save,
+            SaveAs,
+        };
+        // First accepted edge wins; never grow a queue of native picker callbacks.
+        struct SceneFileInput
+        {
+            uint64_t         Epoch      = 0;
+            uint64_t         PointerKey = 0, PointerSerial = 0;
+            SceneFileCommand Command = SceneFileCommand::None;
+            SceneFileDrag    Drag    = SceneFileDrag::None;
+        } m_scene_file_input = {};
+        static_assert(sizeof(SceneFileInput) <= 32);
+
+        struct SceneSettingsRequest
+        {
+            ZEngine::Rendering::Scenes::SkyConfig SkyBefore = {}, SkyAfter = {};
+            ZEngine::ECS::SceneGridSettings       GridBefore = {}, GridAfter = {};
+            EntityTarget                          PrimaryTarget = {};
+            uuids::uuid                           Scene         = {};
+            uint64_t                              Epoch         = 0;
+            bool                                  Sky = false, Grid = false;
+        } m_scene_settings = {};
+        static_assert(sizeof(SceneSettingsRequest) <= 1280);
+        [[nodiscard]] bool SceneSettingsMatch() const;
+        void               PrepareSceneSettingsRequest();
+        // Capture once per picker/request, never per update. Borrowed owner tokens
+        // are compared before dereferencing current owners; no old owner is followed.
+        struct SceneFileOwner
+        {
+            EditorScene*                                                                  SceneOwner      = nullptr;
+            ZEngine::ECS::Scene*                                                          World           = nullptr;
+            ZEngine::Windows::CoreWindow*                                                 Window          = nullptr;
+            EditorConfiguration*                                                          Config          = nullptr;
+            uuids::uuid                                                                   SceneUUID       = {};
+            uint64_t                                                                      Epoch           = 0;
+            ZEngine::Core::Containers::FixedArray<char, ZEngine::Core::VFS::VFS_MAX_PATH> Workspace       = {};
+            size_t                                                                        WorkspaceLength = 0;
+            bool                                                                          HasWorkspace    = false;
+
+            [[nodiscard]] bool                                                            Capture(const Editor& editor);
+            [[nodiscard]] bool                                                            Matches(const Editor& editor) const;
+            [[nodiscard]] bool                                                            MatchesWorkspace(cstring current) const;
+            void                                                                          Reset()
+            {
+                Epoch           = 0;
+                WorkspaceLength = 0; // unused path bytes are never copied, scanned or cleared
+            }
+        };
+        static_assert(sizeof(SceneFileOwner) <= ZEngine::Core::VFS::VFS_MAX_PATH + 80);
+        struct SceneFileRequest
+        {
+            ZEngine::Core::VFS::VFSPath Path    = {};
+            SceneFileOwner              Owner   = {};
+            bool                        Pending = false;
+        };
+        SceneFileRequest                    m_scene_save              = {};
+        SceneFileOwner                      m_scene_file_input_owner  = {};
+        ZEngine::Windows::FileDialogRequest m_scene_save_picker       = {};
+        SceneFileOwner                      m_scene_save_picker_owner = {};
+        SceneFileOwner                      m_new_scene_owner         = {};
+        bool                                m_new_scene_pending       = false;
+        SceneFileOwner                      m_editor_close_owner      = {};
+        bool                                m_editor_close_pending    = false;
+        struct SceneOpenWork;
+        SceneFileRequest                              m_scene_open              = {};
+        ZEngine::Windows::FileDialogRequest           m_scene_open_picker       = {};
+        SceneFileOwner                                m_scene_open_picker_owner = {};
+        ZEngine::Helpers::Scope<SceneOpenWork>        m_scene_open_work;
+        ZEngine::Helpers::Scope<EditorSceneCandidate> m_loaded_scene       = {};
+        ZEngine::ECS::Scene*                          m_original_world     = nullptr;
+        ZEngine::ECS::ActorManager*                   m_original_actors    = nullptr;
+        bool                                          m_closing            = false;
+        // A rapid native loss/regain still cancels at the next safe mutation point.
+        bool                                          m_focus_lost_pending = false;
+        bool                                          m_gizmo_focused      = true;
+        EditorSceneChange                             m_scene_change       = {};
+        uint64_t                                      m_scene_prompt_focus = 0;
+        [[nodiscard]] SceneChangeGate                 GateSceneChange(SceneChangeKind kind);
+        void                                          ProcessSceneChangeInput(ZEngine::UI::ZUIContext* ctx, bool focused);
+        void                                          CancelSceneOpen();
     };
     ZDEFINE_PTR(Editor);
 

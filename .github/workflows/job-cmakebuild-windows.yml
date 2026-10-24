@@ -43,3 +43,4 @@ jobs:
             Result.Windows.x64.MultiConfig/bin/
             Result.Windows.x64.MultiConfig/lib/*vulkan*
             Result.Windows.x64.MultiConfig/tests/ZEngineTests.exe
+            Result.Windows.x64.MultiConfig/tests/TetragramaTests.exe

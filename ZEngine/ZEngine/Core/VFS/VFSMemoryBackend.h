@@ -46,6 +46,7 @@ namespace ZEngine::Core::VFS
         MemNode*                            m_node   = nullptr;
         VFSOpenFlags                        m_flags  = VFSOpenFlags::None;
         bool                                m_closed = false;
+        bool                                m_dirty  = false;
 
         std::shared_lock<std::shared_mutex> m_read_lock;
 
@@ -71,8 +72,10 @@ namespace ZEngine::Core::VFS
         bool                                                          Exists(const VFSPath& path) const override;
         [[nodiscard]] VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const override;
         [[nodiscard]] VFSResult<void>                                 CreateDir(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<void>                                 CreateDirExclusive(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Remove(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Rename(const VFSPath& rel_src, const VFSPath& rel_dst) override;
+        [[nodiscard]] VFSResult<void>                                 RenameNoReplace(const VFSPath& rel_src, const VFSPath& rel_dst) override;
         cstring                                                       BackendType() const override;
         VFSBackendCaps                                                Capabilities() const override;
 

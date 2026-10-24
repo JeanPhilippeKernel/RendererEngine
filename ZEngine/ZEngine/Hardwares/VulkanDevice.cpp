@@ -517,38 +517,31 @@ namespace ZEngine::Hardwares
         if (ComputeFamilyIndex == invalid_queue_family)
             ComputeFamilyIndex = GraphicFamilyIndex;
 
-        HasSeperateTransfertQueueFamily          = GraphicFamilyIndex != TransferFamilyIndex;
-        HasSeparateComputeQueueFamily            = GraphicFamilyIndex != ComputeFamilyIndex;
-        HasSeparateTransferQueue                 = HasSeperateTransfertQueueFamily;
-        HasSeparateComputeQueue                  = HasSeparateComputeQueueFamily;
-        GraphicQueueIndex                        = 0;
-        TransferQueueIndex                       = 0;
-        ComputeQueueIndex                        = 0;
+        GraphicQueueIndex  = 0;
+        TransferQueueIndex = 0;
+        ComputeQueueIndex  = 0;
 
-        // A family can expose multiple distinct queue handles. Prefer a dedicated
-        // family, then consume additional graphics-family queues for compute and
-        // transfer work without introducing a queue-family ownership transfer.
-        uint32_t       next_graphics_queue_index = 1;
-        const uint32_t graphics_queue_count      = physical_device_queue_family_collection[GraphicFamilyIndex].queueCount;
-        if (!HasSeparateComputeQueue && ComputeFamilyIndex == GraphicFamilyIndex && next_graphics_queue_index < graphics_queue_count)
+        // Do not turn additional handles from the graphics/present family into
+        // asynchronous lanes. They have no dedicated capabilities, and treating them
+        // as separate queues complicates graph synchronization without proving that
+        // the hardware can overlap their work. A universal graphics/compute/transfer
+        // family therefore always uses one graphics queue.
+        //
+        // Compute and transfer can share one non-graphics family. Use two handles
+        // only when the family actually exposes two queues. With one handle, retain
+        // the compute lane and route transfer work through graphics instead of
+        // modelling one VkQueue as two independent scheduler lanes.
+        if (ComputeFamilyIndex == TransferFamilyIndex && ComputeFamilyIndex != GraphicFamilyIndex)
         {
-            ComputeQueueIndex       = next_graphics_queue_index++;
-            HasSeparateComputeQueue = true;
-        }
-        if (!HasSeparateTransferQueue && TransferFamilyIndex == GraphicFamilyIndex && next_graphics_queue_index < graphics_queue_count)
-        {
-            TransferQueueIndex       = next_graphics_queue_index++;
-            HasSeparateTransferQueue = true;
+            if (physical_device_queue_family_collection[ComputeFamilyIndex].queueCount > 1)
+                TransferQueueIndex = 1;
+            else
+                TransferFamilyIndex = GraphicFamilyIndex;
         }
 
-        // Some devices expose one non-graphics family for both compute and transfer.
-        // Request separate handles when that family has enough queues; otherwise both
-        // roles intentionally serialize on its single queue.
-        if (ComputeFamilyIndex == TransferFamilyIndex && ComputeFamilyIndex != GraphicFamilyIndex && physical_device_queue_family_collection[ComputeFamilyIndex].queueCount > 1)
-        {
-            ComputeQueueIndex  = 0;
-            TransferQueueIndex = 1;
-        }
+        HasSeperateTransfertQueueFamily                                           = GraphicFamilyIndex != TransferFamilyIndex;
+        HasSeparateTransferQueue                                                  = HasSeperateTransfertQueueFamily;
+        HasSeparateComputeQueue                                                   = GraphicFamilyIndex != ComputeFamilyIndex;
 
         QueueTimestampValidBits[static_cast<uint32_t>(QueueType::GRAPHIC_QUEUE)]  = physical_device_queue_family_collection[GraphicFamilyIndex].timestampValidBits;
         QueueTimestampValidBits[static_cast<uint32_t>(QueueType::TRANSFER_QUEUE)] = physical_device_queue_family_collection[TransferFamilyIndex].timestampValidBits;
@@ -715,6 +708,8 @@ namespace ZEngine::Hardwares
             vkGetDeviceQueue(LogicalDevice, ComputeFamilyIndex, ComputeQueueIndex, &compute_queue);
             m_queue_map.insert(Rendering::QueueType::COMPUTE_QUEUE, std::move(compute_queue));
         }
+
+        ZENGINE_CORE_INFO("[GPU] Queue topology: graphics={}:{}; compute={}:{} (async={}); transfer={}:{} (async={})", GraphicFamilyIndex, GraphicQueueIndex, ComputeFamilyIndex, ComputeQueueIndex, HasSeparateComputeQueue, TransferFamilyIndex, TransferQueueIndex, HasSeparateTransferQueue)
 
         /* Surface format selection */
         uint32_t                  format_count    = 0;
@@ -1266,9 +1261,28 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::QueueWaitAll()
     {
-        QueueWait(Rendering::QueueType::TRANSFER_QUEUE);
-        QueueWait(Rendering::QueueType::COMPUTE_QUEUE);
-        QueueWait(Rendering::QueueType::GRAPHIC_QUEUE);
+        constexpr QueueType queue_types[] = {QueueType::TRANSFER_QUEUE, QueueType::COMPUTE_QUEUE, QueueType::GRAPHIC_QUEUE};
+        VkQueue             waited_queues[3] = {};
+        uint32_t            waited_count = 0;
+
+        for (QueueType type : queue_types)
+        {
+            const VkQueue queue = GetQueue(type).Handle;
+            bool          already_waited = false;
+            for (uint32_t index = 0; index < waited_count; ++index)
+            {
+                if (waited_queues[index] == queue)
+                {
+                    already_waited = true;
+                    break;
+                }
+            }
+            if (already_waited)
+                continue;
+
+            ZENGINE_VALIDATE_ASSERT(vkQueueWaitIdle(queue) == VK_SUCCESS, "Failed to wait on queue")
+            waited_queues[waited_count++] = queue;
+        }
     }
 
     void VulkanDevice::BeginDebugLabel(VkCommandBuffer command_buffer, cstring name) const

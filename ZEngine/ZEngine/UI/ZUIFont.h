@@ -11,6 +11,18 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::UI
 {
+// Byte-indexed text-atlas glyphs (C1 slots are remapped; Latin-1 slots are direct).
+#define ZUI_GLYPH_ELLIPSIS "\x85"
+#define ZUI_GLYPH_LQUOTE   "\x93"
+#define ZUI_GLYPH_RQUOTE   "\x94"
+#define ZUI_GLYPH_BULLET   "\x95"
+#define ZUI_GLYPH_ENDASH   "\x96"
+#define ZUI_GLYPH_EMDASH   "\x97"
+#define ZUI_GLYPH_UP       "\x8F"
+#define ZUI_GLYPH_MINUS    "\x90"
+#define ZUI_GLYPH_DOWN     "\x8E"
+#define ZUI_GLYPH_DEGREE   "\xB0"
+#define ZUI_GLYPH_MULTIPLY "\xD7" // Latin-1 multiplication sign, already in the text atlas
 
     /// @brief Per-glyph metrics and atlas UV coordinates.
     ///
@@ -48,37 +60,64 @@ namespace ZEngine::UI
         float     FontScale      = 1.f;
     };
 
-    /// @brief Single shared GPU texture atlas containing all three font size variants.
+    /// @brief Shared GPU texture atlas containing the text roles and icon font.
     ///
     /// Mirrors ImGui's single-atlas approach. WhiteU/WhiteV address the 1×1 white
     /// texel at pixel (0,0): sampling it with a vertex color yields that color directly,
     /// so solid-color draws reuse the same texture and pipeline state as glyph draws.
     struct ZUIFontAtlas
     {
-        ZUIFont*                           Small  = nullptr;
-        ZUIFont*                           Body   = nullptr;
-        ZUIFont*                           Header = nullptr;
-        Rendering::Textures::TextureHandle Handle = {};
-        uint32_t                           Width  = 0;
-        uint32_t                           Height = 0;
-        float                              WhiteU = 0.f;
-        float                              WhiteV = 0.f;
+        ZUIFont*                           Small     = nullptr;
+        ZUIFont*                           Body      = nullptr;
+        ZUIFont*                           Header    = nullptr;
+        ZUIFont*                           Heading   = nullptr; ///< Optional 11 px semibold face
+        ZUIFont*                           Tiny      = nullptr; ///< Optional 9 px caption face
+        ZUIFont*                           Large     = nullptr; ///< Optional regular face at the header size
+        ZUIFont*                           Icon      = nullptr; ///< Lucide icon glyphs; Glyphs[i] is ZUIIcon i (see ZUIIcons.h)
+        ZUIFont*                           AssetIcon = nullptr; ///< Authored thumbnail masks, indexed by ZUIIcon; shares Handle.
+        Rendering::Textures::TextureHandle Handle    = {};
+        uint32_t                           Width     = 0;
+        uint32_t                           Height    = 0;
+        float                              WhiteU    = 0.f;
+        float                              WhiteV    = 0.f;
     };
 
-    /// @brief Pack Small + Body + Header fonts into one shared atlas texture.
+    /// @brief Pack the text roles and optional icons into one shared atlas texture.
     ///
     /// Uses FreeType with FT_LOAD_FORCE_AUTOHINT for cross-platform quality.
     /// Atlas layout handled by stb_rect_pack (1-px glyph padding to prevent UV bleed).
-    /// Permanent allocations (ZUIFontAtlas, ZUIFont[3], ZUIGlyph arrays) go to @p persistent_arena.
+    /// When @p icon_vfs_path is set, the @p icon_count glyphs at @p icon_codepoints are baked at
+    /// @p icon_size px (unhinted, so strokes keep their geometry) into ZUIFontAtlas::Icon.
+    /// @p asset_icons_vfs_path optionally supplies the authored thumbnail sheet
+    /// (see ZUIAssetIcons.h), packed into the same texture as AssetIcon masks.
+    /// Permanent allocations (ZUIFontAtlas, ZUIFont variants, ZUIGlyph arrays) go to @p persistent_arena.
     /// Temporary baking buffers (TTF bytes, FreeType bitmaps, pixel maps) go to @p temp_arena.
     /// @returns Pointer to the baked ZUIFontAtlas, or nullptr on failure.
-    ZUIFontAtlas* ZUIFontAtlasBake(ZEngine::Core::Memory::ArenaAllocator* persistent_arena, ZEngine::Core::Memory::ArenaAllocator* temp_arena, Hardwares::VulkanDevice* device, const char* vfs_path, float size_small, float size_body, float size_header, uint32_t first_codepoint, uint32_t codepoint_count, const char* header_vfs_path = nullptr);
+    ZUIFontAtlas* ZUIFontAtlasBake(
+        ZEngine::Core::Memory::ArenaAllocator* persistent_arena,
+        ZEngine::Core::Memory::ArenaAllocator* temp_arena,
+        Hardwares::VulkanDevice*               device,
+        const char*                            vfs_path,
+        float                                  size_small,
+        float                                  size_body,
+        float                                  size_header,
+        uint32_t                               first_codepoint,
+        uint32_t                               codepoint_count,
+        const char*                            header_vfs_path      = nullptr,
+        const char*                            icon_vfs_path        = nullptr,
+        const uint32_t*                        icon_codepoints      = nullptr,
+        uint32_t                               icon_count           = 0,
+        float                                  icon_size            = 0.f,
+        float                                  size_tiny            = 0.f,
+        float                                  size_large           = 0.f,
+        float                                  size_heading         = 0.f,
+        const char*                            asset_icons_vfs_path = nullptr);
 
     /// @brief Measure the rendered extent of a string in logical pixels.
     /// @param font     Font to measure with; must not be nullptr.
     /// @param str      String to measure (need not be null-terminated beyond @p len).
     /// @param len      Number of bytes in @p str.
     /// @param out_size Receives [width, height] in logical pixels.
-    void          ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
+    void ZUIMeasureText(const ZUIFont* font, const char* str, uint32_t len, float out_size[2]);
 
 } // namespace ZEngine::UI

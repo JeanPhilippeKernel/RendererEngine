@@ -6,6 +6,16 @@ using namespace ZEngine::Input;
 
 namespace ZEngine::Controllers
 {
+    bool FlyCameraController::SetProjectionType(CameraType type)
+    {
+        if (!m_camera || (type != CameraType::PERSPECTIVE && type != CameraType::ORTHOGRAPHIC))
+        {
+            return false;
+        }
+        m_camera->SetProjectionType(type);
+        return true;
+    }
+
     namespace
     {
         /// @brief Physical keys used by a platform's editor-navigation profile.
@@ -135,10 +145,14 @@ namespace ZEngine::Controllers
             auto* glfw = static_cast<GLFWwindow*>(m_window->GetNativeWindow());
             glfwSetInputMode(glfw, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
             if (glfwRawMouseMotionSupported())
+            {
                 glfwSetInputMode(glfw, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+            }
         }
         if (m_input)
+        {
             m_input->ResetMouseDelta();
+        }
     }
 
     void FlyCameraController::ExitFly()
@@ -148,17 +162,23 @@ namespace ZEngine::Controllers
         {
             auto* glfw = static_cast<GLFWwindow*>(m_window->GetNativeWindow());
             if (glfwRawMouseMotionSupported())
+            {
                 glfwSetInputMode(glfw, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+            }
             glfwSetInputMode(glfw, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
         if (m_input)
+        {
             m_input->ResetMouseDelta();
+        }
     }
 
     void FlyCameraController::ClearKeyboardInput()
     {
         if (!m_camera)
+        {
             return;
+        }
 
         auto& input               = m_camera->Input;
         input.RightDown           = false;
@@ -177,7 +197,9 @@ namespace ZEngine::Controllers
         auto& input = m_camera->Input;
         input.ClearCommands();
         if (!enabled)
+        {
             return;
+        }
 
         const bool primary_modifier_down   = m_input->GetButton(m_slot_primary_modifier).Held;
         const bool alternate_modifier_down = m_input->GetButton(m_slot_alternate_modifier).Held;
@@ -205,36 +227,58 @@ namespace ZEngine::Controllers
 #endif
 
         if (m_input->GetButton(m_slot_axis_view[0]).JustDown)
+        {
             input.AxisViewRequested = primary_modifier_down ? FlyCameraAxisView::Back : FlyCameraAxisView::Front;
+        }
         else if (m_input->GetButton(m_slot_axis_view[1]).JustDown)
+        {
             input.AxisViewRequested = primary_modifier_down ? FlyCameraAxisView::Left : FlyCameraAxisView::Right;
+        }
         else if (m_input->GetButton(m_slot_axis_view[2]).JustDown)
+        {
             input.AxisViewRequested = primary_modifier_down ? FlyCameraAxisView::Bottom : FlyCameraAxisView::Top;
+        }
 #if defined(__APPLE__)
         else if (alternate_modifier_down && !primary_modifier_down && m_input->GetButton(m_slot_axis_view_top_row[0]).JustDown)
+        {
             input.AxisViewRequested = shift_down ? FlyCameraAxisView::Back : FlyCameraAxisView::Front;
+        }
         else if (alternate_modifier_down && !primary_modifier_down && m_input->GetButton(m_slot_axis_view_top_row[1]).JustDown)
+        {
             input.AxisViewRequested = shift_down ? FlyCameraAxisView::Left : FlyCameraAxisView::Right;
+        }
         else if (alternate_modifier_down && !primary_modifier_down && m_input->GetButton(m_slot_axis_view_top_row[2]).JustDown)
+        {
             input.AxisViewRequested = shift_down ? FlyCameraAxisView::Bottom : FlyCameraAxisView::Top;
+        }
 #else
         else if (shift_down && m_input->GetButton(m_slot_axis_view_top_row[0]).JustDown)
+        {
             input.AxisViewRequested = primary_modifier_down ? FlyCameraAxisView::Back : FlyCameraAxisView::Front;
+        }
         else if (shift_down && m_input->GetButton(m_slot_axis_view_top_row[1]).JustDown)
+        {
             input.AxisViewRequested = primary_modifier_down ? FlyCameraAxisView::Left : FlyCameraAxisView::Right;
+        }
         else if (shift_down && m_input->GetButton(m_slot_axis_view_top_row[2]).JustDown)
+        {
             input.AxisViewRequested = primary_modifier_down ? FlyCameraAxisView::Bottom : FlyCameraAxisView::Top;
+        }
 #endif
 
         for (int i = 0; i < 9; ++i)
         {
             if (!m_input->GetButton(m_slot_bookmark[i]).JustDown)
+            {
                 continue;
+            }
 
             // The top-row view/projection fallbacks take precedence over
             // bookmark numbers. Numpad commands never share a binding.
             if (alternate_modifier_down)
+            {
                 break;
+            }
 
             input.BookmarkSlotRequested = static_cast<int8_t>(i);
             input.SaveBookmarkRequested = primary_modifier_down;
@@ -245,7 +289,9 @@ namespace ZEngine::Controllers
     void FlyCameraController::Update(Core::TimeStep dt)
     {
         if (!m_input || !m_camera)
+        {
             return;
+        }
 
         // Navigation commands are editor commands, not fly-only controls. They
         // remain available while the hierarchy owns the pointer, but never
@@ -255,13 +301,22 @@ namespace ZEngine::Controllers
         if (!m_input_enabled || !m_input->IsWindowFocused() || m_pointer_captured)
         {
             if (m_state == CamState::Fly)
+            {
                 ExitFly();
+            }
             m_state = CamState::Idle;
-            m_camera->Input.Reset();
-            FeedNavigationCommands(navigation_enabled);
             // Discard all movement collected while another UI element owns the pointer.
             m_input->ResetMouseDelta();
-            m_camera->OnUpdate(dt.GetSecond());
+            if (m_pointer_captured && m_keyboard_captured)
+            {
+                m_camera->StopMotion();
+            }
+            else
+            {
+                m_camera->Input.Reset();
+                FeedNavigationCommands(navigation_enabled);
+                m_camera->OnUpdate(dt.GetSecond());
+            }
             return;
         }
 
@@ -277,17 +332,25 @@ namespace ZEngine::Controllers
         {
             case CamState::Idle:
                 if (hovered)
+                {
                     m_state = CamState::Hover;
+                }
                 break;
             case CamState::Hover:
                 if (!hovered)
+                {
                     m_state = CamState::Idle;
+                }
                 else if (rmb && !m_keyboard_captured)
+                {
                     EnterFly();
+                }
                 break;
             case CamState::Fly:
                 if (!rmb || m_keyboard_captured)
+                {
                     ExitFly();
+                }
                 break;
         }
 
@@ -340,13 +403,26 @@ namespace ZEngine::Controllers
         m_keyboard_captured        = keyboard_captured;
 
         if (!capture_changed || !m_camera || (!pointer_captured && !keyboard_captured))
+        {
             return;
+        }
 
         if (m_state == CamState::Fly)
+        {
             ExitFly();
-        m_camera->Input.Reset();
+        }
+        if (pointer_captured && keyboard_captured)
+        {
+            m_camera->StopMotion();
+        }
+        else
+        {
+            m_camera->Input.Reset();
+        }
         if (pointer_captured && m_input)
+        {
             m_input->ResetMouseDelta();
+        }
     }
 
     bool FlyCameraController::OnEvent(Core::CoreEvent&)
@@ -394,17 +470,23 @@ namespace ZEngine::Controllers
     {
         m_input_enabled = true;
         if (m_input)
+        {
             m_input->ResetMouseDelta();
+        }
     }
 
     void FlyCameraController::PauseEventProcessing()
     {
         m_input_enabled = false;
         if (m_state == CamState::Fly)
+        {
             ExitFly();
+        }
         m_state = CamState::Idle;
         if (m_camera)
+        {
             m_camera->Input.Reset();
+        }
     }
 
 } // namespace ZEngine::Controllers

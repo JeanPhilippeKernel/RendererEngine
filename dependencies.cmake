@@ -1,5 +1,14 @@
 include(FetchContent)
 
+# GLFW 3.5 can include both native Linux backends and selects the active one
+# at runtime.  Clear the pre-3.4 cache option so an existing build directory
+# can upgrade without GLFW rejecting its old GLFW_USE_WAYLAND entry.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  unset(GLFW_USE_WAYLAND CACHE)
+  set(GLFW_BUILD_X11 ON CACHE BOOL "Build GLFW X11 backend" FORCE)
+  set(GLFW_BUILD_WAYLAND ON CACHE BOOL "Build GLFW Wayland backend" FORCE)
+endif()
+
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
@@ -26,7 +35,7 @@ FetchContent_Declare(
   glfw3
   GIT_REPOSITORY https://github.com/glfw/glfw.git
   GIT_SHALLOW TRUE
-  GIT_TAG 3.3.10
+  GIT_TAG 3.5.1
   )
 
 FetchContent_Declare(
@@ -50,13 +59,23 @@ FetchContent_Declare(
    
   )
 
+# Scene YAML parsing/emission uses status-returning C APIs, not C++ exceptions.
 FetchContent_Declare(
-  yaml-cpp
-  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp
+  libyaml
+  GIT_REPOSITORY https://github.com/yaml/libyaml.git
   GIT_SHALLOW TRUE
-  GIT_TAG yaml-cpp-0.9.0
+  GIT_TAG 0.2.5
   )
-
+function(zengine_make_libyaml_available)
+  # The upstream release uses generic options. Scope them to this dependency so
+  # its command-line test programs and shared-library setting do not affect us.
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+  set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+  set(BUILD_TESTING OFF)
+  set(BUILD_SHARED_LIBS OFF)
+  FetchContent_MakeAvailable(libyaml)
+endfunction()
+zengine_make_libyaml_available()
 
 FetchContent_Declare(
   spirv_cross_core
@@ -95,7 +114,6 @@ FetchContent_Declare(
     GIT_TAG vulkan-sdk-1.3.296.0
 )
 
-set(YAML_MSVC_SHARED_RT ON CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 Fetchcontent_Declare(
     GTest
@@ -233,7 +251,6 @@ FetchContent_MakeAvailable(
   spdlog
   assimp
   stduuid
-  yaml-cpp
   VulkanMemoryAllocator
   SPIRV-Headers
   spirv_cross_core
@@ -307,7 +324,7 @@ target_link_libraries(External_libs
          spdlog::spdlog
          assimp::assimp
          stduuid
-         yaml-cpp::yaml-cpp
+         yaml
          spirv-cross-core
          SPIRV-Tools-opt
          glslang::glslang

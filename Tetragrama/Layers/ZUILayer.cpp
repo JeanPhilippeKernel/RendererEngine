@@ -38,16 +38,24 @@ namespace Tetragrama::Layers
             glfwSetScrollCallback(native, [](GLFWwindow*, double /*x*/, double y) {
                 auto* eng = ZEngine::Engine::GetContext();
                 if (eng && eng->InputManager)
+                {
                     eng->InputManager->AccumulateScroll(y);
+                }
                 // Clamp to ±1 per event so trackpad momentum doesn't overshoot
                 if (s_zui_ctx_for_scroll)
+                {
                     s_zui_ctx_for_scroll->ScrollDelta += (float) std::clamp(y, -1.0, 1.0);
+                }
             });
         }
     }
 
     bool ZUILayer::OnEvent(ZEngine::Core::CoreEvent& event)
     {
+        if (event.GetType() == ZEngine::Core::EventType::WindowFocusLost || event.GetType() == ZEngine::Core::EventType::WindowMinimized)
+        {
+            ResetInput();
+        }
         ZEngine::Core::EventDispatcher event_dispatcher(event);
         event_dispatcher.Dispatch<KeyPressedEvent>(std::bind(&ZUILayer::OnKeyPressed, this, std::placeholders::_1));
         event_dispatcher.Dispatch<KeyReleasedEvent>(std::bind(&ZUILayer::OnKeyReleased, this, std::placeholders::_1));
@@ -56,6 +64,12 @@ namespace Tetragrama::Layers
         event_dispatcher.Dispatch<MouseButtonMovedEvent>(std::bind(&ZUILayer::OnMouseButtonMoved, this, std::placeholders::_1));
         event_dispatcher.Dispatch<TextInputEvent>(std::bind(&ZUILayer::OnTextInputRaised, this, std::placeholders::_1));
         return false;
+    }
+
+    void ZUILayer::ResetInput()
+    {
+        m_modifier_keys = 0;
+        ZEngine::UI::ZUIFeedFocusLost(m_ctx);
     }
 
     void ZUILayer::Render(ZEngine::Rendering::Renderers::GraphicRenderer* const, ZEngine::Hardwares::CommandBuffer* const)
@@ -88,9 +102,13 @@ namespace Tetragrama::Layers
             static GLFWcursor* s_cur_ew = nullptr;
             static GLFWcursor* s_cur_ns = nullptr;
             if (!s_cur_ew)
+            {
                 s_cur_ew = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+            }
             if (!s_cur_ns)
+            {
                 s_cur_ns = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
+            }
 
             auto* native = static_cast<GLFWwindow*>(CurrentApp->CurrentWindow->GetNativeWindow());
             switch (m_ctx->ResizeCursor)
@@ -116,6 +134,60 @@ namespace Tetragrama::Layers
         }
     }
 
+    void ZUILayer::UpdateModifiers(ZENGINE_KEYCODE key, bool pressed)
+    {
+        // Track each side separately: releasing one modifier must not cancel
+        // another that is still held. CtrlDown is ZUI's shortcut modifier;
+        // macOS also accepts Command for native text editing and color undo.
+        uint8_t mask = 0;
+        switch (key)
+        {
+            case ZENGINE_KEY_LEFT_CONTROL:
+                mask = 1u << 0;
+                break;
+            case ZENGINE_KEY_RIGHT_CONTROL:
+                mask = 1u << 1;
+                break;
+            case ZENGINE_KEY_LEFT_SHIFT:
+                mask = 1u << 2;
+                break;
+            case ZENGINE_KEY_RIGHT_SHIFT:
+                mask = 1u << 3;
+                break;
+            case ZENGINE_KEY_LEFT_ALT:
+                mask = 1u << 4;
+                break;
+            case ZENGINE_KEY_RIGHT_ALT:
+                mask = 1u << 5;
+                break;
+            case ZENGINE_KEY_LEFT_SUPER:
+                mask = 1u << 6;
+                break;
+            case ZENGINE_KEY_RIGHT_SUPER:
+                mask = 1u << 7;
+                break;
+            default:
+                return;
+        }
+        if (pressed)
+        {
+            m_modifier_keys |= mask;
+        }
+        else
+        {
+            m_modifier_keys &= static_cast<uint8_t>(~mask);
+        }
+        constexpr uint8_t control_mask = 0x03;
+#if defined(__APPLE__)
+        constexpr uint8_t shortcut_mask = control_mask | 0xc0;
+#else
+        constexpr uint8_t shortcut_mask = control_mask;
+#endif
+        m_ctx->CtrlDown  = (m_modifier_keys & shortcut_mask) != 0;
+        m_ctx->ShiftDown = (m_modifier_keys & 0x0c) != 0;
+        m_ctx->AltDown   = (m_modifier_keys & 0x30) != 0;
+    }
+
     bool ZUILayer::OnKeyPressed(KeyPressedEvent& e)
     {
         if (!m_ctx)
@@ -124,13 +196,8 @@ namespace Tetragrama::Layers
         }
         auto key = e.GetKeyCode();
 
-        // Modifier tracking
-        if (key == ZENGINE_KEY_LEFT_CONTROL || key == ZENGINE_KEY_RIGHT_CONTROL)
-            m_ctx->CtrlDown = true;
-        if (key == ZENGINE_KEY_LEFT_SHIFT || key == ZENGINE_KEY_RIGHT_SHIFT)
-            m_ctx->ShiftDown = true;
-        if (key == ZENGINE_KEY_LEFT_ALT || key == ZENGINE_KEY_RIGHT_ALT)
-            m_ctx->AltDown = true;
+        UpdateModifiers(key, true);
+        const bool shortcut = m_ctx->CtrlDown && !m_ctx->AltDown;
 
         // Backspace (also starts key-repeat timer)
         if (key == ZENGINE_KEY_BACKSPACE)
@@ -144,32 +211,58 @@ namespace Tetragrama::Layers
         if (key == ZENGINE_KEY_TAB)
         {
             if (m_ctx->ShiftDown)
+            {
                 m_ctx->ShiftTabPressed = true;
+            }
             else
+            {
                 m_ctx->TabPressed = true;
+            }
         }
         // Escape: drop keyboard focus; Enter: confirm and drop focus
         if (key == ZENGINE_KEY_ESCAPE)
+        {
             m_ctx->EscapePressed = true;
+        }
         if (key == ZENGINE_KEY_ENTER || key == ZENGINE_KEY_KP_ENTER)
+        {
             m_ctx->EnterPressed = true;
+        }
         // Space: activate focused button (not Enter, which clears focus for text fields)
         if (key == ZENGINE_KEY_SPACE && !m_ctx->CtrlDown && !m_ctx->AltDown)
+        {
             m_ctx->SpacePressed = true;
+        }
 
         // Arrow keys for drag-float nudge / text cursor / combo navigation
         if (key == ZENGINE_KEY_UP)
+        {
             m_ctx->ArrowUpPressed = true;
+        }
         if (key == ZENGINE_KEY_DOWN)
+        {
             m_ctx->ArrowDownPressed = true;
+        }
         if (key == ZENGINE_KEY_LEFT)
+        {
             m_ctx->ArrowLeftPressed = true;
+        }
         if (key == ZENGINE_KEY_RIGHT)
+        {
             m_ctx->ArrowRightPressed = true;
+        }
         if (key == ZENGINE_KEY_HOME)
+        {
             m_ctx->HomePressed = true;
+        }
         if (key == ZENGINE_KEY_END)
+        {
             m_ctx->EndPressed = true;
+        }
+        if (key == ZENGINE_KEY_F2)
+        {
+            m_ctx->F2Pressed = true;
+        }
         if (key == ZENGINE_KEY_DELETE)
         {
             m_ctx->DeletePressed    = true;
@@ -197,23 +290,35 @@ namespace Tetragrama::Layers
             m_ctx->ArrowRepeatTimer = 0.f;
         }
 
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_C)
+        {
             m_ctx->CtrlCPressed = true;
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_X)
+        }
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_X)
+        {
             m_ctx->CtrlXPressed = true;
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_A)
+        }
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_A)
+        {
             m_ctx->CtrlAPressed = true;
-        if (m_ctx->CtrlDown && !m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)
+        }
+        if (shortcut && !m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)
+        {
             m_ctx->CtrlZPressed = true;
-        if (m_ctx->CtrlDown && (key == ZEngine::Windows::Inputs::GlfwKey::KEY_Y || (m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)))
+        }
+        if (shortcut && (key == ZEngine::Windows::Inputs::GlfwKey::KEY_Y || (m_ctx->ShiftDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_Z)))
+        {
             m_ctx->CtrlYPressed = true;
+        }
 
         // Ctrl+Backspace → delete word before cursor
-        if (m_ctx->CtrlDown && key == ZENGINE_KEY_BACKSPACE)
+        if (shortcut && key == ZENGINE_KEY_BACKSPACE)
+        {
             m_ctx->CtrlBackspacePressed = true;
+        }
 
         // Clipboard paste: Ctrl+V → inject clipboard text into TextInput
-        if (m_ctx->CtrlDown && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
+        if (shortcut && key == ZEngine::Windows::Inputs::GlfwKey::KEY_V)
         {
             if (CurrentApp && CurrentApp->CurrentWindow)
             {
@@ -222,7 +327,9 @@ namespace Tetragrama::Layers
                 if (clip)
                 {
                     for (uint32_t i = 0; clip[i] && m_ctx->TextInputLen < 31; ++i)
+                    {
                         m_ctx->TextInput[m_ctx->TextInputLen++] = clip[i];
+                    }
                     m_ctx->TextInput[m_ctx->TextInputLen] = '\0';
                 }
             }
@@ -238,27 +345,32 @@ namespace Tetragrama::Layers
             return false;
         }
         auto key = e.GetKeyCode();
-        if (key == ZENGINE_KEY_LEFT_CONTROL || key == ZENGINE_KEY_RIGHT_CONTROL)
-            m_ctx->CtrlDown = false;
-        if (key == ZENGINE_KEY_LEFT_SHIFT || key == ZENGINE_KEY_RIGHT_SHIFT)
-            m_ctx->ShiftDown = false;
-        if (key == ZENGINE_KEY_LEFT_ALT || key == ZENGINE_KEY_RIGHT_ALT)
-            m_ctx->AltDown = false;
+        UpdateModifiers(key, false);
         if (key == ZENGINE_KEY_BACKSPACE)
         {
             m_ctx->BackspaceHeld  = false;
             m_ctx->KeyRepeatTimer = 0.f;
         }
         if (key == ZENGINE_KEY_LEFT)
+        {
             m_ctx->ArrowLeftHeld = false;
+        }
         if (key == ZENGINE_KEY_RIGHT)
+        {
             m_ctx->ArrowRightHeld = false;
+        }
         if (key == ZENGINE_KEY_UP)
+        {
             m_ctx->ArrowUpHeld = false;
+        }
         if (key == ZENGINE_KEY_DOWN)
+        {
             m_ctx->ArrowDownHeld = false;
+        }
         if (key == ZENGINE_KEY_DELETE)
+        {
             m_ctx->DeleteHeld = false;
+        }
         return false;
     }
 
@@ -269,11 +381,7 @@ namespace Tetragrama::Layers
             return false;
         }
         int btn = (int) e.GetButton();
-        if (btn >= 0 && btn < 3)
-        {
-            m_ctx->MouseDown[btn]    = true;
-            m_ctx->MousePressed[btn] = true;
-        }
+        ZEngine::UI::ZUIFeedMouseButton(m_ctx, btn, true);
         return false;
     }
 
@@ -284,11 +392,7 @@ namespace Tetragrama::Layers
             return false;
         }
         int btn = (int) e.GetButton();
-        if (btn >= 0 && btn < 3)
-        {
-            m_ctx->MouseDown[btn]     = false;
-            m_ctx->MouseReleased[btn] = true;
-        }
+        ZEngine::UI::ZUIFeedMouseButton(m_ctx, btn, false);
         return false;
     }
 
@@ -298,10 +402,10 @@ namespace Tetragrama::Layers
         {
             return false;
         }
-        // GLFW cursor callback reports in logical screen coords (same space as
-        // glfwGetWindowSize / ScreenW). No division needed on any platform.
-        m_ctx->MousePos[0] = (float) e.GetPosX();
-        m_ctx->MousePos[1] = (float) e.GetPosY();
+        // GLFW cursor positions are in window coordinates.  Convert them into
+        // the DPI-independent coordinate space used by ZUI layout and rendering.
+        m_ctx->MousePos[0] = (float) e.GetPosX() * m_ctx->InputScale[0];
+        m_ctx->MousePos[1] = (float) e.GetPosY() * m_ctx->InputScale[1];
         return false;
     }
 
@@ -314,6 +418,19 @@ namespace Tetragrama::Layers
     bool ZUILayer::OnTextInputRaised(TextInputEvent& e)
     {
         if (!m_ctx)
+        {
+            return false;
+        }
+        // Shortcut keys may also produce character events (including native
+        // Command shortcuts). Never insert those letters into the active field.
+        // Ctrl+Alt remains text-producing for AltGr layouts on Windows/Linux;
+        // macOS uses Option for text and Command/Control for shortcuts.
+#if defined(__APPLE__)
+        const bool shortcut = m_ctx->CtrlDown;
+#else
+        const bool shortcut = m_ctx->CtrlDown && !m_ctx->AltDown;
+#endif
+        if (shortcut)
         {
             return false;
         }

@@ -33,7 +33,9 @@ namespace ZEngine::Core::Memory
         ZENGINE_VALIDATE_ASSERT(n > 0, "TLSFSlab::Realloc: size must be > 0")
 
         if (ptr == nullptr)
+        {
             return Alloc(n);
+        }
 
         AcquireLock();
         void* p = tlsf_realloc(Pool, ptr, n);
@@ -43,10 +45,26 @@ namespace ZEngine::Core::Memory
         return p;
     }
 
+    void* TLSFSlab::TryRealloc(void* ptr, size_t n)
+    {
+        // Leave headroom for TLSF alignment/metadata arithmetic as well as its
+        // maximum representable block size. Do not pass overflow-sized requests.
+        if (!Pool || n == 0 || n >= tlsf_block_size_max())
+        {
+            return nullptr;
+        }
+        AcquireLock();
+        void* result = ptr ? tlsf_realloc(Pool, ptr, n) : tlsf_malloc(Pool, n);
+        ReleaseLock();
+        return result;
+    }
+
     void TLSFSlab::Free(void* ptr)
     {
         if (!ptr)
+        {
             return;
+        }
         AcquireLock();
         tlsf_free(Pool, ptr);
         ReleaseLock();

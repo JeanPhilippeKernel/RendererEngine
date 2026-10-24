@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <mutex>
 
 namespace ZEngine::Importers
 {
@@ -19,5 +20,8 @@ namespace ZEngine::Importers
         Core::VFS::VFSResult<void>   Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta) override;
 
         Core::Memory::ArenaAllocator Arena = {};
+
+    private:
+        std::mutex m_import_mutex;
     };
 } // namespace ZEngine::Importers

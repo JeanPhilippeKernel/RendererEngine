@@ -61,9 +61,11 @@ namespace ZEngine::Core::VFS
         bool                                                          Exists(const VFSPath& path) const override;
         [[nodiscard]] VFSResult<Core::Containers::Array<VFSDirEntry>> List(Core::Memory::ArenaAllocator* arena, const VFSPath& dir) const override;
         [[nodiscard]] VFSResult<void>                                 CreateDir(const VFSPath& relative_path) override;
+        [[nodiscard]] VFSResult<void>                                 CreateDirExclusive(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Remove(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 RemoveAll(const VFSPath& relative_path) override;
         [[nodiscard]] VFSResult<void>                                 Rename(const VFSPath& rel_src, const VFSPath& rel_dst) override;
+        [[nodiscard]] VFSResult<void>                                 RenameNoReplace(const VFSPath& rel_src, const VFSPath& rel_dst) override;
         cstring                                                       BackendType() const override;
         VFSBackendCaps                                                Capabilities() const override;
         cstring                                                       NativeRoot() const
@@ -72,7 +74,14 @@ namespace ZEngine::Core::VFS
         }
 
     private:
-        bool                    ResolveNativePath(const VFSPath& relative, char* out_buf) const;
+#if defined(_WIN32)
+        using NativePathChar = wchar_t;
+#else
+        using NativePathChar = char;
+#endif
+        // Virtual paths and NativeRoot stay UTF-8. Convert only at the native
+        // disk boundary; never feed UTF-8 to Windows ANSI or locale converters.
+        bool                    ResolveNativePath(const VFSPath& relative, NativePathChar* out_buf) const;
 
         static bool             ProbeCaseSensitivity(cstring native_root);
 

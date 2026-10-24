@@ -92,7 +92,6 @@ namespace ZEngine::Applications
             ++m_render_target_resize_sequence;
         }
 
-        state.Scene          = CurrentScene;
         state.Camera         = CameraController->GetCamera()->CaptureFrameData();
         state.RenderTargetW  = m_render_target_width;
         state.RenderTargetH  = m_render_target_height;
@@ -102,7 +101,9 @@ namespace ZEngine::Applications
     void GameApplication::Shutdown()
     {
         if (CameraController)
+        {
             CameraController->PauseEventProcessing();
+        }
         Engine::Dispose();
     }
 } // namespace ZEngine::Applications

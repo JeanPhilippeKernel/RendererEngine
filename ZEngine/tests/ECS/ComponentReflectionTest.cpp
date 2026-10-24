@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/ECS/ArchetypeMask.h>
 #include <ZEngine/ECS/Components/CameraComponent.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MaterialComponent.h>
@@ -51,6 +52,20 @@ namespace
         return nullptr;
     }
 } // namespace
+
+TEST(ArchetypeMaskTest, UnsupportedComponentIdsNeverShiftOrAliasLiveComponents)
+{
+    const auto ends = MaskBit(0) | MaskBit(ARCHETYPE_MASK_CAPACITY - 1);
+    for (ComponentTypeID id = 0; id < ARCHETYPE_MASK_CAPACITY; ++id)
+        EXPECT_EQ(MaskHas(ends, id), id == 0 || id == ARCHETYPE_MASK_CAPACITY - 1);
+    const ComponentTypeID invalid[] = {ARCHETYPE_MASK_CAPACITY, ARCHETYPE_MASK_CAPACITY + 1, 9999, UINT32_MAX};
+    for (const auto id : invalid)
+    {
+        EXPECT_FALSE(MaskHas(0, id));
+        EXPECT_FALSE(MaskHas(~ArchetypeMask(0), id));
+        EXPECT_FALSE(MaskHas(ends, id));
+    }
+}
 
 TEST(ComponentReflection, AllEightBuiltInsAreRegistered)
 {
@@ -145,6 +160,7 @@ TEST(ComponentReflection, EnumFieldsCarryTheirValueTables)
     const FieldDescriptor* light = FindField(*Registry().LookupByName("LightComponent"), "LightType");
     ASSERT_NE(light, nullptr);
     EXPECT_EQ(light->Type, FieldType::Enum);
+    EXPECT_TRUE(light->ReadOnly);
     ASSERT_EQ(light->EnumCount, 3u);
     EXPECT_STREQ(light->EnumValues[0].Name, "Directional");
     EXPECT_EQ(light->EnumValues[2].Value, static_cast<int64_t>(LightComponent::Type::Spot));
@@ -155,6 +171,21 @@ TEST(ComponentReflection, EnumFieldsCarryTheirValueTables)
     ASSERT_EQ(body->EnumCount, 3u);
     EXPECT_STREQ(body->EnumValues[2].Name, "Dynamic");
     EXPECT_EQ(body->EnumValues[2].Value, static_cast<int64_t>(RigidBodyComponent::MotionType::Dynamic));
+}
+
+TEST(ComponentReflection, LightColorIsOneLinearRgbField)
+{
+    const auto* meta = Registry().LookupByName("LightComponent");
+    ASSERT_NE(meta, nullptr);
+    const auto* color = FindField(*meta, "Color");
+    ASSERT_NE(color, nullptr);
+    EXPECT_EQ(color->Type, FieldType::Color3f);
+    EXPECT_EQ(color->Offset, offsetof(LightComponent, Color));
+    EXPECT_EQ(color->Size, sizeof(LightComponent::Color));
+    EXPECT_FALSE(color->ReadOnly);
+    EXPECT_EQ(FindField(*meta, "Color R"), nullptr);
+    EXPECT_EQ(FindField(*meta, "Color G"), nullptr);
+    EXPECT_EQ(FindField(*meta, "Color B"), nullptr);
 }
 
 TEST(ComponentReflection, EveryFieldFitsWithinItsComponent)

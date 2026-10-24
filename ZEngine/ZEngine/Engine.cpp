@@ -1,9 +1,11 @@
 #include <GLFW/glfw3.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/EngineAssetRoot.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
 #include <ZEngine/ECS/Reflection/BuiltInComponentReflection.h>
 #include <ZEngine/ECS/Reflection/ComponentReflectionRegistry.h>
 #include <ZEngine/ECS/Systems/HierarchySystem.h>
@@ -13,6 +15,7 @@
 #include <ZEngine/Engine/FixedTimestepAccumulator.h>
 #include <ZEngine/Engine/FrameRateCap.h>
 #include <ZEngine/Engine/FrameTimer.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Input/InputManager.h>
 #include <ZEngine/Logging/Logger.h>
@@ -25,6 +28,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -119,11 +123,22 @@ namespace ZEngine
         ZENGINE_VALIDATE_ASSERT(Logging::Logger::IsInitialized(), "Engine::Initialize: Logger not initialized — Obelisk must call Logger::Initialize first")
         ZENGINE_VALIDATE_ASSERT(Helpers::ThreadPoolHelper::IsInitialized(), "Engine::Initialize: ThreadPool not initialized — Obelisk must call ThreadPoolHelper::Initialize first")
 
-        auto& arena  = memory->BootstrapArena;
+        const Core::EngineAssetRootResolution resolved_asset_root  = Core::ResolveEngineAssetRoot();
+        const Core::EngineAssetRootResolution validated_asset_root = resolved_asset_root.Succeeded() ? Core::ValidateEngineAssetRoot(resolved_asset_root.Root) : resolved_asset_root;
+        if (!validated_asset_root.Succeeded())
+        {
+            ZENGINE_CORE_CRITICAL("Engine startup aborted: {}", validated_asset_root.Diagnostic)
+            ZENGINE_EXIT_FAILURE()
+        }
 
-        g_engine_ctx = ZPushStructCtor(&arena, EngineContext);
+        auto& arena                          = memory->BootstrapArena;
 
-        auto window  = ZPushStructCtor(&arena, Windows::GameWindow);
+        g_engine_ctx                         = ZPushStructCtor(&arena, EngineContext);
+        const std::string engine_assets_path = validated_asset_root.Root.string();
+        g_engine_ctx->EngineAssetsNativeRoot = ZPushString(&arena, engine_assets_path.size() + 1);
+        ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(g_engine_ctx->EngineAssetsNativeRoot, engine_assets_path.size() + 1, engine_assets_path.c_str(), engine_assets_path.size() + 1) == Helpers::MEMORY_OP_SUCCESS, "Engine::Initialize: failed to persist engine asset root")
+
+        auto window = ZPushStructCtor(&arena, Windows::GameWindow);
         window->SetCallbackFunction(std::bind(&Applications::GameApplication::ProcessEvent, app, std::placeholders::_1));
         window->Initialize(&arena, *window_cfg_ptr);
         g_engine_ctx->Window = window;
@@ -142,13 +157,12 @@ namespace ZEngine
         g_engine_ctx->VFS = vfs_ctx;
 
         {
-            const std::string engine_dir = std::filesystem::current_path().string() + "/ZodiacEngine";
-            g_engine_ctx->EngineAssetsBackend.Initialize(engine_dir.c_str(), Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
+            g_engine_ctx->EngineAssetsBackend.Initialize(g_engine_ctx->EngineAssetsNativeRoot, Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
             auto mount_path = Core::VFS::VFSPath::Parse("/ZodiacEngine");
-            if (mount_path.Succeeded())
+            if (mount_path.Failed() || vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1).Failed())
             {
-                auto res = vfs_ctx->Mount(&g_engine_ctx->EngineAssetsBackend, mount_path.Value(), -1);
-                (void) res;
+                ZENGINE_CORE_CRITICAL("Engine startup aborted: failed to mount engine assets at /ZodiacEngine from {}", g_engine_ctx->EngineAssetsNativeRoot)
+                ZENGINE_EXIT_FAILURE()
             }
 
             const bool has_writable_workspace = app->WorkingSpacePath && app->WorkingSpacePath[0] != '\0' && app->VFSBackend && Core::VFS::HasCap(app->VFSBackend->Capabilities(), Core::VFS::VFSBackendCaps::Write);
@@ -188,6 +202,11 @@ namespace ZEngine
         g_engine_ctx->WorldCommands->Initialize(&g_engine_ctx->ECSArena);
         g_engine_ctx->WorldTick = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::WorldTick);
         g_engine_ctx->WorldTick->Initialize(&g_engine_ctx->ECSArena);
+
+        g_engine_ctx->SceneSchemas = ZPushStructCtor(&g_engine_ctx->ECSArena, ECS::SceneComponentSchemaRegistry);
+        g_engine_ctx->SceneSchemas->Initialize(&g_engine_ctx->ECSArena);
+        ZENGINE_VALIDATE_ASSERT(g_engine_ctx->SceneSchemas->IsInitialized(), "Engine::Initialize: scene schema registry could not be initialized")
+        ZENGINE_VALIDATE_ASSERT(ECS::RegisterBuiltInSceneComponentSchemas(*g_engine_ctx->SceneSchemas), "Engine::Initialize: built-in scene codecs could not be registered")
 
         ECS::ComponentReflectionRegistry::Get().Initialize(&g_engine_ctx->ECSArena);
         ECS::Components::RegisterBuiltInComponentReflection();
@@ -264,7 +283,14 @@ namespace ZEngine
             g_engine_ctx->RenderThread.join();
         }
 
+        // Import and VFS work run on this pool. Join it while the scheduler and
+        // every engine-owned service are still valid, so an in-flight import cannot
+        // publish a completion into torn-down state.
+        Helpers::ThreadPoolHelper::Shutdown();
+
         Core::MainThreadScheduler::Shutdown();
+
+        g_engine_ctx->App->OnWorldShutdown(*g_engine_ctx);
 
         // Step 3 — ECS shutdown: ActorManager before Scene (lifecycle order)
         if (g_engine_ctx->ActorManager)
@@ -318,7 +344,7 @@ namespace ZEngine
 
     bool Engine::OnEngineClosed(Event::EngineClosedEvent& event)
     {
-        RequestClose();
+        RequestApplicationClose();
         return true;
     }
 
@@ -327,13 +353,69 @@ namespace ZEngine
         g_engine_ctx->CloseRequested.value.store(true, std::memory_order_release);
     }
 
+    void Engine::RequestApplicationClose()
+    {
+        if (g_engine_ctx)
+            g_engine_ctx->ApplicationCloseRequested.value.store(true, std::memory_order_release);
+    }
+
+    bool Engine::ProcessApplicationCloseRequest(EngineContext& context)
+    {
+        // Idle frames only read the intent; do not write an otherwise quiet
+        // cross-thread cache line with an unconditional atomic exchange.
+        if (!context.CloseRequested.value.load(std::memory_order_acquire) && context.ApplicationCloseRequested.value.load(std::memory_order_acquire) && context.ApplicationCloseRequested.value.exchange(false, std::memory_order_acq_rel) && (!context.App || context.App->OnCloseRequested()))
+            context.CloseRequested.value.store(true, std::memory_order_release);
+        return context.CloseRequested.value.load(std::memory_order_acquire);
+    }
+
+    float Engine::AdvanceSimulation(EngineContext& context, Timing::FixedTimestepAccumulator& accumulator, float raw_dt)
+    {
+        // Fail closed before touching runtime state. An editor's authored world
+        // must stay unchanged even if a plugin registered systems or queued commands.
+        if (!context.App || !context.App->ShouldSimulate() || context.CloseRequested.value.load(std::memory_order_acquire) || !context.Scene || !context.WorldTick || !context.WorldCommands || !context.ActorManager || context.ActorManager->BoundScene() != context.Scene || !std::isfinite(raw_dt) || raw_dt < 0.f)
+        {
+            accumulator.Reset();
+            return 1.f;
+        }
+        const bool has_systems = context.WorldTick->SystemCount() != 0;
+        // No runtime work: avoid walking a static world's transforms every step.
+        // Actor-only and deferred-command-only applications still advance normally.
+        if (!has_systems && !context.ActorManager->Count() && context.WorldCommands->IsEmpty())
+        {
+            accumulator.Reset();
+            return 1.f;
+        }
+        accumulator.Accumulate(raw_dt);
+        while (accumulator.ShouldStep())
+        {
+            const float fixed_dt = accumulator.FixedDt();
+            if (has_systems)
+                context.WorldTick->Tick(*context.Scene, fixed_dt, *context.WorldCommands);
+            context.WorldCommands->Flush(*context.Scene);
+            context.ActorManager->Tick(fixed_dt);
+            context.Scene->SnapshotTransforms();
+            accumulator.ConsumeStep();
+            // A completed runtime step may request pause/close. Finish that step
+            // coherently, but do not execute more catch-up steps afterwards.
+            if (context.CloseRequested.value.load(std::memory_order_acquire) || !context.App->ShouldSimulate())
+            {
+                accumulator.Reset();
+                return 1.f;
+            }
+        }
+        return accumulator.Alpha();
+    }
+
     void Engine::MainThreadRun()
     {
-        Timing::FrameTimer               frame_timer;
-        Timing::FixedTimestepAccumulator accumulator;
-        Timing::FrameRateCap             frame_cap;
+        Timing::FrameTimer                   frame_timer;
+        Timing::FixedTimestepAccumulator     accumulator;
+        Timing::FrameRateCap                 frame_cap;
 
-        uint64_t                         frame_index = 0;
+        uint64_t                             frame_index     = 0;
+        // Reuse fixed gizmo storage; only live counts are reset for each update.
+        Applications::RenderFrameState       state           = {};
+        const Applications::RenderFrameState minimized_state = {};
 
         ZENGINE_CORE_INFO("Engine main loop starting — FixedDT={:.4f}s MaxSteps=5", accumulator.FixedDt())
 
@@ -352,35 +434,31 @@ namespace ZEngine
             //  Platform events
             window->PollEvent();
 
+            if (ProcessApplicationCloseRequest(*g_engine_ctx))
+                break;
+
             // Pump VFS FileWatcher — drains debounce window, fires Modified/Deleted/Renamed callbacks
             static_cast<Core::VFS::VFSContext*>(g_engine_ctx->VFS)->Tick();
 
             if (window->IsMinimized())
-                continue;
-
-            //  Measure raw delta
-            float raw_dt = frame_timer.End();
-            accumulator.Accumulate(raw_dt);
-
-            //  Fixed simulation steps
-            // ECS systems, Actor OnTick, and WorldCommands flush run inside each
-            // fixed step so simulation is frame-rate independent.
-            if (g_engine_ctx->WorldTick && g_engine_ctx->WorldTick->SystemCount() > 0)
             {
-                while (accumulator.ShouldStep())
-                {
-                    float fixed_dt = accumulator.FixedDt();
-
-                    g_engine_ctx->WorldTick->Tick(*g_engine_ctx->Scene, fixed_dt, *g_engine_ctx->WorldCommands);
-                    g_engine_ctx->WorldCommands->Flush(*g_engine_ctx->Scene);
-                    g_engine_ctx->ActorManager->Tick(fixed_dt);
-                    g_engine_ctx->Scene->SnapshotTransforms(); // must be after Tick
-
-                    accumulator.ConsumeStep();
-                }
+                accumulator.Reset(); // hidden time must never become simulation debt
+                // Input/lifecycle cancellation and async save consent must keep
+                // progressing even when there is no drawable overlay/viewport.
+                Core::MainThreadScheduler::Drain();
+                g_engine_ctx->App->Update(0.f);
+                if (g_engine_ctx->CloseRequested.value.load(std::memory_order_acquire))
+                    break;
+                // Publish a zero-size snapshot so the render thread pauses too;
+                // retaining the last visible extent is not sufficient on Wayland.
+                g_engine_ctx->App->RenderPipeline->PublishFrameState(minimized_state);
+                frame_cap.WaitForFrameBudget();
+                continue;
             }
 
-            float alpha = accumulator.Alpha();
+            //  Measure raw delta
+            const float raw_dt = frame_timer.End();
+            const float alpha  = AdvanceSimulation(*g_engine_ctx, accumulator, raw_dt);
 
             // Import coordinator (up to JOBS_PER_TICK jobs per frame)
             if (g_engine_ctx->ImportCoordinator)
@@ -397,6 +475,9 @@ namespace ZEngine
 
             // Application update (non-ECS game logic)
             g_engine_ctx->App->Update(raw_dt);
+
+            if (g_engine_ctx->CloseRequested.value.load(std::memory_order_acquire))
+                break;
 
             auto pipeline = g_engine_ctx->App->RenderPipeline;
 
@@ -424,20 +505,13 @@ namespace ZEngine
                 ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_engine_ctx->App->CurrentScene);
             }
 
-            Applications::RenderFrameState state = {};
+            state.Gizmo.Reset();
             g_engine_ctx->App->PrepareScene(state);
-            if (state.Scene)
-            {
-                // Scene mutation happens on this thread. Send an immutable
-                // configuration copy with its revision through the bounded
-                // frame-state mailbox instead of exposing Scene->Sky to the
-                // render thread.
-                state.Sky            = state.Scene->Sky;
-                state.CelestialLight = state.Scene->CelestialLight;
-                state.SkyRevision    = state.Scene->SkyRevision.value.load(std::memory_order_acquire);
-            }
+            state.FramebufferW  = window->GetWidth();
+            state.FramebufferH  = window->GetHeight();
             state.RenderOverlay = g_engine_ctx->App->EnableRenderOverlay;
-            pipeline->PublishFrameState(state);
+            // Transient mailbox pressure is expected; the consumer retains its valid frame.
+            pipeline->PublishFrameState(state, g_engine_ctx->App->CurrentScene);
 
             //  Frame rate cap — applied unconditionally.
             //  Vsync throttles the GPU present in the render thread; the main loop
@@ -474,7 +548,7 @@ namespace ZEngine
 
         while (true)
         {
-            if (g_engine_ctx->RequestTerminate.value.load(std::memory_order_acquire))
+            if (g_engine_ctx->RequestTerminate.value.load(std::memory_order_acquire) || g_engine_ctx->CloseRequested.value.load(std::memory_order_acquire))
             {
                 break;
             }
@@ -491,11 +565,9 @@ namespace ZEngine
                 continue;
             }
 
-            Applications::RenderFrameState next_frame_state = {};
-            if (pipeline->TryReadFrameState(next_frame_state))
+            if (pipeline->TryReadFrameState(retained_frame_state))
             {
-                retained_frame_state = next_frame_state;
-                has_frame_state      = true;
+                has_frame_state = true;
             }
             if (!has_frame_state)
             {
@@ -514,13 +586,16 @@ namespace ZEngine
                 applied_resize_sequence = state.ResizeSequence;
             }
 
+            pipeline->Device->SwapchainPtr->UpdateFramebufferExtent(state.FramebufferW, state.FramebufferH);
             const bool frame_valid = pipeline->BeginFrame();
-            if (frame_valid && state.Scene)
+            if (frame_valid && state.Scene.HasScene)
             {
                 const auto* overlay = state.RenderOverlay ? (has_next_overlay ? &next_overlay->ZUIOverlay : (retained_overlay ? &retained_overlay->ZUIOverlay : nullptr)) : nullptr;
-                pipeline->RenderScene(state.Camera, state.Scene, state.Sky, state.CelestialLight, state.SkyRevision, overlay);
+                pipeline->RenderScene(state, overlay);
             }
             pipeline->EndFrame();
+            if (!frame_valid)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
             // Update SmoothedDeltaTime with the render thread's smoothed frame time.
             // End() is called after EndFrame() so the vsync wait is included in the sample.
@@ -543,6 +618,7 @@ namespace ZEngine
 
         if (retained_overlay)
             g_engine_ctx->App->RenderPipeline->EndOverlayRead(retained_overlay_slot);
+        g_engine_ctx->App->RenderPipeline->ReleaseFrameState();
     }
 
     void Engine::OnWatchedFileChanged(void* context, const Core::VFS::VFSPath& path, Core::VFS::WatchEventKind kind)

@@ -5,7 +5,9 @@
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/UI/ZUIFont.h>
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 
 using namespace ZEngine::Core::Memory;
@@ -14,6 +16,31 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
+    static_assert(offsetof(ZUIDrawPushConstant, FbScale) == 16);
+    static_assert(offsetof(ZUIDrawPushConstant, TexIdx) == 24);
+    static_assert(offsetof(ZUIDrawPushConstant, Shadow) == 32);
+    static_assert(offsetof(ZUIDrawPushConstant, ColorField) == 48);
+    static_assert(sizeof(ZUIDrawPushConstant) == 64);
+
+    VkRect2D ZUIRenderPayload::GetScissorRect(const UI::ZUIDrawListCmd& cmd, VkExtent2D render_extent) const
+    {
+        if (!(Scale[0] > 0.f) || !(Scale[1] > 0.f) || !(cmd.ClipW > 0.f) || !(cmd.ClipH > 0.f))
+            return {};
+
+        const float scale_x = 0.5f * (float) render_extent.width * Scale[0];
+        const float scale_y = 0.5f * (float) render_extent.height * Scale[1];
+        // Round outward and clamp both endpoints before converting to unsigned
+        // extents. This also handles partially off-screen and empty clip regions.
+        const float x0      = std::clamp(floorf(cmd.ClipX * scale_x), 0.f, (float) render_extent.width);
+        const float y0      = std::clamp(floorf(cmd.ClipY * scale_y), 0.f, (float) render_extent.height);
+        const float x1      = std::clamp(ceilf((cmd.ClipX + cmd.ClipW) * scale_x), x0, (float) render_extent.width);
+        const float y1      = std::clamp(ceilf((cmd.ClipY + cmd.ClipH) * scale_y), y0, (float) render_extent.height);
+        return {
+            {        (int32_t) x0,         (int32_t) y0},
+            {(uint32_t) (x1 - x0), (uint32_t) (y1 - y0)}
+        };
+    }
+
     // Initialize / Deinitialize
 
     void ZUIPass::Initialize(Hardwares::VulkanDevicePtr device)
@@ -29,10 +56,10 @@ namespace ZEngine::Rendering::Renderers
         // GPU buffer sizes — must match or exceed the draw list's max capacity.
         // GrowVtx doubles the CPU buffer when exceeded; if CPU > GPU the upload
         // overflows and corrupts GPU memory (observed as flickering triangles).
-        // 65536 vertices × 20 bytes = 1.3 MB/frame
-        // 131072 indices × 2 bytes  = 256 KB/frame
-        static constexpr uint32_t kMaxVtx = 65536;
-        static constexpr uint32_t kMaxIdx = 131072;
+        // 65536 vertices x 20 bytes = 1.3 MB/frame. Index storage must cover
+        // AA tessellation, not just two indices per vertex (see IndexCapacity).
+        static constexpr uint32_t kMaxVtx = VertexCapacity;
+        static constexpr uint32_t kMaxIdx = IndexCapacity;
         for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
             VtxBHandles[i] = Device->GpuMem.AllocateBuffer(sizeof(ZUIDrawVtx) * kMaxVtx, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, GpuMemoryDomain::HostUniform, "ZUIVertexBuffer");
@@ -91,8 +118,8 @@ namespace ZEngine::Rendering::Renderers
         if (!rrm)
             return true;
 
-        static constexpr uint32_t kVtxCap = 65536;
-        static constexpr uint32_t kIdxCap = 131072;
+        static constexpr uint32_t kVtxCap = VertexCapacity;
+        static constexpr uint32_t kIdxCap = IndexCapacity;
         m_vtx_upload                      = m_payload->VtxCount > kVtxCap ? kVtxCap : m_payload->VtxCount;
         m_idx_upload                      = m_payload->IdxCount > kIdxCap ? kIdxCap : m_payload->IdxCount;
         const uint32_t frame_buffer_index = frame_context.FrameIndex % FRAMES_IN_FLIGHT;
@@ -131,25 +158,29 @@ namespace ZEngine::Rendering::Renderers
 
     void ZUIPass::PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena)
     {
-        if (!ctx || !ctx->Root || !out || !payload_arena)
-        {
+        if (!out)
             return;
-        }
+        // Callers may recycle this descriptor. An absent tree/arena must not
+        // leave pointers and counts into a previous frame's cleared arena.
+        *out = {};
+        if (!ctx || !ctx->Root || !payload_arena)
+            return;
 
-        // Match GPU buffer sizes exactly — GrowVtx can expand CPU buffers;
-        // if CPU > GPU at upload time we get memory corruption (flickering).
-        const uint32_t kMaxVtx   = 65536;
-        const uint32_t kMaxIdx   = 131072;
+        // Keep a small initial CPU index allocation for lightweight callers.
+        // Retain geometric growth headroom, not the last exact count: otherwise
+        // each small increase allocates and copies again in a fresh frame arena.
+        // GPU uploads independently use IndexCapacity.
+        const uint32_t kMaxVtx   = VertexCapacity;
+        const uint32_t kMaxIdx   = std::clamp(ctx->DrawList.IdxCapacity, 131072u, IndexCapacity);
         const uint32_t max_boxes = ctx->MaxBoxesPerFrame;
 
-        float          fb_w      = ctx->ScreenW > 0 ? (float) ctx->ScreenW : (float) Device->SwapchainPtr->SwapchainImageWidth;
-        float          fb_h      = ctx->ScreenH > 0 ? (float) ctx->ScreenH : (float) Device->SwapchainPtr->SwapchainImageHeight;
+        const float    screen_w  = ctx->ScreenW > 0 ? (float) ctx->ScreenW : 1.f;
+        const float    screen_h  = ctx->ScreenH > 0 ? (float) ctx->ScreenH : 1.f;
 
-        out->Scale[0]            = 2.f / fb_w;
-        out->Scale[1]            = 2.f / fb_h;
+        out->Scale[0]            = 2.f / screen_w;
+        out->Scale[1]            = 2.f / screen_h;
         out->Translate[0]        = -1.f;
         out->Translate[1]        = -1.f;
-        out->FramebufferScale    = ctx->UIScale > 0.f ? ctx->UIScale : 1.f;
 
         uint32_t atlas_idx       = ctx->Atlas ? static_cast<uint32_t>(ctx->Atlas->Handle.Index) : 0;
         float    wu              = ctx->Atlas ? ctx->Atlas->WhiteU : 0.f;
@@ -157,7 +188,9 @@ namespace ZEngine::Rendering::Renderers
 
         // Init draw list into payload_arena
         ZUIDrawListInit(&ctx->DrawList, payload_arena, kMaxVtx, kMaxIdx, wu, wv, atlas_idx);
-        ZUIDrawListPushClipRect(&ctx->DrawList, 0.f, 0.f, fb_w, fb_h, false);
+        // One framebuffer pixel of coverage at native, Retina and fractional DPI.
+        ctx->DrawList.FringeScale = std::isfinite(ctx->UIScale) && ctx->UIScale > 0.f ? 1.f / ctx->UIScale : 1.f;
+        ZUIDrawListPushClipRect(&ctx->DrawList, 0.f, 0.f, screen_w, screen_h, false);
 
         // Helpers
 
@@ -234,10 +267,10 @@ namespace ZEngine::Rendering::Renderers
 
             // Maintain clip stack
             PopToAncestor(box);
-            if (box->Flags & ZUI_ClipChildren)
-                PushBoxClip(box);
             if (bx1 <= bx0 || by1 <= by0)
             {
+                if (box->Flags & ZUI_ClipChildren)
+                    PushBoxClip(box);
                 continue;
             } // zero-area
 
@@ -246,10 +279,17 @@ namespace ZEngine::Rendering::Renderers
             // Drop shadow (emitted first, renders behind everything)
             if (box->Flags & ZUI_DropShadow)
             {
-                float    offset = ctx->Style.DropShadowOffset;
-                uint32_t scol   = ZUIPackColor(0.f, 0.f, 0.f, ctx->Style.DropShadowAlpha);
-                ZUIDrawListAddRectFilled(&ctx->DrawList, bx0 + offset, by0 + offset, bx1 + offset, by1 + offset, scol, cr);
+                const bool  modal    = box->ShadowKind == ZUIShadowKind::Modal;
+                const float offset_y = modal ? ctx->Style.ModalShadowOffsetY : ctx->Style.MenuShadowOffsetY;
+                const float blur     = modal ? ctx->Style.ModalShadowBlur : ctx->Style.MenuShadowBlur;
+                const float alpha    = modal ? ctx->Style.ModalShadowAlpha : ctx->Style.MenuShadowAlpha;
+                ZUIDrawListAddShadow(&ctx->DrawList, bx0, by0 + offset_y, bx1, by1 + offset_y, ZUIPackColor(0.f, 0.f, 0.f, alpha), cr, blur);
             }
+
+            // A popup's blur extends outside its own content clip. Ancestor
+            // clips still apply to the shadow; the box and its children clip here.
+            if (box->Flags & ZUI_ClipChildren)
+                PushBoxClip(box);
 
             // Per-corner round_flags from CornerRadii — allows top-only, bottom-only, etc.
             // ZUIBox index→PathRect bit: TL=0→0x1, TR=1→0x2, BR=3→0x4, BL=2→0x8
@@ -284,7 +324,7 @@ namespace ZEngine::Rendering::Renderers
 
                 if (box->TextureIndex != 0xFFFFFFFFu)
                 {
-                    ZUIDrawListAddImage(&ctx->DrawList, box->TextureIndex, bx0, by0, bx1, by1, 0.f, 0.f, 1.f, 1.f, ZUIPackColor(1.f, 1.f, 1.f, 1.f));
+                    ZUIDrawListAddImage(&ctx->DrawList, box->TextureIndex, bx0, by0, bx1, by1, 0.f, box->TextureFlipV ? 1.f : 0.f, 1.f, box->TextureFlipV ? 0.f : 1.f, ZUIPackColor(1.f, 1.f, 1.f, 1.f));
                 }
                 else if (all_same)
                 {
@@ -306,30 +346,41 @@ namespace ZEngine::Rendering::Renderers
                 }
             }
 
+            if (box->CustomDraw)
+                box->CustomDraw(&ctx->DrawList, box, box->CustomDrawData);
+
             // Border
-            if ((box->Flags & ZUI_DrawBorder) && box->BorderThickness > 0.f)
+            const bool keyboard_focus = (box->Flags & ZUI_KeyboardFocused) != 0;
+            if (keyboard_focus || ((box->Flags & ZUI_DrawBorder) && box->BorderThickness > 0.f))
             {
-                uint32_t bcol = ZUIPackColor(box->BorderColor);
+                const bool default_focus_color = keyboard_focus && !(box->Flags & ZUI_CustomFocusBorder);
+                uint32_t   bcol                = ZUIPackColor(default_focus_color ? ctx->Theme.InputFocusBorder : box->BorderColor);
                 if ((bcol >> 24) > 2)
-                    ZUIDrawListAddRect(&ctx->DrawList, bx0, by0, bx1, by1, bcol, cr, rf ? rf : 0xF, box->BorderThickness);
+                {
+                    if (!keyboard_focus && (box->Flags & ZUI_DashedBorder))
+                        ZUIDrawListAddRectDashed(&ctx->DrawList, bx0, by0, bx1, by1, bcol, cr, box->BorderThickness);
+                    else
+                        ZUIDrawListAddRect(&ctx->DrawList, bx0, by0, bx1, by1, bcol, cr, rf ? rf : 0xF, keyboard_focus ? 1.f : box->BorderThickness);
+                }
             }
 
             // Text
-            if ((box->Flags & ZUI_DrawText) && box->Label.Ptr && ctx->GetFont(box->FontSize))
+            if ((box->Flags & ZUI_DrawText) && box->Label.Ptr && ctx->GetFont(box->FontSize) && ctx->GetFont(box->FontSize)->Glyphs)
             {
                 const ZUIFont* font     = ctx->GetFont(box->FontSize);
-                float          fs       = font->FontScale > 0.f ? font->FontScale : 1.f;
+                float          fs       = (font->FontScale > 0.f ? font->FontScale : 1.f) * ZUIBoxTextScale(box);
                 float          lh       = font->LineHeight * fs;
                 float          box_h    = by1 - by0;
                 float          text_top = floorf(by0 + (box_h - lh) * 0.5f);
                 float          baseline = text_top + font->Ascent * fs;
-                float          indent   = box->Padding[0] > 0.f ? box->Padding[0] : ctx->Style.FramePadding[0];
+                float          indent   = box->Padding[0] > 0.f || (box->Flags & ZUI_TextNoInset) ? box->Padding[0] : ctx->Style.FramePadding[0];
                 float          cx       = floorf(bx0 + indent);
 
                 if (box->TextAlign != ZUITextAlign::Left)
                 {
                     float ts[2] = {0.f, 0.f};
                     ZUIMeasureText(font, box->Label.Ptr, box->Label.Len, ts);
+                    ts[0] *= ZUIBoxTextScale(box);
                     if (box->TextAlign == ZUITextAlign::Center)
                         cx = floorf(bx0 + ((bx1 - bx0) - ts[0]) * 0.5f);
                     else
@@ -359,6 +410,30 @@ namespace ZEngine::Rendering::Renderers
                     ZUIDrawListAddImage(&ctx->DrawList, atlas_idx, gx0, gy0, gx1, gy1, g.U0, g.V0, g.U1, g.V1, text_col);
                     cx += g.AdvanceX * fs;
                 }
+            }
+
+            // Shared atlas: toolbar font glyphs or exact exported thumbnail masks.
+            // Each set retains its own authored em box and stroke geometry.
+            const auto* icon_font = (box->Flags & ZUI_DrawIcon) && ctx->Atlas ? ctx->Atlas->Icon : nullptr;
+            if ((box->Flags & ZUI_DrawIcon) && (box->Flags & ZUI_AssetIcon) && ctx->Atlas)
+            {
+                const auto* asset_font = ctx->Atlas->AssetIcon;
+                if (asset_font && asset_font->Glyphs && box->IconId < asset_font->GlyphCount && asset_font->Glyphs[box->IconId].Width > 0.f && asset_font->Glyphs[box->IconId].Height > 0.f)
+                    icon_font = asset_font;
+            }
+            if (icon_font && icon_font->Glyphs && box->IconId < icon_font->GlyphCount && icon_font->Glyphs[box->IconId].Width > 0.f && icon_font->Glyphs[box->IconId].Height > 0.f)
+            {
+                const float     ifs      = icon_font->FontScale > 0.f ? icon_font->FontScale : 1.f;
+                const ZUIGlyph& g        = icon_font->Glyphs[box->IconId];
+                // Both sets are baked once; scaling changes only these four vertices.
+                const float     em       = icon_font->FontSize * ifs;
+                const float     k        = (em > 0.f) ? fminf(bx1 - bx0, by1 - by0) / em : 1.f;
+                const float     sc       = ifs * k;
+                const float     pen_x    = (bx0 + bx1) * 0.5f - g.AdvanceX * sc * 0.5f;
+                const float     baseline = (by0 + by1) * 0.5f + (icon_font->Ascent + icon_font->Descent) * 0.5f * sc;
+                const float     gx0      = pen_x + g.OffsetX * sc;
+                const float     gy0      = baseline + g.OffsetY * sc;
+                ZUIDrawListAddImage(&ctx->DrawList, atlas_idx, gx0, gy0, gx0 + g.Width * sc, gy0 + g.Height * sc, g.U0, g.V0, g.U1, g.V1, ZUIPackColor(box->TextColor));
             }
 
             // Checkmark (✓ polyline stroke)
@@ -481,7 +556,14 @@ namespace ZEngine::Rendering::Renderers
                     // Filled equilateral triangle (tree nodes, collapsing headers)
                     float r    = (by1 - by0) * (0.40f * 13.f / 19.f);
                     bool  down = udata > 0.5f;
-                    if (down)
+                    if (box->ArrowFitBounds)
+                    {
+                        if (down)
+                            ZUIDrawListAddTriangleFilled(&ctx->DrawList, bx0, by0, bx1, by0, cx, by1, cc);
+                        else
+                            ZUIDrawListAddTriangleFilled(&ctx->DrawList, bx0, by0, bx1, cy, bx0, by1, cc);
+                    }
+                    else if (down)
                     {
                         // ▼ Down
                         ZUIDrawListAddTriangleFilled(&ctx->DrawList, cx + 0.000f * r, cy + 0.750f * r, cx - 0.866f * r, cy - 0.750f * r, cx + 0.866f * r, cy - 0.750f * r, cc);
@@ -797,13 +879,20 @@ namespace ZEngine::Rendering::Renderers
         const uint32_t          frame_index = device->SwapchainPtr->CurrentFrame->Index;
         const uint32_t          fi          = frame_index % FRAMES_IN_FLIGHT;
         {
-            auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
-            command_buffer->SetViewport(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
+            auto*            gp            = static_cast<RenderPasses::GraphicPass*>(pass);
+            const VkExtent2D render_extent = {gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight()};
+            command_buffer->SetViewport(render_extent.width, render_extent.height);
             command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindVertexBuffer(VtxBHandles[fi]);
             command_buffer->BindIndexBuffer(IdxBHandles[fi], VK_INDEX_TYPE_UINT16);
 
-            float fs = payload.FramebufferScale;
+            ZUIDrawPushConstant pc = {};
+            pc.Scale[0]            = payload.Scale[0];
+            pc.Scale[1]            = payload.Scale[1];
+            pc.Translate[0]        = payload.Translate[0];
+            pc.Translate[1]        = payload.Translate[1];
+            pc.FbScale[0]          = 0.5f * (float) render_extent.width * payload.Scale[0];
+            pc.FbScale[1]          = 0.5f * (float) render_extent.height * payload.Scale[1];
 
             for (uint32_t i = 0; i < payload.CmdCount; ++i)
             {
@@ -818,16 +907,13 @@ namespace ZEngine::Rendering::Renderers
                     continue;
                 }
 
-                // Logical → physical pixel scissor
-                command_buffer->SetScissor((uint32_t) (cmd.ClipW * fs), (uint32_t) (cmd.ClipH * fs), (int32_t) (cmd.ClipX * fs), (int32_t) (cmd.ClipY * fs));
-
-                ZUIDrawPushConstant pc = {};
-                pc.Scale[0]            = payload.Scale[0];
-                pc.Scale[1]            = payload.Scale[1];
-                pc.Translate[0]        = payload.Translate[0];
-                pc.Translate[1]        = payload.Translate[1];
-                pc.TexIdx              = cmd.TexIdx;
-                pc.FbScale             = payload.FramebufferScale;
+                const VkRect2D scissor = payload.GetScissorRect(cmd, render_extent);
+                if (scissor.extent.width == 0 || scissor.extent.height == 0)
+                    continue;
+                command_buffer->SetScissor(scissor.extent.width, scissor.extent.height, scissor.offset.x, scissor.offset.y);
+                pc.TexIdx     = cmd.TexIdx;
+                pc.Shadow     = cmd.Shadow;
+                pc.ColorField = cmd.ColorField;
 
                 command_buffer->PushConstants(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ZUIDrawPushConstant), &pc);
                 command_buffer->BindDescriptorSets(frame_index);

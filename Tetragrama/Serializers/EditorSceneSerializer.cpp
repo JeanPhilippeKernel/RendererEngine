@@ -7,6 +7,7 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/SkyConfigSerialization.h>
 #include <fmt/format.h>
@@ -22,7 +23,9 @@ namespace Tetragrama::Serializers
     void EditorSceneSerializer::Serialize(EditorScene* const scene)
     {
         if (!scene || m_is_serializing.exchange(true, std::memory_order_acq_rel))
+        {
             return;
+        }
 
         m_pending_serialize_scene = scene;
         if (!ThreadPoolHelper::Submit(this, &EditorSceneSerializer::RunSerializeTask))
@@ -57,7 +60,9 @@ namespace Tetragrama::Serializers
         if (!out.is_open())
         {
             if (m_error_callback)
+            {
                 m_error_callback(Context, "Error: Unable to open file for writing.");
+            }
             m_pending_serialize_scene = nullptr;
             m_is_serializing.store(false, std::memory_order_release);
             return;
@@ -80,17 +85,24 @@ namespace Tetragrama::Serializers
             for (uint32_t i = 0; i < instances.size(); ++i)
             {
                 if (!mgr || !mgr->Registry)
+                {
                     break;
+                }
+                std::lock_guard    asset_lock(mgr->IngestMutex);
                 const uuids::uuid& uid = instances[i].MeshUUID;
                 const auto*        rec = mgr->Registry->FindByUUID(uid);
                 if (!rec || rec->Meta.ArtifactPath[0] != '\0')
+                {
                     continue; // already cooked or not found
+                }
 
                 // In-memory mesh with no .zemesh — cook it now
                 auto* mesh      = mgr->GetMeshAsset(uid);
                 auto* hierarchy = mgr->GetMeshNodeHierarchy(uid);
                 if (!mesh || !hierarchy)
+                {
                     continue;
+                }
 
                 std::string                                         asset_name  = instances[i].Name[0] ? instances[i].Name : "UnknownMesh";
                 std::string                                         output_file = asset_name + ".zemesh";
@@ -106,12 +118,16 @@ namespace Tetragrama::Serializers
                 cook_cfg.VFS = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ZEngine::Engine::GetContext()->VFS);
 
                 auto output  = ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(scratch.Arena, *mesh, *hierarchy, cook_cfg);
-                if (!output.Path.empty())
+                if (output.Succeeded())
                 {
                     // Register the artifact path so future saves don't re-cook
-                    ZEngine::Helpers::secure_strncpy(const_cast<ZEngine::Core::VFS::AssetRecord*>(rec)->Meta.ArtifactPath, MAX_FILE_PATH_COUNT, output.Path.c_str(), output.Path.size());
+                    ZEngine::Helpers::secure_strncpy(const_cast<ZEngine::Core::VFS::AssetRecord*>(rec)->Meta.ArtifactPath, MAX_FILE_PATH_COUNT, output.Value().Path.c_str(), output.Value().Path.size());
 
-                    scene->PushAssetFile(output);
+                    scene->PushAssetFile(output.Value());
+                }
+                else
+                {
+                    ZENGINE_CORE_ERROR("Failed to cook '{}/{}' (VFS error {})", cook_cfg.OutputAssetsPath.c_str(), output_file, static_cast<uint32_t>(output.Error()))
                 }
             }
             ZReleaseScratch(scratch);
@@ -162,11 +178,15 @@ namespace Tetragrama::Serializers
     void EditorSceneSerializer::Deserialize(cstring filename)
     {
         if (m_is_deserializing.exchange(true, std::memory_order_acq_rel))
+        {
             return;
+        }
 
         ZEngine::Helpers::secure_strcpy(m_pending_deserialize_filename, sizeof(m_pending_deserialize_filename), filename ? filename : "");
         if (!ThreadPoolHelper::Submit(this, &EditorSceneSerializer::RunDeserializeTask))
+        {
             m_is_deserializing.store(false, std::memory_order_release);
+        }
     }
 
     void EditorSceneSerializer::RunDeserializeTask(void* context)
@@ -210,7 +230,9 @@ namespace Tetragrama::Serializers
         {
             in_stream.close();
             if (m_error_callback)
+            {
                 m_error_callback(Context, "Error: Invalid scene file.");
+            }
             m_is_deserializing.store(false, std::memory_order_release);
             return;
         }
@@ -218,7 +240,9 @@ namespace Tetragrama::Serializers
         const auto reject_file = [&](cstring message) {
             in_stream.close();
             if (m_error_callback)
+            {
                 m_error_callback(Context, message);
+            }
             m_is_deserializing.store(false, std::memory_order_release);
         };
         constexpr size_t kMaxSceneStringLength = MAX_FILE_PATH_COUNT - 1;
@@ -243,7 +267,9 @@ namespace Tetragrama::Serializers
         if (!scene->InitializeDeserialized())
         {
             if (m_error_callback)
+            {
                 m_error_callback(Context, "Error: unable to allocate persistent scene storage.");
+            }
             m_is_deserializing.store(false, std::memory_order_release);
             return;
         }
@@ -259,7 +285,9 @@ namespace Tetragrama::Serializers
         }
         scene->AssetFiles.reserve(asset_file_count);
         if (asset_file_count > 0)
+        {
             scene->HashToAssetFile.reserve(asset_file_count * 2);
+        }
 
         for (size_t i = 0; i < asset_file_count; ++i)
         {

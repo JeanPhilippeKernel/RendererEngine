@@ -24,8 +24,10 @@ int applicationEntryPoint(int argc, char* argv[])
     argv                      = cli.ensure_utf8(argv);
     std::string config_file   = "";
     bool        launch_editor = false;
+    bool        gizmo_debug   = false;
     cli.add_option("--projectConfigFile", config_file, "The project config file");
     cli.add_option("--launchEditor", launch_editor, "Activate the editor");
+    cli.add_flag("--gizmoDebug", gizmo_debug, "Show the non-interactive native gizmo renderer fixture (editor only)");
 
     CLI11_PARSE(cli, argc, argv);
 
@@ -56,8 +58,9 @@ int applicationEntryPoint(int argc, char* argv[])
 
     if (launch_editor)
     {
-        app                      = ZPushStructCtor(arena, Tetragrama::Editor);
-        app->EnableRenderOverlay = true;
+        app                                                     = ZPushStructCtor(arena, Tetragrama::Editor);
+        static_cast<Tetragrama::Editor*>(app)->EnableGizmoDebug = gizmo_debug;
+        app->EnableRenderOverlay                                = true;
     }
 
     app->ConfigFile = config_file_str;
@@ -65,9 +68,6 @@ int applicationEntryPoint(int argc, char* argv[])
     app->Initialize(&manager);
     app->Run();
     app->Shutdown();
-
-    // Step 15 — join worker threads before logger/memory teardown
-    Helpers::ThreadPoolHelper::Shutdown();
 
     // Step 16 — flush and dispose logger
     Logger::Flush();

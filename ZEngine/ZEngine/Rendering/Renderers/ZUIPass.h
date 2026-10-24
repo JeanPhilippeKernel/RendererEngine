@@ -15,28 +15,32 @@ namespace ZEngine::Rendering::Renderers
     /// @brief Frame-local draw data consumed by ZUIPass.
     struct ZUIRenderPayload
     {
-        UI::ZUIDrawVtx*     Vtx              = nullptr;
-        uint32_t            VtxCount         = 0;
-        uint16_t*           Idx              = nullptr;
-        uint32_t            IdxCount         = 0;
-        UI::ZUIDrawListCmd* Cmds             = nullptr;
-        uint32_t            CmdCount         = 0;
-        /// @brief Physical-to-logical scale used for scissor rectangles.
-        float               FramebufferScale = 1.f;
-        /// @brief NDC scale: 2 / framebuffer extent.
-        float               Scale[2]         = {};
+        UI::ZUIDrawVtx*     Vtx          = nullptr;
+        uint32_t            VtxCount     = 0;
+        uint16_t*           Idx          = nullptr;
+        uint32_t            IdxCount     = 0;
+        UI::ZUIDrawListCmd* Cmds         = nullptr;
+        uint32_t            CmdCount     = 0;
+        /// @brief NDC scale: 2 / logical UI extent.
+        float               Scale[2]     = {};
         /// @brief NDC origin offset.
-        float               Translate[2]     = {};
+        float               Translate[2] = {};
+
+        /// @brief Projects a logical clip rectangle into the actual render target.
+        VkRect2D            GetScissorRect(const UI::ZUIDrawListCmd& cmd, VkExtent2D render_extent) const;
     };
 
     /// @brief Push-constant layout shared with zui_draw.vert.
     struct ZUIDrawPushConstant
     {
-        float    Scale[2]     = {};
-        float    Translate[2] = {};
-        uint32_t TexIdx       = 0;
-        /// @brief Physical-to-logical scale consumed by uFbScale.
-        float    FbScale      = 1.f;
+        float                       Scale[2]     = {};
+        float                       Translate[2] = {};
+        /// @brief Logical-to-physical scale consumed by uFbScale.
+        float                       FbScale[2]   = {1.f, 1.f};
+        uint32_t                    TexIdx       = 0;
+        uint32_t                    Padding      = 0; ///< Align the GLSL vec4 effect descriptor to offset 32.
+        UI::ZUIShadowDrawParams     Shadow       = {};
+        UI::ZUIColorFieldDrawParams ColorField   = {};
     };
 
     /// @brief Final graphics pass that uploads and draws the ZUI draw list.
@@ -44,6 +48,10 @@ namespace ZEngine::Rendering::Renderers
     {
         /// @brief Number of frame-local upload-buffer slots owned by the pass.
         static constexpr uint32_t            FRAMES_IN_FLIGHT              = 3;
+        static constexpr uint32_t            VertexCapacity                = UI::ZUIDrawList::VertexLimit;
+        // uint16_t bounds vertex addresses, not the number of indices. AA
+        // strokes/fills reuse each vertex several times (up to 4.5 indices/vertex).
+        static constexpr uint32_t            IndexCapacity                 = UI::ZUIDrawList::IndexLimit;
 
         /// @brief Graphics-pass state used to render the current ZUI payload.
         RenderPasses::GraphicPass*           DrawPass                      = nullptr;

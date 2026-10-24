@@ -1,21 +1,22 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/UI/ZUIDrawList.h>
+#include <algorithm>
 #include <cmath>
-#include <cstring>
+#include <type_traits>
 
 using namespace ZEngine::Core::Memory;
 
 namespace ZEngine::UI
 {
     // Constants matching ImGui's geometry quality
-    static constexpr float kPI             = 3.14159265358979f;
-    static constexpr float kCircleMaxError = 0.30f; // px
-    static constexpr int   kArcFastSize    = 48;    // unit circle LUT size
+    static constexpr float kPI                        = 3.14159265358979f;
+    static constexpr float kCircleMaxError            = 0.30f; // px
+    static constexpr int   kArcFastSize               = 48;    // unit circle LUT size
 
     // 48-sample unit circle LUT (precomputed, matches ImGui ArcFastVtx)
-    static float           s_CircleLUTX[kArcFastSize];
-    static float           s_CircleLUTY[kArcFastSize];
-    static bool            s_CircleLUTInited = false;
+    static float           s_CircleLUTX[kArcFastSize] = {};
+    static float           s_CircleLUTY[kArcFastSize] = {};
+    static bool            s_CircleLUTInited          = false;
 
     static void            InitCircleLUT()
     {
@@ -33,17 +34,35 @@ namespace ZEngine::UI
     // Compute segment count for a circle of given radius
     static int CircleSegments(float radius)
     {
-        if (radius <= 0.f)
+        if (!std::isfinite(radius) || radius <= 0.f)
             return 4;
-        int n = (int) ceilf(kPI / acosf(1.f - kCircleMaxError / radius));
-        if (n < 4)
-            n = 4;
-        if (n > 512)
-            n = 512;
+        // Tiny radii can leave acos's domain; enormous radii round its input
+        // to one. Clamp before acos and before converting the count to int.
+        const double angle = std::acos(std::clamp(1.0 - double(kCircleMaxError) / radius, -1.0, 1.0));
+        const double count = angle > 0.0 ? std::ceil(double(kPI) / angle) : 512.0;
+        const int    n     = static_cast<int>(std::clamp(count, 4.0, 512.0));
         return n & ~1; // round to even
     }
 
     // Allocation helpers
+
+    // Buffer capacity is not live data. Every emitted vertex, index, command
+    // and path coordinate is fully assigned before its count is advanced; do
+    // not zero megabytes of unused capacity every frame. Metadata and command
+    // descriptors still use value initialization, including nonzero defaults.
+    template <typename T>
+    static T* AllocateDrawBuffer(ArenaAllocator* arena, uint32_t count)
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+        auto* buffer = static_cast<T*>(arena->AllocateNoZero(sizeof(T) * count, ZAlignof(T)));
+        ZENGINE_VALIDATE_ASSERT(buffer != nullptr, "ZUI draw buffer arena exhausted");
+        return buffer;
+    }
+
+    static bool CanAppendGeometry(const ZUIDrawList* dl, uint32_t vertices, uint32_t indices)
+    {
+        return dl->VtxCount <= ZUIDrawList::VertexLimit && vertices <= ZUIDrawList::VertexLimit - dl->VtxCount && dl->IdxCount <= ZUIDrawList::IndexLimit && indices <= ZUIDrawList::IndexLimit - dl->IdxCount;
+    }
 
     static void GrowVtx(ZUIDrawList* dl, ArenaAllocator* arena, uint32_t needed)
     {
@@ -52,9 +71,10 @@ namespace ZEngine::UI
         uint32_t new_cap = dl->VtxCapacity ? dl->VtxCapacity * 2 : 4096;
         while (new_cap < dl->VtxCount + needed)
             new_cap *= 2;
-        ZUIDrawVtx* nb = ZPushArray(arena, ZUIDrawVtx, new_cap);
+        new_cap        = std::min(new_cap, ZUIDrawList::VertexLimit);
+        ZUIDrawVtx* nb = AllocateDrawBuffer<ZUIDrawVtx>(arena, new_cap);
         if (dl->Vtx)
-            memcpy(nb, dl->Vtx, dl->VtxCount * sizeof(ZUIDrawVtx));
+            Helpers::secure_memcpy(nb, new_cap * sizeof(ZUIDrawVtx), dl->Vtx, dl->VtxCount * sizeof(ZUIDrawVtx));
         dl->Vtx         = nb;
         dl->VtxCapacity = new_cap;
     }
@@ -66,9 +86,10 @@ namespace ZEngine::UI
         uint32_t new_cap = dl->IdxCapacity ? dl->IdxCapacity * 2 : 8192;
         while (new_cap < dl->IdxCount + needed)
             new_cap *= 2;
-        uint16_t* nb = ZPushArray(arena, uint16_t, new_cap);
+        new_cap      = std::min(new_cap, ZUIDrawList::IndexLimit);
+        uint16_t* nb = AllocateDrawBuffer<uint16_t>(arena, new_cap);
         if (dl->Idx)
-            memcpy(nb, dl->Idx, dl->IdxCount * sizeof(uint16_t));
+            Helpers::secure_memcpy(nb, new_cap * sizeof(uint16_t), dl->Idx, dl->IdxCount * sizeof(uint16_t));
         dl->Idx         = nb;
         dl->IdxCapacity = new_cap;
     }
@@ -80,37 +101,35 @@ namespace ZEngine::UI
         uint32_t new_cap = dl->PathCap ? dl->PathCap * 2 : 256;
         while (new_cap < dl->PathCount + needed)
             new_cap *= 2;
-        float* nx = ZPushArray(arena, float, new_cap);
-        float* ny = ZPushArray(arena, float, new_cap);
+        float* nx = AllocateDrawBuffer<float>(arena, new_cap);
+        float* ny = AllocateDrawBuffer<float>(arena, new_cap);
         if (dl->PathX)
         {
-            memcpy(nx, dl->PathX, dl->PathCount * sizeof(float));
-            memcpy(ny, dl->PathY, dl->PathCount * sizeof(float));
+            Helpers::secure_memcpy(nx, new_cap * sizeof(float), dl->PathX, dl->PathCount * sizeof(float));
+            Helpers::secure_memcpy(ny, new_cap * sizeof(float), dl->PathY, dl->PathCount * sizeof(float));
         }
         dl->PathX   = nx;
         dl->PathY   = ny;
         dl->PathCap = new_cap;
     }
 
-    // We store the arena for growth in the draw list calls.
-    // For simplicity thread it as a file-global (ZUIContext owns a single DL per frame).
-    static ArenaAllocator* s_Arena = nullptr;
-
     // Lifecycle
 
-    void                   ZUIDrawListInit(ZUIDrawList* dl, ArenaAllocator* frame_arena, uint32_t vtx_cap, uint32_t idx_cap, float white_u, float white_v, uint32_t atlas_idx)
+    void ZUIDrawListInit(ZUIDrawList* dl, ArenaAllocator* frame_arena, uint32_t vtx_cap, uint32_t idx_cap, float white_u, float white_v, uint32_t atlas_idx)
     {
         InitCircleLUT();
-        s_Arena         = frame_arena;
-        dl->VtxCapacity = vtx_cap;
-        dl->IdxCapacity = idx_cap;
-        dl->Vtx         = vtx_cap ? ZPushArray(frame_arena, ZUIDrawVtx, vtx_cap) : nullptr;
-        dl->Idx         = idx_cap ? ZPushArray(frame_arena, uint16_t, idx_cap) : nullptr;
-        dl->CmdCapacity = 512;
-        dl->Cmds        = ZPushArray(frame_arena, ZUIDrawListCmd, dl->CmdCapacity);
-        dl->PathCap     = 256;
-        dl->PathX       = ZPushArray(frame_arena, float, dl->PathCap);
-        dl->PathY       = ZPushArray(frame_arena, float, dl->PathCap);
+        dl->Arena       = frame_arena;
+        dl->VtxCapacity = std::min(vtx_cap, ZUIDrawList::VertexLimit);
+        dl->IdxCapacity = std::min(idx_cap, ZUIDrawList::IndexLimit);
+        dl->Vtx         = dl->VtxCapacity ? AllocateDrawBuffer<ZUIDrawVtx>(frame_arena, dl->VtxCapacity) : nullptr;
+        dl->Idx         = dl->IdxCapacity ? AllocateDrawBuffer<uint16_t>(frame_arena, dl->IdxCapacity) : nullptr;
+        // Retain bounded growth headroom across frames, just like the renderer's
+        // index buffer. No stale buffer contents or pointers are reused.
+        dl->CmdCapacity = std::clamp(dl->CmdCapacity, 512u, ZUIDrawList::VertexLimit);
+        dl->Cmds        = AllocateDrawBuffer<ZUIDrawListCmd>(frame_arena, dl->CmdCapacity);
+        dl->PathCap     = std::clamp(dl->PathCap, 256u, ZUIDrawList::VertexLimit);
+        dl->PathX       = AllocateDrawBuffer<float>(frame_arena, dl->PathCap);
+        dl->PathY       = AllocateDrawBuffer<float>(frame_arena, dl->PathCap);
         dl->WhiteU      = white_u;
         dl->WhiteV      = white_v;
         dl->AtlasTexIdx = atlas_idx;
@@ -134,31 +153,41 @@ namespace ZEngine::UI
         }
     }
 
-    // Ensure current command matches clip rect + tex; open new cmd if needed
+    // Ensure current command matches clip + texture + effect. Never append shadow
+    // geometry to a textured batch (or vice versa), even after the initial capacity.
 
-    static void EnsureCmd(ZUIDrawList* dl, float cx0, float cy0, float cx1, float cy1, uint32_t tex_idx)
+    static void EnsureCmd(ZUIDrawList* dl, float cx0, float cy0, float cx1, float cy1, uint32_t tex_idx, const ZUIShadowDrawParams& shadow = {}, const ZUIColorFieldDrawParams& color_field = {})
     {
-        if (dl->CmdCount == 0)
+        ZUIDrawListCmd nc = {};
+        nc.ClipX          = cx0;
+        nc.ClipY          = cy0;
+        nc.ClipW          = cx1 - cx0;
+        nc.ClipH          = cy1 - cy0;
+        nc.TexIdx         = tex_idx;
+        nc.Shadow         = shadow;
+        nc.ColorField     = color_field;
+        nc.IdxOffset      = dl->IdxCount;
+
+        if (dl->CmdCount > 0)
         {
-            if (dl->CmdCount >= dl->CmdCapacity)
+            ZUIDrawListCmd& cur = dl->Cmds[dl->CmdCount - 1];
+            if (cur.ClipX == nc.ClipX && cur.ClipY == nc.ClipY && cur.ClipW == nc.ClipW && cur.ClipH == nc.ClipH && cur.TexIdx == tex_idx && cur.Shadow.HalfSize[0] == shadow.HalfSize[0] && cur.Shadow.HalfSize[1] == shadow.HalfSize[1] && cur.Shadow.Radius == shadow.Radius && cur.Shadow.Sigma == shadow.Sigma && cur.ColorField == color_field)
                 return;
-            dl->Cmds[dl->CmdCount++] = {};
+            if (cur.ElemCount == 0)
+            {
+                cur = nc;
+                return;
+            }
         }
-        ZUIDrawListCmd& cur  = dl->Cmds[dl->CmdCount - 1];
-        bool            same = (cur.ClipX == cx0 && cur.ClipY == cy0 && cur.ClipW == cx1 - cx0 && cur.ClipH == cy1 - cy0 && cur.TexIdx == tex_idx);
-        if (same)
-            return;
-        // Open new cmd
         if (dl->CmdCount >= dl->CmdCapacity)
-            return;
-        ZUIDrawListCmd nc        = {};
-        nc.ClipX                 = cx0;
-        nc.ClipY                 = cy0;
-        nc.ClipW                 = cx1 - cx0;
-        nc.ClipH                 = cy1 - cy0;
-        nc.TexIdx                = tex_idx;
-        nc.IdxOffset             = dl->IdxCount;
-        nc.ElemCount             = 0;
+        {
+            const uint32_t capacity = dl->CmdCapacity ? dl->CmdCapacity * 2 : 512;
+            auto*          cmds     = AllocateDrawBuffer<ZUIDrawListCmd>(dl->Arena, capacity);
+            if (dl->CmdCount > 0)
+                Helpers::secure_memcpy(cmds, capacity * sizeof(ZUIDrawListCmd), dl->Cmds, dl->CmdCount * sizeof(ZUIDrawListCmd));
+            dl->Cmds        = cmds;
+            dl->CmdCapacity = capacity;
+        }
         dl->Cmds[dl->CmdCount++] = nc;
     }
 
@@ -183,7 +212,7 @@ namespace ZEngine::UI
 
     static void FlushCmd(ZUIDrawList* dl)
     {
-        float cx0, cy0, cx1, cy1;
+        float cx0 = 0.f, cy0 = 0.f, cx1 = 0.f, cy1 = 0.f;
         GetCurrentClip(dl, cx0, cy0, cx1, cy1);
         EnsureCmd(dl, cx0, cy0, cx1, cy1, dl->AtlasTexIdx);
     }
@@ -226,9 +255,11 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddRectFilledNoAA(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col)
     {
+        if (!CanAppendGeometry(dl, 4, 6))
+            return;
         FlushCmd(dl);
-        GrowVtx(dl, s_Arena, 4);
-        GrowIdx(dl, s_Arena, 6);
+        GrowVtx(dl, dl->Arena, 4);
+        GrowIdx(dl, dl->Arena, 6);
         uint16_t    base                      = (uint16_t) dl->VtxCount;
         ZUIDrawVtx* v                         = dl->Vtx + dl->VtxCount;
         uint16_t*   i                         = dl->Idx + dl->IdxCount;
@@ -247,11 +278,125 @@ namespace ZEngine::UI
         dl->Cmds[dl->CmdCount - 1].ElemCount += 6;
     }
 
+    void ZUIDrawListAddShadow(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding, float blur)
+    {
+        if (!(x1 > x0) || !(y1 > y0) || !(blur > 0.f) || !std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(blur) || !std::isfinite(rounding) || (col >> 24) == 0 || !CanAppendGeometry(dl, 4, 6))
+            return;
+
+        ZUIShadowDrawParams shadow = {};
+        shadow.HalfSize[0]         = (x1 - x0) * 0.5f;
+        shadow.HalfSize[1]         = (y1 - y0) * 0.5f;
+        shadow.Radius              = std::clamp(rounding, 0.f, std::min(shadow.HalfSize[0], shadow.HalfSize[1]));
+        shadow.Sigma               = blur * 0.5f;
+        const float pad            = shadow.Sigma * 3.f;
+        const float u              = shadow.HalfSize[0] + pad;
+        const float v              = shadow.HalfSize[1] + pad;
+        if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(x0 - pad) || !std::isfinite(x1 + pad) || !std::isfinite(y0 - pad) || !std::isfinite(y1 + pad))
+            return;
+        float cx0 = 0.f, cy0 = 0.f, cx1 = 0.f, cy1 = 0.f;
+        GetCurrentClip(dl, cx0, cy0, cx1, cy1);
+        // Avoid a draw and fragment work for fully clipped shadows.
+        if (x1 + pad <= cx0 || y1 + pad <= cy0 || x0 - pad >= cx1 || y0 - pad >= cy1)
+            return;
+        EnsureCmd(dl, cx0, cy0, cx1, cy1, dl->AtlasTexIdx, shadow);
+        GrowVtx(dl, dl->Arena, 4);
+        GrowIdx(dl, dl->Arena, 6);
+        const uint16_t base                   = (uint16_t) dl->VtxCount;
+        ZUIDrawVtx*    vertices               = dl->Vtx + dl->VtxCount;
+        uint16_t*      indices                = dl->Idx + dl->IdxCount;
+        // UVs are local logical coordinates for the shadow shader, not atlas UVs.
+        vertices[0]                           = {x0 - pad, y0 - pad, -u, -v, col};
+        vertices[1]                           = {x1 + pad, y0 - pad, u, -v, col};
+        vertices[2]                           = {x1 + pad, y1 + pad, u, v, col};
+        vertices[3]                           = {x0 - pad, y1 + pad, -u, v, col};
+        indices[0]                            = base;
+        indices[1]                            = (uint16_t) (base + 1);
+        indices[2]                            = (uint16_t) (base + 2);
+        indices[3]                            = base;
+        indices[4]                            = (uint16_t) (base + 2);
+        indices[5]                            = (uint16_t) (base + 3);
+        dl->VtxCount                         += 4;
+        dl->IdxCount                         += 6;
+        dl->Cmds[dl->CmdCount - 1].ElemCount += 6;
+    }
+
+    void ZUIDrawListAddColorField(ZUIDrawList* dl, float cx, float cy, float radius, float brightness, float lightness, bool lightness_mode)
+    {
+        if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(radius) || !(radius > 0.f) || !std::isfinite(brightness) || !std::isfinite(lightness) || !CanAppendGeometry(dl, 4, 6))
+            return;
+        const float extent = radius + 1.f;
+        const float uv     = extent / radius;
+        if (!std::isfinite(uv) || !std::isfinite(cx - extent) || !std::isfinite(cx + extent) || !std::isfinite(cy - extent) || !std::isfinite(cy + extent))
+            return;
+        float x0 = 0.f, y0 = 0.f, x1 = 0.f, y1 = 0.f;
+        GetCurrentClip(dl, x0, y0, x1, y1);
+        if (cx + extent <= x0 || cx - extent >= x1 || cy + extent <= y0 || cy - extent >= y1)
+            return;
+        const ZUIColorFieldDrawParams field = {std::clamp(brightness, 0.f, 1.f), std::clamp(lightness, 0.f, 1.f), lightness_mode ? 1.f : 0.f, 1.f};
+        EnsureCmd(dl, x0, y0, x1, y1, dl->AtlasTexIdx, {}, field);
+        GrowVtx(dl, dl->Arena, 4);
+        GrowIdx(dl, dl->Arena, 6);
+        const uint16_t     base   = static_cast<uint16_t>(dl->VtxCount);
+        constexpr uint32_t white  = 0xFFFFFFFFu;
+        dl->Vtx[dl->VtxCount++]   = {cx - extent, cy - extent, -uv, -uv, white};
+        dl->Vtx[dl->VtxCount++]   = {cx + extent, cy - extent, uv, -uv, white};
+        dl->Vtx[dl->VtxCount++]   = {cx + extent, cy + extent, uv, uv, white};
+        dl->Vtx[dl->VtxCount++]   = {cx - extent, cy + extent, -uv, uv, white};
+        const uint16_t indices[6] = {base, static_cast<uint16_t>(base + 1), static_cast<uint16_t>(base + 2), base, static_cast<uint16_t>(base + 2), static_cast<uint16_t>(base + 3)};
+        Helpers::secure_memcpy(dl->Idx + dl->IdxCount, (dl->IdxCapacity - dl->IdxCount) * sizeof(uint16_t), indices, sizeof(indices));
+        dl->IdxCount                         += 6;
+        dl->Cmds[dl->CmdCount - 1].ElemCount += 6;
+    }
+
+    void ZUIDrawListAddColorRect(ZUIDrawList* dl, float x0, float y0, float x1, float y1, const uint32_t* stops, int count, float rounding, bool checker, bool vertical, bool split)
+    {
+        if (!stops || count < 2 || count > 16 || !std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(rounding) || !(x1 > x0) || !(y1 > y0))
+            return;
+        const float hw = (x1 - x0) * .5f, hh = (y1 - y0) * .5f;
+        if (!std::isfinite(hw) || !std::isfinite(hh))
+            return;
+        const int intervals = split ? 2 : count - 1;
+        if (!CanAppendGeometry(dl, static_cast<uint32_t>(intervals * 4), static_cast<uint32_t>(intervals * 6)))
+            return;
+        float cx0 = 0.f, cy0 = 0.f, cx1 = 0.f, cy1 = 0.f;
+        GetCurrentClip(dl, cx0, cy0, cx1, cy1);
+        if (x1 <= cx0 || x0 >= cx1 || y1 <= cy0 || y0 >= cy1)
+            return;
+        const ZUIShadowDrawParams shape = {
+            {hw, hh},
+            std::clamp(rounding, 0.f, std::min(hw, hh)), 0.f
+        };
+        const ZUIColorFieldDrawParams paint = {0.f, 0.f, checker ? 1.f : 0.f, 2.f};
+        EnsureCmd(dl, cx0, cy0, cx1, cy1, dl->AtlasTexIdx, shape, paint);
+        GrowVtx(dl, dl->Arena, static_cast<uint32_t>(intervals * 4));
+        GrowIdx(dl, dl->Arena, static_cast<uint32_t>(intervals * 6));
+        for (int segment = 0; segment < intervals; ++segment)
+        {
+            const float    t0 = static_cast<float>(segment) / intervals, t1 = static_cast<float>(segment + 1) / intervals;
+            const float    left = vertical ? x0 : x0 + (x1 - x0) * t0, right = vertical ? x1 : x0 + (x1 - x0) * t1;
+            const float    top = vertical ? y0 + (y1 - y0) * t0 : y0, bottom = vertical ? y0 + (y1 - y0) * t1 : y1;
+            const uint32_t first = stops[segment], last = split ? first : stops[segment + 1];
+            const uint16_t base      = static_cast<uint16_t>(dl->VtxCount);
+            // UV is position relative to the complete rounded shape, not each
+            // interval: internal colour stops must never introduce rounded seams.
+            dl->Vtx[dl->VtxCount++]  = {left, top, left - x0 - hw, top - y0 - hh, first};
+            dl->Vtx[dl->VtxCount++]  = {right, top, right - x0 - hw, top - y0 - hh, vertical ? first : last};
+            dl->Vtx[dl->VtxCount++]  = {right, bottom, right - x0 - hw, bottom - y0 - hh, last};
+            dl->Vtx[dl->VtxCount++]  = {left, bottom, left - x0 - hw, bottom - y0 - hh, vertical ? last : first};
+            const uint16_t indices[] = {base, static_cast<uint16_t>(base + 1), static_cast<uint16_t>(base + 2), base, static_cast<uint16_t>(base + 2), static_cast<uint16_t>(base + 3)};
+            Helpers::secure_memcpy(dl->Idx + dl->IdxCount, (dl->IdxCapacity - dl->IdxCount) * sizeof(uint16_t), indices, sizeof(indices));
+            dl->IdxCount                         += 6;
+            dl->Cmds[dl->CmdCount - 1].ElemCount += 6;
+        }
+    }
+
     void ZUIDrawListAddRectFilledMultiColor(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col_tl, uint32_t col_tr, uint32_t col_bl, uint32_t col_br)
     {
+        if (!CanAppendGeometry(dl, 4, 6))
+            return;
         FlushCmd(dl);
-        GrowVtx(dl, s_Arena, 4);
-        GrowIdx(dl, s_Arena, 6);
+        GrowVtx(dl, dl->Arena, 4);
+        GrowIdx(dl, dl->Arena, 6);
         uint16_t    base = (uint16_t) dl->VtxCount;
         ZUIDrawVtx* v    = dl->Vtx + dl->VtxCount;
         uint16_t*   i    = dl->Idx + dl->IdxCount;
@@ -280,7 +425,7 @@ namespace ZEngine::UI
 
     static void PathLineTo(ZUIDrawList* dl, float x, float y)
     {
-        GrowPath(dl, s_Arena, 1);
+        GrowPath(dl, dl->Arena, 1);
         dl->PathX[dl->PathCount] = x;
         dl->PathY[dl->PathCount] = y;
         ++dl->PathCount;
@@ -295,7 +440,7 @@ namespace ZEngine::UI
             PathLineTo(dl, cx, cy);
             return;
         }
-        GrowPath(dl, s_Arena, a_max - a_min + 1);
+        GrowPath(dl, dl->Arena, a_max - a_min + 1);
         for (int i = a_min; i <= a_max; ++i)
         {
             int idx                  = i % kArcFastSize;
@@ -353,7 +498,7 @@ namespace ZEngine::UI
     static void PathFillConvex(ZUIDrawList* dl, uint32_t col)
     {
         int n = (int) dl->PathCount;
-        if (n < 3)
+        if (n < 3 || n > static_cast<int>(ZUIDrawList::VertexLimit / 2) || !CanAppendGeometry(dl, static_cast<uint32_t>(n * 2), static_cast<uint32_t>((n - 2) * 3 + n * 6)))
         {
             PathClear(dl);
             return;
@@ -363,8 +508,8 @@ namespace ZEngine::UI
         uint32_t col_trans = col & 0x00FFFFFFu; // alpha = 0
 
         FlushCmd(dl);
-        GrowVtx(dl, s_Arena, (uint32_t) (n * 2));
-        GrowIdx(dl, s_Arena, (uint32_t) ((n - 2) * 3 + n * 6));
+        GrowVtx(dl, dl->Arena, (uint32_t) (n * 2));
+        GrowIdx(dl, dl->Arena, (uint32_t) ((n - 2) * 3 + n * 6));
 
         uint16_t    base = (uint16_t) dl->VtxCount;
         ZUIDrawVtx* vw   = dl->Vtx + dl->VtxCount;
@@ -373,17 +518,9 @@ namespace ZEngine::UI
 
         // Compute per-vertex normals (dm = miter direction)
         // dm[i] = average of normals of edge (i-1,i) and edge (i,i+1)
-        GrowPath(dl, s_Arena, n); // temp space for dm_x, dm_y reusing path
-
+        GrowPath(dl, dl->Arena, n);             // One normal per point in each coordinate array.
         float* dmx = dl->PathX + dl->PathCount; // NOT modifying PathCount, using tail as scratch
         float* dmy = dl->PathY + dl->PathCount;
-        // (ensure capacity)
-        if (dl->PathCount + (uint32_t) n > dl->PathCap)
-        {
-            GrowPath(dl, s_Arena, n);
-            dmx = dl->PathX + dl->PathCount;
-            dmy = dl->PathY + dl->PathCount;
-        }
 
         for (int i = 0; i < n; ++i)
         {
@@ -400,7 +537,8 @@ namespace ZEngine::UI
             dmx[i] = ey;
             dmy[i] = -ex;
         }
-        // Average adjacent normals
+        // Average adjacent normals without overwriting the edge normals: each
+        // vertex must see the same unmodified pair, including the closing edge.
         for (int i = 0; i < n; ++i)
         {
             int   pi    = (i + n - 1) % n;
@@ -415,16 +553,12 @@ namespace ZEngine::UI
                 avg_x *= inv;
                 avg_y *= inv;
             }
-            dmx[i] = avg_x * fs * 0.5f;
-            dmy[i] = avg_y * fs * 0.5f;
-        }
-
-        // Emit vertices: inner (col) + outer fringe (col_trans)
-        for (int i = 0; i < n; ++i)
-        {
-            float px = dl->PathX[i], py = dl->PathY[i];
-            vw[i * 2 + 0] = {px - dmx[i], py - dmy[i], wu, wv, col};
-            vw[i * 2 + 1] = {px + dmx[i], py + dmy[i], wu, wv, col_trans};
+            const float offset_x = avg_x * fs * 0.5f;
+            const float offset_y = avg_y * fs * 0.5f;
+            // Emit inner fill and outer fringe while normals are still intact.
+            float       px = dl->PathX[i], py = dl->PathY[i];
+            vw[i * 2 + 0] = {px - offset_x, py - offset_y, wu, wv, col};
+            vw[i * 2 + 1] = {px + offset_x, py + offset_y, wu, wv, col_trans};
         }
         dl->VtxCount      += (uint32_t) (n * 2);
 
@@ -466,29 +600,24 @@ namespace ZEngine::UI
     {
         int n     = (int) dl->PathCount;
         int count = closed ? n : n - 1;
-        if (count <= 0 || n < 2)
+        if (count <= 0 || n < 2 || n > static_cast<int>(ZUIDrawList::VertexLimit / 4) || !CanAppendGeometry(dl, static_cast<uint32_t>(n * 4), static_cast<uint32_t>(count * 18)))
         {
             PathClear(dl);
             return;
         }
 
         float    fs        = dl->FringeScale;
-        float    half      = thickness * 0.5f;
+        // Coverage is centred on the requested edge, not added outside an
+        // already full-width opaque stroke (which made 1 px borders look 3 px).
+        float    half      = std::max(0.f, thickness - fs) * 0.5f;
         uint32_t col_trans = col & 0x00FFFFFFu;
         float    wu = dl->WhiteU, wv = dl->WhiteV;
 
         // Pass 1: compute per-segment left normals (outward = left of direction)
         // Matches ImGui AddPolyline temp_normals[] pattern exactly.
-        GrowPath(dl, s_Arena, (uint32_t) (n));  // use path tail as scratch for normals
-        float* snx = dl->PathX + dl->PathCount; // segment normal X (scratch after path pts)
+        GrowPath(dl, dl->Arena, (uint32_t) (n)); // Exactly one extra normal per point per coordinate array.
+        float* snx = dl->PathX + dl->PathCount;  // segment normal X (scratch after path pts)
         float* sny = dl->PathY + dl->PathCount;
-        // Ensure capacity for 2×n extra floats in path scratch
-        if (dl->PathCount + (uint32_t) (n * 2) > dl->PathCap)
-        {
-            GrowPath(dl, s_Arena, (uint32_t) (n * 2));
-            snx = dl->PathX + dl->PathCount;
-            sny = dl->PathY + dl->PathCount;
-        }
 
         for (int i = 0; i < n; ++i)
         {
@@ -513,8 +642,8 @@ namespace ZEngine::UI
         // apply IM_FIXNORMAL2F with 100.0 cap, split into inner + outer fringe.
         // 4 vertices per point: outer-fringe-left, inner-left, inner-right, outer-fringe-right
         FlushCmd(dl);
-        GrowVtx(dl, s_Arena, (uint32_t) (n * 4));
-        GrowIdx(dl, s_Arena, (uint32_t) (count * 18));
+        GrowVtx(dl, dl->Arena, (uint32_t) (n * 4));
+        GrowIdx(dl, dl->Arena, (uint32_t) (count * 18));
 
         uint16_t    base = (uint16_t) dl->VtxCount;
         ZUIDrawVtx* vw   = dl->Vtx + dl->VtxCount;
@@ -613,6 +742,8 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddPolylineFilled(ZUIDrawList* dl, const float* xs, const float* ys, int n, uint32_t col)
     {
+        if (!xs || !ys || n < 3 || n > static_cast<int>(ZUIDrawList::VertexLimit / 2) || !CanAppendGeometry(dl, static_cast<uint32_t>(n * 2), static_cast<uint32_t>((n - 2) * 3 + n * 6)))
+            return;
         for (int i = 0; i < n; ++i)
             PathLineTo(dl, xs[i], ys[i]);
         PathFillConvex(dl, col);
@@ -637,20 +768,89 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddRect(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding, uint32_t round_flags, float thickness)
     {
-        if ((col >> 24) == 0)
+        if ((col >> 24) == 0 || !(thickness > 0.f) || !(x1 > x0) || !(y1 > y0))
         {
             PathClear(dl);
             return;
         }
-        PathRect(dl, x0 + 0.5f, y0 + 0.5f, x1 - 0.5f, y1 - 0.5f, rounding, round_flags);
+        if (thickness * 2.f >= std::min(x1 - x0, y1 - y0))
+        {
+            ZUIDrawListAddRectFilled(dl, x0, y0, x1, y1, col, rounding, round_flags);
+            return;
+        }
+        // Figma strokes are inside, independent of thickness. PathStroke draws
+        // around its centreline; only the AA fringe extends outside the box.
+        const float inset = thickness * 0.5f;
+        PathRect(dl, x0 + inset, y0 + inset, x1 - inset, y1 - inset, std::max(0.f, rounding - inset), round_flags);
         PathStroke(dl, col, true, thickness);
+    }
+
+    void ZUIDrawListAddRectDashed(ZUIDrawList* dl, float x0, float y0, float x1, float y1, uint32_t col, float rounding, float thickness)
+    {
+        PathClear(dl);
+        if ((col >> 24) == 0 || !std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x1 - x0) || !std::isfinite(y1 - y0) || !std::isfinite(rounding) || !std::isfinite(thickness) || !(thickness > 0.f) || !(x1 > x0) || !(y1 > y0))
+            return;
+        if (thickness * 2.f >= std::min(x1 - x0, y1 - y0))
+        {
+            ZUIDrawListAddRect(dl, x0, y0, x1, y1, col, rounding, 0xF, thickness);
+            return;
+        }
+        const float inset = thickness * 0.5f;
+        PathRect(dl, x0 + inset, y0 + inset, x1 - inset, y1 - inset, std::max(0.f, rounding - inset));
+        // PathRect emits at most 4 * 13 LUT points. Preserve them on the stack:
+        // emitting each dash reuses the draw list's path scratch, without a heap allocation.
+        float          xs[52] = {};
+        float          ys[52] = {};
+        const uint32_t count  = dl->PathCount;
+        if (count > 52)
+        {
+            PathClear(dl);
+            return;
+        }
+        Helpers::secure_memcpy(xs, sizeof(xs), dl->PathX, count * sizeof(float));
+        Helpers::secure_memcpy(ys, sizeof(ys), dl->PathY, count * sizeof(float));
+        PathClear(dl);
+        // Keep tessellation bounded even for unusually large logical canvases.
+        const double perimeter = 2.0 * ((double(x1) - x0) + (double(y1) - y0));
+        const float  dash      = std::max(3.f, static_cast<float>(perimeter / 4096.0));
+        float        phase     = 0.f;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const uint32_t next   = (i + 1) % count;
+            const float    dx     = xs[next] - xs[i];
+            const float    dy     = ys[next] - ys[i];
+            const float    length = std::hypot(dx, dy);
+            float          offset = 0.f;
+            while (offset < length)
+            {
+                const bool  ink  = phase < dash;
+                const float step = std::min(length - offset, (ink ? dash : dash * 2.f) - phase);
+                if (!(step > 0.f))
+                    break;
+                if (ink)
+                {
+                    if (!dl->PathCount)
+                        PathLineTo(dl, xs[i] + dx * (offset / length), ys[i] + dy * (offset / length));
+                    PathLineTo(dl, xs[i] + dx * ((offset + step) / length), ys[i] + dy * ((offset + step) / length));
+                }
+                offset += step;
+                phase  += step;
+                if (ink && phase >= dash)
+                    PathStroke(dl, col, false, thickness);
+                if (phase >= dash * 2.f)
+                    phase = 0.f;
+            }
+        }
+        PathStroke(dl, col, false, thickness);
     }
 
     void ZUIDrawListAddCircleFilled(ZUIDrawList* dl, float cx, float cy, float r, uint32_t col, int num_segments)
     {
-        if ((col >> 24) == 0 || r <= 0.f)
+        if ((col >> 24) == 0 || !std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(r) || r <= 0.f)
             return;
-        int   n    = (num_segments > 0) ? num_segments : CircleSegments(r);
+        int n = (num_segments > 0) ? num_segments : CircleSegments(r);
+        if (n < 3 || n > static_cast<int>(ZUIDrawList::VertexLimit / 2) || !CanAppendGeometry(dl, static_cast<uint32_t>(n * 2), static_cast<uint32_t>((n - 2) * 3 + n * 6)))
+            return;
         float step = 2.f * kPI / (float) n;
         for (int i = 0; i < n; ++i)
             PathLineTo(dl, cx + cosf(i * step) * r, cy + sinf(i * step) * r);
@@ -659,9 +859,11 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddCircle(ZUIDrawList* dl, float cx, float cy, float r, uint32_t col, int num_segments, float thickness)
     {
-        if ((col >> 24) == 0 || r <= 0.f)
+        if ((col >> 24) == 0 || !std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(r) || r <= 0.f || !std::isfinite(thickness) || thickness <= 0.f)
             return;
-        int   n    = (num_segments > 0) ? num_segments : CircleSegments(r);
+        int n = (num_segments > 0) ? num_segments : CircleSegments(r);
+        if (n < 3 || n > static_cast<int>(ZUIDrawList::VertexLimit / 4) || !CanAppendGeometry(dl, static_cast<uint32_t>(n * 4), static_cast<uint32_t>(n * 18)))
+            return;
         float step = 2.f * kPI / (float) n;
         for (int i = 0; i < n; ++i)
             PathLineTo(dl, cx + cosf(i * step) * (r - 0.5f), cy + sinf(i * step) * (r - 0.5f));
@@ -678,13 +880,21 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddImage(ZUIDrawList* dl, uint32_t tex_idx, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint32_t col)
     {
-        // Switch texture for this draw
-        float cx0, cy0, cx1, cy1;
+        if (!std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1) || x1 <= x0 || y1 <= y0)
+            return;
+        float cx0 = 0.f, cy0 = 0.f, cx1 = 0.f, cy1 = 0.f;
         GetCurrentClip(dl, cx0, cy0, cx1, cy1);
+        // Glyphs are images too. GPU scissoring cannot recover the fixed vertex
+        // budget spent on hidden Console rows or horizontally clipped text.
+        // Preserve partial quads/UVs; only fully invisible images retire here,
+        // before allocation, texture commands or geometry counters change.
+        if (cx1 <= cx0 || cy1 <= cy0 || x1 <= cx0 || y1 <= cy0 || x0 >= cx1 || y0 >= cy1 || !CanAppendGeometry(dl, 4, 6))
+            return;
+        // Switch texture for this draw
         EnsureCmd(dl, cx0, cy0, cx1, cy1, tex_idx);
 
-        GrowVtx(dl, s_Arena, 4);
-        GrowIdx(dl, s_Arena, 6);
+        GrowVtx(dl, dl->Arena, 4);
+        GrowIdx(dl, dl->Arena, 6);
         uint16_t    base                      = (uint16_t) dl->VtxCount;
         ZUIDrawVtx* v                         = dl->Vtx + dl->VtxCount;
         uint16_t*   i                         = dl->Idx + dl->IdxCount;

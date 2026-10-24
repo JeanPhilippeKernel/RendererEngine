@@ -6,10 +6,12 @@ layout(location = 2) in vec4 aColor; // RGBA8 UNORM — hardware unpacks packed 
 
 layout(push_constant) uniform PC
 {
-    vec2  uScale;
-    vec2  uTranslate;
-    uint  uTexIdx;
-    float uFbScale; // UIScale = fb/win; snaps vertices to nearest physical pixel
+    vec2                     uScale;
+    vec2                     uTranslate;
+    vec2                     uFbScale; // Actual render-target pixels per logical UI unit, per axis.
+    uint                     uTexIdx;
+    layout(offset = 32) vec4 uShadow;     // half-size xy, corner radius, Gaussian sigma; w=0 for atlas draws.
+    layout(offset = 48) vec4 uColorField; // brightness, lightness, lightness mode, enabled.
 }
 pc;
 
@@ -18,15 +20,17 @@ layout(location = 0) out struct
     vec4 Color;
     vec4 TexData; // xy=UV, z=texIdx
 } Out;
+layout(location = 2) flat out vec4 vShadow;
+layout(location = 3) flat out vec4 vColorField;
 
 void main()
 {
-    Out.Color     = aColor;
-    Out.TexData   = vec4(aUV, float(pc.uTexIdx), 0.0);
+    Out.Color   = aColor;
+    Out.TexData = vec4(aUV, float(pc.uTexIdx), 0.0);
+    vShadow     = pc.uShadow;
+    vColorField = pc.uColorField;
 
-    // Snap to the nearest physical pixel before projecting.
-    // Prevents sub-pixel drift that blurs glyph quads on non-Retina displays.
-    float fs      = max(pc.uFbScale, 1.0);
-    vec2  snapped = round(aPos * fs) / fs;
-    gl_Position   = vec4(snapped * pc.uScale + pc.uTranslate, 0.0, 1.0);
+    // Preserve the tessellator's subpixel coverage geometry. Rounding every
+    // vertex separately distorts circles, thin borders and their AA fringes.
+    gl_Position = vec4(aPos * pc.uScale + pc.uTranslate, 0.0, 1.0);
 }

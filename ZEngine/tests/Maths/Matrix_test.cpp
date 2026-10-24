@@ -1,6 +1,7 @@
 ﻿#include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Quaternion.h>
 #include <gtest/gtest.h>
+#include <cstddef>
 
 using namespace ZEngine::Core::Maths;
 
@@ -107,12 +108,70 @@ TEST(MatrixTest, CopyConstruction)
 
 TEST(MatrixTest, IndexingOperators)
 {
-    Mat3f        m3(1, 2, 3, 4, 5, 6, 7, 8, 9);
+    Mat3f  m3(1, 2, 3, 4, 5, 6, 7, 8, 9);
 
     // Test column access operator for Mat3
-    Vec3<float>& col0 = m3[0];
+    auto&& col0 = m3[0];
     EXPECT_NEAR(col0.x, 1.0f, EPSILON);
     EXPECT_NEAR(col0.y, 4.0f, EPSILON);
+}
+
+TEST(MatrixTest, PackedColumnsNeverReadOrWriteAnAdjacentColumn)
+{
+    static_assert(sizeof(Mat3f) == 9 * sizeof(float));
+    struct MatrixWithGuard
+    {
+        Mat3f Value = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+        float Guard = 73.f;
+    };
+    MatrixWithGuard holder = {};
+    const auto&     source = holder.Value;
+    const Vec3f     last   = source[2];
+    EXPECT_FLOAT_EQ(last.x, 3.f);
+    EXPECT_FLOAT_EQ(last.y, 6.f);
+    EXPECT_FLOAT_EQ(last.z, 9.f);
+    EXPECT_FLOAT_EQ(last.w, 0.f);
+
+    holder.Value[0] = Vec3f(10.f, 11.f, 12.f);
+    EXPECT_FLOAT_EQ(holder.Value(0, 1), 2.f);
+    holder.Value[1] = holder.Value[0];
+    EXPECT_FLOAT_EQ(holder.Value(0, 1), 10.f);
+    EXPECT_FLOAT_EQ(holder.Value(1, 1), 11.f);
+    EXPECT_FLOAT_EQ(holder.Value(2, 1), 12.f);
+    EXPECT_FLOAT_EQ(holder.Value(0, 2), 3.f);
+    holder.Value[2] = Vec3f(20.f, 21.f, 22.f);
+    EXPECT_FLOAT_EQ(holder.Guard, 73.f);
+    holder.Value[2][1] = 24.f;
+    EXPECT_FLOAT_EQ(holder.Value(1, 2), 24.f);
+}
+
+TEST(MatrixTest, FourLaneColumnsSupportScalarAlignedPackedStorage)
+{
+    static_assert(sizeof(Mat4f) == 16 * sizeof(float));
+    struct alignas(alignof(Vec4f)) MatrixWithGuard
+    {
+        float Prefix = 17.f;
+        Mat4f Value  = Identity<Mat4f>();
+        float Suffix = 19.f;
+    };
+    // Preserve the packed matrix ABI; a column must not require Vec4 alignment.
+    static_assert(offsetof(MatrixWithGuard, Value) == sizeof(float));
+    MatrixWithGuard holder = {};
+    holder.Value[1]        = Vec4f(2.f, 3.f, 4.f, 5.f);
+    holder.Value[2]        = holder.Value[1];
+    auto&& column          = holder.Value[2];
+    column.x               = 7.f;
+    column[3]              = 8.f;
+    const auto& source     = holder.Value;
+    const Vec4f copy       = source[2];
+    EXPECT_FLOAT_EQ(copy.x, 7.f);
+    EXPECT_FLOAT_EQ(copy.y, 3.f);
+    EXPECT_FLOAT_EQ(copy.z, 4.f);
+    EXPECT_FLOAT_EQ(copy.w, 8.f);
+    EXPECT_FLOAT_EQ(source(0, 1), 2.f);
+    EXPECT_FLOAT_EQ(source(3, 1), 5.f);
+    EXPECT_FLOAT_EQ(holder.Prefix, 17.f);
+    EXPECT_FLOAT_EQ(holder.Suffix, 19.f);
 }
 
 // ========== ARITHMETIC TESTS ==========

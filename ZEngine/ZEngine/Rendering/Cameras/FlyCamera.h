@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/Core/Maths/Geometry.h>
 #include <ZEngine/Core/Maths/MathUtils.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Quaternion.h>
@@ -52,6 +53,9 @@ namespace ZEngine::Rendering::Cameras
         [[nodiscard]] CameraType GetProjectionType() const;
         /// @brief Align the view to a world axis while retaining the current position.
         void                     SetAxisView(FlyCameraAxisView view);
+        /// Stop smoothing/animation at the exact current pose and discard queued
+        /// navigation input. Used while an editor interaction owns both channels.
+        void                     StopMotion();
 
         void                     FocusOn(Core::Maths::Vec3f center, float radius);
         void                     FocusOn(Core::Maths::Vec3f point);
@@ -60,11 +64,7 @@ namespace ZEngine::Rendering::Cameras
         void                     SaveBookmark(int slot);
         void                     RecallBookmark(int slot);
 
-        struct Ray
-        {
-            Core::Maths::Vec3f Origin;
-            Core::Maths::Vec3f Direction;
-        };
+        using Ray = Core::Maths::Geometry::Ray;
         Ray                            GetRayFromViewport(float viewportX, float viewportY) const;
 
         CameraFrameData                CaptureFrameData() override;

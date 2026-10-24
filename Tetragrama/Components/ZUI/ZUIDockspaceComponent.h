@@ -43,19 +43,29 @@ namespace Tetragrama::Components
         ZUIComponent*                 StatusBar         = nullptr;
 
     private:
-        ZEngine::UI::ZUIDockTree* m_dock_tree            = nullptr;
+        friend struct ZUISettingsTestAccess;
+        ZEngine::UI::ZUIDockTree*                   m_dock_tree            = nullptr;
+
+        // App logo for the menu-bar mark (Resources/Editor/Settings/Icons/AppIconWhite.png), loaded on first use.
+        ZEngine::Rendering::Textures::TextureHandle m_logo_texture         = {};
+        bool                                        m_logo_requested       = false;
 
         // Scene Settings window
-        bool                      m_settings_open        = false;
-        bool                      m_settings_just_opened = false; // skip click-outside on the opening frame
-        int                       m_settings_page        = 0;     // 0=Grid, 1=Sky, 2=Renderer, 3=Theme, 4=Layout
-        float                     m_modal_x              = -1.f;  // -1 = not yet positioned (centers on first open)
-        float                     m_modal_y              = -1.f;
-        float                     m_modal_w              = 600.f;
-        float                     m_modal_h              = 420.f;
+        bool                                        m_settings_open        = false;
+        bool                                        m_settings_just_opened = false; // skip click-outside on the opening frame
+        uint64_t                                    m_settings_epoch       = 0;
+        int                                         m_settings_page        = 0;    // 0=Grid, 1=Sky, 2=Renderer, 3=Theme, 4=Layout
+        float                                       m_modal_x              = -1.f; // -1 = not yet positioned (centers on first open)
+        float                                       m_modal_y              = -1.f;
+        float                                       m_modal_w              = 760.f;
+        float                                       m_modal_h              = 520.f;
+        // Source, environment and diagnostics open by default; mode-specific
+        // sections keep their state even while hidden by another sky mode.
+        bool                                        m_sky_sections[11]     = {true, true, false, false, false, false, false, false, false, false, true};
+        bool                                        m_theme_sections[2]    = {true, true};
 
         // Performances window
-        bool                      m_perf_open            = false;
+        bool                                        m_perf_open            = false;
 
         // Workspace resize state — separate from the normal hit-test pass.
         // RAD Debugger style: dividers check mouse bounds directly, not through
@@ -69,10 +79,10 @@ namespace Tetragrama::Components
         };
         // leaf_name, horizontal, use_near(left/top vs right/bottom edge)
         Divider m_dividers[4] = {
-            {"Hierarchy", false, false}, // vertical at hierarchy's RIGHT edge
-            {"Inspector", false,  true}, // vertical at inspector's LEFT edge
-            { "Viewport",  true, false}, // horizontal at viewport's BOTTOM edge
-            {      "Log", false, false}, // vertical at log's RIGHT edge
+            {"Outliner", false,  true}, // vertical at the right dock's LEFT edge
+            { "Details",  true,  true}, // horizontal at details' TOP edge (Outliner/Details split)
+            {"Viewport",  true, false}, // horizontal at viewport's BOTTOM edge
+            { "Details", false,  true}, // vertical at details' LEFT edge
         };
     };
     ZDEFINE_PTR(ZUIDockspaceComponent);

@@ -35,12 +35,18 @@ namespace Tetragrama::Layers
         bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
         void AddComponent(Components::ZUIComponent* cmp);
+        /// Retire physical input and both modifier sides, preserving widget state.
+        void ResetInput();
 
     private:
+        friend struct ZUILayerInputTestAccess;
+        void                      UpdateModifiers(ZENGINE_KEYCODE key, bool pressed);
+
         static constexpr uint32_t kMaxComponents               = 32;
         ZEngine::UI::ZUIContext*  m_ctx                        = nullptr;
         Components::ZUIComponent* m_components[kMaxComponents] = {};
         uint32_t                  m_component_count            = 0;
+        uint8_t                   m_modifier_keys              = 0;
     };
     ZDEFINE_PTR(ZUILayer);
 } // namespace Tetragrama::Layers

@@ -3,30 +3,15 @@
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <assimp/Importer.hpp>
-#include <assimp/ProgressHandler.hpp>
 #include <assimp/scene.h>
 #include <uuid.h>
+#include <mutex>
 
 namespace ZEngine::Importers
 {
-    class AssimpImporter;
-    struct AssimpProgressHandler;
-
-    struct AssimpProgressHandler : public Assimp::ProgressHandler
-    {
-        void SetImporter(AssimpImporter* const importer);
-        bool Update(float percentage) override;
-
-    private:
-        AssimpImporter* m_importer{nullptr};
-    };
-
     class AssimpImporter : public IAssetImporter
     {
     public:
-        AssimpImporter();
-        virtual ~AssimpImporter();
-
         void                         Initialize(Core::Memory::ArenaAllocator* arena);
 
         Core::Memory::ArenaAllocator Arena = {};
@@ -39,12 +24,8 @@ namespace ZEngine::Importers
         // file-picker import path (produces cooked .zasset artifacts).
         void                         ImportFile(const char* filename, const AssetCodec::ImportConfiguration& config, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log);
 
-        void                         CopyTextureFiles(Core::Memory::ArenaAllocator*, Core::Containers::Array<AssetTexture>&, const AssetCodec::ImportConfiguration&);
-
     private:
-        AssimpProgressHandler m_progress_handler;
-
-        friend struct AssimpProgressHandler;
+        std::mutex         m_import_mutex;
 
         void               ExtractMeshes(Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, AssetMesh&);
         void               ExtractMaterials(Core::Memory::ArenaAllocator*, const aiScene*, uuids::uuid_random_generator&, Core::Containers::Array<AssetMaterial>&, AssetNodeHierarchy&);

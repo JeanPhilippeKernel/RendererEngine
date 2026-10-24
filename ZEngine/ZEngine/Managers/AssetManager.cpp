@@ -1,14 +1,22 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <new>
 #include <random>
+#include <type_traits>
 
 using namespace ZEngine::Core::Containers;
+using namespace ZEngine::Core::Memory;
+using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Importers;
 
 namespace ZEngine::Managers
@@ -57,10 +65,13 @@ namespace ZEngine::Managers
         s_Instance->UUIDToTextureHandle.init(slab, 5000);
         s_Instance->MeshToHierarchySlot.init(s_Instance->Arena, 5000);
         s_Instance->UUIDToMaterialSlot.init(slab, 5000);
+        s_Instance->MeshCacheAllocations.init(slab, 128);
 
-        static Core::VFS::AssetRegistry s_registry;
-        s_registry.Initialize(s_Instance->Arena);
-        s_Instance->Registry                  = &s_registry;
+        // Registry callbacks borrow their observers. A process-static registry
+        // would retain those pointers after this manager and its arena retire.
+        // Construct fresh registry state in the same bounded owner instead.
+        s_Instance->Registry = ZPushStructCtor(s_Instance->Arena, Core::VFS::AssetRegistry);
+        s_Instance->Registry->Initialize(s_Instance->Arena);
 
         // Reserve slot 0 as an intentional fallback material: AppRenderPipeline defaults
         // an unresolved submesh to index 0, so without this it would silently alias
@@ -84,7 +95,18 @@ namespace ZEngine::Managers
     void AssetManager::Shutdown()
     {
         if (s_Instance)
+        {
+            for (auto* allocation : s_Instance->MeshCacheAllocations)
+                delete allocation;
+            s_Instance->MeshCacheAllocations.clear();
+            if (s_Instance->Registry)
+            {
+                s_Instance->Registry->~AssetRegistry();
+                s_Instance->Registry = nullptr;
+            }
             s_Instance->ContainerSlab.Shutdown();
+        }
+        s_Instance = nullptr;
     }
 
     AssetHandle AssetManager::RegisterAsset(AssetType type, const uuids::uuid& uuid, uint32_t slot_index, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
@@ -120,7 +142,7 @@ namespace ZEngine::Managers
         // AssetRegistry::MarkStale below can hand RenderResourceManager's OnStaleCallback
         // a handle that already points at the fresh data.
         uint32_t        mesh_slot          = 0;
-        AssetMesh*      mp;
+        AssetMesh*      mp                 = nullptr;
         if (is_reload)
         {
             mp = GetAsset<AssetMesh>(mesh.MeshUUID);
@@ -141,26 +163,66 @@ namespace ZEngine::Managers
         for (auto& sub : mesh.SubMeshes)
             m.SubMeshes.push(sub);
 
-        // Compute bounding sphere (centroid + max-distance radius) from vertex positions.
+        // Runtime bounds are not part of the .zemesh codec. Reset on every reload
+        // so an empty/malformed replacement cannot retain the previous box/sphere.
+        // All submeshes use this vertex space and the same entity matrix in the
+        // draw path; applying imported node transforms only here would disagree
+        // with that renderer rather than fix its separate hierarchy limitation.
+        m.BoundsCenter = {};
+        m.BoundsRadius = 0.f;
+        m.BoundsMin    = {};
+        m.BoundsMax    = {};
+        m.BoundsValid  = false;
         // Vertices are 8 floats each: pos(xyz) nrm(xyz) uv(uv).
+        if (!m.Vertices.empty() && m.Vertices.size() % 8 == 0)
         {
-            const uint32_t vcount = static_cast<uint32_t>(m.Vertices.size() / 8);
-            if (vcount > 0)
+            const size_t       vcount  = m.Vertices.size() / 8;
+            Core::Maths::Vec3f minimum = {m.Vertices[0], m.Vertices[1], m.Vertices[2]};
+            Core::Maths::Vec3f maximum = minimum;
+            double             sum[3]  = {};
+            bool               valid   = true;
+            for (size_t vi = 0; vi < vcount && valid; ++vi)
             {
-                Core::Maths::Vec3f sum = {};
-                for (uint32_t vi = 0; vi < vcount; ++vi)
-                    sum = sum + Core::Maths::Vec3f(m.Vertices[vi * 8], m.Vertices[vi * 8 + 1], m.Vertices[vi * 8 + 2]);
-                m.BoundsCenter = sum * (1.f / static_cast<float>(vcount));
-
-                float maxR     = 0.f;
-                for (uint32_t vi = 0; vi < vcount; ++vi)
+                for (uint32_t axis = 0; axis < 3; ++axis)
                 {
-                    Core::Maths::Vec3f d = Core::Maths::Vec3f(m.Vertices[vi * 8], m.Vertices[vi * 8 + 1], m.Vertices[vi * 8 + 2]) - m.BoundsCenter;
-                    float              r = d.magnitude();
-                    if (r > maxR)
-                        maxR = r;
+                    const float value = m.Vertices[vi * 8 + axis];
+                    if (!std::isfinite(value))
+                    {
+                        valid = false;
+                        break;
+                    }
+                    minimum[axis]  = std::min(minimum[axis], value);
+                    maximum[axis]  = std::max(maximum[axis], value);
+                    sum[axis]     += double(value);
                 }
-                m.BoundsRadius = maxR;
+            }
+            if (valid)
+            {
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                    m.BoundsCenter[axis] = float(std::clamp(sum[axis] / double(vcount), double(minimum[axis]), double(maximum[axis])));
+                double max_squared = 0.0;
+                for (size_t vi = 0; vi < vcount; ++vi)
+                {
+                    double squared = 0.0;
+                    for (uint32_t axis = 0; axis < 3; ++axis)
+                    {
+                        const double delta  = double(m.Vertices[vi * 8 + axis]) - m.BoundsCenter[axis];
+                        squared            += delta * delta;
+                    }
+                    max_squared = std::max(max_squared, squared);
+                }
+                const double radius = std::sqrt(max_squared);
+                if (radius <= std::numeric_limits<float>::max())
+                {
+                    m.BoundsRadius = float(radius);
+                    if (double(m.BoundsRadius) < radius)
+                        m.BoundsRadius = std::nextafter(m.BoundsRadius, std::numeric_limits<float>::infinity());
+                }
+                // An unrepresentable sphere keeps radius zero (always visible in
+                // culling). The finite AABB is still available for decorations.
+                m.BoundsMin   = minimum;
+                m.BoundsMax   = maximum;
+                m.BoundsValid = true;
             }
         }
 
@@ -304,7 +366,7 @@ namespace ZEngine::Managers
             return;
 
         auto slot = static_cast<uint32_t>(s_Instance->Materials.size());
-        s_Instance->Materials.push(mat);
+        s_Instance->Materials.push(mat.Clone(s_Instance->Arena));
         RegisterAsset(AssetType::MATERIAL, mat.MaterialUUID, slot);
         s_Instance->UUIDToMaterialSlot.insert(mat.MaterialUUID, slot);
 
@@ -428,22 +490,54 @@ namespace ZEngine::Managers
     {
         if (!Registry)
             return nullptr;
-        const Core::VFS::AssetRecord* rec = Registry->FindByUUID(id);
-        if (!rec)
+        AssetHandle slot = 0;
+        if (!Registry->TryReadSlot(id, AssetType::MESH, &slot) || ReadAssetHandleType(slot) != AssetType::MESH)
             return nullptr;
-        uint32_t index = ReadAssetHandleIndex(rec->SlotHandle);
-        return index < Meshes.size() ? &Meshes[index] : nullptr;
+        uint32_t index = ReadAssetHandleIndex(slot);
+        return index < Meshes.size() && Meshes[index].MeshUUID == id ? &Meshes[index] : nullptr;
+    }
+
+    bool AssetManager::TryGetMeshDrawCount(const uuids::uuid& id, uint32_t* out_draws)
+    {
+        if (!out_draws || id.is_nil())
+            return false;
+        std::lock_guard lock(IngestMutex);
+        const auto*     mesh = GetMeshAsset(id);
+        if (!mesh || mesh->Vertices.empty() || mesh->Vertices.size() % 8 != 0 || mesh->Indices.empty() || mesh->SubMeshes.empty() || mesh->SubMeshes.size() > UINT32_MAX)
+            return false;
+        const auto vertices = mesh->Vertices.size() / 8;
+        for (const auto& sub : mesh->SubMeshes)
+            if (!sub.VertexCount || !sub.IndexCount || sub.VertexOffset > vertices || sub.VertexCount > vertices - sub.VertexOffset || sub.IndexOffset > mesh->Indices.size() || sub.IndexCount > mesh->Indices.size() - sub.IndexOffset)
+                return false;
+        *out_draws = static_cast<uint32_t>(mesh->SubMeshes.size());
+        return true;
     }
 
     bool AssetManager::TryGetMeshBounds(const uuids::uuid& id, Core::Maths::Vec3f& out_center, float& out_radius)
     {
         std::lock_guard lock(IngestMutex);
         auto*           mesh = GetMeshAsset(id);
-        if (!mesh || mesh->BoundsRadius <= 0.0f)
+        if (!mesh || !std::isfinite(mesh->BoundsRadius) || mesh->BoundsRadius <= 0.0f || !std::isfinite(mesh->BoundsCenter.x) || !std::isfinite(mesh->BoundsCenter.y) || !std::isfinite(mesh->BoundsCenter.z))
             return false;
 
         out_center = mesh->BoundsCenter;
         out_radius = mesh->BoundsRadius;
+        return true;
+    }
+
+    bool AssetManager::TryGetMeshAABB(const uuids::uuid& id, Core::Maths::Vec3f& out_min, Core::Maths::Vec3f& out_max)
+    {
+        std::unique_lock lock(IngestMutex, std::try_to_lock);
+        if (!lock.owns_lock())
+            return false; // Optional per-frame decoration must not wait on a full ingestion scan.
+        const auto* mesh = GetMeshAsset(id);
+        if (!mesh || !mesh->BoundsValid)
+            return false;
+        for (uint32_t axis = 0; axis < 3; ++axis)
+            if (!std::isfinite(mesh->BoundsMin[axis]) || !std::isfinite(mesh->BoundsMax[axis]) || mesh->BoundsMin[axis] > mesh->BoundsMax[axis])
+                return false;
+        out_min = mesh->BoundsMin;
+        out_max = mesh->BoundsMax;
         return true;
     }
 
@@ -555,4 +649,184 @@ namespace ZEngine::Managers
         return gen();
     }
 
+    namespace
+    {
+        template <typename T>
+        bool CopyArray(const Array<T>& source, Array<T>& destination, ArenaAllocator& arena)
+        {
+            static_assert(std::is_trivially_copyable_v<T>);
+            destination.m_allocator = &arena;
+            if (source.empty())
+                return true;
+            if (source.size() > SIZE_MAX / sizeof(T))
+                return false;
+            auto* data = static_cast<T*>(arena.AllocateNoZero(source.size() * sizeof(T), alignof(T)));
+            if (!data || Helpers::secure_memcpy(data, source.size() * sizeof(T), source.data(), source.size() * sizeof(T)) != Helpers::MEMORY_OP_SUCCESS)
+                return false;
+            destination.m_data = data;
+            destination.m_size = destination.m_capacity = source.size();
+            return true;
+        }
+
+        bool CopyNames(const Array<String>& source, Array<String>& destination, ArenaAllocator& arena)
+        {
+            destination.m_allocator = &arena;
+            if (source.empty())
+                return true;
+            if (source.size() > SIZE_MAX / sizeof(String))
+                return false;
+            auto* names = static_cast<String*>(arena.AllocateNoZero(source.size() * sizeof(String), alignof(String)));
+            if (!names)
+                return false;
+            destination.m_data     = names;
+            destination.m_capacity = source.size();
+            for (const auto& source_name : source)
+            {
+                auto* name = new (&names[destination.m_size]) String{};
+                ++destination.m_size;
+                const auto bytes = source_name.size() + 1; // Checked reader bounded the string and validated its NUL.
+                name->m_data     = static_cast<char*>(arena.AllocateNoZero(bytes, alignof(char)));
+                if (!name->m_data || Helpers::secure_memcpy(name->m_data, bytes, source_name.c_str(), bytes) != Helpers::MEMORY_OP_SUCCESS)
+                    return false;
+                name->m_allocator = &arena;
+                name->m_size      = source_name.size();
+                name->m_capacity  = bytes;
+            }
+            return true;
+        }
+
+        bool CopyMap(const UnorderedHashMap<uint32_t, uint32_t>& source, UnorderedHashMap<uint32_t, uint32_t>& destination, ArenaAllocator& arena)
+        {
+            if (!destination.try_init(&arena, source.capacity()))
+                return false;
+            for (const auto& [key, value] : source)
+                destination.insert(key, value);
+            return true;
+        }
+
+        void Bounds(AssetMesh& mesh)
+        {
+            // Checked decode guarantees a nonempty, finite 8-float vertex stream.
+            auto minimum = Core::Maths::Vec3f(mesh.Vertices[0], mesh.Vertices[1], mesh.Vertices[2]);
+            auto maximum = minimum;
+            for (size_t i = 8; i < mesh.Vertices.size(); i += 8)
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                {
+                    minimum[axis] = std::min(minimum[axis], mesh.Vertices[i + axis]);
+                    maximum[axis] = std::max(maximum[axis], mesh.Vertices[i + axis]);
+                }
+            double squared = 0.0;
+            for (uint32_t axis = 0; axis < 3; ++axis)
+            {
+                mesh.BoundsCenter[axis]  = float((double(minimum[axis]) + maximum[axis]) * 0.5);
+                const double extent      = std::max(double(maximum[axis]) - mesh.BoundsCenter[axis], double(mesh.BoundsCenter[axis]) - minimum[axis]);
+                squared                 += extent * extent;
+            }
+            const double radius = std::sqrt(squared);
+            if (radius < std::numeric_limits<float>::max())
+            {
+                mesh.BoundsRadius = float(radius);
+                if (double(mesh.BoundsRadius) < radius)
+                    mesh.BoundsRadius = std::nextafter(mesh.BoundsRadius, std::numeric_limits<float>::infinity());
+            }
+            mesh.BoundsMin   = minimum;
+            mesh.BoundsMax   = maximum;
+            mesh.BoundsValid = true;
+        }
+    } // namespace
+
+    VFSResult<uint32_t> AssetManager::LoadMeshAsset(IVFSContext& vfs, const uuids::uuid& uuid, const AssetCodec::MeshAssetReadLimits& limits, const std::atomic<bool>* cancelled)
+    {
+        const auto stopped = [&] { return cancelled && cancelled->load(std::memory_order_acquire); };
+        if (stopped())
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        uint32_t draws = 0;
+        if (TryGetMeshDrawCount(uuid, &draws))
+            return VFSResult<uint32_t>::Ok(draws);
+        std::unique_lock decode_lock(MeshLoadMutex, std::try_to_lock);
+        if (!decode_lock.owns_lock())
+            return VFSResult<uint32_t>::Fail(VFSError::AlreadyExists);
+        if (stopped())
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        if (TryGetMeshDrawCount(uuid, &draws))
+            return VFSResult<uint32_t>::Ok(draws);
+        AssetRecordSnapshot expected = {};
+        auto*               registry = Registry;
+        if (!registry || !registry->TryReadRecord(uuid, &expected))
+            return VFSResult<uint32_t>::Fail(VFSError::NotFound);
+        if (expected.Record.Type != AssetType::MESH || !expected.Record.Path.IsValid() || !expected.Record.Path.Extension().Equals(".zemesh"))
+            return VFSResult<uint32_t>::Fail(VFSError::InvalidPath);
+        if (!limits.MaxDecodedBytes || limits.MaxDecodedBytes > ZMega(512ULL))
+            return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
+
+        ArenaAllocator scratch = {};
+        scratch.Initialize(limits.MaxDecodedBytes, 0, "AssetManager/MeshRead");
+        AssetMesh          source           = {};
+        AssetNodeHierarchy source_hierarchy = {};
+        const auto         read             = AssetCodec::ReadMeshAssetFileVFS(&scratch, vfs, expected.Record.Path, &source, &source_hierarchy, uuid, limits);
+        if (read.Failed())
+            return VFSResult<uint32_t>::Fail(read.Error());
+        if (stopped())
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        Bounds(source);
+
+        auto storage = ZEngine::Helpers::Scope<MeshCacheAllocation>(new (std::nothrow) MeshCacheAllocation{});
+        if (!storage)
+            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+        // Mirror the decoder's allocation order/capacities. Allow for the slab
+        // base's different alignment without reserving/clearing unused capacity.
+        if (scratch.m_current_offset > SIZE_MAX - 64)
+            return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
+        const auto bytes = scratch.m_current_offset + 64;
+        storage->Slab    = &ContainerSlab;
+        storage->Block   = ContainerSlab.TryRealloc(nullptr, bytes);
+        if (!storage->Block || !storage->Arena.InitializeBorrowed(storage->Block, bytes, "AssetManager/LoadedMesh"))
+            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+        auto&              arena     = storage->Arena;
+        AssetMesh          mesh      = {};
+        AssetNodeHierarchy hierarchy = {};
+        if (!CopyArray(source.Vertices, mesh.Vertices, arena) || !CopyArray(source.Indices, mesh.Indices, arena) || !CopyArray(source.SubMeshes, mesh.SubMeshes, arena) || !CopyArray(source_hierarchy.Hierarchies, hierarchy.Hierarchies, arena) || !CopyArray(source_hierarchy.LocalTransforms, hierarchy.LocalTransforms, arena) || !CopyArray(source_hierarchy.GlobalTransforms, hierarchy.GlobalTransforms, arena) || !CopyNames(source_hierarchy.Names, hierarchy.Names, arena) || !CopyNames(source_hierarchy.MaterialNames, hierarchy.MaterialNames, arena) ||
+            !CopyMap(source_hierarchy.NodeNames, hierarchy.NodeNames, arena) || !CopyMap(source_hierarchy.NodeMeshes, hierarchy.NodeMeshes, arena) || !CopyMap(source_hierarchy.NodeMaterials, hierarchy.NodeMaterials, arena))
+            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+        mesh.MeshUUID               = source.MeshUUID;
+        mesh.BoundsCenter           = source.BoundsCenter;
+        mesh.BoundsRadius           = source.BoundsRadius;
+        mesh.BoundsMin              = source.BoundsMin;
+        mesh.BoundsMax              = source.BoundsMax;
+        mesh.BoundsValid            = source.BoundsValid;
+        hierarchy.MeshUUID          = source_hierarchy.MeshUUID;
+        hierarchy.NodeHierarchyUUID = source_hierarchy.NodeHierarchyUUID;
+
+        std::lock_guard lock(IngestMutex);
+        if (stopped())
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        // A concurrent importer/second load can win while we decode. Placement
+        // reuses that complete binding; it must never replace or mark it stale.
+        if (TryGetMeshDrawCount(uuid, &draws))
+            return VFSResult<uint32_t>::Ok(draws);
+        if (Registry != registry || MeshToHierarchySlot.contains(uuid))
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        const auto mesh_slot      = Meshes.size();
+        const auto hierarchy_slot = NodeHierarchies.size();
+        if (mesh_slot >= 0x10000000 || hierarchy_slot >= 0x10000000 || (MeshToHierarchySlot.size() + 1) * 4 > MeshToHierarchySlot.capacity() * 3)
+            return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
+        if (!Meshes.try_reserve(mesh_slot + 1) || !NodeHierarchies.try_reserve(hierarchy_slot + 1) || !MeshCacheAllocations.try_reserve(MeshCacheAllocations.size() + 1))
+            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+        const auto mesh_handle      = CreateHandle(uint32_t(mesh_slot), AssetType::MESH);
+        const auto hierarchy_handle = CreateHandle(uint32_t(hierarchy_slot), AssetType::MESH_HIERARCHY);
+        if (!registry->TryBindLoadedMesh(expected, hierarchy.NodeHierarchyUUID, mesh_handle, hierarchy_handle))
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        draws = uint32_t(mesh.SubMeshes.size());
+        // Capacity is established. No failure/IO/callback between paired registry
+        // publication and these allocation-free, complete CPU descriptor appends.
+        new (&Meshes.m_data[mesh_slot]) AssetMesh(std::move(mesh));
+        ++Meshes.m_size;
+        new (&NodeHierarchies.m_data[hierarchy_slot]) AssetNodeHierarchy(std::move(hierarchy));
+        ++NodeHierarchies.m_size;
+        MeshToHierarchySlot.insert(uuid, uint32_t(hierarchy_slot));
+        MeshCacheAllocations.push(storage.release());
+        (void) registry->SetState(uuid, AssetState::Loaded);
+        (void) registry->SetState(source_hierarchy.NodeHierarchyUUID, AssetState::Loaded);
+        return VFSResult<uint32_t>::Ok(draws);
+    }
 } // namespace ZEngine::Managers

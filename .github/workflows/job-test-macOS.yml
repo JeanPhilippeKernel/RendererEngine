@@ -22,10 +22,15 @@ jobs:
         with:
           name: Build-macOS-${{ inputs.architecture }}-${{ inputs.configuration }}
 
-      - name: Update access permission of ZEngineTests
-        run: chmod +x ${{github.workspace}}/tests/ZEngineTests
+      - name: Update test executable permissions
+        run: chmod +x ${{github.workspace}}/tests/ZEngineTests ${{github.workspace}}/tests/TetragramaTests
 
       - name: Run Tests
         env:
           DYLD_LIBRARY_PATH: ${{github.workspace}}/lib
         run: ${{github.workspace}}/tests/ZEngineTests
+
+      - name: Run Editor Tests
+        env:
+          DYLD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: ${{github.workspace}}/tests/TetragramaTests

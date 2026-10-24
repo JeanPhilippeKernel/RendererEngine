@@ -16,6 +16,7 @@ namespace ZEngine::Rendering
     struct BuiltinMeshEntry
     {
         const char*     MeshUUID      = nullptr;
+        const char*     HierarchyUUID = nullptr;
         const char*     MaterialUUID  = nullptr;
         BuildMeshFn     BuildMesh     = nullptr;
         BuildMaterialFn BuildMaterial = nullptr;
@@ -148,6 +149,7 @@ namespace ZEngine::Rendering
     static constexpr BuiltinMeshEntry kBuiltinMeshTable[] = {
         {
          "ff000000-0000-0000-0000-000000000001", // mesh
+        "ff000000-0000-0002-0000-000000000001", // hierarchy
         "ff000000-0000-0001-0000-000000000001", // material
         BuildDirectionalLightIcon, BuildDirectionalLightMaterial,
          },
@@ -179,6 +181,10 @@ namespace ZEngine::Rendering
     {
         for (const auto& entry : kBuiltinMeshTable)
         {
+            const auto mesh_uuid      = uuids::uuid::from_string(entry.MeshUUID);
+            const auto hierarchy_uuid = uuids::uuid::from_string(entry.HierarchyUUID);
+            ZENGINE_VALIDATE_ASSERT(mesh_uuid && hierarchy_uuid && *mesh_uuid != *hierarchy_uuid, "Builtin mesh and hierarchy must have distinct valid registry identities")
+
             // Ingest material first — must exist before the mesh is rendered.
             if (entry.MaterialUUID && entry.BuildMaterial)
             {
@@ -196,13 +202,9 @@ namespace ZEngine::Rendering
             AssetNodeHierarchy hier{};
             entry.BuildMesh(arena, mesh, hier);
 
-            auto mesh_uuid_result = uuids::uuid::from_string(entry.MeshUUID);
-            if (mesh_uuid_result)
-            {
-                mesh.MeshUUID          = *mesh_uuid_result;
-                hier.MeshUUID          = *mesh_uuid_result;
-                hier.NodeHierarchyUUID = *mesh_uuid_result;
-            }
+            mesh.MeshUUID          = *mesh_uuid;
+            hier.MeshUUID          = *mesh_uuid;
+            hier.NodeHierarchyUUID = *hierarchy_uuid;
 
             if (entry.MaterialUUID)
             {

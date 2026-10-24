@@ -430,14 +430,11 @@ TEST(GridPassTest, BuildsStaticPipelineDescription)
 
     EXPECT_STREQ(desc.DebugName, "Infinite-Grid-Pipeline");
     EXPECT_STREQ(desc.ShaderSpecificationValue.Name, "infinite_grid");
-    EXPECT_TRUE(desc.EnableDepthTest);
+    EXPECT_FALSE(desc.EnableDepthTest);
     EXPECT_FALSE(desc.EnableDepthWrite);
     EXPECT_TRUE(desc.EnableBlending);
-    ASSERT_EQ(desc.VertexInputBindingSpecifications.size(), 1u);
-    EXPECT_EQ(desc.VertexInputBindingSpecifications[0].Stride, sizeof(float) * 8);
-    EXPECT_EQ(desc.VertexInputBindingSpecifications[0].Rate, VK_VERTEX_INPUT_RATE_VERTEX);
-    ASSERT_EQ(desc.VertexInputAttributeSpecifications.size(), 1u);
-    EXPECT_EQ(desc.VertexInputAttributeSpecifications[0].Format, ZEngine::Rendering::Specifications::ImageFormat::R32G32B32_SFLOAT);
+    EXPECT_TRUE(desc.VertexInputBindingSpecifications.empty());
+    EXPECT_TRUE(desc.VertexInputAttributeSpecifications.empty());
 
     manager.Shutdown();
 }

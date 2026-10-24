@@ -24,7 +24,7 @@
         },
         "LLVM": {
             "Version": "20.1.7",
-            "MaximumVersion": "22.2.0"
+            "MaximumVersion": "24.2.0"
         }
     }
 }

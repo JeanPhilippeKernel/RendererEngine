@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
 #include <ZEngine/Core/VFS/VFSError.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Rendering/Buffers/Bitmap.h>
@@ -45,16 +46,29 @@ namespace ZEngine::Importers::AssetCodec
 
     struct ImportConfiguration
     {
-        Core::Containers::String AssetName;
-        Core::Containers::String OutputAssetFile;
-        Core::Containers::String OutputAssetsPath;
-        Core::Containers::String OutputMaterialPath;
-        Core::Containers::String InputBaseAssetFilePath;
-        Core::Containers::String OutputWorkingSpacePath;
-        Core::Containers::String OutputTextureFilesPath;
-        Core::VFS::IVFSContext*  VFS     = nullptr;
-        ImportOptions            Options = {};
+        Core::Containers::String AssetName                                               = {};
+        Core::Containers::String OutputAssetFile                                         = {};
+        Core::Containers::String OutputAssetsPath                                        = {};
+        Core::Containers::String OutputMaterialPath                                      = {};
+        Core::Containers::String InputBaseAssetFilePath                                  = {};
+        Core::Containers::String OutputWorkingSpacePath                                  = {};
+        Core::Containers::String OutputTextureFilesPath                                  = {};
+        Core::VFS::IVFSContext*  VFS                                                     = nullptr;
+        // Called synchronously after an artifact commits. This remains separate from
+        // the completion callback so a failed import can still report partial output.
+        void*                    ArtifactContext                                         = nullptr;
+        void (*OnArtifactPublished)(void* context, AssetFileType type, const char* path) = nullptr;
+        ImportOptions Options                                                            = {};
     };
+
+    // Validate before parsing a source or accessing VFS metadata; returns the mesh destination.
+    [[nodiscard]] Core::VFS::VFSResult<Core::VFS::VFSPath> ValidateImportConfiguration(const ImportConfiguration& config);
+    [[nodiscard]] Core::VFS::VFSResult<Core::VFS::VFSPath> MakeOutputPath(const char* directory, const char* filename);
+    [[nodiscard]] Core::VFS::VFSResult<void>               CopyTextureFiles(Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
+    void                                                   ReportPublishedArtifact(const ImportConfiguration& config, AssetFileType type, const Core::VFS::VFSPath& path);
+    std::string                                            MaterialOutputFilename(const AssetMaterial& material, size_t index);
+    [[nodiscard]] Core::VFS::VFSResult<Core::VFS::VFSPath> MaterialOutputPath(const AssetMaterial& material, const ImportConfiguration& config, size_t index);
+    [[nodiscard]] Core::VFS::VFSResult<void>               SynchronizeTextureMetadata(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, Core::Containers::ArrayView<AssetMaterial> materials, const ImportConfiguration& config, const char* importer);
 
     struct AssetMeshFileHeader
     {
@@ -91,30 +105,53 @@ namespace ZEngine::Importers::AssetCodec
         uint32_t ImporterVersion = ENVIRONMENT_MAP_IMPORTER_VERSION;
     };
 
-    AssetImporterOutput        SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config);
+    struct MeshAssetReadLimits
+    {
+        uint64_t MaxFileBytes        = ZMega(512ULL);
+        size_t   MaxDecodedBytes     = ZMega(512ULL);
+        uint32_t MaxVertices         = 8 * 1024 * 1024;
+        uint32_t MaxIndices          = 64 * 1024 * 1024;
+        uint32_t MaxSubMeshes        = 8192;
+        uint32_t MaxNodes            = 65536;
+        uint32_t MaxNames            = 65536;
+        uint32_t MaxStringBytes      = 4096;
+        size_t   MaxStringTotalBytes = ZMega(8ULL);
+    };
 
-    AssetImporterOutput        SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, AssetMaterial& material, const ImportConfiguration& config);
+    /// Bounded v1 (64-bit little-endian) mesh readers. No active scene/cache mutation.
+    /// The caller exclusively owns arena for the call and the lifetime of the result.
+    /// Failure preserves both outputs and restores the arena's allocation cursors.
+    /// A non-nil expected UUID prevents a stale/substituted file binding another asset.
+    [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAssetFileVFS(Core::Memory::ArenaAllocator* arena, Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
+    [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* path, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
 
-    AssetImporterOutput        SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
+    [[nodiscard]] Core::VFS::VFSResult<AssetImporterOutput> SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config);
 
-    [[nodiscard]] uint32_t     GetEnvironmentMapFullMipCount(uint32_t face_size);
-    [[nodiscard]] bool         IsEnvironmentMapFileHeaderValid(const EnvironmentMapFileHeader& header);
-    [[nodiscard]] bool         DoesEnvironmentMapHeaderMatchSource(const EnvironmentMapFileHeader& header, uint64_t source_hash);
+    // Preserve an existing identity; only missing/corrupt sidecars permit a new one.
+    [[nodiscard]] Core::VFS::VFSResult<void>                RestoreAssetUUID(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, uuids::uuid& id);
+
+    [[nodiscard]] Core::VFS::VFSResult<AssetImporterOutput> SerializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, AssetMaterial& material, const ImportConfiguration& config, size_t material_index);
+
+    [[nodiscard]] Core::VFS::VFSResult<AssetImporterOutput> SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::ArrayView<AssetTexture> textures, const ImportConfiguration& config);
+
+    [[nodiscard]] uint32_t                                  GetEnvironmentMapFullMipCount(uint32_t face_size);
+    [[nodiscard]] bool                                      IsEnvironmentMapFileHeaderValid(const EnvironmentMapFileHeader& header);
+    [[nodiscard]] bool                                      DoesEnvironmentMapHeaderMatchSource(const EnvironmentMapFileHeader& header, uint64_t source_hash);
 
     // VFS-based — writes through IVFSContext using atomic .tmp → rename protocol.
     // out_path: the VFS path to write (e.g. project://_cache/envmaps/<uuid>.zenvmap)
-    Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata = {});
+    Core::VFS::VFSResult<void>                              SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata = {});
 
-    void                       DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies);
+    void                                                    DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies);
 
-    void                       DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material);
+    void                                                    DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material);
 
-    void                       DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures);
+    void                                                    DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures);
 
-    bool                       ReadAssetMeshFileHeader(const char* asset_file, AssetMeshFileHeader& header);
+    bool                                                    ReadAssetMeshFileHeader(const char* asset_file, AssetMeshFileHeader& header);
 
-    bool                       DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap);
+    bool                                                    DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap);
 
-    bool                       ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header);
+    bool                                                    ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header);
 
 } // namespace ZEngine::Importers::AssetCodec

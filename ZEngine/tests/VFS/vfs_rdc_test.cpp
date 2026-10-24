@@ -5,6 +5,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <thread>
@@ -30,9 +31,9 @@ namespace
 
             for (char* c = Value; *c != '\0'; ++c)
             {
-                if (*c == '\\')
+                if (*c == '/')
                 {
-                    *c = '/';
+                    *c = '\\';
                 }
             }
         }
@@ -144,6 +145,29 @@ TEST_F(VFSRDCWatcherTest, ReportsFileCreation)
 
     Drain(watcher);
     EXPECT_TRUE(Contains(expected.Get(), WatchEventKind::Created));
+}
+
+TEST_F(VFSRDCWatcherTest, ForwardSlashWatchRootEmitsNativePaths)
+{
+    VFSRDCWatcher watcher;
+    Init(watcher);
+
+    const auto root = m_root.generic_string();
+    ASSERT_NE(watcher.AddWatch(root.c_str(), /*recursive=*/true), INVALID_WATCH_HANDLE);
+
+    std::error_code ec;
+    std::filesystem::create_directory(m_root / "assets", ec);
+    ASSERT_FALSE(ec);
+    Drain(watcher);
+
+    const auto         file = m_root / "assets" / "created.glb";
+    const ExpectedPath expected{file};
+    WriteFile(file, "x");
+
+    Drain(watcher);
+    EXPECT_TRUE(Contains(expected.Get(), WatchEventKind::Created));
+    for (size_t i = 0; i < EventCount(); ++i)
+        EXPECT_EQ(std::strchr(m_events[i].Path, '/'), nullptr);
 }
 
 TEST_F(VFSRDCWatcherTest, ReportsFileModification)

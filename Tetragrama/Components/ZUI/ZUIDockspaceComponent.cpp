@@ -1,17 +1,22 @@
+#include <Tetragrama/Components/ZUI/ZUIChrome.h>
 #include <Tetragrama/Components/ZUI/ZUIDockspaceComponent.h>
+#include <Tetragrama/Components/ZUI/ZUIRecentScenes.h>
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/EditorScene.h>
-#include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
+#include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIDockspace.h>
+#include <ZEngine/UI/ZUIFont.h>
+#include <ZEngine/UI/ZUITokens.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
 #include <filesystem>
@@ -23,22 +28,6 @@ using namespace ZEngine::UI;
 
 namespace Tetragrama::Components
 {
-    // Must run via MainThreadScheduler::Post, not inline in BuildUI — a native
-    // dialog called directly from the UI-build call stack previously deadlocked (#645).
-    static std::future<void> OpenSceneDialogAsync(EditorPtr app)
-    {
-        if (!app || !app->CurrentWindow || !app->Configuration)
-            co_return;
-
-        std::filesystem::path         ws(app->Configuration->WorkingSpacePath.c_str());
-        std::filesystem::path         scene_dir = ws / app->Configuration->ScenePath.c_str();
-
-        std::vector<std::string_view> filters   = {".zescene"};
-        std::string                   picked    = co_await app->CurrentWindow->OpenFileDialogAsync(filters, scene_dir.string(), "Select a scene file");
-        if (!picked.empty())
-            app->OpenScene(picked.c_str());
-    }
-
     static constexpr float k_dim[4] = {0.55f, 0.55f, 0.60f, 1.f};
 
     void                   ZUIDockspaceComponent::Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name, bool visibility)
@@ -77,7 +66,7 @@ namespace Tetragrama::Components
         static constexpr const char* kModShift     = "Ctrl+Shift+";
         static constexpr const char* kQuitShortcut = "Alt+F4";
 #endif
-        char sc_new[24], sc_open[24], sc_save[24], sc_save_as[24], sc_undo[24], sc_redo[24], sc_all[24];
+        char sc_new[24] = {}, sc_open[24] = {}, sc_save[24] = {}, sc_save_as[24] = {}, sc_undo[24] = {}, sc_redo[24] = {}, sc_all[24] = {};
         snprintf(sc_new, sizeof(sc_new), "%sN", kMod);
         snprintf(sc_open, sizeof(sc_open), "%sO", kMod);
         snprintf(sc_save, sizeof(sc_save), "%sS", kMod);
@@ -89,26 +78,113 @@ namespace Tetragrama::Components
         // Menu bar
         if (ZUIBeginMenuBar(ctx))
         {
-            ZUISpacer(ctx, 6.f);
+            // Engine mark: the app logo, a 26 px box whose artwork fills ~19 px so the mark sits at x=12
+            // as in Figma; menus start at x=43 (labels at 54, 22 px apart).
+            if (!m_logo_requested)
+            {
+                m_logo_requested = true;
+                const auto* eng  = ZEngine::Engine::GetContext();
+                if (eng && eng->EngineAssetsNativeRoot && eng->RenderResourceManager)
+                {
+                    const auto logo_path = (std::filesystem::path(eng->EngineAssetsNativeRoot) / "Settings/Icons/AppIconWhite.png").string();
+                    m_logo_texture       = eng->RenderResourceManager->SubmitTextureFile(logo_path.c_str());
+                }
+            }
+            ZUISpacer(ctx, 9.f);
+            {
+                ZUIBox* mark  = ZUIPushBox(ctx, "##engine_mark", 13, m_logo_texture.Valid() ? ZUI_DrawBackground : ZUI_None);
+                mark->Size[0] = ZPx(26.f);
+                mark->Size[1] = ZPx(26.f);
+                if (m_logo_texture.Valid())
+                {
+                    mark->TextureIndex = (uint32_t) m_logo_texture.Index;
+                    mark->TextureFlipV = true;
+                    ZUIBoxSetColor(mark, 1.f, 1.f, 1.f, 1.f); // quad must have alpha > 0 to be emitted
+                    mark->EdgeSoftness = 0.f;
+                }
+                ZUIPopBox(ctx);
+            }
+            ZUISpacer(ctx, 8.f);
 
             // "File" menu
+            ctx->PopupDesiredW = 280.f; // Figma "File menu" width; consumed only if the popup is open
             if (ZUIBeginMenu(ctx, "File"))
             {
                 auto* file_app = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
 
-                if (ZUIMenuItemEx(ctx, "New Scene", sc_new))
+                if (ZUIMenuItemEx(ctx, "New Scene" ZUI_GLYPH_ELLIPSIS, sc_new, false, true, (int) ZUIIcon::Plus))
+                {
+                    if (file_app)
+                    {
+                        (void) file_app->RequestNewScene();
+                    }
+                }
+                if (ZUIMenuItemEx(ctx, "Open Scene" ZUI_GLYPH_ELLIPSIS, sc_open, false, true, (int) ZUIIcon::Folder))
                 {
                     ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
-                        auto* app     = reinterpret_cast<EditorPtr>(ptr);
-                        auto* eng_ctx = ZEngine::Engine::GetContext();
-                        if (app && app->CurrentScene && eng_ctx && eng_ctx->ActorManager)
+                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
                         {
-                            eng_ctx->ActorManager->DestroyAll();
-                            reinterpret_cast<EditorScenePtr>(app->CurrentScene)->Reset(app->Configuration->DefaultSky);
+                            app->OpenSceneDialog();
                         }
                     });
                 }
-                if (ZUIMenuItemEx(ctx, "Import New Asset...", nullptr))
+                if (Recent().File.empty() && file_app && file_app->Configuration)
+                {
+                    // Keep the legacy filename so existing recent-scene history is preserved.
+                    Recent().Load(std::string(file_app->Configuration->WorkingSpacePath.c_str()) + "/.zengine/recent_levels.txt");
+                }
+                ctx->PopupDesiredW = 270.f; // Figma "Open Recent submenu" width
+                if (ZUIBeginSubMenu(ctx, "Open Recent", true, (int) ZUIIcon::Layers))
+                {
+                    if (Recent().Count == 0)
+                    {
+                        ZUIMenuItemEx(ctx, "No recent scenes", nullptr, false, false);
+                    }
+                    for (int ri = 0; ri < Recent().Count; ++ri)
+                    {
+                        char name[128] = {}, age[32] = {}, label[160] = {};
+                        RecentScenes::Stem(Recent().Items[ri].Path, name, sizeof(name));
+                        RecentScenes::Age(Recent().Items[ri].Time, age, sizeof(age));
+                        snprintf(label, sizeof(label), "%s##recent%d", name, ri);
+                        if (ZUIMenuItemEx(ctx, label, age, false, true, (int) ZUIIcon::Grid3x3))
+                        {
+                            const std::string path = Recent().Items[ri].Path;
+                            if (file_app)
+                            {
+                                file_app->OpenScene(path.c_str());
+                            }
+                        }
+                    }
+                    ZUISeparator(ctx);
+                    if (ZUIMenuItemEx(ctx, "Clear Recent Scenes", nullptr, false, Recent().Count > 0))
+                    {
+                        Recent().Clear();
+                    }
+                    ZUIEndSubMenu(ctx);
+                }
+                ctx->PopupDesiredW = 280.f;
+                ZUISeparator(ctx);
+                if (ZUIMenuItemEx(ctx, "Save", sc_save, false, true, (int) ZUIIcon::Save))
+                {
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
+                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
+                        {
+                            app->SaveScene();
+                        }
+                    });
+                }
+                if (ZUIMenuItemEx(ctx, "Save As" ZUI_GLYPH_ELLIPSIS, sc_save_as))
+                {
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
+                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
+                        {
+                            app->SaveSceneAs();
+                        }
+                    });
+                }
+                ZUIMenuItemEx(ctx, "Save All", nullptr, false, false); // No Save All command yet (CB1).
+                ZUISeparator(ctx);
+                if (ZUIMenuItemEx(ctx, "Import" ZUI_GLYPH_ELLIPSIS, nullptr, false, true, (int) ZUIIcon::Image))
                 {
                     if (file_app && file_app->Configuration)
                     {
@@ -116,45 +192,90 @@ namespace Tetragrama::Components
                         file_app->Configuration->FocusImporter = true;
                     }
                 }
+                ZUIMenuItemEx(ctx, "Export Selected" ZUI_GLYPH_ELLIPSIS, nullptr, false, false);
                 ZUISeparator(ctx);
-                if (ZUIMenuItemEx(ctx, "Open Scene...", sc_open))
-                {
-                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) { OpenSceneDialogAsync(reinterpret_cast<EditorPtr>(ptr)); });
-                }
+                ZUIMenuItemEx(ctx, "Project Settings" ZUI_GLYPH_ELLIPSIS, nullptr, false, true, (int) ZUIIcon::SlidersHorizontal);
                 ZUISeparator(ctx);
-                if (ZUIMenuItemEx(ctx, "Save Scene", sc_save))
+                if (ZUIMenuItemEx(ctx, "Exit", kQuitShortcut, false, true, (int) ZUIIcon::X))
                 {
-                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
-                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
-                            app->SaveScene();
-                    });
-                }
-                if (ZUIMenuItemEx(ctx, "Save Scene As...", sc_save_as))
-                {
-                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void* ptr) {
-                        if (auto* app = reinterpret_cast<EditorPtr>(ptr))
-                            app->SaveSceneAs();
-                    });
-                }
-                ZUISeparator(ctx);
-                if (ZUIMenuItemEx(ctx, "Quit", kQuitShortcut))
-                {
-                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void*) { ZEngine::Engine::RequestClose(); });
+                    ZEngine::Core::MainThreadScheduler::Post(file_app, [](void*) { ZEngine::Engine::RequestApplicationClose(); });
                 }
                 ZUIEndMenu(ctx);
             }
-            ZUISpacer(ctx, 4.f);
+
+            ctx->PopupDesiredW = 0.f;
 
             // "Edit" menu
             if (ZUIBeginMenu(ctx, "Edit"))
             {
-                if (ZUIMenuItemEx(ctx, "Undo", sc_undo, false, false))
+                auto* edit_app  = (ParentLayer && ParentLayer->CurrentApp) ? static_cast<Editor*>(ParentLayer->CurrentApp) : nullptr;
+                auto* session   = edit_app ? &edit_app->Session : nullptr;
+                char  undo[192] = {};
+                char  redo[192] = {};
+                snprintf(undo, sizeof(undo), "Undo%s%s##editor_undo", session && session->History().UndoCount() ? " " : "", session ? session->History().UndoName() : "");
+                snprintf(redo, sizeof(redo), "Redo%s%s##editor_redo", session && session->History().RedoCount() ? " " : "", session ? session->History().RedoName() : "");
+                const bool text_owns_command = ctx->TextInputActive || ctx->ActiveModalKey != 0;
+                if (ZUIMenuItemEx(ctx, undo, sc_undo, false, session && session->CanUndo() && !text_owns_command))
                 {
+                    if (!session->Request(EditorCommand::Undo))
+                        ZENGINE_CORE_WARN("[Editor] {}", session->LastError())
                 }
-                if (ZUIMenuItemEx(ctx, "Redo", sc_redo, false, false))
+                if (ZUIMenuItemEx(ctx, redo, sc_redo, false, session && session->CanRedo() && !text_owns_command))
                 {
+                    if (!session->Request(EditorCommand::Redo))
+                        ZENGINE_CORE_WARN("[Editor] {}", session->LastError())
+                }
+                ZUIEndMenu(ctx);
+            }
+
+            // "Window" menu
+            if (ZUIBeginMenu(ctx, "Window"))
+            {
+                ZUIMenuItem(ctx, "Main Panels", false);
+                ZUISeparator(ctx);
+
+                static const char* kPanels[] = {"Outliner", "Console", "Details", "Content Browser"};
+                for (int pi = 0; pi < 4; ++pi)
+                {
+                    bool vis = ShellPanelManager && ShellPanelManager->IsPanelVisible(kPanels[pi]);
+                    if (ZUIMenuItemEx(ctx, kPanels[pi], nullptr, vis) && ShellPanelManager)
+                    {
+                        ShellPanelManager->SetPanelVisible(kPanels[pi], !vis);
+                    }
                 }
                 ZUISeparator(ctx);
+                bool prof_vis = ShellPanelManager && ShellPanelManager->IsPanelVisible("Profiler");
+                if (ZUIMenuItemEx(ctx, "Memory Profiler", nullptr, prof_vis) && ShellPanelManager)
+                {
+                    ShellPanelManager->SetPanelVisible("Profiler", !prof_vis);
+                }
+                ZUIEndMenu(ctx);
+            }
+
+            // "Tools" menu
+            if (ZUIBeginMenu(ctx, "Tools"))
+            {
+                if (ZUIMenuItemEx(ctx, "Scene Settings", nullptr, m_settings_open))
+                {
+                    m_settings_open = !m_settings_open;
+                    if (m_settings_open)
+                    {
+                        m_settings_just_opened = true;
+                    }
+                }
+                ZUIEndMenu(ctx);
+            }
+
+            // "Build" menu (no build pipeline in the editor yet)
+            if (ZUIBeginMenu(ctx, "Build"))
+            {
+                ZUIMenuItemEx(ctx, "Build Lighting", nullptr, false, false);
+                ZUIEndMenu(ctx);
+            }
+
+            // "Select" menu
+            if (ZUIBeginMenu(ctx, "Select"))
+            {
                 if (ZUIMenuItemEx(ctx, "Select All", sc_all))
                 {
                     if (ParentLayer && ParentLayer->CurrentApp)
@@ -168,84 +289,130 @@ namespace Tetragrama::Components
                             eng->ActorManager->ForEach([&](ZEngine::ECS::ActorHandle h, ZEngine::ECS::Actor*) {
                                 if (!found)
                                 {
-                                    edit_scene->SelectedActorHandle = h;
-                                    found                           = true;
+                                    if (!edit_scene->SelectActor(*eng->ActorManager, h))
+                                        ZENGINE_CORE_WARN("[Editor] Could not queue the selection")
+                                    found = true;
                                 }
                             });
                         }
                     }
                 }
+                ZUIMenuItemEx(ctx, "Select None", nullptr, false, false);
                 ZUIEndMenu(ctx);
             }
-            ZUISpacer(ctx, 4.f);
 
-            // "Views" menu
-            if (ZUIBeginMenu(ctx, "Views"))
+            // "Actor" menu (actor creation lives in the Outliner for now)
+            if (ZUIBeginMenu(ctx, "Actor"))
             {
-                ZUIMenuItem(ctx, "Main Panels", false);
-                ZUISeparator(ctx);
-
-                static const char* kPanels[] = {"Hierarchy", "Console", "Inspector", "Project"};
-                for (int pi = 0; pi < 4; ++pi)
-                {
-                    bool vis = ShellPanelManager && ShellPanelManager->IsPanelVisible(kPanels[pi]);
-                    if (ZUIMenuItemEx(ctx, kPanels[pi], nullptr, vis) && ShellPanelManager)
-                        ShellPanelManager->SetPanelVisible(kPanels[pi], !vis);
-                }
+                ZUIMenuItemEx(ctx, "Add Actor", nullptr, false, false);
                 ZUIEndMenu(ctx);
             }
-            ZUISpacer(ctx, 4.f);
 
-            // "Settings" menu
-            if (ZUIBeginMenu(ctx, "Settings"))
+            // "Help" menu
+            if (ZUIBeginMenu(ctx, "Help"))
             {
-                if (ZUIMenuItemEx(ctx, "Scene Settings", nullptr, m_settings_open))
-                {
-                    m_settings_open = !m_settings_open;
-                    if (m_settings_open)
-                        m_settings_just_opened = true;
-                }
+                ZUIMenuItemEx(ctx, "About ZEngine", nullptr, false, false);
                 ZUIEndMenu(ctx);
             }
-            ZUISpacer(ctx, 4.f);
 
-            // "Performances" menu
-            if (ZUIBeginMenu(ctx, "Performances"))
+            // Project title, right-aligned (the native window supplies the window controls).
             {
-                bool prof_vis = ShellPanelManager && ShellPanelManager->IsPanelVisible("Profiler");
-                if (ZUIMenuItemEx(ctx, "Memory Profiler", nullptr, prof_vis) && ShellPanelManager)
-                    ShellPanelManager->SetPanelVisible("Profiler", !prof_vis);
-                ZUIEndMenu(ctx);
+                ZUIBox* fill  = ZUIPushBox(ctx, "##menu_fill", 11, ZUI_None);
+                fill->Size[0] = ZFill();
+                fill->Size[1] = ZPx(1.f);
+                ZUIPopBox(ctx);
+
+                auto*       title_app  = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+                const char* project    = (title_app && title_app->Configuration && !title_app->Configuration->ProjectName.empty()) ? title_app->Configuration->ProjectName.c_str() : "ZEngine";
+                char        title[160] = {};
+                snprintf(title, sizeof(title), "%s - Scene Editor", project);
+                ZUILabel(ctx, title, ctx->Theme.TextDim);
+                ZUISpacer(ctx, 12.f);
             }
 
             ZUIEndMenuBar(ctx);
         }
 
+        // Scene tab row and main toolbar (Figma chrome, 100 px in total with the menu bar).
+        {
+            auto*       chrome_app   = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto*       chrome_scene = chrome_app ? reinterpret_cast<EditorScenePtr>(chrome_app->CurrentScene) : nullptr;
+            const char* scene_name   = chrome_app && chrome_app->Configuration && !chrome_app->Configuration->ActiveSceneName.empty() ? chrome_app->Configuration->ActiveSceneName.c_str() : "Untitled";
+            if (chrome_scene && chrome_scene->Name && chrome_scene->Name[0])
+            {
+                scene_name = chrome_scene->Name;
+            }
+            Chrome::BuildSceneTabs(ctx, ShellPanelManager, scene_name, chrome_scene && chrome_scene->IsDirty());
+
+            const Chrome::ToolbarResult tb = Chrome::BuildMainToolbar(ctx);
+            if (tb.SaveScene && chrome_app)
+            {
+                ZEngine::Core::MainThreadScheduler::Post(chrome_app, [](void* ptr) {
+                    if (auto* app = reinterpret_cast<EditorPtr>(ptr))
+                    {
+                        app->SaveScene();
+                    }
+                });
+            }
+            if ((tb.NewActor || tb.NewCollection) && chrome_scene)
+            {
+                auto* eng = ZEngine::Engine::GetContext();
+                if (eng && eng->ActorManager)
+                {
+                    chrome_scene->CreateActor(*eng->ActorManager, tb.NewCollection ? "Collection" : "Actor");
+                }
+            }
+            if (tb.OpenSettings)
+            {
+                m_settings_open = !m_settings_open;
+                if (m_settings_open)
+                {
+                    m_settings_just_opened = true;
+                }
+            }
+        }
+
         // Scene Settings window
         if (m_settings_open)
         {
-            static constexpr float kSideW          = 140.f;
-            static constexpr float kMinW           = 400.f;
-            static constexpr float kMinH           = 300.f;
-            float&                 kW              = m_modal_w; // alias for readability
-            float&                 kH              = m_modal_h;
-            float                  fh              = ZUIGetFrameHeight(ctx);
+            static constexpr float kSideW           = 160.f;
+            static constexpr float kMinW            = 400.f;
+            static constexpr float kMinH            = 300.f;
+            float&                 kW               = m_modal_w; // alias for readability
+            float&                 kH               = m_modal_h;
+            float                  fh               = ZUIGetFrameHeight(ctx);
 
-            auto*                  stg_app         = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
-            auto*                  stg_scene       = stg_app ? reinterpret_cast<EditorScenePtr>(stg_app->CurrentScene) : nullptr;
+            auto*                  stg_app          = (ParentLayer && ParentLayer->CurrentApp) ? reinterpret_cast<EditorPtr>(ParentLayer->CurrentApp) : nullptr;
+            auto*                  stg_scene        = stg_app ? reinterpret_cast<EditorScenePtr>(stg_app->CurrentScene) : nullptr;
 
-            auto                   mark_grid_dirty = [stg_scene]() {
-                if (!stg_scene)
-                    return;
-                stg_scene->GridDirty[0].value.store(true, std::memory_order_release);
-                stg_scene->GridDirty[1].value.store(true, std::memory_order_release);
-                stg_scene->GridDirty[2].value.store(true, std::memory_order_release);
+            const uint64_t         settings_epoch   = stg_app && stg_app->Session.OnOwnerThread() ? stg_app->Session.SceneEpoch() : 0;
+            // One disabled build retires old field focus/press/text state without
+            // clearing another panel's input. Color widgets also bind their local
+            // copied values to the epoch, not a reusable stack address.
+            const bool             settings_rebound = m_settings_epoch && m_settings_epoch != settings_epoch;
+            m_settings_epoch                        = settings_epoch;
+            const bool settings_editable            = !settings_rebound && stg_app && stg_scene && stg_scene->Session == &stg_app->Session && stg_app->Session.Editable() && !stg_scene->SourceReadOnly;
+            auto       sky_settings                 = stg_scene ? stg_scene->Sky : ZEngine::Rendering::Scenes::SkyConfig{};
+            auto       grid_settings                = stg_scene ? stg_scene->AuthoredGrid : ZEngine::ECS::SceneGridSettings{};
+            if (stg_app && stg_app->Session.OnOwnerThread())
+            {
+                sky_settings  = stg_app->SceneSkyForUI();
+                grid_settings = stg_app->SceneGridForUI();
+            }
+            bool sky_changed = false, grid_changed = false;
+            auto mark_grid_dirty  = [&]() { grid_changed = true; };
+            auto mark_sky_dirty   = [&]() { sky_changed = true; };
+            auto begin_scene_edit = [&]() {
+                if (!settings_editable)
+                {
+                    ZUIBeginDisabled(ctx);
+                }
             };
-            auto mark_sky_dirty = [stg_scene]() {
-                if (!stg_scene)
-                    return;
-                stg_scene->MarkSkyDirty();
-                stg_scene->MarkDirty(true);
+            auto end_scene_edit = [&]() {
+                if (!settings_editable)
+                {
+                    ZUIEndDisabled(ctx);
+                }
             };
 
             // Lazy center on first open
@@ -254,6 +421,10 @@ namespace Tetragrama::Components
                 m_modal_x = (sw - kW) * 0.5f;
                 m_modal_y = (sh - kH) * 0.5f;
             }
+            // Moving the native window between displays can shrink its logical
+            // bounds. Retained modal coordinates must not strand its controls.
+            m_modal_x = std::clamp(m_modal_x, 0.f, std::max(0.f, sw - kW));
+            m_modal_y = std::clamp(m_modal_y, 0.f, std::max(0.f, sh - kH));
 
             // Dim backdrop — visual only; NOT Clickable (a clickable full-screen sibling
             // visited after the window in LIFO traversal would overwrite HotKey for all
@@ -268,11 +439,11 @@ namespace Tetragrama::Components
                 ZUIPopBox(ctx);
             }
 
-            // Clear panel keyboard focus when modal opens
+            // The shared focus trap transfers focus into the modal and restores
+            // the owner on close; keep its key intact until that pass runs.
             if (m_settings_just_opened)
             {
                 m_settings_just_opened = false;
-                ctx->FocusKey          = 0; // transfer focus to modal exclusively
             }
 
             // Modal window — centered.
@@ -280,59 +451,72 @@ namespace Tetragrama::Components
             ZUIBox* win      = ZUIBeginColumn(ctx, "##stg_win", ZPx(kW), ZPx(kH));
             win->Flags       = win->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_DropShadow | ZUI_FloatX | ZUI_FloatY | ZUI_ClipChildren;
             ctx->ModalBox    = win;
+            win->ShadowKind  = ZUIShadowKind::Modal;
             win->FloatPos[0] = m_modal_x;
             win->FloatPos[1] = m_modal_y;
-            ZUIBoxSetColorArr(win, ctx->Theme.WindowBg);
-            ZUIBoxSetCornerRadius(win, 5.f);
+            {
+                const float win_bg[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BgPanel);
+                ZUIBoxSetColorArr(win, win_bg);
+            }
+            ZUIBoxSetCornerRadius(win, Metrics::Radius6);
             win->BorderThickness = 1.f;
-            win->BorderColor[0]  = ctx->Theme.PanelBorder[0];
-            win->BorderColor[1]  = ctx->Theme.PanelBorder[1];
-            win->BorderColor[2]  = ctx->Theme.PanelBorder[2];
+            win->BorderColor[0]  = ZEngine::UI::Tokens::BorderStrong.R;
+            win->BorderColor[1]  = ZEngine::UI::Tokens::BorderStrong.G;
+            win->BorderColor[2]  = ZEngine::UI::Tokens::BorderStrong.B;
             win->BorderColor[3]  = 1.f;
             win->EdgeSoftness    = 0.f;
+            // Child surfaces must stay inside the modal's stroke. A rectangular
+            // scissor cannot protect its rounded corners or a parent border.
+            win->Padding[0] = win->Padding[1] = win->Padding[2] = win->Padding[3] = 1.f;
 
-            // Title bar
+            // Title bar (Figma "Engine settings": 36 px, bg/surface, gear + semibold title + close)
             {
-                static constexpr float kTbarH = 28.f; // fixed title bar height
+                static constexpr float kTbarH = 36.f;
                 ZUIBox*                tbar   = ZUIBeginRow(ctx, "##stg_tbar", ZFill(), ZPx(kTbarH));
-                tbar->Flags                   = tbar->Flags | ZUI_DrawBackground | ZUI_Clickable;
-                ZUIBoxSetColorArr(tbar, ctx->Theme.TitleBarBg);
-                ZUIBoxSetTopRadius(tbar, 5.f);
+                tbar->Flags                   = tbar->Flags | ZUI_DrawBackground | ZUI_Clickable | ZUI_NoKeyboardFocus;
+                const float tbar_bg[4]        = ZUI_TOKEN(ZEngine::UI::Tokens::BgSurface);
+                ZUIBoxSetColorArr(tbar, tbar_bg);
+                ZUIBoxSetTopRadius(tbar, Metrics::Radius6 - 1.f);
                 tbar->EdgeSoftness = 0.f;
+                tbar->CrossAlign   = ZUIAlign::Center;
+                tbar->Padding[0]   = 14.f;
+                tbar->Padding[2]   = 10.f;
+                tbar->Gap          = 8.f;
 
-                ZUISpacer(ctx, 14.f);
-                // ZFill() height → ZUI centers text in the full title bar height
-                ZUIBox* ttl       = ZUIPushBox(ctx, "##stg_ttl", 9, ZUI_DrawText);
-                ttl->Size[0]      = ZFill();
-                ttl->Size[1]      = ZFill();
-                ttl->Label        = ZUIPushStr(&ctx->FrameArena, "Scene Settings", 14);
-                ttl->TextAlign    = ZUITextAlign::Left;
-                ttl->TextColor[0] = ctx->Theme.TextDefault[0];
-                ttl->TextColor[1] = ctx->Theme.TextDefault[1];
-                ttl->TextColor[2] = ctx->Theme.TextDefault[2];
-                ttl->TextColor[3] = ctx->Theme.TextDefault[3];
+                ZUIIconBox(ctx, ZUIIcon::Settings, 14.f, ctx->Theme.TextDim);
+                ZUIBox* ttl    = ZUIPushBox(ctx, "##stg_ttl", 9, ZUI_DrawText);
+                ttl->Size[0]   = ZFill();
+                ttl->Size[1]   = ZFill();
+                ttl->Label     = ZUIPushStr(&ctx->FrameArena, "Engine Settings", 15);
+                ttl->FontSize  = ZUIFontSize::Header;
+                ttl->TextAlign = ZUITextAlign::Left;
+                ZEngine::Helpers::secure_memcpy(ttl->TextColor, sizeof(ttl->TextColor), ctx->Theme.TextDefault, sizeof(ttl->TextColor));
                 ZUIPopBox(ctx);
 
-                // Close button — red bg on hover, darker red on press
-                ZUIBox* xb    = ZUIPushBox(ctx, "##stg_close", 11, ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-                xb->Size[0]   = ZPx(kTbarH);
-                xb->Size[1]   = ZPx(kTbarH);
-                xb->Label     = ZUIPushStr(&ctx->FrameArena, "x", 1);
-                xb->TextAlign = ZUITextAlign::Center;
-                bool xhov     = (ctx->HotKey == xb->Key);
-                bool xact     = (ctx->ActiveKey == xb->Key);
-                if (xact)
-                    ZUIBoxSetColor(xb, 0.62f, 0.08f, 0.08f, 1.f);
-                else if (xhov)
-                    ZUIBoxSetColor(xb, 0.82f, 0.15f, 0.15f, 1.f);
+                ZUIBox* xb     = ZUIBeginRow(ctx, "##stg_close", ZPx(22.f), ZPx(22.f));
+                xb->Flags      = xb->Flags | ZUI_DrawBackground | ZUI_Clickable | ZUI_KeyboardActivate;
+                xb->MainAlign  = ZUIAlign::Center;
+                xb->CrossAlign = ZUIAlign::Center;
+                ZUIBoxSetCornerRadius(xb, 4.f);
+                ZUIIconBox(ctx, ZUIIcon::X, 12.f, ctx->Theme.TextDim);
+                ZUISignal xsig = ZUISignalFromBox(ctx, xb);
+                if (ctx->ActiveKey == xb->Key)
+                {
+                    ZUIBoxSetColorArr(xb, ctx->Theme.ButtonActiveBg);
+                }
+                else if (ctx->HotKey == xb->Key)
+                {
+                    ZUIBoxSetColorArr(xb, ctx->Theme.ButtonHoveredBg);
+                }
                 else
+                {
                     ZUIBoxSetColor(xb, 0.f, 0.f, 0.f, 0.f);
-                xb->TextColor[0] = xb->TextColor[1] = xb->TextColor[2] = 1.f;
-                xb->TextColor[3]                                       = (xhov || xact) ? 1.f : 0.6f;
-                ZUISignal xsig                                         = ZUISignalFromBox(ctx, xb);
-                ZUIPopBox(ctx);
+                }
+                ZUIEndRow(ctx);
                 if (xsig.Flags & ZUI_SignalClicked)
+                {
                     m_settings_open = false;
+                }
 
                 ZUISignalFromBox(ctx, tbar); // consume hot/active state for drag
                 // Drag title bar to move modal
@@ -346,70 +530,86 @@ namespace Tetragrama::Components
                 ZUIEndRow(ctx);
             }
 
-            // Separator under title
-            {
-                ZUIBox* sep  = ZUIPushBox(ctx, "##stg_hsep", 10, ZUI_DrawBackground);
-                sep->Size[0] = ZFill();
-                sep->Size[1] = ZPx(1.f);
-                ZUIBoxSetColor(sep, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 1.f);
-                sep->EdgeSoftness = 0.f;
-                ZUIPopBox(ctx);
-            }
-
             // Body row: sidebar | separator | content
             ZUIBeginRow(ctx, "##stg_body", ZFill(), ZFill());
 
-            // Sidebar
-            ZUIBox* side = ZUIBeginColumn(ctx, "##stg_side", ZPx(kSideW), ZFill());
-            side->Flags  = side->Flags | ZUI_DrawBackground;
-            ZUIBoxSetColor(side, 0.f, 0.f, 0.f, 0.22f);
+            // Sidebar (Figma: 160 px, bg/window, 8 px padding, 28 px page rows)
+            ZUIBox* side           = ZUIBeginColumn(ctx, "##stg_side", ZPx(kSideW), ZFill());
+            side->Flags            = side->Flags | ZUI_DrawBackground;
+            const float side_bg[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BgWindow);
+            ZUIBoxSetColorArr(side, side_bg);
             side->EdgeSoftness = 0.f;
-            ZUISpacer(ctx, 10.f);
+            side->Padding[0] = side->Padding[2] = 8.f;
+            side->Padding[1] = side->Padding[3] = 8.f;
+            side->Gap                           = 2.f;
             {
-                static const char*    kPages[5]   = {"Grid", "Sky", "Renderer", "Theme", "Layout"};
-                static const char*    kNavKeys[5] = {"##nav_0", "##nav_1", "##nav_2", "##nav_3", "##nav_4"};
-                static const uint32_t kNKLen[5]   = {7, 7, 7, 7, 7};
+                static const char*   kPages[5] = {"Grid", "Sky", "Renderer", "Theme", "Layout"};
+                static const ZUIIcon kIcons[5] = {ZUIIcon::Grid3x3, ZUIIcon::Sun, ZUIIcon::Image, ZUIIcon::Layers, ZUIIcon::PanelBottom};
+                const float          sel[4]    = ZUI_TOKEN(ZEngine::UI::Tokens::AccentSelection);
                 for (int pi = 0; pi < 5; ++pi)
                 {
-                    bool     act   = (m_settings_page == pi);
-                    uint32_t pln   = (uint32_t) strlen(kPages[pi]);
-                    ZUIBox*  nb    = ZUIPushBox(ctx, kNavKeys[pi], kNKLen[pi], ZUI_DrawBackground | ZUI_Clickable | ZUI_DrawText);
-                    nb->Size[0]    = ZFill();
-                    nb->Size[1]    = ZPx(fh + 12.f);
-                    nb->Label      = ZUIPushStr(&ctx->FrameArena, kPages[pi], pln);
-                    nb->TextAlign  = ZUITextAlign::Left;
-                    nb->Padding[0] = 18.f;
+                    const bool act    = (m_settings_page == pi);
+                    char       nk[24] = {};
+                    snprintf(nk, sizeof(nk), "##nav_%d", pi);
+                    // Retire an old Grid-row press/focus for one build after a
+                    // scene replacement. Its eventual release cannot select
+                    // the replacement scene through the same retained UI key.
+                    if (pi == 0 && settings_rebound)
+                    {
+                        ZUIBeginDisabled(ctx);
+                    }
+                    ZUIBox* nb       = ZUIBeginRow(ctx, nk, ZFill(), ZPx(28.f));
+                    nb->Flags        = nb->Flags | ZUI_DrawBackground | ZUI_Clickable | ZUI_KeyboardActivate;
+                    nb->CrossAlign   = ZUIAlign::Center;
+                    nb->Padding[0]   = 10.f;
+                    nb->Gap          = 8.f;
+                    nb->EdgeSoftness = 0.5f;
+                    ZUIBoxSetCornerRadius(nb, 4.f);
+                    const bool   hov = (ctx->HotKey == nb->Key);
+                    const float* fg  = (act || hov) ? ctx->Theme.TextDefault : ctx->Theme.TextDim;
+                    ZUIIconBox(ctx, kIcons[pi], 13.f, fg);
+                    ZUILabelTight(ctx, kPages[pi], fg, ZUIFontSize::Body);
+                    ZUISignal sig = ZUISignalFromBox(ctx, nb);
+                    if (pi == 0)
+                    {
+                        ZUISetTooltip(ctx, sig, "Select scene Grid");
+                    }
                     if (act)
                     {
-                        ZUIBoxSetColor(nb, 0.18f, 0.30f, 0.48f, 1.f); // visible active tint
-                        nb->TextColor[0] = nb->TextColor[1] = nb->TextColor[2] = nb->TextColor[3] = 1.f;
+                        ZUIBoxSetColorArr(nb, sel);
+                    }
+                    else if (hov)
+                    {
+                        ZUIBoxSetColorArr(nb, ctx->Theme.ButtonHoveredBg);
                     }
                     else
                     {
-                        bool hov = (ctx->HotKey == nb->Key);
-                        ZUIBoxSetColor(nb, 1.f, 1.f, 1.f, hov ? 0.07f : 0.f);
-                        nb->TextColor[0] = hov ? ctx->Theme.TextDefault[0] : ctx->Theme.TextDim[0];
-                        nb->TextColor[1] = hov ? ctx->Theme.TextDefault[1] : ctx->Theme.TextDim[1];
-                        nb->TextColor[2] = hov ? ctx->Theme.TextDefault[2] : ctx->Theme.TextDim[2];
-                        nb->TextColor[3] = 1.f;
+                        ZUIBoxSetColor(nb, 0.f, 0.f, 0.f, 0.f);
                     }
-                    ZUIBoxSetCornerRadius(nb, 3.f);
-                    ZUISignal sig = ZUISignalFromBox(ctx, nb);
-                    ZUIPopBox(ctx);
-                    ZUISpacer(ctx, 2.f);
+                    ZUIEndRow(ctx);
+                    if (pi == 0 && settings_rebound)
+                    {
+                        ZUIEndDisabled(ctx);
+                    }
                     if (sig.Flags & ZUI_SignalClicked)
+                    {
                         m_settings_page = pi;
+                        // Explicit activation only: opening Settings on its
+                        // remembered Grid page never changes scene selection.
+                        if (pi == 0 && stg_app && stg_scene && !settings_rebound && !stg_app->RequestSceneGridSelection())
+                            ZENGINE_CORE_WARN("[Editor] Scene Grid selection was rejected by the current owner or request budget.")
+                    }
                 }
             }
-            ZUISpacer(ctx, 8.f);
             ZUIEndColumn(ctx); // sidebar
 
             // Vertical separator
             {
-                ZUIBox* vs  = ZUIPushBox(ctx, "##stg_vsep", 9, ZUI_DrawBackground);
-                vs->Size[0] = ZPx(1.f);
-                vs->Size[1] = ZFill();
-                ZUIBoxSetColor(vs, ctx->Theme.PanelBorder[0], ctx->Theme.PanelBorder[1], ctx->Theme.PanelBorder[2], 1.f);
+                ZUIBox* vs         = ZUIPushBox(ctx, "##stg_vsep", 9, ZUI_DrawBackground);
+                vs->Size[0]        = ZPx(1.f);
+                vs->Size[1]        = ZFill();
+                const float sub[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BorderSubtle);
+                ZUIBoxSetColorArr(vs, sub);
                 vs->EdgeSoftness = 0.f;
                 ZUIPopBox(ctx);
             }
@@ -418,111 +618,192 @@ namespace Tetragrama::Components
             ZUIBox* cnt       = ZUIBeginColumn(ctx, "##stg_cnt", ZFill(), ZFill());
             cnt->Flags        = cnt->Flags | ZUI_ClipChildren;
             cnt->EdgeSoftness = 0.f;
-            cnt->Padding[2]   = 14.f; // right margin
-            ZUISpacer(ctx, 14.f);
+            cnt->Padding[0]   = 20.f;
+            cnt->Padding[2]   = 20.f;
+            ZUISpacer(ctx, 16.f);
+            {
+                static const char* kTitles[5] = {"Grid", "Sky", "Renderer", "Theme", "Layout"};
+                ZUILabel(ctx, kTitles[m_settings_page < 5 ? m_settings_page : 0], ctx->Theme.TextDefault, ZUIFontSize::Header);
+                ZUISpacer(ctx, 8.f);
+                ZUIBox* hr         = ZUIPushBox(ctx, "##stg_hrule", 10, ZUI_DrawBackground);
+                hr->Size[0]        = ZFill();
+                hr->Size[1]        = ZPx(1.f);
+                const float sub[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BorderSubtle);
+                ZUIBoxSetColorArr(hr, sub);
+                hr->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+                ZUISpacer(ctx, 10.f);
+            }
             ZUIBeginScrollRegion(ctx, "##stg_scroll", ZFill(), ZFill());
+            const auto property_label = [&](const char* key) {
+                auto* box = ZUIBeginColumn(ctx, key, ZPx(152.f), ZFill());
+                return box;
+            };
+            const auto begin_section = [&](const char* title, bool& open) {
+                constexpr float background[4] = ZUI_TOKEN(Tokens::BgSurface);
+                ZUICollapsingHeader(ctx, title, &open, background, true);
+                auto* header       = ctx->Current->LastChild;
+                header->Size[1]    = ZPx(26.f);
+                header->Padding[0] = 8.f;
+                // Settings headers retain their surface fill when hovered or
+                // pressed; the generic dock-header active fill is darker.
+                ZUIBoxSetColorArr(header, background);
+                auto* chevron    = header->FirstChild;
+                chevron->Size[0] = chevron->Size[1] = ZPx(16.f);
+                chevron->NextSib->Size[0]           = ZPx(6.f);
+                header->CustomDraw                  = [](ZUIDrawList* draw, const ZUIBox* box, const void*) {
+                    constexpr float border[4] = ZUI_TOKEN(Tokens::BorderSubtle);
+                    ZUIDrawListAddRectFilledNoAA(draw, box->ScreenMin[0], box->ScreenMax[1] - 1.f, box->ScreenMax[0], box->ScreenMax[1], ZUIPackColor(border));
+                };
+                if (!open)
+                {
+                    ZUISpacer(ctx, 4.f);
+                    return false;
+                }
+                char key[80] = {};
+                snprintf(key, sizeof(key), "##settings_rows_%s", title);
+                auto* rows       = ZUIBeginColumn(ctx, key, ZFill(), ZFit());
+                rows->Padding[0] = 8.f;
+                rows->Padding[1] = 10.f;
+                rows->Padding[3] = 6.f;
+                rows->Gap        = 10.f;
+                return true;
+            };
+            const auto end_section = [&]() {
+                ZUIEndColumn(ctx);
+                ZUISpacer(ctx, 4.f);
+            };
 
             if (m_settings_page == 0 && stg_scene) // Grid
             {
-                auto& cfg = stg_scene->Grid;
+                auto& cfg = grid_settings;
+                begin_scene_edit();
 
                 // Show Grid
                 {
                     ZUIBeginRow(ctx, "##sg_en_r", ZFill(), ZPx(fh + 4.f));
-                    ZUISpacer(ctx, 10.f);
-                    ZUIBox* lc = ZUIBeginColumn(ctx, "##sg_en_l", ZPx(140.f), ZFill());
-                    ZUILabel(ctx, "Show Grid", ctx->Theme.TextDefault);
-                    ZUIEndColumn(ctx);
                     bool prev = cfg.Enabled;
-                    ZUICheckbox(ctx, "##sg_en_cb", &cfg.Enabled);
+                    ZUICheckbox(ctx, "Show Grid##sg_en_cb", &cfg.Enabled);
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     if (cfg.Enabled != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
                 // Cell Size
                 {
-                    float prev = cfg.CellSize;
+                    float prev = cfg.BaseSpacing;
                     ZUIBeginRow(ctx, "##sg_cs_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sg_cs_l", ZPx(150.f), ZFill());
+                    property_label("##sg_cs_l");
                     ZUILabel(ctx, "Cell Size", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUISliderFloat(ctx, "##sg_cs_s", &cfg.CellSize, 0.001f, 1.f);
+                    ZUIDragFloat(ctx, "##sg_cs_s", &cfg.BaseSpacing, 0.01f, 120.f);
+                    if (cfg.BaseSpacing != prev)
+                    {
+                        cfg.BaseSpacing = std::clamp(cfg.BaseSpacing, 0.001f, 1.f);
+                    }
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
-                    if (cfg.CellSize != prev)
+                    if (cfg.BaseSpacing != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
                 // Fade Radius
                 {
                     float prev = cfg.FadeRadius;
                     ZUIBeginRow(ctx, "##sg_fr_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sg_fr_l", ZPx(150.f), ZFill());
+                    property_label("##sg_fr_l");
                     ZUILabel(ctx, "Fade Radius", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUISliderFloat(ctx, "##sg_fr_s", &cfg.FadeRadius, 10.f, 2000.f);
+                    ZUIDragFloat(ctx, "##sg_fr_s", &cfg.FadeRadius, 1.0f, 120.f);
+                    if (cfg.FadeRadius != prev)
+                    {
+                        cfg.FadeRadius = std::clamp(cfg.FadeRadius, 10.f, 2000.f);
+                    }
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     if (cfg.FadeRadius != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
                 // Fade Strength
                 {
                     float prev = cfg.FadeStrength;
                     ZUIBeginRow(ctx, "##sg_fs_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sg_fs_l", ZPx(150.f), ZFill());
+                    property_label("##sg_fs_l");
                     ZUILabel(ctx, "Fade Strength", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUISliderFloat(ctx, "##sg_fs_s", &cfg.FadeStrength, 0.1f, 2.f);
+                    ZUIDragFloat(ctx, "##sg_fs_s", &cfg.FadeStrength, 0.01f, 120.f);
+                    if (cfg.FadeStrength != prev)
+                    {
+                        cfg.FadeStrength = std::clamp(cfg.FadeStrength, 0.1f, 2.f);
+                    }
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     if (cfg.FadeStrength != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
                 // Line Width
                 {
                     float prev = cfg.LineWidth;
                     ZUIBeginRow(ctx, "##sg_lw_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sg_lw_l", ZPx(150.f), ZFill());
+                    property_label("##sg_lw_l");
                     ZUILabel(ctx, "Line Width", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUISliderFloat(ctx, "##sg_lw_s", &cfg.LineWidth, 0.5f, 4.f);
+                    ZUIDragFloat(ctx, "##sg_lw_s", &cfg.LineWidth, 0.01f, 120.f);
+                    if (cfg.LineWidth != prev)
+                    {
+                        cfg.LineWidth = std::clamp(cfg.LineWidth, 0.5f, 4.f);
+                    }
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     if (cfg.LineWidth != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
-                // Ground Y
+                // Plane origin, Y component. The gizmo edits the complete U/V/N plane.
                 {
-                    float prev = cfg.GroundY;
+                    float prev = cfg.Origin.y;
                     ZUIBeginRow(ctx, "##sg_gy_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sg_gy_l", ZPx(150.f), ZFill());
-                    ZUILabel(ctx, "Ground Y", ctx->Theme.TextDefault);
+                    property_label("##sg_gy_l");
+                    ZUILabel(ctx, "Plane Origin Y", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUISliderFloat(ctx, "##sg_gy_s", &cfg.GroundY, -100.f, 100.f);
+                    ZUIDragFloat(ctx, "##sg_gy_s", &cfg.Origin.y, 0.1f, 120.f);
+                    if (cfg.Origin.y != prev)
+                    {
+                        cfg.Origin.y = std::clamp(cfg.Origin.y, -100.f, 100.f);
+                    }
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
-                    if (cfg.GroundY != prev)
+                    if (cfg.Origin.y != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
                 // Max LOD
                 {
-                    int prev = cfg.MaxLOD;
+                    const auto prev = cfg.MaxLOD;
+                    int        lod  = static_cast<int>(std::min(cfg.MaxLOD, 16u));
                     ZUIBeginRow(ctx, "##sg_ml_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sg_ml_l", ZPx(150.f), ZFill());
+                    property_label("##sg_ml_l");
                     ZUILabel(ctx, "Max LOD", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUIDragInt(ctx, "##sg_ml_d", &cfg.MaxLOD, 1.f, 60.f);
+                    ZUIBeginColumn(ctx, "##sg_ml_w", ZPx(120.f), ZFill());
+                    ZUIDragInt(ctx, "##sg_ml_d", &lod, 1.f, 60.f);
+                    cfg.MaxLOD = static_cast<uint32_t>(std::clamp(lod, 0, 16));
+                    ZUIEndColumn(ctx);
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     if (cfg.MaxLOD != prev)
+                    {
                         mark_grid_dirty();
+                    }
                 }
 
                 ZUISpacer(ctx, 14.f);
@@ -531,314 +812,483 @@ namespace Tetragrama::Components
                 auto color_row = [&](const char* rk, const char* lk, const char* ck, const char* label, float col[4]) {
                     float p[4] = {col[0], col[1], col[2], col[3]};
                     ZUIBeginRow(ctx, rk, ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, lk, ZPx(150.f), ZFill());
+                    property_label(lk);
                     ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUIColorEdit4(ctx, ck, col);
+                    // GridPass blends into FrameColor after tone mapping: these
+                    // are already display-encoded values, unlike sky colors.
+                    ZUIColorEdit4(ctx, ck, col, ZUIColorSpace::Srgb, ZPx(342.f), settings_epoch);
                     ZUIEndRow(ctx);
                     ZUISpacer(ctx, 5.f);
                     if (col[0] != p[0] || col[1] != p[1] || col[2] != p[2] || col[3] != p[3])
+                    {
                         mark_grid_dirty();
+                    }
                 };
-                color_row("##sg_ct_r", "##sg_ct_l", "##sg_ct_c", "Thin Lines", cfg.ColorThin);
-                color_row("##sg_ck_r", "##sg_ck_l", "##sg_ck_c", "Thick Lines", cfg.ColorThick);
-                color_row("##sg_cx_r", "##sg_cx_l", "##sg_cx_c", "X Axis", cfg.ColorXAxis);
-                color_row("##sg_cz_r", "##sg_cz_l", "##sg_cz_c", "Z Axis", cfg.ColorZAxis);
+                color_row("##sg_ct_r", "##sg_ct_l", "##sg_ct_c", "Thin Lines", cfg.MinorColor.data());
+                color_row("##sg_ck_r", "##sg_ck_l", "##sg_ck_c", "Thick Lines", cfg.MajorColor.data());
+                color_row("##sg_cx_r", "##sg_cx_l", "##sg_cx_c", "U Axis", cfg.UColor.data());
+                color_row("##sg_cz_r", "##sg_cz_l", "##sg_cz_c", "V Axis", cfg.VColor.data());
                 ZUISpacer(ctx, 14.f); // bottom padding
+                end_scene_edit();
             }
             else if (m_settings_page == 1 && stg_scene) // Sky
             {
-                auto&                        cfg             = stg_scene->Sky;
-                static constexpr const char* k_rgb_labels[3] = {"R", "G", "B"};
-                auto                         scalar_row      = [&](const char* row_key, const char* label, const char* control_key, float* value, float minimum, float maximum) {
-                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sky_scalar_label", ZPx(170.f), ZFill());
+                auto& cfg        = sky_settings;
+                auto  scalar_row = [&](const char* row_key, const char* label, const char* control_key, float* value, float minimum, float maximum, int decimals = 3) {
+                    auto* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(25.f));
+                    row->Gap  = 12.f;
+                    property_label("##sky_scalar_label");
                     ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    const bool changed = ZUISliderFloat(ctx, control_key, value, minimum, maximum);
+                    auto* controls     = ZUIBeginRow(ctx, control_key, ZPx(272.f), ZPx(22.f));
+                    controls->Gap      = 8.f;
+                    char track_key[96] = {};
+                    snprintf(track_key, sizeof(track_key), "%s_track", control_key);
+                    begin_scene_edit();
+                    const bool changed = ZUISliderFloat(ctx, track_key, value, minimum, maximum, ZPx(216.f), ZPx(22.f));
+                    end_scene_edit();
+                    char value_key[96] = {};
+                    snprintf(value_key, sizeof(value_key), "%s_value", control_key);
+                    auto* cell       = ZUIBeginColumn(ctx, value_key, ZPx(48.f), ZPx(22.f));
+                    cell->CrossAlign = ZUIAlign::Center;
+                    char text[32]    = {};
+                    snprintf(text, sizeof(text), "%.*f", decimals, *value);
+                    ZUILabelTight(ctx, text, ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
+                    ZUIEndRow(ctx);
                     return changed;
                 };
-                auto drag_scalar_row = [&](const char* row_key, const char* label, const char* control_key, float* value, float speed, float minimum, float maximum) {
+                auto drag_scalar_row = [&](const char* row_key, const char* label, const char* control_key, float* value, float speed, float minimum, float maximum, int decimals = 3) {
                     const float previous = *value;
-                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sky_drag_scalar_label", ZPx(170.f), ZFill());
+                    auto*       row      = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(25.f));
+                    row->Gap             = 12.f;
+                    property_label("##sky_drag_scalar_label");
                     ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUIDragFloat(ctx, control_key, value, speed, 100.0f);
+                    const int saved_decimals = ctx->DragFloatDecimals;
+                    ctx->DragFloatDecimals   = decimals;
+                    begin_scene_edit();
+                    ZUIDragFloat(ctx, control_key, value, speed, 120.f);
+                    end_scene_edit();
+                    ctx->DragFloatDecimals = saved_decimals;
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
-                    if (*value < minimum)
-                        *value = minimum;
-                    else if (*value > maximum)
-                        *value = maximum;
+                    if (*value != previous)
+                    {
+                        *value = std::clamp(*value, minimum, maximum);
+                    }
                     return previous != *value;
                 };
                 auto color_row = [&](const char* row_key, const char* label, const char* control_key, float value[4]) {
-                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sky_color_label", ZPx(170.f), ZFill());
+                    auto* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(25.f));
+                    row->Gap  = 12.f;
+                    property_label("##sky_color_label");
                     ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    const bool changed = ZUIColorEdit4(ctx, control_key, value);
+                    // Sky shaders consume scene-linear radiance/multipliers.
+                    begin_scene_edit();
+                    const bool changed = ZUIColorEdit4(ctx, control_key, value, ZUIColorSpace::Linear, ZPx(342.f), settings_epoch);
+                    end_scene_edit();
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
                     return changed;
                 };
                 auto color3_row = [&](const char* row_key, const char* label, const char* control_key, float value[3]) {
-                    float rgba[4] = {value[0], value[1], value[2], 1.0f};
-                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sky_color3_label", ZPx(170.f), ZFill());
+                    auto* row = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(25.f));
+                    row->Gap  = 12.f;
+                    property_label("##sky_color3_label");
                     ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    const bool changed = ZUIColorEdit4(ctx, control_key, rgba);
+                    begin_scene_edit();
+                    const bool changed = ZUIColorEdit3(ctx, control_key, value, ZUIColorSpace::Linear, ZPx(262.f), settings_epoch);
+                    end_scene_edit();
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
-                    if (changed)
-                    {
-                        value[0] = rgba[0];
-                        value[1] = rgba[1];
-                        value[2] = rgba[2];
-                    }
                     return changed;
                 };
-                auto vector3_row = [&](const char* row_key, const char* label, const char* control_key, float value[3], float speed, bool non_negative, const char* const component_labels[3]) {
+                auto vector3_row = [&](const char* row_key, const char* label, const char* control_key, float value[3], float speed, bool non_negative) {
                     float previous[3] = {value[0], value[1], value[2]};
-                    ZUIBeginRow(ctx, row_key, ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sky_vector3_label", ZPx(170.f), ZFill());
+                    auto* row         = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(25.f));
+                    row->Gap          = 12.f;
+                    property_label("##sky_vector3_label");
                     ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    ZUIDragFloat3(ctx, control_key, value, speed, 60.0f, component_labels);
+                    // Reuse scalar-field interaction, but use the design's compact
+                    // three-field layout instead of the legacy axis-label chips.
+                    auto* controls                        = ZUIBeginRow(ctx, control_key, ZPx(304.f), ZPx(22.f));
+                    controls->Gap                         = 8.f;
+                    static constexpr float axes[3][4]     = {ZUI_TOKEN(Tokens::AccentRed), ZUI_TOKEN(Tokens::AccentGreen), ZUI_TOKEN(Tokens::AccentBlue)};
+                    const int              saved_decimals = ctx->DragFloatDecimals;
+                    ctx->DragFloatDecimals                = non_negative ? 6 : 0;
+                    begin_scene_edit();
+                    for (int axis = 0; axis < 3; ++axis)
+                    {
+                        char key[96] = {};
+                        snprintf(key, sizeof(key), "%s_%d", control_key, axis);
+                        ZUIDragFloat(ctx, key, &value[axis], speed, 96.f);
+                        auto* field           = controls->LastChild;
+                        field->Size[1]        = ZPx(22.f);
+                        field->Padding[0]     = 9.f;
+                        field->CustomDrawData = axes[axis];
+                        field->CustomDraw     = [](ZUIDrawList* draw, const ZUIBox* box, const void* data) { ZUIDrawListAddRectFilledNoAA(draw, box->ScreenMin[0] + 1.f, box->ScreenMin[1] + 1.f, box->ScreenMin[0] + 4.f, box->ScreenMax[1] - 1.f, ZUIPackColor(static_cast<const float*>(data))); };
+                    }
+                    end_scene_edit();
+                    ctx->DragFloatDecimals = saved_decimals;
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
+                    ZUIEndRow(ctx);
                     if (non_negative)
                     {
                         for (uint32_t index = 0; index < 3; ++index)
+                        {
                             if (value[index] < 0.0f)
+                            {
                                 value[index] = 0.0f;
+                            }
+                        }
                     }
                     return previous[0] != value[0] || previous[1] != value[1] || previous[2] != value[2];
                 };
 
-                ZUISeparatorText(ctx, "Environment / Basic");
-                static constexpr const char* kModeNames[] = {"Atmosphere", "HDRI", "Sky Sphere"};
-                const uint32_t               mode_index   = static_cast<uint32_t>(cfg.Mode);
-                ZUIBeginRow(ctx, "##sky_mode_r", ZFill(), ZPx(fh + 6.f));
-                ZUISpacer(ctx, 14.f);
-                ZUIBeginColumn(ctx, "##sky_mode_l", ZPx(170.f), ZFill());
-                ZUILabel(ctx, "Mode", ctx->Theme.TextDefault);
-                ZUIEndColumn(ctx);
-                if (ZUIBeginCombo(ctx, "##sky_mode", kModeNames[mode_index], ZFill()))
-                {
-                    for (uint32_t i = 0; i < 3; ++i)
-                    {
-                        if (ZUIComboItem(ctx, kModeNames[i], i == mode_index))
-                        {
-                            cfg.Mode = static_cast<ZEngine::Rendering::Scenes::SkyMode>(i);
-                            mark_sky_dirty();
-                        }
-                    }
-                    ZUIEndCombo(ctx);
-                }
-                ZUIEndRow(ctx);
-                ZUISpacer(ctx, 5.f);
-
-                if (cfg.IsHDRI())
-                {
-                    auto* asset_manager = ZEngine::Managers::AssetManager::Instance();
-                    auto* registry      = asset_manager ? asset_manager->Registry : nullptr;
-                    char  preview[160]  = "No HDRI asset (fallback environment)";
-                    if (registry && !cfg.EnvironmentMap.is_nil())
-                    {
-                        if (const auto* selected = registry->FindByUUID(cfg.EnvironmentMap))
-                            std::snprintf(preview, sizeof(preview), "%s", selected->Name);
-                        else
-                            std::snprintf(preview, sizeof(preview), "Missing HDRI asset (fallback environment)");
-                    }
-
-                    ZUIBeginRow(ctx, "##sky_hdri_r", ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUIBeginColumn(ctx, "##sky_hdri_l", ZPx(170.f), ZFill());
-                    ZUILabel(ctx, "HDRI Asset", ctx->Theme.TextDefault);
+                const auto checkbox_row = [&](const char* key, const char* label, bool* value, const char* tooltip = nullptr, bool editor_local = false) {
+                    auto* row = ZUIBeginRow(ctx, key, ZFill(), ZPx(25.f));
+                    row->Gap  = 12.f;
+                    property_label("##sky_checkbox_label");
+                    ZUILabel(ctx, label, ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    if (ZUIBeginCombo(ctx, "##sky_hdri", preview, ZFill()))
+                    const bool previous   = *value;
+                    char       cb_key[96] = {};
+                    snprintf(cb_key, sizeof(cb_key), "%s_cb", key);
+                    if (!editor_local)
                     {
-                        if (ZUIComboItem(ctx, "None (fallback environment)", cfg.EnvironmentMap.is_nil()))
+                        begin_scene_edit();
+                    }
+                    ZUICheckbox(ctx, cb_key, value);
+                    if (!editor_local)
+                    {
+                        end_scene_edit();
+                    }
+                    ZUIEndRow(ctx);
+                    if (tooltip && ctx->HotKey == ZUIHashStr(cb_key, static_cast<uint32_t>(ZEngine::Helpers::secure_strlen(cb_key))))
+                    {
+                        ZUISetTooltip(ctx, ZUISignal{.Flags = ZUI_SignalHovered}, tooltip);
+                    }
+                    return previous != *value;
+                };
+                if (begin_section("Source", m_sky_sections[0]))
+                {
+                    static constexpr const char* kModeNames[] = {"Atmosphere", "HDRI", "Sky Sphere"};
+                    const uint32_t               mode_index   = std::min(2u, static_cast<uint32_t>(cfg.Mode));
+                    auto*                        mode_row     = ZUIBeginRow(ctx, "##sky_mode_r", ZFill(), ZPx(25.f));
+                    mode_row->Gap                             = 12.f;
+                    property_label("##sky_mode_l");
+                    ZUILabel(ctx, "Mode", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    begin_scene_edit();
+                    if (ZUIBeginCombo(ctx, "##sky_mode", kModeNames[mode_index], ZPx(280.f)))
+                    {
+                        for (uint32_t i = 0; i < 3; ++i)
                         {
-                            cfg.EnvironmentMap = {};
-                            mark_sky_dirty();
-                        }
-                        if (registry)
-                        {
-                            ZEngine::Core::VFS::AssetRegistry::QueryFilter filter = {};
-                            filter.Ext                                            = ".hdr";
-                            auto candidates                                       = registry->Query(filter, &ctx->FrameArena);
-                            for (uint32_t i = 0; i < candidates.Count; ++i)
+                            if (ZUIComboItem(ctx, kModeNames[i], i == mode_index))
                             {
-                                const auto* candidate = registry->Access(candidates.Handles[i]);
-                                if (candidate && ZUIComboItem(ctx, candidate->Name, candidate->UUID == cfg.EnvironmentMap))
-                                {
-                                    cfg.EnvironmentMap = candidate->UUID;
-                                    mark_sky_dirty();
-                                }
+                                cfg.Mode = static_cast<ZEngine::Rendering::Scenes::SkyMode>(i);
+                                mark_sky_dirty();
                             }
                         }
                         ZUIEndCombo(ctx);
                     }
+                    end_scene_edit();
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
+
+                    if (cfg.IsHDRI())
+                    {
+                        auto* asset_manager = ZEngine::Managers::AssetManager::Instance();
+                        auto* registry      = asset_manager ? asset_manager->Registry : nullptr;
+                        char  preview[160]  = "No HDRI asset (fallback environment)";
+                        if (registry && !cfg.EnvironmentMap.is_nil())
+                        {
+                            if (const auto* selected = registry->FindByUUID(cfg.EnvironmentMap))
+                            {
+                                std::snprintf(preview, sizeof(preview), "%s", selected->Name);
+                            }
+                            else
+                            {
+                                std::snprintf(preview, sizeof(preview), "Missing HDRI asset (fallback environment)");
+                            }
+                        }
+
+                        auto* hdri_row = ZUIBeginRow(ctx, "##sky_hdri_r", ZFill(), ZPx(25.f));
+                        hdri_row->Gap  = 12.f;
+                        property_label("##sky_hdri_l");
+                        ZUILabel(ctx, "HDRI Asset", ctx->Theme.TextDefault);
+                        ZUIEndColumn(ctx);
+                        begin_scene_edit();
+                        if (ZUIBeginCombo(ctx, "##sky_hdri", preview, ZPx(280.f)))
+                        {
+                            if (ZUIComboItem(ctx, "None (fallback environment)", cfg.EnvironmentMap.is_nil()))
+                            {
+                                cfg.EnvironmentMap = {};
+                                mark_sky_dirty();
+                            }
+                            if (registry)
+                            {
+                                ZEngine::Core::VFS::AssetRegistry::QueryFilter filter = {};
+                                filter.Ext                                            = ".hdr";
+                                auto candidates                                       = registry->Query(filter, &ctx->FrameArena);
+                                for (uint32_t i = 0; i < candidates.Count; ++i)
+                                {
+                                    const auto* candidate = registry->Access(candidates.Handles[i]);
+                                    if (candidate && ZUIComboItem(ctx, candidate->Name, candidate->UUID == cfg.EnvironmentMap))
+                                    {
+                                        cfg.EnvironmentMap = candidate->UUID;
+                                        mark_sky_dirty();
+                                    }
+                                }
+                            }
+                            ZUIEndCombo(ctx);
+                        }
+                        end_scene_edit();
+                        ZUIEndRow(ctx);
+                    }
+
+                    auto* light_row = ZUIBeginRow(ctx, "##sky_light_r", ZFill(), ZPx(25.f));
+                    light_row->Gap  = 12.f;
+                    property_label("##sky_light_l");
+                    ZUILabel(ctx, "Primary Celestial Light", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    auto* world              = stg_app && stg_app->Session.OnOwnerThread() ? stg_app->Session.Scene() : nullptr;
+                    char  light_preview[160] = "Select a directional light";
+                    if (world && !cfg.PrimaryCelestialLight.is_nil())
+                    {
+                        const auto  entity = stg_app->Session.Resolve(cfg.PrimaryCelestialLight);
+                        const auto* light  = world->GetComponent<ZEngine::ECS::Components::LightComponent>(entity);
+                        if (light && light->LightType == ZEngine::ECS::Components::LightComponent::Type::Directional && world->HasComponent<ZEngine::ECS::Components::TransformComponent>(entity))
+                        {
+                            const auto* name = world->GetComponent<ZEngine::ECS::Components::NameComponent>(entity);
+                            std::snprintf(light_preview, sizeof(light_preview), "%.*s", int(sizeof(ZEngine::ECS::Components::NameComponent::Value)), name && name->Value[0] ? name->Value : "Directional Light");
+                        }
+                        else
+                        {
+                            std::snprintf(light_preview, sizeof(light_preview), "Missing directional light");
+                        }
+                    }
+                    begin_scene_edit();
+                    if (world && ZUIBeginCombo(ctx, "##sky_light", light_preview, ZPx(280.f)))
+                    {
+                        if (ZUIComboItem(ctx, "None##sky_light_none", cfg.PrimaryCelestialLight.is_nil()))
+                        {
+                            cfg.PrimaryCelestialLight = {};
+                            mark_sky_dirty();
+                        }
+
+                        world->ForEach<ZEngine::ECS::Components::LightComponent, ZEngine::ECS::Components::UUIDComponent>([&](ZEngine::ECS::EntityID entity, const auto& light, const auto& uuid) {
+                            if (light.LightType != ZEngine::ECS::Components::LightComponent::Type::Directional || uuid.Value.is_nil() || !world->HasComponent<ZEngine::ECS::Components::TransformComponent>(entity) || stg_app->Session.Resolve(uuid.Value) != entity)
+                            {
+                                return;
+                            }
+
+                            const auto* name            = world->GetComponent<ZEngine::ECS::Components::NameComponent>(entity);
+                            char        item_label[196] = {};
+                            std::snprintf(item_label, sizeof(item_label), "%.*s##sky_light_%u_%u", int(sizeof(ZEngine::ECS::Components::NameComponent::Value)), name && name->Value[0] ? name->Value : "Directional Light", entity.Index, entity.Generation);
+                            if (ZUIComboItem(ctx, item_label, uuid.Value == cfg.PrimaryCelestialLight))
+                            {
+                                cfg.PrimaryCelestialLight = uuid.Value;
+                                mark_sky_dirty();
+                            }
+                        });
+                        ZUIEndCombo(ctx);
+                    }
+                    else if (!world)
+                    {
+                        ZUILabel(ctx, "No active scene", ctx->Theme.TextDim);
+                    }
+                    end_scene_edit();
+                    ZUIEndRow(ctx);
+                    end_section();
                 }
 
-                if (scalar_row("##sky_intensity_r", "Environment Intensity", "##sky_intensity", &cfg.EnvironmentIntensity, 0.0f, 32.0f))
-                    mark_sky_dirty();
-                if (color_row("##sky_tint_r", "Environment Tint", "##sky_tint", cfg.EnvironmentTint))
-                    mark_sky_dirty();
-                if (scalar_row("##sky_yaw_r", "Environment Yaw (rad)", "##sky_yaw", &cfg.EnvironmentYawRadians, -3.14159265f, 3.14159265f))
-                    mark_sky_dirty();
-
-                ZUIBeginRow(ctx, "##sky_light_r", ZFill(), ZPx(fh + 6.f));
-                ZUISpacer(ctx, 14.f);
-                ZUIBeginColumn(ctx, "##sky_light_l", ZPx(170.f), ZFill());
-                ZUILabel(ctx, "Primary Celestial Light", ctx->Theme.TextDefault);
-                ZUIEndColumn(ctx);
-                auto* engine_context     = ZEngine::Engine::GetContext();
-                auto* actor_manager      = engine_context ? engine_context->ActorManager : nullptr;
-                char  light_preview[160] = "Select a directional light";
-                if (actor_manager && !cfg.PrimaryCelestialLight.is_nil())
+                if (begin_section("Environment light", m_sky_sections[1]))
                 {
-                    bool primary_light_resolved = false;
-                    actor_manager->ForEach([&](ZEngine::ECS::ActorHandle, ZEngine::ECS::Actor* actor) {
-                        const auto* light = actor->GetComponent<ZEngine::ECS::Components::LightComponent>();
-                        const auto* uuid  = actor->GetComponent<ZEngine::ECS::Components::UUIDComponent>();
-                        if (!light || light->LightType != ZEngine::ECS::Components::LightComponent::Type::Directional || !uuid || uuid->Value != cfg.PrimaryCelestialLight)
-                            return;
-
-                        const auto* name = actor->GetComponent<ZEngine::ECS::Components::NameComponent>();
-                        std::snprintf(light_preview, sizeof(light_preview), "%s", name && name->Value[0] ? name->Value : "Directional Light");
-                        primary_light_resolved = true;
-                    });
-                    if (!primary_light_resolved)
-                        std::snprintf(light_preview, sizeof(light_preview), "Missing directional light");
+                    if (scalar_row("##sky_intensity_r", "Environment Intensity", "##sky_intensity", &cfg.EnvironmentIntensity, 0.0f, 32.0f))
+                    {
+                        mark_sky_dirty();
+                    }
+                    if (color_row("##sky_tint_r", "Environment Tint", "##sky_tint", cfg.EnvironmentTint))
+                    {
+                        mark_sky_dirty();
+                    }
+                    if (scalar_row("##sky_yaw_r", "Environment Yaw (rad)", "##sky_yaw", &cfg.EnvironmentYawRadians, -3.14159265f, 3.14159265f))
+                    {
+                        mark_sky_dirty();
+                    }
+                    end_section();
                 }
-                if (actor_manager && ZUIBeginCombo(ctx, "##sky_light", light_preview, ZFill()))
-                {
-                    if (ZUIComboItem(ctx, "None##sky_light_none", cfg.PrimaryCelestialLight.is_nil()))
-                        stg_scene->ClearPrimaryCelestialLight();
-
-                    actor_manager->ForEach([&](ZEngine::ECS::ActorHandle handle, ZEngine::ECS::Actor* actor) {
-                        const auto* light = actor->GetComponent<ZEngine::ECS::Components::LightComponent>();
-                        if (!light || light->LightType != ZEngine::ECS::Components::LightComponent::Type::Directional)
-                            return;
-
-                        const auto* name = actor->GetComponent<ZEngine::ECS::Components::NameComponent>();
-                        const auto* uuid = actor->GetComponent<ZEngine::ECS::Components::UUIDComponent>();
-                        char        item_label[196];
-                        std::snprintf(item_label, sizeof(item_label), "%s##sky_light_%llu_%llu", name && name->Value[0] ? name->Value : "Directional Light", (unsigned long long) handle.Index, (unsigned long long) handle.Generation);
-                        if (ZUIComboItem(ctx, item_label, uuid && uuid->Value == cfg.PrimaryCelestialLight))
-                            stg_scene->SetPrimaryCelestialLight(handle);
-                    });
-                    ZUIEndCombo(ctx);
-                }
-                else if (!actor_manager)
-                {
-                    ZUILabel(ctx, "No actor manager", ctx->Theme.TextDim);
-                }
-                ZUIEndRow(ctx);
-                ZUISpacer(ctx, 5.f);
 
                 if (cfg.IsSkySphere())
                 {
-                    ZUISeparatorText(ctx, "Sky Sphere / Advanced");
-                    if (color_row("##sky_sphere_horizon_r", "Horizon Color", "##sky_sphere_horizon", cfg.Sphere.HorizonColor))
-                        mark_sky_dirty();
-                    if (color_row("##sky_sphere_zenith_r", "Zenith Color", "##sky_sphere_zenith", cfg.Sphere.ZenithColor))
-                        mark_sky_dirty();
-                    if (color_row("##sky_sphere_ground_r", "Ground Color", "##sky_sphere_ground", cfg.Sphere.GroundColor))
-                        mark_sky_dirty();
-                    if (scalar_row("##sky_sphere_radius_r", "Sun Disc Radius (rad)", "##sky_sphere_radius", &cfg.Sphere.SunDiscAngularRadiusRadians, 0.0f, 0.1f))
-                        mark_sky_dirty();
-                    if (scalar_row("##sky_sphere_intensity_r", "Sun Disc Intensity", "##sky_sphere_intensity", &cfg.Sphere.SunDiscIntensity, 0.0f, 64.0f))
-                        mark_sky_dirty();
-                    if (scalar_row("##sky_sphere_sharpness_r", "Horizon Sharpness", "##sky_sphere_sharpness", &cfg.Sphere.HorizonSharpness, 0.05f, 16.0f))
-                        mark_sky_dirty();
-                    const bool previous_show_sun = cfg.Sphere.ShowSunDisc;
-                    ZUICheckbox(ctx, "Show Sun Disc##sky_sphere_sun", &cfg.Sphere.ShowSunDisc);
-                    if (cfg.Sphere.ShowSunDisc != previous_show_sun)
-                        mark_sky_dirty();
+                    if (begin_section("Gradient", m_sky_sections[8]))
+                    {
+                        if (color_row("##sky_sphere_horizon_r", "Horizon Color", "##sky_sphere_horizon", cfg.Sphere.HorizonColor))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (color_row("##sky_sphere_zenith_r", "Zenith Color", "##sky_sphere_zenith", cfg.Sphere.ZenithColor))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (color_row("##sky_sphere_ground_r", "Ground Color", "##sky_sphere_ground", cfg.Sphere.GroundColor))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (scalar_row("##sky_sphere_sharpness_r", "Horizon Sharpness", "##sky_sphere_sharpness", &cfg.Sphere.HorizonSharpness, 0.05f, 16.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        end_section();
+                    }
+                    if (begin_section("Sun disc", m_sky_sections[9]))
+                    {
+                        if (checkbox_row("##sky_sphere_sun", "Show Sun Disc", &cfg.Sphere.ShowSunDisc))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (scalar_row("##sky_sphere_radius_r", "Sun Disc Radius (rad)", "##sky_sphere_radius", &cfg.Sphere.SunDiscAngularRadiusRadians, 0.0f, 0.1f, 5))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (scalar_row("##sky_sphere_intensity_r", "Sun Disc Intensity", "##sky_sphere_intensity", &cfg.Sphere.SunDiscIntensity, 0.0f, 64.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        end_section();
+                    }
                 }
                 else if (cfg.IsAtmosphere())
                 {
-                    ZUISeparatorText(ctx, "Atmosphere / Planet");
-                    if (vector3_row("##sky_atm_planet_center_r", "Planet Centre (world)", "##sky_atm_planet_center", cfg.Atmosphere.PlanetCenterWorld, 1000.0f, false, nullptr))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_world_scale_r", "World Units per Metre", "##sky_atm_world_scale", &cfg.Atmosphere.WorldUnitsPerMeter, 0.01f, 0.001f, 1000.0f))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_planet_radius_r", "Planet Radius (km)", "##sky_atm_planet_radius", &cfg.Atmosphere.PlanetRadiusKilometers, 1.0f, 1.0f, 100000.0f))
-                        mark_sky_dirty();
-                    const float minimum_atmosphere_radius = cfg.Atmosphere.PlanetRadiusKilometers + 0.1f;
-                    if (drag_scalar_row("##sky_atm_radius_r", "Atmosphere Radius (km)", "##sky_atm_radius", &cfg.Atmosphere.AtmosphereRadiusKilometers, 1.0f, minimum_atmosphere_radius, 100100.0f))
-                        mark_sky_dirty();
-
-                    if (stg_app)
+                    if (begin_section("Planet", m_sky_sections[2]))
                     {
-                        const bool previous_ground_constraint = stg_app->ConstrainCameraToAtmosphereGround;
-                        ZUICheckbox(ctx, "Constrain editor camera to planet surface##sky_atm_camera_ground", &stg_app->ConstrainCameraToAtmosphereGround);
-                        if (stg_app->ConstrainCameraToAtmosphereGround != previous_ground_constraint)
-                            ZENGINE_CORE_INFO("[EditorCamera] Atmosphere ground constraint {}", stg_app->ConstrainCameraToAtmosphereGround ? "enabled" : "disabled")
+                        if (vector3_row("##sky_atm_planet_center_r", "Planet Centre (world)", "##sky_atm_planet_center", cfg.Atmosphere.PlanetCenterWorld, 1000.0f, false))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_world_scale_r", "World Units per Metre", "##sky_atm_world_scale", &cfg.Atmosphere.WorldUnitsPerMeter, 0.01f, 0.001f, 1000.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_planet_radius_r", "Planet Radius (km)", "##sky_atm_planet_radius", &cfg.Atmosphere.PlanetRadiusKilometers, 1.0f, 1.0f, 100000.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        const float minimum_atmosphere_radius = cfg.Atmosphere.PlanetRadiusKilometers + 0.1f;
+                        if (drag_scalar_row("##sky_atm_radius_r", "Atmosphere Radius (km)", "##sky_atm_radius", &cfg.Atmosphere.AtmosphereRadiusKilometers, 1.0f, minimum_atmosphere_radius, 100100.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+
+                        if (stg_app)
+                        {
+                            if (checkbox_row("##sky_atm_camera_ground", "Lock Camera to Surface", &stg_app->ConstrainCameraToAtmosphereGround, "Constrain editor camera to planet surface", true))
+                                ZENGINE_CORE_INFO("[EditorCamera] Atmosphere ground constraint {}", stg_app->ConstrainCameraToAtmosphereGround ? "enabled" : "disabled")
+                        }
+                        end_section();
                     }
+                    if (begin_section("Molecular", m_sky_sections[3]))
+                    {
+                        if (vector3_row("##sky_atm_rayleigh_scatter_r", "Rayleigh Scatter (1/km)", "##sky_atm_rayleigh_scatter", cfg.Atmosphere.RayleighScatteringPerKilometer, 0.0001f, true))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_rayleigh_height_r", "Rayleigh Height (km)", "##sky_atm_rayleigh_height", &cfg.Atmosphere.RayleighScaleHeightKilometers, 0.01f, 0.01f, 100.0f))
+                        {
+                            mark_sky_dirty();
+                        }
 
-                    ZUISeparatorText(ctx, "Atmosphere / Molecular");
-                    if (vector3_row("##sky_atm_rayleigh_scatter_r", "Rayleigh Scatter (1/km)", "##sky_atm_rayleigh_scatter", cfg.Atmosphere.RayleighScatteringPerKilometer, 0.0001f, true, k_rgb_labels))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_rayleigh_height_r", "Rayleigh Height (km)", "##sky_atm_rayleigh_height", &cfg.Atmosphere.RayleighScaleHeightKilometers, 0.01f, 0.01f, 100.0f))
-                        mark_sky_dirty();
+                        end_section();
+                    }
+                    if (begin_section("Aerosols", m_sky_sections[4]))
+                    {
+                        if (drag_scalar_row("##sky_atm_mie_scatter_r", "Mie Scatter (1/km)", "##sky_atm_mie_scatter", &cfg.Atmosphere.MieScatteringPerKilometer, 0.0001f, 0.0f, 1.0f, 6))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_mie_absorb_r", "Mie Absorb (1/km)", "##sky_atm_mie_absorb", &cfg.Atmosphere.MieAbsorptionPerKilometer, 0.0001f, 0.0f, 1.0f, 6))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_mie_height_r", "Mie Height (km)", "##sky_atm_mie_height", &cfg.Atmosphere.MieScaleHeightKilometers, 0.01f, 0.01f, 100.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_mie_g_r", "Mie Anisotropy", "##sky_atm_mie_g", &cfg.Atmosphere.MieAnisotropy, 0.01f, -0.998f, 0.998f))
+                        {
+                            mark_sky_dirty();
+                        }
 
-                    ZUISeparatorText(ctx, "Atmosphere / Aerosols");
-                    if (drag_scalar_row("##sky_atm_mie_scatter_r", "Mie Scatter (1/km)", "##sky_atm_mie_scatter", &cfg.Atmosphere.MieScatteringPerKilometer, 0.0001f, 0.0f, 1.0f))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_mie_absorb_r", "Mie Absorb (1/km)", "##sky_atm_mie_absorb", &cfg.Atmosphere.MieAbsorptionPerKilometer, 0.0001f, 0.0f, 1.0f))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_mie_height_r", "Mie Height (km)", "##sky_atm_mie_height", &cfg.Atmosphere.MieScaleHeightKilometers, 0.01f, 0.01f, 100.0f))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_mie_g_r", "Mie Anisotropy", "##sky_atm_mie_g", &cfg.Atmosphere.MieAnisotropy, 0.01f, -0.998f, 0.998f))
-                        mark_sky_dirty();
+                        end_section();
+                    }
+                    if (begin_section("Ozone", m_sky_sections[5]))
+                    {
+                        if (vector3_row("##sky_atm_ozone_absorb_r", "Ozone Absorb (1/km)", "##sky_atm_ozone_absorb", cfg.Atmosphere.OzoneAbsorptionPerKilometer, 0.00001f, true))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_ozone_center_r", "Ozone Centre (km)", "##sky_atm_ozone_center", &cfg.Atmosphere.OzoneCenterKilometers, 0.1f, 0.0f, 100.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_ozone_thickness_r", "Ozone Thickness (km)", "##sky_atm_ozone_thickness", &cfg.Atmosphere.OzoneThicknessKilometers, 0.1f, 0.01f, 100.0f))
+                        {
+                            mark_sky_dirty();
+                        }
 
-                    ZUISeparatorText(ctx, "Atmosphere / Ozone");
-                    if (vector3_row("##sky_atm_ozone_absorb_r", "Ozone Absorb (1/km)", "##sky_atm_ozone_absorb", cfg.Atmosphere.OzoneAbsorptionPerKilometer, 0.00001f, true, k_rgb_labels))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_ozone_center_r", "Ozone Centre (km)", "##sky_atm_ozone_center", &cfg.Atmosphere.OzoneCenterKilometers, 0.1f, 0.0f, 100.0f))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_ozone_thickness_r", "Ozone Thickness (km)", "##sky_atm_ozone_thickness", &cfg.Atmosphere.OzoneThicknessKilometers, 0.1f, 0.01f, 100.0f))
-                        mark_sky_dirty();
+                        end_section();
+                    }
+                    if (begin_section("Sun", m_sky_sections[6]))
+                    {
+                        if (drag_scalar_row("##sky_atm_sun_radius_r", "Sun Angular Radius (rad)", "##sky_atm_sun_radius", &cfg.Atmosphere.SunAngularRadiusRadians, 0.0001f, 0.0f, 0.1f, 5))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_sun_lux_r", "Sun Illuminance (lux)", "##sky_atm_sun_lux", &cfg.Atmosphere.SunIlluminanceLux, 100.0f, 0.0f, 200000.0f))
+                        {
+                            mark_sky_dirty();
+                        }
 
-                    ZUISeparatorText(ctx, "Atmosphere / Sun");
-                    if (drag_scalar_row("##sky_atm_sun_radius_r", "Sun Angular Radius (rad)", "##sky_atm_sun_radius", &cfg.Atmosphere.SunAngularRadiusRadians, 0.0001f, 0.0f, 0.1f))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_sun_lux_r", "Sun Illuminance (lux)", "##sky_atm_sun_lux", &cfg.Atmosphere.SunIlluminanceLux, 100.0f, 0.0f, 200000.0f))
-                        mark_sky_dirty();
-
-                    ZUISeparatorText(ctx, "Atmosphere / Ground");
-                    if (color3_row("##sky_atm_ground_albedo_r", "Ground Albedo", "##sky_atm_ground_albedo", cfg.Atmosphere.GroundAlbedo))
-                        mark_sky_dirty();
-                    if (drag_scalar_row("##sky_atm_ground_ambient_r", "Ground Ambient", "##sky_atm_ground_ambient", &cfg.Atmosphere.GroundAmbientIrradiance, 0.01f, 0.0f, 16.0f))
-                        mark_sky_dirty();
+                        end_section();
+                    }
+                    if (begin_section("Ground", m_sky_sections[7]))
+                    {
+                        if (color3_row("##sky_atm_ground_albedo_r", "Ground Albedo", "##sky_atm_ground_albedo", cfg.Atmosphere.GroundAlbedo))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_atm_ground_ambient_r", "Ground Ambient", "##sky_atm_ground_ambient", &cfg.Atmosphere.GroundAmbientIrradiance, 0.01f, 0.0f, 16.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        end_section();
+                    }
                 }
 
-                ZUISeparatorText(ctx, "Diagnostics");
-                if (cfg.IsHDRI() && cfg.EnvironmentMap.is_nil())
-                    ZUILabel(ctx, "No HDRI asset is assigned. The runtime will select its safe environment state.", ctx->Theme.TextDim);
-                else if (cfg.IsHDRI())
-                    ZUILabel(ctx, "HDRI is referenced by stable asset UUID; generated cache paths are not scene data.", ctx->Theme.TextDim);
-                else
-                    ZUILabel(ctx, "Runtime bake state and per-viewport previews are intentionally not scene data.", ctx->Theme.TextDim);
-                if (cfg.PrimaryCelestialLight.is_nil())
-                    ZUILabel(ctx, "No primary celestial light is assigned; the sky has no direct sun source.", ctx->Theme.TextDim);
+                if (begin_section("Diagnostics", m_sky_sections[10]))
+                {
+                    constexpr float diagnostics_color[4] = ZUI_TOKEN(Tokens::TextDisabled);
+                    if (cfg.IsHDRI() && cfg.EnvironmentMap.is_nil())
+                    {
+                        ZUILabel(ctx, "No HDRI asset is assigned. The runtime will select its safe environment state.", diagnostics_color);
+                    }
+                    else if (cfg.IsHDRI())
+                    {
+                        ZUILabel(ctx, "HDRI is referenced by stable asset UUID; generated cache paths are not scene data.", diagnostics_color);
+                    }
+                    else
+                    {
+                        ZUILabel(ctx, "Runtime bake state and per-viewport previews are intentionally not scene data.", diagnostics_color);
+                    }
+                    if (cfg.PrimaryCelestialLight.is_nil())
+                    {
+                        ZUILabel(ctx, "No primary celestial light is assigned; the sky has no direct sun source.", diagnostics_color);
+                    }
+                    end_section();
+                }
             }
             else if (m_settings_page == 2) // Renderer
             {
@@ -848,71 +1298,76 @@ namespace Tetragrama::Components
             }
             else if (m_settings_page == 3) // Theme
             {
-                ZUISpacer(ctx, 14.f);
-                ZUISpacer(ctx, 10.f);
-                ZUILabel(ctx, "Theme", ctx->Theme.TextDefault);
-                ZUISpacer(ctx, 12.f);
-                ZUIBeginRow(ctx, "##stg_thm_row", ZFill(), ZPx(80.f));
-                ZUISpacer(ctx, 14.f);
-                static int         s_active_theme = 0;
-                static const char* kThemeNames[2] = {"Dark", "Light"};
-                static const char* kThemeKeys[2]  = {"##thm_0", "##thm_1"};
-                for (int ti = 0; ti < 2; ++ti)
+                if (begin_section("Appearance", m_theme_sections[0]))
                 {
-                    bool    tact = (s_active_theme == ti);
-                    bool    thov = !tact && (ctx->HotKey == ZUIHashStr(kThemeKeys[ti], (uint32_t) strlen(kThemeKeys[ti])));
-                    ZUIBox* tc   = ZUIBeginColumn(ctx, kThemeKeys[ti], ZPx(110.f), ZFill());
-                    tc->Flags    = tc->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable;
-                    float bg     = (ti == 0) ? 0.10f : 0.88f;
-                    float bga    = thov ? bg + 0.06f : bg;
-                    ZUIBoxSetColor(tc, bga, bga, ti == 0 ? bga + 0.02f : bga + 0.02f, 1.f);
-                    ZUIBoxSetCornerRadius(tc, 4.f);
-                    tc->BorderThickness = tact ? 2.f : (thov ? 1.5f : 1.f);
-                    tc->BorderColor[0]  = tact ? ctx->Theme.TabActiveBorder[0] : (thov ? 0.50f : 0.28f);
-                    tc->BorderColor[1]  = tact ? ctx->Theme.TabActiveBorder[1] : (thov ? 0.50f : 0.28f);
-                    tc->BorderColor[2]  = tact ? ctx->Theme.TabActiveBorder[2] : (thov ? 0.55f : 0.32f);
-                    tc->BorderColor[3]  = 1.f;
-                    ZUISpacer(ctx, 20.f);
-                    float lc[4] = {ti == 0 ? 0.9f : 0.1f, ti == 0 ? 0.9f : 0.1f, ti == 0 ? 0.9f : 0.1f, 1.f};
-                    ZUILabel(ctx, kThemeNames[ti], lc);
-                    ZUISignal tsig = ZUISignalFromBox(ctx, tc);
+                    auto* row = ZUIBeginRow(ctx, "##stg_thm_row", ZFill(), ZPx(80.f));
+                    row->Gap  = 12.f;
+                    property_label("##stg_theme_label");
+                    ZUILabel(ctx, "Theme", ctx->Theme.TextDefault);
                     ZUIEndColumn(ctx);
-                    if (tsig.Flags & ZUI_SignalClicked)
-                        s_active_theme = ti;
-                    ZUISpacer(ctx, 8.f);
+                    ZUIBox* tc = ZUIBeginColumn(ctx, "##thm_0", ZPx(110.f), ZPx(80.f));
+                    tc->Flags  = tc->Flags | ZUI_DrawBackground | ZUI_DrawBorder | ZUI_Clickable | ZUI_KeyboardActivate;
+                    ZUIBoxSetColorArr(tc, ctx->Theme.WindowBg);
+                    ZUIBoxSetCornerRadius(tc, 4.f);
+                    tc->BorderThickness = 2.f;
+                    ZEngine::Helpers::secure_memcpy(tc->BorderColor, sizeof(tc->BorderColor), ctx->Theme.InputFocusBorder, sizeof(tc->BorderColor));
+                    tc->Padding[0] = 10.f;
+                    tc->Padding[1] = 10.f;
+                    ZUILabelTight(ctx, "Dark", ctx->Theme.TextDefault);
+                    if ((ZUISignalFromBox(ctx, tc).Flags & ZUI_SignalClicked) && stg_app && stg_app->Configuration)
+                    {
+                        stg_app->Configuration->DarkTheme = true;
+                    }
+                    ZUIEndColumn(ctx);
+                    ZUIEndRow(ctx);
+                    end_section();
                 }
-                ZUIEndRow(ctx);
+                if (begin_section("Motion", m_theme_sections[1]))
+                {
+                    auto* row = ZUIBeginRow(ctx, "##stg_motion_row", ZFill(), ZPx(25.f));
+                    row->Gap  = 12.f;
+                    property_label("##stg_motion_label");
+                    ZUILabel(ctx, "Reduce Motion", ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUICheckbox(ctx, "##ui_reduced_motion", &ctx->Style.ReducedMotion);
+                    constexpr float hint[4] = ZUI_TOKEN(Tokens::TextDisabled);
+                    ZUILabelTight(ctx, "Disable UI animation for this session.", hint);
+                    ZUIEndRow(ctx);
+                    end_section();
+                }
             }
             else if (m_settings_page == 4 && ShellPanelManager) // Layout
             {
-                static const char* kPanelNames[5] = {"Hierarchy", "Console", "Inspector", "Viewport", "Profiler"};
+                static const char* kPanelNames[5] = {"Outliner", "Console", "Details", "Viewport", "Profiler"};
                 static const char* kRowKeys[5]    = {"##lp_r0", "##lp_r1", "##lp_r2", "##lp_r3", "##lp_r4"};
                 static const char* kCbKeys[5]     = {"##lp_c0", "##lp_c1", "##lp_c2", "##lp_c3", "##lp_c4"};
 
-                ZUILabel(ctx, "Panels", ctx->Theme.TextDefault);
-                ZUISpacer(ctx, 10.f);
-
                 for (int ni = 0; ni < 5; ++ni)
                 {
-                    bool vis  = ShellPanelManager->IsPanelVisible(kPanelNames[ni]);
-                    bool prev = vis;
-                    ZUIBeginRow(ctx, kRowKeys[ni], ZFill(), ZPx(fh + 6.f));
-                    ZUISpacer(ctx, 14.f);
-                    ZUICheckbox(ctx, kCbKeys[ni], &vis);
-                    ZUISpacer(ctx, 8.f);
+                    bool  vis  = ShellPanelManager->IsPanelVisible(kPanelNames[ni]);
+                    bool  prev = vis;
+                    auto* row  = ZUIBeginRow(ctx, kRowKeys[ni], ZFill(), ZPx(25.f));
+                    row->Gap   = 12.f;
+                    property_label("##layout_panel_label");
                     ZUILabel(ctx, kPanelNames[ni], ctx->Theme.TextDefault);
+                    ZUIEndColumn(ctx);
+                    ZUICheckbox(ctx, kCbKeys[ni], &vis);
                     ZUIEndRow(ctx);
-                    ZUISpacer(ctx, 5.f);
+                    ZUISpacer(ctx, 10.f);
                     if (vis != prev)
+                    {
                         ShellPanelManager->SetPanelVisible(kPanelNames[ni], vis);
+                    }
                 }
 
                 ZUISpacer(ctx, 18.f);
                 ZUIBeginRow(ctx, "##lp_rst_r", ZFill(), ZPx(fh + 6.f));
-                ZUISpacer(ctx, 14.f);
+                ZUISpacer(ctx, 164.f);
                 ZUISignal rst_sig = ZUIButton(ctx, "Reset Layout##lp_rst");
                 if (rst_sig.Flags & ZUI_SignalClicked)
+                {
                     ShellPanelManager->ResetLayout();
+                }
                 ZUIEndRow(ctx);
             }
 
@@ -920,10 +1375,76 @@ namespace Tetragrama::Components
             ZUIEndColumn(ctx); // content
             ZUIEndRow(ctx);    // body
 
+            // Footer (Figma: 1 px rule, 44 px bg/surface, Reset + primary Close right-aligned)
+            {
+                ZUIBox* fr         = ZUIPushBox(ctx, "##stg_fsep", 10, ZUI_DrawBackground);
+                fr->Size[0]        = ZFill();
+                fr->Size[1]        = ZPx(1.f);
+                const float sub[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BorderSubtle);
+                ZUIBoxSetColorArr(fr, sub);
+                fr->EdgeSoftness = 0.f;
+                ZUIPopBox(ctx);
+
+                ZUIBox* ft           = ZUIBeginRow(ctx, "##stg_footer", ZFill(), ZPx(44.f));
+                ft->Flags            = ft->Flags | ZUI_DrawBackground;
+                const float ft_bg[4] = ZUI_TOKEN(ZEngine::UI::Tokens::BgSurface);
+                ZUIBoxSetColorArr(ft, ft_bg);
+                ZUIBoxSetBottomRadius(ft, Metrics::Radius6 - 1.f);
+                ft->EdgeSoftness   = 0.f;
+                ft->MainAlign      = ZUIAlign::End;
+                ft->CrossAlign     = ZUIAlign::Center;
+                ft->Padding[2]     = 14.f;
+                ft->Gap            = 8.f;
+                auto footer_button = [&](const char* key, bool primary) {
+                    const auto sig = ZUIButton(ctx, key, ZPx(72.f), ZPx(26.f), primary ? ZUIButtonKind::Primary : ZUIButtonKind::Secondary);
+                    return (sig.Flags & ZUI_SignalClicked) != 0;
+                };
+                const bool reset_disabled = m_settings_page == 2 || ((m_settings_page == 0 || m_settings_page == 1) && !settings_editable) || (m_settings_page == 4 && !ShellPanelManager);
+                if (reset_disabled)
+                {
+                    ZUIBeginDisabled(ctx);
+                }
+                const bool reset = footer_button("Reset##stg_reset", false);
+                if (reset_disabled)
+                {
+                    ZUIEndDisabled(ctx);
+                }
+                if (reset)
+                {
+                    if (m_settings_page == 0 && stg_scene)
+                    {
+                        grid_settings = {};
+                        mark_grid_dirty();
+                    }
+                    else if (m_settings_page == 1 && stg_scene)
+                    {
+                        sky_settings = {};
+                        mark_sky_dirty();
+                    }
+                    else if (m_settings_page == 3)
+                    {
+                        ctx->Style.ReducedMotion = false;
+                        if (stg_app && stg_app->Configuration)
+                        {
+                            stg_app->Configuration->DarkTheme = true;
+                        }
+                    }
+                    else if (m_settings_page == 4 && ShellPanelManager)
+                    {
+                        ShellPanelManager->ResetLayout();
+                    }
+                }
+                if (footer_button("Close##stg_closebtn", true))
+                {
+                    m_settings_open = false;
+                }
+                ZUIEndRow(ctx);
+            }
+
             // Bottom-right resize handle — floated inside modal, 12×12
             {
                 static constexpr float kGrip = 14.f;
-                ZUIBox*                rh    = ZUIPushBox(ctx, "##stg_grip", 10, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY);
+                ZUIBox*                rh    = ZUIPushBox(ctx, "##stg_grip", 10, ZUI_DrawBackground | ZUI_Clickable | ZUI_FloatX | ZUI_FloatY | ZUI_NoKeyboardFocus);
                 rh->Size[0]                  = ZPx(kGrip);
                 rh->Size[1]                  = ZPx(kGrip);
                 rh->FloatPos[0]              = kW - kGrip;
@@ -945,26 +1466,20 @@ namespace Tetragrama::Components
             }
 
             ZUIEndColumn(ctx); // window
+            if (settings_editable)
+            {
+                if (sky_changed && !stg_app->RequestSceneSkySettings(sky_settings))
+                    ZENGINE_CORE_WARN("[Editor] Sky settings intent rejected; finish the current lifecycle operation first")
+                if (grid_changed && !stg_app->RequestSceneGridSettings(grid_settings))
+                    ZENGINE_CORE_WARN("[Editor] Grid settings intent rejected; finish the current lifecycle operation first")
+            }
         }
 
         // Drag ghost: small box following the cursor during a drag, so the
         // user gets visual feedback regardless of which panel started it.
         if (ctx->DragSourceKey != 0)
         {
-            static constexpr float kGhostSz = 28.f;
-            ZUIBox*                ghost    = ZUIPushBox(ctx, "##drag_ghost", 12, ZUI_DrawBackground | ZUI_DrawBorder | ZUI_FloatX | ZUI_FloatY);
-            ghost->Size[0]                  = ZPx(kGhostSz);
-            ghost->Size[1]                  = ZPx(kGhostSz);
-            ghost->FloatPos[0]              = ctx->MousePos[0] - kGhostSz * 0.5f;
-            ghost->FloatPos[1]              = ctx->MousePos[1] - kGhostSz * 0.5f;
-            ZUIBoxSetColor(ghost, 0.10f, 0.70f, 0.65f, 0.85f); // teal
-            ghost->BorderColor[0]  = 1.f;
-            ghost->BorderColor[1]  = 1.f;
-            ghost->BorderColor[2]  = 1.f;
-            ghost->BorderColor[3]  = 0.9f;
-            ghost->BorderThickness = 2.f;
-            ZUIBoxSetCornerRadius(ghost, 4.f);
-            ZUIPopBox(ctx);
+            ZUIDragCursor(ctx);
         }
 
         ZUIEndColumn(ctx);

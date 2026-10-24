@@ -16,7 +16,7 @@ namespace ZEngine::ECS::Components
         Type    LightType = Type::Directional;
         float   Intensity = 1.f;
         float   Range     = 10.f; // point and spot only
-        float   SpotAngle = 45.f; // spot only, degrees
+        float   SpotAngle = 45.f; // spot only: full outer aperture, degrees
         float   Color[3]  = {1.f, 1.f, 1.f};
         uint8_t _pad[3]   = {};
     };

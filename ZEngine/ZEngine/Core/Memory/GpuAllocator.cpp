@@ -106,13 +106,10 @@ namespace ZEngine::Core::Memory
         // is this domain's dominant consumer. The generic one-off staging buffers
         // (AllocateBuffer with domain=HostStaging) share this same pool.
         //
-        // blockSize=0 (auto-sized), not a fixed StagingBytes block: a block needs some
-        // alignment/bookkeeping headroom beyond its raw byte count, so a fixed block
-        // exactly equal to the ring's own StagingBytes allocation can't actually fit it
-        // (confirmed: fails with VK_ERROR_OUT_OF_DEVICE_MEMORY). Same underlying reason as
-        // DeviceTexture's blockSize=0 below, just triggered by exact-equality instead of
-        // exceeding the block.
-        create_buffer_pool(GpuMemoryDomain::HostStaging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VmaAllocationCreateInfo{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE}, 0, 1);
+        // blockSize=0 and maxBlockCount=0 let VMA add a block for one-off staging
+        // uploads after the ring's block is full. A one-block pool made every geometry
+        // staging allocation fall back to VMA's default allocator on discrete GPUs.
+        create_buffer_pool(GpuMemoryDomain::HostStaging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VmaAllocationCreateInfo{.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE}, 0, 0);
 
         // HostReadback has the inverse host-access contract of HostStaging. It is
         // deliberately a separate pool because readback allocations can stay leased

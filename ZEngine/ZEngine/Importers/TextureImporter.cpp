@@ -22,6 +22,7 @@ namespace ZEngine::Importers
 
     Core::VFS::VFSResult<void> TextureImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {
+        std::lock_guard import_lock(m_import_mutex);
         (void) ctx;
 
         // path is workspace-relative — ToNative alone only swaps separators and would

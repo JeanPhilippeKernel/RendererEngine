@@ -23,11 +23,25 @@ namespace ZEngine::UI
         uint32_t Flags        = ZUI_SignalNone; ///< Bitmask of ZUISignalFlags.
         float    DragDelta[2] = {};             ///< Mouse delta (px) this frame when ZUI_SignalHeld.
         float    ScrollDelta  = 0.f;            ///< Wheel delta when ZUI_SignalScrolled.
+        uint64_t Key          = 0;              ///< Stable owner identity (tooltips must not key off text pointers).
     };
+
+    struct ZUIPointerQuery
+    {
+        const ZUIBox* HotBox    = nullptr;
+        const ZUIBox* ScrollBox = nullptr;
+    };
+
+    /// Read-only paint-order query against the current retained layout. Does not
+    /// consume input, advance animation, change focus or allocate scratch. Returned
+    /// box pointers are borrowed only until the next ZUIBeginFrame.
+    [[nodiscard]] ZUIPointerQuery ZUIQueryPointer(const ZUIContext* ctx, const float point[2]);
 
     /// @brief Called from ZUIEndFrame — DFS hit-test walk that updates HotKey / ActiveKey on ctx.
     /// @param ctx Active ZUI context.
-    void      ZUIInteractionPass(ZUIContext* ctx);
+    void                          ZUIInteractionPass(ZUIContext* ctx);
+    /// @brief Resolve reading/dock order and trap/restore focus after layout and pointer input.
+    void                          ZUIFocusPass(ZUIContext* ctx);
 
     /// @brief Query interaction state for @p box after the build phase.
     ///
@@ -35,6 +49,6 @@ namespace ZEngine::UI
     /// @param ctx Active ZUI context.
     /// @param box Box to query signals for.
     /// @returns Interaction signal valid for this frame only.
-    ZUISignal ZUISignalFromBox(ZUIContext* ctx, ZUIBox* box);
+    ZUISignal                     ZUISignalFromBox(ZUIContext* ctx, ZUIBox* box);
 
 } // namespace ZEngine::UI

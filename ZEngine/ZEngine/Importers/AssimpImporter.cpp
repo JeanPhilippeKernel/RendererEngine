@@ -1,16 +1,16 @@
 #include <ZEngine/Core/Coroutine.h>
-#include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/AssimpImporter.h>
+#include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <assimp/postprocess.h>
 #include <fmt/format.h>
+#include <algorithm>
 #include <cstdio>
-#include <filesystem>
-#include <fstream>
+#include <vector>
 
 using namespace ZEngine::Helpers;
 using ZEngine::Core::VFS::VFSPath;
@@ -19,20 +19,11 @@ using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
 using namespace uuids;
 
-namespace fs = std::filesystem;
-
 namespace ZEngine::Importers
 {
     static constexpr uint32_t kDefaultFlags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_SortByPType;
 
-    AssimpImporter::AssimpImporter() : m_progress_handler{}
-    {
-        m_progress_handler.SetImporter(this);
-    }
-
-    AssimpImporter::~AssimpImporter() {}
-
-    void AssimpImporter::Initialize(Core::Memory::ArenaAllocator* arena)
+    void                      AssimpImporter::Initialize(Core::Memory::ArenaAllocator* arena)
     {
         arena->CreateSubArena(ZMega(128), &Arena, "ImportPipeline/AssimpImporter");
     }
@@ -46,10 +37,11 @@ namespace ZEngine::Importers
 
     Core::VFS::VFSResult<void> AssimpImporter::Import(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta)
     {
+        std::lock_guard import_lock(m_import_mutex);
         // Resolve VFS path to native filesystem path for Assimp.
         // path is VFS-relative (e.g. /Assets/Lamp01.glb); Assimp needs the full native path.
-        char        native[MAX_FILE_PATH_COUNT] = {};
-        const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
+        char            native[MAX_FILE_PATH_COUNT] = {};
+        const char*     working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (working_space && working_space[0] != '\0')
             path.ResolveNative(working_space, native, sizeof(native));
         else
@@ -83,7 +75,6 @@ namespace ZEngine::Importers
         ExtractTextures(&scratch, scene, gen, materials, textures);
         CreateHierachy(&scratch, scene, gen, hierarchies, mesh, materials);
 
-        importer.SetProgressHandler(nullptr);
         importer.FreeScene();
 
         // Ingest directly into AssetManager CPU buffers — no intermediate .zasset round-trip.
@@ -103,6 +94,14 @@ namespace ZEngine::Importers
 
     void AssimpImporter::ImportFile(const char* filename, const AssetCodec::ImportConfiguration& cfg, Core::Memory::ArenaAllocator* arena, void* context, ImportCompleteCallback on_complete, ImportProgressCallback on_progress, ImportErrorCallback on_error, ImportLogCallback on_log)
     {
+        std::lock_guard import_lock(m_import_mutex);
+        auto            mesh_path = AssetCodec::ValidateImportConfiguration(cfg);
+        if (mesh_path.Failed() || !filename || !filename[0])
+        {
+            if (on_error)
+                on_error(context, fmt::format("Invalid import configuration (VFS error {})", static_cast<uint32_t>(mesh_path.Failed() ? mesh_path.Error() : Core::VFS::VFSError::InvalidPath)));
+            return;
+        }
         // The caller's arena is sized only for a few short path strings (#760) — carve a
         // scratch sub-arena from this importer's own, generously-sized private Arena
         // instead, matching the pattern Import() already uses for hot-reload.
@@ -118,10 +117,12 @@ namespace ZEngine::Importers
         config.AssetName.init(arena, cfg.AssetName.c_str());
         config.OutputAssetFile.init(arena, cfg.OutputAssetFile.c_str());
         config.InputBaseAssetFilePath.init(arena, cfg.InputBaseAssetFilePath.c_str());
-        config.VFS     = cfg.VFS;
-        config.Options = cfg.Options;
+        config.VFS                 = cfg.VFS;
+        config.ArtifactContext     = cfg.ArtifactContext;
+        config.OnArtifactPublished = cfg.OnArtifactPublished;
+        config.Options             = cfg.Options;
 
-        uint32_t flags = aiProcess_Triangulate | aiProcess_SortByPType;
+        uint32_t flags             = aiProcess_Triangulate | aiProcess_SortByPType;
         if (config.Options.MergeVertices)
             flags |= aiProcess_JoinIdenticalVertices;
         if (config.Options.FlipUVs)
@@ -132,9 +133,7 @@ namespace ZEngine::Importers
             flags |= aiProcess_GenSmoothNormals;
 
         Assimp::Importer importer{};
-        importer.SetProgressHandler(&m_progress_handler);
-
-        const aiScene* scene = importer.ReadFile(filename, flags);
+        const aiScene*   scene = importer.ReadFile(filename, flags);
 
         if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
         {
@@ -162,11 +161,14 @@ namespace ZEngine::Importers
             // "this is an update to an existing mesh" — every re-cook would otherwise
             // mint a fresh random UUID and look like a brand new, unrelated asset.
             {
-                auto mesh_dir    = Core::VFS::VFSPath::Parse(config.OutputAssetsPath.c_str()).Value();
-                auto mesh_path   = mesh_dir / config.OutputAssetFile.c_str();
-                auto meta_result = Core::VFS::MetaFileIO::Read(*config.VFS, mesh_path);
-                if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
-                    mesh.MeshUUID = meta_result.Value().AssetUUID;
+                auto identity = AssetCodec::RestoreAssetUUID(*config.VFS, mesh_path.Value(), mesh.MeshUUID);
+                if (identity.Failed())
+                {
+                    if (on_error)
+                        on_error(context, fmt::format("Failed to read mesh metadata (VFS error {})", static_cast<uint32_t>(identity.Error())));
+                    Arena.Clear();
+                    return;
+                }
             }
 
             if (on_progress)
@@ -197,51 +199,43 @@ namespace ZEngine::Importers
                 // reference off this same materials array for each SubMesh.
                 for (size_t m = 0; m < materials.size(); ++m)
                 {
-                    auto        mat_dir      = Core::VFS::VFSPath::Parse(config.OutputMaterialPath.c_str()).Value();
-                    std::string mat_filename = fmt::format("{}{}", materials[m].Name.c_str(), ".zematerial");
-                    auto        mat_path     = mat_dir / mat_filename.c_str();
-                    auto        meta_result  = Core::VFS::MetaFileIO::Read(*config.VFS, mat_path);
-                    if (meta_result.Succeeded() && !meta_result.Value().AssetUUID.is_nil())
-                        materials[m].MaterialUUID = meta_result.Value().AssetUUID;
+                    std::string mat_filename = AssetCodec::MaterialOutputFilename(materials[m], m);
+                    auto        mat_path     = AssetCodec::MaterialOutputPath(materials[m], config, m);
+                    if (mat_path.Failed())
+                    {
+                        if (on_error)
+                            on_error(context, fmt::format("Invalid material output '{}' (VFS error {})", mat_filename, static_cast<uint32_t>(mat_path.Error())));
+                        Arena.Clear();
+                        return;
+                    }
+                    auto identity = AssetCodec::RestoreAssetUUID(*config.VFS, mat_path.Value(), materials[m].MaterialUUID);
+                    if (identity.Failed())
+                    {
+                        if (on_error)
+                            on_error(context, fmt::format("Failed to read material metadata (VFS error {})", static_cast<uint32_t>(identity.Error())));
+                        Arena.Clear();
+                        return;
+                    }
                 }
 
                 if (config.Options.ImportTextures)
                 {
                     ExtractTextures(arena, scene, gen, materials, textures);
-                    CopyTextureFiles(arena, textures, config);
-                    for (size_t m = 0; m < materials.size(); ++m)
+                    auto copy = AssetCodec::CopyTextureFiles(ArrayView{textures}, config);
+                    if (copy.Failed())
                     {
-                        // ExtractTextures assigned a throwaway random UUID (#755); now
-                        // that the file is at its final path, replace it with a stable,
-                        // content-hashed one, matched by the original UUID still held
-                        // in the material fields.
-                        auto sync_texture = [&](uuids::uuid& uuid_field, Core::Containers::String& path_out) {
-                            for (size_t t = 0; t < textures.size(); ++t)
-                            {
-                                if (textures[t].TextureUUID == uuid_field && !textures[t].Path.empty())
-                                {
-                                    path_out.init(arena, textures[t].Path.c_str());
-
-                                    auto vfs_path = Core::VFS::VFSPath::Parse(textures[t].Path.c_str());
-                                    if (vfs_path.Succeeded() && config.VFS)
-                                    {
-                                        auto hash_result = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, vfs_path.Value());
-                                        auto meta_result = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, vfs_path.Value(), "AssimpImporter", hash_result.Succeeded() ? hash_result.Value() : 0);
-                                        if (meta_result.Succeeded())
-                                        {
-                                            textures[t].TextureUUID = meta_result.Value().AssetUUID;
-                                            uuid_field              = meta_result.Value().AssetUUID;
-                                        }
-                                    }
-                                    return;
-                                }
-                            }
-                        };
-                        sync_texture(materials[m].AlbedoTexUUID, materials[m].AlbedoTexPath);
-                        sync_texture(materials[m].EmissiveTexUUID, materials[m].EmissiveTexPath);
-                        sync_texture(materials[m].NormalTexUUID, materials[m].NormalTexPath);
-                        sync_texture(materials[m].OpacityTexUUID, materials[m].OpacityTexPath);
-                        sync_texture(materials[m].SpecularTexUUID, materials[m].SpecularTexPath);
+                        if (on_error)
+                            on_error(context, fmt::format("Failed to copy texture files (VFS error {})", static_cast<uint32_t>(copy.Error())));
+                        Arena.Clear();
+                        return;
+                    }
+                    auto metadata = AssetCodec::SynchronizeTextureMetadata(arena, ArrayView{textures}, ArrayView{materials}, config, "AssimpImporter");
+                    if (metadata.Failed())
+                    {
+                        if (on_error)
+                            on_error(context, fmt::format("Failed to persist texture metadata (VFS error {})", static_cast<uint32_t>(metadata.Error())));
+                        Arena.Clear();
+                        return;
                     }
                 }
             }
@@ -249,21 +243,45 @@ namespace ZEngine::Importers
             if (on_progress)
                 on_progress(context, 0.7f);
 
-            Array<AssetImporterOutput> outputs = {};
-            outputs.init(arena, 100);
-            outputs.push(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config));
+            std::vector<AssetImporterOutput> outputs;
+            outputs.reserve(1 + materials.size());
+            auto append_output = [&](Core::VFS::VFSResult<AssetImporterOutput> result, const char* directory, const std::string& filename) {
+                if (result.Failed())
+                {
+                    const auto message = fmt::format("Failed to write '{}/{}' (VFS error {})", directory, filename, static_cast<uint32_t>(result.Error()));
+                    ZENGINE_CORE_ERROR("[AssimpImporter] {}", message)
+                    if (on_error)
+                        on_error(context, message);
+                    return false;
+                }
+                outputs.push_back(std::move(result.Value()));
+                return true;
+            };
+            bool serialized = true;
             if (config.Options.ImportMaterials)
                 for (size_t i = 0; i < materials.size(); ++i)
-                    outputs.push(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config));
+                    if (!append_output(AssetCodec::SerializeMaterialAssetFile(arena, materials[i], config, i), config.OutputMaterialPath.c_str(), fmt::format("{}/{}", config.AssetName.c_str(), AssetCodec::MaterialOutputFilename(materials[i], i))))
+                    {
+                        serialized = false;
+                        break;
+                    }
 
-            if (on_progress)
-                on_progress(context, 1.0f);
-            if (on_complete)
-                on_complete(context, ArrayView{outputs});
+            // The mesh is the last published artifact: failed dependencies leave
+            // the previous mesh untouched, without a multi-file transaction layer.
+            if (serialized)
+                serialized = append_output(AssetCodec::SerializeMeshAssetFile(arena, mesh, hierarchies, config), config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str());
+            if (serialized)
+            {
+                std::rotate(outputs.begin(), outputs.end() - 1, outputs.end());
+                if (on_progress)
+                    on_progress(context, 1.0f);
+                if (on_complete)
+                    on_complete(context, {outputs.data(), outputs.size()});
+            }
         }
 
-        importer.SetProgressHandler(nullptr);
         importer.FreeScene();
+        Arena.Clear();
     }
 
     void AssimpImporter::ExtractMeshes(Core::Memory::ArenaAllocator* arena, const aiScene* scene, uuids::uuid_random_generator& generator, AssetMesh& mesh)
@@ -304,7 +322,7 @@ namespace ZEngine::Importers
             for (int v = 0; v < ai_mesh->mNumVertices; ++v)
             {
                 const aiVector3D position = ai_mesh->mVertices[v];
-                const aiVector3D normal   = ai_mesh->mNormals[v];
+                const aiVector3D normal   = ai_mesh->HasNormals() ? ai_mesh->mNormals[v] : aiVector3D{0, 1, 0};
                 const aiVector3D texture  = ai_mesh->HasTextureCoords(0) ? ai_mesh->mTextureCoords[0][v] : aiVector3D{};
 
                 mesh.Vertices.push(position.x);
@@ -568,103 +586,22 @@ namespace ZEngine::Importers
             n.init(arena, mesh_name.C_Str() ? mesh_name.C_Str() : "<unamed node>");
 
             hierarchy.NodeMeshes[sub_node_id]       = mesh;
-            hierarchy.NodeMaterials[sub_node_id]    = material_id;
             hierarchy.GlobalTransforms[sub_node_id] = Identity<Mat4f>();
             hierarchy.LocalTransforms[sub_node_id]  = Identity<Mat4f>();
 
-            auto& asset_mat                         = materials[material_id];
             auto& sub_mesh                          = asset_mesh.SubMeshes[mesh];
-            sub_mesh.MaterialUUID                   = asset_mat.MaterialUUID;
+            if (material_id < materials.size())
+            {
+                hierarchy.NodeMaterials[sub_node_id] = material_id;
+                sub_mesh.MaterialUUID                = materials[material_id].MaterialUUID;
+            }
+            else
+                sub_mesh.MaterialUUID = {};
         }
 
         for (uint32_t child = 0; child < node->mNumChildren; ++child)
         {
             TraverseNode(arena, ai_scene, node->mChildren[child], hierarchy, asset_mesh, materials, node_id, (depth_level + 1));
-        }
-    }
-
-    void AssimpImporter::CopyTextureFiles(Core::Memory::ArenaAllocator* arena, Core::Containers::Array<AssetTexture>& textures, const AssetCodec::ImportConfiguration& config)
-    {
-        /*
-         * Normalize file naming
-         */
-        char dst_dir_buf[MAX_FILE_PATH_COUNT] = {};
-        (VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str()).ResolveNative(config.OutputWorkingSpacePath.c_str(), dst_dir_buf, sizeof(dst_dir_buf));
-        std::string dst_dir               = dst_dir_buf;
-
-        auto        CreateBaseDirectoryFn = [](std::string_view filename) -> void {
-            auto            base_dir = fs::absolute(filename).parent_path();
-
-            std::error_code err      = {};
-            if (!fs::exists(base_dir))
-            {
-                fs::create_directories(base_dir, err);
-            }
-        };
-
-        auto          scratch       = ZGetScratch(arena);
-        Array<String> src_tex_files = {};
-        Array<String> dst_tex_files = {};
-        src_tex_files.init(scratch.Arena, textures.size());
-        dst_tex_files.init(scratch.Arena, textures.size());
-
-        for (auto& tex : textures)
-        {
-            if (tex.Path.empty())
-            {
-                continue;
-            }
-
-            fs::path tex_path(tex.Path.c_str());
-            auto     src_file = (tex_path.is_absolute() ? tex_path : fs::path(config.InputBaseAssetFilePath.c_str()) / tex_path).string();
-            auto     dst_file = (fs::path(dst_dir) / tex_path.filename()).string();
-
-            CreateBaseDirectoryFn(dst_file);
-
-            auto& sf = src_tex_files.push_use({});
-            auto& df = dst_tex_files.push_use({});
-
-            sf.init(scratch.Arena, src_file.c_str());
-            df.init(scratch.Arena, dst_file.c_str());
-        }
-        /*
-         * Texture files processing
-         *  (1) Ensuring Scene sub-dir is created
-         *  (2) Copying files to destination
-         */
-
-        ZENGINE_VALIDATE_ASSERT(src_tex_files.size() == dst_tex_files.size(), "source files count can't be diff of destination files count")
-        for (int i = 0; i < src_tex_files.size(); ++i)
-        {
-            auto          src = fs::absolute(src_tex_files[i].c_str());
-            auto          dst = fs::absolute(dst_tex_files[i].c_str());
-
-            std::ifstream in(src.c_str(), std::ios::binary);
-            std::ofstream out(dst.c_str(), std::ios::binary);
-
-            if (!in.is_open() || !out.is_open())
-            {
-                in.close();
-                out.close();
-                continue;
-            }
-
-            out << in.rdbuf();
-
-            in.close();
-            out.close();
-        }
-
-        ZReleaseScratch(scratch);
-
-        /*
-         * Update texture path
-         */
-        for (auto& tex : textures)
-        {
-            auto new_path = std::string((VFSPath::Parse(config.OutputTextureFilesPath.c_str()).Value() / config.AssetName.c_str() / tex.Path.c_str()).CStr());
-            tex.Path.clear();
-            tex.Path.append(new_path.c_str());
         }
     }
 
@@ -681,13 +618,4 @@ namespace ZEngine::Importers
         return mm;
     }
 
-    void AssimpProgressHandler::SetImporter(AssimpImporter* const importer)
-    {
-        m_importer = importer;
-    }
-
-    bool AssimpProgressHandler::Update(float /*percentage*/)
-    {
-        return true;
-    }
 } // namespace ZEngine::Importers
