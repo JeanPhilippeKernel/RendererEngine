@@ -1,7 +1,52 @@
 #include <ZEngine/Core/Maths/Vec.h>
 #include <gtest/gtest.h>
 
+TEST(VectorInitializationTest, DefaultAndShortConstructorsInitializeEveryStorageLane)
+{
+    ZEngine::Core::Maths::Vec2f default2;
+    ZEngine::Core::Maths::Vec3f default3;
+    ZEngine::Core::Maths::Vec4f default4;
+    EXPECT_EQ(default2.x, 0.f);
+    EXPECT_EQ(default2.y, 0.f);
+    EXPECT_EQ(default2.z, 0.f);
+    EXPECT_EQ(default2.w, 0.f);
+    EXPECT_EQ(default3.x, 0.f);
+    EXPECT_EQ(default3.y, 0.f);
+    EXPECT_EQ(default3.z, 0.f);
+    EXPECT_EQ(default3.w, 0.f);
+    EXPECT_EQ(default4.x, 0.f);
+    EXPECT_EQ(default4.y, 0.f);
+    EXPECT_EQ(default4.z, 0.f);
+    EXPECT_EQ(default4.w, 0.f);
+    const ZEngine::Core::Maths::Vec2f two(1.f, 2.f);
+    const ZEngine::Core::Maths::Vec3f three(1.f, 2.f, 3.f);
+    EXPECT_EQ(two.z, 0.f);
+    EXPECT_EQ(two.w, 0.f);
+    EXPECT_EQ(three.w, 0.f);
+}
+
 using namespace ZEngine::Core::Maths;
+
+TEST(VectorTest, EqualityOperatorsResolveScalarOverloadAndCompareOnlyTheirDimensions)
+{
+    Vec2f a(1.f, 2.f), b(1.f, 2.f);
+    b.z = 99.f;
+    EXPECT_TRUE(a == b);
+    EXPECT_FALSE(a != b);
+    b.y = 3.f;
+    EXPECT_FALSE(a == b);
+    EXPECT_TRUE(a != b);
+    Vec3f c(1.f, 2.f, 3.f), d(1.f, 2.f, 3.f);
+    d.w = 99.f;
+    EXPECT_TRUE(c == d);
+    d.z = 4.f;
+    EXPECT_TRUE(c != d);
+    const Vec4f e(1.f, 2.f, 3.f, 4.f), f(1.f, 2.f, 3.f, 5.f);
+    EXPECT_TRUE(e == e);
+    EXPECT_TRUE(e != f);
+    EXPECT_TRUE(IVec2(1, 2) == IVec2(1, 2));
+    EXPECT_TRUE(Vec3<int>(1, 2, 3) != Vec3<int>(1, 2, 4));
+}
 
 TEST(VectorTest, ConstructorAndAccess)
 {

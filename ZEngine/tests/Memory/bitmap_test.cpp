@@ -6,6 +6,7 @@
 #include <cmath>
 #include <filesystem>
 #include <vector>
+#include "../TemporaryDirectory.h"
 
 using namespace ZEngine::Rendering::Buffers;
 
@@ -40,13 +41,16 @@ TEST(BitmapTest, TestVerticalCross)
     Bitmap       cubemap        = BitmapConvert::CrossToCubemap(vertical_cross);
     stbi_image_free((void*) image_data);
 
-    stbi_write_hdr("screenshot.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
-    stbi_write_hdr("screenshot2.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer);
+    std::error_code                    error     = {};
+    ZEngine::Tests::TemporaryDirectory directory = {};
+    ASSERT_TRUE(directory.Create("zengine_bitmap", error)) << error.message();
+    const auto vertical_path = directory.Path() / "vertical_cross.hdr";
+    const auto cubemap_path  = directory.Path() / "cubemap.hdr";
+    stbi_write_hdr(vertical_path.string().c_str(), vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
+    stbi_write_hdr(cubemap_path.string().c_str(), cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer);
 
-    auto current_path = std::filesystem::current_path().string();
-
-    EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot.hdr"));
-    EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot2.hdr"));
+    EXPECT_TRUE(std::filesystem::exists(vertical_path));
+    EXPECT_TRUE(std::filesystem::exists(cubemap_path));
 }
 
 TEST(BitmapTest, TestVerticalCross2)
@@ -73,16 +77,21 @@ TEST(BitmapTest, TestVerticalCross2)
     }
     stbi_image_free((void*) image_data);
 
-    Bitmap in             = Bitmap::FromData(width, height, 1, 4, BitmapFormat::Float, BitmapType::Texture2D, image_buffer_32bit.data());
-    Bitmap vertical_cross = BitmapConvert::EquirectToCross(in);
-    Bitmap cubemap        = BitmapConvert::CrossToCubemap(vertical_cross);
+    Bitmap                             in             = Bitmap::FromData(width, height, 1, 4, BitmapFormat::Float, BitmapType::Texture2D, image_buffer_32bit.data());
+    Bitmap                             vertical_cross = BitmapConvert::EquirectToCross(in);
+    Bitmap                             cubemap        = BitmapConvert::CrossToCubemap(vertical_cross);
 
-    stbi_write_hdr("screenshot3.hdr", vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
-    stbi_write_hdr("screenshot4.hdr", cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer);
-    stbi_write_png("screenshot5.png", cubemap.Width, cubemap.Height, cubemap.Channel, cubemap.Buffer, 0);
+    std::error_code                    error          = {};
+    ZEngine::Tests::TemporaryDirectory directory      = {};
+    ASSERT_TRUE(directory.Create("zengine_bitmap", error)) << error.message();
+    const auto vertical_path = directory.Path() / "vertical_cross.hdr";
+    const auto cubemap_path  = directory.Path() / "cubemap.hdr";
+    const auto preview_path  = directory.Path() / "cubemap.png";
+    stbi_write_hdr(vertical_path.string().c_str(), vertical_cross.Width, vertical_cross.Height, vertical_cross.Channel, (const float*) vertical_cross.Buffer);
+    stbi_write_hdr(cubemap_path.string().c_str(), cubemap.Width, cubemap.Height, cubemap.Channel, (const float*) cubemap.Buffer);
+    stbi_write_png(preview_path.string().c_str(), cubemap.Width, cubemap.Height, cubemap.Channel, cubemap.Buffer, 0);
 
-    auto current_path = std::filesystem::current_path().string();
-
-    EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot3.hdr"));
-    EXPECT_TRUE(std::filesystem::exists(current_path + "/screenshot4.hdr"));
+    EXPECT_TRUE(std::filesystem::exists(vertical_path));
+    EXPECT_TRUE(std::filesystem::exists(cubemap_path));
+    EXPECT_TRUE(std::filesystem::exists(preview_path));
 }

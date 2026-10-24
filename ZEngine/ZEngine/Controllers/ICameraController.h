@@ -11,10 +11,15 @@ namespace ZEngine::Controllers
     struct ICameraController : public IController
     {
         ICameraController() {}
-        virtual ~ICameraController()                                                                  = default;
+        virtual ~ICameraController()                                               = default;
 
-        virtual Core::Maths::Vec3f            GetPosition() const                                     = 0;
-        virtual void                          SetPosition(const Core::Maths::Vec3f& position)         = 0;
+        virtual Core::Maths::Vec3f GetPosition() const                             = 0;
+        virtual void               SetPosition(const Core::Maths::Vec3f& position) = 0;
+        /// @brief Explicit editor-view choice; unsupported controllers preserve their camera.
+        [[nodiscard]] virtual bool SetProjectionType(Rendering::Cameras::CameraType type)
+        {
+            return false;
+        }
         virtual Rendering::Cameras::CameraPtr GetCamera() const                                       = 0;
         virtual void                          Update(Core::TimeStep dt)                               = 0;
         virtual bool                          OnEvent(Core::CoreEvent&)                               = 0;
@@ -40,7 +45,9 @@ namespace ZEngine::Controllers
             const float y1 = rect[3] / sy;
             SetViewportRect(x0, y0, x1, y1);
             if (x1 > x0 && y1 > y0)
+            {
                 SetViewport(x1 - x0, y1 - y0);
+            }
         }
         /// @brief Inform the controller that the UI owns one or both input channels.
         /// @param pointer_captured True while a non-viewport UI control owns pointer input.

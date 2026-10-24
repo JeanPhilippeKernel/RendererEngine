@@ -42,6 +42,11 @@ namespace ZEngine::Importers
         Core::Containers::Array<AssetSubMesh> SubMeshes    = {};
         Core::Maths::Vec3f                    BoundsCenter = {};
         float                                 BoundsRadius = 0.f;
+        // Runtime-only, in the same flattened mesh space as the vertex positions.
+        // A point/planar mesh is valid; an empty or non-finite stream is not.
+        Core::Maths::Vec3f                    BoundsMin    = {};
+        Core::Maths::Vec3f                    BoundsMax    = {};
+        bool                                  BoundsValid  = false;
     };
 
     struct AssetMaterial
@@ -131,7 +136,8 @@ namespace ZEngine::Importers
         std::string   RootPath = "";
     };
 
-    // Callbacks run synchronously during ImportFile; do not re-enter the same importer.
+    // ImportFile cooks artifacts without ingesting live runtime assets. Callbacks
+    // run synchronously; do not re-enter the same importer.
     // The output view is borrowed for the duration of the callback; copy it before deferring work.
     using ImportCompleteCallback = void (*)(void* ctx, Core::Containers::ArrayView<AssetImporterOutput> outputs);
     using ImportProgressCallback = void (*)(void* ctx, float progress);

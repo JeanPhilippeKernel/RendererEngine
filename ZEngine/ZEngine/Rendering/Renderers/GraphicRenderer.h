@@ -8,6 +8,10 @@ namespace ZEngine::Rendering::Renderers
 {
     struct LightingPass;
     struct GridPass;
+    struct GridLabelPass;
+    struct GridLabelFrameData;
+    struct GizmoPass;
+    struct GizmoFrameData;
     struct EnvironmentBackgroundPass;
     struct SkySpherePass;
     struct SkyViewLutPass;
@@ -69,7 +73,9 @@ namespace ZEngine::Rendering::Renderers
         void                                   ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision);
         /// @brief Pins the published environment and selects it for this immutable camera frame.
         void                                   BeginSkyFrame(const Cameras::CameraFrameData& camera);
-        void                                   ApplyGridConfig(const Scenes::GridConfig& cfg);
+        void                                   ApplyGridConfig(const Scenes::SceneGridRenderSnapshot& cfg);
+        void                                   ApplyGridLabels(const GridLabelFrameData& frame);
+        void                                   ApplyGizmo(const GizmoFrameData& frame);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
         Textures::TextureHandle                GetFrameOutput();
         /// @brief Returns a coherent renderer-memory snapshot for a non-render-thread UI reader.
@@ -123,6 +129,8 @@ namespace ZEngine::Rendering::Renderers
         Scenes::SkyEnvironment                          m_sky_environment                          = {};
         LightingPass*                                   m_lighting_pass                            = nullptr;
         GridPass*                                       m_grid_pass                                = nullptr;
+        GridLabelPass*                                  m_grid_label_pass                          = nullptr;
+        GizmoPass*                                      m_gizmo_pass                               = nullptr;
         EnvironmentBackgroundPass*                      m_environment_background_pass              = nullptr;
         SkySpherePass*                                  m_sky_sphere_pass                          = nullptr;
         SkyViewLutPass*                                 m_sky_view_lut_pass                        = nullptr;

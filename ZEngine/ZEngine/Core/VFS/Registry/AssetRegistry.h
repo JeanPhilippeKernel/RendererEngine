@@ -22,6 +22,11 @@ namespace ZEngine::Core::VFS
         RegisterResult     Register(const uuids::uuid& uuid, Managers::AssetType type, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta);
 
         RegisterResult     RegisterLoaded(const uuids::uuid& uuid, Managers::AssetType type, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta, Managers::AssetHandle slot_handle);
+        [[nodiscard]] bool TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const;
+        [[nodiscard]] bool TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const;
+        /// No callbacks are fired until the cache owner has published complete CPU data
+        /// and calls SetState(Loaded). Failure changes neither record.
+        [[nodiscard]] bool TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot);
 
         bool               Remove(const uuids::uuid& uuid);
         bool               Remove(Helpers::Handle<AssetRecord> handle);

@@ -2,19 +2,15 @@
 #include <Tetragrama/EditorScene.h>
 #include <Tetragrama/Panels/AssetImporterPanel.h>
 #include <Tetragrama/Panels/ProjectViewPanel.h>
-#include <ZEngine/Core/Coroutine.h>
-#include <ZEngine/Core/MainThreadScheduler.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileData.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
-#include <ZEngine/ECS/Components/MeshComponent.h>
-#include <ZEngine/ECS/Components/NameComponent.h>
-#include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUITokens.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <fmt/format.h>
@@ -24,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <string>
 
 using namespace ZEngine::UI;
@@ -61,7 +58,9 @@ namespace Tetragrama::Panels
         m_project_view = project_view;
         auto* engine   = ZEngine::Engine::GetContext();
         if (!layer || !engine)
+        {
             return;
+        }
 
         // Scratch arena for ImportConfiguration strings — carved from layer arena
         // ZKilo(64): ~8 path strings × ≤512 bytes each — a few KB is all we need
@@ -94,24 +93,13 @@ namespace Tetragrama::Panels
         (void) rect;
 
         auto* app = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
-        if (!app)
+        if (!app || m_closed)
         {
             EmptyPanelBg(ctx, "##imp_bg", kBg, nullptr);
             return;
         }
 
-        // Consume PendingImportPath written by viewport drag-drop or project right-click.
-        // Goes directly to importing (like develop) — no Options shown for drag-drop.
-        if (app->Configuration && app->Configuration->PendingImportPath[0] != '\0' && m_state.value.load(std::memory_order_acquire) == ImporterState::Idle)
-        {
-            secure_strncpy(m_path_buf, sizeof(m_path_buf), app->Configuration->PendingImportPath, sizeof(m_path_buf) - 1);
-            secure_strncpy(m_instance_name, sizeof(m_instance_name), app->Configuration->PendingImportName, sizeof(m_instance_name) - 1);
-            app->Configuration->PendingImportPath[0] = '\0';
-            app->Configuration->PendingImportName[0] = '\0';
-            m_add_to_scene                           = true;
-            m_state.value.store(ImporterState::Options, std::memory_order_release);
-            StartImport();
-        }
+        PollFileDialog();
 
         ZUIBox* bg = ZUIBeginColumn(ctx, "##imp_bg", ZFill(), ZFill());
         bg->Flags  = bg->Flags | ZUI_DrawBackground | ZUI_ClipChildren;
@@ -216,21 +204,29 @@ namespace Tetragrama::Panels
             auto* engine                     = ZEngine::Engine::GetContext();
             char  native[sizeof(m_path_buf)] = {};
             if (ResolveDroppedFile(dropped, kind, app && app->Configuration ? app->Configuration->WorkingSpacePath.c_str() : nullptr, engine ? engine->EngineAssetsNativeRoot : nullptr, native, sizeof(native)))
+            {
                 SelectSource(native);
+            }
         }
         const auto source_signal = ZUISignalFromBox(ctx, dz);
         ZUIEndColumn(ctx);
         if (source_signal.Flags & ZUI_SignalClicked)
+        {
             BrowseFile();
+        }
         const auto browse = PrimaryButton(ctx, "##imp_browse", "Import File", ZFill());
         if (browse.Flags & ZUI_SignalClicked)
+        {
             BrowseFile();
+        }
         ZUIEndColumn(ctx);
         ZUISpacer(ctx, Metrics::Space12);
 
         ImportSection(ctx, "Recent Imports", &m_history_open);
         if (!m_history_open)
+        {
             return;
+        }
         auto* history  = ZUIBeginScrollRegion(ctx, "##imp_history", ZFill(), ZFill());
         history->Flags = history->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(history, kBg);
@@ -262,17 +258,20 @@ namespace Tetragrama::Panels
             const auto signal = ZUISignalFromBox(ctx, row);
             ZUIEndRow(ctx);
             if (!entry.ok)
+            {
                 ZUISetTooltip(ctx, signal, entry.message);
+            }
         }
         ZUIEndScrollRegion(ctx);
     }
 
     void AssetImporterPanel::CancelSelection()
     {
-        m_path_buf[0]      = '\0';
-        m_instance_name[0] = '\0';
-        m_error[0]         = '\0';
-        m_add_to_scene     = false;
+        m_path_buf[0]        = '\0';
+        m_instance_name[0]   = '\0';
+        m_error[0]           = '\0';
+        m_add_to_scene       = false;
+        m_import_scene_epoch = 0;
         m_state.value.store(ImporterState::Idle, std::memory_order_release);
     }
 
@@ -302,7 +301,9 @@ namespace Tetragrama::Panels
         // horizontal text padding and text-driven width of ZUIButton.
         close_box->Size[0] = close_box->Size[1] = ZPx(25.f);
         for (float& padding : close_box->Padding)
+        {
             padding = 0.f;
+        }
         close_box->MainAlign = close_box->CrossAlign = ZUIAlign::Center;
         ctx->Current                                 = close_box;
         ZUIIconBox(ctx, ZUIIcon::X, 13.f, close_box->TextColor);
@@ -325,15 +326,21 @@ namespace Tetragrama::Panels
         {
             BeginImportProperty(ctx, "##imp_aname_r", "Instance name");
             if (m_use_source_name)
+            {
                 ZUIBeginDisabled(ctx);
+            }
             ZUITextField(ctx, m_use_source_name ? "##imp_name_dis" : "##imp_name", m_use_source_name ? stem : m_instance_name, sizeof(m_instance_name), 240.f);
             ctx->Current->LastChild->Size[0].Strictness = 0.f;
             if (m_use_source_name)
+            {
                 ZUIEndDisabled(ctx);
+            }
             ZUIEndRow(ctx);
 
             if (ImportCheckbox(ctx, "##imp_usn", "Use source name", &m_use_source_name) && !m_use_source_name && !m_instance_name[0])
+            {
                 secure_strcpy(m_instance_name, sizeof(m_instance_name), stem);
+            }
             // Preserve the existing, functional scale option (not in the specimen).
             BeginImportProperty(ctx, "##imp_scale_r", "Uniform scale");
             ZUIInputFloat(ctx, "##imp_scale", &m_scale, 80.f);
@@ -346,8 +353,12 @@ namespace Tetragrama::Panels
             if (ZUIBeginCombo(ctx, "##imp_axis", axes[axis], combo_width))
             {
                 for (int i = 0; i < 2; ++i)
+                {
                     if (ZUIComboItem(ctx, axes[i], m_axis_index == i))
+                    {
                         m_axis_index = i;
+                    }
+                }
                 ZUIEndCombo(ctx);
             }
             ZUIEndRow(ctx);
@@ -359,8 +370,12 @@ namespace Tetragrama::Panels
             if (ZUIBeginCombo(ctx, "##imp_normals", normals[normal], combo_width))
             {
                 for (int i = 0; i < 3; ++i)
+                {
                     if (ZUIComboItem(ctx, normals[i], m_normals_mode == i))
+                    {
                         m_normals_mode = i;
+                    }
+                }
                 ZUIEndCombo(ctx);
             }
             ZUIEndRow(ctx);
@@ -408,13 +423,19 @@ namespace Tetragrama::Panels
         ZUIEndRow(ctx);
         const auto import = PrimaryButton(ctx, "##imp_do", "Import All", ZPx(84.f));
         for (auto* button = buttons->FirstChild; button; button = button->NextSib)
+        {
             button->Size[0].Strictness = 0.f;
+        }
         ZUIEndRow(ctx);
         ZUIEndColumn(ctx);
         if (cancel.Flags & ZUI_SignalClicked)
+        {
             CancelSelection();
+        }
         else if (import.Flags & ZUI_SignalClicked)
+        {
             StartImport();
+        }
     }
 
     void AssetImporterPanel::BuildImporting(ZUIContext* ctx)
@@ -452,26 +473,22 @@ namespace Tetragrama::Panels
 
     // File browse
 
-    std::future<void> AssetImporterPanel::BrowseFileAsync()
+    void AssetImporterPanel::PollFileDialog()
     {
-        if (!m_layer || !m_layer->CurrentApp || !m_layer->CurrentApp->CurrentWindow)
+        ZEngine::Windows::FileDialogResult result = {};
+        if (!m_file_picker.TryTake(&result))
         {
-            m_browse_pending = false;
-            co_return;
-        }
-        try
-        {
-            auto                          window  = m_layer->CurrentApp->CurrentWindow;
-            std::vector<std::string_view> filters = {".glb", ".gltf", ".fbx", ".obj"};
-            std::string                   picked  = co_await window->OpenFileDialogAsync(filters, {}, "Select a 3D asset file");
-            if (!picked.empty())
-                SelectSource(picked.c_str());
-        }
-        catch (const std::exception& error)
-        {
-            snprintf(m_error, sizeof(m_error), "Unable to open the file dialog: %s", error.what());
+            return;
         }
         m_browse_pending = false;
+        if (result.Outcome == ZEngine::Windows::FileDialogStatus::Failed)
+        {
+            secure_strcpy(m_error, sizeof(m_error), "Unable to open the file dialog.");
+        }
+        else if (result.Outcome == ZEngine::Windows::FileDialogStatus::Selected)
+        {
+            SelectSource(result.Path.c_str());
+        }
     }
 
     bool AssetImporterPanel::TryGetImporterKind(const VFSPath& path, ImporterKind& kind)
@@ -479,24 +496,38 @@ namespace Tetragrama::Panels
         const auto ext          = path.Extension();
         char       extension[8] = {};
         if (ext.Length >= sizeof(extension))
+        {
             return false;
+        }
         for (size_t i = 0; i < ext.Length; ++i)
+        {
             extension[i] = (char) std::tolower((unsigned char) ext.Data[i]);
+        }
         if (ZEngine::Helpers::secure_strcmp(extension, ".glb") == 0 || ZEngine::Helpers::secure_strcmp(extension, ".gltf") == 0)
+        {
             kind = ImporterKind::Gltf;
+        }
         else if (ZEngine::Helpers::secure_strcmp(extension, ".fbx") == 0)
+        {
             kind = ImporterKind::Fbx;
+        }
         else if (ZEngine::Helpers::secure_strcmp(extension, ".obj") == 0)
+        {
             kind = ImporterKind::Assimp;
+        }
         else
+        {
             return false;
+        }
         return true;
     }
 
     bool AssetImporterPanel::SelectSource(const char* path)
     {
         if (!path || ZEngine::Helpers::secure_strlen(path) >= sizeof(m_path_buf) || m_state.value.load(std::memory_order_acquire) != ImporterState::Idle)
+        {
             return false;
+        }
         const auto   parsed = VFSPath::Parse(path);
         ImporterKind kind   = {};
         if (parsed.Failed() || !TryGetImporterKind(parsed.Value(), kind))
@@ -505,23 +536,35 @@ namespace Tetragrama::Panels
             return false;
         }
         ZEngine::Helpers::secure_memcpy(m_path_buf, sizeof(m_path_buf), path, ZEngine::Helpers::secure_strlen(path) + 1);
-        m_error[0]         = '\0';
-        m_instance_name[0] = '\0';
-        m_add_to_scene     = false;
+        m_error[0]           = '\0';
+        m_instance_name[0]   = '\0';
+        m_add_to_scene       = false;
+        m_import_scene_epoch = 0;
         // Keep failed preflight/queue submissions recoverable in Options, even
         // when the user opted to reuse settings for subsequent files.
         m_state.value.store(ImporterState::Options, std::memory_order_release);
         if (m_same_settings)
+        {
             StartImport();
+        }
         return true;
     }
 
     void AssetImporterPanel::BrowseFile()
     {
-        if (m_browse_pending || m_state.value.load(std::memory_order_acquire) != ImporterState::Idle || !m_layer || !m_layer->CurrentApp || !m_layer->CurrentApp->CurrentWindow)
+        if (m_closed || m_browse_pending || m_state.value.load(std::memory_order_acquire) != ImporterState::Idle || !m_layer || !m_layer->CurrentApp || !m_layer->CurrentApp->CurrentWindow)
+        {
             return;
-        m_browse_pending = true;
-        ZEngine::Core::MainThreadScheduler::Post(this, [](void* ctx) { reinterpret_cast<AssetImporterPanel*>(ctx)->BrowseFileAsync(); });
+        }
+        m_browse_pending           = true;
+        std::string_view filters[] = {".glb", ".gltf", ".fbx", ".obj"};
+        m_file_picker              = m_layer->CurrentApp->CurrentWindow->OpenFileDialogAsync(filters, {}, "Select a 3D asset file");
+        if (!m_file_picker.valid())
+        {
+            m_browse_pending = false;
+            secure_strcpy(m_error, sizeof(m_error), "Unable to open the file dialog.");
+        }
+        PollFileDialog();
     }
 
     bool AssetImporterPanel::BuildImportConfiguration(AssetCodec::ImportConfiguration& config, IVFSContext* vfs)
@@ -590,27 +633,39 @@ namespace Tetragrama::Panels
 
     void AssetImporterPanel::StartImport()
     {
-        if (m_state.value.load(std::memory_order_acquire) == ImporterState::Importing)
+        if (m_closed || m_task_pending || m_state.value.load(std::memory_order_acquire) == ImporterState::Importing)
+        {
             return;
+        }
 
         if (!m_gltf_importer || !m_fbx_importer || !m_assimp_importer)
+        {
             return;
+        }
 
         auto* app = m_layer ? reinterpret_cast<EditorPtr>(m_layer->CurrentApp) : nullptr;
         if (!app || !app->Configuration)
+        {
             return;
+        }
 
         auto vfs_result = VFSPath::Parse(m_path_buf);
         if (vfs_result.Failed())
+        {
             return;
+        }
         ImporterKind kind = {};
         if (!TryGetImporterKind(vfs_result.Value(), kind))
+        {
             return;
+        }
 
         auto*                           engine = ZEngine::Engine::GetContext();
         AssetCodec::ImportConfiguration config = {};
         if (!BuildImportConfiguration(config, engine ? engine->VFS : nullptr))
+        {
             return;
+        }
         std::error_code source_error = {};
         if (!std::filesystem::is_regular_file(std::filesystem::path(m_path_buf), source_error))
         {
@@ -643,16 +698,36 @@ namespace Tetragrama::Panels
         m_import_task.Configuration.ArtifactContext     = &m_import_task;
         m_import_task.Configuration.OnArtifactPublished = &AssetImporterPanel::OnImportArtifactPublished;
         if (m_import_task.Configuration.VFS)
+        {
             m_import_task.Publication = m_import_task.Configuration.VFS->BeginImportPublication();
+        }
         secure_strncpy(m_import_task.SourcePath, sizeof(m_import_task.SourcePath), m_path_buf, secure_strlen(m_path_buf));
 
-        m_import_task.Kind = kind;
+        m_import_task.Kind         = kind;
+        const auto* owner          = static_cast<const EditorScene*>(app->CurrentScene);
+        m_import_task.Scene        = owner ? owner->UUID : uuids::uuid{};
+        m_import_task.Epoch        = m_import_scene_epoch ? m_import_scene_epoch : app->Session.SceneEpoch();
+        m_import_task.PlaceInScene = m_add_to_scene;
+        secure_strcpy(m_import_task.InstanceName, sizeof(m_import_task.InstanceName), m_instance_name[0] ? m_instance_name : config.AssetName.c_str());
+        m_import_task.Ready.store(false, std::memory_order_relaxed);
+        m_task_pending  = true;
 
-        if (!ZEngine::Helpers::ThreadPoolHelper::Submit(&m_import_task, &AssetImporterPanel::RunImportTask))
+        // UI submission must never fall back to running a heavyweight importer inline.
+        bool  submitted = false;
+        auto* pool      = ZEngine::Helpers::ThreadPoolHelper::Pool.get();
+        if (pool)
         {
+            for (uint32_t i = 0; i < pool->WorkerCount && !submitted; ++i)
+            {
+                submitted = pool->SubmitToWorker(i, &m_import_task, &AssetImporterPanel::RunImportTask);
+            }
+        }
+        if (!submitted)
+        {
+            m_task_pending = false;
             EndImportPublication(m_import_task);
             m_state.value.store(ImporterState::Options, std::memory_order_release);
-            secure_strcpy(m_error, sizeof(m_error), "Import task rejected because the thread pool is shutting down.");
+            secure_strcpy(m_error, sizeof(m_error), "Import task rejected because workers are busy or shutting down.");
             PushLog(m_error, kRed[0], kRed[1], kRed[2]);
         }
     }
@@ -661,12 +736,16 @@ namespace Tetragrama::Panels
     {
         auto* task = static_cast<ImportTask*>(context);
         if (!task)
+        {
             return;
+        }
 
         auto* panel = task->Panel;
         if (!panel)
         {
-            EndImportPublication(*task);
+            task->Error   = "Import owner is unavailable";
+            task->Outcome = ImportTaskOutcome::Failed;
+            task->Ready.store(true, std::memory_order_release);
             return;
         }
 
@@ -692,56 +771,104 @@ namespace Tetragrama::Panels
 
         // ImportFile's local scratch storage is gone once it returns. The worker
         // callbacks have already copied the required output paths into ImportTask.
-        ZEngine::Core::MainThreadScheduler::Post(task, &AssetImporterPanel::FinalizeImportTask);
+        // Last access by this worker. Main-thread polling can reclaim result strings
+        // only after this release, even when the panel is hidden or overlays are full.
+        task->Ready.store(true, std::memory_order_release);
     }
 
-    void AssetImporterPanel::FinalizeImportTask(void* context)
+    void AssetImporterPanel::Poll(ZEngine::EngineContext* engine)
     {
-        auto* task = static_cast<ImportTask*>(context);
-        if (!task)
+        if (m_owner != std::this_thread::get_id() || m_closed)
+        {
             return;
-
-        auto* panel = task->Panel;
-        if (panel)
-        {
-            if (task->Outcome == ImportTaskOutcome::Completed)
-            {
-                ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs(task->Outputs.data(), task->Outputs.size());
-                CompleteImportOnMainThread(panel, outputs);
-            }
-            else
-            {
-                CompleteImportErrorOnMainThread(panel, task->Error.empty() ? "Importer returned without an error message" : task->Error);
-            }
         }
-
-        // CompleteImportOnMainThread can return early on metadata errors. Release the
-        // publication afterwards in every case so watcher processing cannot remain
-        // deferred after an import failure.
-        EndImportPublication(*task);
-        task->PublishedPaths.clear();
+        PollFileDialog();
+        if (m_task_pending && m_import_task.Ready.load(std::memory_order_acquire))
+        {
+            FinalizeImportTask(engine ? engine : ZEngine::Engine::GetContext());
+        }
+        ConsumePendingImport();
     }
 
-    void AssetImporterPanel::CreateMeshActor(uuids::uuid mesh_uuid, uint32_t render_instance_id, const char* name)
+    void AssetImporterPanel::ConsumePendingImport()
     {
-        auto* ctx = ZEngine::Engine::GetContext();
-
-        if (ctx && ctx->ActorManager)
+        auto* app = m_layer ? static_cast<Editor*>(m_layer->CurrentApp) : nullptr;
+        if (!app || !app->Configuration || !app->Configuration->PendingImportPath[0] || m_task_pending || m_state.value.load(std::memory_order_acquire) != ImporterState::Idle)
         {
-            using namespace ZEngine::ECS::Components;
-            ZEngine::ECS::ActorHandle handle = ctx->ActorManager->Create();
-            ZEngine::ECS::Actor*      actor  = ctx->ActorManager->Access(handle);
-            if (actor)
-            {
-                NameComponent nc = {};
-                secure_strncpy(nc.Value, sizeof(nc.Value), name, secure_strlen(name));
-                actor->AddComponent<NameComponent>(nc);
-                actor->AddComponent<TransformComponent>({});
-                MeshComponent mc    = {};
-                mc.MeshUUID         = mesh_uuid;
-                mc.RenderInstanceId = render_instance_id;
-                actor->AddComponent<MeshComponent>(mc);
-            }
+            return;
+        }
+        // Raw viewport drops progress independently of the importer panel/overlay.
+        // Retain their epoch; a scene switch before cooking must not retarget them.
+        secure_strcpy(m_path_buf, sizeof(m_path_buf), app->Configuration->PendingImportPath);
+        secure_strcpy(m_instance_name, sizeof(m_instance_name), app->Configuration->PendingImportName);
+        m_import_scene_epoch                     = app->Configuration->PendingImportEpoch;
+        app->Configuration->PendingImportPath[0] = app->Configuration->PendingImportName[0] = '\0';
+        app->Configuration->PendingImportEpoch                                              = 0;
+        m_add_to_scene                                                                      = true;
+        m_state.value.store(ImporterState::Options, std::memory_order_release);
+        StartImport();
+    }
+
+    void AssetImporterPanel::Close()
+    {
+        if (m_owner != std::this_thread::get_id())
+        {
+            return;
+        }
+        m_closed         = true;
+        m_file_picker    = {};
+        m_browse_pending = false;
+        m_add_to_scene   = false;
+        auto* app        = m_layer ? static_cast<Editor*>(m_layer->CurrentApp) : nullptr;
+        if (app && app->Configuration)
+        {
+            app->Configuration->PendingImportPath[0] = app->Configuration->PendingImportName[0] = '\0';
+            app->Configuration->PendingImportEpoch                                              = 0;
+        }
+    }
+
+    void AssetImporterPanel::ShutdownAfterWorkersJoined()
+    {
+        if (m_owner != std::this_thread::get_id())
+        {
+            return;
+        }
+        Close();
+        EndImportPublication(m_import_task); // Includes queued work abandoned by pool shutdown.
+        m_task_pending = false;
+        m_import_task.Outputs.clear();
+        decltype(m_import_task.Outputs){}.swap(m_import_task.Outputs);
+        std::string{}.swap(m_import_task.Error);
+        std::destroy_at(&m_import_task.PublishedPaths);
+        std::construct_at(&m_import_task.PublishedPaths);
+        m_import_result_slab.Shutdown();
+        m_import_task.Configuration = {};
+        m_import_task.Panel         = nullptr;
+        m_import_task.Ready.store(false, std::memory_order_relaxed);
+        m_state.value.store(ImporterState::Idle, std::memory_order_release);
+    }
+
+    void AssetImporterPanel::FinalizeImportTask(ZEngine::EngineContext* engine)
+    {
+        auto& task = m_import_task;
+        if (task.Outcome == ImportTaskOutcome::Completed)
+        {
+            CompleteImportOnMainThread(engine, {task.Outputs.data(), task.Outputs.size()});
+        }
+        else
+        {
+            CompleteImportErrorOnMainThread(this, task.Error.empty() ? "Importer returned without an error message" : task.Error);
+        }
+        // Metadata/placement rejection must never strand publication ownership.
+        EndImportPublication(task);
+        task.PublishedPaths.clear();
+        task.Outputs.clear(); // Destroy nontrivial strings, reuse only vector capacity.
+        task.Error.clear();
+        m_task_pending       = false;
+        m_import_scene_epoch = 0;
+        if (m_project_view)
+        {
+            m_project_view->RequestRefresh();
         }
     }
 
@@ -758,7 +885,9 @@ namespace Tetragrama::Panels
         e.color[3] = 1.f;
         m_log_head = (m_log_head + 1) % kLogMax;
         if (m_log_count < kLogMax)
+        {
             ++m_log_count;
+        }
     }
 
     void AssetImporterPanel::PushHistory(const char* name, bool ok, const char* msg)
@@ -774,7 +903,9 @@ namespace Tetragrama::Panels
         {
             // Shift to keep newest at the end
             for (int i = 0; i < kHistMax - 1; ++i)
+            {
                 m_history[i] = m_history[i + 1];
+            }
             HistEntry& e = m_history[kHistMax - 1];
             secure_strncpy(e.name, sizeof(e.name), name, sizeof(e.name) - 1);
             secure_strncpy(e.message, sizeof(e.message), msg, sizeof(e.message) - 1);
@@ -788,19 +919,25 @@ namespace Tetragrama::Panels
     {
         auto* task = static_cast<ImportTask*>(ctx);
         if (!task)
+        {
             return;
+        }
         // An importer may have published some artifacts before reporting an error.
         // Once it reports that error, completion must not turn the task into a
         // success and hide it from the editor.
         if (task->Outcome == ImportTaskOutcome::Failed)
+        {
             return;
+        }
 
         task->Outputs.clear();
         if (outputs.size() > 0)
         {
             task->Outputs.assign(outputs.data(), outputs.data() + outputs.size());
             for (const auto& output : task->Outputs)
+            {
                 RecordPublishedPath(*task, output.Path.c_str());
+            }
         }
         task->Error.clear();
         task->Outcome = ImportTaskOutcome::Completed;
@@ -810,20 +947,30 @@ namespace Tetragrama::Panels
     {
         auto* task = static_cast<ImportTask*>(ctx);
         if (task)
+        {
             RecordPublishedPath(*task, path);
+        }
     }
 
     void AssetImporterPanel::RecordPublishedPath(ImportTask& task, const char* path)
     {
         if (!path || path[0] == '\0')
+        {
             return;
+        }
         auto parsed = VFSPath::Parse(path);
         if (parsed.Failed())
+        {
             return;
+        }
 
         for (const ZEngine::Core::VFS::VFSPath& existing : task.PublishedPaths)
+        {
             if (existing == parsed.Value())
+            {
                 return;
+            }
+        }
 
         task.PublishedPaths.push(parsed.Value());
     }
@@ -832,192 +979,147 @@ namespace Tetragrama::Panels
     {
         auto* vfs = task.Configuration.VFS;
         if (!vfs || !task.Publication.IsValid())
+        {
             return;
+        }
 
         for (const ZEngine::Core::VFS::VFSPath& published : task.PublishedPaths)
+        {
             vfs->RecordImportPublicationArtifact(task.Publication, published);
+        }
         vfs->EndImportPublication(task.Publication);
         task.Publication = {};
     }
 
-    void AssetImporterPanel::CompleteImportOnMainThread(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs)
+    void AssetImporterPanel::CompleteImportOnMainThread(ZEngine::EngineContext* engine, ZEngine::Core::Containers::ArrayView<AssetImporterOutput> outputs)
     {
-        auto* self = reinterpret_cast<AssetImporterPanel*>(ctx);
-
-        if (self->m_project_view)
-            self->m_project_view->RequestRefresh();
-
-        bool    has_mesh  = false;
-        cstring mesh_path = nullptr;
-        for (unsigned i = 0; i < outputs.size(); ++i)
+        const auto& task = m_import_task;
+        auto*       vfs  = task.Configuration.VFS;
+        if (!vfs)
         {
-            if (outputs[i].Type == ZEngine::Importers::AssetFileType::MESH)
-            {
-                has_mesh  = true;
-                mesh_path = outputs[i].Path.c_str();
-            }
+            CompleteImportErrorOnMainThread(this, "Import destination is unavailable.");
+            return;
         }
 
-        // Write a .meta for every cooked material (#762) — mirrors the mesh handling
-        // below. Without this, AssimpImporter/GltfImporter/FbxImporter's material
-        // UUID stabilization (also #762) has no .meta to read on the next re-import,
-        // and every re-cook mints a brand-new, disconnected material identity.
+        const char* importer_name         = task.Kind == ImporterKind::Gltf ? "GltfImporter" : task.Kind == ImporterKind::Fbx ? "FbxImporter" : "AssimpImporter";
+        VFSPath     mesh_path             = {};
+        size_t      mesh_count            = 0;
+        bool        identities_registered = true;
+        // All model artifacts retain their embedded identity and captured source,
+        // including material/mesh outputs preceding an unexpected second mesh.
+        // No native-path conversion or current-workspace lookup is valid here.
+        for (const auto& output : outputs)
         {
-            auto*   ctx_engine = ZEngine::Engine::GetContext();
-            auto*   app        = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
-            cstring ws         = (app && app->Configuration) ? app->Configuration->WorkingSpacePath.c_str() : "";
-            if (ctx_engine && ctx_engine->VFS && ws[0] != '\0')
+            if (output.Type != AssetFileType::MESH && output.Type != AssetFileType::MATERIAL)
             {
-                auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
-                for (unsigned i = 0; i < outputs.size(); ++i)
+                continue;
+            }
+            const auto path      = VFSPath::Parse(output.Path.c_str(), output.Path.size());
+            const auto extension = output.Type == AssetFileType::MESH ? ".zemesh" : ".zematerial";
+            if (output.Path.find('\0') != std::string::npos || path.Failed() || !path.Value().Extension().Equals(extension))
+            {
+                CompleteImportErrorOnMainThread(this, "Importer returned an invalid artifact path.");
+                return;
+            }
+            const auto identity = ReadEmbeddedAssetUUID(*vfs, path.Value());
+            if (identity.Failed())
+            {
+                CompleteImportErrorOnMainThread(this, fmt::format("Failed to read identity for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(identity.Error())));
+                return;
+            }
+            const auto previous = MetaFileIO::Read(*vfs, path.Value());
+            if (previous.Failed() && previous.Error() != VFSError::NotFound && previous.Error() != VFSError::Corrupted)
+            {
+                CompleteImportErrorOnMainThread(this, fmt::format("Failed to read metadata for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(previous.Error())));
+                return;
+            }
+            MetaFileData meta = previous.Succeeded() ? previous.Value() : MetaFileData{};
+            meta.AssetUUID    = identity.Value();
+            if (secure_strcpy(meta.SourcePath, sizeof(meta.SourcePath), task.SourcePath) != MEMORY_OP_SUCCESS || secure_strcpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), path.Value().CStr()) != MEMORY_OP_SUCCESS || secure_strcpy(meta.ImporterName, sizeof(meta.ImporterName), importer_name) != MEMORY_OP_SUCCESS)
+            {
+                CompleteImportErrorOnMainThread(this, "Import metadata exceeds its storage capacity.");
+                return;
+            }
+            const auto write = MetaFileIO::Write(*vfs, path.Value(), meta);
+            if (write.Failed())
+            {
+                CompleteImportErrorOnMainThread(this, fmt::format("Failed to persist metadata for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(write.Error())));
+                return;
+            }
+            // Register identities (not loaded CPU/GPU bindings) immediately. The
+            // deferred watcher scan must not race initial placement's dependency
+            // lookup. Never publish into a replacement engine VFS/asset context.
+            auto* assets = engine && engine->VFS == vfs ? ZEngine::Managers::AssetManager::Instance() : nullptr;
+            if (assets && assets->Registry)
+            {
+                std::lock_guard lock(assets->IngestMutex);
+                const auto      type       = output.Type == AssetFileType::MESH ? ZEngine::Managers::AssetType::MESH : ZEngine::Managers::AssetType::MATERIAL;
+                const auto*     registered = assets->Registry->FindByUUID(meta.AssetUUID);
+                if (registered)
                 {
-                    if (outputs[i].Type != ZEngine::Importers::AssetFileType::MATERIAL)
-                        continue;
-
-                    cstring mat_path = outputs[i].Path.c_str();
-                    auto    rel      = VFSPath::Parse(mat_path);
-                    if (!rel.Succeeded())
-                        continue;
-
-                    auto material_uuid = ReadEmbeddedAssetUUID(*vfs, rel.Value());
-                    if (material_uuid.Failed())
-                    {
-                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read material identity for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(material_uuid.Error())));
-                        return;
-                    }
-
-                    auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
-                    if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
-                    {
-                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read metadata for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(meta_result.Error())));
-                        return;
-                    }
-                    ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
-                    meta.AssetUUID                        = material_uuid.Value();
-                    secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
-                    secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mat_path, sizeof(meta.ArtifactPath) - 1);
-                    secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
-                    auto write = ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
-                    if (write.Failed())
-                    {
-                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to persist metadata for '{}' (VFS error {})", mat_path, static_cast<uint32_t>(write.Error())));
-                        return;
-                    }
+                    identities_registered = identities_registered && registered->Type == type && (!registered->Path.IsValid() || registered->Path == path.Value());
                 }
+                else if (!assets->Registry->Register(meta.AssetUUID, type, path.Value(), meta).IsOk())
+                {
+                    identities_registered = false;
+                }
+            }
+            if (output.Type == AssetFileType::MESH)
+            {
+                mesh_path = path.Value();
+                ++mesh_count;
             }
         }
-
-        if (has_mesh && mesh_path)
+        if (!mesh_count)
         {
-            // mesh_path is VFS-relative (e.g. "/Assets/Meshes/test_cube.zemesh") —
-            // ReadAssetMeshFileHeader does raw filesystem I/O and needs a native path.
-            char native_mesh_path[MAX_FILE_PATH_COUNT] = {};
-            {
-                auto*   header_app = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
-                cstring header_ws  = (header_app && header_app->Configuration) ? header_app->Configuration->WorkingSpacePath.c_str() : "";
-                auto    mesh_pr    = VFSPath::Parse(mesh_path);
-                if (mesh_pr.Succeeded() && header_ws[0] != '\0')
-                    mesh_pr.Value().ResolveNative(header_ws, native_mesh_path, sizeof(native_mesh_path));
-            }
-
-            // Read once, shared by the meta write below and the add-to-scene block.
-            ZEngine::Importers::AssetCodec::AssetMeshFileHeader header{};
-            bool                                                has_header = ZEngine::Importers::AssetCodec::ReadAssetMeshFileHeader(native_mesh_path, header);
-
-            // Write meta file (source path for re-import)
-            auto*                                               ctx_engine = ZEngine::Engine::GetContext();
-            if (ctx_engine && ctx_engine->VFS)
-            {
-                auto* vfs = reinterpret_cast<ZEngine::Core::VFS::IVFSContext*>(ctx_engine->VFS);
-
-                // mesh_path (AssetImporterOutput::Path) is already a VFS-relative path
-                // (e.g. "Assets/Meshes/test_cube.zemesh") — config.OutputAssetsPath has
-                // no native workspace prefix to strip (see Editor.cpp's expand_nested:
-                // "Result is a workspace-relative sub-path ... no leading slash"). The
-                // previous strncmp-against-WorkingSpacePath check could never match,
-                // silently skipping this whole block on every import (#762).
-                auto  rel = VFSPath::Parse(mesh_path);
-                if (rel.Succeeded())
-                {
-                    auto meta_result = ZEngine::Core::VFS::MetaFileIO::Read(*vfs, rel.Value());
-                    if (meta_result.Failed() && meta_result.Error() != ZEngine::Core::VFS::VFSError::NotFound && meta_result.Error() != ZEngine::Core::VFS::VFSError::Corrupted)
-                    {
-                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to read metadata for '{}' (VFS error {})", mesh_path, static_cast<uint32_t>(meta_result.Error())));
-                        return;
-                    }
-                    ZEngine::Core::VFS::MetaFileData meta = meta_result.Succeeded() ? meta_result.Value() : ZEngine::Core::VFS::MetaFileData{};
-                    // Sync to the file's own embedded UUID — otherwise a nil
-                    // AssetUUID gets locked in forever (#755).
-                    if (has_header)
-                        meta.AssetUUID = header.Id;
-                    secure_strncpy(meta.SourcePath, sizeof(meta.SourcePath), self->m_path_buf, sizeof(meta.SourcePath) - 1);
-                    secure_strncpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), mesh_path, sizeof(meta.ArtifactPath) - 1);
-                    secure_strncpy(meta.ImporterName, sizeof(meta.ImporterName), "GltfImporter/AssimpImporter", sizeof(meta.ImporterName) - 1);
-                    auto write = ZEngine::Core::VFS::MetaFileIO::Write(*vfs, rel.Value(), meta);
-                    if (write.Failed())
-                    {
-                        CompleteImportErrorOnMainThread(self, fmt::format("Failed to persist metadata for '{}' (VFS error {})", mesh_path, static_cast<uint32_t>(write.Error())));
-                        return;
-                    }
-                }
-            }
-
-            // Add mesh instance to scene if triggered by drag-drop
-            if (self->m_add_to_scene && has_header)
-            {
-                auto* app   = self->m_layer ? reinterpret_cast<EditorPtr>(self->m_layer->CurrentApp) : nullptr;
-                auto* scene = app ? reinterpret_cast<EditorScenePtr>(app->CurrentScene) : nullptr;
-                if (scene)
-                {
-                    char iname[256] = {};
-                    if (self->m_instance_name[0])
-                        secure_strncpy(iname, sizeof(iname), self->m_instance_name, sizeof(iname) - 1);
-                    else
-                    {
-                        auto pr = VFSPath::Parse(self->m_path_buf);
-                        if (pr.Succeeded())
-                        {
-                            auto s = pr.Value().Stem();
-                            snprintf(iname, sizeof(iname), "%.*s", (int) s.Length, s.Data);
-                        }
-                    }
-                    self->CreateMeshActor(header.Id, scene->AddMeshInstance(header.Id, iname), iname);
-                }
-            }
-            self->m_add_to_scene     = false;
-            self->m_instance_name[0] = '\0';
-
-            self->PushLog("Completed", kGreen[0], kGreen[1], kGreen[2]);
-            char fn[256] = {};
-            {
-                auto pr = VFSPath::Parse(self->m_path_buf);
-                if (pr.Succeeded())
-                {
-                    auto f = pr.Value().Filename();
-                    snprintf(fn, sizeof(fn), "%.*s", (int) f.Length, f.Data);
-                }
-            }
-            self->PushHistory(fn, true, "Completed");
-        }
-        else
-        {
-            self->m_add_to_scene     = false;
-            self->m_instance_name[0] = '\0';
-            self->PushLog("Import failed — no mesh output", kRed[0], kRed[1], kRed[2]);
-            char fn[256] = {};
-            {
-                auto pr = VFSPath::Parse(self->m_path_buf);
-                if (pr.Succeeded())
-                {
-                    auto f = pr.Value().Filename();
-                    snprintf(fn, sizeof(fn), "%.*s", (int) f.Length, f.Data);
-                }
-            }
-            self->PushHistory(fn, false, "No mesh output");
+            CompleteImportErrorOnMainThread(this, "No mesh output.");
+            return;
         }
 
-        self->m_progress.value.store(1.f, std::memory_order_relaxed);
-        self->m_state.value.store(ImporterState::Idle, std::memory_order_release);
+        const char* message           = "Completed";
+        bool        placement_skipped = false;
+        if (task.PlaceInScene)
+        {
+            auto* app = m_layer ? static_cast<Editor*>(m_layer->CurrentApp) : nullptr;
+            // The current importers aggregate one model into one mesh. Never
+            // silently choose the final output or partially place a multi-mesh job.
+            if (!identities_registered)
+            {
+                message           = "Imported; scene placement skipped (runtime identity conflict or capacity).";
+                placement_skipped = true;
+            }
+            else if (mesh_count != 1)
+            {
+                message           = "Imported; scene placement skipped (multiple mesh outputs).";
+                placement_skipped = true;
+            }
+            else if (!engine || engine->VFS != vfs || !app || !app->RequestImportedMesh(*engine, mesh_path, task.InstanceName, task.Scene, task.Epoch))
+            {
+                message           = "Imported; scene placement skipped (original scene unavailable or busy).";
+                placement_skipped = true;
+            }
+            else
+            {
+                message = "Imported; scene placement queued.";
+            }
+        }
+        m_add_to_scene     = false;
+        m_instance_name[0] = '\0';
+        if (placement_skipped)
+        {
+            secure_strcpy(m_error, sizeof(m_error), message);
+        }
+        PushLog(message, placement_skipped ? kRed[0] : kGreen[0], placement_skipped ? kRed[1] : kGreen[1], placement_skipped ? kRed[2] : kGreen[2]);
+        char       filename[256] = {};
+        const auto source        = VFSPath::Parse(task.SourcePath);
+        if (source.Succeeded())
+        {
+            const auto name = source.Value().Filename();
+            secure_strncpy(filename, sizeof(filename), name.Data, std::min(name.Length, sizeof(filename) - 1));
+        }
+        PushHistory(filename, true, message);
+        m_progress.value.store(1.f, std::memory_order_relaxed);
+        m_state.value.store(ImporterState::Idle, std::memory_order_release);
     }
 
     void AssetImporterPanel::OnImportProgress(void* ctx, float pct)
@@ -1025,7 +1127,9 @@ namespace Tetragrama::Panels
         auto* task = static_cast<ImportTask*>(ctx);
         auto* self = task ? task->Panel : nullptr;
         if (!self)
+        {
             return;
+        }
 
         pct           = std::isfinite(pct) ? std::clamp(pct, 0.f, 1.f) : 0.f;
         char msg[128] = {};
@@ -1038,7 +1142,9 @@ namespace Tetragrama::Panels
     {
         auto* task = static_cast<ImportTask*>(ctx);
         if (!task)
+        {
             return;
+        }
 
         task->Outputs.clear();
         task->Error.assign(err.data(), err.size());
@@ -1055,7 +1161,7 @@ namespace Tetragrama::Panels
         self->PushLog(msg, kRed[0], kRed[1], kRed[2]);
         char fn[256] = {};
         {
-            auto pr = VFSPath::Parse(self->m_path_buf);
+            auto pr = VFSPath::Parse(self->m_import_task.SourcePath);
             if (pr.Succeeded())
             {
                 auto f = pr.Value().Filename();
@@ -1071,7 +1177,9 @@ namespace Tetragrama::Panels
         auto* task = static_cast<ImportTask*>(ctx);
         auto* self = task ? task->Panel : nullptr;
         if (!self)
+        {
             return;
+        }
 
         char buf[256] = {};
         snprintf(buf, sizeof(buf), "%.*s", (int) msg.size(), msg.data());

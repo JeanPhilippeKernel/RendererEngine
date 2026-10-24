@@ -2506,3 +2506,122 @@ TEST_F(ZUIWidgetsTest, ForegroundScopesRestoreParentsAndResetWithTheFrameArena)
     Begin();
     EXPECT_EQ(ctx.ForegroundRoot, nullptr);
 }
+
+TEST(ZUIStateStoreTest, ErasingTransientCollisionsPreservesWrappedProbeChainsAndDefaults)
+{
+    ZUIPersistentSlot  slots[8] = {};
+    ZUIPersistentStore store    = {.Slots = slots, .Capacity = 8};
+    const uint64_t     keys[]   = {7, 15, 23, 31, 2};
+    for (auto key : keys)
+        ZUIStateGetOrInsert(&store, key)->UserData = float(key);
+    EXPECT_TRUE(ZUIStateEraseTransient(&store, 15));
+    EXPECT_EQ(store.Count, 4u);
+    for (auto key : keys)
+        if (key != 15)
+            EXPECT_FLOAT_EQ(ZUIStateGetOrInsert(&store, key)->UserData, float(key));
+    EXPECT_EQ(store.Count, 4u);
+    EXPECT_FALSE(ZUIStateEraseTransient(&store, 15));
+    const auto* fresh = ZUIStateGetOrInsert(&store, 15);
+    EXPECT_FLOAT_EQ(fresh->UserData, -1.f);
+    EXPECT_EQ(fresh->SelectStart, -1);
+    EXPECT_TRUE(ZUIStateEraseTransient(&store, 7));
+    EXPECT_TRUE(ZUIStateEraseTransient(&store, 23));
+    EXPECT_FLOAT_EQ(ZUIStateGetOrInsert(&store, 31)->UserData, 31.f);
+    EXPECT_FLOAT_EQ(ZUIStateGetOrInsert(&store, 2)->UserData, 2.f);
+}
+
+TEST(ZUIStateStoreTest, ErasingAFullClusterTerminatesAndAllowsCapacityReuse)
+{
+    ZUIPersistentSlot  slots[8] = {};
+    ZUIPersistentStore store    = {.Slots = slots, .Capacity = 8};
+    for (uint64_t key = 1; key <= 8; ++key)
+        ZUIStateGetOrInsert(&store, key)->UserData = float(key);
+    EXPECT_TRUE(ZUIStateEraseTransient(&store, 1));
+    EXPECT_EQ(store.Count, 7u);
+    for (uint64_t key = 2; key <= 8; ++key)
+        EXPECT_FLOAT_EQ(ZUIStateGetOrInsert(&store, key)->UserData, float(key));
+    EXPECT_FLOAT_EQ(ZUIStateGetOrInsert(&store, 17)->UserData, -1.f);
+    EXPECT_EQ(store.Count, 8u);
+}
+
+TEST(ZUIStateStoreTest, OwningEditorStateCannotBeErasedAndSurvivesAnotherSlotsRelocation)
+{
+    ZUIPersistentSlot   slots[8] = {};
+    ZUIPersistentStore  store    = {.Slots = slots, .Capacity = 8};
+    ZUIColorWidgetState color    = {};
+    ZUIFloatInputState  scalar   = {};
+    (void) ZUIStateGetOrInsert(&store, 1);
+    ZUIStateGetOrInsert(&store, 9)->ColorState       = &color;
+    ZUIStateGetOrInsert(&store, 17)->FloatInputState = &scalar;
+    EXPECT_FALSE(ZUIStateEraseTransient(&store, 9));
+    EXPECT_FALSE(ZUIStateEraseTransient(&store, 17));
+    EXPECT_TRUE(ZUIStateEraseTransient(&store, 1));
+    EXPECT_EQ(ZUIStateGetOrInsert(&store, 9)->ColorState, &color);
+    EXPECT_EQ(ZUIStateGetOrInsert(&store, 17)->FloatInputState, &scalar);
+    EXPECT_EQ(store.Count, 2u);
+    EXPECT_FALSE(ZUIStateEraseTransient(nullptr, 1));
+    EXPECT_FALSE(ZUIStateEraseTransient(&store, 0));
+}
+
+TEST(ZUIStateStoreTest, RepeatedDeletionAndReinsertionKeepAllLiveKeysReachableWithoutTombstones)
+{
+    ZUIPersistentSlot  slots[32]    = {};
+    ZUIPersistentStore store        = {.Slots = slots, .Capacity = 32};
+    bool               present[129] = {};
+    uint32_t           random = 3157, count = 0;
+    for (uint32_t step = 0; step < 5000; ++step)
+    {
+        random         = random * 1664525u + 1013904223u;
+        const auto key = 1u + (random >> 16) % 128u;
+        if (present[key])
+        {
+            ASSERT_TRUE(ZUIStateEraseTransient(&store, key));
+            present[key] = false;
+            --count;
+        }
+        else if (count < 16)
+        {
+            ZUIStateGetOrInsert(&store, key)->UserData = float(key);
+            present[key]                               = true;
+            ++count;
+        }
+        for (uint32_t live = 1; live <= 128; ++live)
+            if (present[live])
+                ASSERT_FLOAT_EQ(ZUIStateGetOrInsert(&store, live)->UserData, float(live));
+        ASSERT_EQ(store.Count, count);
+    }
+}
+
+TEST_F(ZUIBehaviorTest, VirtualTableRowsPreserveFullHeightKeysAndColumnSeparatorWithoutBoxEmission)
+{
+    const ZUIDataTableColumn columns[] = {
+        {"Label", 200.f},
+        { "Type", 200.f}
+    };
+    Begin();
+    ZUIBeginDataTable(&ctx, "virtual-table", 2, columns, ZFit());
+    auto* table = ctx.Current;
+    ZUIDataTableNextRow(&ctx, false, 111);
+    ZUIDataTableSetColumn(&ctx, 0);
+    ZUILabel(&ctx, "first");
+    ZUIDataTableSkipRows(&ctx, 65534);
+    EXPECT_FALSE(ctx.DT_InRow);
+    EXPECT_EQ(ctx.DT_RowBox, nullptr);
+    EXPECT_EQ(ctx.DT_RowIndex, 65535);
+    auto* spacer = table->LastChild;
+    EXPECT_EQ(spacer->Flags, ZUI_None);
+    EXPECT_FLOAT_EQ(spacer->Size[1].Value, 65534.f * ZUIDataTableRowHeight());
+    const auto key = ZUIDataTableRowKey(&ctx, 999);
+    ZUIDataTableNextRow(&ctx, false, 999);
+    auto* last = ctx.DT_RowBox;
+    EXPECT_EQ(last->Key, key);
+    ZUIDataTableSetColumn(&ctx, 0);
+    ZUILabel(&ctx, "last");
+    ZUIEndDataTable(&ctx);
+    End();
+    EXPECT_FLOAT_EQ(table->ComputedSize[1], 65536.f * ZUIDataTableRowHeight());
+    EXPECT_FLOAT_EQ(last->ScreenMin[1] - table->ScreenMin[1], 65535.f * ZUIDataTableRowHeight());
+    EXPECT_LT(ctx.StateStore.Count, 30u);
+    if (ctx.Style.DataTableColumnLines)
+        EXPECT_FLOAT_EQ(table->LastChild->ComputedSize[1], table->ComputedSize[1]);
+}

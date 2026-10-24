@@ -19,7 +19,9 @@ namespace ZEngine::ECS
 
     inline bool MaskHas(ArchetypeMask mask, ComponentTypeID id)
     {
-        return (mask >> id) & 1;
+        // Predicates also receive unregistered/reflected type IDs. Reject them
+        // before shifting, rather than invoking UB or aliasing a valid bit.
+        return id < ARCHETYPE_MASK_CAPACITY && ((mask >> id) & 1) != 0;
     }
 
     inline bool MaskMatches(ArchetypeMask mask, ArchetypeMask required)

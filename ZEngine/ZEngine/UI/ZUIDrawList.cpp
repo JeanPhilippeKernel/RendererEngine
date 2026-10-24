@@ -880,11 +880,17 @@ namespace ZEngine::UI
 
     void ZUIDrawListAddImage(ZUIDrawList* dl, uint32_t tex_idx, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, uint32_t col)
     {
-        if (!CanAppendGeometry(dl, 4, 6))
+        if (!std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1) || x1 <= x0 || y1 <= y0)
             return;
-        // Switch texture for this draw
         float cx0 = 0.f, cy0 = 0.f, cx1 = 0.f, cy1 = 0.f;
         GetCurrentClip(dl, cx0, cy0, cx1, cy1);
+        // Glyphs are images too. GPU scissoring cannot recover the fixed vertex
+        // budget spent on hidden Console rows or horizontally clipped text.
+        // Preserve partial quads/UVs; only fully invisible images retire here,
+        // before allocation, texture commands or geometry counters change.
+        if (cx1 <= cx0 || cy1 <= cy0 || x1 <= cx0 || y1 <= cy0 || x0 >= cx1 || y0 >= cy1 || !CanAppendGeometry(dl, 4, 6))
+            return;
+        // Switch texture for this draw
         EnsureCmd(dl, cx0, cy0, cx1, cy1, tex_idx);
 
         GrowVtx(dl, dl->Arena, 4);

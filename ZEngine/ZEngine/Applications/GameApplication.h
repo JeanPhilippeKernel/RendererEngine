@@ -11,6 +11,11 @@
 #include <ZEngine/Windows/WindowConfiguration.h>
 #include <ZEngine/ZEngineDef.h>
 
+namespace ZEngine
+{
+    struct EngineContext;
+}
+
 namespace ZEngine::Applications
 {
     struct RenderTargetResizeRequest
@@ -28,6 +33,7 @@ namespace ZEngine::Applications
 
     struct GameApplication
     {
+        virtual ~GameApplication()                            = default;
 
         bool                              EnableRenderOverlay = false;
         cstring                           ConfigFile          = nullptr;
@@ -46,7 +52,7 @@ namespace ZEngine::Applications
         void                              Update(Core::TimeStep dt);
         virtual void                      ProcessEvent(Core::CoreEvent&);
         void                              Run();
-        void                              PrepareScene(RenderFrameState&);
+        virtual void                      PrepareScene(RenderFrameState&);
         void                              Shutdown();
 
         virtual void                      OverrideWindowConfiguration() = 0;
@@ -63,6 +69,26 @@ namespace ZEngine::Applications
 
         virtual void                      OnClosing()                   = 0;
         virtual void                      OnClosed()                    = 0;
+
+        /// Main-thread user close intent, not teardown. Return false to defer or
+        /// cancel (for example, while awaiting unsaved-document consent).
+        virtual bool                      OnCloseRequested()
+        {
+            return true;
+        }
+
+        /// Main-thread simulation policy, evaluated before any runtime ECS wave,
+        /// deferred command flush or Actor::OnTick. Update/UI/render synchronization
+        /// remain active while false. Applications run simulation by default.
+        [[nodiscard]] virtual bool ShouldSimulate() const
+        {
+            return true;
+        }
+
+        /// Called after render/pool workers and queued main-thread callbacks stop,
+        /// before ECS and asset/device services shut down. Applications owning a
+        /// replacement world retire it here and restore engine-owned ECS pointers.
+        virtual void OnWorldShutdown(EngineContext&) {}
 
     private:
         uint32_t m_render_target_width           = 0;

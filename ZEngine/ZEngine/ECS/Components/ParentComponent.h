@@ -5,8 +5,8 @@
 namespace ZEngine::ECS::Components
 {
     // Links an entity to its parent in the scene hierarchy.
-    // Entities without this component are roots — their WorldTransform equals their local transform.
-    // HierarchySystem propagates parent WorldTransform × local matrix each frame.
+    // An absent component or INVALID_ENTITY means a root. Use Scene::SetParent
+    // for validated edits; transformless grouping entities inherit their ancestor frame.
     struct ParentComponent
     {
         EntityID Parent = INVALID_ENTITY;

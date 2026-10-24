@@ -6,10 +6,11 @@ namespace ZEngine::Rendering
 {
     // UUID derivation rule (collision-free by construction):
     //   All importer UUIDs are v4 random — third group always starts with '4'.
-    //   Builtin UUIDs use third group '0000', which v4 can never produce.
+    //   Builtin UUIDs use third groups '0000'/'0001'/'0002', which v4 can never produce.
     //
     //   Mesh:     ff000000-0000-0000-0000-000000000001  (last group = enum value + 1)
-    //   Material: ff000000-0000-0001-0000-000000000001  (same counter, different variant field)
+    //   Material: ff000000-0000-0001-0000-000000000001  (same counter, different type field)
+    //   Hierarchy:ff000000-0000-0002-0000-000000000001  (distinct registry identity from its mesh)
 
     enum class BuiltinMeshID : uint32_t
     {

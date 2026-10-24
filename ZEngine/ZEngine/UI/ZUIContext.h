@@ -374,52 +374,71 @@ namespace ZEngine::UI
                 return nullptr;
             }
             if (size == ZUIFontSize::Small && Atlas->Small)
+            {
                 return Atlas->Small;
+            }
             if (size == ZUIFontSize::Header && Atlas->Header)
+            {
                 return Atlas->Header;
+            }
             if (size == ZUIFontSize::Heading && Atlas->Heading)
+            {
                 return Atlas->Heading;
+            }
             if (size == ZUIFontSize::Tiny && Atlas->Tiny)
+            {
                 return Atlas->Tiny;
+            }
             if (size == ZUIFontSize::Large && Atlas->Large)
+            {
                 return Atlas->Large;
+            }
             return Atlas->Body;
         }
 
         // input state — written by ZUILayer each frame before ZUIBeginFrame
-        float    MousePos[2]         = {};
-        float    PrevMousePos[2]     = {}; // saved at end of ZUIEndFrame for drag-delta
-        bool     MouseDown[3]        = {};
-        bool     MousePressed[3]     = {};
-        bool     MouseReleased[3]    = {};
-        float    ScrollDelta         = 0.f;
-        float    DeltaTime           = 0.f;
-        float    Time                = 0.f;   // accumulated seconds since init
-        bool     BackspacePressed    = false; // set by ZUILayer::OnKeyPressed, cleared in ZUIEndFrame
-        bool     BackspaceHeld       = false; // true while key is physically down
+        float    MousePos[2]           = {};
+        float    MousePressPos[3][2]   = {}; // logical position latched by each physical button press
+        float    MouseReleasePos[3][2] = {}; // final physical release, not later uncaptured motion
+        uint64_t MousePressSerial[3]   = {};
+        uint64_t MouseReleaseSerial[3] = {};
+        bool     MousePressAlt[3]      = {}; // gesture intent survives modifier release before routing
+        bool     MousePressCtrl[3]     = {};
+        bool     MousePressShift[3]    = {};
+        bool     MouseReleaseCtrl[3]   = {}; // final drag modifiers, not later key events
+        bool     MouseReleaseShift[3]  = {};
+        float    PrevMousePos[2]       = {}; // saved at end of ZUIEndFrame for drag-delta
+        bool     MouseDown[3]          = {};
+        bool     MousePressed[3]       = {};
+        bool     MouseReleased[3]      = {};
+        float    ScrollDelta           = 0.f;
+        float    DeltaTime             = 0.f;
+        float    Time                  = 0.f;   // accumulated seconds since init
+        bool     BackspacePressed      = false; // set by ZUILayer::OnKeyPressed, cleared in ZUIEndFrame
+        bool     BackspaceHeld         = false; // true while key is physically down
 
         // interaction state — updated by ZUIInteractionPass
-        uint64_t HotKey              = 0;
-        uint64_t ActiveKey           = 0;
-        uint64_t FocusKey            = 0;
-        bool     KeyboardFocus       = false; ///< Mouse presses hide focus rings without disabling text editing.
-        uint64_t PreferredFocusScope = 0;     ///< Active dock panel; start here when no control owns focus.
-        uint64_t FocusTrapKey        = 0;     ///< Innermost popup/modal from the last completed frame.
-        uint64_t SavedFocusKey       = 0;     ///< Focus to restore when the overlay closes.
-        uint64_t TooltipHoverKey     = 0;
-        float    TooltipHoverTime    = 0.f;
+        uint64_t HotKey                = 0;
+        uint64_t ActiveKey             = 0;
+        uint64_t FocusKey              = 0;
+        bool     KeyboardFocus         = false; ///< Mouse presses hide focus rings without disabling text editing.
+        uint64_t PreferredFocusScope   = 0;     ///< Active dock panel; start here when no control owns focus.
+        uint64_t FocusTrapKey          = 0;     ///< Innermost popup/modal from the last completed frame.
+        uint64_t SavedFocusKey         = 0;     ///< Focus to restore when the overlay closes.
+        uint64_t TooltipHoverKey       = 0;
+        float    TooltipHoverTime      = 0.f;
 
         // text input — written by OnTextInputRaised
-        char     TextInput[32]       = {};
-        uint32_t TextInputLen        = 0;
+        char     TextInput[32]         = {};
+        uint32_t TextInputLen          = 0;
         // Clipboard write request — written by ZUITextField (Ctrl+C), read+cleared by ZUILayer
-        char     ClipboardWrite[512] = {};
+        char     ClipboardWrite[512]   = {};
 
         // capacity caps used by layout and interaction passes
-        uint32_t MaxBoxesPerFrame    = 0;
+        uint32_t MaxBoxesPerFrame      = 0;
 
         // Style system — metrics, spacing, rounding (ImGui: ImGuiStyle non-color fields)
-        ZUIStyle Style               = {};
+        ZUIStyle Style                 = {};
 
         // Push/pop stack for temporary style overrides (64 slots, no dynamic allocation)
         struct ZUIStyleEntry
@@ -477,6 +496,9 @@ namespace ZEngine::UI
         // remains separate from generic keyboard focus used for buttons and
         // tree rows so editor navigation can stay available after selection.
         bool                      TextInputActive      = false;
+        // Set by the editor's per-update interaction owner, not a slot-gated UI
+        // build. Retained overlays must neither lose nor latch drag capture.
+        ZUIInputCapture           InteractionCapture   = {};
 
         // Tab focus navigation — set by ZUILayer, consumed by ZUIEndFrame
         bool                      TabPressed           = false;
@@ -623,17 +645,20 @@ namespace ZEngine::UI
     inline ZUIInputCapture ZUIGetInputCapture(const ZUIContext* ctx)
     {
         if (!ctx)
+        {
             return {};
+        }
 
         const bool viewport_active = ctx->ViewportInputKey != 0;
-        const bool modal_or_popup  = ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0;
+        // A queued popup owns input before its first overlay can be published.
+        const bool modal_or_popup  = ctx->ActiveModalKey != 0 || ctx->ModalBox != nullptr || ctx->PopupStackSize != 0 || ctx->PendingPopupKey != 0;
         const bool other_hot       = ctx->HotKey != 0 && ctx->HotKey != ctx->ViewportInputKey;
         const bool other_active    = ctx->ActiveKey != 0 && ctx->ActiveKey != ctx->ViewportInputKey;
         const bool other_drag      = ctx->DragSourceKey != 0 && ctx->DragSourceKey != ctx->ViewportInputKey;
 
         return {
-            .Pointer  = !viewport_active || modal_or_popup || other_hot || other_active || other_drag,
-            .Keyboard = modal_or_popup || ctx->TextInputActive,
+            .Pointer  = ctx->InteractionCapture.Pointer || !viewport_active || modal_or_popup || other_hot || other_active || other_drag,
+            .Keyboard = ctx->InteractionCapture.Keyboard || modal_or_popup || ctx->TextInputActive,
         };
     }
 
@@ -692,6 +717,10 @@ namespace ZEngine::UI
     /// @param key   FNV-1a hash key to look up.
     /// @returns Pointer to the state; nullptr only on table-full (asserts in debug).
     ZUIPersistentState* ZUIStateGetOrInsert(ZUIPersistentStore* store, uint64_t key);
+    /// Erase caller-owned transient box state without allocating/tombstones.
+    /// Rejects states owning color/float storage. Backward-shift deletion can
+    /// relocate other slots: do not retain state pointers across this call.
+    [[nodiscard]] bool  ZUIStateEraseTransient(ZUIPersistentStore* store, uint64_t key);
 
     /// @brief Push a copy of @p str into @p arena.
     /// @param arena Arena to allocate the string copy from.

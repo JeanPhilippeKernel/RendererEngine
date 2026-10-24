@@ -35,6 +35,8 @@ namespace Tetragrama::Layers
         bool OnTextInputRaised(ZEngine::Windows::Events::TextInputEvent&) override;
 
         void AddComponent(Components::ZUIComponent* cmp);
+        /// Retire physical input and both modifier sides, preserving widget state.
+        void ResetInput();
 
     private:
         friend struct ZUILayerInputTestAccess;

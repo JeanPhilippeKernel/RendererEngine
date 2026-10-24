@@ -26,6 +26,11 @@
 #include <ZEngine/ZEngineDef.h>
 #include <thread>
 
+namespace ZEngine::Timing
+{
+    struct FixedTimestepAccumulator;
+}
+
 namespace ZEngine
 {
     struct EngineContext
@@ -95,24 +100,34 @@ namespace ZEngine
         std::thread                        RenderThread                    = {};
         PaddedAtomic<bool>                 RequestTerminate                = {}; // signals both loops to exit
         PaddedAtomic<bool>                 CloseRequested                  = {}; // MainThreadRun's own exit condition
+        PaddedAtomic<bool>                 ApplicationCloseRequested       = {}; // user intent; does not stop rendering
         bool                               PipelineCachePersistenceEnabled = false;
     };
     ZDEFINE_PTR(EngineContext);
 
     struct Engine
     {
-        static void             Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app);
-        static void             Run();
-        static void             Deinitialize();
-        static void             Dispose();
-        static bool             OnEngineClosed(Event::EngineClosedEvent&);
-        static EngineContextPtr GetContext();
+        static void                Initialize(Core::Memory::MemoryManager* memory, Windows::WindowConfigurationPtr window_cfg_ptr, Applications::GameApplicationPtr app);
+        static void                Run();
+        static void                Deinitialize();
+        static void                Dispose();
+        static bool                OnEngineClosed(Event::EngineClosedEvent&);
+        static EngineContextPtr    GetContext();
 
-        /// @brief Requests a clean shutdown — same effect as the OS window-close path.
-        static void             RequestClose();
+        /// @brief Unconditional shutdown, including fatal renderer failures.
+        static void                RequestClose();
+        /// Thread-safe user intent. Application approval occurs on the main thread.
+        static void                RequestApplicationClose();
+        /// Consume one coalesced user request without interrupting rendering while deferred.
+        static bool                ProcessApplicationCloseRequest(EngineContext& context);
 
-        static void             MainThreadRun();
-        static void             RenderThreadRun();
+        /// Main-thread fixed-step boundary. Suppressed/invalid frames reset elapsed
+        /// simulation debt and return 1 (the current authored pose). Runtime waves
+        /// join before command flush/actor ticks and before this function returns.
+        [[nodiscard]] static float AdvanceSimulation(EngineContext& context, Timing::FixedTimestepAccumulator& accumulator, float raw_dt);
+
+        static void                MainThreadRun();
+        static void                RenderThreadRun();
 
     private:
         static void OnWatchedFileChanged(void* context, const Core::VFS::VFSPath& path, Core::VFS::WatchEventKind kind);

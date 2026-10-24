@@ -789,7 +789,12 @@ namespace ZEngine::Rendering
 
     RenderResourceManager::MeshSlot RenderResourceManager::AppendMeshData(AssetHandle asset, uint32_t frame_index)
     {
-        AssetMesh* mesh = AssetManager::GetAsset<AssetMesh>(asset);
+        auto* assets = AssetManager::Instance();
+        if (!assets)
+            return {};
+        // Keep descriptor growth/reload and payload lifetime out of GPU staging.
+        std::lock_guard asset_lock(assets->IngestMutex);
+        AssetMesh*      mesh = AssetManager::GetAsset<AssetMesh>(asset);
         if (!mesh || mesh->Vertices.empty())
         {
             return {};

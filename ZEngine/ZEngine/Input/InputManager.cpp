@@ -4,9 +4,20 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <type_traits>
 
 namespace ZEngine::Input
 {
+    namespace
+    {
+        static_assert(std::is_trivially_copyable_v<InputFrame>);
+
+        void ResetInputFrame(InputFrame* frame)
+        {
+            std::memset(frame, 0, sizeof(*frame));
+        }
+    } // namespace
+
     uint32_t InputManager::FNV32(const char* str)
     {
         uint32_t h = 2166136261u;
@@ -27,8 +38,8 @@ namespace ZEngine::Input
         m_actions      = ZPushArray(arena, InputAction, max_actions);
         memset(m_actions, 0, sizeof(InputAction) * max_actions);
         memset(m_scroll_scale, 0, sizeof(m_scroll_scale));
-        m_current               = {};
-        m_prev                  = {};
+        ResetInputFrame(&m_current);
+        ResetInputFrame(&m_prev);
         m_mouse_pos             = {};
         m_last_mouse_pos        = {};
         m_mouse_delta           = {};
@@ -129,12 +140,12 @@ namespace ZEngine::Input
 
         const uint64_t frame_number = m_current.FrameNumber;
         m_window_focused            = focused;
-        m_current                   = {};
-        m_prev                      = {};
-        m_current.FrameNumber       = frame_number;
-        m_current.ActionCount       = m_action_count;
-        m_scroll_accum              = 0.0;
-        m_scroll_delta              = 0.0f;
+        ResetInputFrame(&m_current);
+        ResetInputFrame(&m_prev);
+        m_current.FrameNumber = frame_number;
+        m_current.ActionCount = m_action_count;
+        m_scroll_accum        = 0.0;
+        m_scroll_delta        = 0.0f;
         ResetMouseDelta();
     }
 
@@ -148,8 +159,8 @@ namespace ZEngine::Input
         ZENGINE_VALIDATE_ASSERT(window, "InputManager::Poll: window must not be null")
 
         // Carry current → prev for JustDown/JustUp derivation.
-        m_prev                = m_current;
-        m_current             = {};
+        m_prev = m_current;
+        ResetInputFrame(&m_current);
         m_current.FrameNumber = m_prev.FrameNumber + 1;
         m_current.ActionCount = m_action_count;
 

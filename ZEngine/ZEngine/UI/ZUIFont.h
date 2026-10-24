@@ -11,7 +11,7 @@ namespace ZEngine::Hardwares
 
 namespace ZEngine::UI
 {
-// Byte values that render typographic glyphs (baked from the C1 slots; use in string literals).
+// Byte-indexed text-atlas glyphs (C1 slots are remapped; Latin-1 slots are direct).
 #define ZUI_GLYPH_ELLIPSIS "\x85"
 #define ZUI_GLYPH_LQUOTE   "\x93"
 #define ZUI_GLYPH_RQUOTE   "\x94"
@@ -19,8 +19,10 @@ namespace ZEngine::UI
 #define ZUI_GLYPH_ENDASH   "\x96"
 #define ZUI_GLYPH_EMDASH   "\x97"
 #define ZUI_GLYPH_UP       "\x8F"
+#define ZUI_GLYPH_MINUS    "\x90"
 #define ZUI_GLYPH_DOWN     "\x8E"
 #define ZUI_GLYPH_DEGREE   "\xB0"
+#define ZUI_GLYPH_MULTIPLY "\xD7" // Latin-1 multiplication sign, already in the text atlas
 
     /// @brief Per-glyph metrics and atlas UV coordinates.
     ///

@@ -49,11 +49,56 @@ namespace Tetragrama::Panels
         uint32_t llen   = (uint32_t) ZEngine::Helpers::secure_strlen(label);
         lbl->Label      = ZUIPushStr(&ctx->FrameArena, label, llen);
         for (int k = 0; k < 4; ++k)
+        {
             lbl->TextColor[k] = ctx->Theme.TextDefault[k];
+        }
         ZUIPopBox(ctx);
     }
 
-    static bool Vec3Row(ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw, bool degrees)
+    // Widgets own presentation/text buffers, but a session owns authored pointer
+    // motion and termination. Never feed an ECS address to a numeric widget here.
+    static bool NumericFloat(ZUIContext* ctx, const char* key, float* value, float speed, float width, EditorSession* session = nullptr, EntityID entity = {}, const EditorControlDrag* control = nullptr)
+    {
+        if (!session || !control)
+        {
+            return ZUIDragFloat(ctx, key, value, speed, width);
+        }
+        const uint64_t hash      = ZUIHashStr(key, static_cast<uint32_t>(secure_strlen(key)));
+        const auto*    state     = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+        const bool     text_mode = ctx->FocusKey == hash && state && state->UserData >= 0.f;
+        float          candidate = *value;
+        const bool     changed   = ZUIDragFloat(ctx, key, &candidate, speed, width);
+        if (ctx->Disabled)
+        {
+            return false;
+        }
+        if (ctx->ActiveKey == hash && ctx->MouseDown[0] && !text_mode && !ctx->CtrlDown)
+        {
+            if (!session->Active())
+            {
+                auto drag          = *control;
+                drag.Key           = hash;
+                drag.PointerSerial = ctx->MousePressSerial[0];
+                drag.StartX        = ctx->MousePressPos[0][0];
+                if (!session->RequestControlDrag(entity, drag))
+                    ZENGINE_CORE_WARN("[Inspector] {}", session->LastError())
+            }
+            return false;
+        }
+        // Pointer deltas are applied by the update loop, never a second time
+        // by this widget. Confirmed text and keyboard steps are discrete edits.
+        if (session->Active() || ctx->MouseDown[0])
+        {
+            return false;
+        }
+        if (changed)
+        {
+            *value = candidate;
+        }
+        return changed;
+    }
+
+    static bool Vec3Row(ZUIContext* ctx, const char* row_key, const char* label, float* v, float speed, float pw, bool degrees, EditorSession* session = nullptr, EntityID entity = {}, const EditorControlDrag* control = nullptr)
     {
         static const float kAxis[3][4] = {ZUI_TOKEN(ZEngine::UI::Tokens::AccentRed), ZUI_TOKEN(ZEngine::UI::Tokens::AccentGreen), ZUI_TOKEN(ZEngine::UI::Tokens::AccentBlue)};
         static const char* kNames[3]   = {"x", "y", "z"};
@@ -97,7 +142,9 @@ namespace Tetragrama::Panels
             ZUIPopBox(ctx);
 
             ZUIStylePushFloat(ctx, ZUIStyleVar_FramePaddingX, 4.f);
-            any |= ZUIDragFloat(ctx, fk, &v[a], speed, w3 - 6.f);
+            EditorControlDrag axis_control  = control ? *control : EditorControlDrag{};
+            axis_control.Axis               = static_cast<uint8_t>(a);
+            any                            |= NumericFloat(ctx, fk, &v[a], speed, w3 - 6.f, session, entity, control ? &axis_control : nullptr);
             ZUIStylePop(ctx);
             ZUIEndRow(ctx);
         }
@@ -106,7 +153,9 @@ namespace Tetragrama::Panels
         ctx->DragFloatSuffix   = suffix;
 
         if (!ctx->Disabled)
+        {
             ZUIIconBox(ctx, ZUIIcon::RotateCcw, kResetSize, ctx->Theme.TextDim);
+        }
         ZUIEndRow(ctx);
         return any;
     }
@@ -138,7 +187,9 @@ namespace Tetragrama::Panels
         row->EdgeSoftness                 = 0.f;
         ZUIBoxSetColorArr(row, ctx->Theme.ButtonBg);
         for (int k = 0; k < 4; ++k)
+        {
             row->BorderColor[k] = ctx->Theme.PanelBorder[k];
+        }
         row->BorderThickness = 0.f;
         ZUIIconBox(ctx, *open ? ZUIIcon::ChevronDown : ZUIIcon::ChevronRight, 11.f, ctx->Theme.TextDefault);
         ZUILabelTight(ctx, title, ctx->Theme.TextDefault, ZUIFontSize::Heading);
@@ -152,16 +203,20 @@ namespace Tetragrama::Panels
         ZUISignal sig = ZUISignalFromBox(ctx, row);
         ZUIEndRow(ctx);
         if (sig.Flags & ZUI_SignalClicked)
+        {
             *open = !*open;
+        }
     }
 
     // DrawField
     // Widget dispatch by FieldType. Two-column row: property label + widget.
     // Matches develop DrawField() translated to ZUI widget calls.
-    bool InspectorPanel::DrawField(ZUIContext* ctx, const FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx)
+    bool InspectorPanel::DrawField(ZUIContext* ctx, const FieldDescriptor& fd, void* comp_data, float pw, uint32_t comp_idx, uint32_t field_idx, EditorSession* session, EntityID entity, const EditorControlDrag* control, uintptr_t color_binding)
     {
         if (fd.Hidden || !comp_data)
+        {
             return false;
+        }
 
         bool       changed  = false;
         const bool disabled = ctx->Disabled;
@@ -179,13 +234,13 @@ namespace Tetragrama::Panels
         {
             // Match inspector label styling, but keep its width compact so RGB
             // fields share the remaining space even in narrow panels.
-            // Bind actual component storage for undo.
+            // Presentation storage may have an explicit semantic binding identity.
             auto* row       = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(kPropertyRowH));
             row->Padding[0] = row->Padding[2] = kRowLead;
             row->Gap                          = kRowGap;
             row->CrossAlign                   = ZUIAlign::Center;
             RowLabel(ctx, fd.Name, ZText());
-            changed       = ZUIColorEdit3(ctx, wkey, static_cast<float*>(ptr), ZUIColorSpace::Linear, ZFill());
+            changed       = ZUIColorEdit3(ctx, wkey, static_cast<float*>(ptr), ZUIColorSpace::Linear, ZFill(), color_binding);
             ctx->Disabled = disabled;
             ZUIEndRow(ctx);
             return changed;
@@ -206,18 +261,19 @@ namespace Tetragrama::Panels
                 display[2] = fv[2] * 57.2957795f;
             }
 
-            changed = Vec3Row(ctx, row_key, fd.Name, display, is_radians ? 1.0f : 0.05f, pw, is_radians);
-            if (changed && is_radians)
+            const float before_display[3] = {display[0], display[1], display[2]};
+            changed                       = Vec3Row(ctx, row_key, fd.Name, display, is_radians ? 1.0f : 0.05f, pw, is_radians, session, entity, control);
+            // Do not round-trip untouched axes through degree conversion. The
+            // authored value must change only where the user edited the control.
+            if (changed)
             {
-                fv[0] = display[0] * 0.01745329f; // deg → rad
-                fv[1] = display[1] * 0.01745329f;
-                fv[2] = display[2] * 0.01745329f;
-            }
-            else if (changed)
-            {
-                fv[0] = display[0];
-                fv[1] = display[1];
-                fv[2] = display[2];
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                {
+                    if (display[axis] != before_display[axis])
+                    {
+                        fv[axis] = is_radians ? display[axis] * 0.01745329f : display[axis];
+                    }
+                }
             }
             ctx->Disabled = disabled;
             return changed;
@@ -245,11 +301,17 @@ namespace Tetragrama::Panels
             {
                 int32_t val = 0;
                 if (fd.Type == FieldType::Int8)
+                {
                     val = *static_cast<int8_t*>(ptr);
+                }
                 else if (fd.Type == FieldType::Int16)
+                {
                     val = *static_cast<int16_t*>(ptr);
+                }
                 else
+                {
                     val = *static_cast<int32_t*>(ptr);
+                }
                 const int32_t original = val;
                 if (ZUIDragInt(ctx, wkey, &val, 1.f, wid))
                 {
@@ -264,7 +326,9 @@ namespace Tetragrama::Panels
                         *static_cast<int16_t*>(ptr) = static_cast<int16_t>(val);
                     }
                     else
+                    {
                         *static_cast<int32_t*>(ptr) = val;
+                    }
                     changed = val != original;
                 }
                 break;
@@ -309,7 +373,7 @@ namespace Tetragrama::Panels
 
             case FieldType::Float:
             {
-                changed = ZUIDragFloat(ctx, wkey, static_cast<float*>(ptr), 0.05f, wid);
+                changed = NumericFloat(ctx, wkey, static_cast<float*>(ptr), 0.05f, wid, session, entity, control);
                 break;
             }
 
@@ -355,9 +419,13 @@ namespace Tetragrama::Panels
                 // Malformed unterminated data must not reach strlen in a widget.
                 const uint32_t cap = fd.StringCap > 0 ? std::min(fd.StringCap, fd.Size) : fd.Size;
                 if (cap && std::memchr(ptr, '\0', cap))
+                {
                     changed = ZUITextField(ctx, wkey, static_cast<char*>(ptr), cap, wid);
+                }
                 else
+                {
                     ZUILabel(ctx, "(invalid string)", ctx->Theme.TextDim);
+                }
                 break;
             }
 
@@ -368,7 +436,9 @@ namespace Tetragrama::Panels
                 const auto& uuid     = *static_cast<const uuids::uuid*>(ptr);
                 char        text[37] = {}; // Canonical UUID is 36 bytes plus terminator.
                 if (!uuid.is_nil())
+                {
                     uuids::to_string(uuid, text);
+                }
                 ZUILabel(ctx, text[0] ? text : "(none)", ctx->Theme.TextDefault);
                 break;
             }
@@ -395,13 +465,17 @@ namespace Tetragrama::Panels
                 // Find preview label
                 const char* preview = "?";
                 for (uint32_t ei = 0; ei < fd.EnumCount; ++ei)
+                {
                     if (fd.EnumValues[ei].Value == cur)
                     {
                         preview = fd.EnumValues[ei].Name;
                         break;
                     }
+                }
                 if (fd.ReadOnly)
+                {
                     ZUILabelTight(ctx, preview, ctx->Theme.TextDefault, ZUIFontSize::Body);
+                }
                 else if (ZUIBeginCombo(ctx, wkey, preview, ZPx(wid)))
                 {
                     for (uint32_t ei = 0; ei < fd.EnumCount; ++ei)
@@ -441,9 +515,380 @@ namespace Tetragrama::Panels
         ctx->FlatInputs = flat_inputs;
         ctx->Disabled   = disabled;
         if (!fd.ReadOnly)
+        {
             ZUIIconBox(ctx, ZUIIcon::RotateCcw, kResetSize, ctx->Theme.TextDim);
+        }
         ZUIEndRow(ctx);
         return changed;
+    }
+
+    bool InspectorPanel::DrawSessionField(ZUIContext* ctx, const ComponentMeta& meta, const FieldDescriptor& field, EditorSession& session, EntityID entity, float pw, uint32_t comp_idx, uint32_t field_idx)
+    {
+        if (!session.Scene())
+        {
+            return false;
+        }
+        EditorControlDrag control = {};
+        if (meta.TypeID == ComponentTypeOf<TransformComponent>() && field.Type == FieldType::Vec3f)
+        {
+            if (field.Offset == offsetof(TransformComponent, Position))
+            {
+                control.Property = TransformProperty::Position;
+            }
+            else if (field.Offset == offsetof(TransformComponent, Rotation))
+            {
+                control.Property      = TransformProperty::Rotation;
+                control.UnitsPerPixel = 0.01745329f; // Inspector degrees -> authored radians
+            }
+            else if (field.Offset == offsetof(TransformComponent, Scale))
+            {
+                control.Property = TransformProperty::Scale;
+            }
+            else
+            {
+                return false;
+            }
+            const auto* component = session.Scene()->GetComponent<TransformComponent>(entity);
+            if (!component)
+            {
+                return true;
+            }
+            auto       copy     = *component;
+            const bool disabled = ctx->Disabled;
+            ctx->Disabled       = disabled || !session.Editable();
+            const bool changed  = DrawField(ctx, field, &copy, pw, comp_idx, field_idx, &session, entity, &control);
+            ctx->Disabled       = disabled;
+            if (changed && !session.RequestTransformValue(entity, CaptureLocalTransform(copy)))
+                ZENGINE_CORE_WARN("[Inspector] A transform value request was rejected.")
+            return true;
+        }
+
+        if (field.Type != FieldType::Float)
+        {
+            return false;
+        }
+        control.IsTransform  = false;
+        bool       changed   = false;
+        float      candidate = 0.f;
+        const bool disabled  = ctx->Disabled;
+        if (meta.TypeID == ComponentTypeOf<LightComponent>())
+        {
+            if (field.Offset == offsetof(LightComponent, Range))
+            {
+                control.Field = AuthoredFloatField::LightRange;
+            }
+            else if (field.Offset == offsetof(LightComponent, SpotAngle))
+            {
+                control.Field = AuthoredFloatField::LightSpotAngle;
+            }
+            else if (field.Offset == offsetof(LightComponent, Intensity))
+            {
+                control.Field = AuthoredFloatField::LightIntensity;
+            }
+            else
+            {
+                return false;
+            }
+            const auto* component = session.Scene()->GetComponent<LightComponent>(entity);
+            if (!component)
+            {
+                return true;
+            }
+            auto copy     = *component;
+            ctx->Disabled = disabled || !session.Editable() || !ReadAuthoredFloatField(*session.Scene(), entity, control.Field, candidate);
+            changed       = DrawField(ctx, field, &copy, pw, comp_idx, field_idx, &session, entity, &control);
+            candidate     = control.Field == AuthoredFloatField::LightRange ? copy.Range : control.Field == AuthoredFloatField::LightSpotAngle ? copy.SpotAngle : copy.Intensity;
+        }
+        else if (meta.TypeID == ComponentTypeOf<CameraComponent>())
+        {
+            if (field.Offset == offsetof(CameraComponent, Far))
+            {
+                control.Field = AuthoredFloatField::CameraFar;
+            }
+            else if (field.Offset == offsetof(CameraComponent, FovY))
+            {
+                control.Field = AuthoredFloatField::CameraFovY;
+            }
+            else if (field.Offset == offsetof(CameraComponent, Near))
+            {
+                control.Field = AuthoredFloatField::CameraNear;
+            }
+            else if (field.Offset == offsetof(CameraComponent, AspectRatio))
+            {
+                control.Field = AuthoredFloatField::CameraAspectRatio;
+            }
+            else
+            {
+                return false;
+            }
+            const auto* component = session.Scene()->GetComponent<CameraComponent>(entity);
+            if (!component)
+            {
+                return true;
+            }
+            auto copy     = *component;
+            ctx->Disabled = disabled || !session.Editable();
+            changed       = DrawField(ctx, field, &copy, pw, comp_idx, field_idx, &session, entity, &control);
+            candidate     = control.Field == AuthoredFloatField::CameraFar ? copy.Far : control.Field == AuthoredFloatField::CameraFovY ? copy.FovY : control.Field == AuthoredFloatField::CameraNear ? copy.Near : copy.AspectRatio;
+        }
+        else if (meta.TypeID == ComponentTypeOf<RigidBodyComponent>())
+        {
+            if (field.Offset == offsetof(RigidBodyComponent, Mass))
+            {
+                control.Field = AuthoredFloatField::RigidBodyMass;
+            }
+            else if (field.Offset == offsetof(RigidBodyComponent, Friction))
+            {
+                control.Field = AuthoredFloatField::RigidBodyFriction;
+            }
+            else if (field.Offset == offsetof(RigidBodyComponent, Restitution))
+            {
+                control.Field = AuthoredFloatField::RigidBodyRestitution;
+            }
+            else
+            {
+                return false;
+            }
+            const auto* component = session.Scene()->GetComponent<RigidBodyComponent>(entity);
+            if (!component)
+            {
+                return true;
+            }
+            auto copy     = *component;
+            ctx->Disabled = disabled || !session.Editable();
+            changed       = DrawField(ctx, field, &copy, pw, comp_idx, field_idx, &session, entity, &control);
+            candidate     = control.Field == AuthoredFloatField::RigidBodyMass ? copy.Mass : control.Field == AuthoredFloatField::RigidBodyFriction ? copy.Friction : copy.Restitution;
+        }
+        else
+        {
+            return false;
+        }
+        ctx->Disabled = disabled;
+        if (changed && !session.RequestFieldValue(entity, control.Field, candidate))
+            ZENGINE_CORE_WARN("[Inspector] A component field request was rejected.")
+        return true;
+    }
+
+    bool InspectorPanel::DrawUntrackedField(ZUIContext* ctx, const ComponentMeta& meta, const FieldDescriptor& field, EditorSession& session, EntityID entity, float pw, uint32_t comp_idx, uint32_t field_idx)
+    {
+        if (!session.Scene())
+        {
+            return false;
+        }
+        EditorUntrackedProperty property = EditorUntrackedProperty::LightColor;
+        EditorUntrackedValue    value    = {};
+        FieldDescriptor         widget   = field;
+        widget.Offset                    = 0;
+        bool       changed               = false;
+        const bool disabled              = ctx->Disabled;
+        ctx->Disabled                    = disabled || !session.Editable();
+        const auto bind_control          = [&](uint32_t index, bool combo) {
+            auto&      binding = m_property_bindings[index];
+            const auto target  = session.TargetFor(entity);
+            char       key[48] = {}, control_key[80] = {};
+            snprintf(key, sizeof(key), "##fv_%u_%u", comp_idx, field_idx);
+            snprintf(control_key, sizeof(control_key), combo ? "##combo_btn_%s" : "##cb_%s", key);
+            const auto control_hash = ZUIHashStr(control_key, static_cast<uint32_t>(secure_strlen(control_key)));
+            const auto popup_hash   = combo ? ZUIHashStr(key, static_cast<uint32_t>(secure_strlen(key))) : 0;
+            if (binding.ControlKey && (binding.ControlKey != control_hash || binding.Target.UUID != target.UUID || binding.Target.SceneEpoch != target.SceneEpoch || binding.Target.CachedEntity != target.CachedEntity))
+            {
+                const auto retire = [&](uint64_t hash) {
+                    if (ctx->FocusKey == hash)
+                    {
+                        ctx->FocusKey = 0;
+                    }
+                    if (ctx->ActiveKey == hash)
+                    {
+                        ctx->ActiveKey = 0;
+                    }
+                    if (ctx->HotKey == hash)
+                    {
+                        ctx->HotKey = 0;
+                    }
+                };
+                retire(binding.ControlKey);
+                if (binding.PopupKey)
+                {
+                    bool owned_popup = false;
+                    for (uint32_t depth = 0; depth < ctx->PopupStackSize; ++depth)
+                    {
+                        if (ctx->PopupStack[depth].Key == binding.PopupKey)
+                        {
+                            ctx->PopupStackSize = depth;
+                            owned_popup         = true;
+                            break;
+                        }
+                    }
+                    if (ctx->PendingPopupKey == binding.PopupKey)
+                    {
+                        ctx->PendingPopupKey = 0;
+                    }
+                    if (owned_popup)
+                    {
+                        for (uint32_t i = 0; i < field.EnumCount; ++i)
+                        {
+                            if (field.EnumValues[i].Name)
+                            {
+                                retire(ZUIHashStr(field.EnumValues[i].Name, static_cast<uint32_t>(secure_strlen(field.EnumValues[i].Name))));
+                            }
+                        }
+                    }
+                }
+            }
+            binding = {target, control_hash, popup_hash};
+        };
+        if (meta.TypeID == ComponentTypeOf<LightComponent>() && field.Type == FieldType::Color3f && field.Offset == offsetof(LightComponent, Color))
+        {
+            const auto* component = session.Scene()->GetComponent<LightComponent>(entity);
+            if (component)
+            {
+                const auto target  = session.TargetFor(entity);
+                char       key[48] = {};
+                snprintf(key, sizeof(key), "##fv_%u_%u", comp_idx, field_idx);
+                const auto hash = ZUIHashStr(key, static_cast<uint32_t>(secure_strlen(key)));
+                if (m_color_key != hash || m_color_target.UUID != target.UUID || m_color_target.SceneEpoch != target.SceneEpoch || m_color_target.CachedEntity != target.CachedEntity)
+                {
+                    m_color_target = target;
+                    m_color_key    = hash;
+                    if (++m_color_binding == 0)
+                    {
+                        ++m_color_binding;
+                    }
+                }
+                m_color_value = {component->Color[0], component->Color[1], component->Color[2]};
+                changed       = DrawField(ctx, widget, m_color_value.data(), pw, comp_idx, field_idx, nullptr, {}, nullptr, m_color_binding);
+                value.Color   = m_color_value;
+            }
+        }
+        else if (meta.TypeID == ComponentTypeOf<CameraComponent>() && field.Type == FieldType::Bool && field.Offset == offsetof(CameraComponent, IsMain))
+        {
+            bind_control(0, false);
+            property = EditorUntrackedProperty::CameraMain;
+            if (const auto* component = session.Scene()->GetComponent<CameraComponent>(entity))
+            {
+                value.MainCamera = component->IsMain;
+                changed          = DrawField(ctx, widget, &value.MainCamera, pw, comp_idx, field_idx);
+            }
+        }
+        else if (meta.TypeID == ComponentTypeOf<RigidBodyComponent>() && field.Type == FieldType::Enum && field.Offset == offsetof(RigidBodyComponent, MotionKind))
+        {
+            bind_control(1, true);
+            property = EditorUntrackedProperty::RigidBodyMotion;
+            if (const auto* component = session.Scene()->GetComponent<RigidBodyComponent>(entity))
+            {
+                value.Motion = component->MotionKind;
+                changed      = DrawField(ctx, widget, &value.Motion, pw, comp_idx, field_idx);
+            }
+        }
+        else
+        {
+            ctx->Disabled = disabled;
+            return false;
+        }
+        ctx->Disabled = disabled;
+        if (changed && !session.RequestUntrackedProperty(entity, property, value))
+            ZENGINE_CORE_WARN("[Inspector] A component property request was rejected.")
+        return true;
+    }
+
+    void InspectorPanel::BeginNameEdit(ZUIContext* ctx, EditorSession& session, EntityID entity, uint64_t key)
+    {
+        if (!session.Editable() || !key)
+        {
+            return;
+        }
+        const auto  target = session.TargetFor(entity);
+        const auto* name   = session.Scene()->GetComponent<NameComponent>(entity);
+        if (target.UUID.is_nil() || !name || std::find(std::begin(name->Value), std::end(name->Value), '\0') == std::end(name->Value))
+        {
+            return;
+        }
+        if (m_name_key)
+        {
+            FinishNameEdit(ctx, session, true);
+        }
+        secure_strcpy(m_name_buffer, sizeof(m_name_buffer), name->Value);
+        secure_strcpy(m_name_original, sizeof(m_name_original), name->Value);
+        m_name_target      = target;
+        m_name_key         = key;
+        m_name_drawn_frame = ctx->FrameIndex;
+        m_renaming         = key == ZUIHashStr("##actor_name", 12);
+        ctx->FocusKey      = key;
+        if (auto* state = ZUIStateGetOrInsert(&ctx->StateStore, key))
+        {
+            state->UserData    = static_cast<float>(secure_strlen(m_name_buffer));
+            state->SelectStart = 0;
+        }
+        ctx->UndoFieldKey = key;
+        ctx->UndoTop = ctx->RedoTop = 0;
+    }
+
+    void InspectorPanel::FinishNameEdit(ZUIContext* ctx, EditorSession& session, bool commit)
+    {
+        if (m_name_key && commit && m_name_buffer[0] && secure_strcmp(m_name_original, m_name_buffer) != 0 && !session.RequestRename(m_name_target, m_name_original, m_name_buffer))
+            ZENGINE_CORE_WARN("[Inspector] The rename request could not be queued.")
+        if (m_name_key && ctx->FocusKey == m_name_key)
+        {
+            ctx->FocusKey = 0;
+        }
+        m_name_key    = 0;
+        m_name_target = {};
+        m_renaming    = false;
+    }
+
+    void InspectorPanel::DrawNameEdit(ZUIContext* ctx, EditorSession& session, EntityID entity, const char* key, float width)
+    {
+        const uint64_t hash     = ZUIHashStr(key, static_cast<uint32_t>(secure_strlen(key)));
+        const bool     disabled = ctx->Disabled;
+        ctx->Disabled           = disabled || !session.Editable();
+        if (m_name_key && (m_name_target.SceneEpoch != session.SceneEpoch() || m_name_target.CachedEntity != entity || session.Resolve(m_name_target) != entity))
+        {
+            FinishNameEdit(ctx, session, false);
+        }
+        if (ctx->FocusKey == hash && m_name_key != hash && !ctx->Disabled)
+        {
+            BeginNameEdit(ctx, session, entity, hash);
+        }
+
+        if (m_name_key == hash)
+        {
+            m_name_drawn_frame  = ctx->FrameIndex;
+            const bool  focused = ctx->FocusKey == hash;
+            const auto* state   = ZUIStateGetOrInsert(&ctx->StateStore, hash);
+            const bool  outside = (ctx->MousePressed[0] || ctx->MousePressed[1]) && (!state || ctx->MousePos[0] < state->ScreenMinX || ctx->MousePos[0] >= state->ScreenMaxX || ctx->MousePos[1] < state->ScreenMinY || ctx->MousePos[1] >= state->ScreenMaxY);
+            if ((focused && ctx->EscapePressed) || ctx->Disabled)
+            {
+                FinishNameEdit(ctx, session, false);
+                if (focused)
+                {
+                    ctx->EscapePressed = false;
+                }
+            }
+            else
+            {
+                ZUITextField(ctx, key, m_name_buffer, sizeof(m_name_buffer), width);
+                if (!focused || outside || ctx->EnterPressed)
+                {
+                    FinishNameEdit(ctx, session, true);
+                    if (focused)
+                    {
+                        ctx->EnterPressed = false;
+                    }
+                }
+                ctx->Disabled = disabled;
+                return;
+            }
+        }
+        const auto*   name = session.Scene() ? session.Scene()->GetComponent<NameComponent>(entity) : nullptr;
+        // Idle widgets may build alongside the active identity editor. They must
+        // not overwrite its draft, nor ever bind a text widget to authored storage.
+        NameComponent copy = {};
+        if (name && std::find(std::begin(name->Value), std::end(name->Value), '\0') != std::end(name->Value))
+        {
+            copy = *name;
+        }
+        ZUITextField(ctx, key, copy.Value, sizeof(copy.Value), width);
+        ctx->Disabled = disabled;
     }
 
     void InspectorPanel::BuildContent(ZUIContext* ctx, float rect[4])
@@ -457,7 +902,7 @@ namespace Tetragrama::Panels
         auto* app   = reinterpret_cast<Tetragrama::EditorPtr>(m_layer->CurrentApp);
         auto* scene = reinterpret_cast<Tetragrama::EditorScenePtr>(app->CurrentScene);
         auto* eng   = Engine::GetContext();
-        if (!scene || !eng || !eng->ActorManager)
+        if (!scene || !eng || !eng->Scene)
         {
             EmptyPanelBg(ctx, "##insp_empty", ctx->Theme.PanelBg, nullptr);
             return;
@@ -467,7 +912,9 @@ namespace Tetragrama::Panels
         if (!m_sec_init)
         {
             for (int i = 0; i < 64; ++i)
+            {
                 m_sec_open[i] = true;
+            }
             m_sec_init = true;
         }
 
@@ -477,11 +924,15 @@ namespace Tetragrama::Panels
         ZUIBox* bg = ZUIBeginColumn(ctx, "##insp_bg", ZFill(), ZFill());
         bg->Flags  = bg->Flags | ZUI_DrawBackground;
         ZUIBoxSetColorArr(bg, ctx->Theme.PanelBg);
-        bg->EdgeSoftness = 0.f;
+        bg->EdgeSoftness  = 0.f;
 
         // No-selection guard
-        Actor* actor     = scene->SelectedActorHandle.Valid() ? eng->ActorManager->Access(scene->SelectedActorHandle) : nullptr;
-        if (!actor)
+        const auto entity = scene->SelectedEntity(eng->ActorManager);
+        if (scene->Session && m_name_key && (m_name_target.SceneEpoch != scene->Session->SceneEpoch() || m_name_target.CachedEntity != entity || scene->Session->Resolve(m_name_target) != entity))
+        {
+            FinishNameEdit(ctx, *scene->Session, false);
+        }
+        if (!eng->Scene->IsAlive(entity))
         {
             ZUIBeginScrollRegion(ctx, "##insp_empty_scroll", ZFill(), ZFill());
             ZUISpacer(ctx, 12.f);
@@ -490,8 +941,7 @@ namespace Tetragrama::Panels
                 lbl->Size[0]      = ZFill();
                 lbl->Size[1]      = ZText();
                 lbl->TextAlign    = ZUITextAlign::Center;
-                uint32_t tlen     = 17;
-                lbl->Label        = ZUIPushStr(&ctx->FrameArena, "No actor selected", tlen);
+                lbl->Label        = ZUIPushStr(&ctx->FrameArena, "No entity selected", 18);
                 lbl->TextColor[0] = ctx->Theme.TextDim[0];
                 lbl->TextColor[1] = ctx->Theme.TextDim[1];
                 lbl->TextColor[2] = ctx->Theme.TextDim[2];
@@ -503,7 +953,7 @@ namespace Tetragrama::Panels
             return;
         }
 
-        ArchetypeMask mask      = actor->GetComponentMask();
+        ArchetypeMask mask      = eng->Scene->GetMask(entity);
         const auto&   registry  = ComponentReflectionRegistry::Get();
 
         const float   accent[4] = ZUI_TOKEN(ZEngine::UI::Tokens::AccentBlue);
@@ -511,12 +961,18 @@ namespace Tetragrama::Panels
         // Figma "Actor identity": 45 px band, 22 px actor glyph, name over kind, lock icon.
         {
             const char* kind = "Actor";
-            if (actor->HasComponent<LightComponent>())
+            if (eng->Scene->HasComponent<LightComponent>(entity))
+            {
                 kind = "Light Actor";
-            else if (actor->HasComponent<CameraComponent>())
+            }
+            else if (eng->Scene->HasComponent<CameraComponent>(entity))
+            {
                 kind = "Camera Actor";
-            else if (actor->HasComponent<MeshComponent>())
+            }
+            else if (eng->Scene->HasComponent<MeshComponent>(entity))
+            {
                 kind = "Static Mesh Actor";
+            }
 
             ZUIBox* id     = ZUIBeginRow(ctx, "##insp_id", ZFill(), ZPx(45.f));
             id->Padding[0] = id->Padding[2] = 10.f;
@@ -526,9 +982,9 @@ namespace Tetragrama::Panels
 
             ZUIBox* col              = ZUIBeginColumn(ctx, "##insp_id_col", ZFill(), ZFit());
             col->Gap                 = 3.f;
-            auto*          nc_comp   = actor->GetComponent<NameComponent>();
+            auto*          nc_comp   = eng->Scene->GetComponent<NameComponent>(entity);
             const uint64_t name_hash = ZUIHashStr("##actor_name", 12);
-            if (m_renaming && nc_comp && ctx->FocusKey != name_hash && ctx->ActiveKey != name_hash && ctx->HotKey != name_hash)
+            if (m_renaming && !scene->Session && nc_comp && ctx->FocusKey != name_hash && ctx->ActiveKey != name_hash && ctx->HotKey != name_hash)
             {
                 // Focus left the field on a previous frame: leave edit mode.
                 static int s_wait = 0;
@@ -540,8 +996,14 @@ namespace Tetragrama::Panels
             }
             if (m_renaming && nc_comp)
             {
-                if (ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 10.f - 22.f - 9.f - 9.f - 13.f - 10.f, 80.f)))
+                if (scene->Session)
+                {
+                    DrawNameEdit(ctx, *scene->Session, entity, "##actor_name", fmaxf(pw - 73.f, 80.f));
+                }
+                else if (ZUITextField(ctx, "##actor_name", nc_comp->Value, sizeof(nc_comp->Value), fmaxf(pw - 73.f, 80.f)))
+                {
                     scene->MarkDirty(true);
+                }
             }
             else
             {
@@ -557,8 +1019,15 @@ namespace Tetragrama::Panels
                 ZUIPopBox(ctx);
                 if ((hs.Flags & ZUI_SignalClicked) && nc_comp)
                 {
-                    m_renaming    = true;
-                    ctx->FocusKey = name_hash;
+                    if (scene->Session)
+                    {
+                        BeginNameEdit(ctx, *scene->Session, entity, name_hash);
+                    }
+                    else
+                    {
+                        m_renaming    = true;
+                        ctx->FocusKey = name_hash;
+                    }
                 }
             }
             ZUILabelTight(ctx, kind, ctx->Theme.TextDim, ZUIFontSize::Body);
@@ -570,7 +1039,9 @@ namespace Tetragrama::Panels
 
         // Figma "Component actions": Add Component (primary) and Blueprint / Add Script.
         {
-            ZUIBox* ca     = ZUIBeginRow(ctx, "##insp_actions", ZFill(), ZPx(31.f));
+            const bool disabled = ctx->Disabled;
+            ctx->Disabled       = disabled || (scene->Session && !scene->Session->Editable());
+            ZUIBox* ca          = ZUIBeginRow(ctx, "##insp_actions", ZFill(), ZPx(31.f));
             ca->Padding[0] = ca->Padding[2] = 10.f;
             ca->Gap                         = 7.f;
             ca->CrossAlign                  = ZUIAlign::Center;
@@ -591,30 +1062,47 @@ namespace Tetragrama::Panels
                 bool any = false;
                 registry.ForEach([&](const ComponentMeta& meta) {
                     if (MaskHas(mask, meta.TypeID))
+                    {
                         return; // already on the actor
+                    }
                     if (!meta.Add)
+                    {
                         return; // display-only, cannot be constructed
+                    }
                     any                 = true;
                     char add_label[160] = {};
                     snprintf(add_label, sizeof(add_label), "%s##add_%s", DisplayName(ctx, meta.TypeName), meta.TypeName);
                     if (ZUIMenuItemEx(ctx, add_label, nullptr))
                     {
-                        eng->Scene->AddComponentRaw(actor->GetEntityID(), meta.TypeID);
-                        if (MaskHas(actor->GetComponentMask(), meta.TypeID))
-                            scene->MarkDirty(true);
+                        if (scene->Session)
+                        {
+                            if (!scene->Session->RequestAddComponent(entity, meta.TypeName))
+                                ZENGINE_CORE_WARN("[Inspector] The add-component request could not be queued.")
+                        }
+                        else
+                        {
+                            eng->Scene->AddComponentRaw(entity, meta.TypeID);
+                            if (MaskHas(eng->Scene->GetMask(entity), meta.TypeID))
+                            {
+                                scene->MarkDirty(true);
+                            }
+                        }
                     }
                 });
 
                 if (!any)
+                {
                     ZUIMenuItem(ctx, "No components left to add", false);
+                }
 
                 ZUIEndPopup(ctx);
             }
+            ctx->Disabled = disabled;
         }
 
         // Figma "Actor component tree": the actor and the components attached to it.
         {
-            auto*       nc_comp   = actor->GetComponent<NameComponent>();
+            auto*       nc_comp   = eng->Scene->GetComponent<NameComponent>(entity);
             const char* nm        = (nc_comp && nc_comp->Value[0]) ? nc_comp->Value : "Actor";
             char        self[160] = {};
             snprintf(self, sizeof(self), "%s (Self)", nm);
@@ -634,7 +1122,9 @@ namespace Tetragrama::Panels
             uint32_t tree_n = 0;
             registry.ForEach([&](const ComponentMeta& meta) {
                 if (!MaskHas(mask, meta.TypeID) || tree_n >= 1 || ZEngine::Helpers::secure_strcmp(meta.TypeName, "NameComponent") == 0 || ZEngine::Helpers::secure_strcmp(meta.TypeName, "UUIDComponent") == 0 || ZEngine::Helpers::secure_strcmp(meta.TypeName, "TransformComponent") == 0)
+                {
                     return;
+                }
                 char tk[48] = {};
                 snprintf(tk, sizeof(tk), "##insp_tree_%u", tree_n++);
                 ZUIBox* rc     = ZUIBeginRow(ctx, tk, ZFill(), ZPx(12.f));
@@ -661,32 +1151,50 @@ namespace Tetragrama::Panels
             fl->IconId      = (uint16_t) ZUIIcon::ListFilter;
             const float* fc = (ZEngine::Helpers::secure_strcmp(m_category, "All") == 0) ? ctx->Theme.TextDim : accent;
             for (int k = 0; k < 4; ++k)
+            {
                 fl->TextColor[k] = fc[k];
+            }
             ZUISignal fs = ZUISignalFromBox(ctx, fl);
             ZUIPopBox(ctx);
             ZUIEndRow(ctx);
             if (fs.Flags & ZUI_SignalClicked)
+            {
                 ZUIOpenPopup(ctx, "##insp_cat_popup");
+            }
 
             if (ZUIBeginPopup(ctx, "##insp_cat_popup"))
             {
                 if (ZUIMenuItemEx(ctx, "All", nullptr, ZEngine::Helpers::secure_strcmp(m_category, "All") == 0))
+                {
                     ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), "All", 3);
+                }
                 static constexpr int kMaxCats       = 16;
                 const char*          cats[kMaxCats] = {};
                 int                  cat_n          = 0;
                 registry.ForEach([&](const ComponentMeta& m) {
                     if (!MaskHas(mask, m.TypeID) || !m.Category)
+                    {
                         return;
+                    }
                     for (int ci = 0; ci < cat_n; ++ci)
+                    {
                         if (cats[ci] && ZEngine::Helpers::secure_strcmp(cats[ci], m.Category) == 0)
+                        {
                             return;
+                        }
+                    }
                     if (cat_n < kMaxCats)
+                    {
                         cats[cat_n++] = m.Category;
+                    }
                 });
                 for (int ci = 0; ci < cat_n; ++ci)
+                {
                     if (ZUIMenuItemEx(ctx, cats[ci], nullptr, ZEngine::Helpers::secure_strcmp(m_category, cats[ci]) == 0))
+                    {
                         ZEngine::Helpers::secure_strncpy(m_category, sizeof(m_category), cats[ci], sizeof(m_category) - 1);
+                    }
+                }
                 ZUIEndPopup(ctx);
             }
         }
@@ -701,7 +1209,9 @@ namespace Tetragrama::Panels
         // HOT PATH — runs every frame, no heap allocation allowed.
         registry.ForEach([&](const ComponentMeta& meta) {
             if (!MaskHas(mask, meta.TypeID))
+            {
                 return;
+            }
 
             // Category pill filter
             bool all_cats = (ZEngine::Helpers::secure_strcmp(m_category, "All") == 0);
@@ -718,8 +1228,12 @@ namespace Tetragrama::Panels
                 // Also check if any field name matches
                 bool field_match  = false;
                 for (uint32_t fi = 0; fi < meta.FieldCount && !field_match; ++fi)
+                {
                     if (!meta.Fields[fi].Hidden && strstr(meta.Fields[fi].Name, m_search))
+                    {
                         field_match = true;
+                    }
+                }
                 if (!name_matches && !field_match)
                 {
                     ++comp_idx;
@@ -727,7 +1241,7 @@ namespace Tetragrama::Panels
                 }
             }
 
-            void* comp_data = actor->GetComponentRaw(meta.TypeID);
+            void* comp_data = eng->Scene->GetComponentRaw(entity, meta.TypeID);
             if (!comp_data)
             {
                 ++comp_idx;
@@ -740,14 +1254,59 @@ namespace Tetragrama::Panels
             if (m_sec_open[open_idx])
             {
                 for (uint32_t fi = 0; fi < meta.FieldCount; ++fi)
+                {
+                    if (scene->Session && meta.TypeID == ComponentTypeOf<NameComponent>() && meta.Fields[fi].Type == FieldType::String && meta.Fields[fi].Offset == offsetof(NameComponent, Value) && !meta.Fields[fi].Hidden)
+                    {
+                        char row_key[48] = {}, key[48] = {};
+                        snprintf(row_key, sizeof(row_key), "##frow_%u_%u", comp_idx, fi);
+                        snprintf(key, sizeof(key), "##fv_%u_%u", comp_idx, fi);
+                        auto* row       = ZUIBeginRow(ctx, row_key, ZFill(), ZPx(kPropertyRowH));
+                        row->Padding[0] = row->Padding[2] = kRowLead;
+                        row->Gap                          = kRowGap;
+                        row->CrossAlign                   = ZUIAlign::Center;
+                        RowLabel(ctx, meta.Fields[fi].Name);
+                        const bool disabled    = ctx->Disabled;
+                        const bool flat_inputs = ctx->FlatInputs;
+                        ctx->Disabled          = disabled || meta.Fields[fi].ReadOnly;
+                        ctx->FlatInputs        = true;
+                        DrawNameEdit(ctx, *scene->Session, entity, key, fmaxf(pw - kLabelW - 2.f * kRowLead - 2.f * kRowGap - kResetSize, 36.f));
+                        ctx->Disabled   = disabled;
+                        ctx->FlatInputs = flat_inputs;
+                        if (!meta.Fields[fi].ReadOnly)
+                        {
+                            ZUIIconBox(ctx, ZUIIcon::RotateCcw, kResetSize, ctx->Theme.TextDim);
+                        }
+                        ZUIEndRow(ctx);
+                        continue;
+                    }
+                    if (scene->Session && DrawSessionField(ctx, meta, meta.Fields[fi], *scene->Session, entity, pw, comp_idx, fi))
+                    {
+                        continue;
+                    }
+                    if (scene->Session && DrawUntrackedField(ctx, meta, meta.Fields[fi], *scene->Session, entity, pw, comp_idx, fi))
+                    {
+                        continue;
+                    }
+                    const bool disabled = ctx->Disabled;
+                    // Unknown/custom fields stay visible, but cannot bypass the
+                    // session until a typed mutation adapter exists for them.
+                    ctx->Disabled       = disabled || scene->Session != nullptr;
                     if (DrawField(ctx, meta.Fields[fi], comp_data, pw, comp_idx, fi))
+                    {
                         scene->MarkDirty(true);
+                    }
+                    ctx->Disabled = disabled;
+                }
             }
 
             ++comp_idx;
         });
 
         ZUIEndScrollRegion(ctx);
+        if (scene->Session && m_name_key && m_name_drawn_frame != ctx->FrameIndex)
+        {
+            FinishNameEdit(ctx, *scene->Session, ctx->FocusKey != m_name_key);
+        }
         ZUIEndColumn(ctx);
     }
 } // namespace Tetragrama::Panels

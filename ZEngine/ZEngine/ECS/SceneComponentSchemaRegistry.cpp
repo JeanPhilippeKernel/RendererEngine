@@ -161,6 +161,12 @@ namespace ZEngine::ECS
             return false;
         }
 
+        if (static_cast<bool>(codecs.EncodeYAML) != static_cast<bool>(codecs.DecodeYAML))
+        {
+            Reject(diagnostics, "YAML hooks must provide both EncodeYAML and DecodeYAML, or neither");
+            return false;
+        }
+
         if (static_cast<bool>(desc.References.Enumerate) != static_cast<bool>(desc.References.Remap))
         {
             Reject(diagnostics, "reference hooks must provide both Enumerate and Remap, or neither");

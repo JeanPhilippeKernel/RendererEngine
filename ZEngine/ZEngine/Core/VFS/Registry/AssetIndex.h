@@ -51,6 +51,12 @@ namespace ZEngine::Core::VFS
         }
     };
 
+    struct AssetRecordSnapshot
+    {
+        Helpers::Handle<AssetRecord> Handle = {};
+        AssetRecord                  Record = {};
+    };
+
     class AssetIndex
     {
     public:
@@ -68,6 +74,14 @@ namespace ZEngine::Core::VFS
         bool                                          Update(Helpers::Handle<AssetRecord> handle, const Core::VFS::MetaFileData& new_meta, AssetState new_state);
 
         bool                                          SetState(Helpers::Handle<AssetRecord> handle, AssetState new_state);
+        [[nodiscard]] bool                            SetLoadedHandle(Helpers::Handle<AssetRecord> handle, Managers::AssetHandle slot);
+        /// Copies under the index lock; no borrowed record escapes to a worker.
+        [[nodiscard]] bool                            TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const;
+        /// Hot-path value query: copies only the packed slot, never a full path/meta record.
+        [[nodiscard]] bool                            TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const;
+        /// Atomic placement-only binding of one preregistered mesh and its new
+        /// hierarchy. Rejects changed/deleted/recycled records and capacity limits.
+        [[nodiscard]] bool                            TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot);
 
         bool                                          Remove(Helpers::Handle<AssetRecord> handle);
 

@@ -1,8 +1,16 @@
 #pragma once
+#include <Tetragrama/EditorTarget.h>
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <ZEngine/ECS/Reflection/ComponentMeta.h>
 #include <ZEngine/UI/ZUIIcons.h>
 #include <ZEngine/UI/ZUIPanel.h>
+#include <array>
+
+namespace Tetragrama
+{
+    class EditorSession;
+    struct EditorControlDrag;
+} // namespace Tetragrama
 
 namespace Tetragrama::Panels
 {
@@ -38,6 +46,29 @@ namespace Tetragrama::Panels
 
     private:
         friend struct InspectorPanelTestAccess;
-        static bool DrawField(ZEngine::UI::ZUIContext* ctx, const ZEngine::ECS::FieldDescriptor& field, void* component, float panel_width, uint32_t component_index, uint32_t field_index);
+        void                 BeginNameEdit(ZEngine::UI::ZUIContext* ctx, EditorSession& session, ZEngine::ECS::EntityID entity, uint64_t key);
+        void                 FinishNameEdit(ZEngine::UI::ZUIContext* ctx, EditorSession& session, bool commit);
+        void                 DrawNameEdit(ZEngine::UI::ZUIContext* ctx, EditorSession& session, ZEngine::ECS::EntityID entity, const char* key, float width);
+        static bool          DrawField(ZEngine::UI::ZUIContext* ctx, const ZEngine::ECS::FieldDescriptor& field, void* component, float panel_width, uint32_t component_index, uint32_t field_index, EditorSession* session = nullptr, ZEngine::ECS::EntityID entity = {}, const EditorControlDrag* control = nullptr, uintptr_t color_binding = 0);
+        static bool          DrawSessionField(ZEngine::UI::ZUIContext* ctx, const ZEngine::ECS::ComponentMeta& meta, const ZEngine::ECS::FieldDescriptor& field, EditorSession& session, ZEngine::ECS::EntityID entity, float panel_width, uint32_t component_index, uint32_t field_index);
+        bool                 DrawUntrackedField(ZEngine::UI::ZUIContext* ctx, const ZEngine::ECS::ComponentMeta& meta, const ZEngine::ECS::FieldDescriptor& field, EditorSession& session, ZEngine::ECS::EntityID entity, float panel_width, uint32_t component_index, uint32_t field_index);
+
+        EntityTarget         m_name_target        = {};
+        uint64_t             m_name_key           = 0;
+        uint64_t             m_name_drawn_frame   = 0;
+        char                 m_name_buffer[128]   = {};
+        char                 m_name_original[128] = {};
+        EntityTarget         m_color_target       = {};
+        uint64_t             m_color_key          = 0;
+        uintptr_t            m_color_binding      = 0;
+        std::array<float, 3> m_color_value        = {1.f, 1.f, 1.f};
+
+        struct PropertyBinding
+        {
+            EntityTarget Target     = {};
+            uint64_t     ControlKey = 0;
+            uint64_t     PopupKey   = 0;
+        };
+        std::array<PropertyBinding, 2> m_property_bindings = {};
     };
 } // namespace Tetragrama::Panels

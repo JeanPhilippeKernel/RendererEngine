@@ -1,10 +1,9 @@
-#include <ZEngine/Core/Coroutine.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Windows/Platform/DesktopFileDialog.h>
 #include <stb/stb_image.h>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,7 +11,6 @@
 #if defined(__APPLE__)
 // Implemented in Windows/Platform/MacOSFileDialog.mm. Async — shows the panel
 // and returns immediately; on_complete fires later on the main run loop.
-extern "C" void ZEngineOpenFileDialogAsync(const char** extensions, int count, const char* default_dir, const char* message, void* user_ctx, void (*on_complete)(void* user_ctx, const char* path));
 // Implemented in Windows/Platform/MacOSAppIcon.mm
 extern "C" void ZEngineSetDockIcon(const char* path);
 #endif
@@ -26,20 +24,6 @@ extern "C" void ZEngineSetDockIcon(const char* path);
 #include <ZEngine/Windows/Platform/WaylandPortalFileDialog.h>
 #endif
 
-#ifdef _WIN32
-
-#include <ShObjIdl.h>
-#include <winrt/Windows.Foundation.Collections.h>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.Storage.Pickers.h>
-#include <winrt/Windows.Storage.h>
-
-using namespace winrt;
-using namespace winrt::Windows::Foundation;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Pickers;
-
-#endif
 #include <GLFW/glfw3native.h>
 
 using namespace ZEngine;
@@ -309,10 +293,24 @@ namespace ZEngine::Windows
 
     void GameWindow::__OnGlfwWindowFocus(GLFWwindow* window, int focused)
     {
-        (void) window;
         auto* engine_context = Engine::GetContext();
         if (engine_context && engine_context->InputManager)
             engine_context->InputManager->SetWindowFocused(focused == GLFW_TRUE);
+        // Preserve the edge as well as the current level. A loss and regain can
+        // both arrive inside one glfwPollEvents call, before the next app update.
+        auto* property = static_cast<WindowProperty*>(glfwGetWindowUserPointer(window));
+        if (!property || !property->CallbackFn)
+            return;
+        if (focused == GLFW_TRUE)
+        {
+            WindowFocusGainedEvent event = {};
+            property->CallbackFn(event);
+        }
+        else
+        {
+            WindowFocusLostEvent event = {};
+            property->CallbackFn(event);
+        }
     }
 
     void GameWindow::__OnGlfwMouseButtonRaised(GLFWwindow* window, int button, int action, int mods)
@@ -395,115 +393,24 @@ namespace ZEngine::Windows
 
         if (action == GLFW_REPEAT)
         {
-            KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 0};
+            KeyPressedEvent e{static_cast<Inputs::GlfwKeyCode>(key), 1};
             property->CallbackFn(e);
         }
     }
 
-    std::future<std::string> GameWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view message)
+    FileDialogRequest GameWindow::OpenFileDialogAsync(std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view message)
     {
-        std::string path{};
+        return FileDialogAsync(false, type_filters, default_dir, {}, message);
+    }
 
-#if defined(_WIN32)
-        {
-            auto           native_hwnd = glfwGetWin32Window(m_native_window);
-            FileOpenPicker file_picker;
-            file_picker.ViewMode(PickerViewMode::Thumbnail);
-            // WinRT's FileOpenPicker only exposes a fixed PickerLocationId enum for
-            // its start location and has no title/message API — there is no public
-            // way to seed an arbitrary folder, so default_dir/message have no effect
-            // on Windows.
-            (void) default_dir;
-            (void) message;
-            file_picker.SuggestedStartLocation(PickerLocationId::ComputerFolder);
-            file_picker.as<::IInitializeWithWindow>()->Initialize(native_hwnd);
+    FileDialogRequest GameWindow::SaveFileDialogAsync(std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view filename, std::string_view message)
+    {
+        return FileDialogAsync(true, type_filters, default_dir, filename, message);
+    }
 
-            if (!type_filters.empty())
-            {
-                auto filters = file_picker.FileTypeFilter();
-                filters.Clear();
-                for (std::string_view type : type_filters)
-                    filters.Append(winrt::to_hstring(type));
-            }
-
-            IStorageFile file = co_await file_picker.PickSingleFileAsync();
-            if (file)
-                path = winrt::to_string(file.Path());
-        }
-
-#elif defined(__APPLE__)
-        {
-            std::vector<const char*> exts;
-            exts.reserve(type_filters.size());
-            for (auto& f : type_filters)
-                exts.push_back(f.data());
-
-            std::string              default_dir_str(default_dir);
-            std::string              message_str(message);
-
-            // Bridge the async callback into a future so co_await below suspends
-            // via CoroutineScheduler instead of blocking.
-            auto*                    result_promise = new std::promise<std::string>();
-            std::future<std::string> result_future  = result_promise->get_future();
-
-            ZEngineOpenFileDialogAsync(exts.data(), static_cast<int>(exts.size()), default_dir_str.empty() ? nullptr : default_dir_str.c_str(), message_str.empty() ? nullptr : message_str.c_str(), result_promise, [](void* ctx, const char* result) {
-                auto* promise = static_cast<std::promise<std::string>*>(ctx);
-                promise->set_value(result ? result : "");
-                delete promise;
-            });
-
-            path = co_await result_future;
-        }
-
-#elif defined(__linux__)
-        {
-            std::vector<std::string> extensions;
-            extensions.reserve(type_filters.size());
-            for (std::string_view filter : type_filters)
-                extensions.emplace_back(filter);
-
-            std::string                                    default_dir_copy(default_dir);
-            std::string                                    message_copy(message);
-            const int                                      platform = glfwGetPlatform();
-
-            std::unique_ptr<Platform::WaylandPortalParent> wayland_parent;
-            std::string                                    portal_parent;
-            unsigned long                                  x11_parent_window = 0;
-            if (platform == GLFW_PLATFORM_WAYLAND)
-            {
-                // The exported object remains alive in this coroutine frame until
-                // the portal response arrives, keeping the dialog parent valid.
-                wayland_parent = Platform::CreateWaylandPortalParent(m_native_window);
-                if (!wayland_parent)
-                    ZENGINE_CORE_WARN("[FileDialog] Wayland compositor does not support xdg-foreign; opening the portal without a transient parent")
-                else
-                    portal_parent = wayland_parent->Handle();
-            }
-            else if (platform == GLFW_PLATFORM_X11)
-            {
-                x11_parent_window = glfwGetX11Window(m_native_window);
-                if (x11_parent_window != 0)
-                {
-                    char parent_buffer[32] = {};
-                    std::snprintf(parent_buffer, sizeof(parent_buffer), "x11:0x%lx", x11_parent_window);
-                    portal_parent = parent_buffer;
-                }
-            }
-
-            std::future<Platform::PortalFileDialogResult> portal_result = std::async(std::launch::async, [extensions, default_dir = default_dir_copy, message = message_copy, portal_parent] { return Platform::OpenPortalFileDialog(portal_parent, extensions, default_dir, message); });
-            auto                                          result        = co_await portal_result;
-            if (result.Outcome != Platform::PortalFileDialogStatus::Failed)
-                path = std::move(result.Path);
-            else
-            {
-                ZENGINE_CORE_WARN("[FileDialog] Desktop portal failed; trying the Linux fallback picker")
-                std::future<std::string> fallback_result = std::async(std::launch::async, [extensions = std::move(extensions), default_dir = std::move(default_dir_copy), message = std::move(message_copy), x11_parent_window, use_x11 = platform == GLFW_PLATFORM_X11] { return Platform::OpenLinuxFallbackFileDialog(x11_parent_window, use_x11, extensions, default_dir, message); });
-                path                                     = co_await fallback_result;
-            }
-        }
-#endif
-
-        co_return path;
+    FileDialogRequest GameWindow::FileDialogAsync(bool save, std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view filename, std::string_view message)
+    {
+        return Platform::ShowDesktopFileDialog(m_native_window, save, type_filters, default_dir, filename, message);
     }
 
     bool GameWindow::CreateSurface(void* instance, void** out_window_surface)
@@ -532,8 +439,10 @@ namespace ZEngine::Windows
 
     bool GameWindow::OnWindowClosed(WindowClosedEvent& event)
     {
-        glfwSetWindowShouldClose(m_native_window, GLFW_TRUE);
-        ZENGINE_CORE_INFO("Window has been closed")
+        // GLFW sets this flag before the callback. The application may defer or
+        // reject closing; keep the live window until Engine approves shutdown.
+        glfwSetWindowShouldClose(m_native_window, GLFW_FALSE);
+        ZENGINE_CORE_INFO("Window close requested")
 
         Event::EngineClosedEvent e(event.GetName());
         Core::EventDispatcher    event_dispatcher(e);

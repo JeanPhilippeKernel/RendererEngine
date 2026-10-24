@@ -38,11 +38,6 @@
                 "UUID_USING_CXX20_SPAN": "ON",
                 "UUID_SYSTEM_GENERATOR": "OFF",
 
-                "YAML_CPP_BUILD_TOOLS": "OFF",
-                "YAML_CPP_BUILD_TESTS": "OFF",
-                "YAML_CPP_FORMAT_SOURCE": "OFF",
-                "YAML_BUILD_SHARED_LIBS": "OFF",
-
                 "USE_GAS": "OFF",
 
                 "SPIRV_SKIP_EXECUTABLES": "ON",

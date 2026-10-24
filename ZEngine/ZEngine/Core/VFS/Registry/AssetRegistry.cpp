@@ -28,23 +28,35 @@ namespace ZEngine::Core::VFS
             // existing record's SlotHandle so the RRM callback receives the correct slot.
             if (result.Error == RegisterError::DuplicateUUID)
             {
-                Helpers::Handle<AssetRecord> h   = m_index.FindByUUID(uuid);
-                AssetRecord*                 rec = m_index.Access(h);
-                if (rec)
+                Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
+                if (m_index.SetLoadedHandle(h, slot_handle))
                 {
-                    rec->SlotHandle = slot_handle;
-                    rec->State      = AssetState::Loaded;
                     return RegisterResult{h};
                 }
             }
             return result;
         }
 
-        AssetRecord* rec = m_index.Access(result.Handle);
-        ZENGINE_VALIDATE_ASSERT(rec != nullptr, "Register succeeded but Access returned null")
-        rec->SlotHandle = slot_handle;
-        rec->State      = AssetState::Loaded;
+        if (!m_index.SetLoadedHandle(result.Handle, slot_handle))
+        {
+            return {.Error = RegisterError::SlotExhausted};
+        }
         return result;
+    }
+
+    bool AssetRegistry::TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const
+    {
+        return m_index.TryReadRecord(uuid, out);
+    }
+
+    bool AssetRegistry::TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const
+    {
+        return m_index.TryReadSlot(uuid, type, out);
+    }
+
+    bool AssetRegistry::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot)
+    {
+        return m_index.TryBindLoadedMesh(expected, hierarchy, mesh_slot, hierarchy_slot);
     }
 
     bool AssetRegistry::Remove(const uuids::uuid& uuid)
@@ -52,7 +64,9 @@ namespace ZEngine::Core::VFS
         m_graph.RemoveAsset(uuid);
         Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
         if (!h.Valid())
+        {
             return false;
+        }
         return m_index.Remove(h);
     }
 
@@ -60,7 +74,9 @@ namespace ZEngine::Core::VFS
     {
         AssetRecord* rec = m_index.Access(handle);
         if (!rec)
+        {
             return false;
+        }
         m_graph.RemoveAsset(rec->UUID);
         return m_index.Remove(handle);
     }
@@ -79,17 +95,23 @@ namespace ZEngine::Core::VFS
     {
         Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
         if (!h.Valid())
+        {
             return false;
+        }
         bool ok = m_index.SetState(h, new_state);
         if (ok && new_state == AssetState::Loaded)
         {
             if (m_reload_cb)
+            {
                 m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
+            }
             if (m_ready_cb)
             {
                 const AssetRecord* rec = m_index.Access(h);
                 if (rec)
+                {
                     m_ready_cb(m_ready_cb_ctx, uuid, rec->SlotHandle);
+                }
             }
         }
         return ok;
@@ -99,7 +121,9 @@ namespace ZEngine::Core::VFS
     {
         Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
         if (!h.Valid())
+        {
             return false;
+        }
         return m_index.Update(h, new_meta, new_state);
     }
 
@@ -160,11 +184,15 @@ namespace ZEngine::Core::VFS
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByPath(path);
         if (!handle.Valid())
+        {
             return;
+        }
 
         AssetRecord* rec = m_index.Access(handle);
         if (!rec)
+        {
             return;
+        }
 
         m_index.SetState(handle, AssetState::Stale);
 
@@ -179,16 +207,22 @@ namespace ZEngine::Core::VFS
         {
             Helpers::Handle<AssetRecord> dep_h = m_index.FindByUUID(cascade[i]);
             if (dep_h.Valid())
+            {
                 m_index.SetState(dep_h, AssetState::Stale);
+            }
         }
 
         if (m_reload_cb)
+        {
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(cascade.data(), cascade.size()));
+        }
 
         if (m_stale_cb)
         {
             for (uint32_t i = 0; i < cascade.size(); ++i)
+            {
                 m_stale_cb(m_stale_cb_ctx, cascade[i]);
+            }
         }
     }
 
@@ -196,25 +230,35 @@ namespace ZEngine::Core::VFS
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByUUID(uuid);
         if (!handle.Valid())
+        {
             return;
+        }
 
         m_index.SetState(handle, AssetState::Stale);
 
         if (m_reload_cb)
+        {
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
+        }
         if (m_stale_cb)
+        {
             m_stale_cb(m_stale_cb_ctx, uuid);
+        }
     }
 
     void AssetRegistry::OnAssetDeleted(const Core::VFS::VFSPath& path)
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByPath(path);
         if (!handle.Valid())
+        {
             return;
+        }
 
         AssetRecord* rec = m_index.Access(handle);
         if (!rec)
+        {
             return;
+        }
 
         m_scratch.Clear();
         Core::Containers::Array<uuids::uuid> cascade;
@@ -222,7 +266,9 @@ namespace ZEngine::Core::VFS
         m_graph.CollectCascade(rec->UUID, cascade, &m_scratch);
 
         if (m_reload_cb && !cascade.empty())
+        {
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(cascade.data(), cascade.size()));
+        }
 
         if (m_removed_cb)
         {
@@ -230,7 +276,9 @@ namespace ZEngine::Core::VFS
             {
                 AssetRecord* cascade_rec = FindByUUID(cascade[i]);
                 if (cascade_rec)
+                {
                     m_removed_cb(m_removed_cb_ctx, cascade[i], cascade_rec->Type);
+                }
             }
         }
 
@@ -241,7 +289,9 @@ namespace ZEngine::Core::VFS
     {
         Helpers::Handle<AssetRecord> handle = m_index.FindByPath(old_path);
         if (!handle.Valid())
+        {
             return;
+        }
         m_index.Rename(handle, new_path);
     }
 
@@ -249,7 +299,9 @@ namespace ZEngine::Core::VFS
     {
         auto meta_result = Core::VFS::MetaFileIO::Read(ctx, path);
         if (!meta_result.Succeeded())
+        {
             return;
+        }
 
         const Core::VFS::MetaFileData& meta     = meta_result.Value();
 
@@ -271,16 +323,22 @@ namespace ZEngine::Core::VFS
     bool AssetRegistry::PassesFilter(const AssetRecord& rec, const QueryFilter& f) const
     {
         if (f.State.has_value() && rec.State != f.State.value())
+        {
             return false;
+        }
         if (f.NameLike != nullptr && f.NameLike[0] != '\0')
         {
             if (std::strstr(rec.Name, f.NameLike) == nullptr)
+            {
                 return false;
+            }
         }
         if (f.Ext != nullptr && f.Ext[0] != '\0')
         {
             if (!ExtensionMatches(rec.Path, f.Ext))
+            {
                 return false;
+            }
         }
         return true;
     }
@@ -305,15 +363,21 @@ namespace ZEngine::Core::VFS
             Core::Containers::Array<Helpers::Handle<AssetRecord>> type_copy;
             type_copy.init(arena, static_cast<uint32_t>(type_span.size() ? type_span.size() : 1));
             for (auto& h : type_span)
+            {
                 type_copy.push(h);
+            }
 
             for (uint32_t i = 0; i < type_copy.size(); ++i)
             {
                 const AssetRecord* rec = m_index.Access(type_copy[i]);
                 if (!rec)
+                {
                     continue;
+                }
                 if (!PassesFilter(*rec, filter))
+                {
                     continue;
+                }
                 result.Handles.push(type_copy[i]);
             }
         }
@@ -330,7 +394,9 @@ namespace ZEngine::Core::VFS
             m_index.ForEach(&fe_ctx, [](void* raw, Helpers::Handle<AssetRecord> h, const AssetRecord& rec) {
                 auto* fc = static_cast<ForEachCtx*>(raw);
                 if (!fc->self->PassesFilter(rec, *fc->filter))
+                {
                     return;
+                }
                 fc->out->push(h); // handle passed directly — no re-entrant FindByUUID needed
             });
         }
@@ -351,10 +417,14 @@ namespace ZEngine::Core::VFS
     uint32_t AssetRegistry::DumpGraphDOT(char* out_buf, uint32_t out_len) const
     {
         if (!out_buf || out_len < 16)
+        {
             return 0;
+        }
         int written = std::snprintf(out_buf, out_len, "digraph AssetDeps {\n");
         if (written < 0 || static_cast<uint32_t>(written) >= out_len)
+        {
             return 0;
+        }
 
         struct DotCtx
         {
@@ -368,7 +438,9 @@ namespace ZEngine::Core::VFS
         m_index.ForEach(&dot, [](void* raw, Helpers::Handle<AssetRecord>, const AssetRecord& rec) {
             auto* dc = static_cast<DotCtx*>(raw);
             if (dc->pos >= dc->len)
+            {
                 return;
+            }
 
             Core::Containers::Array<uuids::uuid> deps;
             dc->self->m_graph.CopyDependents(rec.UUID, deps);
@@ -376,7 +448,9 @@ namespace ZEngine::Core::VFS
 
         int tail = std::snprintf(out_buf + dot.pos, out_len - dot.pos, "}\n");
         if (tail < 0)
+        {
             return 0;
+        }
         return dot.pos + static_cast<uint32_t>(tail);
     }
 
@@ -384,14 +458,22 @@ namespace ZEngine::Core::VFS
     {
         Core::VFS::VFSPathComponent ext = path.Extension();
         if (ext.Empty() || !ext.Data)
+        {
             return Managers::AssetType::MESH;
+        }
 
         if (ext.Equals(".png") || ext.Equals(".jpg") || ext.Equals(".jpeg") || ext.Equals(".bmp") || ext.Equals(".tga") || ext.Equals(".gif") || ext.Equals(".psd") || ext.Equals(".pic") || ext.Equals(".hdr") || ext.Equals(".exr") || ext.Equals(".ktx") || ext.Equals(".ktx2"))
+        {
             return Managers::AssetType::TEXTURE;
+        }
         if (ext.Equals(".zematerial"))
+        {
             return Managers::AssetType::MATERIAL;
+        }
         if (ext.Equals(".zemesh"))
+        {
             return Managers::AssetType::MESH;
+        }
 
         return Managers::AssetType::MESH;
     }
@@ -402,12 +484,16 @@ namespace ZEngine::Core::VFS
         size_t      rlen = std::strlen(raw);
         size_t      elen = std::strlen(ext);
         if (elen == 0 || rlen < elen)
+        {
             return false;
+        }
         const char* suffix = raw + rlen - elen;
         for (size_t i = 0; i < elen; ++i)
         {
             if (::tolower(static_cast<unsigned char>(suffix[i])) != ::tolower(static_cast<unsigned char>(ext[i])))
+            {
                 return false;
+            }
         }
         return true;
     }

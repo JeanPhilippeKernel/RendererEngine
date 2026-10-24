@@ -25,6 +25,12 @@ namespace ZEngine::UI
     /// @param ctx Active ZUI context.
     void ZUIFeedBeginFrame(ZUIContext* ctx);
 
+    /// @brief Retire physical input on focus loss/minimize without synthesizing releases.
+    /// Keeps monotonic pointer serials, widget focus/text history, popup/modal
+    /// ownership and session capture. The session must cancel at its mutation point.
+    /// No allocation or full-context/buffer clear; safe with a null context.
+    void ZUIFeedFocusLost(ZUIContext* ctx);
+
     /// @brief Update the mouse cursor position.
     /// @param ctx Active ZUI context.
     /// @param x X in logical pixels (matches glfwGetCursorPos units).
@@ -35,6 +41,8 @@ namespace ZEngine::UI
     /// @param ctx     Active ZUI context.
     /// @param btn     Button index: 0=left, 1=right, 2=middle.
     /// @param pressed true on press, false on release.
+    /// Duplicate levels are ignored; physical edge positions, modifiers and serials
+    /// survive UI frame resets. Feed current modifiers before the button event.
     void ZUIFeedMouseButton(ZUIContext* ctx, int btn, bool pressed);
 
     /// @brief Accumulate a vertical scroll delta for this frame.

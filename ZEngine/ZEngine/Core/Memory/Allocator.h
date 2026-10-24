@@ -94,6 +94,10 @@ namespace ZEngine::Core::Memory
         }
 
         void                                        Initialize(uint64_t size, size_t page_size, cstring owner_name = "UnnamedArena");
+        /// Bounded view over already-writable caller-owned storage. No OS commit,
+        /// release or ownership transfer. The backing owner must outlive this view
+        /// and every allocation/sub-arena carved from it. Failure preserves this arena.
+        [[nodiscard]] bool                          InitializeBorrowed(void* memory, size_t bytes, cstring owner_name = "BorrowedArena");
         void                                        Shutdown();
 
         void*                                       Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
@@ -106,6 +110,9 @@ namespace ZEngine::Core::Memory
         void*                                       AllocateNoZero(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
 
         void*                                       Resize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
+        /// Checked resize: invalid ranges/capacity failures return nullptr and
+        /// preserve the previous allocation and arena cursors.
+        [[nodiscard]] void*                         TryResize(void* old_memory, size_t old_size, size_t new_size, size_t alignment = DEFAULT_ALIGNMENT);
         void                                        Clear();
 
         void                                        CreateSubArena(size_t size, ArenaAllocator* out_arena, cstring owner_name = "UnnamedSubArena");
@@ -117,6 +124,7 @@ namespace ZEngine::Core::Memory
 
         uint8_t*               m_memory                  = nullptr;
         bool                   m_is_sub_arena            = false;
+        bool                   m_is_borrowed             = false;
         size_t                 m_total_size              = 0;
         // Physical address-space range reserved for this arena. Sub-arenas reserve a
         // page-rounded range while preserving m_total_size as their usable capacity.
@@ -143,6 +151,7 @@ namespace ZEngine::Core::Memory
         {
             m_memory                    = other.m_memory;
             m_is_sub_arena              = other.m_is_sub_arena;
+            m_is_borrowed               = other.m_is_borrowed;
             m_total_size                = other.m_total_size;
             m_reserved_size             = other.m_reserved_size;
             m_initial_current_offset    = other.m_initial_current_offset;
@@ -162,6 +171,7 @@ namespace ZEngine::Core::Memory
             other.m_reserved_size       = 0;
             other.m_committed_size      = 0;
             other.m_is_sub_arena        = false;
+            other.m_is_borrowed         = false;
             other.m_commit_tracker      = nullptr;
             other.m_root_offset         = 0;
             other.m_owns_commit_tracker = false;
@@ -226,6 +236,55 @@ namespace ZEngine::Core::Memory
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena);
     void      EndTempArena(ArenaTemp arena);
+
+    // Scratch owns a temporary arena lifetime. The parent arena must not be
+    // allocated from until this object releases its ArenaTemp.
+    class ArenaScratch
+    {
+    public:
+        explicit ArenaScratch(ArenaAllocator* arena) : m_temp(BeginTempArena(arena)) {}
+        ~ArenaScratch()
+        {
+            EndTempArena(m_temp);
+        }
+        ArenaScratch(const ArenaScratch&)              = delete;
+        ArenaScratch&   operator=(const ArenaScratch&) = delete;
+        ArenaAllocator* Arena() const noexcept
+        {
+            return m_temp.Arena;
+        }
+
+    private:
+        ArenaTemp m_temp = {};
+    };
+
+    // A checkpoint makes tentative allocations in its owning arena. Unlike a
+    // scratch arena, it does not suspend the arena and can retain allocations.
+    class ArenaCheckpoint
+    {
+    public:
+        explicit ArenaCheckpoint(ArenaAllocator* arena) : m_arena(arena), m_current_offset(arena->m_current_offset), m_previous_offset(arena->m_previous_offset) {}
+        ~ArenaCheckpoint()
+        {
+            if (!m_committed)
+            {
+                m_arena->m_current_offset  = m_current_offset;
+                m_arena->m_previous_offset = m_previous_offset;
+            }
+        }
+        ArenaCheckpoint(const ArenaCheckpoint&)            = delete;
+        ArenaCheckpoint& operator=(const ArenaCheckpoint&) = delete;
+        void             Commit() noexcept
+        {
+            m_committed = true;
+        }
+
+    private:
+        ArenaAllocator* m_arena           = nullptr;
+        size_t          m_current_offset  = 0;
+        size_t          m_previous_offset = 0;
+        bool            m_committed       = false;
+    };
 } // namespace ZEngine::Core::Memory
 
 #define ZGetScratch(arena)       ZEngine::Core::Memory::BeginTempArena(arena)

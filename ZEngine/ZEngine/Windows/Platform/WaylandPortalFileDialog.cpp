@@ -29,10 +29,10 @@ namespace ZEngine::Windows::Platform
 
         struct PortalRequest
         {
-            GMainLoop*  Loop = nullptr;
-            std::string Path;
-            std::string SelectedPath;
-            uint32_t    Response = 2;
+            GMainLoop*  Loop         = nullptr;
+            std::string Path         = {};
+            std::string SelectedPath = {};
+            uint32_t    Response     = 2;
         };
 
         std::atomic_uint64_t s_portal_token = 0;
@@ -44,18 +44,23 @@ namespace ZEngine::Windows::Platform
                 g_error_free(error);
         }
 
-        GVariant* BuildPortalOptions(std::span<const std::string> extensions, std::string_view default_directory)
+        GVariant* BuildPortalOptions(std::span<const std::string> extensions, std::string_view default_directory, std::string_view filename)
         {
-            GVariantBuilder options;
+            GVariantBuilder options = {};
             g_variant_builder_init(&options, G_VARIANT_TYPE("a{sv}"));
 
             const std::string handle_token = "zengine" + std::to_string(s_portal_token.fetch_add(1, std::memory_order_relaxed));
             g_variant_builder_add(&options, "{sv}", "handle_token", g_variant_new_string(handle_token.c_str()));
             g_variant_builder_add(&options, "{sv}", "modal", g_variant_new_boolean(TRUE));
+            if (!filename.empty())
+            {
+                const std::string name(filename);
+                g_variant_builder_add(&options, "{sv}", "current_name", g_variant_new_string(name.c_str()));
+            }
 
             if (!extensions.empty())
             {
-                GVariantBuilder patterns;
+                GVariantBuilder patterns = {};
                 g_variant_builder_init(&patterns, G_VARIANT_TYPE("a(us)"));
                 for (const std::string& extension : extensions)
                 {
@@ -63,7 +68,7 @@ namespace ZEngine::Windows::Platform
                     g_variant_builder_add(&patterns, "(us)", 0u, pattern.c_str());
                 }
 
-                GVariantBuilder filters;
+                GVariantBuilder filters = {};
                 g_variant_builder_init(&filters, G_VARIANT_TYPE("a(sa(us))"));
                 g_variant_builder_add(&filters, "(s@a(us))", kSupportedFilesLabel, g_variant_builder_end(&patterns));
                 g_variant_builder_add(&options, "{sv}", "filters", g_variant_builder_end(&filters));
@@ -71,7 +76,7 @@ namespace ZEngine::Windows::Platform
 
             if (!default_directory.empty())
             {
-                GVariantBuilder folder;
+                GVariantBuilder folder = {};
                 g_variant_builder_init(&folder, G_VARIANT_TYPE("ay"));
                 for (const unsigned char character : default_directory)
                     g_variant_builder_add(&folder, "y", character);
@@ -207,15 +212,15 @@ namespace ZEngine::Windows::Platform
             static_cast<WaylandPortalParent*>(context)->m_handle = "wayland:" + std::string(handle);
     }
 
-    std::unique_ptr<WaylandPortalParent> CreateWaylandPortalParent(GLFWwindow* window)
+    ZEngine::Helpers::Scope<WaylandPortalParent> CreateWaylandPortalParent(GLFWwindow* window)
     {
-        auto parent = std::unique_ptr<WaylandPortalParent>(new WaylandPortalParent{});
+        auto parent = ZEngine::Helpers::Scope<WaylandPortalParent>(new WaylandPortalParent{});
         if (!parent->Initialize(window))
             return {};
         return parent;
     }
 
-    PortalFileDialogResult OpenPortalFileDialog(std::string_view parent_handle, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title)
+    PortalFileDialogResult OpenPortalFileDialog(std::string_view parent_handle, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title, bool save, std::string_view filename)
     {
         GMainContext* context = g_main_context_new();
         g_main_context_push_thread_default(context);
@@ -230,14 +235,14 @@ namespace ZEngine::Windows::Platform
             return {};
         }
 
-        PortalRequest request;
+        PortalRequest request          = {};
         request.Loop                   = g_main_loop_new(context, FALSE);
 
         const guint       subscription = g_dbus_connection_signal_subscribe(connection, kPortalService, kPortalRequest, kPortalResponse, nullptr, nullptr, G_DBUS_SIGNAL_FLAGS_NONE, &OnPortalResponse, &request, nullptr);
 
         const std::string parent(parent_handle);
         const std::string dialog_title(title.empty() ? "Select a file" : title);
-        GVariant*         reply = g_dbus_connection_call_sync(connection, kPortalService, kPortalObjectPath, kPortalFileChooser, "OpenFile", g_variant_new("(ss@a{sv})", parent.c_str(), dialog_title.c_str(), BuildPortalOptions(extensions, default_directory)), G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
+        GVariant*         reply = g_dbus_connection_call_sync(connection, kPortalService, kPortalObjectPath, kPortalFileChooser, save ? "SaveFile" : "OpenFile", g_variant_new("(ss@a{sv})", parent.c_str(), dialog_title.c_str(), BuildPortalOptions(extensions, default_directory, save ? filename : std::string_view{})), G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
 
         if (!reply)
         {
@@ -270,7 +275,7 @@ namespace ZEngine::Windows::Platform
         return {};
     }
 
-    std::string OpenLinuxFallbackFileDialog(unsigned long x11_parent_window, bool use_x11, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title)
+    std::string OpenLinuxFallbackFileDialog(unsigned long x11_parent_window, bool use_x11, std::span<const std::string> extensions, std::string_view default_directory, std::string_view title, bool save, std::string_view filename)
     {
         std::string filter;
         for (const std::string& extension : extensions)
@@ -281,7 +286,8 @@ namespace ZEngine::Windows::Platform
             filter += extension;
         }
 
-        const std::string start_dir = default_directory.empty() ? "." : std::string(default_directory);
+        const std::string start_dir  = default_directory.empty() ? "." : std::string(default_directory);
+        const std::string start_path = save ? start_dir + "/" + std::string(filename) : start_dir + "/";
         const std::string dialog_title(title.empty() ? "Select a file" : title);
 
         std::string       command;
@@ -289,10 +295,12 @@ namespace ZEngine::Windows::Platform
         {
             command  = use_x11 ? "GDK_BACKEND=x11 " : "";
             command += "zenity --file-selection --modal --title=" + ShellQuote(dialog_title);
+            if (save)
+                command += " --save --confirm-overwrite";
             if (use_x11 && x11_parent_window != 0)
                 command += " --attach=" + std::to_string(x11_parent_window);
-            if (!default_directory.empty())
-                command += " --filename=" + ShellQuote(start_dir + "/");
+            if (save || !default_directory.empty())
+                command += " --filename=" + ShellQuote(start_path);
             if (!filter.empty())
                 command += " --file-filter=" + ShellQuote(filter);
         }
@@ -301,7 +309,7 @@ namespace ZEngine::Windows::Platform
             command = "kdialog";
             if (use_x11 && x11_parent_window != 0)
                 command += " --attach " + std::to_string(x11_parent_window);
-            command += " --getopenfilename " + ShellQuote(start_dir);
+            command += (save ? " --getsavefilename " : " --getopenfilename ") + ShellQuote(save ? start_path : start_dir);
             if (!filter.empty())
                 command += " " + ShellQuote(filter);
         }
@@ -326,7 +334,12 @@ namespace ZEngine::Windows::Platform
             if (!selected_path.empty() && selected_path.back() == '\n')
                 selected_path.pop_back();
         }
-        pclose(pipe);
+        // Never turn a truncated or multi-line native filename into a different
+        // destination. Picker failure/cancellation must not authorize any write.
+        const bool extra_output = fgetc(pipe) != EOF;
+        const int  status       = pclose(pipe);
+        if (status != 0 || extra_output || selected_path.find_first_of("\r\n") != std::string::npos)
+            return {};
         return selected_path;
     }
 } // namespace ZEngine::Windows::Platform

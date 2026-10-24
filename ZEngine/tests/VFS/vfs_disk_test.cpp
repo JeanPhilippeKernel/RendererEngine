@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <thread>
+#include "../TemporaryDirectory.h"
 
 using namespace ZEngine::Core::VFS;
 using ZEngine::Core::Containers::Array;
@@ -25,6 +26,17 @@ namespace
         const size_t elen = secure_strlen(expected);
         return len == elen && secure_memcmp(data, len, expected, elen, len) == 0;
     }
+
+    struct ScopedDiskFile
+    {
+        VFSDiskBackend* Backend = nullptr;
+        IVFSFile*       File    = nullptr;
+        ~ScopedDiskFile()
+        {
+            if (File)
+                Backend->Close(File);
+        }
+    };
 } // namespace
 
 class VFSDiskBackendTest : public ::testing::Test
@@ -34,19 +46,17 @@ protected:
     {
         m_manager.Initialize(ZKilo(256), {});
 
-        m_root.init(&m_manager.MainArena, (std::filesystem::temp_directory_path() / "zengine_vfs_disk_tests").string().c_str());
-
-        std::error_code ec;
-        std::filesystem::remove_all(m_root.c_str(), ec);
-        std::filesystem::create_directories(m_root.c_str(), ec);
+        std::error_code error = {};
+        ASSERT_TRUE(m_directory.Create("zengine_vfs_disk_tests", error));
+        ASSERT_FALSE(error);
+        const auto utf8_root = m_directory.Path().generic_u8string();
+        m_root.init(&m_manager.MainArena, reinterpret_cast<const char*>(utf8_root.c_str()));
 
         m_backend.Initialize(m_root.c_str(), VFSBackendCaps::Read | VFSBackendCaps::Write, &m_manager.MainArena);
     }
 
     void TearDown() override
     {
-        std::error_code ec;
-        std::filesystem::remove_all(m_root.c_str(), ec);
         m_manager.Shutdown();
     }
 
@@ -70,9 +80,10 @@ protected:
         return buffer;
     }
 
-    String         m_root;
-    MemoryManager  m_manager{};
-    VFSDiskBackend m_backend;
+    String                             m_root = {};
+    MemoryManager                      m_manager{};
+    VFSDiskBackend                     m_backend   = {};
+    ZEngine::Tests::TemporaryDirectory m_directory = {};
 };
 
 TEST_F(VFSDiskBackendTest, OpenMissingFileFailsWithNotFound)
@@ -82,9 +93,169 @@ TEST_F(VFSDiskBackendTest, OpenMissingFileFailsWithNotFound)
     EXPECT_EQ(r.Error(), VFSError::NotFound);
 }
 
+TEST_F(VFSDiskBackendTest, InvalidPathsCannotAliasTheMountedRootOrConsumeFileSlots)
+{
+    VFSDiskBackend backend = {};
+    backend.Initialize(m_root.c_str(), VFSBackendCaps::Read | VFSBackendCaps::Write, &m_manager.MainArena, 1);
+    WriteFile("/sentinel.zescene", "retained");
+    const VFSPath invalid = {};
+    ASSERT_FALSE(invalid.IsValid());
+    for (uint32_t attempt = 0; attempt < 8; ++attempt)
+    {
+        auto           opened = backend.Open(invalid, VFSOpenFlags::Read);
+        // Own even an unexpectedly successful old implementation's descriptor.
+        ScopedDiskFile file   = {&backend, opened.Succeeded() ? opened.Value() : nullptr};
+        ASSERT_TRUE(opened.Failed());
+        EXPECT_EQ(opened.Error(), VFSError::PermissionDenied);
+    }
+    EXPECT_FALSE(backend.Exists(invalid));
+    EXPECT_EQ(backend.Stat(invalid).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(backend.List(&m_manager.MainArena, invalid).Error(), VFSError::InvalidPath);
+    EXPECT_TRUE(backend.CreateDir(invalid).Failed());
+    EXPECT_TRUE(backend.Remove(invalid).Failed());
+    EXPECT_TRUE(backend.RemoveAll(invalid).Failed());
+    EXPECT_TRUE(m_backend.Exists(VFSPath::Parse("/sentinel.zescene").Value()));
+    auto           opened = backend.Open(VFSPath::Parse("/sentinel.zescene").Value(), VFSOpenFlags::Read);
+    ScopedDiskFile file   = {&backend, opened.Succeeded() ? opened.Value() : nullptr};
+    ASSERT_TRUE(opened.Succeeded());
+    auto buffer = ReadBuffer(8);
+    auto read   = file.File->ReadAll({buffer.data(), buffer.size()});
+    ASSERT_TRUE(read.Succeeded());
+    EXPECT_TRUE(BytesEqual(buffer.data(), read.Value(), "retained"));
+}
+
+TEST_F(VFSDiskBackendTest, Utf8RootAndNamesUseTheActualNativeFilesForEveryDiskOperation)
+{
+    const auto      native_root = m_directory.Path() / std::filesystem::path(u8"scène_東京_🚀");
+    std::error_code error       = {};
+    ASSERT_TRUE(std::filesystem::create_directory(native_root, error));
+    ASSERT_FALSE(error);
+    const auto     utf8_root = native_root.generic_u8string();
+    VFSDiskBackend backend   = {};
+    backend.Initialize(reinterpret_cast<const char*>(utf8_root.c_str()), VFSBackendCaps::Read | VFSBackendCaps::Write, &m_manager.MainArena, 4);
+    const auto directory        = VFSPath::Parse(reinterpret_cast<const char*>(u8"/資料_🚀")).Value();
+    const auto original         = directory.Append(reinterpret_cast<const char*>(u8"café.zescene")).Value();
+    const auto moved            = directory.Append(reinterpret_cast<const char*>(u8"résultat_東京.zescene")).Value();
+    const auto native_directory = native_root / std::filesystem::path(u8"資料_🚀");
+    const auto native_original  = native_directory / std::filesystem::path(u8"café.zescene");
+    const auto native_moved     = native_directory / std::filesystem::path(u8"résultat_東京.zescene");
+    ASSERT_TRUE(backend.CreateDirExclusive(directory).Succeeded());
+    EXPECT_EQ(backend.CreateDirExclusive(directory).Error(), VFSError::AlreadyExists);
+    EXPECT_TRUE(backend.CreateDir(directory).Succeeded());
+    ASSERT_TRUE(std::filesystem::is_directory(native_directory, error));
+    ASSERT_FALSE(error);
+    {
+        auto           opened = backend.Open(original, VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive);
+        ScopedDiskFile file   = {&backend, opened.Succeeded() ? opened.Value() : nullptr};
+        ASSERT_TRUE(opened.Succeeded());
+        constexpr uint8_t contents[] = {'s', 'c', 'e', 'n', 'e'};
+        const auto        written    = file.File->Write({contents, sizeof(contents)}, 0);
+        ASSERT_TRUE(written.Succeeded());
+        ASSERT_EQ(written.Value(), sizeof(contents));
+        ASSERT_TRUE(file.File->Flush().Succeeded());
+    }
+    // Check with independently constructed native paths, not another backend
+    // lookup that could repeat the same accidental ANSI/locale conversion.
+    ASSERT_TRUE(std::filesystem::exists(native_original, error));
+    ASSERT_FALSE(error);
+    EXPECT_EQ(std::filesystem::file_size(native_original, error), 5u);
+    ASSERT_FALSE(error);
+    EXPECT_TRUE(backend.Exists(original));
+    auto stat = backend.Stat(original);
+    ASSERT_TRUE(stat.Succeeded());
+    EXPECT_FALSE(stat.Value().IsDirectory);
+    EXPECT_EQ(stat.Value().SizeBytes, 5u);
+    {
+        auto           opened = backend.Open(original, VFSOpenFlags::Read);
+        ScopedDiskFile file   = {&backend, opened.Succeeded() ? opened.Value() : nullptr};
+        ASSERT_TRUE(opened.Succeeded());
+        auto       buffer = ReadBuffer(5);
+        const auto read   = file.File->ReadAll({buffer.data(), buffer.size()});
+        ASSERT_TRUE(read.Succeeded());
+        EXPECT_TRUE(BytesEqual(buffer.data(), read.Value(), "scene"));
+        uint64_t mapped_size = 0;
+        auto     mapped      = static_cast<VFSDiskFile*>(file.File)->MemoryMap(mapped_size);
+        ASSERT_TRUE(mapped.Succeeded());
+        EXPECT_EQ(mapped_size, 5u);
+        EXPECT_TRUE(BytesEqual(static_cast<const uint8_t*>(mapped.Value()), mapped_size, "scene"));
+    }
+    auto listed = backend.List(&m_manager.MainArena, directory);
+    ASSERT_TRUE(listed.Succeeded());
+    ASSERT_EQ(listed.Value().size(), 1u);
+    EXPECT_EQ(listed.Value()[0].Path, original);
+    EXPECT_EQ(listed.Value()[0].Stat.SizeBytes, 5u);
+    ASSERT_TRUE(backend.RenameNoReplace(original, moved).Succeeded());
+    EXPECT_FALSE(std::filesystem::exists(native_original, error));
+    ASSERT_FALSE(error);
+    EXPECT_TRUE(std::filesystem::exists(native_moved, error));
+    ASSERT_FALSE(error);
+    ASSERT_TRUE(backend.Rename(moved, original).Succeeded());
+    EXPECT_TRUE(std::filesystem::exists(native_original, error));
+    ASSERT_FALSE(error);
+    ASSERT_TRUE(backend.Remove(original).Succeeded());
+    EXPECT_FALSE(std::filesystem::exists(native_original, error));
+    ASSERT_FALSE(error);
+    ASSERT_TRUE(backend.RemoveAll(directory).Succeeded());
+    EXPECT_FALSE(std::filesystem::exists(native_directory, error));
+    EXPECT_FALSE(error);
+}
+
+#if !defined(_WIN32)
+TEST_F(VFSDiskBackendTest, ListingAnUnreadableDirectoryFailsInsteadOfPublishingAnEmptySnapshot)
+{
+    if (::geteuid() == 0)
+        GTEST_SKIP() << "The root user bypasses directory read permissions";
+    const auto path = VFSPath::Parse("/unreadable").Value();
+    ASSERT_TRUE(m_backend.CreateDir(path).Succeeded());
+    struct PermissionGuard
+    {
+        std::filesystem::path Path = {};
+        ~PermissionGuard()
+        {
+            std::error_code error = {};
+            std::filesystem::permissions(Path, std::filesystem::perms::owner_all, error);
+        }
+    } guard               = {m_directory.Path() / "unreadable"};
+    std::error_code error = {};
+    std::filesystem::permissions(guard.Path, std::filesystem::perms::none, error);
+    ASSERT_FALSE(error);
+    const size_t arena_before = m_manager.MainArena.m_current_offset;
+    auto         entries      = m_backend.List(&m_manager.MainArena, path);
+    ASSERT_TRUE(entries.Failed());
+    EXPECT_EQ(entries.Error(), VFSError::IOError);
+    EXPECT_EQ(m_manager.MainArena.m_current_offset, arena_before);
+}
+#endif
+
+#if defined(_WIN32)
+TEST_F(VFSDiskBackendTest, InvalidUtf8PathsNeverCreateAnsiAliasesOrConsumeFileSlots)
+{
+    VFSDiskBackend backend = {};
+    backend.Initialize(m_root.c_str(), VFSBackendCaps::Read | VFSBackendCaps::Write, &m_manager.MainArena, 1);
+    const char* const malformed[] = {"/\xc0\xaf.zescene", "/\xed\xa0\x80.zescene", "/\xf4\x90\x80\x80.zescene", "/\xe2\x82", "/\x80.zescene"};
+    for (const auto* text : malformed)
+    {
+        const auto parsed = VFSPath::Parse(text);
+        ASSERT_TRUE(parsed.Succeeded());
+        auto           opened = backend.Open(parsed.Value(), VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive);
+        ScopedDiskFile file   = {&backend, opened.Succeeded() ? opened.Value() : nullptr};
+        ASSERT_TRUE(opened.Failed());
+        EXPECT_EQ(opened.Error(), VFSError::PermissionDenied);
+        EXPECT_FALSE(backend.Exists(parsed.Value()));
+        EXPECT_EQ(backend.Stat(parsed.Value()).Error(), VFSError::InvalidPath);
+    }
+    auto listed = backend.List(&m_manager.MainArena, VFSPath::Root());
+    ASSERT_TRUE(listed.Succeeded());
+    EXPECT_TRUE(listed.Value().empty());
+    auto           opened = backend.Open(VFSPath::Parse("/valid.zescene").Value(), VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive);
+    ScopedDiskFile file   = {&backend, opened.Succeeded() ? opened.Value() : nullptr};
+    EXPECT_TRUE(opened.Succeeded());
+}
+#endif
+
 TEST_F(VFSDiskBackendTest, DirectoryOpenFailureIsNotReportedAsMissing)
 {
-    ASSERT_TRUE(std::filesystem::create_directory(std::filesystem::path(m_root.c_str()) / "existing"));
+    ASSERT_TRUE(std::filesystem::create_directory(m_directory.Path() / "existing"));
     auto opened = m_backend.Open(VFSPath::Parse("/existing").Value(), VFSOpenFlags::Write);
     ASSERT_TRUE(opened.Failed());
     EXPECT_NE(opened.Error(), VFSError::NotFound);
@@ -94,7 +265,7 @@ TEST_F(VFSDiskBackendTest, DirectoryOpenFailureIsNotReportedAsMissing)
 TEST_F(VFSDiskBackendTest, UnreadableExistingFileReturnsPermissionDenied)
 {
     WriteFile("/restricted.meta", "existing metadata");
-    const auto      path = std::filesystem::path(m_root.c_str()) / "restricted.meta";
+    const auto      path = m_directory.Path() / "restricted.meta";
     std::error_code error;
     std::filesystem::permissions(path, std::filesystem::perms::none, error);
     ASSERT_FALSE(error);
