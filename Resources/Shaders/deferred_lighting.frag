@@ -24,7 +24,8 @@ layout(push_constant) uniform EnvironmentLightingPushConstants
     vec4  TintIntensity;
     float YawRadians;
     float SpecularMaxLod;
-    vec2  Padding;
+    float DiffuseIntensity;
+    float SpecularIntensity;
 }
 Environment;
 
@@ -165,7 +166,7 @@ void main()
     vec2  brdf              = texture(sampler2D(BrdfIntegrationLut, EnvironmentSampler), vec2(ndot_view, roughness)).rg;
     vec3  diffuse           = (1.0 - F) * (1.0 - metallic) * albedo * irradiance;
     vec3  specular          = prefiltered * (F * brdf.x + brdf.y);
-    vec3  ambient           = (diffuse + specular) * Environment.TintIntensity.rgb * ao;
+    vec3  ambient           = (diffuse * Environment.DiffuseIntensity + specular * Environment.SpecularIntensity) * Environment.TintIntensity.rgb * ao;
     vec3  color             = ambient + Lo + albedo * emissive;
 
     OutColor                = vec4(color, 1.0);

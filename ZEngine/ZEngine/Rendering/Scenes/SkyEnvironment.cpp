@@ -511,7 +511,7 @@ namespace ZEngine::Rendering::Scenes
             return false;
 
         const auto equal3 = [](const float (&first)[3], const float (&second)[3]) { return first[0] == second[0] && first[1] == second[1] && first[2] == second[2]; };
-        return left.Atmosphere.SunAngularRadiusRadians == right.Atmosphere.SunAngularRadiusRadians && left.Atmosphere.SunIlluminanceLux == right.Atmosphere.SunIlluminanceLux && equal3(left.Atmosphere.GroundAlbedo, right.Atmosphere.GroundAlbedo) && left.Atmosphere.GroundAmbientIrradiance == right.Atmosphere.GroundAmbientIrradiance;
+        return left.Atmosphere.SunAngularRadiusRadians == right.Atmosphere.SunAngularRadiusRadians && left.Atmosphere.SunIlluminanceLux == right.Atmosphere.SunIlluminanceLux && equal3(left.Atmosphere.GroundAlbedo, right.Atmosphere.GroundAlbedo) && left.Atmosphere.GroundAmbientIrradiance == right.Atmosphere.GroundAmbientIrradiance && equal3(left.SkyLowerHemisphereColor, right.SkyLowerHemisphereColor);
     }
 
     bool SkyEnvironment::HasSignificantCelestialLightChange(const SkyCelestialLight& previous, const SkyCelestialLight& next)

@@ -147,7 +147,7 @@ namespace ZEngine::Rendering::Renderers
         push.SunDirectionAndRadius[1]                = m_celestial.DirectionToLight[1];
         push.SunDirectionAndRadius[2]                = m_celestial.DirectionToLight[2];
         push.SunDirectionAndRadius[3]                = atmosphere.SunAngularRadiusRadians;
-        const float sun_radiance                     = Scenes::ConvertSunIlluminanceToSceneRadiance(atmosphere.SunIlluminanceLux) * m_presentation.EnvironmentIntensity;
+        const float sun_radiance                     = Scenes::ConvertSunIlluminanceToSceneRadiance(atmosphere.SunIlluminanceLux) * m_presentation.EnvironmentIntensity * m_presentation.SkyLuminanceFactor;
         push.SunRadianceAndAvailability[0]           = sun_radiance * m_presentation.EnvironmentTint[0];
         push.SunRadianceAndAvailability[1]           = sun_radiance * m_presentation.EnvironmentTint[1];
         push.SunRadianceAndAvailability[2]           = sun_radiance * m_presentation.EnvironmentTint[2];

@@ -108,7 +108,10 @@ void main()
     const vec3  sun_direction   = sun_length > 1.0e-6 ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
     const vec3  direction       = view_direction(TexCoord);
     const vec2  sky_uv          = sky_view_uv(direction, up, sun_direction);
-    float       depth           = texture(sampler2D(SceneDepth, LinearClampToEdgeSampler), TexCoord).r;
+    // Depth represents geometry coverage. Filtering it blends clear-depth sky
+    // samples into foreground edges and leaks aerial/ground color over meshes.
+    const ivec2 depth_texel     = ivec2(gl_FragCoord.xy);
+    float       depth           = texelFetch(sampler2D(SceneDepth, LinearClampToEdgeSampler), depth_texel, 0).r;
     bool        is_background   = abs(depth - Push.AerialMaxDistanceAndDepthClear.y) <= Push.AerialMaxDistanceAndDepthClear.z;
     if (is_background)
     {

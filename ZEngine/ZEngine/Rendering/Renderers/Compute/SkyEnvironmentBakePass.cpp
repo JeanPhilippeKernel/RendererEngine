@@ -56,13 +56,14 @@ namespace ZEngine::Rendering::Renderers
             float                         SunDirectionAndRadius[4]                     = {};
             float                         SunRadianceAvailabilityAndCaptureAltitude[4] = {};
             float                         GroundAlbedoAndAmbient[4]                    = {};
+            float                         LowerHemisphereColor[4]                      = {};
         };
 
         static_assert(sizeof(MipGenerationPushConstants) == 16, "Sky mip push constants must match GLSL");
         static_assert(sizeof(DiffuseIrradiancePushConstants) == 16, "Diffuse irradiance push constants must match GLSL");
         static_assert(sizeof(SpecularPrefilterPushConstants) == 44, "Specular prefilter push constants must cover the GLSL layout");
         static_assert(sizeof(AtmosphereStaticPushConstants) == 64, "Atmosphere static push constants must match GLSL");
-        static_assert(sizeof(AtmosphereSourceRadiancePushConstants) == 112, "Atmosphere source push constants must match GLSL");
+        static_assert(sizeof(AtmosphereSourceRadiancePushConstants) == 128, "Atmosphere source push constants must match GLSL");
 
         AtmosphereStaticPushConstants MakeAtmosphereStaticPushConstants(const Scenes::AtmosphereSettings& atmosphere)
         {
@@ -353,6 +354,9 @@ namespace ZEngine::Rendering::Renderers
         push.GroundAlbedoAndAmbient[1]                    = bake->Config.Atmosphere.GroundAlbedo[1];
         push.GroundAlbedoAndAmbient[2]                    = bake->Config.Atmosphere.GroundAlbedo[2];
         push.GroundAlbedoAndAmbient[3]                    = bake->Config.Atmosphere.GroundAmbientIrradiance;
+        push.LowerHemisphereColor[0]                      = bake->Config.SkyLowerHemisphereColor[0];
+        push.LowerHemisphereColor[1]                      = bake->Config.SkyLowerHemisphereColor[1];
+        push.LowerHemisphereColor[2]                      = bake->Config.SkyLowerHemisphereColor[2];
 
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);

@@ -23,7 +23,12 @@ vec3 sky_ground_radiance(SkyAtmosphereParameters parameters, vec3 ground_positio
     return max(parameters.GroundAlbedoAndAmbient.rgb, vec3(0.0)) * irradiance / SKY_ATMOSPHERE_PI;
 }
 
-vec3 sky_integrate_radiance_segment(SkyAtmosphereParameters parameters, vec3 camera_position, vec3 direction, vec3 sun_direction, float sun_radiance, float maximum_distance, out vec3 segment_transmittance)
+// Background views terminate on the implicit planet and include its radiance.
+// Aerial perspective for opaque scene geometry must only integrate the medium:
+// the depth buffer already identifies the surface which supplies the terminal
+// radiance. Keeping this decision outside the integration loop adds no cost to
+// the froxel march.
+vec3 sky_integrate_radiance_segment(SkyAtmosphereParameters parameters, vec3 camera_position, vec3 direction, vec3 sun_direction, float sun_radiance, float maximum_distance, bool include_ground_radiance, out vec3 segment_transmittance)
 {
     segment_transmittance         = vec3(1.0);
     const float planet_radius     = max(parameters.RadiiAndScaleHeights.x, 1.0e-3);
@@ -42,7 +47,7 @@ vec3 sky_integrate_radiance_segment(SkyAtmosphereParameters parameters, vec3 cam
     if (reaches_ground)
         ray_length = min(ray_length, ground_distance);
     if (ray_length <= 1.0e-4)
-        return reaches_ground ? sky_ground_radiance(parameters, camera_position, sun_direction, sun_radiance) : vec3(0.0);
+        return reaches_ground && include_ground_radiance ? sky_ground_radiance(parameters, camera_position, sun_direction, sun_radiance) : vec3(0.0);
 
     const float view_sun_cosine         = dot(direction, sun_direction);
     const float rayleigh_phase          = sky_rayleigh_phase(view_sun_cosine);
@@ -71,7 +76,7 @@ vec3 sky_integrate_radiance_segment(SkyAtmosphereParameters parameters, vec3 cam
         transmittance_to_viewer      *= exp(clamp(-extinction * step_length, vec3(-50.0), vec3(0.0)));
     }
     segment_transmittance = transmittance_to_viewer;
-    if (reaches_ground)
+    if (reaches_ground && include_ground_radiance)
         radiance += transmittance_to_viewer * sky_ground_radiance(parameters, camera_position + direction * ground_distance, sun_direction, sun_radiance);
     return radiance;
 }

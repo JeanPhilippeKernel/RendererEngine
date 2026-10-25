@@ -17,7 +17,7 @@ TEST(SkyAtmosphereViewPassTest, ComputeCallbacksDeclareTheirExactShaderPushConst
     EXPECT_EQ(sky_view.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::AtmosphereViewPushConstants));
     EXPECT_EQ(aerial.GetComputePushConstantSize(), sizeof(ZEngine::Rendering::Renderers::AtmosphereViewPushConstants));
     EXPECT_EQ(sky_view.GetComputePushConstantSize(), 128u);
-    EXPECT_EQ(source.GetComputePushConstantSize(), 112u);
+    EXPECT_EQ(source.GetComputePushConstantSize(), 128u);
     EXPECT_LE(source.GetComputePushConstantSize(), 128u);
 }
 
@@ -32,6 +32,12 @@ TEST(SkyConfigTest, DefaultConfigurationIsAtmosphereAndHasNoRuntimeReferences)
     EXPECT_TRUE(config.EnvironmentMap.is_nil());
     EXPECT_TRUE(config.PrimaryCelestialLight.is_nil());
     EXPECT_FLOAT_EQ(config.EnvironmentIntensity, 1.0f);
+    EXPECT_FLOAT_EQ(config.SkyLuminanceFactor, 1.0f);
+    EXPECT_FLOAT_EQ(config.SkyDiffuseIntensity, 1.0f);
+    EXPECT_FLOAT_EQ(config.SkySpecularIntensity, 1.0f);
+    EXPECT_FLOAT_EQ(config.SkyLowerHemisphereColor[0], 0.0f);
+    EXPECT_FLOAT_EQ(config.AerialPerspectiveStartDepthKilometers, 0.0f);
+    EXPECT_FLOAT_EQ(config.AerialPerspectiveDistanceScale, 1.0f);
 }
 
 TEST(SkyConfigTest, DefaultAtmospherePlacesWorldOriginAtSeaLevel)
@@ -109,6 +115,12 @@ TEST(SkyConfigTest, BinaryCodecRoundTripsStableAuthoringData)
     input.EnvironmentIntensity                         = 2.5f;
     input.EnvironmentTint[0]                           = 0.75f;
     input.EnvironmentYawRadians                        = 1.25f;
+    input.SkyLuminanceFactor                           = 1.5f;
+    input.SkyDiffuseIntensity                          = 0.75f;
+    input.SkySpecularIntensity                         = 1.25f;
+    input.SkyLowerHemisphereColor[2]                   = 0.3f;
+    input.AerialPerspectiveStartDepthKilometers        = 0.2f;
+    input.AerialPerspectiveDistanceScale               = 1.5f;
     input.Atmosphere.PlanetCenterWorld[0]              = 20.0f;
     input.Atmosphere.WorldUnitsPerMeter                = 2.0f;
     input.Atmosphere.RayleighScatteringPerKilometer[2] = 0.04f;
@@ -139,6 +151,12 @@ TEST(SkyConfigTest, BinaryCodecRoundTripsStableAuthoringData)
     EXPECT_FLOAT_EQ(output.EnvironmentIntensity, input.EnvironmentIntensity);
     EXPECT_FLOAT_EQ(output.EnvironmentTint[0], input.EnvironmentTint[0]);
     EXPECT_FLOAT_EQ(output.EnvironmentYawRadians, input.EnvironmentYawRadians);
+    EXPECT_FLOAT_EQ(output.SkyLuminanceFactor, input.SkyLuminanceFactor);
+    EXPECT_FLOAT_EQ(output.SkyDiffuseIntensity, input.SkyDiffuseIntensity);
+    EXPECT_FLOAT_EQ(output.SkySpecularIntensity, input.SkySpecularIntensity);
+    EXPECT_FLOAT_EQ(output.SkyLowerHemisphereColor[2], input.SkyLowerHemisphereColor[2]);
+    EXPECT_FLOAT_EQ(output.AerialPerspectiveStartDepthKilometers, input.AerialPerspectiveStartDepthKilometers);
+    EXPECT_FLOAT_EQ(output.AerialPerspectiveDistanceScale, input.AerialPerspectiveDistanceScale);
     EXPECT_FLOAT_EQ(output.Atmosphere.PlanetCenterWorld[0], input.Atmosphere.PlanetCenterWorld[0]);
     EXPECT_FLOAT_EQ(output.Atmosphere.WorldUnitsPerMeter, input.Atmosphere.WorldUnitsPerMeter);
     EXPECT_FLOAT_EQ(output.Atmosphere.RayleighScatteringPerKilometer[2], input.Atmosphere.RayleighScatteringPerKilometer[2]);

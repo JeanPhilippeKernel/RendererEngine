@@ -37,6 +37,12 @@ namespace ZEngine::Rendering::Scenes::Serialization
         Helpers::WriteBinary(out, sky.EnvironmentIntensity);
         WriteFloatArray(out, sky.EnvironmentTint, 4);
         Helpers::WriteBinary(out, sky.EnvironmentYawRadians);
+        Helpers::WriteBinary(out, sky.SkyLuminanceFactor);
+        Helpers::WriteBinary(out, sky.SkyDiffuseIntensity);
+        Helpers::WriteBinary(out, sky.SkySpecularIntensity);
+        WriteFloatArray(out, sky.SkyLowerHemisphereColor, 3);
+        Helpers::WriteBinary(out, sky.AerialPerspectiveStartDepthKilometers);
+        Helpers::WriteBinary(out, sky.AerialPerspectiveDistanceScale);
         Helpers::WriteBinary(out, sky.PrimaryCelestialLight);
 
         const auto& atmosphere = sky.Atmosphere;
@@ -70,11 +76,18 @@ namespace ZEngine::Rendering::Scenes::Serialization
 
     /// @brief Reads stable sky authoring data and sanitizes corrupt numeric values.
     /// @return False only for a truncated or structurally malformed payload.
-    inline bool ReadSkyConfig(std::istream& in, SkyConfig& sky)
+    inline bool ReadSkyConfig(std::istream& in, SkyConfig& sky, bool has_lighting_controls = true)
     {
+        sky                   = {};
         uint8_t mode          = 0;
         uint8_t show_sun_disc = 0;
-        if (!Helpers::ReadBinary(in, mode) || !Helpers::ReadBinary(in, sky.EnvironmentMap) || !Helpers::ReadBinary(in, sky.EnvironmentIntensity) || !ReadFloatArray(in, sky.EnvironmentTint, 4) || !Helpers::ReadBinary(in, sky.EnvironmentYawRadians) || !Helpers::ReadBinary(in, sky.PrimaryCelestialLight))
+        if (!Helpers::ReadBinary(in, mode) || !Helpers::ReadBinary(in, sky.EnvironmentMap) || !Helpers::ReadBinary(in, sky.EnvironmentIntensity) || !ReadFloatArray(in, sky.EnvironmentTint, 4) || !Helpers::ReadBinary(in, sky.EnvironmentYawRadians))
+            return false;
+
+        if (has_lighting_controls && (!Helpers::ReadBinary(in, sky.SkyLuminanceFactor) || !Helpers::ReadBinary(in, sky.SkyDiffuseIntensity) || !Helpers::ReadBinary(in, sky.SkySpecularIntensity) || !ReadFloatArray(in, sky.SkyLowerHemisphereColor, 3) || !Helpers::ReadBinary(in, sky.AerialPerspectiveStartDepthKilometers) || !Helpers::ReadBinary(in, sky.AerialPerspectiveDistanceScale)))
+            return false;
+
+        if (!Helpers::ReadBinary(in, sky.PrimaryCelestialLight))
             return false;
 
         sky.Mode         = static_cast<SkyMode>(mode);

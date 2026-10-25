@@ -79,6 +79,6 @@ void main()
     parameters.OzoneAbsorption                    = Push.OzoneAbsorption;
     parameters.GroundAlbedoAndAmbient             = vec4(Push.RayleighScatteringAndGroundAlbedoR.w, Push.SunRadianceAvailabilityAndGroundAlbedoGB.zw, Push.PresentationTintIntensityAndGroundAmbient.w);
     vec3       transmittance_to_boundary;
-    const vec3 radiance = sky_integrate_radiance_segment(parameters, camera_position, direction, sun_direction, sun_radiance, -1.0, transmittance_to_boundary);
+    const vec3 radiance = sky_integrate_radiance_segment(parameters, camera_position, direction, sun_direction, sun_radiance, -1.0, true, transmittance_to_boundary);
     imageStore(Destination, ivec2(pixel), vec4(clamp(radiance * Push.PresentationTintIntensityAndGroundAmbient.rgb, vec3(0.0), vec3(65000.0)), 1.0));
 }

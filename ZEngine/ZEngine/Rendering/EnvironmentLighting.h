@@ -87,10 +87,11 @@ namespace ZEngine::Rendering
     /// @brief Per-frame presentation values shared by sky and deferred IBL sampling.
     struct EnvironmentLightingPushConstants
     {
-        float TintIntensity[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-        float YawRadians       = 0.0f;
-        float SpecularMaxLod   = 0.0f;
-        float Padding[2]       = {};
+        float TintIntensity[4]  = {1.0f, 1.0f, 1.0f, 1.0f};
+        float YawRadians        = 0.0f;
+        float SpecularMaxLod    = 0.0f;
+        float DiffuseIntensity  = 1.0f;
+        float SpecularIntensity = 1.0f;
     };
 
     static_assert(sizeof(EnvironmentLightingPushConstants) == 32, "Environment lighting push constants must match GLSL");
