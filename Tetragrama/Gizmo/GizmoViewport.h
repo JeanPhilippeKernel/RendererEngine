@@ -60,6 +60,9 @@ namespace Tetragrama::Gizmo
         void                      BuildTransformDecorations(EditorSession& session, FrameInput& input, const EntityTarget& target, const ZEngine::Core::Maths::Mat4f& start, const ZEngine::Core::Maths::Mat4f& world, uint64_t key, uint64_t serial);
         [[nodiscard]] bool        BuildRootDecorations(EditorSession& session, FrameInput& input);
         void                      BuildBoxPresentation(EditorSession& session, FrameInput& input, const EntityTarget& target, const ZEngine::Core::Maths::Mat4f& start, const ZEngine::Core::Maths::Mat4f& world, uint64_t key, uint64_t serial);
+        void                      RefreshPassiveComponents(EditorSession& session, const ZEngine::Rendering::Cameras::CameraFrameData& camera);
+        void                      BuildPassiveComponents(const ZEngine::Rendering::Cameras::CameraFrameData& camera, uint32_t width, uint32_t height, ZEngine::Rendering::Renderers::GizmoFrameData& output) const;
+        [[nodiscard]] bool        PickPassiveComponent(const ZEngine::Core::Maths::Vec2f& point, EntityTarget& target) const;
         void                      RetirePointerCapture(EditorSession& session, ZEngine::UI::ZUIContext* ctx);
 
         // Physical-routing validity only. The session owns the captured camera
@@ -87,11 +90,29 @@ namespace Tetragrama::Gizmo
         bool                                          m_was_down[3] = {}, m_navigation[3] = {}, m_handle_press[3] = {};
         Handle                                        m_hovered = Handle::None;
         bool                                          m_bound = false, m_cache_valid = false, m_allow_hits = false;
-        uint64_t                                      m_drag_key = 0, m_drag_serial = 0, m_drag_epoch = 0;
-        uuids::uuid                                   m_drag_mesh = {};
-        ZEngine::Core::Maths::Vec3f                   m_drag_min = {}, m_drag_max = {};
-        ZEngine::Core::Maths::Geometry::BoxCorners    m_ghost       = {};
-        bool                                          m_ghost_valid = false;
+        enum class PassiveComponentKind : uint8_t
+        {
+            DirectionalLight,
+            PointLight,
+            SpotLight,
+            Camera,
+        };
+        struct PassiveComponent
+        {
+            EntityTarget                Target = {};
+            ZEngine::Core::Maths::Vec3f Origin = {}, Forward = {0.f, 0.f, 1.f};
+            ZEngine::Core::Maths::Vec2f Screen = {};
+            float                       Depth  = 0.f;
+            PassiveComponentKind        Kind   = PassiveComponentKind::PointLight;
+        };
+        ZEngine::Core::Containers::FixedArray<PassiveComponent, ZEngine::Rendering::Renderers::GizmoFrameData::MaxSprites> m_passive_components         = {};
+        uint32_t                                                                                                           m_passive_component_count    = 0;
+        bool                                                                                                               m_passive_components_omitted = false;
+        uint64_t                                                                                                           m_drag_key = 0, m_drag_serial = 0, m_drag_epoch = 0;
+        uuids::uuid                                                                                                        m_drag_mesh = {};
+        ZEngine::Core::Maths::Vec3f                                                                                        m_drag_min = {}, m_drag_max = {};
+        ZEngine::Core::Maths::Geometry::BoxCorners                                                                         m_ghost       = {};
+        bool                                                                                                               m_ghost_valid = false;
         struct RootBounds
         {
             ZEngine::Core::Maths::Vec3f Minimum = {}, Maximum = {};

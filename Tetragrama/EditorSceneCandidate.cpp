@@ -1,5 +1,6 @@
 #include <Tetragrama/EditorSceneCandidate.h>
 #include <Tetragrama/EditorSceneIO.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
@@ -63,6 +64,26 @@ namespace Tetragrama
         if (!document.PopulateCandidate(candidate->m_world, schemas, diagnostics))
         {
             return false;
+        }
+
+        // Directional lights used to own a renderable editor-icon mesh. Drop
+        // that retired component while loading old scene files so its removed
+        // asset cannot make an otherwise valid scene fail to load.
+        const auto legacy_icon = uuids::uuid::from_string("ff000000-0000-0000-0000-000000000001");
+        if (!legacy_icon)
+        {
+            return Reject(diagnostics, "The legacy directional-light icon identity is invalid.");
+        }
+        std::vector<EntityID> retired_icons = {};
+        candidate->m_world.ForEach<MeshComponent, LightComponent>([&](EntityID entity, const MeshComponent& mesh, const LightComponent& light) {
+            if (mesh.MeshUUID == *legacy_icon && light.LightType == LightComponent::Type::Directional)
+            {
+                retired_icons.push_back(entity);
+            }
+        });
+        for (const EntityID entity : retired_icons)
+        {
+            candidate->m_world.RemoveComponent<MeshComponent>(entity);
         }
 
         // O(E + M log M), with one asset lookup per distinct mesh, not per placed

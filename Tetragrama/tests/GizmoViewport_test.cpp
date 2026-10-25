@@ -1386,6 +1386,80 @@ TEST_F(GizmoViewportTest, SelectionClearEpochReplacementAndTargetLossClearGeomet
     }
 }
 
+TEST_F(GizmoViewportTest, UnselectedDirectionalLightRendersAndQueuesSelectionFromItsPassiveMarker)
+{
+    const EntityID directional = ExtraEntity(1, {1.f, 0.f, 0.f});
+    scene.AddComponent<LightComponent>(directional, {.LightType = LightComponent::Type::Directional});
+    scene.SynchronizeHierarchy();
+
+    GizmoFrameData output = {};
+    viewport->BuildRender(session, camera.CaptureFrameData(), &ctx, true, 800, 600, output);
+    ASSERT_TRUE(output.ValidCounts());
+    ASSERT_GT(output.SpriteCount, 0u);
+    EXPECT_EQ(output.Sprites[output.SpriteCount - 1].Position, Vec3f(1.f, 0.f, 0.f));
+    ASSERT_GE(output.LineCount, 9u);
+    bool arrow_found = false;
+    for (uint32_t line = 0; line < output.LineCount; ++line)
+    {
+        arrow_found |= output.Lines[line].A == Vec3f(1.f, 0.f, 0.f) && output.Lines[line].B == Vec3f(1.f, 0.f, 1.f);
+    }
+    EXPECT_TRUE(arrow_found);
+    EXPECT_GT(output.TriangleCount, 0u);
+
+    ASSERT_TRUE(session.BeginMutationPhase());
+    session.ClearSelection();
+    session.EndMutationPhase();
+    BuildUI();
+
+    const Vec2f marker = Screen({1.f, 0.f, 0.f});
+    ZUIFeedMousePos(&ctx, marker.x, marker.y);
+    ZUIFeedMouseButton(&ctx, 0, true);
+    Route();
+    EXPECT_TRUE(ctx.InteractionCapture.Pointer);
+
+    ASSERT_TRUE(session.BeginMutationPhase());
+    ASSERT_TRUE(session.ProcessRequests());
+    session.EndMutationPhase();
+    EXPECT_EQ(session.Selection().ActiveUUID(), session.TargetFor(directional).UUID);
+}
+
+TEST_F(GizmoViewportTest, UnselectedPointSpotAndCameraRenderAndQueueSelectionFromPassiveMarkers)
+{
+    const EntityID point = ExtraEntity(1, {1.f, 0.f, 0.f});
+    scene.AddComponent<LightComponent>(point, {.LightType = LightComponent::Type::Point});
+    const EntityID spot = ExtraEntity(2, {-1.f, 0.f, 0.f});
+    scene.AddComponent<LightComponent>(spot, {.LightType = LightComponent::Type::Spot});
+    const EntityID camera_entity = ExtraEntity(3, {0.f, 1.f, 0.f});
+    scene.AddComponent<CameraComponent>(camera_entity, {.Near = .1f, .Far = 10.f, .AspectRatio = 1.f});
+    scene.SynchronizeHierarchy();
+
+    GizmoFrameData output = {};
+    viewport->BuildRender(session, camera.CaptureFrameData(), &ctx, true, 800, 600, output);
+    ASSERT_TRUE(output.ValidCounts());
+    EXPECT_GE(output.SpriteCount, 2u);
+    EXPECT_GE(output.LineCount, 25u);
+
+    const auto select = [&](EntityID target, const Vec3f& origin) {
+        ASSERT_TRUE(session.BeginMutationPhase());
+        session.ClearSelection();
+        session.EndMutationPhase();
+        BuildUI();
+        const Vec2f marker = Screen(origin);
+        ZUIFeedMousePos(&ctx, marker.x, marker.y);
+        ZUIFeedMouseButton(&ctx, 0, true);
+        Route();
+        EXPECT_TRUE(ctx.InteractionCapture.Pointer);
+        ASSERT_TRUE(session.BeginMutationPhase());
+        ASSERT_TRUE(session.ProcessRequests());
+        session.EndMutationPhase();
+        EXPECT_EQ(session.Selection().ActiveUUID(), session.TargetFor(target).UUID);
+        ZUIFeedMouseButton(&ctx, 0, false);
+    };
+    select(point, {1.f, 0.f, 0.f});
+    select(spot, {-1.f, 0.f, 0.f});
+    select(camera_entity, {0.f, 1.f, 0.f});
+}
+
 TEST_F(GizmoViewportTest, CapturedTargetContainsNoPointersAndTracksParentWorldChanges)
 {
     TargetFrame before = {};

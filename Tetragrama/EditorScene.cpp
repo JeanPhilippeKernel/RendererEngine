@@ -10,7 +10,6 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
-#include <ZEngine/Rendering/BuiltinMeshes.h>
 #include <random>
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::ECS::Components;
@@ -63,14 +62,6 @@ namespace Tetragrama
         auto* ctx = ZEngine::Engine::GetContext();
         if (ctx && ctx->ActorManager)
         {
-            ZEngine::Rendering::RegisterBuiltinMeshes(LocalArena);
-
-            const uuids::uuid light_uuid = ZEngine::Rendering::BuiltinMeshUUIDParsed(ZEngine::Rendering::BuiltinMeshID::DirectionalLightIcon);
-            if (light_uuid.is_nil())
-            {
-                return;
-            }
-
             constexpr cstring         default_light_name = "DirectionalLight";
 
             ZEngine::ECS::ActorHandle handle             = ctx->ActorManager->Create();
@@ -104,12 +95,6 @@ namespace Tetragrama
             {
                 Sky.PrimaryCelestialLight = uc.Value;
             }
-
-            uint32_t      render_id = AddMeshInstance(light_uuid, default_light_name);
-            MeshComponent mc        = {};
-            mc.MeshUUID             = light_uuid;
-            mc.RenderInstanceId     = render_id;
-            actor->AddComponent<MeshComponent>(mc);
         }
 
         MarkSkyDirty();

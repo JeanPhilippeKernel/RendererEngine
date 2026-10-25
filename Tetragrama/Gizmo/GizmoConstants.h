@@ -90,7 +90,7 @@ namespace Tetragrama::Gizmo::Constants
     inline constexpr float    DirectionalSunSizePx           = 18.f; // tile 74:1628
     inline constexpr float    LightSunRayGapPx               = 4.f;
     inline constexpr float    LightSunRayLengthPx            = 6.f;
-    inline constexpr float    DirectionalArrowWorldLength    = 2.f;
+    inline constexpr float    DirectionalArrowWorldLength    = 1.f;
     inline constexpr float    DirectionalRayWorldOffset      = .25f;
     inline constexpr float    DirectionalRayAlpha            = .55f;                     // tile 74:1596
     inline constexpr float    LineHitTolerancePx             = 8.f;                      // GZ4, arrows and rings

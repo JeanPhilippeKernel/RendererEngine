@@ -1,11 +1,18 @@
 #include <Tetragrama/EditorSession.h>
 #include <Tetragrama/Gizmo/GizmoValuePill.h>
 #include <Tetragrama/Gizmo/GizmoViewport.h>
+#include <ZEngine/ECS/Components/CameraComponent.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Rendering/Renderers/GizmoPrimitiveBuilder.h>
+#include <ZEngine/UI/ZUIDrawList.h>
 #include <ZEngine/UI/ZUIInteraction.h>
+#include <ZEngine/UI/ZUITokens.h>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 using namespace ZEngine;
 using namespace Core::Maths;
@@ -41,6 +48,199 @@ namespace Tetragrama::Gizmo
         m_camera_target              = {};
         m_hits.Reset();
         m_scratch.Reset();
+        m_passive_component_count    = 0;
+        m_passive_components_omitted = false;
+    }
+
+    void Viewport::RefreshPassiveComponents(EditorSession& session, const CameraFrameData& camera)
+    {
+        m_passive_component_count    = 0;
+        m_passive_components_omitted = false;
+        auto* scene                  = session.Scene();
+        if (!scene || m_bounds.Size.x <= 0.f || m_bounds.Size.y <= 0.f)
+        {
+            return;
+        }
+        Geometry::ProjectionFrame projection = {};
+        const auto                kind       = camera.ProjectionType == CameraType::PERSPECTIVE ? Geometry::ProjectionKind::Perspective : Geometry::ProjectionKind::Orthographic;
+        if (!Geometry::MakeProjectionFrame(camera.View, camera.Projection, camera.Position, kind, camera.UsesReverseZ, &projection))
+        {
+            return;
+        }
+        const auto add = [&](ECS::EntityID entity, const auto& transform, const auto& identity, PassiveComponentKind kind, bool camera_forward) {
+            if (session.Selection().Contains(identity.Value))
+            {
+                return;
+            }
+            // The active transform/component gizmos can add up to sixteen
+            // sprites. Keep enough room so every cached passive marker is
+            // actually emitted and therefore pickable.
+            if (m_passive_component_count == m_passive_components.size() - 16)
+            {
+                m_passive_components_omitted = true;
+                return;
+            }
+            const Vec3f              origin(transform.WorldTransform(0, 3), transform.WorldTransform(1, 3), transform.WorldTransform(2, 3));
+            Vec3f                    forward(transform.WorldTransform(0, 2), transform.WorldTransform(1, 2), transform.WorldTransform(2, 2));
+            const double             length    = std::hypot(double(forward.x), double(forward.y), double(forward.z));
+            Geometry::ProjectedPoint projected = {};
+            if (!std::isfinite(length) || length <= 0.0 || !Geometry::Project(origin, projection, m_bounds, &projected))
+            {
+                return;
+            }
+            const float depth = float((double(origin.x) - camera.Position.x) * projection.Forward.x + (double(origin.y) - camera.Position.y) * projection.Forward.y + (double(origin.z) - camera.Position.z) * projection.Forward.z);
+            if (!std::isfinite(depth) || depth <= 0.f)
+            {
+                return;
+            }
+            const float sign   = camera_forward ? -1.f : 1.f;
+            auto&       marker = m_passive_components[m_passive_component_count++];
+            marker             = {
+                .Target = session.TargetFor(entity), .Origin = origin, .Forward = {float(sign * forward.x / length), float(sign * forward.y / length), float(sign * forward.z / length)},
+                        .Screen = projected.Screen, .Depth = depth, .Kind = kind
+            };
+        };
+        scene->ForEach<ECS::Components::LightComponent, ECS::Components::TransformComponent, ECS::Components::UUIDComponent>([&](ECS::EntityID entity, const auto& light, const auto& transform, const auto& identity) {
+            const auto kind = light.LightType == ECS::Components::LightComponent::Type::Directional ? PassiveComponentKind::DirectionalLight : light.LightType == ECS::Components::LightComponent::Type::Point ? PassiveComponentKind::PointLight : PassiveComponentKind::SpotLight;
+            add(entity, transform, identity, kind, false);
+        });
+        scene->ForEach<ECS::Components::CameraComponent, ECS::Components::TransformComponent, ECS::Components::UUIDComponent>([&](ECS::EntityID entity, const auto&, const auto& transform, const auto& identity) { add(entity, transform, identity, PassiveComponentKind::Camera, true); });
+    }
+
+    void Viewport::BuildPassiveComponents(const CameraFrameData& camera, uint32_t width, uint32_t height, Rendering::Renderers::GizmoFrameData& output) const
+    {
+        Geometry::ProjectionFrame projection = {};
+        const auto                kind       = camera.ProjectionType == CameraType::PERSPECTIVE ? Geometry::ProjectionKind::Perspective : Geometry::ProjectionKind::Orthographic;
+        if (!Geometry::MakeProjectionFrame(camera.View, camera.Projection, camera.Position, kind, camera.UsesReverseZ, &projection))
+        {
+            return;
+        }
+        Rendering::Renderers::GizmoPrimitiveBuilder builder(output, projection, m_bounds.Size.y, width, height);
+        const auto&                                 light_color    = UI::Tokens::PinVector;
+        const auto&                                 camera_color   = UI::Tokens::TextPrimary;
+        const uint32_t                              light_packed   = UI::ZUIPackColor(light_color.R, light_color.G, light_color.B, .8f);
+        const uint32_t                              camera_packed  = UI::ZUIPackColor(camera_color.R, camera_color.G, camera_color.B, .8f);
+        output.DecorationsOmitted                                 |= m_passive_components_omitted;
+        for (uint32_t i = 0; builder.Valid() && i < m_passive_component_count; ++i)
+        {
+            const auto& marker = m_passive_components[i];
+            if (marker.Kind == PassiveComponentKind::Camera)
+            {
+                Geometry::ProjectedPoint origin = {}, forward = {};
+                if (!Geometry::Project(marker.Origin, projection, m_bounds, &origin) || !Geometry::Project(marker.Origin + marker.Forward, projection, m_bounds, &forward))
+                {
+                    continue;
+                }
+                const Vec2f  delta     = forward.Screen - origin.Screen;
+                const double length    = std::hypot(double(delta.x), double(delta.y));
+                const Vec2f  direction = length > 1.0 ? Vec2f(float(delta.x / length), float(delta.y / length)) : Vec2f(1.f, 0.f);
+                const Vec2f  side(-direction.y, direction.x);
+                const Vec2f  body[] = {
+                    {-Constants::CameraLensLengthPx - Constants::CameraMarkerWidthPx, -Constants::CameraMarkerHeightPx * .5f},
+                    {                                 -Constants::CameraLensLengthPx, -Constants::CameraMarkerHeightPx * .5f},
+                    {                                 -Constants::CameraLensLengthPx,  Constants::CameraMarkerHeightPx * .5f},
+                    {-Constants::CameraLensLengthPx - Constants::CameraMarkerWidthPx,  Constants::CameraMarkerHeightPx * .5f}
+                };
+                const Vec2f lens[] = {
+                    {-Constants::CameraLensLengthPx, -Constants::CameraLensInnerHeightPx * .5f},
+                    {                           0.f, -Constants::CameraLensOuterHeightPx * .5f},
+                    {                           0.f,  Constants::CameraLensOuterHeightPx * .5f},
+                    {-Constants::CameraLensLengthPx,  Constants::CameraLensInnerHeightPx * .5f}
+                };
+                for (const auto* polygon : {body, lens})
+                {
+                    Core::Containers::FixedArray<Vec3f, 4> points = {};
+                    bool                                   valid  = true;
+                    for (uint32_t point = 0; point < 4; ++point)
+                    {
+                        valid &= Geometry::UnprojectAtDepth(origin.Screen + direction * polygon[point].x + side * polygon[point].y, origin.Depth, projection, m_bounds, &points[point]);
+                    }
+                    if (valid)
+                    {
+                        for (uint32_t point = 0; point < 4; ++point)
+                        {
+                            (void) builder.Line({.A = points[point], .B = points[(point + 1) % 4], .Width = Constants::CameraMarkerLineWidthPx, .Color = camera_packed});
+                        }
+                    }
+                }
+                continue;
+            }
+
+            const float sun_size = marker.Kind == PassiveComponentKind::PointLight ? Constants::PointSunSizePx : marker.Kind == PassiveComponentKind::SpotLight ? Constants::SpotSunSizePx : Constants::DirectionalSunSizePx;
+            (void) builder.Sprite({.Position = marker.Origin, .Size = sun_size, .Fill = light_packed, .Round = true});
+            Geometry::ProjectedPoint origin = {};
+            if (Geometry::Project(marker.Origin, projection, m_bounds, &origin))
+            {
+                const float ray_start = sun_size * .5f + Constants::LightSunRayGapPx;
+                for (uint32_t ray = 0; ray < 8; ++ray)
+                {
+                    const float angle = 2.f * std::numbers::pi_v<float> * float(ray) / 8.f;
+                    const Vec2f ray_direction(std::cos(angle), std::sin(angle));
+                    Vec3f       a = {}, b = {};
+                    if (Geometry::UnprojectAtDepth(origin.Screen + ray_direction * ray_start, origin.Depth, projection, m_bounds, &a) && Geometry::UnprojectAtDepth(origin.Screen + ray_direction * (ray_start + Constants::LightSunRayLengthPx), origin.Depth, projection, m_bounds, &b))
+                    {
+                        (void) builder.Line({.A = a, .B = b, .Width = Constants::ComponentLineWidthPx, .Color = light_packed});
+                    }
+                }
+            }
+            if (marker.Kind == PassiveComponentKind::PointLight)
+            {
+                continue;
+            }
+            const Vec3f tip = marker.Origin + marker.Forward * Constants::DirectionalArrowWorldLength;
+            (void) builder.Line({.A = marker.Origin, .B = tip, .Width = Constants::ComponentLineWidthPx, .Color = light_packed, .RoundCaps = true});
+            Geometry::ProjectedPoint start = {}, end = {};
+            if (!Geometry::Project(marker.Origin, projection, m_bounds, &start) || !Geometry::Project(tip, projection, m_bounds, &end))
+            {
+                continue;
+            }
+            const Vec2f  axis   = end.Screen - start.Screen;
+            const double length = std::hypot(double(axis.x), double(axis.y));
+            if (length <= 1.0)
+            {
+                continue;
+            }
+            const Vec2f direction(float(axis.x / length), float(axis.y / length));
+            const Vec2f side(-direction.y, direction.x);
+            const float head = float(std::min(double(Constants::ArrowLengthPx), length * .25));
+            const Vec2f base = end.Screen - direction * head;
+            Vec3f       a = {}, b = {};
+            if (!Geometry::UnprojectAtDepth(base + side * (head * Constants::ArrowWidthPx / Constants::ArrowLengthPx * .5f), end.Depth, projection, m_bounds, &a) || !Geometry::UnprojectAtDepth(base - side * (head * Constants::ArrowWidthPx / Constants::ArrowLengthPx * .5f), end.Depth, projection, m_bounds, &b))
+            {
+                continue;
+            }
+            const auto result = builder.Triangle({.A = tip, .B = a, .C = b, .Color = light_packed});
+            if (result == Rendering::Renderers::GizmoEmitResult::CapacityExceeded)
+            {
+                output.DecorationsOmitted = true;
+            }
+        }
+    }
+
+    bool Viewport::PickPassiveComponent(const Vec2f& point, EntityTarget& target) const
+    {
+        target      = {};
+        float depth = std::numeric_limits<float>::max();
+        for (uint32_t i = 0; i < m_passive_component_count; ++i)
+        {
+            const auto& marker = m_passive_components[i];
+            Vec2f       extent = {};
+            if (marker.Kind == PassiveComponentKind::Camera)
+            {
+                extent = Vec2f(Constants::CameraMarkerWidthPx + Constants::CameraLensLengthPx, Constants::CameraMarkerHeightPx) * .5f + Vec2f(Constants::BoxHitPaddingPx, Constants::BoxHitPaddingPx);
+            }
+            else
+            {
+                const float size = marker.Kind == PassiveComponentKind::PointLight ? Constants::PointSunSizePx : marker.Kind == PassiveComponentKind::SpotLight ? Constants::SpotSunSizePx : Constants::DirectionalSunSizePx;
+                extent           = {size * .5f + Constants::BoxHitPaddingPx, size * .5f + Constants::BoxHitPaddingPx};
+            }
+            if (std::abs(point.x - marker.Screen.x) <= extent.x && std::abs(point.y - marker.Screen.y) <= extent.y && marker.Depth < depth)
+            {
+                target = marker.Target;
+                depth  = marker.Depth;
+            }
+        }
+        return target.CachedEntity != ECS::INVALID_ENTITY;
     }
 
     void Viewport::Bind(const UI::ZUIContext* ctx, const float rect[4], uint64_t viewport_key, uint64_t hit_key)
@@ -116,9 +316,16 @@ namespace Tetragrama::Gizmo
         const bool transform        = mode != Operation::Select && (!grid || mode != Operation::Scale) && ResolveTargetFrame(session, target);
         const bool component        = ResolveLightFrame(session, light);
         const bool camera_component = ResolveCameraFrame(session, frustum);
+        RefreshPassiveComponents(session, camera);
         if (!transform && !component && !camera_component)
         {
-            Invalidate();
+            m_cache_valid = m_allow_hits = false;
+            m_hovered                    = Handle::None;
+            m_target                     = {};
+            m_light_target               = {};
+            m_camera_target              = {};
+            m_hits.Reset();
+            m_scratch.Reset();
             return;
         }
         const bool same_transform = target.Valid == m_target.Valid && (!target.Valid || SameTargetFrame(target, m_target));
@@ -157,12 +364,20 @@ namespace Tetragrama::Gizmo
             return false;
         }
         const auto& viewport = *static_cast<const Viewport*>(data);
-        if (!viewport.m_allow_hits || !viewport.m_cache_valid || box->Key != viewport.m_hit_key)
+        if (!viewport.m_bound || box->Key != viewport.m_hit_key)
         {
             return false;
         }
-        const auto handle = Handle(viewport.m_hits.Pick({point[0], point[1]}).Handle);
-        return handle != Handle::None && (!viewport.m_input.PivotEditable || IsCenterHandle(handle));
+        if (viewport.m_allow_hits && viewport.m_cache_valid)
+        {
+            const auto handle = Handle(viewport.m_hits.Pick({point[0], point[1]}).Handle);
+            if (handle != Handle::None && (!viewport.m_input.PivotEditable || IsCenterHandle(handle)))
+            {
+                return true;
+            }
+        }
+        EntityTarget passive = {};
+        return viewport.PickPassiveComponent({point[0], point[1]}, passive);
     }
 
     Handle Viewport::QueryHover(const UI::ZUIContext* ctx) const
@@ -267,6 +482,7 @@ namespace Tetragrama::Gizmo
         BuildHitFrame(session, camera, ctx, focused);
         if (!m_cache_valid)
         {
+            BuildPassiveComponents(camera, width, height, output);
             return;
         }
         m_hovered          = QueryHover(ctx);
@@ -345,7 +561,9 @@ namespace Tetragrama::Gizmo
         if (BuildFrame(input, output, m_hits) != FrameBuildResult::Built)
         {
             Invalidate();
+            return;
         }
+        BuildPassiveComponents(camera, width, height, output);
     }
 
     void Viewport::BuildTranslationPresentation(EditorSession& session, FrameInput& input)
