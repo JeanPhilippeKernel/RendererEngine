@@ -22,6 +22,8 @@ layout(push_constant) uniform AtmosphereViewPushConstants
 }
 Push;
 
+const float SKY_ATMOSPHERE_AERIAL_MAX_DISTANCE = 96.0;
+
 #define SKY_ATMOSPHERE_TRANSMITTANCE_LUT   sampler2D(Transmittance, LinearClampToEdgeSampler)
 #define SKY_ATMOSPHERE_MULTISCATTERING_LUT sampler2D(Multiscattering, LinearClampToEdgeSampler)
 #include "sky_atmosphere_integrator.glsl"
@@ -64,15 +66,24 @@ void main()
         return;
     }
 
-    const vec3              uvw                = (vec3(voxel) + vec3(0.5)) / vec3(extent);
-    const vec3              camera_position    = -to_planet;
-    const vec3              up                 = camera_position / center_distance;
-    const float             sun_length         = length(Push.SunDirectionAndRadius.xyz);
-    const bool              has_sun            = Push.SunRadianceAvailabilityAndGroundAlbedoGB.y > 0.5 && sun_length > 1.0e-6;
-    const vec3              sun_direction      = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
-    const float             sun_radiance       = has_sun ? max(Push.SunRadianceAvailabilityAndGroundAlbedoGB.x, 0.0) : 0.0;
-    const vec3              direction          = decode_sky_view_direction(uvw.xy, up, sun_direction);
-    const float             requested_distance = exp2(uvw.z * log2(1.0 + Push.PlanetCenterRelativeAndMaxDistance.w)) - 1.0;
+    const vec3  uvw                = (vec3(voxel) + vec3(0.5)) / vec3(extent);
+    const vec3  camera_position    = -to_planet;
+    const vec3  up                 = camera_position / center_distance;
+    const float sun_length         = length(Push.SunDirectionAndRadius.xyz);
+    const bool  has_sun            = Push.SunRadianceAvailabilityAndGroundAlbedoGB.y > 0.5 && sun_length > 1.0e-6;
+    const vec3  sun_direction      = has_sun ? Push.SunDirectionAndRadius.xyz / sun_length : vec3(0.0, 1.0, 0.0);
+    const float sun_radiance       = has_sun ? max(Push.SunRadianceAvailabilityAndGroundAlbedoGB.x, 0.0) : 0.0;
+    const vec3  direction          = decode_sky_view_direction(uvw.xy, up, sun_direction);
+    const float distance_scale     = max(Push.PlanetCenterRelativeAndMaxDistance.w, 1.0e-3);
+    const float unscaled_distance  = exp2(uvw.z * log2(1.0 + SKY_ATMOSPHERE_AERIAL_MAX_DISTANCE)) - 1.0;
+    const float requested_distance = unscaled_distance * distance_scale;
+    const float start_depth        = max(Push.PresentationTintIntensityAndGroundAmbient.w, 0.0);
+    if (unscaled_distance < start_depth)
+    {
+        imageStore(InscatterDestination, ivec3(voxel), vec4(0.0));
+        imageStore(TransmittanceDestination, ivec3(voxel), vec4(1.0));
+        return;
+    }
     SkyAtmosphereParameters parameters;
     parameters.RadiiAndScaleHeights               = Push.RadiiAndScaleHeights;
     parameters.RayleighScatteringAndGroundAlbedoR = Push.RayleighScatteringAndGroundAlbedoR;
@@ -80,7 +91,9 @@ void main()
     parameters.OzoneAbsorption                    = Push.OzoneAbsorption;
     parameters.GroundAlbedoAndAmbient             = vec4(Push.RayleighScatteringAndGroundAlbedoR.w, Push.SunRadianceAvailabilityAndGroundAlbedoGB.zw, Push.PresentationTintIntensityAndGroundAmbient.w);
     vec3       transmittance_to_viewer;
-    const vec3 inscatter = sky_integrate_radiance_segment(parameters, camera_position, direction, sun_direction, sun_radiance, requested_distance, transmittance_to_viewer);
+    // Opaque geometry provides the terminal radiance. Only the participating
+    // medium belongs in this volume; virtual ground radiance is background-only.
+    const vec3 inscatter = sky_integrate_radiance_segment(parameters, camera_position, direction, sun_direction, sun_radiance, requested_distance, false, transmittance_to_viewer);
 
     imageStore(InscatterDestination, ivec3(voxel), vec4(clamp(inscatter * Push.PresentationTintIntensityAndGroundAmbient.rgb, vec3(0.0), vec3(65000.0)), 1.0));
     imageStore(TransmittanceDestination, ivec3(voxel), vec4(clamp(transmittance_to_viewer, vec3(0.0), vec3(1.0)), 1.0));

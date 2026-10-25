@@ -1104,6 +1104,26 @@ namespace Tetragrama
             {
                 DefaultSky.EnvironmentIntensity = sky["environmentIntensity"].get<float>();
             }
+            if (sky.contains("skyLuminanceFactor") && sky["skyLuminanceFactor"].is_number())
+            {
+                DefaultSky.SkyLuminanceFactor = sky["skyLuminanceFactor"].get<float>();
+            }
+            if (sky.contains("skyDiffuseIntensity") && sky["skyDiffuseIntensity"].is_number())
+            {
+                DefaultSky.SkyDiffuseIntensity = sky["skyDiffuseIntensity"].get<float>();
+            }
+            if (sky.contains("skySpecularIntensity") && sky["skySpecularIntensity"].is_number())
+            {
+                DefaultSky.SkySpecularIntensity = sky["skySpecularIntensity"].get<float>();
+            }
+            if (sky.contains("aerialPerspectiveStartDepthKilometers") && sky["aerialPerspectiveStartDepthKilometers"].is_number())
+            {
+                DefaultSky.AerialPerspectiveStartDepthKilometers = sky["aerialPerspectiveStartDepthKilometers"].get<float>();
+            }
+            if (sky.contains("aerialPerspectiveDistanceScale") && sky["aerialPerspectiveDistanceScale"].is_number())
+            {
+                DefaultSky.AerialPerspectiveDistanceScale = sky["aerialPerspectiveDistanceScale"].get<float>();
+            }
             if (sky.contains("environmentYawRadians") && sky["environmentYawRadians"].is_number())
             {
                 DefaultSky.EnvironmentYawRadians = sky["environmentYawRadians"].get<float>();
@@ -1124,6 +1144,25 @@ namespace Tetragrama
                     for (uint32_t i = 0; i < 4; ++i)
                     {
                         DefaultSky.EnvironmentTint[i] = sky["environmentTint"][i].get<float>();
+                    }
+                }
+            }
+            if (sky.contains("skyLowerHemisphereColor") && sky["skyLowerHemisphereColor"].is_array() && sky["skyLowerHemisphereColor"].size() == 3)
+            {
+                bool valid_color = true;
+                for (uint32_t i = 0; i < 3; ++i)
+                {
+                    if (!sky["skyLowerHemisphereColor"][i].is_number())
+                    {
+                        valid_color = false;
+                        break;
+                    }
+                }
+                if (valid_color)
+                {
+                    for (uint32_t i = 0; i < 3; ++i)
+                    {
+                        DefaultSky.SkyLowerHemisphereColor[i] = sky["skyLowerHemisphereColor"][i].get<float>();
                     }
                 }
             }

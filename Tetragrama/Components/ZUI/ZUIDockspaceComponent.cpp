@@ -1111,6 +1111,18 @@ namespace Tetragrama::Components
                     {
                         mark_sky_dirty();
                     }
+                    if (scalar_row("##sky_luminance_r", "Sky Luminance", "##sky_luminance", &cfg.SkyLuminanceFactor, 0.0f, 32.0f))
+                    {
+                        mark_sky_dirty();
+                    }
+                    if (scalar_row("##sky_diffuse_intensity_r", "Diffuse Intensity", "##sky_diffuse_intensity", &cfg.SkyDiffuseIntensity, 0.0f, 32.0f))
+                    {
+                        mark_sky_dirty();
+                    }
+                    if (scalar_row("##sky_specular_intensity_r", "Specular Intensity", "##sky_specular_intensity", &cfg.SkySpecularIntensity, 0.0f, 32.0f))
+                    {
+                        mark_sky_dirty();
+                    }
                     if (color_row("##sky_tint_r", "Environment Tint", "##sky_tint", cfg.EnvironmentTint))
                     {
                         mark_sky_dirty();
@@ -1261,6 +1273,18 @@ namespace Tetragrama::Components
                             mark_sky_dirty();
                         }
                         if (drag_scalar_row("##sky_atm_ground_ambient_r", "Ground Ambient", "##sky_atm_ground_ambient", &cfg.Atmosphere.GroundAmbientIrradiance, 0.01f, 0.0f, 16.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (color3_row("##sky_lower_hemisphere_r", "Lower Hemisphere", "##sky_lower_hemisphere", cfg.SkyLowerHemisphereColor))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_aerial_start_r", "Aerial Start (km)", "##sky_aerial_start", &cfg.AerialPerspectiveStartDepthKilometers, 0.01f, 0.0f, 96.0f))
+                        {
+                            mark_sky_dirty();
+                        }
+                        if (drag_scalar_row("##sky_aerial_scale_r", "Aerial Distance Scale", "##sky_aerial_scale", &cfg.AerialPerspectiveDistanceScale, 0.01f, 0.001f, 32.0f))
                         {
                             mark_sky_dirty();
                         }

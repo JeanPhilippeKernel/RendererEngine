@@ -32,7 +32,7 @@ namespace ZEngine::Rendering::Renderers
     protected:
         [[nodiscard]] bool                        IsViewActive() const;
         [[nodiscard]] bool                        IsRenderableView(const RenderGraphFrameContext& frame_context) const;
-        [[nodiscard]] AtmosphereViewPushConstants MakePushConstants() const;
+        [[nodiscard]] AtmosphereViewPushConstants MakePushConstants(bool for_aerial_perspective = false) const;
 
         Scenes::SkyConfig                         m_config       = {};
         Scenes::SkyConfig                         m_presentation = {};

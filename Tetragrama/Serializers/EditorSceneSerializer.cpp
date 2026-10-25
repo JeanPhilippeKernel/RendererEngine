@@ -257,7 +257,8 @@ namespace Tetragrama::Serializers
             return;
         }
 
-        if (scene_magic != ZESCENE_MAGIC || scene_version != SCENE_FILE_VERSION)
+        constexpr uint32_t kPreviousSceneFileVersion = MAKE_VERSION(2, 1, 0);
+        if (scene_magic != ZESCENE_MAGIC || (scene_version != kPreviousSceneFileVersion && scene_version != SCENE_FILE_VERSION))
         {
             reject_file("Error: Invalid scene file, unknown format");
             return;
@@ -311,7 +312,7 @@ namespace Tetragrama::Serializers
         }
         scene->Name = scene_name.c_str();
 
-        if (!ZEngine::Rendering::Scenes::Serialization::ReadSkyConfig(in_stream, scene->Sky))
+        if (!ZEngine::Rendering::Scenes::Serialization::ReadSkyConfig(in_stream, scene->Sky, scene_version >= SCENE_FILE_VERSION))
         {
             reject_file("Error: Invalid or truncated scene file.");
             return;

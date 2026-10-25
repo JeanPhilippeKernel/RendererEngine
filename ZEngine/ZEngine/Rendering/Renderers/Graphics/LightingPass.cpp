@@ -100,8 +100,10 @@ namespace ZEngine::Rendering::Renderers
         EnvironmentLightingPushConstants environment = {};
         for (uint32_t index = 0; index < 3; ++index)
             environment.TintIntensity[index] = m_sky_config.EnvironmentTint[index] * m_sky_config.EnvironmentIntensity;
-        environment.YawRadians     = m_sky_config.EnvironmentYawRadians;
-        environment.SpecularMaxLod = m_environment_lighting.SpecularMipCount > 0 ? static_cast<float>(m_environment_lighting.SpecularMipCount - 1) : 0.0f;
+        environment.YawRadians        = m_sky_config.EnvironmentYawRadians;
+        environment.SpecularMaxLod    = m_environment_lighting.SpecularMipCount > 0 ? static_cast<float>(m_environment_lighting.SpecularMipCount - 1) : 0.0f;
+        environment.DiffuseIntensity  = m_sky_config.SkyDiffuseIntensity;
+        environment.SpecularIntensity = m_sky_config.SkySpecularIntensity;
         command_buffer->PushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(environment), &environment);
         command_buffer->Draw(3, 1, 0, 0);
         return true;

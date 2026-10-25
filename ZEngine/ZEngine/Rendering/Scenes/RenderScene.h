@@ -226,16 +226,27 @@ namespace ZEngine::Rendering::Scenes
     /// UUID references; a nil UUID requests the renderer's documented fallback.
     struct SkyConfig
     {
-        SkyMode            Mode                               = SkyMode::Atmosphere;
-        uuids::uuid        EnvironmentMap                     = {};
-        float              EnvironmentIntensity               = 1.0f;
-        float              EnvironmentTint[4]                 = {1.0f, 1.0f, 1.0f, 1.0f};
-        float              EnvironmentYawRadians              = 0.0f;
-        uuids::uuid        PrimaryCelestialLight              = {};
-        AtmosphereSettings Atmosphere                         = {};
-        SkySphereSettings  Sphere                             = {};
+        SkyMode            Mode                                  = SkyMode::Atmosphere;
+        uuids::uuid        EnvironmentMap                        = {};
+        float              EnvironmentIntensity                  = 1.0f;
+        float              EnvironmentTint[4]                    = {1.0f, 1.0f, 1.0f, 1.0f};
+        float              EnvironmentYawRadians                 = 0.0f;
+        /// @brief Scales the visible sky without changing sky-light baking.
+        float              SkyLuminanceFactor                    = 1.0f;
+        /// @brief Independent IBL weights for diffuse and specular lighting.
+        float              SkyDiffuseIntensity                   = 1.0f;
+        float              SkySpecularIntensity                  = 1.0f;
+        /// @brief Replaces the lower sky-light hemisphere during environment baking.
+        float              SkyLowerHemisphereColor[3]            = {0.0f, 0.0f, 0.0f};
+        /// @brief Distance before aerial perspective is applied to opaque geometry.
+        float              AerialPerspectiveStartDepthKilometers = 0.0f;
+        /// @brief Scales opaque geometry distance before aerial perspective lookup.
+        float              AerialPerspectiveDistanceScale        = 1.0f;
+        uuids::uuid        PrimaryCelestialLight                 = {};
+        AtmosphereSettings Atmosphere                            = {};
+        SkySphereSettings  Sphere                                = {};
 
-        [[nodiscard]] bool operator==(const SkyConfig&) const = default;
+        [[nodiscard]] bool operator==(const SkyConfig&) const    = default;
 
         [[nodiscard]] bool IsHDRI() const
         {
@@ -258,7 +269,7 @@ namespace ZEngine::Rendering::Scenes
             const auto finite_rgb          = [finite_non_negative](const float (&value)[3]) { return finite_non_negative(value[0]) && finite_non_negative(value[1]) && finite_non_negative(value[2]); };
             const auto finite_rgba         = [finite_non_negative](const float (&value)[4]) { return finite_non_negative(value[0]) && finite_non_negative(value[1]) && finite_non_negative(value[2]) && finite_non_negative(value[3]); };
 
-            if (static_cast<uint8_t>(Mode) > static_cast<uint8_t>(SkyMode::SkySphere) || !finite_non_negative(EnvironmentIntensity) || !finite_rgba(EnvironmentTint) || !finite(EnvironmentYawRadians))
+            if (static_cast<uint8_t>(Mode) > static_cast<uint8_t>(SkyMode::SkySphere) || !finite_non_negative(EnvironmentIntensity) || !finite_rgba(EnvironmentTint) || !finite(EnvironmentYawRadians) || !finite_non_negative(SkyLuminanceFactor) || !finite_non_negative(SkyDiffuseIntensity) || !finite_non_negative(SkySpecularIntensity) || !finite_rgb(SkyLowerHemisphereColor) || !finite_non_negative(AerialPerspectiveStartDepthKilometers) || !finite(AerialPerspectiveDistanceScale) || AerialPerspectiveDistanceScale <= 0.0f)
             {
                 return false;
             }

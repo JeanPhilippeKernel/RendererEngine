@@ -58,6 +58,13 @@ float line_coverage(vec2 uv, vec2 footprint, float log_spacing)
     return max(coverage.x, coverage.y);
 }
 
+float distance_fade(float relative_distance, float strength, float weight)
+{
+    // A shared radius still bounds every layer, while different exponents make
+    // fine lines recede first and keep the major reference and axes legible.
+    return strength == 0.0 ? 1.0 : pow(max(0.0, 1.0 - relative_distance), strength * weight);
+}
+
 void main()
 {
     // Take screen derivatives before any divergent rejection. The plane
@@ -110,21 +117,20 @@ void main()
     // Compose authored alpha in premultiplied form, converting once at output
     // for the pipeline's straight-alpha blend. A transparent axis or major
     // line must not recolor a visible minor line underneath it.
-    float minor_alpha   = Grid.ColorThin.a * minor * cap_fade;
-    float major_alpha   = Grid.ColorThick.a * major * cap_fade;
-    vec4  color         = vec4(Grid.ColorThin.rgb * minor_alpha, minor_alpha);
-    color               = vec4(Grid.ColorThick.rgb * major_alpha, major_alpha) + color * (1.0 - major_alpha);
+    // Both endpoints preserve the authored value. Only the middle of an LOD
+    // crossfade strengthens the larger reference and quiets fine detail.
+    float transition    = 4.0 * blend * (1.0 - blend);
+    float minor_alpha   = Grid.ColorThin.a * minor * cap_fade * (1.0 - 0.15 * transition);
+    float major_alpha   = Grid.ColorThick.a * major * cap_fade * (1.0 + 0.12 * transition);
 
     vec2  axis_distance = abs(uv) / footprint;
     float on_u          = clamp(min(Grid.Style.z, 1.0e20) * 0.5 + 0.5 - axis_distance.y, 0.0, 1.0);
     float on_v          = clamp(min(Grid.Style.z, 1.0e20) * 0.5 + 0.5 - axis_distance.x, 0.0, 1.0);
     float v_alpha       = Grid.ColorVAxis.a * on_v;
     float u_alpha       = Grid.ColorUAxis.a * on_u;
-    color               = vec4(Grid.ColorVAxis.rgb * v_alpha, v_alpha) + color * (1.0 - v_alpha);
-    color               = vec4(Grid.ColorUAxis.rgb * u_alpha, u_alpha) + color * (1.0 - u_alpha);
 
-    vec3 camera_offset  = hit - Camera.Position.xyz;
-    vec2 camera_uv      = vec2(dot(camera_offset, u), dot(camera_offset, v));
+    vec3  camera_offset = hit - Camera.Position.xyz;
+    vec2  camera_uv     = vec2(dot(camera_offset, u), dot(camera_offset, v));
     if (!finite3(camera_offset) || any(isnan(camera_uv)) || any(isinf(camera_uv)))
         discard;
     float largest           = max(abs(camera_uv.x), abs(camera_uv.y));
@@ -132,8 +138,26 @@ void main()
     float relative_distance = exp2(clamp(log_distance - Grid.Style.x, -100.0, 100.0));
     if (relative_distance >= 1.0 || isnan(relative_distance))
         discard;
-    float falloff = Grid.Style.y == 0.0 ? 1.0 : pow(max(0.0, 1.0 - relative_distance), Grid.Style.y);
-    float alpha   = color.a * falloff;
+    float minor_fade       = distance_fade(relative_distance, Grid.Style.y, 1.50);
+    float major_fade       = distance_fade(relative_distance, Grid.Style.y, 0.85);
+    float axis_fade        = distance_fade(relative_distance, Grid.Style.y, 0.55);
+    // Recompose after per-layer falloff so a faint major or axis line never
+    // tints the fine grid below it.
+    minor_alpha           *= minor_fade;
+    major_alpha           *= major_fade;
+    v_alpha               *= axis_fade;
+    u_alpha               *= axis_fade;
+    vec4 color             = vec4(Grid.ColorThin.rgb * minor_alpha, minor_alpha);
+    color                  = vec4(Grid.ColorThick.rgb * major_alpha, major_alpha) + color * (1.0 - major_alpha);
+    color                  = vec4(Grid.ColorVAxis.rgb * v_alpha, v_alpha) + color * (1.0 - v_alpha);
+    color                  = vec4(Grid.ColorUAxis.rgb * u_alpha, u_alpha) + color * (1.0 - u_alpha);
+
+    // At grazing angles, perspective compresses many cells into a few pixels.
+    // Fade the plane before that dense horizon pattern can compete with content.
+    float camera_distance  = length(camera_offset);
+    float plane_facing     = camera_distance > 1.0e-20 ? abs(dot(normalize(n), camera_offset / camera_distance)) : 1.0;
+    float angle_fade       = smoothstep(0.05, 0.25, plane_facing);
+    float alpha            = color.a * angle_fade;
     if (alpha <= 0.001 || isnan(alpha) || isinf(alpha) || !finite3(color.rgb))
         discard;
     // FrameColor is display-encoded after tone mapping; authored overlay colors

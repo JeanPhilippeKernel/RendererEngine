@@ -7,12 +7,11 @@ namespace ZEngine::Rendering::Renderers
 {
     namespace
     {
-        constexpr uint32_t kSkyViewWidth      = 192;
-        constexpr uint32_t kSkyViewHeight     = 108;
-        constexpr uint32_t kAerialResolution  = 32;
-        constexpr uint32_t kLocalSize2D       = 8;
-        constexpr uint32_t kLocalSizeAerialZ  = 4;
-        constexpr float    kAerialMaxDistance = 96.0f;
+        constexpr uint32_t kSkyViewWidth     = 192;
+        constexpr uint32_t kSkyViewHeight    = 108;
+        constexpr uint32_t kAerialResolution = 32;
+        constexpr uint32_t kLocalSize2D      = 8;
+        constexpr uint32_t kLocalSizeAerialZ = 4;
 
         RGSubresourceRange MakeColorSubresourceRange()
         {
@@ -108,7 +107,7 @@ namespace ZEngine::Rendering::Renderers
         return IsViewActive() && frame_context.RenderWidth != 0 && frame_context.RenderHeight != 0;
     }
 
-    AtmosphereViewPushConstants SkyAtmosphereViewPass::MakePushConstants() const
+    AtmosphereViewPushConstants SkyAtmosphereViewPass::MakePushConstants(bool for_aerial_perspective) const
     {
         const Scenes::AtmosphereSettings& atmosphere          = m_config.Atmosphere;
         const float                       units_per_kilometer = atmosphere.WorldUnitsPerMeter > 0.0f ? atmosphere.WorldUnitsPerMeter * 1000.0f : 1.0f;
@@ -117,7 +116,7 @@ namespace ZEngine::Rendering::Renderers
         push.PlanetCenterRelativeAndMaxDistance[0]            = (atmosphere.PlanetCenterWorld[0] - m_camera_pos.x) / units_per_kilometer;
         push.PlanetCenterRelativeAndMaxDistance[1]            = (atmosphere.PlanetCenterWorld[1] - m_camera_pos.y) / units_per_kilometer;
         push.PlanetCenterRelativeAndMaxDistance[2]            = (atmosphere.PlanetCenterWorld[2] - m_camera_pos.z) / units_per_kilometer;
-        push.PlanetCenterRelativeAndMaxDistance[3]            = kAerialMaxDistance;
+        push.PlanetCenterRelativeAndMaxDistance[3]            = m_presentation.AerialPerspectiveDistanceScale;
         push.RadiiAndScaleHeights[0]                          = atmosphere.PlanetRadiusKilometers;
         push.RadiiAndScaleHeights[1]                          = atmosphere.AtmosphereRadiusKilometers;
         push.RadiiAndScaleHeights[2]                          = atmosphere.RayleighScaleHeightKilometers;
@@ -142,10 +141,11 @@ namespace ZEngine::Rendering::Renderers
         push.SunRadianceAvailabilityAndGroundAlbedoGB[1]      = m_celestial.IsAvailable ? 1.0f : 0.0f;
         push.SunRadianceAvailabilityAndGroundAlbedoGB[2]      = atmosphere.GroundAlbedo[1];
         push.SunRadianceAvailabilityAndGroundAlbedoGB[3]      = atmosphere.GroundAlbedo[2];
-        push.PresentationTintIntensityAndGroundAmbient[0]     = m_presentation.EnvironmentTint[0] * m_presentation.EnvironmentIntensity;
-        push.PresentationTintIntensityAndGroundAmbient[1]     = m_presentation.EnvironmentTint[1] * m_presentation.EnvironmentIntensity;
-        push.PresentationTintIntensityAndGroundAmbient[2]     = m_presentation.EnvironmentTint[2] * m_presentation.EnvironmentIntensity;
-        push.PresentationTintIntensityAndGroundAmbient[3]     = atmosphere.GroundAmbientIrradiance;
+        const float presentation_intensity                    = m_presentation.EnvironmentIntensity * (for_aerial_perspective ? 1.0f : m_presentation.SkyLuminanceFactor);
+        push.PresentationTintIntensityAndGroundAmbient[0]     = m_presentation.EnvironmentTint[0] * presentation_intensity;
+        push.PresentationTintIntensityAndGroundAmbient[1]     = m_presentation.EnvironmentTint[1] * presentation_intensity;
+        push.PresentationTintIntensityAndGroundAmbient[2]     = m_presentation.EnvironmentTint[2] * presentation_intensity;
+        push.PresentationTintIntensityAndGroundAmbient[3]     = for_aerial_perspective ? m_presentation.AerialPerspectiveStartDepthKilometers : atmosphere.GroundAmbientIrradiance;
         return push;
     }
 
@@ -177,7 +177,7 @@ namespace ZEngine::Rendering::Renderers
         if (!device || !device->SwapchainPtr || !device->SwapchainPtr->CurrentFrame || !m_compute_pass || !IsViewActive())
             return;
 
-        const AtmosphereViewPushConstants push = MakePushConstants();
+        const AtmosphereViewPushConstants push = MakePushConstants(false);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         command_buffer->Dispatch((kSkyViewWidth + kLocalSize2D - 1) / kLocalSize2D, (kSkyViewHeight + kLocalSize2D - 1) / kLocalSize2D, 1);
@@ -212,7 +212,7 @@ namespace ZEngine::Rendering::Renderers
         if (!device || !device->SwapchainPtr || !device->SwapchainPtr->CurrentFrame || !m_compute_pass || !IsViewActive())
             return;
 
-        const AtmosphereViewPushConstants push = MakePushConstants();
+        const AtmosphereViewPushConstants push = MakePushConstants(true);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
         command_buffer->Dispatch((kAerialResolution + kLocalSize2D - 1) / kLocalSize2D, (kAerialResolution + kLocalSize2D - 1) / kLocalSize2D, (kAerialResolution + kLocalSizeAerialZ - 1) / kLocalSizeAerialZ);
