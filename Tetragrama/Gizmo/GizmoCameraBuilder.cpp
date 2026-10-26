@@ -14,6 +14,67 @@ namespace C = Tetragrama::Gizmo::Constants;
 
 namespace Tetragrama::Gizmo
 {
+    bool BuildCameraIcon(const CameraFrame& frame, GizmoPrimitiveBuilder& builder, uint32_t fill_color)
+    {
+        if (!frame.Valid || !builder.Valid())
+        {
+            return false;
+        }
+        const auto                             point                  = [&](double right, double up, double forward, Vec3f& output) { return CameraPoint(frame, right, up, forward, output); };
+        const float                            body_left              = -C::CameraLensLengthWorld - C::CameraBodyWidthWorld;
+        const float                            body_right             = -C::CameraLensLengthWorld;
+        const float                            body_half_height       = C::CameraBodyHeightWorld * .5f;
+        const float                            lens_inner_half_height = C::CameraLensInnerHeightWorld * .5f;
+        const float                            lens_outer_half_height = C::CameraLensOuterHeightWorld * .5f;
+        Core::Containers::FixedArray<Vec3f, 8> body                   = {};
+        Core::Containers::FixedArray<Vec3f, 8> lens                   = {};
+        for (uint32_t face = 0; face < 2; ++face)
+        {
+            const float    forward = face ? C::CameraIconDepthWorld * .5f : -C::CameraIconDepthWorld * .5f;
+            const uint32_t offset  = face * 4;
+            // The original glyph's horizontal axis is the camera's looking
+            // direction. Extrude it across Right so its lens and its frustum
+            // always point together in world space.
+            if (!point(forward, body_half_height, body_left, body[offset]) || !point(forward, body_half_height, body_right, body[offset + 1]) || !point(forward, -body_half_height, body_right, body[offset + 2]) || !point(forward, -body_half_height, body_left, body[offset + 3]) || !point(forward, lens_inner_half_height, body_right, lens[offset]) || !point(forward, lens_outer_half_height, 0.f, lens[offset + 1]) || !point(forward, -lens_outer_half_height, 0.f, lens[offset + 2]) || !point(forward, -lens_inner_half_height, body_right, lens[offset + 3]))
+            {
+                return false;
+            }
+        }
+        const auto triangle = [&](const Vec3f& a, const Vec3f& b, const Vec3f& c) {
+            const auto result = builder.Triangle({.A = a, .B = b, .C = c, .Color = fill_color, .AntiAliasEdges = 0});
+            return result == GizmoEmitResult::Emitted || result == GizmoEmitResult::Culled;
+        };
+        const auto quad = [&](const Vec3f& a, const Vec3f& b, const Vec3f& c, const Vec3f& d) {
+            // Adjacent volume faces share vertices. Coverage filtering each
+            // face separately leaves pinholes there, so the solid uses its
+            // regular rasterized edges and no per-triangle edge coverage.
+            return triangle(a, b, c) && triangle(a, c, d);
+        };
+        for (uint32_t face = 0; face < 2; ++face)
+        {
+            const uint32_t offset = face * 4;
+            if (!quad(body[offset], body[offset + 1], body[offset + 2], body[offset + 3]) || !quad(lens[offset], lens[offset + 1], lens[offset + 2], lens[offset + 3]))
+            {
+                return false;
+            }
+        }
+        for (uint32_t corner = 0; corner < 4; ++corner)
+        {
+            const uint32_t next = (corner + 1) % 4;
+            if (!quad(body[corner], body[next], body[next + 4], body[corner + 4]))
+            {
+                return false;
+            }
+            // Lens edge 3 -> 0 lies inside the body end-cap. Emitting it would
+            // create coplanar triangles and flicker as the viewport moves.
+            if (corner != 3 && !quad(lens[corner], lens[next], lens[next + 4], lens[corner + 4]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     namespace
     {
         uint32_t Packed(const UI::Tokens::Color& token)
@@ -72,67 +133,6 @@ namespace Tetragrama::Gizmo
                 Hits.Shapes[Hits.Count++] = shape;
                 return true;
             }
-            bool Marker()
-            {
-                G::ProjectedPoint origin = {}, forward = {};
-                Vec3f             tip = {};
-                if (!G::Project(Input.Frustum.Origin, Camera, Input.Viewport, &origin) || !CameraPoint(Input.Frustum, 0.0, 0.0, 1.0, tip))
-                {
-                    return false;
-                }
-                Vec2f direction(1.f, 0.f);
-                if (G::Project(tip, Camera, Input.Viewport, &forward))
-                {
-                    const Vec2f  delta  = forward.Screen - origin.Screen;
-                    const double length = std::hypot(double(delta.x), double(delta.y));
-                    if (length > 1.0)
-                    {
-                        direction = {float(delta.x / length), float(delta.y / length)};
-                    }
-                }
-                const Vec2f side(-direction.y, direction.x);
-                // Existing rectangle/quad primitives reproduce the exported
-                // marker's 32x28 body and 14x(16..32) lens, without another pass.
-                const Vec2f body[] = {
-                    {-C::CameraLensLengthPx - C::CameraMarkerWidthPx, -C::CameraMarkerHeightPx * .5f},
-                    {                         -C::CameraLensLengthPx, -C::CameraMarkerHeightPx * .5f},
-                    {                         -C::CameraLensLengthPx,  C::CameraMarkerHeightPx * .5f},
-                    {-C::CameraLensLengthPx - C::CameraMarkerWidthPx,  C::CameraMarkerHeightPx * .5f}
-                };
-                const Vec2f lens[] = {
-                    {-C::CameraLensLengthPx, -C::CameraLensInnerHeightPx * .5f},
-                    {                   0.f, -C::CameraLensOuterHeightPx * .5f},
-                    {                   0.f,  C::CameraLensOuterHeightPx * .5f},
-                    {-C::CameraLensLengthPx,  C::CameraLensInnerHeightPx * .5f}
-                };
-                for (const auto* polygon : {body, lens})
-                {
-                    Core::Containers::FixedArray<Vec3f, 4> points = {};
-                    for (uint32_t i = 0; i < 4; ++i)
-                    {
-                        if (!G::UnprojectAtDepth(origin.Screen + direction * polygon[i].x + side * polygon[i].y, origin.Depth, Camera, Input.Viewport, &points[i]))
-                        {
-                            return false;
-                        }
-                    }
-                    for (uint32_t i = 0; i < 4; ++i)
-                    {
-                        if (!Line(points[i], points[(i + 1) % 4], UI::Tokens::TextPrimary, C::CameraMarkerLineWidthPx))
-                        {
-                            return false;
-                        }
-                    }
-                    for (uint32_t i = 1; i < 3; ++i)
-                    {
-                        const auto result = Builder.Triangle({.A = points[0], .B = points[i], .C = points[i + 1], .Color = Packed(UI::Tokens::BgViewport), .AntiAliasEdges = 0});
-                        if (result != GizmoEmitResult::Emitted && result != GizmoEmitResult::Culled)
-                        {
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            }
             bool Build()
             {
                 const auto&                            frame       = Input.Frustum;
@@ -186,7 +186,7 @@ namespace Tetragrama::Gizmo
                         return false;
                     }
                 }
-                return Marker();
+                return BuildCameraIcon(frame, Builder, Packed(UI::Tokens::BgViewport));
             }
         };
     } // namespace
@@ -197,8 +197,8 @@ namespace Tetragrama::Gizmo
             return;
         }
         const uint32_t     lines = output.LineCount, triangles = output.TriangleCount, sprites = output.SpriteCount, shapes = hits.Count;
-        constexpr uint32_t line_budget = 12 + C::CameraFovArcSegments + 1 + 8;
-        if (!ValidCameraGeometry(input.Frustum) || lines > GizmoFrameData::MaxLines - line_budget - 5 * C::RingSegments || triangles > GizmoFrameData::MaxTriangles - 12 || sprites > GizmoFrameData::MaxSprites - 10 || shapes > HitFrame::MaxComponentShapes - 6)
+        constexpr uint32_t line_budget = 12 + C::CameraFovArcSegments + 1;
+        if (!ValidCameraGeometry(input.Frustum) || lines > GizmoFrameData::MaxLines - line_budget - 5 * C::RingSegments || triangles > GizmoFrameData::MaxTriangles - 22 || sprites > GizmoFrameData::MaxSprites - 10 || shapes > HitFrame::MaxComponentShapes - 6)
         {
             output.DecorationsOmitted = true;
             return;

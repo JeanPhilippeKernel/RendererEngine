@@ -1,4 +1,5 @@
 #include <Tetragrama/EditorSession.h>
+#include <Tetragrama/Gizmo/GizmoCameraBuilder.h>
 #include <Tetragrama/Gizmo/GizmoValuePill.h>
 #include <Tetragrama/Gizmo/GizmoViewport.h>
 #include <ZEngine/ECS/Components/CameraComponent.h>
@@ -80,11 +81,19 @@ namespace Tetragrama::Gizmo
                 m_passive_components_omitted = true;
                 return;
             }
-            const Vec3f              origin(transform.WorldTransform(0, 3), transform.WorldTransform(1, 3), transform.WorldTransform(2, 3));
-            Vec3f                    forward(transform.WorldTransform(0, 2), transform.WorldTransform(1, 2), transform.WorldTransform(2, 2));
-            const double             length    = std::hypot(double(forward.x), double(forward.y), double(forward.z));
+            const Vec3f origin(transform.WorldTransform(0, 3), transform.WorldTransform(1, 3), transform.WorldTransform(2, 3));
+            Vec3f       forward(transform.WorldTransform(0, 2), transform.WorldTransform(1, 2), transform.WorldTransform(2, 2));
+            const auto  normalize = [](Vec3f& value) {
+                const double length = std::hypot(double(value.x), double(value.y), double(value.z));
+                if (!std::isfinite(length) || length <= 0.0)
+                {
+                    return false;
+                }
+                value = {float(value.x / length), float(value.y / length), float(value.z / length)};
+                return true;
+            };
             Geometry::ProjectedPoint projected = {};
-            if (!std::isfinite(length) || length <= 0.0 || !Geometry::Project(origin, projection, m_bounds, &projected))
+            if (!normalize(forward) || !Geometry::Project(origin, projection, m_bounds, &projected))
             {
                 return;
             }
@@ -93,12 +102,26 @@ namespace Tetragrama::Gizmo
             {
                 return;
             }
-            const float sign   = camera_forward ? -1.f : 1.f;
-            auto&       marker = m_passive_components[m_passive_component_count++];
-            marker             = {
-                .Target = session.TargetFor(entity), .Origin = origin, .Forward = {float(sign * forward.x / length), float(sign * forward.y / length), float(sign * forward.z / length)},
-                        .Screen = projected.Screen, .Depth = depth, .Kind = kind
-            };
+            const float sign = camera_forward ? -1.f : 1.f;
+            forward          = forward * sign;
+            Vec3f right = {}, up = {};
+            if (camera_forward)
+            {
+                right              = {transform.WorldTransform(0, 0), transform.WorldTransform(1, 0), transform.WorldTransform(2, 0)};
+                const double along = double(right.x) * forward.x + double(right.y) * forward.y + double(right.z) * forward.z;
+                right              = right - forward * float(along);
+                if (!normalize(right))
+                {
+                    return;
+                }
+                up = cross3d(right, forward);
+                if (!normalize(up))
+                {
+                    return;
+                }
+            }
+            auto& marker = m_passive_components[m_passive_component_count++];
+            marker       = {.Target = session.TargetFor(entity), .Origin = origin, .Right = right, .Up = up, .Forward = forward, .Screen = projected.Screen, .Depth = depth, .Kind = kind};
         };
         scene->ForEach<ECS::Components::LightComponent, ECS::Components::TransformComponent, ECS::Components::UUIDComponent>([&](ECS::EntityID entity, const auto& light, const auto& transform, const auto& identity) {
             const auto kind = light.LightType == ECS::Components::LightComponent::Type::Directional ? PassiveComponentKind::DirectionalLight : light.LightType == ECS::Components::LightComponent::Type::Point ? PassiveComponentKind::PointLight : PassiveComponentKind::SpotLight;
@@ -116,52 +139,20 @@ namespace Tetragrama::Gizmo
             return;
         }
         Rendering::Renderers::GizmoPrimitiveBuilder builder(output, projection, m_bounds.Size.y, width, height);
-        const auto&                                 light_color    = UI::Tokens::PinVector;
-        const auto&                                 camera_color   = UI::Tokens::TextPrimary;
-        const uint32_t                              light_packed   = UI::ZUIPackColor(light_color.R, light_color.G, light_color.B, .8f);
-        const uint32_t                              camera_packed  = UI::ZUIPackColor(camera_color.R, camera_color.G, camera_color.B, .8f);
-        output.DecorationsOmitted                                 |= m_passive_components_omitted;
+        const auto&                                 light_color         = UI::Tokens::PinVector;
+        const auto&                                 camera_fill         = UI::Tokens::BgViewport;
+        const uint32_t                              light_packed        = UI::ZUIPackColor(light_color.R, light_color.G, light_color.B, .8f);
+        const uint32_t                              camera_fill_packed  = UI::ZUIPackColor(camera_fill.R, camera_fill.G, camera_fill.B, camera_fill.A);
+        output.DecorationsOmitted                                      |= m_passive_components_omitted;
         for (uint32_t i = 0; builder.Valid() && i < m_passive_component_count; ++i)
         {
             const auto& marker = m_passive_components[i];
             if (marker.Kind == PassiveComponentKind::Camera)
             {
-                Geometry::ProjectedPoint origin = {}, forward = {};
-                if (!Geometry::Project(marker.Origin, projection, m_bounds, &origin) || !Geometry::Project(marker.Origin + marker.Forward, projection, m_bounds, &forward))
+                CameraFrame frame = {.Origin = marker.Origin, .Right = marker.Right, .Up = marker.Up, .Forward = marker.Forward, .Valid = true};
+                if (!BuildCameraIcon(frame, builder, camera_fill_packed))
                 {
-                    continue;
-                }
-                const Vec2f  delta     = forward.Screen - origin.Screen;
-                const double length    = std::hypot(double(delta.x), double(delta.y));
-                const Vec2f  direction = length > 1.0 ? Vec2f(float(delta.x / length), float(delta.y / length)) : Vec2f(1.f, 0.f);
-                const Vec2f  side(-direction.y, direction.x);
-                const Vec2f  body[] = {
-                    {-Constants::CameraLensLengthPx - Constants::CameraMarkerWidthPx, -Constants::CameraMarkerHeightPx * .5f},
-                    {                                 -Constants::CameraLensLengthPx, -Constants::CameraMarkerHeightPx * .5f},
-                    {                                 -Constants::CameraLensLengthPx,  Constants::CameraMarkerHeightPx * .5f},
-                    {-Constants::CameraLensLengthPx - Constants::CameraMarkerWidthPx,  Constants::CameraMarkerHeightPx * .5f}
-                };
-                const Vec2f lens[] = {
-                    {-Constants::CameraLensLengthPx, -Constants::CameraLensInnerHeightPx * .5f},
-                    {                           0.f, -Constants::CameraLensOuterHeightPx * .5f},
-                    {                           0.f,  Constants::CameraLensOuterHeightPx * .5f},
-                    {-Constants::CameraLensLengthPx,  Constants::CameraLensInnerHeightPx * .5f}
-                };
-                for (const auto* polygon : {body, lens})
-                {
-                    Core::Containers::FixedArray<Vec3f, 4> points = {};
-                    bool                                   valid  = true;
-                    for (uint32_t point = 0; point < 4; ++point)
-                    {
-                        valid &= Geometry::UnprojectAtDepth(origin.Screen + direction * polygon[point].x + side * polygon[point].y, origin.Depth, projection, m_bounds, &points[point]);
-                    }
-                    if (valid)
-                    {
-                        for (uint32_t point = 0; point < 4; ++point)
-                        {
-                            (void) builder.Line({.A = points[point], .B = points[(point + 1) % 4], .Width = Constants::CameraMarkerLineWidthPx, .Color = camera_packed});
-                        }
-                    }
+                    output.DecorationsOmitted = true;
                 }
                 continue;
             }
@@ -227,7 +218,7 @@ namespace Tetragrama::Gizmo
             Vec2f       extent = {};
             if (marker.Kind == PassiveComponentKind::Camera)
             {
-                extent = Vec2f(Constants::CameraMarkerWidthPx + Constants::CameraLensLengthPx, Constants::CameraMarkerHeightPx) * .5f + Vec2f(Constants::BoxHitPaddingPx, Constants::BoxHitPaddingPx);
+                extent = Vec2f(24.f, 20.f) + Vec2f(Constants::BoxHitPaddingPx, Constants::BoxHitPaddingPx);
             }
             else
             {

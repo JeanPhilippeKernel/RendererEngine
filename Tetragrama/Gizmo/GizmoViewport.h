@@ -100,7 +100,7 @@ namespace Tetragrama::Gizmo
         struct PassiveComponent
         {
             EntityTarget                Target = {};
-            ZEngine::Core::Maths::Vec3f Origin = {}, Forward = {0.f, 0.f, 1.f};
+            ZEngine::Core::Maths::Vec3f Origin = {}, Right = {1.f, 0.f, 0.f}, Up = {0.f, 1.f, 0.f}, Forward = {0.f, 0.f, 1.f};
             ZEngine::Core::Maths::Vec2f Screen = {};
             float                       Depth  = 0.f;
             PassiveComponentKind        Kind   = PassiveComponentKind::PointLight;

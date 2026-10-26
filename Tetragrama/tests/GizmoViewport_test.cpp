@@ -1437,7 +1437,9 @@ TEST_F(GizmoViewportTest, UnselectedPointSpotAndCameraRenderAndQueueSelectionFro
     viewport->BuildRender(session, camera.CaptureFrameData(), &ctx, true, 800, 600, output);
     ASSERT_TRUE(output.ValidCounts());
     EXPECT_GE(output.SpriteCount, 2u);
-    EXPECT_GE(output.LineCount, 25u);
+    // The camera icon is a filled solid; point and spot retain their 23 lines.
+    EXPECT_GE(output.LineCount, 23u);
+    EXPECT_GE(output.TriangleCount, 22u);
 
     const auto select = [&](EntityID target, const Vec3f& origin) {
         ASSERT_TRUE(session.BeginMutationPhase());
