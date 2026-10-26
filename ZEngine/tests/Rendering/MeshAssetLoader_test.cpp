@@ -3,7 +3,6 @@
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Managers/AssetManager.h>
-#include <ZEngine/Rendering/BuiltinMeshes.h>
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
@@ -235,37 +234,6 @@ TEST_F(MeshAssetLoaderTest, RepeatedPlacementReusesTheBindingWithoutReadingAlloc
     EXPECT_EQ(manager->NodeHierarchies.size(), 1u);
     EXPECT_EQ(manager->MeshCacheAllocations.size(), 1u);
     EXPECT_EQ(manager->Meshes[0].Vertices.data(), vertices);
-    EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
-}
-
-TEST_F(MeshAssetLoaderTest, BuiltinMeshAndHierarchyKeepDistinctBindingsAndLoadWithoutDiskAccess)
-{
-    auto* manager = AssetManager::Instance();
-    manager->Registry->SetOnReadyCallback(nullptr, nullptr);
-    ZEngine::Rendering::RegisterBuiltinMeshes(&Memory.MainArena);
-    const auto  id   = ZEngine::Rendering::BuiltinMeshUUIDParsed(ZEngine::Rendering::BuiltinMeshID::DirectionalLightIcon);
-    const auto* mesh = manager->GetMeshAsset(id);
-    EXPECT_NE(mesh, nullptr);
-    const auto* hierarchy = manager->GetMeshNodeHierarchy(id);
-    ASSERT_NE(hierarchy, nullptr);
-    EXPECT_EQ(hierarchy->MeshUUID, id);
-    EXPECT_FALSE(hierarchy->NodeHierarchyUUID.is_nil());
-    EXPECT_NE(hierarchy->NodeHierarchyUUID, id);
-    const auto* mesh_record = manager->Registry->FindByUUID(id);
-    ASSERT_NE(mesh_record, nullptr);
-    EXPECT_EQ(mesh_record->Type, AssetType::MESH);
-    const auto* hierarchy_record = manager->Registry->FindByUUID(hierarchy->NodeHierarchyUUID);
-    ASSERT_NE(hierarchy_record, nullptr);
-    EXPECT_EQ(hierarchy_record->Type, AssetType::MESH_HIERARCHY);
-    const auto cursor = Memory.MainArena.m_current_offset;
-    for (uint32_t i = 0; i < 100; ++i)
-    {
-        const auto loaded = manager->LoadMeshAsset(VFS, id);
-        ASSERT_TRUE(loaded.Succeeded());
-        EXPECT_EQ(loaded.Value(), 1u);
-    }
-    EXPECT_EQ(VFS.Reads, 0u);
-    EXPECT_TRUE(manager->MeshCacheAllocations.empty());
     EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
 }
 

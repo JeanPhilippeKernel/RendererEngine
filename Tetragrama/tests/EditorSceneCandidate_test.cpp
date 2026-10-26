@@ -1,5 +1,6 @@
 #include <Tetragrama/EditorSceneCandidate.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
@@ -120,6 +121,32 @@ TEST_F(EditorSceneCandidateTest, EmptyDocumentHasOwnedMetadataAndNoDefaultConten
     EXPECT_EQ(ResolveCalls, 0u);
     EXPECT_EQ(Engine->Scene, &Source);
     EXPECT_EQ(Engine->ActorManager, nullptr);
+}
+
+TEST_F(EditorSceneCandidateTest, LegacyDirectionalLightMeshIsRemovedBeforeAssetResolution)
+{
+    const auto light = AddEntity(1);
+    Source.AddComponent<LightComponent>(light, {.LightType = LightComponent::Type::Directional});
+    const auto legacy_icon = uuids::uuid::from_string("ff000000-0000-0000-0000-000000000001");
+    ASSERT_TRUE(legacy_icon.has_value());
+    Source.AddComponent<MeshComponent>(light, {*legacy_icon});
+
+    SceneDocument document = {};
+    ASSERT_TRUE(Capture(&document));
+    ASSERT_TRUE(Prepare(std::move(document)));
+
+    EntityID loaded = INVALID_ENTITY;
+    Candidate->World().ForEach<UUIDComponent>([&](EntityID entity, const UUIDComponent& identity) {
+        if (identity.Value == Identity(1))
+        {
+            loaded = entity;
+        }
+    });
+    ASSERT_TRUE(Candidate->World().IsAlive(loaded));
+    EXPECT_TRUE(Candidate->World().HasComponent<LightComponent>(loaded));
+    EXPECT_FALSE(Candidate->World().HasComponent<MeshComponent>(loaded));
+    EXPECT_EQ(Candidate->Render().Instances.size(), 0u);
+    EXPECT_EQ(ResolveCalls, 0u);
 }
 
 TEST_F(EditorSceneCandidateTest, LoadedAuthoredGridInitializesTheCompleteOrientedRuntimeSnapshot)

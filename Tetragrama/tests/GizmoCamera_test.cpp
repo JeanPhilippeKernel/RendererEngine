@@ -538,8 +538,8 @@ TEST_F(GizmoCameraTest, FrustumArcMarkerAndHandlesUseNativeThemeAndLogicalDpiMet
                 GizmoFrameData output = {};
                 HitFrame       hits   = {};
                 ASSERT_EQ(BuildFrame(input, output, hits), FrameBuildResult::Built);
-                ASSERT_EQ(output.LineCount, 12 + C::CameraFovArcSegments + 1 + 8);
-                EXPECT_EQ(output.TriangleCount, 4u);
+                ASSERT_EQ(output.LineCount, 12 + C::CameraFovArcSegments + 1);
+                EXPECT_EQ(output.TriangleCount, 22u);
                 EXPECT_EQ(output.SpriteCount, 6u);
                 EXPECT_EQ(hits.Count, 6u);
                 EXPECT_FALSE(output.DecorationsOmitted);
@@ -564,7 +564,12 @@ TEST_F(GizmoCameraTest, FrustumArcMarkerAndHandlesUseNativeThemeAndLogicalDpiMet
                     EXPECT_EQ(point.x, 0.f);
                 }
                 EXPECT_EQ(output.Lines[12 + C::CameraFovArcSegments].DashOn, 4.f * scale);
-                EXPECT_EQ(output.Lines[output.LineCount - 1].Width, 2.f * scale);
+                for (uint32_t i = 0; i < output.TriangleCount; ++i)
+                {
+                    const auto& triangle = output.Triangles[i];
+                    EXPECT_EQ(triangle.Color, UI::ZUIPackColor(UI::Tokens::BgViewport.R, UI::Tokens::BgViewport.G, UI::Tokens::BgViewport.B, UI::Tokens::BgViewport.A));
+                    EXPECT_EQ(triangle.AntiAliasEdges, 0u);
+                }
             }
         }
     }

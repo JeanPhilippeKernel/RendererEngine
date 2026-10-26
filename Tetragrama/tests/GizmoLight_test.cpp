@@ -672,7 +672,7 @@ TEST_F(GizmoLightTest, OuterConeOnlyAndDirectionalDecorationHaveNoInventedFieldH
     EXPECT_EQ(output.SpriteCount, 1u);
     EXPECT_EQ(output.Sprites[0].Size, 18.f);
     EXPECT_EQ(hits.Count, 0u);
-    EXPECT_EQ(output.Lines[0].B.z, 2.f);
+    EXPECT_EQ(output.Lines[0].B.z, C::DirectionalArrowWorldLength);
     EXPECT_EQ(output.Lines[0].Width, 2.5f);
     EXPECT_EQ(output.Lines[1].DashOn, 4.f);
     EXPECT_EQ(output.Lines[1].Color >> 24, uint32_t(.55f * 255.f + .5f));

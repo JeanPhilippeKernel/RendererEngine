@@ -79,18 +79,21 @@ namespace Tetragrama::Gizmo::Constants
     inline constexpr float    CameraHandleSizePx             = 8.f; // tile 74:1700
     inline constexpr unsigned CameraFovArcSegments           = 32;
     inline constexpr float    CameraFovArcFraction           = .25f;
-    inline constexpr float    CameraMarkerWidthPx            = 32.f; // tile 74:1697
-    inline constexpr float    CameraMarkerHeightPx           = 28.f;
-    inline constexpr float    CameraLensLengthPx             = 14.f; // tile 74:1698
-    inline constexpr float    CameraLensInnerHeightPx        = 16.f;
-    inline constexpr float    CameraLensOuterHeightPx        = 32.f;
-    inline constexpr float    CameraMarkerLineWidthPx        = 2.f;
+    // Keep the established camera glyph's body-and-wedge proportions. The
+    // parallel face and links give that familiar silhouette world-space depth.
+    inline constexpr float    CameraIconWorldScale           = .15f;
+    inline constexpr float    CameraBodyWidthWorld           = .64f * CameraIconWorldScale;
+    inline constexpr float    CameraBodyHeightWorld          = .56f * CameraIconWorldScale;
+    inline constexpr float    CameraLensLengthWorld          = .28f * CameraIconWorldScale;
+    inline constexpr float    CameraLensInnerHeightWorld     = .32f * CameraIconWorldScale;
+    inline constexpr float    CameraLensOuterHeightWorld     = .64f * CameraIconWorldScale;
+    inline constexpr float    CameraIconDepthWorld           = .22f * CameraIconWorldScale;
     inline constexpr float    PointSunSizePx                 = 14.f; // tile 74:1527
     inline constexpr float    SpotSunSizePx                  = 12.f; // tile 74:1582
     inline constexpr float    DirectionalSunSizePx           = 18.f; // tile 74:1628
     inline constexpr float    LightSunRayGapPx               = 4.f;
     inline constexpr float    LightSunRayLengthPx            = 6.f;
-    inline constexpr float    DirectionalArrowWorldLength    = 2.f;
+    inline constexpr float    DirectionalArrowWorldLength    = 1.f;
     inline constexpr float    DirectionalRayWorldOffset      = .25f;
     inline constexpr float    DirectionalRayAlpha            = .55f;                     // tile 74:1596
     inline constexpr float    LineHitTolerancePx             = 8.f;                      // GZ4, arrows and rings

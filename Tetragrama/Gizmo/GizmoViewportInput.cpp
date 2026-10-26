@@ -191,6 +191,17 @@ namespace Tetragrama::Gizmo
         // the latched press position, not the potentially much later cursor.
         session.Scene()->SynchronizeHierarchy();
         BuildHitFrame(session, camera, ctx, focused, ctx->MousePressAlt[0]);
+        const auto passive_query = UI::ZUIQueryPointer(ctx, ctx->MousePressPos[0]);
+        if (passive_query.HotBox && passive_query.HotBox->Key == m_hit_key)
+        {
+            EntityTarget passive = {};
+            if (PickPassiveComponent({ctx->MousePressPos[0][0], ctx->MousePressPos[0][1]}, passive) && session.Resolve(passive) == passive.CachedEntity && session.RequestSelection(passive.CachedEntity))
+            {
+                ctx->InteractionCapture.Pointer = true;
+                ctx->MousePressed[0]            = false;
+                return;
+            }
+        }
         if (!m_allow_hits)
         {
             return;
