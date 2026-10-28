@@ -2644,7 +2644,8 @@ TEST_F(EditorGizmoIntegrationTest, GridLabelsCaptureOnlyTheExistingBodyGlyphValu
     GridLabelFrameData labels                                = {};
     ASSERT_TRUE(BuildGridLabelFrame(grid, frame->Camera, frame->GridLabelFont, frame->RenderTargetW, frame->RenderTargetH, labels));
     ASSERT_EQ(labels.Count, 2u);
-    EXPECT_NEAR(labels.Push.Rects[0][2] * 800.f, 14.f, .0001f);
+    const float render_scale = float(frame->RenderTargetH) / frame->GridLabelFont.LogicalViewportHeight;
+    EXPECT_NEAR(labels.Push.Rects[0][2] * 800.f, frame->GridLabelFont.Glyphs[0].Size.x * GridLabelTextScale * render_scale, .0001f);
     editor->PrepareScene(*frame);
     EXPECT_FALSE(frame->GridLabelFont.Atlas.Valid());
 }
