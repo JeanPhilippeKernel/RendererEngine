@@ -17,6 +17,10 @@ namespace Tetragrama::Gizmo
         void               Invalidate();
         void               Unbind()
         {
+            if (m_bound && ++m_binding_revision == 0)
+            {
+                ++m_binding_revision;
+            }
             m_bound = false;
             Invalidate();
         }
@@ -46,6 +50,19 @@ namespace Tetragrama::Gizmo
         {
             return m_hit_key;
         }
+        /// @brief Layout generation captured by a pick request. It changes when
+        /// the image bounds, DPI conversion, or owning ZUI boxes change.
+        [[nodiscard]] uint64_t BindingRevision() const
+        {
+            return m_binding_revision;
+        }
+        /// @brief Converts a ZUI image position to the exact render-target pixel.
+        /// The coordinates use the top-left convention shared by ZUI and the
+        /// object-ID attachment; out-of-image positions are rejected.
+        [[nodiscard]] bool ToRenderPixel(const float point[2], uint32_t width, uint32_t height, uint32_t& x, uint32_t& y) const;
+        /// @brief Builds a world ray for a logical viewport position using its exact bound rectangle.
+        /// Used only as a bounded CPU fallback when the GPU object-ID attachment reports background.
+        [[nodiscard]] bool RayFromPointer(const float point[2], const ZEngine::Rendering::Cameras::CameraFrameData& camera, ZEngine::Core::Maths::Geometry::Ray& ray) const;
 
     private:
         void                      BuildHitFrame(EditorSession& session, const ZEngine::Rendering::Cameras::CameraFrameData& camera, const ZEngine::UI::ZUIContext* ctx, bool focused, bool pivot_editable);

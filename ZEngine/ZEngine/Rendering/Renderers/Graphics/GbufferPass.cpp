@@ -24,6 +24,37 @@ namespace ZEngine::Rendering::Renderers
         res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
+        // A discrete attachment keeps selection tokens exact and reuses the same
+        // GPU-driven indirect geometry records as the material G-buffer.
+        const RGResourceHandle object_id = res_builder->WriteColorAttachment(RendererResourceName::GBufferObjectIdName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R32_UINT});
+        for (uint32_t request_index = 0; request_index < m_object_id_pick_count; ++request_index)
+        {
+            const ObjectIdPickRequest& request = m_object_id_picks[request_index];
+            if (!request.Valid() || request.X >= w || request.Y >= h)
+            {
+                if (request.Cancelled)
+                {
+                    request.Cancelled(request.Context);
+                }
+                continue;
+            }
+            const RGImageReadbackRegion region = {
+                .Subresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1},
+                .Offset      = {static_cast<int32_t>(request.X), static_cast<int32_t>(request.Y), 0},
+                .Extent      = {1, 1, 1},
+            };
+            const cstring          readback_name = request_index == 0 ? "ObjectIdPickReadback" : "ObjectIdHoverReadback";
+            const RGReadbackHandle handle        = res_builder->DeclareImageReadback(readback_name, object_id, region, request.Callback, request.Context, sizeof(uint32_t), request.Cancelled);
+            if (!handle.Valid() && request.Cancelled)
+            {
+                request.Cancelled(request.Context);
+            }
+        }
+        // Requests are one-shot. A failed graph compilation cancels the ring lease;
+        // callers can issue another request instead of replaying a stale click.
+        m_object_id_picks[0]   = {};
+        m_object_id_picks[1]   = {};
+        m_object_id_pick_count = 0;
         return true;
     }
 

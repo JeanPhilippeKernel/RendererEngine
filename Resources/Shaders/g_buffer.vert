@@ -6,6 +6,7 @@ layout(location = 0) out vec2 TexCoord;
 layout(location = 1) out vec3 WorldNormal;
 layout(location = 2) out flat uint MaterialIdx;
 layout(location = 3) out vec3 WorldPos;
+layout(location = 4) out flat uint PickToken;
 
 void main()
 {
@@ -15,5 +16,6 @@ void main()
     TexCoord              = dataView.TexCoord;
     MaterialIdx           = dataView.MaterialId;
     WorldPos              = worldPos.xyz;
+    PickToken             = FetchDrawData().PickToken;
     gl_Position           = Camera.Projection * Camera.View * worldPos;
 }

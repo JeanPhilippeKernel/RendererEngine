@@ -129,8 +129,8 @@ namespace ZEngine::Managers
 
         /// @brief Single-UUID counterpart to ReloadFromDisk's material block — resolves,
         ///        deserializes, and ingests one material (and its textures) by UUID.
-        ///        No-op if uuid is nil, unregistered, or already ingested.
-        static void                                   IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid);
+        /// @return True only when the UUID is already resident or was fully ingested.
+        static bool                                   IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid);
 
         /// @brief Thread-safe lookup of a texture's current handle by UUID.
         static Rendering::Textures::TextureHandle     FindTextureHandle(const uuids::uuid& uuid);
@@ -152,6 +152,12 @@ namespace ZEngine::Managers
         // but not yet ingested (second launch / project reopen). Safe to call every scan.
         static void                                   ReloadFromDisk(Core::Memory::ArenaAllocator* scratch);
 
+    private:
+        /// Caller must hold IngestMutex. Kept separate so checked loading can
+        /// recheck a competing completed binding without re-entering the lock.
+        [[nodiscard]] bool TryGetMeshDrawCountLocked(const uuids::uuid& id, uint32_t* out_draws);
+
+    public:
         template <typename T, typename K>
         static T* GetAsset(K key)
         {

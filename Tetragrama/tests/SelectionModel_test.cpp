@@ -76,6 +76,25 @@ TEST_F(SelectionModelTest, InvalidModesAndSceneTagsDoNotMutateSelection)
     EXPECT_EQ(selection.ActiveSceneTarget(), SceneTarget::None);
 }
 
+TEST_F(SelectionModelTest, HoverIsTransientAndPrunesWithoutChangingSelectionMembership)
+{
+    const auto selected = Entity(1);
+    const auto hovered  = Entity(2);
+    ASSERT_TRUE(selection.Select(resolver, selected));
+    const uint64_t selection_revision = selection.Revision();
+    const uint64_t hover_revision     = selection.HoverRevision();
+
+    ASSERT_TRUE(selection.SetHovered(resolver, hovered));
+    EXPECT_EQ(selection.Revision(), selection_revision);
+    EXPECT_GT(selection.HoverRevision(), hover_revision);
+    EXPECT_EQ(resolver.Resolve(selection.Hovered()), hovered);
+
+    scene.DestroyEntity(hovered);
+    EXPECT_TRUE(selection.PruneInvalid(resolver));
+    EXPECT_EQ(selection.Revision(), selection_revision);
+    EXPECT_TRUE(selection.Hovered().UUID.is_nil());
+}
+
 TEST_F(SelectionModelTest, ActorAndPureECSEntitiesUseTheSameIdentityPath)
 {
     const auto pure   = Entity(1);

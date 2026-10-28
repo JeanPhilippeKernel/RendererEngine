@@ -7,10 +7,12 @@ layout(location = 0) in vec2 TexCoord;
 layout(location = 1) in vec3 WorldNormal;
 layout(location = 2) in flat uint MaterialIdx;
 layout(location = 3) in vec3 WorldPos;
+layout(location = 4) in flat uint PickToken;
 
 layout(location = 0) out vec4 OutAlbedoAO;
 layout(location = 1) out vec4 OutNormalRoughness;
 layout(location = 2) out vec4 OutMetallicEmissive;
+layout(location = 3) out uint OutObjectId;
 
 void main()
 {
@@ -61,4 +63,5 @@ void main()
     OutAlbedoAO         = vec4(albedo, ao);
     OutNormalRoughness  = vec4(normal * 0.5 + 0.5, roughness);
     OutMetallicEmissive = vec4(metallic, emissive, 0.0, 0.0);
+    OutObjectId         = PickToken;
 }

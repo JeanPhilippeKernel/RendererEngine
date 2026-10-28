@@ -16,6 +16,7 @@
 #include <ZEngine/Windows/Events/WindowEvent.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
 #include <gtest/gtest.h>
+#include <atomic>
 #include <cmath>
 #include <memory>
 #include <numbers>
@@ -24,6 +25,120 @@ using namespace Tetragrama;
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
 using namespace ZEngine::UI;
+
+namespace Tetragrama
+{
+    struct EditorPickTestAccess
+    {
+        static void Queue(Editor& editor)
+        {
+            editor.m_object_pick.Token = 0;
+            editor.m_object_pick.Cancelled.value.store(0, std::memory_order_relaxed);
+            editor.m_object_pick.Phase.value.store(static_cast<uint32_t>(Editor::ObjectPickPhase::Queued), std::memory_order_release);
+        }
+        static void QueueObject(Editor& editor, ZUIContext* ctx)
+        {
+            editor.QueueViewportObjectPick(ctx, true);
+        }
+        static bool Begin(Editor& editor)
+        {
+            return Editor::BeginObjectPick(&editor.m_object_pick);
+        }
+        static void Record(Editor& editor, uint32_t token, ZEngine::ECS::EntityID entity)
+        {
+            Editor::RecordObjectPickToken(&editor.m_object_pick, token, entity);
+        }
+        static void Submit(Editor& editor)
+        {
+            Editor::SubmitObjectPick(&editor.m_object_pick);
+        }
+        static void Complete(Editor& editor, const void* data, size_t size)
+        {
+            Editor::CompleteObjectPick(data, size, &editor.m_object_pick);
+        }
+        static uint32_t Token(const Editor& editor)
+        {
+            return editor.m_object_pick.Token;
+        }
+        static ZEngine::ECS::EntityID Entity(const Editor& editor, uint32_t token)
+        {
+            return token <= ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS ? editor.m_object_pick.Entities[token] : ZEngine::ECS::INVALID_ENTITY;
+        }
+        static uint32_t Phase(const Editor& editor)
+        {
+            return editor.m_object_pick.Phase.value.load(std::memory_order_acquire);
+        }
+        static bool ObjectQueued(const Editor& editor)
+        {
+            return editor.m_object_pick.Phase.value.load(std::memory_order_acquire) == static_cast<uint32_t>(Editor::ObjectPickPhase::Queued);
+        }
+        static uint32_t CompletePhase()
+        {
+            return static_cast<uint32_t>(Editor::ObjectPickPhase::Complete);
+        }
+        static uint32_t FreePhase()
+        {
+            return static_cast<uint32_t>(Editor::ObjectPickPhase::Free);
+        }
+        static void CompleteForResolution(Editor& editor, uint32_t token, ZEngine::ECS::EntityID entity, uint64_t epoch)
+        {
+            editor.m_object_pick.Token                = token;
+            editor.m_object_pick.Entities[token]      = entity;
+            editor.m_object_pick.SceneEpoch           = epoch;
+            editor.m_object_pick.ViewportRevision     = editor.GizmoViewport.BindingRevision();
+            editor.m_object_pick.CameraRevision       = editor.m_camera_revision;
+            editor.m_object_pick.RenderTargetRevision = editor.m_render_target_revision;
+            editor.m_object_pick.Phase.value.store(static_cast<uint32_t>(Editor::ObjectPickPhase::Complete), std::memory_order_release);
+        }
+        static void Resolve(Editor& editor)
+        {
+            editor.ResolveObjectPick();
+        }
+        static void Cancel(Editor& editor)
+        {
+            editor.CancelObjectPick();
+        }
+        static void CancelSubmitted(Editor& editor)
+        {
+            Editor::CancelSubmittedObjectPick(&editor.m_object_pick);
+        }
+        static void CompleteHoverForResolution(Editor& editor, uint32_t token, ZEngine::ECS::EntityID entity, uint64_t epoch)
+        {
+            editor.m_hover_pick.Token                = token;
+            editor.m_hover_pick.Entities[token]      = entity;
+            editor.m_hover_pick.SceneEpoch           = epoch;
+            editor.m_hover_pick.ViewportRevision     = editor.GizmoViewport.BindingRevision();
+            editor.m_hover_pick.CameraRevision       = editor.m_camera_revision;
+            editor.m_hover_pick.RenderTargetRevision = editor.m_render_target_revision;
+            editor.m_hover_pick.Cancelled.value.store(0, std::memory_order_relaxed);
+            editor.m_hover_pick.Phase.value.store(static_cast<uint32_t>(Editor::ObjectPickPhase::Complete), std::memory_order_release);
+        }
+        static void ResolveHover(Editor& editor)
+        {
+            editor.ResolveHoverPick();
+        }
+        static void CancelHover(Editor& editor)
+        {
+            editor.CancelHoverPick();
+        }
+        static void QueueHover(Editor& editor, ZUIContext* ctx)
+        {
+            editor.QueueViewportHoverPick(ctx, true);
+        }
+        static bool HoverQueued(const Editor& editor)
+        {
+            return editor.m_hover_pick.Phase.value.load(std::memory_order_acquire) == static_cast<uint32_t>(Editor::ObjectPickPhase::Queued);
+        }
+        static void SetRenderTargetRevision(Editor& editor, uint64_t revision)
+        {
+            editor.m_render_target_revision = revision;
+        }
+        static void SetCameraRevision(Editor& editor, uint64_t revision)
+        {
+            editor.m_camera_revision = revision;
+        }
+    };
+} // namespace Tetragrama
 
 class EditorIntegrationTest : public testing::Test
 {
@@ -68,6 +183,223 @@ protected:
         editor->Session.EndMutationPhase();
     }
 };
+
+TEST_F(EditorIntegrationTest, ObjectPickCallbacksPublishOnlyTheSubmittedFrameToken)
+{
+    EditorPickTestAccess::Queue(*editor);
+    EXPECT_TRUE(EditorPickTestAccess::Begin(*editor));
+    EXPECT_FALSE(EditorPickTestAccess::Begin(*editor));
+
+    const EntityID expected = entity;
+    EditorPickTestAccess::Record(*editor, 17, expected);
+    EditorPickTestAccess::Record(*editor, 0, expected);
+    EditorPickTestAccess::Record(*editor, ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1, expected);
+    EditorPickTestAccess::Submit(*editor);
+
+    const uint32_t token = 17;
+    EditorPickTestAccess::Complete(*editor, &token, sizeof(token));
+    EXPECT_EQ(EditorPickTestAccess::Phase(*editor), EditorPickTestAccess::CompletePhase());
+    EXPECT_EQ(EditorPickTestAccess::Token(*editor), token);
+    EXPECT_EQ(EditorPickTestAccess::Entity(*editor, token), expected);
+
+    const uint32_t replaced = 23;
+    EditorPickTestAccess::Complete(*editor, &replaced, sizeof(replaced));
+    EXPECT_EQ(EditorPickTestAccess::Token(*editor), token);
+}
+
+TEST_F(EditorIntegrationTest, ObjectPickCallbackTurnsMalformedReadbackIntoBackground)
+{
+    EditorPickTestAccess::Queue(*editor);
+    ASSERT_TRUE(EditorPickTestAccess::Begin(*editor));
+    EditorPickTestAccess::Submit(*editor);
+    const uint16_t malformed = 7;
+    EditorPickTestAccess::Complete(*editor, &malformed, sizeof(malformed));
+    EXPECT_EQ(EditorPickTestAccess::Phase(*editor), EditorPickTestAccess::CompletePhase());
+    EXPECT_EQ(EditorPickTestAccess::Token(*editor), 0u);
+}
+
+TEST_F(EditorIntegrationTest, AbortedReadbackReleasesTheSubmittedPickFrame)
+{
+    EditorPickTestAccess::Queue(*editor);
+    ASSERT_TRUE(EditorPickTestAccess::Begin(*editor));
+    EditorPickTestAccess::Submit(*editor);
+    EditorPickTestAccess::CancelSubmitted(*editor);
+    EXPECT_EQ(EditorPickTestAccess::Phase(*editor), EditorPickTestAccess::FreePhase());
+}
+
+TEST_F(EditorIntegrationTest, ObjectPickResolutionRejectsStaleSceneEpochAndAcceptsTheLiveEntity)
+{
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    editor->Session.ClearSelection();
+    editor->Session.EndMutationPhase();
+
+    EditorPickTestAccess::CompleteForResolution(*editor, 5, entity, editor->Session.SceneEpoch());
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::Resolve(*editor);
+    ASSERT_TRUE(editor->Session.ProcessRequests());
+    ASSERT_EQ(editor->Session.Selection().Entities().size(), 1u);
+    EXPECT_EQ(editor->Session.Selection().Entities()[0].CachedEntity, entity);
+    editor->Session.ClearSelection();
+    editor->Session.EndMutationPhase();
+
+    EditorPickTestAccess::CompleteForResolution(*editor, 5, entity, editor->Session.SceneEpoch() + 1);
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::Resolve(*editor);
+    ASSERT_TRUE(editor->Session.ProcessRequests());
+    EXPECT_TRUE(editor->Session.Selection().Entities().empty());
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, ObjectPickResolutionRejectsAResizedRenderTarget)
+{
+    EditorPickTestAccess::CompleteForResolution(*editor, 4, entity, editor->Session.SceneEpoch());
+    EditorPickTestAccess::SetRenderTargetRevision(*editor, 1);
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::Resolve(*editor);
+    ASSERT_TRUE(editor->Session.ProcessRequests());
+    EXPECT_TRUE(editor->Session.Selection().Entities().empty());
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, ObjectPickResolutionRejectsCameraChangesAndBackgroundClearsSelection)
+{
+    EditorPickTestAccess::CompleteForResolution(*editor, 6, entity, editor->Session.SceneEpoch());
+    EditorPickTestAccess::SetCameraRevision(*editor, 2);
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::Resolve(*editor);
+    ASSERT_TRUE(editor->Session.ProcessRequests());
+    EXPECT_TRUE(editor->Session.Selection().Entities().empty());
+    editor->Session.EndMutationPhase();
+
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.Select(entity));
+    editor->Session.EndMutationPhase();
+    EditorPickTestAccess::CompleteForResolution(*editor, 0, ZEngine::ECS::INVALID_ENTITY, editor->Session.SceneEpoch());
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::Resolve(*editor);
+    EXPECT_TRUE(editor->Session.Selection().Entities().empty());
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, CancelledObjectPickCannotReplaceSelectionWhenItsReadbackArrives)
+{
+    EditorPickTestAccess::CompleteForResolution(*editor, 3, entity, editor->Session.SceneEpoch());
+    EditorPickTestAccess::Cancel(*editor);
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::Resolve(*editor);
+    ASSERT_TRUE(editor->Session.ProcessRequests());
+    EXPECT_TRUE(editor->Session.Selection().Entities().empty());
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, HoverReadbackIsTransientAndCannotChangeSelectionMembership)
+{
+    const uint64_t selection_revision = editor->Session.Selection().Revision();
+    EditorPickTestAccess::CompleteHoverForResolution(*editor, 9, entity, editor->Session.SceneEpoch());
+
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::ResolveHover(*editor);
+    EXPECT_EQ(editor->Session.Selection().Revision(), selection_revision);
+    EXPECT_EQ(editor->Session.Resolve(editor->Session.Selection().Hovered()), entity);
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, HoverReadbackWithABackgroundTokenClearsFeedback)
+{
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    ASSERT_TRUE(editor->Session.SetHovered(entity));
+    editor->Session.EndMutationPhase();
+
+    EditorPickTestAccess::CompleteHoverForResolution(*editor, 0, ZEngine::ECS::INVALID_ENTITY, editor->Session.SceneEpoch());
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::ResolveHover(*editor);
+    EXPECT_TRUE(editor->Session.Selection().Hovered().UUID.is_nil());
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, CancelledHoverReadbackCannotChangeFeedback)
+{
+    EditorPickTestAccess::CompleteHoverForResolution(*editor, 11, entity, editor->Session.SceneEpoch());
+    EditorPickTestAccess::CancelHover(*editor);
+
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    EditorPickTestAccess::ResolveHover(*editor);
+    EXPECT_TRUE(editor->Session.Selection().Hovered().UUID.is_nil());
+    editor->Session.EndMutationPhase();
+}
+
+TEST_F(EditorIntegrationTest, PassiveViewportHoverQueuesBeforeTheOverlayPublishesItsHoverState)
+{
+    ctx.FrameIndex         = 1;
+    ctx.ScreenW            = 640;
+    ctx.ScreenH            = 480;
+    ctx.InputScale[0]      = 1.f;
+    ctx.InputScale[1]      = 1.f;
+    ctx.ViewportInputKey   = 42;
+    ctx.ViewportSelectable = true;
+    ctx.ViewportHovered    = false;
+    ctx.ActiveKey          = 0;
+    ctx.PrevMousePos[0]    = 100.f;
+    ctx.PrevMousePos[1]    = 100.f;
+    ctx.MousePos[0]        = 101.f;
+    ctx.MousePos[1]        = 100.f;
+    const float rect[4]    = {0.f, 0.f, 640.f, 480.f};
+    editor->GizmoViewport.Bind(&ctx, rect, ctx.ViewportInputKey, 99);
+
+    EditorPickTestAccess::QueueHover(*editor, &ctx);
+
+    EXPECT_TRUE(EditorPickTestAccess::HoverQueued(*editor));
+}
+
+TEST_F(EditorIntegrationTest, ViewportClickQueuesAfterTheOverlayHasReleasedItsActiveKey)
+{
+    ctx.FrameIndex            = 1;
+    ctx.ScreenW               = 640;
+    ctx.ScreenH               = 480;
+    ctx.InputScale[0]         = 1.f;
+    ctx.InputScale[1]         = 1.f;
+    ctx.ViewportInputKey      = 42;
+    ctx.ViewportSelectable    = true;
+    ctx.ActiveKey             = 0;
+    ctx.MousePressSerial[0]   = 1;
+    ctx.MouseReleaseSerial[0] = 1;
+    ctx.MousePressed[0]       = false;
+    ctx.MouseReleased[0]      = true;
+    ctx.MousePressPos[0][0]   = 100.f;
+    ctx.MousePressPos[0][1]   = 100.f;
+    ctx.MouseReleasePos[0][0] = 101.f;
+    ctx.MouseReleasePos[0][1] = 100.f;
+    const float rect[4]       = {0.f, 0.f, 640.f, 480.f};
+    editor->GizmoViewport.Bind(&ctx, rect, ctx.ViewportInputKey, 99);
+
+    EditorPickTestAccess::QueueObject(*editor, &ctx);
+
+    EXPECT_TRUE(EditorPickTestAccess::ObjectQueued(*editor));
+}
+
+TEST_F(EditorIntegrationTest, PanelOriginatedReleaseDoesNotQueueViewportClick)
+{
+    ctx.FrameIndex            = 1;
+    ctx.ScreenW               = 640;
+    ctx.ScreenH               = 480;
+    ctx.InputScale[0]         = 1.f;
+    ctx.InputScale[1]         = 1.f;
+    ctx.ViewportInputKey      = 42;
+    ctx.ViewportSelectable    = true;
+    ctx.MousePressSerial[0]   = 1;
+    ctx.MouseReleaseSerial[0] = 1;
+    ctx.MouseReleased[0]      = true;
+    ctx.MousePressPos[0][0]   = 641.f;
+    ctx.MousePressPos[0][1]   = 100.f;
+    ctx.MouseReleasePos[0][0] = 101.f;
+    ctx.MouseReleasePos[0][1] = 100.f;
+    const float rect[4]       = {0.f, 0.f, 640.f, 480.f};
+    editor->GizmoViewport.Bind(&ctx, rect, ctx.ViewportInputKey, 99);
+
+    EditorPickTestAccess::QueueObject(*editor, &ctx);
+
+    EXPECT_EQ(EditorPickTestAccess::Phase(*editor), EditorPickTestAccess::FreePhase());
+}
 
 /// Exercises native event dispatch and the actual UI modifier adapter without
 /// a window or an overlay build. This is not native OS/GPU acceptance.

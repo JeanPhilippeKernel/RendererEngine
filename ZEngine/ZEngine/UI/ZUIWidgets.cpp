@@ -1873,7 +1873,7 @@ namespace ZEngine::UI
 
         bool hot                                  = (ctx->HotKey == sash->Key) || (ctx->ActiveKey == sash->Key);
         if (hot)
-            ctx->ResizeCursor = 2; // NS cursor
+            ZUIRequestCursor(ctx, ZUICursor::VerticalResize, ZUI_CursorPriorityUI);
 
         // 1 px visual line centered vertically in the 4 px hit zone
         {

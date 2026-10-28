@@ -29,7 +29,11 @@ namespace ZEngine::Rendering::Meshes
     {
         uint32_t TransformId = 0xFFFFFFFFu;
         uint32_t MaterialId  = 0xFFFFFFFFu;
+        /// Per-frame object-selection token. Zero is the background/miss token.
+        uint32_t PickToken   = 0;
     };
+
+    static_assert(sizeof(SubMeshAllocation) == 36, "SubMeshAllocation must match DrawData std430 layout");
 
     struct MeshVNext
     {

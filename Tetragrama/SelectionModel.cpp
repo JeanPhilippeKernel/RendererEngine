@@ -139,6 +139,32 @@ namespace Tetragrama
         return (m_entities.empty() || m_entities.front().SceneEpoch == resolver.SceneEpoch()) && (m_membership.contains(target.UUID) || m_entities.size() < m_capacity);
     }
 
+    bool SelectionModel::SetHovered(EntityTargetResolver& resolver, ZEngine::ECS::EntityID entity)
+    {
+        const EntityTarget target = resolver.TargetFor(entity);
+        if (target.UUID.is_nil())
+        {
+            return false;
+        }
+        if (m_hovered.UUID == target.UUID && m_hovered.SceneEpoch == target.SceneEpoch)
+        {
+            return true;
+        }
+        m_hovered = target;
+        ++m_hover_revision;
+        return true;
+    }
+
+    void SelectionModel::ClearHovered()
+    {
+        if (m_hovered.UUID.is_nil())
+        {
+            return;
+        }
+        m_hovered = {};
+        ++m_hover_revision;
+    }
+
     bool SelectionModel::Select(EntityTargetResolver& resolver, ZEngine::ECS::EntityID entity, SelectionMode mode)
     {
         if (!CanSelect(resolver, entity, mode))
@@ -185,12 +211,14 @@ namespace Tetragrama
     {
         if (m_entities.empty() && m_scene_target == SceneTarget::None)
         {
+            ClearHovered();
             return;
         }
         m_entities.clear();
         m_membership.clear();
         m_active       = {};
         m_scene_target = SceneTarget::None;
+        ClearHovered();
         ++m_revision;
     }
 
@@ -213,6 +241,7 @@ namespace Tetragrama
         m_membership.clear();
         m_active       = {};
         m_scene_target = target;
+        ClearHovered();
         ++m_revision;
     }
 
@@ -227,7 +256,9 @@ namespace Tetragrama
                 m_entities[kept++] = {target.UUID, entity, target.SceneEpoch};
             }
         }
-        if (kept == m_entities.size())
+        const bool selection_changed = kept != m_entities.size();
+        const bool hover_invalid     = !m_hovered.UUID.is_nil() && !resolver.Resolve(m_hovered).IsValid();
+        if (!selection_changed && !hover_invalid)
         {
             return false;
         }
@@ -235,12 +266,19 @@ namespace Tetragrama
         {
             m_entities.pop();
         }
-        RebuildMembership();
-        if (!m_membership.contains(m_active))
+        if (selection_changed)
         {
-            m_active = m_entities.empty() ? uuids::uuid{} : m_entities.back().UUID;
+            RebuildMembership();
+            if (!m_membership.contains(m_active))
+            {
+                m_active = m_entities.empty() ? uuids::uuid{} : m_entities.back().UUID;
+            }
+            ++m_revision;
         }
-        ++m_revision;
+        if (hover_invalid)
+        {
+            ClearHovered();
+        }
         return true;
     }
 } // namespace Tetragrama

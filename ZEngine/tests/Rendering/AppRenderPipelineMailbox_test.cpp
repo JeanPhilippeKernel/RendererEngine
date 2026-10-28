@@ -43,6 +43,27 @@ TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapsh
     EXPECT_FLOAT_EQ(read.Sky.EnvironmentIntensity, 2.0f);
 }
 
+TEST(AppRenderPipelineMailboxTest, RetainsImmutableSelectionOutlineMembership)
+{
+    AppRenderPipeline pipeline = {};
+    RenderFrameState  state    = {};
+    ASSERT_TRUE(state.SelectionOutline.Add({.Index = 8, .Generation = 2}));
+    ASSERT_TRUE(state.SelectionOutline.Add({.Index = 3, .Generation = 4}));
+    state.SelectionOutline.SortAndUnique();
+    state.SelectionOutline.Hovered = {.Index = 11, .Generation = 7};
+
+    ASSERT_TRUE(pipeline.PublishFrameState(state));
+
+    RenderFrameState read = {};
+    ASSERT_TRUE(pipeline.TryReadFrameState(read));
+    EXPECT_TRUE(read.SelectionOutline.Enabled());
+    EXPECT_TRUE(read.SelectionOutline.Contains({.Index = 3, .Generation = 4}));
+    EXPECT_TRUE(read.SelectionOutline.Contains({.Index = 8, .Generation = 2}));
+    EXPECT_FALSE(read.SelectionOutline.Contains({.Index = 8, .Generation = 3}));
+    EXPECT_EQ(read.SelectionOutline.Hovered, (ZEngine::ECS::EntityID{.Index = 11, .Generation = 7}));
+    pipeline.ReleaseFrameState();
+}
+
 TEST(AppRenderPipelineMailboxTest, OverlayBuildIsPacedAndCanReplaceRetainedOverlay)
 {
     AppRenderPipeline pipeline{};

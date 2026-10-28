@@ -24,6 +24,23 @@ namespace ZEngine::UI
         bool Keyboard = false;
     };
 
+    /// Semantic cursor shapes requested by UI and editor interactions. The
+    /// platform layer maps these to native cursor handles.
+    enum class ZUICursor : uint8_t
+    {
+        Default,
+        Crosshair,
+        HorizontalResize,
+        VerticalResize,
+    };
+
+    enum : uint8_t
+    {
+        ZUI_CursorPriorityViewport = 32,
+        ZUI_CursorPriorityCapture  = 128,
+        ZUI_CursorPriorityUI       = 160,
+    };
+
     /// @brief Single source of truth for all UI colors.
     ///
     /// Defaults are the Figma "Editor tokens" (Dark) set: every value below is a Tokens::
@@ -481,12 +498,17 @@ namespace ZEngine::UI
         // Written by ViewportPanel each UI frame; consumed by the next application update
         // to identify the scene viewport's pointer target.
         bool                      ViewportHovered      = false;
+        /// Read-only scene documents can still receive selection picks.
+        bool                      ViewportSelectable   = false;
+        bool                      ViewportEditable     = false;
         // Field presentation knobs set by a panel around its widgets (restored by the panel).
         bool                      FlatInputs           = false;   ///< Drag fields draw without a border and with a 3 px radius.
         int                       DragFloatDecimals    = 3;       ///< Digits after the point shown by ZUIDragFloat.
         const char*               DragFloatSuffix      = nullptr; ///< Appended to ZUIDragFloat's display text (e.g. a degree sign).
         uint64_t                  ViewportInputKey     = 0;
-        int                       ResizeCursor         = 0; // 0=default 1=H-resize 2=V-resize; set by panel dividers, read by ZUILayer
+        uint64_t                  ViewportOverlayKey   = 0;
+        ZUICursor                 Cursor               = ZUICursor::Default;
+        uint8_t                   CursorPriority       = 0;
 
         // Modifier key state — written by ZUILayer::OnKeyPressed/Released
         bool                      CtrlDown             = false;
@@ -634,6 +656,17 @@ namespace ZEngine::UI
         int                       PopupBuildIdx         = 0;  // incremented per ZUIComboItem/ZUISelectable in popup
         int                       PopupBuildCount       = 0;  // item count from previous popup frame (for clamping)
     };
+
+    /// Request a cursor for this UI frame. Higher-priority owners win; equal
+    /// priorities preserve the first request, making sibling ordering harmless.
+    inline void ZUIRequestCursor(ZUIContext* ctx, ZUICursor cursor, uint8_t priority)
+    {
+        if (ctx && priority > ctx->CursorPriority)
+        {
+            ctx->Cursor         = cursor;
+            ctx->CursorPriority = priority;
+        }
+    }
 
     ZDEFINE_PTR(ZUIContext);
 

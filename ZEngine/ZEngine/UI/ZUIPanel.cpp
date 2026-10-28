@@ -1479,7 +1479,7 @@ namespace ZEngine::UI
             m_split_dividers[di].Hovered = di == hovered && !Drag.Active && !ctx->Disabled && DockDividerContains(geometry, hover_width, ctx->MousePos);
             // Use current geometry for immediate cursor feedback (signals lag one frame).
             if ((di == hovered && !Drag.Active && !ctx->Disabled) || dragging)
-                ctx->ResizeCursor = axis == 1 ? 2 : 1;
+                ZUIRequestCursor(ctx, axis == 1 ? ZUICursor::VerticalResize : ZUICursor::HorizontalResize, ZUI_CursorPriorityUI);
         }
     }
 

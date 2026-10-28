@@ -45,17 +45,13 @@ namespace Tetragrama
         bool BindMesh(void*, ZEngine::Importers::AssetMesh& mesh, ZEngine::Importers::AssetNodeHierarchy& hierarchy, ZEngine::Core::Memory::ArenaAllocator* arena)
         {
             using ZEngine::Managers::AssetManager;
-            auto* manager = AssetManager::Instance();
-            if (!manager)
+            if (!AssetManager::Instance() || !arena)
             {
                 return false;
             }
-            // Registry/material maps can change during import. Their borrowed
-            // records must not escape the same ingest lock used by writers.
-            std::lock_guard lock(manager->IngestMutex);
-            const auto      uuid  = mesh.MeshUUID;
-            const auto      count = mesh.SubMeshes.size();
-            uint32_t        draws = 0;
+            const auto uuid  = mesh.MeshUUID;
+            const auto count = mesh.SubMeshes.size();
+            uint32_t   draws = 0;
             // Dropping an already loaded mesh is placement, not a hot reload.
             if (DrawCount(nullptr, mesh.MeshUUID, &draws))
             {
@@ -65,10 +61,11 @@ namespace Tetragrama
             {
                 if (!submesh.MaterialUUID.is_nil())
                 {
-                    const auto scratch = ZEngine::Core::Memory::BeginTempArena(arena);
-                    AssetManager::IngestMaterialFromUUID(arena, submesh.MaterialUUID);
-                    ZEngine::Core::Memory::EndTempArena(scratch);
-                    if (!manager->UUIDToMaterialSlot.find(submesh.MaterialUUID))
+                    // Material decoding is transient. ArenaScratch restores the
+                    // workspace on every path and prevents allocations in the
+                    // parent arena while the decoder owns this temporary range.
+                    ZEngine::Core::Memory::ArenaScratch scratch(arena);
+                    if (!AssetManager::IngestMaterialFromUUID(scratch.Arena(), submesh.MaterialUUID))
                     {
                         return false;
                     }
@@ -90,13 +87,13 @@ namespace Tetragrama
         ZEngine::Importers::AssetMesh          Mesh              = {};
         ZEngine::Importers::AssetNodeHierarchy Hierarchy         = {};
         VFSError                               Error             = VFSError::OK;
-        std::atomic<bool>                      Ready             = false;
-        std::atomic<bool>                      Cancelled         = false;
+        PaddedAtomic<bool>                     Ready             = {};
+        PaddedAtomic<bool>                     Cancelled         = {};
 
         static void                            Read(void* context)
         {
             auto& work = *static_cast<Work*>(context);
-            if (!work.Cancelled.load(std::memory_order_acquire))
+            if (!work.Cancelled.value.load(std::memory_order_acquire))
             {
                 auto limits            = ZEngine::Importers::AssetCodec::MeshAssetReadLimits{};
                 limits.MaxDecodedBytes = WorkspaceBytes - ZMega(8);
@@ -108,14 +105,14 @@ namespace Tetragrama
             }
             // No access to the request after publication; the main thread may
             // reclaim it as soon as this release is observed.
-            work.Ready.store(true, std::memory_order_release);
+            work.Ready.value.store(true, std::memory_order_release);
         }
     };
 
     EditorMeshDrop::EditorMeshDrop() = default;
     EditorMeshDrop::~EditorMeshDrop()
     {
-        ZENGINE_VALIDATE_ASSERT(!m_work || m_work->Ready.load(std::memory_order_acquire), "Mesh-drop workers must be joined before editor destruction")
+        ZENGINE_VALIDATE_ASSERT(!m_work || m_work->Ready.value.load(std::memory_order_acquire), "Mesh-drop workers must be joined before editor destruction")
     }
     bool EditorMeshDrop::Initialize(ZEngine::Core::Memory::ArenaAllocator& import_arena)
     {
@@ -161,7 +158,7 @@ namespace Tetragrama
         m_requested = false;
         if (m_work)
         {
-            m_work->Cancelled.store(true, std::memory_order_release);
+            m_work->Cancelled.value.store(true, std::memory_order_release);
         }
     }
     void EditorMeshDrop::ReleaseWork()
@@ -189,9 +186,9 @@ namespace Tetragrama
         const auto epoch = m_work ? m_work->Epoch : m_epoch;
         if (m_closed || !owner || owner->Session != &session || owner->SourceReadOnly || !session.Editable() || engine.Scene != session.Scene() || epoch != session.SceneEpoch() || !engine.VFS || engine.CloseRequested.value.load(std::memory_order_acquire) || (m_expected_vfs && m_expected_vfs != engine.VFS) || (m_work && m_work->VFS != engine.VFS))
         {
-            const bool already_cancelled = m_work && m_work->Cancelled.load(std::memory_order_acquire);
+            const bool already_cancelled = m_work && m_work->Cancelled.value.load(std::memory_order_acquire);
             Cancel();
-            if (m_work && m_work->Ready.load(std::memory_order_acquire))
+            if (m_work && m_work->Ready.value.load(std::memory_order_acquire))
             {
                 ReleaseWork();
             }
@@ -219,7 +216,7 @@ namespace Tetragrama
             ReleaseWork();
             return Reject(diagnostics, "Mesh drop could not obtain a worker; the scene was preserved.");
         }
-        if (!m_work->Ready.load(std::memory_order_acquire))
+        if (!m_work->Ready.value.load(std::memory_order_acquire))
         {
             return true;
         }
@@ -233,7 +230,7 @@ namespace Tetragrama
                 Owner.ReleaseWork();
             }
         } completion{*this};
-        if (m_work->Cancelled.load(std::memory_order_acquire))
+        if (m_work->Cancelled.value.load(std::memory_order_acquire))
         {
             return true;
         }

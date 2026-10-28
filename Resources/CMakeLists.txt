@@ -37,6 +37,10 @@ endif()
 file (GLOB VertexShaders CONFIGURE_DEPENDS "${ShaderPath}/*.vert")
 file (GLOB FragmentShaders CONFIGURE_DEPENDS "${ShaderPath}/*.frag")
 file (GLOB ComputeShaders CONFIGURE_DEPENDS "${ShaderPath}/*.comp")
+# GLSL stages share layout and binding declarations through these includes. Keep
+# every stage dependent on the include set so a CPU/GPU ABI edit (for example,
+# DrawData) cannot leave packaged SPIR-V with an obsolete storage-buffer stride.
+file (GLOB ShaderIncludes CONFIGURE_DEPENDS "${ShaderPath}/*.glsl")
 
 # Editor executables load packaged SPIR-V. The aggregate target gives them a
 # complete package, while output dependencies keep unchanged shaders out of
@@ -49,6 +53,7 @@ function(add_shader_compiler shader stage suffix)
     set(shader_output "${ShaderOutputPath}/${output_name}")
     set(packaged_outputs "${shader_output}" "${ShaderBinOutputPath}/${output_name}")
     set(shader_dependencies "${shader}")
+    list(APPEND shader_dependencies ${ShaderIncludes})
 
     if (shader_name STREQUAL "sky_atmosphere_multiscattering")
         list(APPEND shader_dependencies "${ShaderPath}/sky_atmosphere_common.glsl")
@@ -74,7 +79,6 @@ function(add_shader_compiler shader stage suffix)
         )
         list(APPEND packaged_outputs "${ShaderObeliskOutputPath}/${output_name}")
     endif()
-
     add_custom_target("Compile-${shader_name}-${stage}" DEPENDS ${packaged_outputs})
     add_dependencies(CompileShaders "Compile-${shader_name}-${stage}")
 endfunction()

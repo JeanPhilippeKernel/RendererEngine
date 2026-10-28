@@ -49,6 +49,8 @@ namespace ZEngine::Rendering::Renderers
         inline static cstring GBufferAlbedoAOName                = "g_gbuffer_albedo_ao";
         inline static cstring GBufferNormalRoughnessName         = "g_gbuffer_normal_roughness";
         inline static cstring GBufferMetallicEmissiveName        = "g_gbuffer_metallic_emissive";
+        /// Discrete per-frame object pick token. Never sampled by lighting.
+        inline static cstring GBufferObjectIdName                = "g_gbuffer_object_id";
 
         inline static cstring SceneCameraBufferName              = "SceneCamera";
     };
@@ -421,18 +423,38 @@ namespace ZEngine::Rendering::Renderers
         }
     };
 
-    /// @brief One deferred CPU read attached to an exact graph buffer version.
+    enum class RGReadbackSourceKind : uint8_t
+    {
+        Buffer,
+        Image,
+    };
+
+    /// @brief One bounded image region copied to a readback staging allocation.
+    /// @details The byte count remains explicit at the declaration site because
+    /// Vulkan formats can have packing rules that the render graph must not infer.
+    struct RGImageReadbackRegion
+    {
+        VkImageSubresourceLayers Subresource = {};
+        VkOffset3D               Offset      = {};
+        VkExtent3D               Extent      = {};
+    };
+
+    /// @brief One deferred CPU read attached to an exact graph resource version.
     struct RGReadbackRequest
     {
-        cstring          Name            = nullptr;
-        RGResourceHandle Source          = {};
-        VkDeviceSize     Offset          = 0;
-        VkDeviceSize     Size            = VK_WHOLE_SIZE;
-        RGReadbackFn     Callback        = nullptr;
-        void*            Context         = nullptr;
-        uint32_t         AllocationIndex = UINT32_MAX;
-        bool             Recorded        = false;
-        bool             Submitted       = false;
+        cstring               Name                  = nullptr;
+        RGResourceHandle      Source                = {};
+        RGReadbackSourceKind  SourceKind            = RGReadbackSourceKind::Buffer;
+        VkDeviceSize          Offset                = 0;
+        VkDeviceSize          Size                  = VK_WHOLE_SIZE;
+        RGImageReadbackRegion ImageRegion           = {};
+        RGReadbackFn          Callback              = nullptr;
+        RGReadbackCancelFn    Cancellation          = nullptr;
+        void*                 Context               = nullptr;
+        uint32_t              AllocationIndex       = UINT32_MAX;
+        bool                  Recorded              = false;
+        bool                  Submitted             = false;
+        bool                  CancellationDelivered = false;
     };
 
     /// @brief Persistent Vulkan storage for one logical occlusion query pool.
@@ -702,6 +724,8 @@ namespace ZEngine::Rendering::Renderers
 
     struct RenderGraph
     {
+        friend struct RenderGraphTestAccess;
+
         RenderGraph()                                                          = default;
         ~RenderGraph()                                                         = default;
 
@@ -817,11 +841,12 @@ namespace ZEngine::Rendering::Renderers
         bool                                    PrepareReadbacks();
         bool                                    PrepareQueryReadbacks();
         void                                    SubmitReadbacks(uint32_t first_pass_order, uint32_t pass_count, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
-        void                                    CancelUnsubmittedReadbacks();
+        void                                    CancelUnsubmittedReadbacks(bool preserve_recorded = false);
         void                                    MarkQueryWritesRecorded(const RGPass& pass);
         void                                    BuildStreamingAcquirePlans();
         void                                    AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count);
         static void                             OnRenderWorkSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+        static void                             OnRenderWorkCancelled(void* context);
         // Returns false when the enabled subgraph has a dependency cycle. A cycle
         // has no valid execution order and therefore makes this compile invalid.
         bool                                    BuildTopology();
@@ -914,7 +939,14 @@ namespace ZEngine::Rendering::Renderers
         /// invokes `callback` on the render thread after the exact queue timeline reaches
         /// the copy submission. `size == VK_WHOLE_SIZE` copies through the end of the buffer.
         /// `data` is valid only for the duration of the callback.
-        RGReadbackHandle DeclareReadback(cstring name, RGResourceHandle gpu_buffer, RGReadbackFn callback, void* context, VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
+        RGReadbackHandle DeclareReadback(cstring name, RGResourceHandle gpu_buffer, RGReadbackFn callback, void* context, VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0, RGReadbackCancelFn cancellation = nullptr);
+
+        /// @brief Declares deferred CPU delivery of a bounded exact image version.
+        /// @details The image is copied to the graph's timeline-gated readback ring.
+        /// `size` is explicit so callers choose the intended output packing; it must
+        /// describe the bytes written by `region`. The callback runs on the render
+        /// thread and may retain data only by copying it.
+        RGReadbackHandle DeclareImageReadback(cstring name, RGResourceHandle image, const RGImageReadbackRegion& region, RGReadbackFn callback, void* context, VkDeviceSize size, RGReadbackCancelFn cancellation = nullptr);
 
         /// @brief Declares a graph-owned occlusion query pool.
         /// @details The same named declaration may be made by several passes,

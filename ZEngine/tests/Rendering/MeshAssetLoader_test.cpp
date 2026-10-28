@@ -7,6 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 using namespace ZEngine::Core::Memory;
@@ -95,16 +97,20 @@ protected:
             }
             return VFSContext::Open(path, flags);
         }
-    } VFS                                   = {};
-    AssetMesh          Mesh                 = {};
-    AssetNodeHierarchy Hierarchy            = {};
-    uuids::uuid        ID                   = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
-    uuids::uuid        HierarchyID          = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
-    VFSPath            Path                 = VFSPath::Parse("/Meshes/triangle.zemesh").Value();
-    uint32_t           ReadyCalls           = 0;
-    bool               ReadySawCompleteData = true;
+    } VFS                                         = {};
+    AssetMesh             Mesh                    = {};
+    AssetNodeHierarchy    Hierarchy               = {};
+    uuids::uuid           ID                      = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
+    uuids::uuid           HierarchyID             = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
+    VFSPath               Path                    = VFSPath::Parse("/Meshes/triangle.zemesh").Value();
+    VFSPath               MaterialPath            = VFSPath::Parse("/Materials/triangle.zematerial").Value();
+    uuids::uuid           MaterialID              = *uuids::uuid::from_string("33333333-3333-4333-8333-333333333333");
+    std::filesystem::path MaterialWorkspace       = {};
+    std::string           MaterialWorkspaceNative = {};
+    uint32_t              ReadyCalls              = 0;
+    bool                  ReadySawCompleteData    = true;
 
-    void               SetUp() override
+    void                  SetUp() override
     {
         ASSERT_EQ(AssetManager::Instance(), nullptr);
         Memory.Initialize(ZMega(512), {});
@@ -158,6 +164,11 @@ protected:
     {
         AssetManager::Shutdown();
         VFS.Shutdown();
+        if (!MaterialWorkspace.empty())
+        {
+            std::error_code error = {};
+            std::filesystem::remove_all(MaterialWorkspace, error);
+        }
     }
     void WriteMesh()
     {
@@ -166,6 +177,25 @@ protected:
         config.OutputAssetsPath.init(&Memory.MainArena, "/Meshes");
         config.OutputAssetFile.init(&Memory.MainArena, "triangle.zemesh");
         ASSERT_TRUE(AssetCodec::SerializeMeshAssetFile(&Memory.MainArena, Mesh, Hierarchy, config).Succeeded());
+    }
+    void WriteMaterialDependency()
+    {
+        MaterialWorkspace       = std::filesystem::temp_directory_path() / "zengine_mesh_asset_loader_material";
+        MaterialWorkspaceNative = MaterialWorkspace.string();
+        std::error_code error   = {};
+        ASSERT_TRUE(std::filesystem::create_directories(MaterialWorkspace / "Materials", error) || !error);
+        std::ofstream material(MaterialWorkspace / "Materials" / "triangle.zematerial", std::ios::trunc);
+        ASSERT_TRUE(material.is_open());
+        material << R"({"uuid":"33333333-3333-4333-8333-333333333333","name":"triangle","albedo_color":[0.25,0.5,0.75,1.0],"ambient_color":[0.0,0.0,0.0,1.0],"emissive_color":[0.0,0.0,0.0,1.0],"roughness_color":[0.0,0.6,0.0,0.0],"specular_color":[0.0,0.0,0.0,0.0],"factors":[0.0,0.0,0.0,0.0],"textures":{}})";
+        material.close();
+        ASSERT_TRUE(material.good());
+        auto* manager                    = AssetManager::Instance();
+        manager->CurrentWorkingSpacePath = MaterialWorkspaceNative.c_str();
+        MetaFileData material_meta       = {};
+        material_meta.AssetUUID          = MaterialID;
+        ASSERT_TRUE(manager->Registry->Register(MaterialID, AssetType::MATERIAL, MaterialPath, material_meta).IsOk());
+        Mesh.SubMeshes[0].MaterialUUID = MaterialID;
+        WriteMesh();
     }
     void ExpectUnpublished()
     {
@@ -218,6 +248,20 @@ TEST_F(MeshAssetLoaderTest, LoadsCompleteMeshAndHierarchyWithOwnedNamesBoundsAnd
     ASSERT_NE(hierarchy->NodeMeshes.find(0), nullptr);
     EXPECT_EQ(*hierarchy->NodeMeshes.find(0), 0u);
     EXPECT_EQ(manager->Registry->FindByUUID(ID)->Path, Path);
+}
+
+TEST_F(MeshAssetLoaderTest, LoadsReferencedMaterialBeforePublishingMeshDraws)
+{
+    WriteMaterialDependency();
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    const uint32_t* material_slot = manager->UUIDToMaterialSlot.find(MaterialID);
+    ASSERT_NE(material_slot, nullptr);
+    ASSERT_LT(*material_slot, manager->GPUMeshMaterials.size());
+    const auto& material = manager->GPUMeshMaterials[*material_slot];
+    EXPECT_FLOAT_EQ(material.AlbedoColor.x, 0.25f);
+    EXPECT_FLOAT_EQ(material.AlbedoColor.y, 0.5f);
+    EXPECT_FLOAT_EQ(material.AlbedoColor.z, 0.75f);
 }
 
 TEST_F(MeshAssetLoaderTest, RepeatedPlacementReusesTheBindingWithoutReadingAllocatingOrNotifyingAgain)

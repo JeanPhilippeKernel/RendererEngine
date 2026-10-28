@@ -5,9 +5,11 @@
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/UI/ZUIContext.h>
@@ -218,8 +220,15 @@ namespace ZEngine::Applications
         (void) Rendering::Renderers::BuildGridLabelFrame(scene.Grid, camera, state.GridLabelFont, state.RenderTargetW, state.RenderTargetH, grid_labels);
         SceneRenderer->ApplyGridLabels(grid_labels);
         SceneRenderer->ApplyGizmo(state.Gizmo);
+        SceneRenderer->ApplySelectionOutline(state.SelectionOutline.Enabled());
 
-        auto* gpu = SceneRenderer->RenderSceneData;
+        auto*      gpu                = SceneRenderer->RenderSceneData;
+        // Begin exactly once. A mailbox may retain the same request for several
+        // render opportunities while it waits for a free consumer slot.
+        const auto object_pick        = state.ObjectPick;
+        const auto hover_pick         = state.HoverPick;
+        const bool record_object_pick = object_pick.Valid() && object_pick.Begin(object_pick.Context);
+        const bool record_hover_pick  = hover_pick.Valid() && hover_pick.Begin(hover_pick.Context);
 
         {
             auto*        rrm       = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
@@ -234,9 +243,15 @@ namespace ZEngine::Applications
             Core::Containers::Array<Rendering::Meshes::SubMeshAllocation>   allocs;
             Core::Containers::Array<Rendering::Scenes::FrustumCullingInput> culling_inputs;
             Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
+            Core::Containers::Array<uint32_t>                               selection_token_states;
             allocs.init(scratch.Arena, scene.InstanceCount * 4);
             culling_inputs.init(scratch.Arena, scene.InstanceCount * 4);
             transforms.init(scratch.Arena, scene.InstanceCount);
+            if (state.SelectionOutline.Enabled())
+            {
+                selection_token_states.init(scratch.Arena, Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1, Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1);
+                ZEngine::Helpers::secure_memset(selection_token_states.data(), 0, selection_token_states.size() * sizeof(uint32_t), selection_token_states.size() * sizeof(uint32_t));
+            }
 
             for (uint32_t inst_i = 0; inst_i < scene.InstanceCount; ++inst_i)
             {
@@ -288,7 +303,13 @@ namespace ZEngine::Applications
                 }
 
                 transforms.push(inst.Transform);
-                uint32_t transform_idx = static_cast<uint32_t>(transforms.size() - 1);
+                uint32_t       transform_idx  = static_cast<uint32_t>(transforms.size() - 1);
+                // This state is shared by every submesh of the instance.
+                // Compute it once before assigning one pick token per draw.
+                const bool     selected       = state.SelectionOutline.Contains(inst.Entity);
+                const bool     hovered        = !selected && inst.Entity == state.SelectionOutline.Hovered;
+                const uint32_t feedback_state = selected ? 2u : hovered ? 1u : 0u;
+                const bool     needs_token    = inst.Entity.IsValid() && (record_object_pick || record_hover_pick || feedback_state != 0);
 
                 for (uint32_t sub_i = 0; sub_i < static_cast<uint32_t>(mesh->SubMeshes.size()); ++sub_i)
                 {
@@ -305,6 +326,21 @@ namespace ZEngine::Applications
                     alloc.InstanceCount                           = 1;
                     alloc.TransformId                             = transform_idx;
                     alloc.MaterialId                              = mat_idx;
+                    // The same frame-local token image supports independent click
+                    // and hover readbacks plus selected-state outline feedback.
+                    alloc.PickToken                               = needs_token && draw_idx < Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS ? draw_idx + 1 : 0;
+                    if (record_object_pick && alloc.PickToken != 0)
+                    {
+                        object_pick.RecordToken(object_pick.Context, alloc.PickToken, inst.Entity);
+                    }
+                    if (record_hover_pick && alloc.PickToken != 0)
+                    {
+                        hover_pick.RecordToken(hover_pick.Context, alloc.PickToken, inst.Entity);
+                    }
+                    if (feedback_state != 0 && alloc.PickToken != 0)
+                    {
+                        selection_token_states[alloc.PickToken] = feedback_state;
+                    }
                     allocs.push(alloc);
                     VkDrawIndirectCommand draw = {.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx};
                     culling_inputs.push({.WorldBounds = world_bounds, .Command = draw});
@@ -325,6 +361,10 @@ namespace ZEngine::Applications
             if (rrm && gpu->CullingInputBuffers[frame_index].Handle && culling_inputs.size() > 0)
             {
                 rrm->UpdateBuffer(gpu->CullingInputBuffers[frame_index], culling_inputs.data(), culling_inputs.size() * sizeof(Rendering::Scenes::FrustumCullingInput));
+            }
+            if (rrm && state.SelectionOutline.Enabled() && gpu->SelectionTokenStateBuffers[frame_index].Handle)
+            {
+                rrm->UpdateBuffer(gpu->SelectionTokenStateBuffers[frame_index], selection_token_states.data(), selection_token_states.size() * sizeof(uint32_t));
             }
 
             for (uint32_t i = 0; i < 6; ++i)
@@ -358,6 +398,18 @@ namespace ZEngine::Applications
         }
 
         ZUIRenderPass->SetPayload(overlay);
+        if (record_object_pick)
+        {
+            SceneRenderer->RequestObjectIdPick({.X = object_pick.X, .Y = object_pick.Y, .Callback = object_pick.Complete, .Cancelled = object_pick.Cancelled, .Context = object_pick.Context});
+            // The request has been declared before DrawScene rebuilds the graph.
+            // The completion callback owns the final Submitted -> Completed edge.
+            object_pick.Submitted(object_pick.Context);
+        }
+        if (record_hover_pick)
+        {
+            SceneRenderer->RequestObjectIdPick({.X = hover_pick.X, .Y = hover_pick.Y, .Callback = hover_pick.Complete, .Cancelled = hover_pick.Cancelled, .Context = hover_pick.Context});
+            hover_pick.Submitted(hover_pick.Context);
+        }
         SceneRenderer->BeginSkyFrame(camera);
         CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
         ZUIRenderPass->SetPayload(nullptr);
@@ -523,7 +575,7 @@ namespace ZEngine::Applications
             for (uint32_t i = 0; i < count; ++i)
             {
                 const auto& source = source_scene->Instances[i];
-                std::construct_at(instances + i, Rendering::Scenes::SceneDrawInstance{source.Transform, source.MeshUUID});
+                std::construct_at(instances + i, Rendering::Scenes::SceneDrawInstance{source.Transform, source.MeshUUID, source.Entity});
             }
             destination.Scene.Instances     = instances;
             destination.Scene.InstanceCount = count;
@@ -730,7 +782,8 @@ namespace ZEngine::Applications
             ZEngine::UI::ZUIEndFrame(ZUICtx);
         }
 
-        // Apply resize cursor from the ZUI divider hover state + flush clipboard writes
+        // Resolve the semantic cursor selected by this UI frame and flush
+        // clipboard writes. Cursor handles remain process-lifetime GLFW objects.
         if (Device && Device->CurrentWindow)
         {
             auto* gw = static_cast<GLFWwindow*>(Device->CurrentWindow->GetNativeWindow());
@@ -742,10 +795,14 @@ namespace ZEngine::Applications
                     glfwSetClipboardString(gw, ZUICtx->ClipboardWrite);
                     ZUICtx->ClipboardWrite[0] = '\0';
                 }
-                int                req       = ZUICtx ? ZUICtx->ResizeCursor : 0;
-                // Lazily create standard cursors (created once, never destroyed — app lifetime)
-                static GLFWcursor* s_hresize = nullptr;
-                static GLFWcursor* s_vresize = nullptr;
+                const auto         request     = ZUICtx ? ZUICtx->Cursor : ZEngine::UI::ZUICursor::Default;
+                static GLFWcursor* s_crosshair = nullptr;
+                static GLFWcursor* s_hresize   = nullptr;
+                static GLFWcursor* s_vresize   = nullptr;
+                if (!s_crosshair)
+                {
+                    s_crosshair = glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR);
+                }
                 if (!s_hresize)
                 {
                     s_hresize = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
@@ -754,12 +811,15 @@ namespace ZEngine::Applications
                 {
                     s_vresize = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
                 }
-
-                if (req == 1 && s_hresize)
+                if (request == ZEngine::UI::ZUICursor::Crosshair && s_crosshair)
+                {
+                    glfwSetCursor(gw, s_crosshair);
+                }
+                else if (request == ZEngine::UI::ZUICursor::HorizontalResize && s_hresize)
                 {
                     glfwSetCursor(gw, s_hresize);
                 }
-                else if (req == 2 && s_vresize)
+                else if (request == ZEngine::UI::ZUICursor::VerticalResize && s_vresize)
                 {
                     glfwSetCursor(gw, s_vresize);
                 }

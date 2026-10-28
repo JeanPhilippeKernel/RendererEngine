@@ -18,6 +18,7 @@ struct DrawData
     uint InstanceCount;
     uint TransformIndex;
     uint MaterialIndex;
+    uint PickToken;
 };
 
 struct DrawDataView

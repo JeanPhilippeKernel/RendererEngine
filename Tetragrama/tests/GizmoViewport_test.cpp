@@ -4160,3 +4160,54 @@ TEST_F(GizmoViewportGridTest, AcceptanceMatrixExportsArbitraryAxisGridVisualCapt
     Route();
     EXPECT_FALSE(session.Active());
 }
+
+TEST(GizmoViewportPickTest, ConvertsLogicalImageCoordinatesToBoundedRenderPixels)
+{
+    Viewport   viewport      = {};
+    ZUIContext context       = {};
+    context.ScreenW          = 1600;
+    context.ScreenH          = 900;
+    context.InputScale[0]    = 2.f;
+    context.InputScale[1]    = 2.f;
+    context.ViewportInputKey = 19;
+    context.FrameIndex       = 7;
+    const float rect[4]      = {100.f, 50.f, 900.f, 650.f};
+    viewport.Bind(&context, rect, 19, 23);
+
+    uint32_t    x = 99, y = 99;
+    const float top_left[2] = {100.f, 50.f};
+    ASSERT_TRUE(viewport.ToRenderPixel(top_left, 1600, 900, x, y));
+    EXPECT_EQ(x, 0u);
+    EXPECT_EQ(y, 0u);
+
+    const float interior[2] = {500.f, 350.f};
+    ASSERT_TRUE(viewport.ToRenderPixel(interior, 1600, 900, x, y));
+    EXPECT_EQ(x, 800u);
+    EXPECT_EQ(y, 450u);
+
+    const float right_edge[2] = {900.f, 350.f};
+    EXPECT_FALSE(viewport.ToRenderPixel(right_edge, 1600, 900, x, y));
+    const float bottom_edge[2] = {500.f, 650.f};
+    EXPECT_FALSE(viewport.ToRenderPixel(bottom_edge, 1600, 900, x, y));
+    EXPECT_FALSE(viewport.ToRenderPixel(interior, 0, 900, x, y));
+}
+
+TEST(GizmoViewportPickTest, BindingRevisionRejectsPickCoordinatesFromReplacedViewport)
+{
+    Viewport   viewport      = {};
+    ZUIContext context       = {};
+    context.ScreenW          = 1280;
+    context.ScreenH          = 720;
+    context.InputScale[0]    = 1.f;
+    context.InputScale[1]    = 1.f;
+    context.ViewportInputKey = 41;
+    context.FrameIndex       = 3;
+    const float first[4]     = {10.f, 20.f, 410.f, 320.f};
+    viewport.Bind(&context, first, 41, 47);
+    const uint64_t first_revision = viewport.BindingRevision();
+    ASSERT_NE(first_revision, 0u);
+
+    const float replacement[4] = {20.f, 20.f, 420.f, 320.f};
+    viewport.Bind(&context, replacement, 41, 47);
+    EXPECT_GT(viewport.BindingRevision(), first_revision);
+}
