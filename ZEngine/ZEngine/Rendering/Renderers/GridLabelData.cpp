@@ -132,8 +132,9 @@ namespace ZEngine::Rendering::Renderers
             const double alpha    = relative < 1.0 ? color[3] * std::pow(1.0 - relative, settings.FadeStrength) : 0.0;
             if (alpha <= .001)
                 continue;
-            const auto&  glyph = font.Glyphs[axis];
-            const double w = glyph.Size.x * scale, h = glyph.Size.y * scale;
+            const auto&  glyph       = font.Glyphs[axis];
+            const double label_scale = GridLabelTextScale * scale;
+            const double w = glyph.Size.x * label_scale, h = glyph.Size.y * label_scale;
             const double x = double(point.Screen.x) - w * .5, y = double(point.Screen.y) - h * .5;
             if (x >= width || y >= height || x + w <= 0.0 || y + h <= 0.0)
                 continue; // clip offscreen labels; never clamp to the viewport

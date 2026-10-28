@@ -38,9 +38,12 @@ namespace ZEngine::Rendering::Renderers
         uint32_t                  Count = 0;
     };
 
-    /// Layout policy, not an additional authored Grid spacing. Fixed logical size
-    /// keeps labels readable without depending on spacing/LOD or camera distance.
-    inline constexpr float GridLabelAxisOffset = 144.f;
+    /// Overlay layout policy, not authored Grid spacing. Keep labels close enough
+    /// to identify the origin while leaving room for gizmos and axis lines.
+    inline constexpr float GridLabelAxisOffset = 96.f;
+    /// The body font is sized for dense UI. Axis labels need a distinct display
+    /// scale to stay legible against a high-frequency grid.
+    inline constexpr float GridLabelTextScale  = 1.5f;
 
     /// Build at most two neutral local-axis labels from one retained camera/Grid.
     /// Disabled/missing-font/hidden labels yield an empty frame. Invalid inputs

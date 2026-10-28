@@ -147,8 +147,8 @@ TEST(GridLabelTest, PerspectiveOrthographicReverseDepthAndHighDpiKeepLogicalText
                 EXPECT_NEAR(Center(frame, 1, 800.f * scale, 600.f * scale).y / scale, 300.f + GridLabelAxisOffset, .0001f);
                 for (uint32_t i = 0; i < 2; ++i)
                 {
-                    EXPECT_NEAR(frame.Push.Rects[i][2] * 400.f, font.Glyphs[i].Size.x, .00001f);
-                    EXPECT_NEAR(frame.Push.Rects[i][3] * 300.f, font.Glyphs[i].Size.y, .00001f);
+                    EXPECT_NEAR(frame.Push.Rects[i][2] * 400.f, font.Glyphs[i].Size.x * GridLabelTextScale, .00001f);
+                    EXPECT_NEAR(frame.Push.Rects[i][3] * 300.f, font.Glyphs[i].Size.y * GridLabelTextScale, .00001f);
                     G::ProjectionFrame projection = {};
                     ASSERT_TRUE(G::MakeProjectionFrame(camera.View, camera.Projection, camera.Position, orthographic ? G::ProjectionKind::Orthographic : G::ProjectionKind::Perspective, reverse, &projection));
                     G::ProjectedPoint origin = {};
