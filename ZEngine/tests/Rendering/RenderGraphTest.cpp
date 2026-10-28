@@ -882,7 +882,7 @@ TEST(RenderGraphDeclarationTest, RecordedReadbackSurvivesUntilDeferredGraphicsSu
     RenderGraph graph = {};
     graph.ReadbackRequests.init(&arena, 1);
     uint32_t cancellations = 0;
-    graph.ReadbackRequests.push({.Name = "DeferredReadback", .Recorded = true, .Cancellation = &CountReadbackCancellation, .Context = &cancellations});
+    graph.ReadbackRequests.push({.Name = "DeferredReadback", .Cancellation = &CountReadbackCancellation, .Context = &cancellations, .Recorded = true});
 
     RenderGraphTestAccess::CancelUnsubmittedReadbacks(graph, true);
     EXPECT_EQ(cancellations, 0u);
