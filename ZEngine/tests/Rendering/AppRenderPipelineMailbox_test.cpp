@@ -1,4 +1,5 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
+#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <gtest/gtest.h>
 #include <atomic>
 #include <thread>
@@ -7,77 +8,99 @@ using namespace ZEngine::Applications;
 
 TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapshot)
 {
-    AppRenderPipeline pipeline{};
+    auto pipeline                   = ZEngine::Helpers::CreateScope<AppRenderPipeline>();
 
-    RenderFrameState  first        = {};
-    first.Camera.Position.x        = 1.0f;
-    first.ResizeSequence           = 1;
-    first.RenderTargetW            = 1280;
-    first.RenderTargetH            = 720;
-    first.FramebufferW             = 1500;
-    first.FramebufferH             = 800;
-    first.SkyRevision              = 4;
-    first.Sky.EnvironmentIntensity = 1.0f;
-    pipeline.PublishFrameState(first);
+    auto first                      = ZEngine::Helpers::CreateScope<RenderFrameState>();
+    first->Camera.Position.x        = 1.0f;
+    first->ResizeSequence           = 1;
+    first->RenderTargetW            = 1280;
+    first->RenderTargetH            = 720;
+    first->FramebufferW             = 1500;
+    first->FramebufferH             = 800;
+    first->SkyRevision              = 4;
+    first->Sky.EnvironmentIntensity = 1.0f;
+    pipeline->PublishFrameState(*first);
 
-    RenderFrameState latest         = first;
-    latest.Camera.Position.x        = 3.0f;
-    latest.ResizeSequence           = 2;
-    latest.RenderTargetW            = 1920;
-    latest.RenderTargetH            = 1080;
-    latest.FramebufferW             = 2478;
-    latest.FramebufferH             = 1514;
-    latest.SkyRevision              = 5;
-    latest.Sky.EnvironmentIntensity = 2.0f;
-    pipeline.PublishFrameState(latest);
+    auto latest                      = ZEngine::Helpers::CreateScope<RenderFrameState>(*first);
+    latest->Camera.Position.x        = 3.0f;
+    latest->ResizeSequence           = 2;
+    latest->RenderTargetW            = 1920;
+    latest->RenderTargetH            = 1080;
+    latest->FramebufferW             = 2478;
+    latest->FramebufferH             = 1514;
+    latest->SkyRevision              = 5;
+    latest->Sky.EnvironmentIntensity = 2.0f;
+    pipeline->PublishFrameState(*latest);
 
-    RenderFrameState read = {};
-    ASSERT_TRUE(pipeline.TryReadFrameState(read));
-    EXPECT_FLOAT_EQ(read.Camera.Position.x, 3.0f);
-    EXPECT_EQ(read.ResizeSequence, 2u);
-    EXPECT_EQ(read.RenderTargetW, 1920u);
-    EXPECT_EQ(read.RenderTargetH, 1080u);
-    EXPECT_EQ(read.FramebufferW, 2478u);
-    EXPECT_EQ(read.FramebufferH, 1514u);
-    EXPECT_EQ(read.SkyRevision, 5u);
-    EXPECT_FLOAT_EQ(read.Sky.EnvironmentIntensity, 2.0f);
+    auto read = ZEngine::Helpers::CreateScope<RenderFrameState>();
+    ASSERT_TRUE(pipeline->TryReadFrameState(*read));
+    EXPECT_FLOAT_EQ(read->Camera.Position.x, 3.0f);
+    EXPECT_EQ(read->ResizeSequence, 2u);
+    EXPECT_EQ(read->RenderTargetW, 1920u);
+    EXPECT_EQ(read->RenderTargetH, 1080u);
+    EXPECT_EQ(read->FramebufferW, 2478u);
+    EXPECT_EQ(read->FramebufferH, 1514u);
+    EXPECT_EQ(read->SkyRevision, 5u);
+    EXPECT_FLOAT_EQ(read->Sky.EnvironmentIntensity, 2.0f);
+    pipeline->ReleaseFrameState();
+}
+
+TEST(AppRenderPipelineMailboxTest, RetainsImmutableSelectionOutlineMembership)
+{
+    auto pipeline = ZEngine::Helpers::CreateScope<AppRenderPipeline>();
+    auto state    = ZEngine::Helpers::CreateScope<RenderFrameState>();
+    ASSERT_TRUE(state->SelectionOutline.Add({.Index = 8, .Generation = 2}));
+    ASSERT_TRUE(state->SelectionOutline.Add({.Index = 3, .Generation = 4}));
+    state->SelectionOutline.SortAndUnique();
+    state->SelectionOutline.Hovered = {.Index = 11, .Generation = 7};
+
+    ASSERT_TRUE(pipeline->PublishFrameState(*state));
+
+    auto read = ZEngine::Helpers::CreateScope<RenderFrameState>();
+    ASSERT_TRUE(pipeline->TryReadFrameState(*read));
+    EXPECT_TRUE(read->SelectionOutline.Enabled());
+    EXPECT_TRUE(read->SelectionOutline.Contains({.Index = 3, .Generation = 4}));
+    EXPECT_TRUE(read->SelectionOutline.Contains({.Index = 8, .Generation = 2}));
+    EXPECT_FALSE(read->SelectionOutline.Contains({.Index = 8, .Generation = 3}));
+    EXPECT_EQ(read->SelectionOutline.Hovered, (ZEngine::ECS::EntityID{.Index = 11, .Generation = 7}));
+    pipeline->ReleaseFrameState();
 }
 
 TEST(AppRenderPipelineMailboxTest, OverlayBuildIsPacedAndCanReplaceRetainedOverlay)
 {
-    AppRenderPipeline pipeline{};
+    auto            pipeline   = ZEngine::Helpers::CreateScope<AppRenderPipeline>();
 
-    OverlayPayload*   first      = nullptr;
-    uint32_t          first_slot = 0;
-    ASSERT_TRUE(pipeline.BeginOverlayWrite(first, first_slot));
+    OverlayPayload* first      = nullptr;
+    uint32_t        first_slot = 0;
+    ASSERT_TRUE(pipeline->BeginOverlayWrite(first, first_slot));
     ASSERT_NE(first, nullptr);
-    pipeline.PublishOverlay(first_slot);
+    pipeline->PublishOverlay(first_slot);
 
     // One UI build is permitted for each completed presentation frame.
     OverlayPayload* blocked      = nullptr;
     uint32_t        blocked_slot = 0;
-    EXPECT_FALSE(pipeline.BeginOverlayWrite(blocked, blocked_slot));
+    EXPECT_FALSE(pipeline->BeginOverlayWrite(blocked, blocked_slot));
 
     OverlayPayload* retained      = nullptr;
     uint32_t        retained_slot = 0;
-    ASSERT_TRUE(pipeline.BeginOverlayRead(retained, retained_slot));
+    ASSERT_TRUE(pipeline->BeginOverlayRead(retained, retained_slot));
     ASSERT_EQ(retained, first);
     EXPECT_EQ(retained->Sequence, 1u);
 
-    pipeline.NotifyOverlayFrameComplete();
+    pipeline->NotifyOverlayFrameComplete();
     OverlayPayload* replacement      = nullptr;
     uint32_t        replacement_slot = 0;
-    ASSERT_TRUE(pipeline.BeginOverlayWrite(replacement, replacement_slot));
+    ASSERT_TRUE(pipeline->BeginOverlayWrite(replacement, replacement_slot));
     ASSERT_NE(replacement, nullptr);
-    pipeline.PublishOverlay(replacement_slot);
+    pipeline->PublishOverlay(replacement_slot);
 
     OverlayPayload* next      = nullptr;
     uint32_t        next_slot = 0;
-    ASSERT_TRUE(pipeline.BeginOverlayRead(next, next_slot));
+    ASSERT_TRUE(pipeline->BeginOverlayRead(next, next_slot));
     EXPECT_EQ(next->Sequence, 2u);
 
-    pipeline.EndOverlayRead(retained_slot);
-    pipeline.EndOverlayRead(next_slot);
+    pipeline->EndOverlayRead(retained_slot);
+    pipeline->EndOverlayRead(next_slot);
 }
 
 class AppRenderSnapshotTest : public testing::Test

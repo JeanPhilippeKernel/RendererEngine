@@ -3,6 +3,8 @@
 #include <ZEngine/Rendering/Renderers/GizmoFrameData.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/GridLabelData.h>
+#include <ZEngine/Rendering/Renderers/Readback/RGReadbackRing.h>
+#include <ZEngine/Rendering/Renderers/SelectionOutlineFrame.h>
 #include <ZEngine/Rendering/Renderers/ZUIPass.h>
 #include <ZEngine/Rendering/Scenes/SceneFrameData.h>
 
@@ -13,6 +15,30 @@ namespace ZEngine::UI
 
 namespace ZEngine::Applications
 {
+    /// @brief Main-thread owned object-pick lifetime carried by one immutable
+    /// render mailbox state. The callbacks keep editor state opaque to the
+    /// render thread while it assigns compact GPU tokens.
+    struct RenderObjectPickRequest
+    {
+        using BeginFn                                        = bool (*)(void* context);
+        using TokenFn                                        = void (*)(void* context, uint32_t token, ECS::EntityID entity);
+        using SubmitFn                                       = void (*)(void* context);
+
+        uint32_t                                 X           = 0;
+        uint32_t                                 Y           = 0;
+        void*                                    Context     = nullptr;
+        BeginFn                                  Begin       = nullptr;
+        TokenFn                                  RecordToken = nullptr;
+        SubmitFn                                 Submitted   = nullptr;
+        Rendering::Renderers::RGReadbackFn       Complete    = nullptr;
+        Rendering::Renderers::RGReadbackCancelFn Cancelled   = nullptr;
+
+        [[nodiscard]] bool                       Valid() const
+        {
+            return Context && Begin && RecordToken && Submitted && Complete && Cancelled;
+        }
+    };
+
     /// @brief Ownership state for a producer/consumer payload slot.
     enum class PayloadSlotState : uint32_t
     {
@@ -25,22 +51,31 @@ namespace ZEngine::Applications
     /// @brief Latest render state transferred from the main thread to the render thread.
     struct RenderFrameState
     {
-        Rendering::Cameras::CameraFrameData         Camera         = {};
-        Rendering::Scenes::SceneFrameData           Scene          = {};
-        Rendering::Renderers::GizmoFrameData        Gizmo          = {};
-        Rendering::Renderers::GridLabelFontSnapshot GridLabelFont  = {};
+        Rendering::Cameras::CameraFrameData         Camera           = {};
+        Rendering::Scenes::SceneFrameData           Scene            = {};
+        Rendering::Renderers::GizmoFrameData        Gizmo            = {};
+        Rendering::Renderers::GridLabelFontSnapshot GridLabelFont    = {};
         // Immutable authoring copy captured alongside draw/light/grid data.
-        Rendering::Scenes::SkyConfig                Sky            = {};
-        Rendering::Scenes::SkyCelestialLight        CelestialLight = {};
-        uint64_t                                    SkyRevision    = 0;
-        uint32_t                                    RenderTargetW  = 0;
-        uint32_t                                    RenderTargetH  = 0;
-        uint64_t                                    ResizeSequence = 0;
+        Rendering::Scenes::SkyConfig                Sky              = {};
+        Rendering::Scenes::SkyCelestialLight        CelestialLight   = {};
+        uint64_t                                    SkyRevision      = 0;
+        uint32_t                                    RenderTargetW    = 0;
+        uint32_t                                    RenderTargetH    = 0;
+        uint64_t                                    ResizeSequence   = 0;
+        /// Immutable entity membership for the editor outline. The renderer
+        /// resolves this only while producing frame-local draw tokens.
+        Rendering::Renderers::SelectionOutlineFrame SelectionOutline = {};
+        /// One optional asynchronous object-ID readback. It carries only opaque
+        /// callbacks and a physical image pixel; editor state remains main-thread owned.
+        RenderObjectPickRequest                     ObjectPick       = {};
+        /// Hover has its own immutable token table and completion context. It
+        /// must never consume or resolve a click-selection request.
+        RenderObjectPickRequest                     HoverPick        = {};
         // Physical window size, captured on the main thread with platform events.
-        uint32_t                                    FramebufferW   = 0;
-        uint32_t                                    FramebufferH   = 0;
-        bool                                        RenderOverlay  = false;
-        bool                                        ShowGrid       = true; // viewport preference, not an authored Grid setting mutation
+        uint32_t                                    FramebufferW     = 0;
+        uint32_t                                    FramebufferH     = 0;
+        bool                                        RenderOverlay    = false;
+        bool                                        ShowGrid         = true; // viewport preference, not an authored Grid setting mutation
     };
 
     /// @brief Immutable ZUI draw data retained while the render thread records it.

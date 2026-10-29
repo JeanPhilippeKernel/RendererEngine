@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Maths/Vec.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/ECS/EntityID.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/Scenes/SceneGridRenderSnapshot.h>
@@ -343,31 +344,33 @@ namespace ZEngine::Rendering::Scenes
 
     struct SceneData
     {
-        static constexpr uint32_t   MAX_FRAMES_IN_FLIGHT                        = 3;
-        static constexpr uint32_t   MAX_DRAW_COMMANDS                           = 8192;
+        static constexpr uint32_t   MAX_FRAMES_IN_FLIGHT                             = 3;
+        static constexpr uint32_t   MAX_DRAW_COMMANDS                                = 8192;
 
         // Camera UBO — migrated to PerFrameUploadHeap; offset updated each frame in DrawScene
-        uint32_t                    CameraHeapOffset                            = 0;
+        uint32_t                    CameraHeapOffset                                 = 0;
 
         // CPU-built draw candidates. The compute pass writes a matching indirect
         // array with instanceCount = 0 for frustum-culled candidates.
-        uint32_t                    IndirectCommandCount                        = 0;
-        FrustumCullingPushConstants CullingPushConstants                        = {};
+        uint32_t                    IndirectCommandCount                             = 0;
+        FrustumCullingPushConstants CullingPushConstants                             = {};
 
         // Per-frame buffers prevent CPU uploads for frame N + 1 from racing GPU
         // reads issued for an earlier in-flight frame.
-        Core::Memory::BufferView    TransformBuffers[MAX_FRAMES_IN_FLIGHT]      = {};
-        Core::Memory::BufferView    MaterialBuffers[MAX_FRAMES_IN_FLIGHT]       = {};
-        Core::Memory::BufferView    RenderDataBuffers[MAX_FRAMES_IN_FLIGHT]     = {};
-        Core::Memory::BufferView    LightBuffers[MAX_FRAMES_IN_FLIGHT]          = {};
+        Core::Memory::BufferView    TransformBuffers[MAX_FRAMES_IN_FLIGHT]           = {};
+        Core::Memory::BufferView    MaterialBuffers[MAX_FRAMES_IN_FLIGHT]            = {};
+        Core::Memory::BufferView    RenderDataBuffers[MAX_FRAMES_IN_FLIGHT]          = {};
+        Core::Memory::BufferView    LightBuffers[MAX_FRAMES_IN_FLIGHT]               = {};
+        /// Per-draw editor feedback state indexed by the G-buffer object-ID token.
+        Core::Memory::BufferView    SelectionTokenStateBuffers[MAX_FRAMES_IN_FLIGHT] = {};
 
         // Per-frame ownership prevents frame N + 1 compute from overwriting the
         // commands still consumed by graphics for frame N.
-        Core::Memory::BufferView    CullingInputBuffers[MAX_FRAMES_IN_FLIGHT]   = {};
-        Core::Memory::BufferView    CulledIndirectBuffers[MAX_FRAMES_IN_FLIGHT] = {};
+        Core::Memory::BufferView    CullingInputBuffers[MAX_FRAMES_IN_FLIGHT]        = {};
+        Core::Memory::BufferView    CulledIndirectBuffers[MAX_FRAMES_IN_FLIGHT]      = {};
 
         // RRM vertex buffer handle — index buffer is paired via RRM::GetIndexBuffer(RMMVertexHandle).
-        Rendering::BufferHandle     RMMVertexHandle                             = {};
+        Rendering::BufferHandle     RMMVertexHandle                                  = {};
     };
     ZDEFINE_PTR(SceneData);
 
@@ -378,6 +381,9 @@ namespace ZEngine::Rendering::Scenes
     {
         Core::Maths::Mat4f Transform = {}; // 64 bytes — owns its own cache line
         uuids::uuid        MeshUUID  = {}; // 16 bytes
+        // Main-thread owned identity mirrored into immutable SceneFrameData.
+        // It is never dereferenced by the render thread.
+        ECS::EntityID      Entity    = ECS::INVALID_ENTITY;
         uint32_t           Id        = 0;
         char               Name[128] = {};
     };
@@ -412,6 +418,10 @@ namespace ZEngine::Rendering::Scenes
         uint32_t                              AddMeshInstance(const uuids::uuid& uuid, const char* name);
         void                                  RemoveMeshInstance(uint32_t id, ZEngine::Rendering::RenderResourceManager* rrm = nullptr);
         void                                  SetInstanceTransform(uint32_t id, const Core::Maths::Mat4f& t);
+        /// @brief Associates an ECS entity with its persistent mesh instance when it changes.
+        void                                  SetInstanceEntity(uint32_t id, ECS::EntityID entity);
+        /// @brief Owner-thread lookup for a persistent mesh instance identity.
+        [[nodiscard]] bool                    TryGetInstanceEntity(uint32_t id, ECS::EntityID& out_entity) const;
         void                                  MarkInstancesDirty();
         void                                  MarkSkyDirty();
 

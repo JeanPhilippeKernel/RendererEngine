@@ -236,6 +236,9 @@ namespace ZEngine::Hardwares
         /// @details The caller declares transfer synchronization through the render graph;
         /// this wrapper intentionally records only vkCmdCopyBuffer.
         void                              CopyBuffer(VkBuffer source, VkBuffer destination, VkDeviceSize size, VkDeviceSize source_offset = 0, VkDeviceSize destination_offset = 0);
+        /// @brief Copies one image region to a transfer-destination buffer.
+        /// @details Synchronization and source layout are declared by the caller's render graph pass.
+        void                              CopyImageToBuffer(VkImage source, VkImageLayout source_layout, VkBuffer destination, const VkBufferImageCopy& region);
         void                              CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset = 0, uint32_t depth = 1);
         void                              BindVertexBuffer(const Core::Memory::BufferView& buffer);
         void                              BindIndexBuffer(const Core::Memory::BufferView& buffer, VkIndexType type);
@@ -351,6 +354,7 @@ namespace ZEngine::Hardwares
         VkSampler                                                                                                                    GlobalLinearWrapSampler                                                     = VK_NULL_HANDLE;
         VkSampler                                                                                                                    GlobalLinearClampToEdgeSampler                                              = VK_NULL_HANDLE;
         VkSampler                                                                                                                    GlobalLinearWrapUClampToEdgeVSampler                                        = VK_NULL_HANDLE;
+        VkSampler                                                                                                                    GlobalNearestClampToEdgeSampler                                             = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             GlobalDescriptorPoolHandle                                                  = VK_NULL_HANDLE;
         VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                                                    = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                                                   = VK_NULL_HANDLE;
@@ -361,6 +365,7 @@ namespace ZEngine::Hardwares
         VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo                                            = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo                                     = {};
         VkDescriptorImageInfo                                                                                                        GlobalLinearWrapUClampToEdgeVSamplerImageInfo                               = {};
+        VkDescriptorImageInfo                                                                                                        GlobalNearestClampToEdgeSamplerImageInfo                                    = {};
         CommandBufferManagerPtr                                                                                                      CommandBufferMgr                                                            = {};
         DeviceSwapchainPtr                                                                                                           SwapchainPtr                                                                = {};
         Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                                                         = {};

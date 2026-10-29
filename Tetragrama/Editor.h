@@ -13,6 +13,7 @@
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIKey.h>
+#include <cstddef>
 
 namespace Tetragrama::Serializers
 {
@@ -60,6 +61,8 @@ namespace Tetragrama
 
     struct Editor : public ZEngine::Applications::GameApplication
     {
+
+        friend struct EditorPickTestAccess;
 
         EditorConfigurationPtr Configuration = nullptr;
 
@@ -170,6 +173,52 @@ namespace Tetragrama
         [[nodiscard]] bool PublishSceneCandidate(ZEngine::EngineContext& engine, ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, uint64_t expected_epoch);
 
     private:
+        enum class ObjectPickPhase : uint32_t
+        {
+            Free      = 0,
+            Queued    = 1,
+            Recording = 2,
+            Submitted = 3,
+            Complete  = 4,
+            Resolving = 5,
+        };
+
+        /// Main-thread-owned persistent pick table. The renderer sees it only
+        /// through opaque callbacks in RenderObjectPickRequest and never holds
+        /// an ECS Scene pointer. One fixed table bounds memory and avoids a
+        /// second submission while a timeline-gated result is outstanding.
+        struct ObjectPickFrame
+        {
+            PaddedAtomic<uint32_t> Phase                                                                  = {.value = static_cast<uint32_t>(ObjectPickPhase::Free)};
+            PaddedAtomic<uint32_t> Cancelled                                                              = {};
+            uint64_t               SceneEpoch                                                             = 0;
+            uint64_t               ViewportRevision                                                       = 0;
+            uint64_t               CameraRevision                                                         = 0;
+            uint64_t               RenderTargetRevision                                                   = 0;
+            float                  Pointer[2]                                                             = {};
+            SelectionMode          Mode                                                                   = SelectionMode::Replace;
+            uint32_t               Token                                                                  = 0;
+            ZEngine::ECS::EntityID Entities[ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1] = {};
+        };
+        static_assert(sizeof(ObjectPickFrame) <= 80 * 1024);
+
+        static bool        BeginObjectPick(void* context);
+        static void        RecordObjectPickToken(void* context, uint32_t token, ZEngine::ECS::EntityID entity);
+        static void        SubmitObjectPick(void* context);
+        static void        CompleteObjectPick(const void* data, size_t size, void* context);
+        static void        CancelSubmittedObjectPick(void* context);
+        void               UpdateCameraRevision(const ZEngine::Rendering::Cameras::CameraFrameData& camera);
+        void               QueueViewportObjectPick(ZEngine::UI::ZUIContext* ctx, bool focused);
+        void               QueueViewportHoverPick(ZEngine::UI::ZUIContext* ctx, bool focused);
+        [[nodiscard]] bool CanQueueViewportPick(const ZEngine::UI::ZUIContext* ctx, bool focused) const;
+        void               CancelObjectPick();
+        void               CancelHoverPick();
+        void               ResolveObjectPick();
+        void               ResolveHoverPick();
+        void               PrepareObjectPick(ZEngine::Applications::RenderFrameState& state);
+        void               PrepareHoverPick(ZEngine::Applications::RenderFrameState& state);
+        void               PrepareSelectionOutline(ZEngine::Applications::RenderFrameState& state);
+
         enum class SceneFileDrag : uint8_t
         {
             None,
@@ -264,9 +313,17 @@ namespace Tetragrama
         bool                                          m_gizmo_focused      = true;
         EditorSceneChange                             m_scene_change       = {};
         uint64_t                                      m_scene_prompt_focus = 0;
-        [[nodiscard]] SceneChangeGate                 GateSceneChange(SceneChangeKind kind);
-        void                                          ProcessSceneChangeInput(ZEngine::UI::ZUIContext* ctx, bool focused);
-        void                                          CancelSceneOpen();
+        ObjectPickFrame                               m_object_pick        = {};
+        ObjectPickFrame                               m_hover_pick         = {};
+        static_assert(sizeof(ObjectPickFrame) * 2 <= 160 * 1024);
+        ZEngine::Rendering::Cameras::CameraFrameData m_last_pick_camera       = {};
+        uint64_t                                     m_camera_revision        = 1;
+        uint64_t                                     m_render_target_revision = 0;
+        uint64_t                                     m_last_pick_release      = 0;
+        bool                                         m_pick_camera_valid      = false;
+        [[nodiscard]] SceneChangeGate                GateSceneChange(SceneChangeKind kind);
+        void                                         ProcessSceneChangeInput(ZEngine::UI::ZUIContext* ctx, bool focused);
+        void                                         CancelSceneOpen();
     };
     ZDEFINE_PTR(Editor);
 

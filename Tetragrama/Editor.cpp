@@ -10,6 +10,7 @@
 #include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIFont.h>
@@ -19,6 +20,8 @@
 #include <ZEngine/Windows/Events/KeyEvent.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <utility>
 
@@ -30,6 +33,304 @@ using namespace Tetragrama::Layers;
 
 namespace Tetragrama
 {
+    bool Editor::BeginObjectPick(void* context)
+    {
+        if (!context)
+        {
+            return false;
+        }
+        auto&    frame    = *static_cast<ObjectPickFrame*>(context);
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Queued);
+        if (!frame.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Recording), std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return false;
+        }
+        if (frame.Cancelled.value.load(std::memory_order_acquire) != 0)
+        {
+            frame.Phase.value.store(static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_release);
+            return false;
+        }
+        return true;
+    }
+
+    void Editor::RecordObjectPickToken(void* context, uint32_t token, ZEngine::ECS::EntityID entity)
+    {
+        if (!context || token == 0 || token > ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS || !entity.IsValid())
+        {
+            return;
+        }
+        auto& frame = *static_cast<ObjectPickFrame*>(context);
+        if (frame.Phase.value.load(std::memory_order_relaxed) == static_cast<uint32_t>(ObjectPickPhase::Recording))
+        {
+            frame.Entities[token] = entity;
+        }
+    }
+
+    void Editor::SubmitObjectPick(void* context)
+    {
+        if (!context)
+        {
+            return;
+        }
+        auto&    frame    = *static_cast<ObjectPickFrame*>(context);
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Recording);
+        (void) frame.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Submitted), std::memory_order_release, std::memory_order_relaxed);
+    }
+
+    void Editor::CompleteObjectPick(const void* data, size_t size, void* context)
+    {
+        if (!context)
+        {
+            return;
+        }
+        auto&    frame    = *static_cast<ObjectPickFrame*>(context);
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Submitted);
+        if (!frame.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Resolving), std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return;
+        }
+        uint32_t token = 0;
+        if (data && size == sizeof(token))
+        {
+            (void) secure_memcpy(&token, sizeof(token), data, sizeof(token));
+        }
+        frame.Token = token;
+        frame.Phase.value.store(static_cast<uint32_t>(ObjectPickPhase::Complete), std::memory_order_release);
+    }
+
+    void Editor::CancelSubmittedObjectPick(void* context)
+    {
+        if (!context)
+        {
+            return;
+        }
+        auto&    frame    = *static_cast<ObjectPickFrame*>(context);
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Submitted);
+        (void) frame.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_acq_rel, std::memory_order_acquire);
+    }
+
+    void Editor::UpdateCameraRevision(const ZEngine::Rendering::Cameras::CameraFrameData& camera)
+    {
+        const bool changed = !m_pick_camera_valid || std::memcmp(&m_last_pick_camera.View, &camera.View, sizeof(camera.View)) != 0 || std::memcmp(&m_last_pick_camera.Projection, &camera.Projection, sizeof(camera.Projection)) != 0 || std::memcmp(&m_last_pick_camera.Position, &camera.Position, sizeof(camera.Position)) != 0 || m_last_pick_camera.ProjectionType != camera.ProjectionType || m_last_pick_camera.UsesReverseZ != camera.UsesReverseZ;
+        if (changed)
+        {
+            m_last_pick_camera  = camera;
+            m_pick_camera_valid = true;
+            if (++m_camera_revision == 0)
+            {
+                ++m_camera_revision;
+            }
+        }
+    }
+
+    void Editor::QueueViewportObjectPick(ZEngine::UI::ZUIContext* ctx, bool focused)
+    {
+        if (!ctx || !ctx->MouseReleased[0] || ctx->MouseReleaseSerial[0] == 0 || ctx->MouseReleaseSerial[0] == m_last_pick_release)
+        {
+            return;
+        }
+        // A serial is consumed even when its sequence is ineligible. Retained
+        // ZUI input must never replay a click after its owner changed.
+        m_last_pick_release = ctx->MouseReleaseSerial[0];
+        // ActiveKey is retired by the overlay's release pass. Attribute the
+        // click using the immutable press position instead, so a panel-originated
+        // release cannot become a viewport selection.
+        uint32_t press_x = 0, press_y = 0;
+        if (!CanQueueViewportPick(ctx, focused) || ctx->MousePressAlt[0] || !GizmoViewport.ToRenderPixel(ctx->MousePressPos[0], 1, 1, press_x, press_y))
+        {
+            return;
+        }
+
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Free);
+        if (!m_object_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Resolving), std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return; // one outstanding GPU readback is deliberately bounded
+        }
+        m_object_pick.SceneEpoch           = Session.SceneEpoch();
+        m_object_pick.ViewportRevision     = GizmoViewport.BindingRevision();
+        m_object_pick.CameraRevision       = m_camera_revision;
+        m_object_pick.RenderTargetRevision = m_render_target_revision;
+        m_object_pick.Pointer[0]           = ctx->MouseReleasePos[0][0];
+        m_object_pick.Pointer[1]           = ctx->MouseReleasePos[0][1];
+        m_object_pick.Mode                 = ctx->MouseReleaseCtrl[0] ? SelectionMode::Toggle : SelectionMode::Replace;
+        m_object_pick.Token                = 0;
+        m_object_pick.Cancelled.value.store(0, std::memory_order_relaxed);
+
+        m_object_pick.Phase.value.store(static_cast<uint32_t>(ObjectPickPhase::Queued), std::memory_order_release);
+    }
+
+    bool Editor::CanQueueViewportPick(const ZEngine::UI::ZUIContext* ctx, bool focused) const
+    {
+        return ctx && focused && Session.Ready() && !Session.Active() && ctx->ViewportSelectable && ctx->ViewportInputKey && !ctx->TextInputActive && !ctx->ActiveModalKey && !ctx->ModalBox && ctx->PopupStackSize == 0 && ctx->PendingPopupKey == 0 && ctx->DragSourceKey == 0 && !ctx->InteractionCapture.Pointer && GizmoViewport.Bound(ctx);
+    }
+
+    void Editor::CancelObjectPick()
+    {
+        m_object_pick.Cancelled.value.store(1, std::memory_order_release);
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Queued);
+        (void) m_object_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_acq_rel, std::memory_order_acquire);
+    }
+
+    void Editor::CancelHoverPick()
+    {
+        m_hover_pick.Cancelled.value.store(1, std::memory_order_release);
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Queued);
+        (void) m_hover_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_acq_rel, std::memory_order_acquire);
+    }
+
+    void Editor::ResolveObjectPick()
+    {
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Complete);
+        if (!m_object_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Resolving), std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return;
+        }
+
+        const uint32_t               token   = m_object_pick.Token;
+        const ZEngine::ECS::EntityID entity  = token <= ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS ? m_object_pick.Entities[token] : ZEngine::ECS::INVALID_ENTITY;
+        const bool                   current = m_object_pick.Cancelled.value.load(std::memory_order_acquire) == 0 && m_object_pick.SceneEpoch == Session.SceneEpoch() && m_object_pick.ViewportRevision == GizmoViewport.BindingRevision() && m_object_pick.CameraRevision == m_camera_revision && m_object_pick.RenderTargetRevision == m_render_target_revision;
+        if (current)
+        {
+            if (entity.IsValid() && Session.Scene() && Session.Scene()->IsAlive(entity))
+            {
+                (void) Session.RequestSelection(entity, m_object_pick.Mode);
+            }
+            else if (token == 0)
+            {
+                Session.ClearSelection();
+            }
+        }
+        m_object_pick.Phase.value.store(static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_release);
+    }
+
+    void Editor::ResolveHoverPick()
+    {
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Complete);
+        if (!m_hover_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Resolving), std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return;
+        }
+
+        const uint32_t               token   = m_hover_pick.Token;
+        const ZEngine::ECS::EntityID entity  = token <= ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS ? m_hover_pick.Entities[token] : ZEngine::ECS::INVALID_ENTITY;
+        const bool                   current = m_hover_pick.Cancelled.value.load(std::memory_order_acquire) == 0 && m_hover_pick.SceneEpoch == Session.SceneEpoch() && m_hover_pick.ViewportRevision == GizmoViewport.BindingRevision() && m_hover_pick.CameraRevision == m_camera_revision && m_hover_pick.RenderTargetRevision == m_render_target_revision;
+        if (current)
+        {
+            if (entity.IsValid() && Session.Scene() && Session.Scene()->IsAlive(entity))
+            {
+                (void) Session.SetHovered(entity);
+            }
+            else
+            {
+                Session.ClearHovered();
+            }
+        }
+        m_hover_pick.Phase.value.store(static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_release);
+    }
+
+    void Editor::PrepareObjectPick(ZEngine::Applications::RenderFrameState& state)
+    {
+        state.ObjectPick = {};
+        if (m_object_pick.Phase.value.load(std::memory_order_acquire) != static_cast<uint32_t>(ObjectPickPhase::Queued))
+        {
+            return;
+        }
+        uint32_t x = 0, y = 0;
+        if (m_object_pick.SceneEpoch != Session.SceneEpoch() || m_object_pick.ViewportRevision != GizmoViewport.BindingRevision() || m_object_pick.CameraRevision != m_camera_revision || m_object_pick.RenderTargetRevision != state.ResizeSequence || !GizmoViewport.ToRenderPixel(m_object_pick.Pointer, state.RenderTargetW, state.RenderTargetH, x, y))
+        {
+            uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Queued);
+            (void) m_object_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Free), std::memory_order_acq_rel, std::memory_order_acquire);
+            return;
+        }
+        state.ObjectPick.X           = x;
+        state.ObjectPick.Y           = y;
+        state.ObjectPick.Context     = &m_object_pick;
+        state.ObjectPick.Begin       = &Editor::BeginObjectPick;
+        state.ObjectPick.RecordToken = &Editor::RecordObjectPickToken;
+        state.ObjectPick.Submitted   = &Editor::SubmitObjectPick;
+        state.ObjectPick.Complete    = &Editor::CompleteObjectPick;
+        state.ObjectPick.Cancelled   = &Editor::CancelSubmittedObjectPick;
+    }
+
+    void Editor::QueueViewportHoverPick(ZEngine::UI::ZUIContext* ctx, bool focused)
+    {
+        if (!ctx)
+        {
+            return;
+        }
+        // ViewportHovered is written while the overlay is built, after this
+        // input update. The image-to-render-target conversion below remains
+        // the authoritative bounds check when the pointer first enters it.
+        if (!CanQueueViewportPick(ctx, focused) || ctx->MouseDown[0] || ctx->MouseDown[1] || ctx->MouseDown[2] || ctx->MouseReleased[0] || ctx->MousePressAlt[0])
+        {
+            Session.ClearHovered();
+            return;
+        }
+        if (ctx->MousePos[0] == ctx->PrevMousePos[0] && ctx->MousePos[1] == ctx->PrevMousePos[1])
+        {
+            return;
+        }
+
+        uint32_t expected = static_cast<uint32_t>(ObjectPickPhase::Free);
+        if (!m_hover_pick.Phase.value.compare_exchange_strong(expected, static_cast<uint32_t>(ObjectPickPhase::Resolving), std::memory_order_acq_rel, std::memory_order_acquire))
+        {
+            return; // coalesce pointer movement while the previous sample is in flight
+        }
+        m_hover_pick.SceneEpoch           = Session.SceneEpoch();
+        m_hover_pick.ViewportRevision     = GizmoViewport.BindingRevision();
+        m_hover_pick.CameraRevision       = m_camera_revision;
+        m_hover_pick.RenderTargetRevision = m_render_target_revision;
+        m_hover_pick.Pointer[0]           = ctx->MousePos[0];
+        m_hover_pick.Pointer[1]           = ctx->MousePos[1];
+        m_hover_pick.Mode                 = SelectionMode::Replace;
+        m_hover_pick.Token                = 0;
+        m_hover_pick.Cancelled.value.store(0, std::memory_order_relaxed);
+
+        m_hover_pick.Phase.value.store(static_cast<uint32_t>(ObjectPickPhase::Queued), std::memory_order_release);
+    }
+
+    void Editor::PrepareHoverPick(ZEngine::Applications::RenderFrameState& state)
+    {
+        state.HoverPick = {};
+        if (m_hover_pick.Phase.value.load(std::memory_order_acquire) != static_cast<uint32_t>(ObjectPickPhase::Queued))
+        {
+            return;
+        }
+        uint32_t x = 0, y = 0;
+        if (m_hover_pick.SceneEpoch != Session.SceneEpoch() || m_hover_pick.ViewportRevision != GizmoViewport.BindingRevision() || m_hover_pick.CameraRevision != m_camera_revision || m_hover_pick.RenderTargetRevision != state.ResizeSequence || !GizmoViewport.ToRenderPixel(m_hover_pick.Pointer, state.RenderTargetW, state.RenderTargetH, x, y))
+        {
+            CancelHoverPick();
+            Session.ClearHovered();
+            return;
+        }
+        state.HoverPick.X           = x;
+        state.HoverPick.Y           = y;
+        state.HoverPick.Context     = &m_hover_pick;
+        state.HoverPick.Begin       = &Editor::BeginObjectPick;
+        state.HoverPick.RecordToken = &Editor::RecordObjectPickToken;
+        state.HoverPick.Submitted   = &Editor::SubmitObjectPick;
+        state.HoverPick.Complete    = &Editor::CompleteObjectPick;
+        state.HoverPick.Cancelled   = &Editor::CancelSubmittedObjectPick;
+    }
+
+    void Editor::PrepareSelectionOutline(ZEngine::Applications::RenderFrameState& state)
+    {
+        state.SelectionOutline = {};
+        if (!Session.Ready())
+        {
+            return;
+        }
+        for (const EntityTarget& target : Session.Selection().Entities())
+        {
+            if (!state.SelectionOutline.Add(Session.Resolve(target)))
+            {
+                continue;
+            }
+        }
+        state.SelectionOutline.SortAndUnique();
+        state.SelectionOutline.Hovered = Session.Resolve(Session.Selection().Hovered());
+    }
+
     void Editor::OnInitializing()
     {
         // Reserve the editor owner before creating configuration and workspace
@@ -114,6 +415,26 @@ namespace Tetragrama
             else if (!editor_scene->AttachSession(Session, *ZEngine::Engine::GetContext()))
                 ZENGINE_CORE_ERROR("[Editor] Could not attach scene mutation adapters")
             Session.EndMutationPhase();
+
+            // `sceneList.isDefault` names a persisted project scene.  The
+            // bootstrap EditorScene only gives the editor a safe owner while
+            // that source is loaded; it is not the configured scene itself.
+            // Keep an absent default file as an empty-editor startup, but load
+            // a present one through the normal transactional scene path.
+            std::string directory = {};
+            if (Configuration && !Configuration->ActiveSceneName.empty() && TrySceneDialogDirectory(Configuration->WorkingSpacePath.c_str(), Configuration->ScenePath.c_str(), {}, &directory))
+            {
+                const std::filesystem::path source = std::filesystem::path(directory) / (std::string(Configuration->ActiveSceneName.c_str()) + ".zescene");
+                std::error_code             error  = {};
+                if (std::filesystem::is_regular_file(source, error) && !error)
+                {
+                    const auto scene_path = SceneSourcePathFromNative(Configuration->WorkingSpacePath.c_str(), source.string());
+                    if (scene_path.Succeeded() && !RequestSceneOpen(scene_path.Value(), Session.SceneEpoch()))
+                    {
+                        ZENGINE_CORE_WARN("[Editor] Could not queue configured default scene {}", source.string())
+                    }
+                }
+            }
         }
 
         // Bake ZUI font atlases. Font sizes are chosen to be readable on high-resolution
@@ -316,6 +637,18 @@ namespace Tetragrama
         const auto* owner               = static_cast<const EditorScene*>(CurrentScene);
         if (Session.BeginMutationPhase(!owner || !owner->SourceReadOnly))
         {
+            const auto current_camera = CameraController && CameraController->GetCamera() ? CameraController->GetCamera()->CaptureFrameData() : ZEngine::Rendering::Cameras::CameraFrameData{};
+            UpdateCameraRevision(current_camera);
+            if (!focused)
+            {
+                CancelObjectPick();
+                CancelHoverPick();
+                Session.ClearHovered();
+            }
+            ResolveObjectPick();
+            ResolveHoverPick();
+            QueueViewportObjectPick(ctx, focused);
+            QueueViewportHoverPick(ctx, focused);
             // Consume only after entering the phase; a failed/nested entry must
             // not lose the pending cancellation before a later successful update.
             m_focus_lost_pending       = false;
@@ -675,6 +1008,11 @@ namespace Tetragrama
     void Editor::PrepareScene(ZEngine::Applications::RenderFrameState& state)
     {
         GameApplication::PrepareScene(state);
+        UpdateCameraRevision(state.Camera);
+        m_render_target_revision = state.ResizeSequence;
+        PrepareSelectionOutline(state);
+        PrepareObjectPick(state);
+        PrepareHoverPick(state);
         state.ShowGrid      = Session.GizmoSettings().ShowGrid;
         // Copy only U/V bitmap metrics from the existing Body font. Rendering
         // pairs these values with the Grid/camera retained in the same mailbox,

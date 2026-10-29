@@ -4,6 +4,7 @@
 #include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
+#include <ZEngine/Rendering/Renderers/SelectionOutlineFrame.h>
 #include <gtest/gtest.h>
 #include <cstring>
 #include <memory>
@@ -13,8 +14,41 @@ using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Rendering::Renderers;
 
+namespace ZEngine::Rendering::Renderers
+{
+    struct RenderGraphTestAccess
+    {
+        static void AddReadbackPasses(RenderGraph& graph)
+        {
+            graph.AddReadbackPasses();
+        }
+        static void CancelUnsubmittedReadbacks(RenderGraph& graph, bool preserve_recorded)
+        {
+            graph.CancelUnsubmittedReadbacks(preserve_recorded);
+        }
+    };
+} // namespace ZEngine::Rendering::Renderers
+
 namespace
 {
+    TEST(SelectionOutlineFrameTest, SortAndUniqueKeepsCompleteEntityIdentity)
+    {
+        SelectionOutlineFrame frame = {};
+        ASSERT_TRUE(frame.Add({.Index = 4, .Generation = 2}));
+        ASSERT_TRUE(frame.Add({.Index = 1, .Generation = 3}));
+        ASSERT_TRUE(frame.Add({.Index = 4, .Generation = 2}));
+        ASSERT_TRUE(frame.Add({.Index = 4, .Generation = 1}));
+
+        frame.SortAndUnique();
+
+        ASSERT_EQ(frame.EntityCount, 3u);
+        EXPECT_TRUE(frame.Contains({.Index = 1, .Generation = 3}));
+        EXPECT_TRUE(frame.Contains({.Index = 4, .Generation = 1}));
+        EXPECT_TRUE(frame.Contains({.Index = 4, .Generation = 2}));
+        EXPECT_FALSE(frame.Contains({.Index = 4, .Generation = 3}));
+        EXPECT_FALSE(frame.Contains({.Index = 1, .Generation = 0}));
+    }
+
     RGPass MakePass(ArenaAllocator* arena, cstring name)
     {
         RGPass pass;
@@ -45,6 +79,11 @@ namespace
         Array<RGResource> resources;
         resources.init(arena, count, count);
         return resources;
+    }
+
+    void CountReadbackCancellation(void* context)
+    {
+        ++*static_cast<uint32_t*>(context);
     }
 
     struct TestTransferPass final : ITransferPass
@@ -128,6 +167,7 @@ namespace
     };
 
     void TestReadbackCallback(const void* /*data*/, size_t /*size*/, void* /*context*/) {}
+    void TestReadbackCancellation(void* /*context*/) {}
 } // namespace
 
 TEST(TextureSpecificationTest, DefaultsDescribeAnEmpty2DTexture)
@@ -729,6 +769,129 @@ TEST(RenderGraphDeclarationTest, ConditionalReadUsesExactVersionAndExplicitFallb
     EXPECT_TRUE(graph.Passes[2].Conditional.Enabled);
     EXPECT_TRUE(graph.Passes[2].Conditional.UsesFallback);
     EXPECT_TRUE(graph.Passes[2].Reads.empty());
+    manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, ImageReadbackKeepsExactImageVersionAndRegion)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto&       arena = manager.MainArena;
+
+    RenderGraph graph = {};
+    graph.Passes.init(&arena, 2);
+    graph.Resources.init(&arena, 1);
+    graph.ReadbackRequests.init(&arena, 1);
+    graph.Passes.push(MakePass(&arena, "Producer"));
+    auto& resource         = graph.Resources.push_use({});
+    resource.Name          = "ObjectId";
+    resource.Kind          = RGResourceKind::Attachment;
+    resource.LatestVersion = 3;
+    AddWrite(graph.Passes[0], 0, 3);
+
+    const RGImageReadbackRegion region = {
+        .Subresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1},
+        .Offset      = {24, 48, 0},
+        .Extent      = {1, 1, 1},
+    };
+    RenderGraphResourceBuilder builder = {};
+    builder.Initialize(&graph);
+    builder.CurrentPass           = 0;
+    const RGReadbackHandle handle = builder.DeclareImageReadback("ObjectIdPickReadback", {0, 3}, region, &TestReadbackCallback, nullptr, sizeof(uint32_t), &TestReadbackCancellation);
+
+    ASSERT_TRUE(handle.Valid());
+    ASSERT_EQ(graph.ReadbackRequests.size(), 1u);
+    const RGReadbackRequest& request = graph.ReadbackRequests[handle.Index];
+    EXPECT_EQ(request.Source.Index, 0u);
+    EXPECT_EQ(request.Source.Version, 3u);
+    EXPECT_EQ(request.SourceKind, RGReadbackSourceKind::Image);
+    EXPECT_EQ(request.ImageRegion.Subresource.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(request.ImageRegion.Offset.x, 24);
+    EXPECT_EQ(request.ImageRegion.Offset.y, 48);
+    EXPECT_EQ(request.ImageRegion.Extent.width, 1u);
+    EXPECT_EQ(request.ImageRegion.Extent.height, 1u);
+    EXPECT_EQ(request.Size, sizeof(uint32_t));
+    EXPECT_EQ(request.Cancellation, &TestReadbackCancellation);
+
+    RGPass sink             = MakePass(&arena, "ObjectIdPickReadback");
+    sink.Flags              = RGPassFlags::NeverCull;
+    sink.RequiresRenderPass = false;
+    sink.InternalOperation  = RGInternalPassOperation::Readback;
+    sink.RequestedQueue     = ZEngine::Rendering::QueueType::TRANSFER_QUEUE;
+    AddRead(sink, 0, 3);
+    graph.Passes.push(std::move(sink));
+
+    Array<uint32_t> order;
+    order.init(&arena, 2);
+    Array<RGPassDependency> dependencies;
+    dependencies.init(&arena, 2);
+    ASSERT_TRUE(BuildPassTopology(&arena, graph.Passes, order, nullptr, &dependencies));
+    Array<RGExportedResource> exports;
+    exports.init(&arena, 0);
+    CullPasses(&arena, graph.Passes, graph.Resources, dependencies, exports);
+    EXPECT_TRUE(graph.Passes[1].IsActive());
+
+    manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, ImageReadbackUsesTheGraphicsQueueForProducerOrdering)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto&       arena = manager.MainArena;
+
+    RenderGraph graph = {};
+    graph.FrameArena.Initialize(ZMega(1), arena.m_mem_page_size);
+    graph.Passes.init(&arena, 2);
+    graph.Resources.init(&arena, 1);
+    graph.ReadbackRequests.init(&arena, 1);
+    graph.Passes.push(MakePass(&arena, "Producer"));
+    auto& resource         = graph.Resources.push_use({});
+    resource.Name          = "ObjectId";
+    resource.Kind          = RGResourceKind::Attachment;
+    resource.LatestVersion = 1;
+    AddWrite(graph.Passes[0], 0, 1);
+
+    RenderGraphResourceBuilder builder = {};
+    builder.Initialize(&graph);
+    builder.CurrentPass                = 0;
+    const RGResourceHandle      source = {0, 1};
+    const RGImageReadbackRegion region = {
+        .Subresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1},
+        .Extent      = {1, 1, 1},
+    };
+    const RGReadbackHandle readback = builder.DeclareImageReadback("ObjectIdPickReadback", source, region, &TestReadbackCallback, nullptr, sizeof(uint32_t), &TestReadbackCancellation);
+    ASSERT_TRUE(readback.Valid());
+
+    RenderGraphTestAccess::AddReadbackPasses(graph);
+    ASSERT_EQ(graph.Passes.size(), 2u);
+    EXPECT_EQ(graph.Passes[1].RequestedQueue, ZEngine::Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.Passes[1].Reads.size(), 1u);
+    EXPECT_EQ(graph.Passes[1].Reads[0].Access, RGAccess::TransferRead);
+
+    graph.FrameArena.Shutdown();
+    manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, RecordedReadbackSurvivesUntilDeferredGraphicsSubmission)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto&       arena = manager.MainArena;
+
+    RenderGraph graph = {};
+    graph.ReadbackRequests.init(&arena, 1);
+    uint32_t cancellations = 0;
+    graph.ReadbackRequests.push({.Name = "DeferredReadback", .Cancellation = &CountReadbackCancellation, .Context = &cancellations, .Recorded = true});
+
+    RenderGraphTestAccess::CancelUnsubmittedReadbacks(graph, true);
+    EXPECT_EQ(cancellations, 0u);
+    EXPECT_FALSE(graph.ReadbackRequests[0].CancellationDelivered);
+
+    RenderGraphTestAccess::CancelUnsubmittedReadbacks(graph, false);
+    EXPECT_EQ(cancellations, 1u);
+    EXPECT_TRUE(graph.ReadbackRequests[0].CancellationDelivered);
+
     manager.Shutdown();
 }
 

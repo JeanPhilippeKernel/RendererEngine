@@ -10,10 +10,11 @@ namespace ZEngine::ECS::Systems
         using namespace Components;
         using namespace Core::Maths;
 
-        scene.ForEach<TransformComponent, MeshComponent>([&](EntityID, TransformComponent& tc, MeshComponent& mc) {
+        scene.ForEach<TransformComponent, MeshComponent>([&](EntityID entity, TransformComponent& tc, MeshComponent& mc) {
             if (mc.RenderInstanceId == UINT32_MAX)
                 return;
             render_scene.SetInstanceTransform(mc.RenderInstanceId, tc.WorldTransform);
+            render_scene.SetInstanceEntity(mc.RenderInstanceId, entity);
         });
     }
 } // namespace ZEngine::ECS::Systems

@@ -62,8 +62,8 @@ namespace Tetragrama
         uint64_t                                          Epoch       = 0;
         ZEngine::ECS::SceneDocument                       Document    = {};
         ZEngine::ECS::SceneDiagnostics                    Diagnostics = {};
-        std::atomic<bool>                                 Ready       = false;
-        std::atomic<bool>                                 Cancelled   = false;
+        PaddedAtomic<bool>                                Ready       = {};
+        PaddedAtomic<bool>                                Cancelled   = {};
         bool                                              Succeeded   = false;
         ZEngine::Managers::AssetManager*                  Assets      = nullptr;
         ZEngine::Core::VFS::AssetRegistry*                Registry    = nullptr;
@@ -106,7 +106,7 @@ namespace Tetragrama
         {
             auto& work = *static_cast<SceneOpenWork*>(context);
             {
-                if (!work.Cancelled.load(std::memory_order_acquire))
+                if (!work.Cancelled.value.load(std::memory_order_acquire))
                 {
                     if (!ProjectSourceStillMatches(work.Workspace.c_str(), work.Path))
                     {
@@ -122,7 +122,7 @@ namespace Tetragrama
                     }
                 }
             }
-            work.Ready.store(true, std::memory_order_release);
+            work.Ready.value.store(true, std::memory_order_release);
         }
 
         bool LoadMeshes()
@@ -175,11 +175,11 @@ namespace Tetragrama
             meshes.m_size  = size_t(end - meshes.begin());
             for (const auto& uuid : meshes)
             {
-                if (Cancelled.load(std::memory_order_acquire))
+                if (Cancelled.value.load(std::memory_order_acquire))
                 {
                     return false;
                 }
-                const auto loaded = Assets->LoadMeshAsset(*VFS, uuid, {}, &Cancelled);
+                const auto loaded = Assets->LoadMeshAsset(*VFS, uuid, {}, &Cancelled.value);
                 if (loaded.Failed())
                 {
                     Diagnostics.Error("A referenced mesh failed checked loading; the active scene was preserved.");
@@ -206,7 +206,7 @@ namespace Tetragrama
         m_scene_open_picker_owner.Reset();
         if (m_scene_open_work)
         {
-            m_scene_open_work->Cancelled.store(true, std::memory_order_release);
+            m_scene_open_work->Cancelled.value.store(true, std::memory_order_release);
         }
         // Retain the context even if the pool never started this queued task.
         // OnWorldShutdown releases it only after every worker has joined.
@@ -400,9 +400,9 @@ namespace Tetragrama
             m_scene_open.Pending = false;
             if (m_scene_open_work)
             {
-                if (!m_scene_open_work->Cancelled.exchange(true, std::memory_order_acq_rel))
+                if (!m_scene_open_work->Cancelled.value.exchange(true, std::memory_order_acq_rel))
                     ZENGINE_CORE_WARN("[Editor] Scene open no longer belongs to the active scene/project services; the current scene was preserved")
-                if (m_scene_open_work->Ready.load(std::memory_order_acquire))
+                if (m_scene_open_work->Ready.value.load(std::memory_order_acquire))
                 {
                     m_scene_open_work.reset();
                 }
@@ -411,11 +411,11 @@ namespace Tetragrama
         }
         if (m_scene_open_work)
         {
-            if (!m_scene_open_work->Ready.load(std::memory_order_acquire))
+            if (!m_scene_open_work->Ready.value.load(std::memory_order_acquire))
             {
                 return true;
             }
-            if (!m_scene_open_work->Succeeded || m_scene_open_work->Cancelled.load(std::memory_order_acquire))
+            if (!m_scene_open_work->Succeeded || m_scene_open_work->Cancelled.value.load(std::memory_order_acquire))
             {
                 LogLoadDiagnostics(m_scene_open_work->Diagnostics);
                 m_scene_open_work.reset();
@@ -435,7 +435,7 @@ namespace Tetragrama
             m_scene_open.Pending = false;
             if (m_scene_open_work)
             {
-                m_scene_open_work->Cancelled.store(true, std::memory_order_release);
+                m_scene_open_work->Cancelled.value.store(true, std::memory_order_release);
                 m_scene_open_work.reset(); // Ready was established above
             }
             return finish(true);

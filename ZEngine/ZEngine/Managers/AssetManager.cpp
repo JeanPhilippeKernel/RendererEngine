@@ -388,25 +388,33 @@ namespace ZEngine::Managers
         gpu_mat.SpecularMap                      = ResolveTextureMapIndex(mat.SpecularTexUUID, mat.SpecularTexPath);
     }
 
-    void AssetManager::IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid)
+    bool AssetManager::IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid)
     {
         if (!s_Instance || !s_Instance->Registry || !scratch || material_uuid.is_nil())
-            return;
-        // Same dedup key IngestMaterial uses — no-op if already ingested.
-        if (s_Instance->UUIDToMaterialSlot.find(material_uuid) != nullptr)
-            return;
+            return false;
+        {
+            // The map is mutated by import workers. Its fast deduplication path
+            // still needs the same ownership guard as the eventual insertion.
+            std::lock_guard lock(s_Instance->IngestMutex);
+            if (s_Instance->UUIDToMaterialSlot.find(material_uuid) != nullptr)
+                return true;
+        }
 
-        auto* rec = s_Instance->Registry->FindByUUID(material_uuid);
-        if (!rec)
-            return;
+        AssetRecordSnapshot expected = {};
+        auto*               registry = s_Instance->Registry;
+        if (!registry->TryReadRecord(material_uuid, &expected) || expected.Record.Type != AssetType::MATERIAL || !expected.Record.Path.IsValid() || !expected.Record.Path.Extension().Equals(".zematerial"))
+            return false;
 
         char native[MAX_FILE_PATH_COUNT] = {};
-        rec->Path.ResolveNative(s_Instance->CurrentWorkingSpacePath, native, sizeof(native));
+        expected.Record.Path.ResolveNative(s_Instance->CurrentWorkingSpacePath, native, sizeof(native));
 
         Importers::AssetMaterial mat = {};
         Importers::AssetCodec::DeserializeMaterialAssetFile(scratch, native, mat);
-        if (!mat.MaterialUUID.is_nil())
-            IngestMaterial(std::move(mat)); // transitively ingests each referenced texture map
+        if (mat.MaterialUUID != material_uuid)
+            return false;
+        IngestMaterial(std::move(mat)); // transitively ingests each referenced texture map
+        std::lock_guard lock(s_Instance->IngestMutex);
+        return s_Instance->UUIDToMaterialSlot.find(material_uuid) != nullptr;
     }
 
     uint32_t AssetManager::ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path)
@@ -502,7 +510,12 @@ namespace ZEngine::Managers
         if (!out_draws || id.is_nil())
             return false;
         std::lock_guard lock(IngestMutex);
-        const auto*     mesh = GetMeshAsset(id);
+        return TryGetMeshDrawCountLocked(id, out_draws);
+    }
+
+    bool AssetManager::TryGetMeshDrawCountLocked(const uuids::uuid& id, uint32_t* out_draws)
+    {
+        const auto* mesh = GetMeshAsset(id);
         if (!mesh || mesh->Vertices.empty() || mesh->Vertices.size() % 8 != 0 || mesh->Indices.empty() || mesh->SubMeshes.empty() || mesh->SubMeshes.size() > UINT32_MAX)
             return false;
         const auto vertices = mesh->Vertices.size() / 8;
@@ -770,6 +783,23 @@ namespace ZEngine::Managers
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
         Bounds(source);
 
+        // A mesh is not independently renderable: each submesh references a
+        // material which in turn owns the texture paths required by its GPU
+        // record. Scene open uses this checked loader rather than ReloadFromDisk,
+        // so ingest those dependencies before publishing the mesh draw records.
+        // Each material decode is transient; its clone and texture work are
+        // retained by AssetManager before the temporary range is released.
+        for (const AssetSubMesh& submesh : source.SubMeshes)
+        {
+            if (submesh.MaterialUUID.is_nil())
+                continue;
+            ArenaScratch material_decode(&scratch);
+            if (!IngestMaterialFromUUID(material_decode.Arena(), submesh.MaterialUUID))
+                return VFSResult<uint32_t>::Fail(VFSError::NotFound);
+            if (stopped())
+                return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        }
+
         auto storage = ZEngine::Helpers::Scope<MeshCacheAllocation>(new (std::nothrow) MeshCacheAllocation{});
         if (!storage)
             return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
@@ -802,7 +832,7 @@ namespace ZEngine::Managers
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
         // A concurrent importer/second load can win while we decode. Placement
         // reuses that complete binding; it must never replace or mark it stale.
-        if (TryGetMeshDrawCount(uuid, &draws))
+        if (TryGetMeshDrawCountLocked(uuid, &draws))
             return VFSResult<uint32_t>::Ok(draws);
         if (Registry != registry || MeshToHierarchySlot.contains(uuid))
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);

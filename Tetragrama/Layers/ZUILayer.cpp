@@ -95,35 +95,6 @@ namespace Tetragrama::Layers
         }
 
         ZEngine::UI::ZUIEndColumn(m_ctx);
-
-        // Apply resize cursor set by panel dividers this frame.
-        if (CurrentApp && CurrentApp->CurrentWindow)
-        {
-            static GLFWcursor* s_cur_ew = nullptr;
-            static GLFWcursor* s_cur_ns = nullptr;
-            if (!s_cur_ew)
-            {
-                s_cur_ew = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
-            }
-            if (!s_cur_ns)
-            {
-                s_cur_ns = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
-            }
-
-            auto* native = static_cast<GLFWwindow*>(CurrentApp->CurrentWindow->GetNativeWindow());
-            switch (m_ctx->ResizeCursor)
-            {
-                case 1:
-                    glfwSetCursor(native, s_cur_ew);
-                    break;
-                case 2:
-                    glfwSetCursor(native, s_cur_ns);
-                    break;
-                default:
-                    glfwSetCursor(native, nullptr);
-                    break;
-            }
-        }
     }
 
     void ZUILayer::AddComponent(Components::ZUIComponent* cmp)

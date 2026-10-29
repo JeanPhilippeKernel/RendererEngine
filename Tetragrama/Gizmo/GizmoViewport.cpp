@@ -281,6 +281,42 @@ namespace Tetragrama::Gizmo
         return m_bound && ctx && ctx->ViewportInputKey == m_viewport_key && ctx->FrameIndex == m_ui_frame && ctx->ScreenW == m_screen_w && ctx->ScreenH == m_screen_h && ctx->InputScale[0] == m_input_scale[0] && ctx->InputScale[1] == m_input_scale[1];
     }
 
+    bool Viewport::RayFromPointer(const float point[2], const CameraFrameData& camera, Geometry::Ray& ray) const
+    {
+        if (!point || !m_bound || m_bounds.Size.x <= 0.f || m_bounds.Size.y <= 0.f)
+        {
+            return false;
+        }
+
+        const auto                kind       = camera.ProjectionType == CameraType::ORTHOGRAPHIC ? Geometry::ProjectionKind::Orthographic : Geometry::ProjectionKind::Perspective;
+        Geometry::ProjectionFrame projection = {};
+        return Geometry::MakeProjectionFrame(camera.View, camera.Projection, camera.Position, kind, camera.UsesReverseZ, &projection) && Geometry::UnprojectRay({point[0], point[1]}, projection, m_bounds, &ray);
+    }
+
+    bool Viewport::ToRenderPixel(const float point[2], uint32_t width, uint32_t height, uint32_t& x, uint32_t& y) const
+    {
+        x = y = 0;
+        if (!m_bound || !point || width == 0 || height == 0 || !std::isfinite(point[0]) || !std::isfinite(point[1]) || m_bounds.Size.x <= 0.f || m_bounds.Size.y <= 0.f)
+        {
+            return false;
+        }
+        const float local_x = point[0] - m_bounds.Origin.x;
+        const float local_y = point[1] - m_bounds.Origin.y;
+        if (local_x < 0.f || local_y < 0.f || local_x >= m_bounds.Size.x || local_y >= m_bounds.Size.y)
+        {
+            return false;
+        }
+        const double scaled_x = std::floor(double(local_x) * double(width) / double(m_bounds.Size.x));
+        const double scaled_y = std::floor(double(local_y) * double(height) / double(m_bounds.Size.y));
+        if (scaled_x < 0.0 || scaled_y < 0.0 || scaled_x >= double(width) || scaled_y >= double(height))
+        {
+            return false;
+        }
+        x = static_cast<uint32_t>(scaled_x);
+        y = static_cast<uint32_t>(scaled_y);
+        return true;
+    }
+
     bool Viewport::Eligible(const EditorSession& session, const UI::ZUIContext* ctx, bool focused) const
     {
         return Bound(ctx) && focused && session.Editable() && !session.Active() && !ctx->InteractionCapture.Keyboard && !ctx->TextInputActive && !ctx->ActiveModalKey && !ctx->ModalBox && !ctx->PopupStackSize && !ctx->PendingPopupKey && !ctx->DragSourceKey && (!ctx->ActiveKey || ctx->ActiveKey == m_viewport_key || ctx->ActiveKey == m_hit_key);

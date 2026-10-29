@@ -75,15 +75,19 @@ never a pointer into a mutable Scene or transient resource from another frame.
 
 ## 5. Readback contract
 
-DeclareReadback copies one exact GPU buffer version into the graph-managed mapped
-readback ring. Its callback runs on the render thread after the exact submission
-timeline has completed, and the byte pointer is valid only for that callback.
+`DeclareReadback` copies one exact GPU buffer version and
+`DeclareImageReadback` copies one exact image subresource and region into the
+graph-managed mapped readback ring. Their callback runs on the render thread
+after the exact submission timeline has completed, and the byte pointer is valid
+only for that callback.
 
-The API is buffer-based. Image picking must first copy the selected image pixel
-or region into a declared transfer buffer. Code must not assume a result arrives
-the next frame, block command recording waiting for it, or retain the byte
-pointer beyond the callback. Main-thread consumers receive durable copied data
-with a frame token and validate it against their current scene/viewport state.
+An image readback declares the image version, subresource, offset, extent, and
+destination byte count. The graph performs the required image-to-buffer copy;
+callers must not allocate an ad hoc staging buffer. Code must not assume a
+result arrives the next frame, block command recording waiting for it, or retain
+the byte pointer beyond the callback. Main-thread consumers receive durable
+copied data with a frame token and validate it against their current
+scene/viewport state.
 
 ## 6. Current renderer and editor integration
 

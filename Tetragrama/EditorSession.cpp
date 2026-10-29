@@ -1243,6 +1243,19 @@ namespace Tetragrama
         (void) ClearCustomPivot();
     }
 
+    bool EditorSession::SetHovered(EntityID entity)
+    {
+        return OnOwnerThread() && m_selection.SetHovered(m_targets, entity);
+    }
+
+    void EditorSession::ClearHovered()
+    {
+        if (OnOwnerThread())
+        {
+            m_selection.ClearHovered();
+        }
+    }
+
     EditorSession::TransformBatchHeader& EditorSession::Batch()
     {
         return *reinterpret_cast<TransformBatchHeader*>(m_transaction);

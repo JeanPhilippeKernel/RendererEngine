@@ -495,11 +495,11 @@ TEST_F(DockSplittersTest, HoverBandIsNarrowerThanTheGrabLaneAndClearsOnMouseLeav
     ctx.MousePos[0] = (hit->ScreenMin[0] + hit->ScreenMax[0]) * 0.5f + 3.5f;
     Build(true);
     EXPECT_EQ(Divider(), nullptr);
-    EXPECT_EQ(ctx.ResizeCursor, 1); // Still inside the invisible 8 px lane.
+    EXPECT_EQ(ctx.Cursor, ZUICursor::HorizontalResize); // Still inside the invisible 8 px lane.
     ctx.MousePos[0] += 10.f;
     Build(true);
     EXPECT_EQ(Divider(), nullptr);
-    EXPECT_EQ(ctx.ResizeCursor, 0);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::Default);
 }
 
 TEST_F(DockSplittersTest, DockAndIndicatorEdgesAlignToFramebufferPixelsAtFractionalScales)
@@ -628,7 +628,7 @@ TEST_F(DockSplittersTest, DragIndicatorStaysVisibleOutsideTheLaneAndClearsAfterR
     Build(true);
     EXPECT_FLOAT_EQ(manager.DockTree->Root->First->SizePx, old_size + 15.f);
     EXPECT_NE(Divider(), nullptr);
-    EXPECT_EQ(ctx.ResizeCursor, 1);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::HorizontalResize);
     ctx.MouseDown[0]     = false;
     ctx.MouseReleased[0] = true;
     Build(true);
@@ -699,7 +699,7 @@ TEST_F(DockSplittersTest, LosingPointerCaptureClearsTheDragIndicatorWithoutARele
     ctx.MousePos[0] = ctx.MousePos[1] = 0.f;
     Build(true);
     EXPECT_EQ(Divider(), nullptr);
-    EXPECT_EQ(ctx.ResizeCursor, 0);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::Default);
     EXPECT_TRUE(manager.LayoutDirty);
 }
 
@@ -720,7 +720,7 @@ TEST_F(DockSplittersTest, LosingActiveKeyWhileMouseIsDownCancelsResizeCapture)
     ctx.MousePos[0] = ctx.MousePos[1] = 0.f;
     Build(true);
     EXPECT_EQ(Divider(), nullptr);
-    EXPECT_EQ(ctx.ResizeCursor, 0);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::Default);
     EXPECT_TRUE(manager.LayoutDirty);
 }
 

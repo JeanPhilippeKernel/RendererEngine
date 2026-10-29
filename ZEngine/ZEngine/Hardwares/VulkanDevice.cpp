@@ -848,14 +848,20 @@ namespace ZEngine::Hardwares
 
         VkSamplerCreateInfo linear_sampler_wrap_u_clamp_to_edge_v_create_info = linear_sampler_clamp_to_edge_create_info;
         linear_sampler_wrap_u_clamp_to_edge_v_create_info.addressModeU        = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        VkSamplerCreateInfo nearest_sampler_clamp_to_edge_create_info         = linear_sampler_clamp_to_edge_create_info;
+        nearest_sampler_clamp_to_edge_create_info.minFilter                   = VK_FILTER_NEAREST;
+        nearest_sampler_clamp_to_edge_create_info.magFilter                   = VK_FILTER_NEAREST;
+        nearest_sampler_clamp_to_edge_create_info.mipmapMode                  = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 
         GlobalLinearWrapSampler                                               = PipelineStateCache->GetOrCreateSampler(linear_sampler_create_info);
         GlobalLinearClampToEdgeSampler                                        = PipelineStateCache->GetOrCreateSampler(linear_sampler_clamp_to_edge_create_info);
         GlobalLinearWrapUClampToEdgeVSampler                                  = PipelineStateCache->GetOrCreateSampler(linear_sampler_wrap_u_clamp_to_edge_v_create_info);
+        GlobalNearestClampToEdgeSampler                                       = PipelineStateCache->GetOrCreateSampler(nearest_sampler_clamp_to_edge_create_info);
 
         GlobalLinearWrapSamplerImageInfo                                      = VkDescriptorImageInfo{.sampler = GlobalLinearWrapSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
         GlobalLinearClampToEdgeSamplerImageInfo                               = VkDescriptorImageInfo{.sampler = GlobalLinearClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
         GlobalLinearWrapUClampToEdgeVSamplerImageInfo                         = VkDescriptorImageInfo{.sampler = GlobalLinearWrapUClampToEdgeVSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        GlobalNearestClampToEdgeSamplerImageInfo                              = VkDescriptorImageInfo{.sampler = GlobalNearestClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
         MaxGlobalTexture                                                      = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
@@ -1088,6 +1094,7 @@ namespace ZEngine::Hardwares
         GlobalLinearWrapSampler              = VK_NULL_HANDLE;
         GlobalLinearClampToEdgeSampler       = VK_NULL_HANDLE;
         GlobalLinearWrapUClampToEdgeVSampler = VK_NULL_HANDLE;
+        GlobalNearestClampToEdgeSampler      = VK_NULL_HANDLE;
         LogicalDevice                        = VK_NULL_HANDLE;
         Instance                             = VK_NULL_HANDLE;
     }
@@ -2499,6 +2506,16 @@ namespace ZEngine::Hardwares
             .size      = size,
         };
         vkCmdCopyBuffer(m_command_buffer, source, destination, 1, &region);
+    }
+
+    void CommandBuffer::CopyImageToBuffer(VkImage source, VkImageLayout source_layout, VkBuffer destination, const VkBufferImageCopy& region)
+    {
+        ZENGINE_VALIDATE_ASSERT(m_command_buffer != VK_NULL_HANDLE, "Copy image command buffer is null")
+        ZENGINE_VALIDATE_ASSERT(source != VK_NULL_HANDLE && destination != VK_NULL_HANDLE, "CopyImageToBuffer requires valid source image and destination buffer")
+        if (source == VK_NULL_HANDLE || destination == VK_NULL_HANDLE)
+            return;
+
+        vkCmdCopyImageToBuffer(m_command_buffer, source, source_layout, destination, 1, &region);
     }
 
     void CommandBuffer::CopyBufferToImage(const Hardwares::BufferView& source, Hardwares::BufferImage& destination, uint32_t width, uint32_t height, uint32_t layer_count, VkImageLayout new_layout, uint32_t source_offset, uint32_t depth)

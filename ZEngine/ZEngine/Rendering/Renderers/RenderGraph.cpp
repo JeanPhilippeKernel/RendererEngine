@@ -2130,16 +2130,44 @@ namespace ZEngine::Rendering::Renderers
                     if (pass.InternalOperation == RGInternalPassOperation::Readback)
                     {
                         const RGReadbackRequest*        request     = pass.InternalRequestIndex < ReadbackRequests.size() ? &ReadbackRequests[pass.InternalRequestIndex] : nullptr;
-                        const Core::Memory::BufferView* source      = request && request->Source.Valid() && request->Source.Index < Resources.size() ? Resources[request->Source.Index].Buffer : nullptr;
                         const Core::Memory::BufferView* destination = request ? ReadbackRing.GetBuffer(request->AllocationIndex) : nullptr;
-                        if (!request || !source || !destination || source->Handle == VK_NULL_HANDLE || destination->Handle == VK_NULL_HANDLE)
+                        if (!request || !destination || destination->Handle == VK_NULL_HANDLE || !request->Source.Valid() || request->Source.Index >= Resources.size())
                         {
                             ZENGINE_CORE_ERROR("[RenderGraph] Readback pass '{}' has an invalid source or staging buffer", pass.Name ? pass.Name : "?")
                         }
+                        else if (request->SourceKind == RGReadbackSourceKind::Buffer)
+                        {
+                            const Core::Memory::BufferView* source = Resources[request->Source.Index].Buffer;
+                            if (!source || source->Handle == VK_NULL_HANDLE)
+                            {
+                                ZENGINE_CORE_ERROR("[RenderGraph] Readback pass '{}' has an invalid buffer source", pass.Name ? pass.Name : "?")
+                            }
+                            else
+                            {
+                                target->CopyBuffer(source->Handle, destination->Handle, request->Size, request->Offset);
+                                ReadbackRequests[pass.InternalRequestIndex].Recorded = true;
+                            }
+                        }
                         else
                         {
-                            target->CopyBuffer(source->Handle, destination->Handle, request->Size, request->Offset);
-                            ReadbackRequests[pass.InternalRequestIndex].Recorded = true;
+                            const VkImage source = GetVkImage(Device, Resources[request->Source.Index].TextureHandle);
+                            if (source == VK_NULL_HANDLE)
+                            {
+                                ZENGINE_CORE_ERROR("[RenderGraph] Readback pass '{}' has an invalid image source", pass.Name ? pass.Name : "?")
+                            }
+                            else
+                            {
+                                const VkBufferImageCopy region = {
+                                    .bufferOffset      = 0,
+                                    .bufferRowLength   = 0,
+                                    .bufferImageHeight = 0,
+                                    .imageSubresource  = request->ImageRegion.Subresource,
+                                    .imageOffset       = request->ImageRegion.Offset,
+                                    .imageExtent       = request->ImageRegion.Extent,
+                                };
+                                target->CopyImageToBuffer(source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, destination->Handle, region);
+                                ReadbackRequests[pass.InternalRequestIndex].Recorded = true;
+                            }
                         }
                     }
                     else
@@ -2264,7 +2292,8 @@ namespace ZEngine::Rendering::Renderers
             target->EndDebugLabel();
         };
 
-        bool graph_submission_failed = false;
+        bool graph_submission_failed      = false;
+        bool deferred_readback_submission = false;
         for (uint32_t batch_index = 0; batch_index < QueueBatches.size(); ++batch_index)
         {
             const auto&               batch              = QueueBatches[batch_index];
@@ -2292,7 +2321,11 @@ namespace ZEngine::Rendering::Renderers
                 }
                 // This command buffer is submitted by Present(). Do not retire its
                 // tickets until vkQueueSubmit2 has accepted that submission.
-                Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&RenderGraph::OnRenderWorkSubmitted, this);
+                // The retained graphics command buffer is submitted by Present().
+                // Keep recorded readbacks alive until that submission either
+                // supplies its timeline or is explicitly abandoned.
+                Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&RenderGraph::OnRenderWorkSubmitted, this, &RenderGraph::OnRenderWorkCancelled);
+                deferred_readback_submission = true;
                 continue;
             }
 
@@ -2368,8 +2401,10 @@ namespace ZEngine::Rendering::Renderers
         if (timestamp_frame)
             timestamp_frame->Submitted = !graph_submission_failed && timestamp_frame->QueryCount > 0;
 
-        if (graph_submission_failed)
-            CancelUnsubmittedReadbacks();
+        // A pass may have declined or failed to record an individual readback
+        // while the remainder of the graph still submitted successfully.
+        // Release every unsubmitted request exactly once in either case.
+        CancelUnsubmittedReadbacks(!graph_submission_failed && deferred_readback_submission);
 
         ZReleaseScratch(scratch);
         return cb;
@@ -3060,9 +3095,19 @@ namespace ZEngine::Rendering::Renderers
                     return false;
                 }
                 const RGResource& source = Resources[request.Source.Index];
-                if (source.Kind != RGResourceKind::Buffer || request.Source.Version >= source.Versions.size())
+                if (request.Source.Version >= source.Versions.size())
                 {
-                    ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' references an invalid buffer version", request.Name)
+                    ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' references an invalid resource version", request.Name)
+                    return false;
+                }
+                if (request.SourceKind == RGReadbackSourceKind::Buffer && source.Kind != RGResourceKind::Buffer)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' requires a buffer resource", request.Name)
+                    return false;
+                }
+                if (request.SourceKind == RGReadbackSourceKind::Image && (source.Kind == RGResourceKind::Buffer || source.Kind == RGResourceKind::Swapchain))
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Image readback '{}' requires a graph image resource", request.Name)
                     return false;
                 }
             }
@@ -4260,7 +4305,16 @@ namespace ZEngine::Rendering::Renderers
     {
         for (auto& pass : Passes)
         {
-            pass.RequestedQueue = (pass.InternalOperation == RGInternalPassOperation::Readback || pass.InternalOperation == RGInternalPassOperation::QueryReadback) ? Rendering::QueueType::TRANSFER_QUEUE : pass.Callback ? pass.Callback->GetRequestedQueue() : Rendering::QueueType::GRAPHIC_QUEUE;
+            pass.RequestedQueue = pass.Callback ? pass.Callback->GetRequestedQueue() : Rendering::QueueType::GRAPHIC_QUEUE;
+            if (pass.InternalOperation == RGInternalPassOperation::Readback)
+            {
+                const bool image_readback = pass.InternalRequestIndex < ReadbackRequests.size() && ReadbackRequests[pass.InternalRequestIndex].SourceKind == RGReadbackSourceKind::Image;
+                pass.RequestedQueue       = image_readback ? Rendering::QueueType::GRAPHIC_QUEUE : Rendering::QueueType::TRANSFER_QUEUE;
+            }
+            else if (pass.InternalOperation == RGInternalPassOperation::QueryReadback)
+            {
+                pass.RequestedQueue = Rendering::QueueType::TRANSFER_QUEUE;
+            }
             if (pass.Handle)
             {
                 switch (pass.Handle->Specification.Type)
@@ -4495,6 +4549,15 @@ namespace ZEngine::Rendering::Renderers
         {
             graph->AcknowledgeStreamingAcquires(0, static_cast<uint32_t>(graph->SortedPassIndices.size()));
             graph->SubmitReadbacks(0, static_cast<uint32_t>(graph->SortedPassIndices.size()), timeline, timeline_value);
+        }
+    }
+
+    void RenderGraph::OnRenderWorkCancelled(void* context)
+    {
+        auto* const graph = static_cast<RenderGraph*>(context);
+        if (graph)
+        {
+            graph->CancelUnsubmittedReadbacks();
         }
     }
 
@@ -4803,7 +4866,11 @@ namespace ZEngine::Rendering::Renderers
             pass.Enabled              = true;
             pass.Flags                = RGPassFlags::NeverCull;
             pass.RequiresRenderPass   = false;
-            pass.RequestedQueue       = Rendering::QueueType::TRANSFER_QUEUE;
+            // A graphics queue can perform a transfer copy. Keep image readbacks
+            // with their graphics producer so the object-ID snapshot is ordered
+            // in the same submission that rendered it. Buffer readbacks remain
+            // on the dedicated transfer queue.
+            pass.RequestedQueue       = request.SourceKind == RGReadbackSourceKind::Image ? Rendering::QueueType::GRAPHIC_QUEUE : Rendering::QueueType::TRANSFER_QUEUE;
             pass.InternalOperation    = RGInternalPassOperation::Readback;
             pass.InternalRequestIndex = request_index;
             pass.Reads.init(&FrameArena, 1);
@@ -4859,25 +4926,66 @@ namespace ZEngine::Rendering::Renderers
             if (!request.Source.Valid() || request.Source.Index >= Resources.size())
                 return false;
             const RGResource& source = Resources[request.Source.Index];
-            if (source.Kind != RGResourceKind::Buffer || request.Source.Version >= source.Versions.size())
+            if (request.Source.Version >= source.Versions.size())
                 return false;
 
-            VkDeviceSize source_size = source.BufferSize;
-            if (source_size == 0 && source.Buffer)
-                source_size = source.Buffer->Size;
-            if (source_size == 0 || request.Offset >= source_size)
+            VkDeviceSize size = request.Size;
+            if (request.SourceKind == RGReadbackSourceKind::Buffer)
             {
-                ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' exceeds source buffer bounds", request.Name ? request.Name : "?")
-                CancelUnsubmittedReadbacks();
-                return false;
+                if (source.Kind != RGResourceKind::Buffer)
+                    return false;
+                VkDeviceSize source_size = source.BufferSize;
+                if (source_size == 0 && source.Buffer)
+                    source_size = source.Buffer->Size;
+                if (source_size == 0 || request.Offset >= source_size)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' exceeds source buffer bounds", request.Name ? request.Name : "?")
+                    CancelUnsubmittedReadbacks();
+                    return false;
+                }
+
+                size = request.Size == VK_WHOLE_SIZE ? source_size - request.Offset : request.Size;
+                if (size == 0 || size > source_size - request.Offset)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' exceeds source buffer bounds", request.Name ? request.Name : "?")
+                    CancelUnsubmittedReadbacks();
+                    return false;
+                }
             }
-
-            const VkDeviceSize size = request.Size == VK_WHOLE_SIZE ? source_size - request.Offset : request.Size;
-            if (size == 0 || size > source_size - request.Offset)
+            else
             {
-                ZENGINE_CORE_ERROR("[RenderGraph] Readback '{}' exceeds source buffer bounds", request.Name ? request.Name : "?")
-                CancelUnsubmittedReadbacks();
-                return false;
+                if (source.Kind == RGResourceKind::Buffer || source.Kind == RGResourceKind::Swapchain || size == 0 || size == VK_WHOLE_SIZE || !Device)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Image readback '{}' has an invalid source or byte count", request.Name ? request.Name : "?")
+                    CancelUnsubmittedReadbacks();
+                    return false;
+                }
+                const auto* texture = Device->GlobalTextures.Access(source.TextureHandle);
+                if (!texture || !texture->BufferHandle.Valid() || GetVkImage(Device, source.TextureHandle) == VK_NULL_HANDLE)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Image readback '{}' source is unavailable", request.Name ? request.Name : "?")
+                    CancelUnsubmittedReadbacks();
+                    return false;
+                }
+
+                const RGImageReadbackRegion& region      = request.ImageRegion;
+                const uint32_t               mip_levels  = texture->Specification.MipLevelCount;
+                const uint32_t               layer_count = texture->Specification.LayerCount;
+                if (region.Subresource.aspectMask == 0 || region.Subresource.layerCount == 0 || region.Subresource.mipLevel >= mip_levels || region.Subresource.baseArrayLayer >= layer_count || region.Subresource.layerCount > layer_count - region.Subresource.baseArrayLayer || region.Extent.width == 0 || region.Extent.height == 0 || region.Extent.depth == 0 || region.Offset.x < 0 || region.Offset.y < 0 || region.Offset.z < 0)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Image readback '{}' has an invalid subresource or region", request.Name ? request.Name : "?")
+                    CancelUnsubmittedReadbacks();
+                    return false;
+                }
+                const uint32_t width  = std::max(1u, texture->Width >> region.Subresource.mipLevel);
+                const uint32_t height = std::max(1u, texture->Height >> region.Subresource.mipLevel);
+                const uint32_t depth  = std::max(1u, texture->Specification.Depth >> region.Subresource.mipLevel);
+                if (static_cast<uint64_t>(region.Offset.x) + region.Extent.width > width || static_cast<uint64_t>(region.Offset.y) + region.Extent.height > height || static_cast<uint64_t>(region.Offset.z) + region.Extent.depth > depth)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Image readback '{}' exceeds source image bounds", request.Name ? request.Name : "?")
+                    CancelUnsubmittedReadbacks();
+                    return false;
+                }
             }
 
             request.Size            = size;
@@ -5010,16 +5118,27 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    void RenderGraph::CancelUnsubmittedReadbacks()
+    void RenderGraph::CancelUnsubmittedReadbacks(bool preserve_recorded)
     {
         for (RGReadbackRequest& request : ReadbackRequests)
         {
-            if (request.AllocationIndex != UINT32_MAX && !request.Submitted)
+            if (request.Submitted || request.CancellationDelivered || (preserve_recorded && request.Recorded))
+            {
+                continue;
+            }
+            if (request.AllocationIndex != UINT32_MAX)
+            {
                 ReadbackRing.Cancel(request.AllocationIndex);
+            }
+            request.CancellationDelivered = true;
+            if (request.Cancellation)
+            {
+                request.Cancellation(request.Context);
+            }
         }
         for (RGQueryReadbackRequest& request : QueryReadbackRequests)
         {
-            if (request.AllocationIndex != UINT32_MAX && !request.Submitted)
+            if (request.AllocationIndex != UINT32_MAX && !request.Submitted && !(preserve_recorded && request.Recorded))
                 ReadbackRing.Cancel(request.AllocationIndex);
         }
     }
@@ -5277,7 +5396,7 @@ namespace ZEngine::Rendering::Renderers
         RecordAccess(Graph, CurrentPass, condition.Index, RGAccess::ConditionalRead, nullptr, false, condition.Version);
     }
 
-    RGReadbackHandle RenderGraphResourceBuilder::DeclareReadback(cstring name, RGResourceHandle gpu_buffer, RGReadbackFn callback, void* context, VkDeviceSize size, VkDeviceSize offset)
+    RGReadbackHandle RenderGraphResourceBuilder::DeclareReadback(cstring name, RGResourceHandle gpu_buffer, RGReadbackFn callback, void* context, VkDeviceSize size, VkDeviceSize offset, RGReadbackCancelFn cancellation)
     {
         if (CurrentPass == UINT32_MAX || CurrentPass >= Graph->Passes.size() || !name || !gpu_buffer.Valid() || gpu_buffer.Index >= Graph->Resources.size() || !callback)
         {
@@ -5304,7 +5423,31 @@ namespace ZEngine::Rendering::Renderers
         resource.BufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
         const uint32_t index  = static_cast<uint32_t>(Graph->ReadbackRequests.size());
-        Graph->ReadbackRequests.push({.Name = name, .Source = gpu_buffer, .Offset = offset, .Size = size, .Callback = callback, .Context = context});
+        Graph->ReadbackRequests.push({.Name = name, .Source = gpu_buffer, .Offset = offset, .Size = size, .Callback = callback, .Cancellation = cancellation, .Context = context});
+        return {index};
+    }
+
+    RGReadbackHandle RenderGraphResourceBuilder::DeclareImageReadback(cstring name, RGResourceHandle image, const RGImageReadbackRegion& region, RGReadbackFn callback, void* context, VkDeviceSize size, RGReadbackCancelFn cancellation)
+    {
+        if (!Graph || CurrentPass == UINT32_MAX || CurrentPass >= Graph->Passes.size() || !name || !image.Valid() || image.Index >= Graph->Resources.size() || !callback || size == 0 || size == VK_WHOLE_SIZE)
+        {
+            ZENGINE_CORE_ERROR("[RenderGraph] DeclareImageReadback requires a name, exact image version, finite byte count, and callback")
+            return {};
+        }
+        const RGResource& resource = Graph->Resources[image.Index];
+        if (resource.Kind != RGResourceKind::Attachment && resource.Kind != RGResourceKind::Texture)
+        {
+            ZENGINE_CORE_ERROR("[RenderGraph] DeclareImageReadback requires an image resource")
+            return {};
+        }
+        if (region.Subresource.aspectMask == 0 || region.Subresource.layerCount == 0 || region.Extent.width == 0 || region.Extent.height == 0 || region.Extent.depth == 0 || region.Offset.x < 0 || region.Offset.y < 0 || region.Offset.z < 0)
+        {
+            ZENGINE_CORE_ERROR("[RenderGraph] DeclareImageReadback requires a non-empty image region")
+            return {};
+        }
+
+        const uint32_t index = static_cast<uint32_t>(Graph->ReadbackRequests.size());
+        Graph->ReadbackRequests.push({.Name = name, .Source = image, .SourceKind = RGReadbackSourceKind::Image, .Size = size, .ImageRegion = region, .Callback = callback, .Cancellation = cancellation, .Context = context});
         return {index};
     }
 

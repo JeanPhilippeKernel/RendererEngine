@@ -218,9 +218,13 @@ namespace Tetragrama::Panels
         img->Size[1]      = ZFill();
         img->TextureIndex = m_scene_texture.Valid() ? (uint32_t) m_scene_texture.Index : 0xFFFFFFFFu;
         ZUIBoxSetColor(img, 1.f, 1.f, 1.f, m_scene_texture.Valid() ? 1.f : 0.f);
-        ctx->ViewportInputKey = img->Key;
+        ctx->ViewportInputKey   = img->Key;
+        // Read-only scenes remain selectable. Authoring tools add their own
+        // Editable gate when they begin a transaction.
+        ctx->ViewportSelectable = app->Session.Ready();
+        ctx->ViewportEditable   = app->Session.Editable();
 
-        ZUISignal img_sig     = ZUISignalFromBox(ctx, img);
+        ZUISignal img_sig       = ZUISignalFromBox(ctx, img);
         ZUIPopBox(ctx);
 
         // The camera consumes raw GLFW cursor positions, not UI-space positions.
@@ -239,7 +243,14 @@ namespace Tetragrama::Panels
         gizmo->CustomHitTest     = Gizmo::Viewport::Filter;
         gizmo->CustomHitTestData = &app->GizmoViewport;
         app->GizmoViewport.Bind(ctx, rect, img->Key, gizmo->Key);
+        ctx->ViewportOverlayKey = gizmo->Key;
         app->RefreshGizmoHitFrame(ctx);
+        // A captured gizmo remains precise even when its drag leaves the image.
+        // The semantic request is resolved once by the UI platform layer.
+        if (app->Session.Active() && !ctx->TextInputActive && !ctx->ActiveModalKey && !ctx->ModalBox && !ctx->PopupStackSize && !ctx->PendingPopupKey)
+        {
+            ZUIRequestCursor(ctx, ZUICursor::Crosshair, ZUI_CursorPriorityCapture);
+        }
         ZUIPopBox(ctx);
 
         // Keep ViewportHovered for ZUI-level concerns (drag-drop, scroll routing).

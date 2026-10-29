@@ -300,6 +300,82 @@ TEST(ZUIInputCaptureTest, OverlayFrameLifecycleDoesNotResetSessionCapture)
     memory.Shutdown();
 }
 
+TEST(ZUICursorTest, HigherPriorityRequestWinsAndFrameResetRestoresDefault)
+{
+    ZUIContext ctx = {};
+    ZUIRequestCursor(&ctx, ZUICursor::Crosshair, ZUI_CursorPriorityViewport);
+    ZUIRequestCursor(&ctx, ZUICursor::VerticalResize, ZUI_CursorPriorityUI);
+    ZUIRequestCursor(&ctx, ZUICursor::Crosshair, ZUI_CursorPriorityViewport);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::VerticalResize);
+    EXPECT_EQ(ctx.CursorPriority, ZUI_CursorPriorityUI);
+
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    ZUIContextInit(&ctx, &memory.MainArena, ZKilo(64), ZKilo(16), 64, 16);
+    ZUIBeginFrame(&ctx, 1.f / 60.f);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::Default);
+    EXPECT_EQ(ctx.CursorPriority, 0u);
+    ZUIContextDestroy(&ctx);
+    memory.Shutdown();
+}
+
+TEST(ZUICursorTest, EditableViewportRequestsCrosshairAfterFinalHitTest)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    ZUIContext ctx = {};
+    ZUIContextInit(&ctx, &memory.MainArena, ZKilo(64), ZKilo(16), 64, 16);
+    ctx.ScreenW     = 200;
+    ctx.ScreenH     = 100;
+    ctx.MousePos[0] = 40.f;
+    ctx.MousePos[1] = 30.f;
+
+    ZUIBeginFrame(&ctx, 1.f / 60.f);
+    ZUIBeginColumn(&ctx, "root", ZPx(200.f), ZPx(100.f));
+    auto* image          = ZUIPushBox(&ctx, "viewport", 8, ZUI_Clickable);
+    image->Size[0]       = ZFill();
+    image->Size[1]       = ZFill();
+    ctx.ViewportInputKey = image->Key;
+    ctx.ViewportEditable = true;
+    ZUIPopBox(&ctx);
+    ZUIEndColumn(&ctx);
+    ZUIEndFrame(&ctx);
+
+    EXPECT_EQ(ctx.HotKey, image->Key);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::Crosshair);
+    EXPECT_EQ(ctx.CursorPriority, ZUI_CursorPriorityViewport);
+    ZUIContextDestroy(&ctx);
+    memory.Shutdown();
+}
+
+TEST(ZUICursorTest, ReadOnlyViewportDoesNotRequestCrosshair)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    ZUIContext ctx = {};
+    ZUIContextInit(&ctx, &memory.MainArena, ZKilo(64), ZKilo(16), 64, 16);
+    ctx.ScreenW     = 200;
+    ctx.ScreenH     = 100;
+    ctx.MousePos[0] = 40.f;
+    ctx.MousePos[1] = 30.f;
+
+    ZUIBeginFrame(&ctx, 1.f / 60.f);
+    ZUIBeginColumn(&ctx, "root", ZPx(200.f), ZPx(100.f));
+    auto* image          = ZUIPushBox(&ctx, "viewport", 8, ZUI_Clickable);
+    image->Size[0]       = ZFill();
+    image->Size[1]       = ZFill();
+    ctx.ViewportInputKey = image->Key;
+    ZUIPopBox(&ctx);
+    ZUIEndColumn(&ctx);
+    ZUIEndFrame(&ctx);
+
+    EXPECT_EQ(ctx.HotKey, image->Key);
+    EXPECT_EQ(ctx.Cursor, ZUICursor::Default);
+    EXPECT_EQ(ctx.CursorPriority, 0u);
+    ZUIContextDestroy(&ctx);
+    memory.Shutdown();
+}
+
 TEST(ZUIInputCaptureTest, PopupsAndModalsCaptureBothInputChannels)
 {
     ZUIContext ctx          = {};

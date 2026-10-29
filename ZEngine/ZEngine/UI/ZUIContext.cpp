@@ -31,18 +31,22 @@ namespace ZEngine::UI
         ++ctx->FrameIndex;
         ZUIStyleUpdate(&ctx->Style); // recompute FrameHeight = FontSize + FramePadding.y*2
         ctx->FrameArena.Clear();
-        ctx->Root              = nullptr;
-        ctx->Current           = nullptr;
-        ctx->ForegroundRoot    = nullptr;
-        ctx->DeltaTime         = dt;
-        ctx->Time             += dt;
-        ctx->ResizeCursor      = 0;
+        ctx->Root                = nullptr;
+        ctx->Current             = nullptr;
+        ctx->ForegroundRoot      = nullptr;
+        ctx->DeltaTime           = dt;
+        ctx->Time               += dt;
+        ctx->Cursor              = ZUICursor::Default;
+        ctx->CursorPriority      = 0;
         // Rebuilt by text-editing widgets below. The application consumes the
         // prior frame's value before ZUIBeginFrame runs.
-        ctx->TextInputActive   = false;
+        ctx->TextInputActive     = false;
         // The application consumes the prior frame's viewport key before this point.
-        ctx->ViewportInputKey  = 0;
-        ctx->PopupBuildDepth   = 0; // reset render depth; rebuilt during each BuildUI pass
+        ctx->ViewportInputKey    = 0;
+        ctx->ViewportOverlayKey  = 0;
+        ctx->ViewportSelectable  = false;
+        ctx->ViewportEditable    = false;
+        ctx->PopupBuildDepth     = 0; // reset render depth; rebuilt during each BuildUI pass
         // Clear stale Box* pointers — boxes are re-created each frame in FrameArena
         for (uint32_t i = 0; i < ctx->PopupStackSize; i++)
             ctx->PopupStack[i].Box = nullptr;
@@ -109,6 +113,16 @@ namespace ZEngine::UI
             }
         }
         ZUIInteractionPass(ctx);
+
+        // Selection and placement are precise viewport interactions. Request
+        // the crosshair only after the final paint-order hit test, so toolbar,
+        // popup, and dock controls keep their own normal cursor behavior.
+        const bool viewport_hot      = ctx->HotKey == ctx->ViewportInputKey || ctx->HotKey == ctx->ViewportOverlayKey;
+        const bool viewport_eligible = ctx->ViewportEditable && ctx->ViewportInputKey != 0 && !ctx->TextInputActive && !ctx->ActiveModalKey && !ctx->ModalBox && !ctx->PopupStackSize && !ctx->PendingPopupKey && !ctx->DragSourceKey;
+        if (viewport_eligible && viewport_hot)
+        {
+            ZUIRequestCursor(ctx, ZUICursor::Crosshair, ZUI_CursorPriorityViewport);
+        }
 
         // Save mouse position before clearing edge states — used for drag delta next frame
         ctx->PrevMousePos[0] = ctx->MousePos[0];

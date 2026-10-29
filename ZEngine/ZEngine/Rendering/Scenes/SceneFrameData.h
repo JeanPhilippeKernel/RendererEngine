@@ -3,11 +3,13 @@
 
 namespace ZEngine::Rendering::Scenes
 {
-    /// @brief Draw input only: editor names/instance IDs never cross the render mailbox.
+    /// @brief Immutable mesh draw input. Entity is an opaque value used only to
+    /// build a frame-local selection token table; the render thread never touches ECS.
     struct SceneDrawInstance
     {
         Core::Maths::Mat4f Transform = {};
         uuids::uuid        MeshUUID  = {};
+        ECS::EntityID      Entity    = ECS::INVALID_ENTITY;
     };
 
     /// @brief Immutable scene authoring snapshot. Instance storage belongs to a retained mailbox slot.

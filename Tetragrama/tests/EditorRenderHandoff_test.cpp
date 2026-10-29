@@ -9,10 +9,10 @@
 #include <ZEngine/ECS/Systems/LightSyncSystem.h>
 #include <ZEngine/ECS/Systems/TransformSyncSystem.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <memory>
 #include <thread>
 #include <type_traits>
@@ -117,7 +117,7 @@ protected:
     void ClearPendingLights()
     {
         static_assert(std::is_trivially_copyable_v<ZEngine::Rendering::Scenes::LightArrayUBO>);
-        std::memset(&Owner.PendingLights, 0, sizeof(Owner.PendingLights));
+        ASSERT_EQ(ZEngine::Helpers::secure_memset(&Owner.PendingLights, 0, sizeof(Owner.PendingLights), sizeof(Owner.PendingLights)), ZEngine::Helpers::MEMORY_OP_SUCCESS);
     }
 };
 
@@ -131,6 +131,8 @@ TEST_F(EditorRenderHandoffTest, CancelRestoresBothEntityKindsWhileTheRendererRet
     ASSERT_EQ(retained.Scene.InstanceCount, 2u);
     EXPECT_EQ(retained.Scene.Instances[0].Transform(0, 3), 5.f);
     EXPECT_EQ(retained.Scene.Instances[1].Transform(0, 3), 9.f);
+    EXPECT_EQ(retained.Scene.Instances[0].Entity, Entities[0]);
+    EXPECT_EQ(retained.Scene.Instances[1].Entity, Entities[1]);
     ASSERT_EQ(retained.Scene.Lights.PointCount, 1u);
     EXPECT_EQ(retained.Scene.Lights.PointLights[0].Position.x, 5.f);
 

@@ -13,6 +13,7 @@
 #include <ZEngine/Rendering/Renderers/Graphics/GridLabelPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/SelectionOutlinePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkySpherePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/ToneMappingPass.h>
@@ -119,18 +120,20 @@ namespace ZEngine::Rendering::Renderers
         constexpr const char*  render_data_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]     = {"RenderDataStorageBuffer[0]", "RenderDataStorageBuffer[1]", "RenderDataStorageBuffer[2]"};
         constexpr const char*  material_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]        = {"MaterialStorageBuffer[0]", "MaterialStorageBuffer[1]", "MaterialStorageBuffer[2]"};
         constexpr const char*  light_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]           = {"LightStorageBuffer[0]", "LightStorageBuffer[1]", "LightStorageBuffer[2]"};
+        constexpr const char*  selection_token_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT] = {"SelectionTokenStateBuffer[0]", "SelectionTokenStateBuffer[1]", "SelectionTokenStateBuffer[2]"};
         constexpr const char*  culling_input_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]   = {"FrustumCullingInput[0]", "FrustumCullingInput[1]", "FrustumCullingInput[2]"};
         constexpr const char*  culled_indirect_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT] = {"FrustumCulledIndirect[0]", "FrustumCulledIndirect[1]", "FrustumCulledIndirect[2]"};
         constexpr VkDeviceSize culling_input_size                                             = Scenes::SceneData::MAX_DRAW_COMMANDS * sizeof(Scenes::FrustumCullingInput);
         constexpr VkDeviceSize culled_indirect_size                                           = Scenes::SceneData::MAX_DRAW_COMMANDS * sizeof(VkDrawIndirectCommand);
         for (uint32_t i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
         {
-            RenderSceneData->TransformBuffers[i]      = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, transform_names[i]);
-            RenderSceneData->RenderDataBuffers[i]     = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, render_data_names[i]);
-            RenderSceneData->MaterialBuffers[i]       = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, material_names[i]);
-            RenderSceneData->LightBuffers[i]          = Device->GpuMem.AllocateBuffer(sizeof(Scenes::LightArrayUBO), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, light_names[i]);
-            RenderSceneData->CullingInputBuffers[i]   = Device->GpuMem.AllocateBuffer(culling_input_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, culling_input_names[i]);
-            RenderSceneData->CulledIndirectBuffers[i] = Device->GpuMem.AllocateBuffer(culled_indirect_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, culled_indirect_names[i]);
+            RenderSceneData->TransformBuffers[i]           = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, transform_names[i]);
+            RenderSceneData->RenderDataBuffers[i]          = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, render_data_names[i]);
+            RenderSceneData->MaterialBuffers[i]            = Device->GpuMem.AllocateBuffer(DefaultBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, material_names[i]);
+            RenderSceneData->LightBuffers[i]               = Device->GpuMem.AllocateBuffer(sizeof(Scenes::LightArrayUBO), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, light_names[i]);
+            RenderSceneData->SelectionTokenStateBuffers[i] = Device->GpuMem.AllocateBuffer((Scenes::SceneData::MAX_DRAW_COMMANDS + 1) * sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, selection_token_names[i]);
+            RenderSceneData->CullingInputBuffers[i]        = Device->GpuMem.AllocateBuffer(culling_input_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, culling_input_names[i]);
+            RenderSceneData->CulledIndirectBuffers[i]      = Device->GpuMem.AllocateBuffer(culled_indirect_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, culled_indirect_names[i]);
         }
 
         /*
@@ -150,14 +153,16 @@ namespace ZEngine::Rendering::Renderers
         m_grid_label_pass                = grid_label_pass;
         auto gizmo_pass                  = ZPushStructCtor(Device->Arena, GizmoPass);
         gizmo_pass->Initialize(Device);
-        m_gizmo_pass           = gizmo_pass;
-        auto tone_mapping_pass = ZPushStructCtor(Device->Arena, ToneMappingPass);
+        m_gizmo_pass                = gizmo_pass;
+        auto tone_mapping_pass      = ZPushStructCtor(Device->Arena, ToneMappingPass);
+        auto selection_outline_pass = ZPushStructCtor(Device->Arena, SelectionOutlinePass);
 
         RenderGraph->Initialize(Device, RenderSceneData);
         RenderGraph->ImportBuffer(RendererBufferName::Transform, &RenderSceneData->TransformBuffers[0]);
         RenderGraph->ImportBuffer(RendererBufferName::RenderData, &RenderSceneData->RenderDataBuffers[0]);
         RenderGraph->ImportBuffer(RendererBufferName::Material, &RenderSceneData->MaterialBuffers[0]);
         RenderGraph->ImportBuffer(RendererBufferName::Light, &RenderSceneData->LightBuffers[0]);
+        RenderGraph->ImportBuffer(RendererBufferName::SelectionTokenState, &RenderSceneData->SelectionTokenStateBuffers[0]);
         // Setup needs one valid imported view to establish declarations. DrawScene
         // updates both pointers to the active frame's views before Execute(),
         // which is when RenderGraph stamps its runtime barriers.
@@ -172,6 +177,7 @@ namespace ZEngine::Rendering::Renderers
         m_sky_environment.Initialize(fallback_environment, fallback_lighting, Device->EnvironmentLightingBakeSettings);
         const uint64_t fallback_memory_bytes = GetTextureBytes(Device, fallback_environment) + GetTextureBytes(Device, fallback_lighting.DiffuseIrradiance) + GetTextureBytes(Device, fallback_lighting.SpecularEnvironment) + GetTextureBytes(Device, fallback_lighting.BrdfIntegrationLut);
         m_sky_environment.ConfigureMemoryBudget(Device->EnvironmentLightingMemoryBudget, fallback_memory_bytes);
+        m_gbuffer_pass                             = gbuffer_pass;
         m_lighting_pass                            = lighting_pass;
         m_grid_pass                                = grid_pass;
         m_environment_background_pass              = environment_background_pass;
@@ -180,6 +186,7 @@ namespace ZEngine::Rendering::Renderers
         m_aerial_perspective_pass                  = aerial_pass;
         m_sky_composite_pass                       = sky_composite_pass;
         m_tone_mapping_pass                        = tone_mapping_pass;
+        m_selection_outline_pass                   = selection_outline_pass;
         m_environment_lighting_resources_supported = SupportsEnvironmentLightingResources(Device->EnvironmentLightingBakeSettings, &m_environment_lighting_unavailable_reason);
         m_atmosphere_bake_resources_supported      = SupportsAtmosphereBakeResources(Device->EnvironmentLightingBakeSettings, &m_atmosphere_bake_unavailable_reason);
         m_atmosphere_view_resources_supported      = SupportsAtmosphereViewResources(&m_atmosphere_view_unavailable_reason);
@@ -220,6 +227,7 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->AddCallbackPass("Grid Labels Pass", grid_label_pass);
+        RenderGraph->AddCallbackPass("Selection Outline Pass", selection_outline_pass);
         RenderGraph->AddCallbackPass("Gizmo Pass", gizmo_pass);
         RenderGraph->Setup();
         RenderGraph->Compile();
@@ -249,6 +257,7 @@ namespace ZEngine::Rendering::Renderers
         m_aerial_perspective_pass                  = nullptr;
         m_sky_composite_pass                       = nullptr;
         m_tone_mapping_pass                        = nullptr;
+        m_selection_outline_pass                   = nullptr;
         m_sky_atmosphere_transmittance_pass        = nullptr;
         m_sky_atmosphere_multiscattering_pass      = nullptr;
         m_sky_atmosphere_source_radiance_pass      = nullptr;
@@ -269,9 +278,26 @@ namespace ZEngine::Rendering::Renderers
                 Device->GpuMem.FreeBuffer(RenderSceneData->RenderDataBuffers[i]);
                 Device->GpuMem.FreeBuffer(RenderSceneData->MaterialBuffers[i]);
                 Device->GpuMem.FreeBuffer(RenderSceneData->LightBuffers[i]);
+                Device->GpuMem.FreeBuffer(RenderSceneData->SelectionTokenStateBuffers[i]);
                 Device->GpuMem.FreeBuffer(RenderSceneData->CullingInputBuffers[i]);
                 Device->GpuMem.FreeBuffer(RenderSceneData->CulledIndirectBuffers[i]);
             }
+        }
+    }
+
+    void GraphicRenderer::RequestObjectIdPick(const ObjectIdPickRequest& request)
+    {
+        if (m_gbuffer_pass)
+        {
+            m_gbuffer_pass->SetObjectIdPickRequest(request);
+        }
+    }
+
+    void GraphicRenderer::ApplySelectionOutline(bool enabled)
+    {
+        if (m_selection_outline_pass)
+        {
+            m_selection_outline_pass->SetEnabled(enabled);
         }
     }
 
@@ -280,6 +306,7 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(frame_index < Scenes::SceneData::MAX_FRAMES_IN_FLIGHT, "Invalid scene-buffer frame index")
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Transform, &RenderSceneData->TransformBuffers[frame_index]), "Transform buffer is not imported into the render graph")
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::RenderData, &RenderSceneData->RenderDataBuffers[frame_index]), "Render data buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::SelectionTokenState, &RenderSceneData->SelectionTokenStateBuffers[frame_index]), "Selection token state buffer is not imported into the render graph")
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Material, &RenderSceneData->MaterialBuffers[frame_index]), "Material buffer is not imported into the render graph")
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Light, &RenderSceneData->LightBuffers[frame_index]), "Light buffer is not imported into the render graph")
         ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::CullingInput, &RenderSceneData->CullingInputBuffers[frame_index]), "Culling input buffer is not imported into the render graph")

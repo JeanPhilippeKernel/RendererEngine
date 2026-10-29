@@ -16,7 +16,11 @@ namespace ZEngine::Rendering::Renderers
     /// @brief Receives one completed GPU-to-CPU readback on the render thread.
     /// @details `data` remains valid only for the duration of the callback. The
     /// callback must copy any result that it needs to retain.
-    using RGReadbackFn = void (*)(const void* data, size_t size, void* context);
+    using RGReadbackFn       = void (*)(const void* data, size_t size, void* context);
+    /// @brief Notifies a requester that its declared copy will never be submitted.
+    /// @details Runs on the render thread. It must only release request-local
+    /// state; it must not interpret missing data as a successful background hit.
+    using RGReadbackCancelFn = void (*)(void* context);
 
     /// @brief Persistent host-visible staging allocation leased by a GPU timeline.
     struct RGReadbackAllocation

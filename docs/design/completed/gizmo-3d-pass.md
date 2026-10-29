@@ -206,10 +206,9 @@ PickFrameTable. Handle hit tests return a compact handle identity tied to the
 active operation and gizmo revision.
 
 GPU readback is asynchronous and timeline-gated. It is not guaranteed to arrive
-next frame. Until image readback is a native graph facility, copy the requested
-pixel to a declared buffer readback. Discard a result if its scene epoch,
-viewport generation, camera/projection revision, target revision, or timeline
-completion is invalid.
+next frame. `DeclareImageReadback` copies the requested pixel into the graph's
+readback ring. Discard a result if its scene epoch, viewport generation,
+camera/projection revision, target revision, or timeline completion is invalid.
 
 Handle priority is deterministic: an active captured handle wins; otherwise a
 hovered handle wins before an object pick. While captured, object picks cannot

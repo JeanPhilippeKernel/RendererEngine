@@ -91,6 +91,41 @@ namespace ZEngine::Rendering::Scenes
         MarkInstancesDirty();
     }
 
+    void RenderScene::SetInstanceEntity(uint32_t id, ECS::EntityID entity)
+    {
+        for (uint32_t i = 0; i < Instances.size(); ++i)
+        {
+            MeshInstance& instance = Instances[i];
+            if (instance.Id != id || instance.Entity == entity)
+            {
+                continue;
+            }
+            SeqBeginWrite();
+            instance.Entity = entity;
+            SeqEndWrite();
+            MarkInstancesDirty();
+            return;
+        }
+    }
+
+    bool RenderScene::TryGetInstanceEntity(uint32_t id, ECS::EntityID& out_entity) const
+    {
+        if (id == 0)
+        {
+            return false;
+        }
+
+        for (const MeshInstance& instance : Instances)
+        {
+            if (instance.Id == id && instance.Entity.IsValid())
+            {
+                out_entity = instance.Entity;
+                return true;
+            }
+        }
+        return false;
+    }
+
     void RenderScene::MarkInstancesDirty()
     {
         for (auto& flag : InstancesDirty)

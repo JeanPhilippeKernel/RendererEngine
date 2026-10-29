@@ -269,6 +269,8 @@ namespace Tetragrama
         [[nodiscard]] bool                  ReadSelectedRoots(ZEngine::Core::Containers::ArrayView<const EntityTarget>& output);
         [[nodiscard]] bool                  Reparent(ZEngine::ECS::EntityID child, ZEngine::ECS::EntityID parent);
         void                                ClearSelection();
+        [[nodiscard]] bool                  SetHovered(ZEngine::ECS::EntityID entity);
+        void                                ClearHovered();
 
         [[nodiscard]] bool                  BeginTransform(std::span<const EntityTarget> roots, const ZEngine::Core::Maths::Vec3f& pivot = {}, TransformSpacePolicy space = TransformSpacePolicy::World);
         [[nodiscard]] bool                  PreviewTransforms(std::span<const ZEngine::ECS::LocalTransformValue> values);

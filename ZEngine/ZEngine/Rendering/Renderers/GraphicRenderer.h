@@ -7,6 +7,8 @@
 namespace ZEngine::Rendering::Renderers
 {
     struct LightingPass;
+    struct GbufferPass;
+    struct ObjectIdPickRequest;
     struct GridPass;
     struct GridLabelPass;
     struct GridLabelFrameData;
@@ -18,6 +20,7 @@ namespace ZEngine::Rendering::Renderers
     struct AerialPerspectivePass;
     struct SkyCompositePass;
     struct ToneMappingPass;
+    struct SelectionOutlinePass;
     struct SkyAtmosphereTransmittancePass;
     struct SkyAtmosphereMultiscatteringPass;
     struct SkyAtmosphereSourceRadiancePass;
@@ -76,6 +79,10 @@ namespace ZEngine::Rendering::Renderers
         void                                   ApplyGridConfig(const Scenes::SceneGridRenderSnapshot& cfg);
         void                                   ApplyGridLabels(const GridLabelFrameData& frame);
         void                                   ApplyGizmo(const GizmoFrameData& frame);
+        /// @brief Enables the outline only for the immutable mailbox frame that owns its token states.
+        void                                   ApplySelectionOutline(bool enabled);
+        /// @brief Configures an optional one-pixel object-ID readback for the next frame.
+        void                                   RequestObjectIdPick(const ObjectIdPickRequest& request);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
         Textures::TextureHandle                GetFrameOutput();
         /// @brief Returns a coherent renderer-memory snapshot for a non-render-thread UI reader.
@@ -127,6 +134,7 @@ namespace ZEngine::Rendering::Renderers
         PaddedAtomic<uint64_t>                          m_transient_image_backing_count            = {};
         PaddedAtomic<uint64_t>                          m_transient_buffer_backing_count           = {};
         Scenes::SkyEnvironment                          m_sky_environment                          = {};
+        GbufferPass*                                    m_gbuffer_pass                             = nullptr;
         LightingPass*                                   m_lighting_pass                            = nullptr;
         GridPass*                                       m_grid_pass                                = nullptr;
         GridLabelPass*                                  m_grid_label_pass                          = nullptr;
@@ -137,6 +145,7 @@ namespace ZEngine::Rendering::Renderers
         AerialPerspectivePass*                          m_aerial_perspective_pass                  = nullptr;
         SkyCompositePass*                               m_sky_composite_pass                       = nullptr;
         ToneMappingPass*                                m_tone_mapping_pass                        = nullptr;
+        SelectionOutlinePass*                           m_selection_outline_pass                   = nullptr;
         SkyAtmosphereTransmittancePass*                 m_sky_atmosphere_transmittance_pass        = nullptr;
         SkyAtmosphereMultiscatteringPass*               m_sky_atmosphere_multiscattering_pass      = nullptr;
         SkyAtmosphereSourceRadiancePass*                m_sky_atmosphere_source_radiance_pass      = nullptr;
