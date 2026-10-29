@@ -41,7 +41,7 @@ namespace ZEngine::UI
             if (!slot)
                 return nullptr;
             if (!slot->ColorState)
-                slot->ColorState = ZPushStructCtor(&ctx->PersistentArena, ZUIColorWidgetState);
+                slot->ColorState = ZPushStructCtor<ZUIColorWidgetState>(&ctx->PersistentArena);
             return slot->ColorState;
         }
 
@@ -105,7 +105,7 @@ namespace ZEngine::UI
 
         void SetSwatch(ZUIContext* ctx, ZUIBox* box, RGBA color, const RGBA* old = nullptr)
         {
-            auto* data    = ZPushStructCtor(&ctx->FrameArena, SwatchData);
+            auto* data    = ZPushStructCtor<SwatchData>(&ctx->FrameArena);
             data->Color   = color;
             data->Opacity = ctx->Disabled ? 0.4f : 1.f;
             data->Split   = old != nullptr;
@@ -270,7 +270,7 @@ namespace ZEngine::UI
                 field->TextAlign = state.Editing ? ZUITextAlign::Left : ZUITextAlign::Center;
                 return value != previous;
             }
-            auto*        axis   = ZPushArray(&ctx->FrameArena, float, 4);
+            auto*        axis   = ZPushArray<float>(&ctx->FrameArena, 4);
             const float* axes[] = {AccentRed, AccentGreen, AccentBlue, BorderStrong};
             CopyColor(axis, axes[index]);
             if (ctx->Disabled)
@@ -991,7 +991,7 @@ namespace ZEngine::UI
                 SetChannel(*state, color, lightness ? ZUIColorModel::HSL : ZUIColorModel::HSB, channel, value);
                 ZUIPopBox(ctx);
             }
-            auto* data                      = ZPushStructCtor(&ctx->FrameArena, StageData);
+            auto* data                      = ZPushStructCtor<StageData>(&ctx->FrameArena);
             data->Color                     = rgb;
             data->Hsb                       = hsb;
             data->Hsl                       = hsl;
@@ -1105,7 +1105,7 @@ namespace ZEngine::UI
                 }
                 Nudge(ctx, track->Key, value, maximum);
                 SetChannel(*state, color, ctx->ColorModel, i, value);
-                auto* td              = ZPushStructCtor(&ctx->FrameArena, TrackData);
+                auto* td              = ZPushStructCtor<TrackData>(&ctx->FrameArena);
                 trackDatas[i]         = td;
                 track->CustomDraw     = DrawTrack;
                 track->CustomDrawData = td;

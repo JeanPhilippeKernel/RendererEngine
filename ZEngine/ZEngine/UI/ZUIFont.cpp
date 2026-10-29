@@ -93,11 +93,11 @@ namespace ZEngine::UI
 
     static ZUIFont* AllocateFont(ArenaAllocator* arena, uint32_t glyph_count)
     {
-        auto* font = ZPushStruct(arena, ZUIFont);
+        auto* font = ZPushStruct<ZUIFont>(arena);
         if (!font)
             return nullptr;
         new (font) ZUIFont{}; // In particular, FontScale must default to 1, not zero.
-        font->Glyphs = ZPushArray(arena, ZUIGlyph, glyph_count);
+        font->Glyphs = ZPushArray<ZUIGlyph>(arena, glyph_count);
         if (!font->Glyphs)
             return nullptr;
         font->GlyphCount = glyph_count;
@@ -190,7 +190,7 @@ namespace ZEngine::UI
         //    Pass B: render again into the atlas at stb_rect_pack positions.
         const uint32_t kAssetStart           = kFontVariants * codepoint_count + kIconGlyphs;
         const uint32_t kTotalGlyphs          = kAssetStart + kAssetGlyphs;
-        stbrp_rect*    rects                 = ZPushArray(temp_arena, stbrp_rect, kTotalGlyphs);
+        stbrp_rect*    rects                 = ZPushArray<stbrp_rect>(temp_arena, kTotalGlyphs);
         if (!rects)
             return nullptr;
 
@@ -244,7 +244,7 @@ namespace ZEngine::UI
 
         // Pack
         stbrp_context pack_ctx   = {};
-        stbrp_node*   pack_nodes = ZPushArray(temp_arena, stbrp_node, kAtlasW);
+        stbrp_node*   pack_nodes = ZPushArray<stbrp_node>(temp_arena, kAtlasW);
         if (!pack_nodes)
             return nullptr;
         stbrp_init_target(&pack_ctx, (int) kAtlasW, (int) kAtlasH, pack_nodes, (int) kAtlasW);
@@ -258,7 +258,7 @@ namespace ZEngine::UI
             ZENGINE_CORE_ERROR("[ZUI] Thumbnail artwork exceeds the shared atlas capacity; using toolbar glyphs where needed");
 
         // Pass B — render into atlas
-        uint8_t* atlas_px = ZPushArray(temp_arena, uint8_t, kAtlasW* kAtlasH);
+        uint8_t* atlas_px = ZPushArray<uint8_t>(temp_arena, kAtlasW * kAtlasH);
         if (!atlas_px)
             return nullptr;
         // White texel at (0,0) — used by solid-color draws
@@ -331,7 +331,7 @@ namespace ZEngine::UI
         asset_pixels.reset(); // Coverage is now in atlas_px; do not retain the decoder buffer through upload.
 
         // 4. Expand single-channel → RGBA8 (white text, alpha-masked)
-        uint8_t* rgba = static_cast<uint8_t*>(temp_arena->AllocateNoZero(kAtlasW * kAtlasH * 4));
+        uint8_t* rgba = ZPushArray<uint8_t>(temp_arena, kAtlasW * kAtlasH * 4);
         if (!rgba)
             return nullptr;
         for (uint32_t i = 0; i < kAtlasW * kAtlasH; ++i)
@@ -343,7 +343,7 @@ namespace ZEngine::UI
         }
 
         // Build all CPU metadata before upload, so allocation failure cannot leak a GPU texture.
-        ZUIFontAtlas* atlas = ZPushStruct(persistent_arena, ZUIFontAtlas);
+        ZUIFontAtlas* atlas = ZPushStruct<ZUIFontAtlas>(persistent_arena);
         if (!atlas)
             return nullptr;
         new (atlas) ZUIFontAtlas{};
@@ -364,7 +364,7 @@ namespace ZEngine::UI
             if (FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]) != 0)
                 return nullptr;
 
-            ZUIFont* font = AllocateFont(persistent_arena, codepoint_count);
+            ZUIFont* font = ZPushStruct<ZUIFont>(persistent_arena);
             if (!font)
                 return nullptr;
             font->FirstCodepoint = first_codepoint;

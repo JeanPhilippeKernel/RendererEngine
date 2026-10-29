@@ -567,7 +567,7 @@ namespace Tetragrama::Panels
 
         m_folder_tree.UpdateSearch(*vfs, ctx->FrameArena, m_folder_search);
         const bool searching = m_folder_search[0] != '\0';
-        uint32_t*  stk       = ZPushArray(&ctx->FrameArena, uint32_t, FolderTreeCache::Capacity);
+        uint32_t*  stk       = ZPushArray<uint32_t>(&ctx->FrameArena, FolderTreeCache::Capacity);
         uint32_t   sp        = 0;
         for (uint32_t i = m_folder_tree.Nodes[0].LastChild; i != FolderTreeCache::None; i = m_folder_tree.Nodes[i].PrevSibling)
             stk[sp++] = i;

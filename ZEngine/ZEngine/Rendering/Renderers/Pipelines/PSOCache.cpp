@@ -2274,7 +2274,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             }
             // The exact read initializes every byte before CRC or typed access;
             // clearing this bounded file buffer first would be a redundant pass.
-            recipes = static_cast<PSOWarmupRecipe*>(recipe_arena.AllocateNoZero(static_cast<size_t>(payload_size), ZAlignof(PSOWarmupRecipe)));
+            recipes = static_cast<PSOWarmupRecipe*>(recipe_arena.AllocateNoZero(static_cast<size_t>(payload_size), ZAlignof<PSOWarmupRecipe>()));
             if (!recipes || !ReadFileExactly(*file, reinterpret_cast<uint8_t*>(recipes), static_cast<size_t>(payload_size), kWarmupRecipeHeaderBytes))
             {
                 vfs.Close(file);

@@ -205,7 +205,7 @@ namespace ZEngine::Core::Containers
             size_t old_alloc_size = m_capacity * sizeof(char);
             size_t new_alloc_size = new_capacity * sizeof(char);
 
-            m_data                = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof(value_type)));
+            m_data                = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof<value_type>()));
             m_capacity            = new_capacity;
         }
 

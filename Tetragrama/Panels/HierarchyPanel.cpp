@@ -239,9 +239,9 @@ namespace Tetragrama::Panels
             int         TypeRank   = {};         // sort key (column 1): 0 Collection, 1 Light, 2 Camera, 3 Static Mesh, 4 Actor
             bool        Emitted    = false;
         };
-        OutlinerNode* nodes       = ZPushArray(&ctx->FrameArena, OutlinerNode, cap);
-        uint32_t*     first_child = ZPushArray(&ctx->FrameArena, uint32_t, cap);
-        uint32_t*     next_sib    = ZPushArray(&ctx->FrameArena, uint32_t, cap);
+        OutlinerNode* nodes       = ZPushArray<OutlinerNode>(&ctx->FrameArena, cap);
+        uint32_t*     first_child = ZPushArray<uint32_t>(&ctx->FrameArena, cap);
+        uint32_t*     next_sib    = ZPushArray<uint32_t>(&ctx->FrameArena, cap);
         uint32_t      node_count  = 0;
 
         for (uint32_t i = 0; i < cap; ++i)
@@ -385,7 +385,7 @@ namespace Tetragrama::Panels
         // Missing/stale links display at the root; break one display edge per
         // cycle so malformed authored data remains visible and repairable. Never
         // rewrite authored parents merely to make the Outliner a forest.
-        auto*          topology_state  = ZPushArray(&ctx->FrameArena, uint8_t, cap);
+        auto*          topology_state  = ZPushArray<uint8_t>(&ctx->FrameArena, cap);
         std::fill_n(topology_state, node_count, uint8_t{0});
         for (uint32_t i = 0; i < node_count; ++i)
         {
@@ -435,7 +435,7 @@ namespace Tetragrama::Panels
         };
         // Each actor has at most one parent, so pending entries never exceed
         // the actor count. Entries are fully assigned before they are read.
-        DFSEntry* stk = ZPushArray(&ctx->FrameArena, DFSEntry, cap);
+        DFSEntry* stk = ZPushArray<DFSEntry>(&ctx->FrameArena, cap);
         int       sp  = 0;
         for (int i = (int) node_count - 1; i >= 0; --i)
         {
@@ -599,7 +599,7 @@ namespace Tetragrama::Panels
 
         // Flatten the complete displayed order before emitting boxes. Filtering
         // still visits expanded descendants; hidden rows occupy no scroll space.
-        auto*    visible       = ZPushArray(&ctx->FrameArena, DFSEntry, cap);
+        auto*    visible       = ZPushArray<DFSEntry>(&ctx->FrameArena, cap);
         uint32_t visible_count = 0;
         if (m_root_open)
         {

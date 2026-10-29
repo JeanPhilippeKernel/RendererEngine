@@ -1317,10 +1317,10 @@ namespace ZEngine::Rendering::Renderers
         InitializeTimestampFrames();
 
         for (uint32_t i = 0; i < QueueTimelineCount; ++i)
-            QueueTimelines[i] = ZPushStructCtorArgs(Device->Arena, Rendering::Primitives::Semaphore, Device, true);
+            QueueTimelines[i] = ZPushStructCtorArgs<Rendering::Primitives::Semaphore>(Device->Arena, Device, true);
 
-        ResourceBuilder   = ZPushStruct(Device->Arena, RenderGraphResourceBuilder);
-        ResourceInspector = ZPushStruct(Device->Arena, RenderGraphResourceInspector);
+        ResourceBuilder   = ZPushStruct<RenderGraphResourceBuilder>(Device->Arena);
+        ResourceInspector = ZPushStruct<RenderGraphResourceInspector>(Device->Arena);
 
         ResourceBuilder->Initialize(this);
         ResourceInspector->Initialize(this);
@@ -1791,7 +1791,7 @@ namespace ZEngine::Rendering::Renderers
 
                 // The countdown is frame-scratch owned. The render thread waits
                 // for every submitted worker before this scratch scope ends.
-                auto* completion = ZPushStructCtor(scratch.Arena, PaddedAtomic<uint32_t>);
+                auto* completion = ZPushStructCtor<PaddedAtomic<uint32_t>>(scratch.Arena);
                 completion->value.store(task_count, std::memory_order_relaxed);
                 RenderGraphSecondaryRecordTask tasks[Helpers::ThreadPool::MAX_WORKERS]                   = {};
                 bool                           record_on_render_thread[Helpers::ThreadPool::MAX_WORKERS] = {};
@@ -3337,7 +3337,7 @@ namespace ZEngine::Rendering::Renderers
                 }
                 else
                 {
-                    auto* buffer = ZPushStruct(Device->Arena, Core::Memory::BufferView);
+                    auto* buffer = ZPushStruct<Core::Memory::BufferView>(Device->Arena);
                     if (auto* backing = TransientBufferPool.FindAliasingSlot(res.BufferSize, res.BufferUsage, res.FirstPassIndex, res.LastPassIndex))
                     {
                         *buffer = Device->CreateAliasingBuffer(*backing->Buffer, res.BufferSize, res.BufferUsage, res.Name);
@@ -4665,7 +4665,7 @@ namespace ZEngine::Rendering::Renderers
             }
 
             if (!pass.Framebuffer)
-                pass.Framebuffer = ZPushStructCtorArgs(Device->Arena, Buffers::FramebufferVNext, Device);
+                pass.Framebuffer = ZPushStructCtorArgs<Buffers::FramebufferVNext>(Device->Arena, Device);
             else
                 pass.Framebuffer->Dispose();
             pass.Framebuffer->Reset(vk_fb, w, h);

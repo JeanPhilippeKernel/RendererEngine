@@ -54,7 +54,7 @@ namespace ZEngine::UI
     static T* AllocateDrawBuffer(ArenaAllocator* arena, uint32_t count)
     {
         static_assert(std::is_trivially_copyable_v<T>);
-        auto* buffer = static_cast<T*>(arena->AllocateNoZero(sizeof(T) * count, ZAlignof(T)));
+        auto* buffer = static_cast<T*>(arena->AllocateNoZero(sizeof(T) * count, ZAlignof<T>()));
         ZENGINE_VALIDATE_ASSERT(buffer != nullptr, "ZUI draw buffer arena exhausted");
         return buffer;
     }

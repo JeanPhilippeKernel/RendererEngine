@@ -290,7 +290,7 @@ namespace ZEngine::UI
             ZUIBox* Scope = nullptr;
         };
         const auto scratch = ZGetScratch(&ctx->FrameArena);
-        auto*      entries = ZPushArray(&ctx->FrameArena, Entry, ctx->MaxBoxesPerFrame);
+        auto*      entries = ZPushArray<Entry>(&ctx->FrameArena, ctx->MaxBoxesPerFrame);
         uint32_t   count   = 0;
         ZUIBox*    focused = nullptr;
         // Stackless pre-order walk: hierarchy order is a stable tie-breaker.

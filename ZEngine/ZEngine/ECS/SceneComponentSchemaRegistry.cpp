@@ -189,7 +189,7 @@ namespace ZEngine::ECS
         SceneFieldSchema* fields = nullptr;
         if (desc.FieldCount > 0)
         {
-            fields = ZPushArray(m_arena, SceneFieldSchema, desc.FieldCount);
+            fields = ZPushArray<SceneFieldSchema>(m_arena, desc.FieldCount);
             if (!fields)
             {
                 Reject(diagnostics, "arena exhausted while allocating the field table");

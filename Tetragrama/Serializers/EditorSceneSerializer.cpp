@@ -10,8 +10,8 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Scenes/SkyConfigSerialization.h>
+#include <ZEngine/ZEngineDef.h>
 #include <fmt/format.h>
-#include <filesystem>
 #include <fstream>
 
 using namespace ZEngine::Helpers;
@@ -257,7 +257,7 @@ namespace Tetragrama::Serializers
             return;
         }
 
-        constexpr uint32_t kPreviousSceneFileVersion = MAKE_VERSION(2, 1, 0);
+        constexpr uint32_t kPreviousSceneFileVersion = make_version(2, 1, 0);
         if (scene_magic != ZESCENE_MAGIC || (scene_version != kPreviousSceneFileVersion && scene_version != SCENE_FILE_VERSION))
         {
             reject_file("Error: Invalid scene file, unknown format");

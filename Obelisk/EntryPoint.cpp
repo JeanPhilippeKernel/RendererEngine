@@ -58,7 +58,7 @@ int applicationEntryPoint(int argc, char* argv[])
 
     if (launch_editor)
     {
-        app                                                     = ZPushStructCtor(arena, Tetragrama::Editor);
+        app                                                     = ZPushStructCtor<Tetragrama::Editor>(arena);
         static_cast<Tetragrama::Editor*>(app)->EnableGizmoDebug = gizmo_debug;
         app->EnableRenderOverlay                                = true;
     }

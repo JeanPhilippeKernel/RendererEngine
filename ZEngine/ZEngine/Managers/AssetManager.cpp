@@ -45,7 +45,7 @@ namespace ZEngine::Managers
 
     void AssetManager::Initialize(Core::Memory::ArenaAllocator* arena, Hardwares::VulkanDevice* device, cstring working_space_path)
     {
-        s_Instance                          = ZPushStructCtor(arena, AssetManager);
+        s_Instance                          = ZPushStructCtor<AssetManager>(arena);
         s_Instance->Arena                   = arena;
 
         s_Instance->Device                  = device;
@@ -70,7 +70,7 @@ namespace ZEngine::Managers
         // Registry callbacks borrow their observers. A process-static registry
         // would retain those pointers after this manager and its arena retire.
         // Construct fresh registry state in the same bounded owner instead.
-        s_Instance->Registry = ZPushStructCtor(s_Instance->Arena, Core::VFS::AssetRegistry);
+        s_Instance->Registry = ZPushStructCtor<Core::VFS::AssetRegistry>(s_Instance->Arena);
         s_Instance->Registry->Initialize(s_Instance->Arena);
 
         // Reserve slot 0 as an intentional fallback material: AppRenderPipeline defaults

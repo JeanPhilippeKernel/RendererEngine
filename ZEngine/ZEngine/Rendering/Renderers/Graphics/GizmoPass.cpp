@@ -111,7 +111,7 @@ namespace ZEngine::Rendering::Renderers
         if (m_initialized)
             return;
         ZENGINE_VALIDATE_ASSERT(device && device->SwapchainPtr->BufferredFrameCount <= FramesInFlight, "Invalid gizmo buffer frame count")
-        m_staging = ZPushArray(device->Arena, GizmoGPUInstance, MaxInstances);
+        m_staging = ZPushArray<GizmoGPUInstance>(device->Arena, MaxInstances);
         for (uint32_t i = 0; i < device->SwapchainPtr->BufferredFrameCount; ++i)
             m_buffers[i] = device->GpuMem.AllocateBuffer(sizeof(GizmoGPUInstance) * MaxInstances, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, "GizmoInstances");
         m_initialized = true;
