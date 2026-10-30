@@ -303,6 +303,7 @@ namespace ZEngine::Hardwares
         while (pool.Buffers.size() < count)
         {
             CommandBuffer* buffer = ZPushStructCtorArgs<CommandBuffer>(&m_render_graph_command_buffer_arena, Device, pool.Pool->Handle, pool.Pool->QueueType, false, &m_render_graph_command_buffer_arena);
+            pool.Buffers.push(buffer);
         }
     }
 

@@ -364,7 +364,7 @@ namespace ZEngine::UI
             if (FT_Set_Pixel_Sizes(kFaces[fi], 0, (FT_UInt) kSizes[fi]) != 0)
                 return nullptr;
 
-            ZUIFont* font = ZPushStruct<ZUIFont>(persistent_arena);
+            ZUIFont* font = AllocateFont(persistent_arena, codepoint_count);
             if (!font)
                 return nullptr;
             font->FirstCodepoint = first_codepoint;
