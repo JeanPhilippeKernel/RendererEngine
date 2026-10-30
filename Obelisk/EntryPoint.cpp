@@ -1,12 +1,14 @@
 #include <CLI/CLI.hpp>
 #include <Tetragrama/Editor.h>
 #include <ZEngine/Applications/GameApplication.h>
+#include <ZEngine/Core/EngineAssetRoot.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/CrashHandlers/CrashHandler.h>
 #include <ZEngine/EngineConfiguration.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Profiling/MemoryProfiler.h>
+#include <filesystem>
 
 #ifdef ZENGINE_PLATFORM
 
@@ -18,7 +20,12 @@ using namespace ZEngine::CrashHandlers;
 
 int applicationEntryPoint(int argc, char* argv[])
 {
-    CrashHandler::Install("Obelisk", "1.0.0", "CrashDumps");
+    const auto executable_directory       = Core::GetExecutablePath().parent_path();
+    const auto log_directory              = executable_directory.empty() ? std::filesystem::path("Logs") : executable_directory / "Logs";
+    const auto crash_log_directory        = executable_directory.empty() ? std::filesystem::path("CrashDumps") : executable_directory / "CrashDumps";
+    const auto crash_log_directory_string = crash_log_directory.string();
+
+    CrashHandler::Install("Obelisk", "1.0.0", crash_log_directory_string.c_str());
 
     CLI::App cli{"ObeliskCLI"};
     argv                      = cli.ensure_utf8(argv);
@@ -42,6 +49,8 @@ int applicationEntryPoint(int argc, char* argv[])
 
     ArenaAllocator      logger_arena = {};
     LoggerConfiguration logger_cfg   = {};
+    logger_cfg.OutputDirectory       = log_directory.string();
+    logger_cfg.CrashLogDir           = crash_log_directory_string;
     manager.CreateBudgetedArena(manager.Budget.Logging, &logger_arena);
     Logger::Initialize(&logger_arena, logger_cfg);
     CrashHandler::SetPreCrashCallback([](void*) {
