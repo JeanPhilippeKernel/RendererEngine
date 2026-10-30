@@ -132,6 +132,10 @@ namespace Tetragrama
         // A serial is consumed even when its sequence is ineligible. Retained
         // ZUI input must never replay a click after its owner changed.
         m_last_pick_release = ctx->MouseReleaseSerial[0];
+        if (GizmoViewport.ConsumePassiveSelectionRelease(m_last_pick_release))
+        {
+            return;
+        }
         // ActiveKey is retired by the overlay's release pass. Attribute the
         // click using the immutable press position instead, so a panel-originated
         // release cannot become a viewport selection.
@@ -542,7 +546,6 @@ namespace Tetragrama
             {
                 ZEngine::UI::ZUIFeedFocusLost(RenderPipeline ? RenderPipeline->ZUICtx : nullptr);
             }
-            GizmoViewport.Unbind();
         }
 
         if (e.GetType() == Core::EventType::WindowResized)

@@ -106,7 +106,7 @@ namespace Tetragrama::Gizmo
         return session.OnOwnerThread() && Bound(ctx) && m_pointer_capture.Key && m_pointer_capture.Serial && ctx->ActiveKey == m_pointer_capture.Key && ctx->MousePressSerial[0] == m_pointer_capture.Serial && m_binding_revision == m_pointer_capture.BindingRevision && session.SceneEpoch() == m_pointer_capture.SceneEpoch && DragActive(session, m_pointer_capture.Mode, m_pointer_capture.Constraint) && OwnsDrag(session, m_pointer_capture.Mode, m_pointer_capture.Key, m_pointer_capture.Serial, m_pointer_capture.Constraint);
     }
 
-    void Viewport::RetirePointerCapture(EditorSession& session, UI::ZUIContext* ctx)
+    void Viewport::RetirePointerCapture(EditorSession& session, UI::ZUIContext* ctx, bool preserve_presentation)
     {
         if (ctx)
         {
@@ -128,6 +128,13 @@ namespace Tetragrama::Gizmo
         }
         // With no context, retain the small retired-owner token until a context
         // returns, so its stale active key/keyboard capture can be released then.
+        if (preserve_presentation)
+        {
+            m_allow_hits          = false;
+            m_interaction_enabled = false;
+            m_hovered             = Handle::None;
+            return;
+        }
         Invalidate();
     }
 
@@ -143,11 +150,16 @@ namespace Tetragrama::Gizmo
         if (ctx)
         {
             m_observed_left_press = serial;
+            if (fresh)
+            {
+                // A missing prior release cannot own a later physical click.
+                m_passive_selection_release = 0;
+            }
         }
         const bool owns = m_pointer_capture.Key && DragActive(session, m_pointer_capture.Mode, m_pointer_capture.Constraint) && OwnsDrag(session, m_pointer_capture.Mode, m_pointer_capture.Key, m_pointer_capture.Serial, m_pointer_capture.Constraint) && session.SceneEpoch() == m_pointer_capture.SceneEpoch;
         if (m_pointer_capture.Key && !owns)
         {
-            RetirePointerCapture(session, ctx);
+            RetirePointerCapture(session, ctx, ctx != nullptr);
             return; // A lifecycle cancellation cannot rearm a press in this update.
         }
         if (owns)
@@ -169,7 +181,7 @@ namespace Tetragrama::Gizmo
             }
             if (!DragActive(session, m_pointer_capture.Mode, m_pointer_capture.Constraint))
             {
-                RetirePointerCapture(session, ctx);
+                RetirePointerCapture(session, ctx, ctx != nullptr);
             }
             else
             {
@@ -197,6 +209,7 @@ namespace Tetragrama::Gizmo
             EntityTarget passive = {};
             if (PickPassiveComponent({ctx->MousePressPos[0][0], ctx->MousePressPos[0][1]}, passive) && session.Resolve(passive) == passive.CachedEntity && session.RequestSelection(passive.CachedEntity))
             {
+                m_passive_selection_release     = serial;
                 ctx->InteractionCapture.Pointer = true;
                 ctx->MousePressed[0]            = false;
                 return;
@@ -271,7 +284,7 @@ namespace Tetragrama::Gizmo
         UpdateDrag(session, mode, *ctx, released, constraint);
         if (!DragActive(session, mode, constraint))
         {
-            RetirePointerCapture(session, ctx);
+            RetirePointerCapture(session, ctx, true);
         }
         else
         {

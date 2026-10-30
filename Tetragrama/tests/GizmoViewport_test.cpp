@@ -1326,6 +1326,26 @@ TEST_F(GizmoViewportTest, FocusLossClearsOwnedCaptureWithoutWaitingForOverlay)
     EXPECT_FALSE(ctx.InteractionCapture.Keyboard);
 }
 
+TEST_F(GizmoViewportTest, FocusLossKeepsTheLastGizmoFrameVisibleButDisablesItsHitSurface)
+{
+    GizmoFrameData frame = {};
+    viewport->BuildRender(session, camera.CaptureFrameData(), &ctx, true, 800, 600, frame);
+    ASSERT_TRUE(frame.ValidCounts());
+    ASSERT_FALSE(frame.Empty());
+
+    ZUIBox probe         = {};
+    probe.Key            = viewport->HitKey();
+    const float point[2] = {437.f, 361.f};
+    Update(false);
+    EXPECT_FALSE(Tetragrama::Gizmo::Viewport::Filter(&probe, point, viewport.get()));
+    EXPECT_EQ(viewport->Hovered(), Handle::None);
+
+    frame.Reset();
+    viewport->BuildRender(session, camera.CaptureFrameData(), &ctx, false, 800, 600, frame);
+    EXPECT_TRUE(frame.ValidCounts());
+    EXPECT_FALSE(frame.Empty());
+}
+
 TEST_F(GizmoViewportTest, HiddenOrStaleViewportCannotCaptureAndRebindRestoresIt)
 {
     Update();
@@ -1421,6 +1441,10 @@ TEST_F(GizmoViewportTest, UnselectedDirectionalLightRendersAndQueuesSelectionFro
     ASSERT_TRUE(session.ProcessRequests());
     session.EndMutationPhase();
     EXPECT_EQ(session.Selection().ActiveUUID(), session.TargetFor(directional).UUID);
+
+    ZUIFeedMouseButton(&ctx, 0, false);
+    EXPECT_TRUE(viewport->ConsumePassiveSelectionRelease(ctx.MouseReleaseSerial[0]));
+    EXPECT_FALSE(viewport->ConsumePassiveSelectionRelease(ctx.MouseReleaseSerial[0]));
 }
 
 TEST_F(GizmoViewportTest, UnselectedPointSpotAndCameraRenderAndQueueSelectionFromPassiveMarkers)

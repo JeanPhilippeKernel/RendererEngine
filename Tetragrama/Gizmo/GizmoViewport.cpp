@@ -42,15 +42,16 @@ namespace Tetragrama::Gizmo
 
     void Viewport::Invalidate()
     {
-        m_cache_valid = m_allow_hits = false;
-        m_hovered                    = Handle::None;
-        m_target                     = {};
-        m_light_target               = {};
-        m_camera_target              = {};
+        m_cache_valid = m_allow_hits = m_interaction_enabled = false;
+        m_hovered                                            = Handle::None;
+        m_target                                             = {};
+        m_light_target                                       = {};
+        m_camera_target                                      = {};
         m_hits.Reset();
         m_scratch.Reset();
         m_passive_component_count    = 0;
         m_passive_components_omitted = false;
+        m_passive_selection_release  = 0;
     }
 
     void Viewport::RefreshPassiveComponents(EditorSession& session, const CameraFrameData& camera)
@@ -329,11 +330,21 @@ namespace Tetragrama::Gizmo
 
     void Viewport::BuildHitFrame(EditorSession& session, const CameraFrameData& camera, const UI::ZUIContext* ctx, bool focused, bool pivot_editable)
     {
-        if (!Bound(ctx) || !focused)
+        if (!Bound(ctx))
         {
             Invalidate();
             return;
         }
+        if (!focused)
+        {
+            // Losing OS focus cancels interaction, but the renderer retains
+            // the last completed frame until the window becomes active again.
+            m_allow_hits          = false;
+            m_interaction_enabled = false;
+            m_hovered             = Handle::None;
+            return;
+        }
+        m_interaction_enabled       = true;
         TargetFrame target          = {};
         LightFrame  light           = {};
         CameraFrame frustum         = {};
@@ -391,7 +402,7 @@ namespace Tetragrama::Gizmo
             return false;
         }
         const auto& viewport = *static_cast<const Viewport*>(data);
-        if (!viewport.m_bound || box->Key != viewport.m_hit_key)
+        if (!viewport.m_interaction_enabled || box->Key != viewport.m_hit_key)
         {
             return false;
         }

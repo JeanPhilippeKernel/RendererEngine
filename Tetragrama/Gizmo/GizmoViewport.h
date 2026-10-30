@@ -50,6 +50,18 @@ namespace Tetragrama::Gizmo
         {
             return m_hit_key;
         }
+        /// Consume the release paired with a passive component selection.
+        /// The editor's object-ID picker runs before the gizmo router on
+        /// release, so it must not reinterpret this click as a background pick.
+        [[nodiscard]] bool ConsumePassiveSelectionRelease(uint64_t serial)
+        {
+            if (serial == 0 || serial != m_passive_selection_release)
+            {
+                return false;
+            }
+            m_passive_selection_release = 0;
+            return true;
+        }
         /// @brief Layout generation captured by a pick request. It changes when
         /// the image bounds, DPI conversion, or owning ZUI boxes change.
         [[nodiscard]] uint64_t BindingRevision() const
@@ -80,7 +92,7 @@ namespace Tetragrama::Gizmo
         void                      RefreshPassiveComponents(EditorSession& session, const ZEngine::Rendering::Cameras::CameraFrameData& camera);
         void                      BuildPassiveComponents(const ZEngine::Rendering::Cameras::CameraFrameData& camera, uint32_t width, uint32_t height, ZEngine::Rendering::Renderers::GizmoFrameData& output) const;
         [[nodiscard]] bool        PickPassiveComponent(const ZEngine::Core::Maths::Vec2f& point, EntityTarget& target) const;
-        void                      RetirePointerCapture(EditorSession& session, ZEngine::UI::ZUIContext* ctx);
+        void                      RetirePointerCapture(EditorSession& session, ZEngine::UI::ZUIContext* ctx, bool preserve_presentation = false);
 
         // Physical-routing validity only. The session owns the captured camera
         // mapping, targets, immutable before-values and authored transaction.
@@ -106,7 +118,7 @@ namespace Tetragrama::Gizmo
         uint64_t                                      m_press_serial[3] = {};
         bool                                          m_was_down[3] = {}, m_navigation[3] = {}, m_handle_press[3] = {};
         Handle                                        m_hovered = Handle::None;
-        bool                                          m_bound = false, m_cache_valid = false, m_allow_hits = false;
+        bool                                          m_bound = false, m_cache_valid = false, m_allow_hits = false, m_interaction_enabled = false;
         enum class PassiveComponentKind : uint8_t
         {
             DirectionalLight,
@@ -140,7 +152,7 @@ namespace Tetragrama::Gizmo
         // Comparison-only cache owner; never dereferenced or published.
         const EditorSession*                                                                 m_root_session     = nullptr;
         uint64_t                                                                             m_root_generation = 0, m_root_epoch = 0;
-        uint64_t                                                                             m_binding_revision = 0, m_observed_left_press = 0;
+        uint64_t                                                                             m_binding_revision = 0, m_observed_left_press = 0, m_passive_selection_release = 0;
         PointerCapture                                                                       m_pointer_capture = {};
     };
 } // namespace Tetragrama::Gizmo

@@ -1996,6 +1996,38 @@ TEST_F(EditorGizmoIntegrationTest, QueuedReparentCancelsBeforeMatchingReleaseAnd
     EXPECT_EQ(ctx.FrameArena.m_current_offset, bytes);
 }
 
+TEST_F(EditorGizmoIntegrationTest, PassiveMarkerSelectionConsumesItsMatchingObjectPickRelease)
+{
+    const auto passive = scene.CreateEntity();
+    scene.AddComponent<UUIDComponent>(passive, {uuids::uuid::from_string("780d9696-105b-4fe1-86cd-8435bdf45294").value()});
+    scene.AddComponent<TransformComponent>(
+        passive,
+        {
+        .Position = {2.f, 0.f, 0.f}
+    });
+    scene.AddComponent<LightComponent>(passive, {.LightType = LightComponent::Type::Point});
+    scene.SynchronizeHierarchy();
+
+    ASSERT_TRUE(editor->Session.BeginMutationPhase());
+    editor->Session.ClearSelection();
+    editor->Session.EndMutationPhase();
+    BindUI();
+    ASSERT_TRUE(MovePointerToWorld({2.f, 0.f, 0.f}));
+    ZUIFeedMouseButton(&ctx, 0, true);
+    editor->Update(1.f / 60.f);
+    EXPECT_EQ(editor->Session.PendingRequestCount(), 1u);
+
+    // Selection resolves on the following update, while the physical click is
+    // still held. The release must not become a background object-ID pick.
+    editor->Update(1.f / 60.f);
+    EXPECT_EQ(editor->Session.Selection().ActiveUUID(), scene.GetComponent<UUIDComponent>(passive)->Value);
+    ZUIFeedMouseButton(&ctx, 0, false);
+    editor->Update(1.f / 60.f);
+
+    EXPECT_EQ(editor->Session.Selection().ActiveUUID(), scene.GetComponent<UUIDComponent>(passive)->Value);
+    EXPECT_FALSE(EditorPickTestAccess::ObjectQueued(*editor));
+}
+
 TEST_F(EditorGizmoIntegrationTest, RetainedHandleCapturesBeforeCameraUpdateWithNoOverlaySlot)
 {
     const auto ui_frame = ctx.FrameIndex;
