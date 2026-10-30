@@ -548,9 +548,9 @@ namespace Tetragrama
             }
         }
 
-        if (e.GetType() == Core::EventType::WindowResized)
+        if (e.GetType() == Core::EventType::WindowResized || e.GetType() == Core::EventType::WindowMinimized)
         {
-            GizmoViewport.Unbind(); // retained layout is no longer a valid viewport
+            GizmoViewport.Unbind(); // retained layout is no longer valid after resize or minimization
         }
 
         if (e.GetType() == ZEngine::Windows::Events::KeyPressedEvent::GetStaticType())
