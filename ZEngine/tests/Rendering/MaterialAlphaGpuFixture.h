@@ -52,7 +52,7 @@ namespace
                 const VmaAllocationCreateInfo allocation = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
                 ASSERT_EQ(vmaCreateImage(Allocator.Allocator, &image, &allocation, &Images[i], &Allocations[i], nullptr), VK_SUCCESS);
                 const VkImageViewCreateInfo view = {
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = Images[i], .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = image.format, .subresourceRange = {.aspectMask = i ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1}
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = Images[i], .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = image.format, .subresourceRange = {.aspectMask = static_cast<VkImageAspectFlags>(i ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT), .levelCount = 1, .layerCount = 1}
                 };
                 ASSERT_EQ(vkCreateImageView(Vulkan.Device, &view, nullptr, &Views[i]), VK_SUCCESS);
             }
