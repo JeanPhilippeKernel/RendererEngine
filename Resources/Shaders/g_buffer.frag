@@ -1,8 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : require
 #include "material.glsl"
-#include "surface.glsl"
 #include "material_alpha.glsl"
+#include "surface.glsl"
 
 layout(location = 0) in vec2 TexCoord;
 layout(location = 1) in vec3 WorldNormal;
@@ -16,16 +16,17 @@ layout(location = 2) out vec4 OutMetallicEmissive;
 
 void main()
 {
-    MaterialData material  = FetchMaterial(MaterialIdx);
+    MaterialData material = FetchMaterial(MaterialIdx);
 
-    if (material.AlphaMode == AlphaBlend) discard;
-    vec3         albedo    = material.Albedo.rgb;
-    float        alpha     = material.Albedo.a;
-    float        ao        = 1.0;
-    vec3         normal    = normalize(WorldNormal);
-    float        roughness = material.Roughness.y;
-    float        metallic  = material.Roughness.x;
-    float        emissive  = material.Emissive.r;
+    if (material.AlphaMode == AlphaBlend)
+        discard;
+    vec3  albedo    = material.Albedo.rgb;
+    float alpha     = material.Albedo.a;
+    float ao        = 1.0;
+    vec3  normal    = normalize(WorldNormal);
+    float roughness = material.Roughness.y;
+    float metallic  = material.Roughness.x;
+    float emissive  = material.Emissive.r;
 
     if (material.AlbedoMap < INVALID_MAP_HANDLE)
     {

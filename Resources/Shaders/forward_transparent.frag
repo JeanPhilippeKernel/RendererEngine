@@ -9,7 +9,8 @@ layout(set = 0, binding = 0) uniform UBCamera
     mat4 Projection;
     vec4 Position;
     mat4 InvViewProj;
-} Camera;
+}
+Camera;
 #include "pbr_lighting.glsl"
 layout(location = 0) in vec2 TexCoord;
 layout(location = 1) in vec3 WorldNormal;
@@ -19,24 +20,27 @@ layout(location = 0) out vec4 Color;
 void main()
 {
     MaterialData material = FetchMaterial(MaterialIdx);
-    if (material.AlphaMode != AlphaBlend) discard;
+    if (material.AlphaMode != AlphaBlend)
+        discard;
     vec4 base = material.Albedo;
     if (material.AlbedoMap != INVALID_MAP_HANDLE)
         base = resolveBaseColor(base, texture(sampler2D(TextureArray[nonuniformEXT(material.AlbedoMap)], LinearWrapSampler), TexCoord), true, material.AlphaMode);
     float alpha = clamp(base.a, 0.0, 1.0);
-    if (alpha <= 0.0) discard;
+    if (alpha <= 0.0)
+        discard;
     vec3 n = normalize(WorldNormal);
-    if (!gl_FrontFacing) n = -n;
+    if (!gl_FrontFacing)
+        n = -n;
     if (material.NormalMap != INVALID_MAP_HANDLE)
         n = perturbNormal(n, WorldPos, texture(sampler2D(TextureArray[nonuniformEXT(material.NormalMap)], LinearWrapSampler), TexCoord).rgb, TexCoord);
     float roughness = material.Roughness.y;
-    float metallic = material.Roughness.x;
-    float ao = 1.0;
+    float metallic  = material.Roughness.x;
+    float ao        = 1.0;
     if (material.SpecularMap != INVALID_MAP_HANDLE)
     {
-        vec3 orm = texture(sampler2D(TextureArray[nonuniformEXT(material.SpecularMap)], LinearWrapSampler), TexCoord).rgb;
+        vec3 orm   = texture(sampler2D(TextureArray[nonuniformEXT(material.SpecularMap)], LinearWrapSampler), TexCoord).rgb;
         roughness *= orm.g;
-        metallic *= orm.b;
+        metallic  *= orm.b;
     }
     if (material.OpacityMap != INVALID_MAP_HANDLE)
         ao = texture(sampler2D(TextureArray[nonuniformEXT(material.OpacityMap)], LinearWrapSampler), TexCoord).r;

@@ -55,15 +55,15 @@ namespace Tetragrama::Panels
         bool                        m_reset_grid_scroll                                           = false;
 
         // Grid listing cache
-        using Entry = DirectoryEntry;
+        using Entry                                                                               = DirectoryEntry;
         // Listing capacity is independent of the 512-texture resident LRU.
-        static constexpr int                      kMaxEntries                                         = DirectoryListing::Capacity;
-        Entry                                     m_entries[kMaxEntries]                              = {};
-        int                                       m_nentries                                          = 0;
-        bool                                      m_needs_refresh                                     = true;
-        bool                                      m_listing_valid                                     = false;
-        bool                                      m_truncated                                         = false;
-        bool                                      m_listing_failed                                    = false;
+        static constexpr int                      kMaxEntries                                     = DirectoryListing::Capacity;
+        Entry                                     m_entries[kMaxEntries]                          = {};
+        int                                       m_nentries                                      = 0;
+        bool                                      m_needs_refresh                                 = true;
+        bool                                      m_listing_valid                                 = false;
+        bool                                      m_truncated                                     = false;
+        bool                                      m_listing_failed                                = false;
         DirectoryListing                          m_grid_listing;
         float                                     m_thumbnail_scale                                   = 1.f;
         bool                                      m_reset_grid_input                                  = false;

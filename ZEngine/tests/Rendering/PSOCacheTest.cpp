@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         static void CheckSaturatedAsyncDispatch(PSOCache& cache)
         {
-            cache.m_accept_async_jobs = true;
+            cache.m_accept_async_jobs           = true;
             cache.m_worker_pipeline_cache_count = 1;
             cache.m_available_worker_pipeline_caches.value.store(1);
             auto& job = cache.m_async_jobs[0];

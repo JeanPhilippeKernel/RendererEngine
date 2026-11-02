@@ -116,9 +116,9 @@ vec3 pbr_point(GpuPointLight light, vec3 WorldPos, vec3 N, vec3 V, vec3 albedo, 
 
 vec3 shadePbr(vec3 WorldPos, vec3 N, vec3 albedo, float roughness, float metallic, float ao, vec3 emissive)
 {
-    vec3  V            = normalize(Camera.Position.xyz - WorldPos);
+    vec3 V  = normalize(Camera.Position.xyz - WorldPos);
 
-    vec3  Lo           = vec3(0.0);
+    vec3 Lo = vec3(0.0);
     for (uint i = 0; i < LightBuffer.DirectionalCount; ++i)
         Lo += pbr_directional(LightBuffer.DirectionalLights[i], N, V, albedo, roughness, metallic);
     for (uint i = 0; i < LightBuffer.PointCount; ++i)
@@ -136,5 +136,4 @@ vec3 shadePbr(vec3 WorldPos, vec3 N, vec3 albedo, float roughness, float metalli
     vec3  specular          = prefiltered * (F * brdf.x + brdf.y);
     vec3  ambient           = (diffuse * Environment.DiffuseIntensity + specular * Environment.SpecularIntensity) * Environment.TintIntensity.rgb * ao;
     return ambient + Lo + emissive;
-
 }

@@ -219,7 +219,7 @@ TEST_F(VFSScannerTest, SaturatedAdmissionDefersRootWithoutCallerThreadEnumeratio
     EXPECT_FALSE(m_completed.load());
     background.Release();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    bool admitted = false;
+    bool       admitted = false;
     while (!(admitted = m_scanner.Scan(&m_mock, P("/"), &m_cache)) && std::chrono::steady_clock::now() < deadline)
         std::this_thread::yield();
     ASSERT_TRUE(admitted);

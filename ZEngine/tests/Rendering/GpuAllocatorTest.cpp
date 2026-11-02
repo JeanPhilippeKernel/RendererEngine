@@ -1032,10 +1032,10 @@ namespace
                 const auto color     = (step + cycle) % 3;
                 frame->TriangleCount = frame->LineCount = frame->SpriteCount = 1;
                 frame->Triangles[0]                                          = {
-                                                             .A = { -.9f, -.8f, .5f},
-                                                               .B = { -.2f, -.8f, .5f},
-                                                               .C = {-.55f, .15f, .5f},
-                                                               .Color = colors[color]
+                    .A = { -.9f, -.8f, .5f},
+                      .B = { -.2f, -.8f, .5f},
+                      .C = {-.55f, .15f, .5f},
+                      .Color = colors[color]
                 };
                 frame->Lines[0] = {
                     .A = { .2f, -.5f, .5f},
@@ -1146,10 +1146,10 @@ TEST_F(GpuAllocatorTest, DynamicGizmoJoinedStrokesHaveNoOpaqueGapsOrTranslucentO
     RunJoinedGizmoStroke(true);
 }
 
+#include "DelayedReadbackGpuFixture.h"
 #include "GizmoGraphFixture.h"
 #include "GridLabelGraphFixture.h"
 #include "MaterialAlphaGpuFixture.h"
-#include "DelayedReadbackGpuFixture.h"
 
 class RenderResourceManagerBatchTest : public GpuAllocatorTest
 {

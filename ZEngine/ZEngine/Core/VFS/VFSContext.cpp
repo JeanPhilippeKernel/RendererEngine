@@ -1,7 +1,7 @@
+#include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSScanner.h>
-#include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
@@ -592,7 +592,7 @@ namespace ZEngine::Core::VFS
                 }
 
                 const size_t key_size = child.Value().Length() + 1;
-                auto* key = static_cast<char*>(scratch.Arena->AllocateNoZero(key_size, alignof(char)));
+                auto*        key      = static_cast<char*>(scratch.Arena->AllocateNoZero(key_size, alignof(char)));
                 if (!key)
                 {
                     ZReleaseScratch(scratch);

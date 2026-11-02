@@ -338,10 +338,10 @@ namespace ZEngine::Rendering::Renderers
 
         struct RenderGraphSecondaryRecordTask
         {
-            RenderGraph*            Graph      = nullptr;
-            const RGTopologyLevel*  Level      = nullptr;
-            uint32_t                Worker     = UINT32_MAX;
-            uint8_t                 FrameIndex = 0;
+            RenderGraph*           Graph      = nullptr;
+            const RGTopologyLevel* Level      = nullptr;
+            uint32_t               Worker     = UINT32_MAX;
+            uint8_t                FrameIndex = 0;
         };
 
         void RecordGraphSecondary(RenderGraph* graph, RGPass& pass, uint8_t frame_index)
@@ -1725,7 +1725,7 @@ namespace ZEngine::Rendering::Renderers
             pass.SecondaryRecorded = false;
         }
 
-        auto* recording_workers = Device->CommandBufferMgr->RecordingWorkers;
+        auto*          recording_workers = Device->CommandBufferMgr->RecordingWorkers;
         const uint32_t available_workers = recording_workers ? recording_workers->WorkerCount() : 0;
         const uint32_t worker_count      = std::min(Device->CommandBufferMgr->TotalThreadCount, available_workers);
         if (worker_count > 0 && !TopologyLevels.empty())
@@ -1791,8 +1791,8 @@ namespace ZEngine::Rendering::Renderers
                 if (task_count == 0)
                     continue;
 
-                RenderGraphSecondaryRecordTask tasks[Helpers::ThreadPool::MAX_WORKERS]                   = {};
-                Helpers::Task                  batch[Helpers::ThreadPool::MAX_WORKERS]                   = {};
+                RenderGraphSecondaryRecordTask tasks[Helpers::ThreadPool::MAX_WORKERS] = {};
+                Helpers::Task                  batch[Helpers::ThreadPool::MAX_WORKERS] = {};
                 for (uint32_t worker = 0; worker < worker_count; ++worker)
                 {
                     if (!worker_has_work[worker])
@@ -1803,7 +1803,7 @@ namespace ZEngine::Rendering::Renderers
                     task.Level      = &level;
                     task.Worker     = worker;
                     task.FrameIndex = frame_index;
-                    batch[worker] = {&task, &RecordGraphSecondaryWorkerBatch};
+                    batch[worker]   = {&task, &RecordGraphSecondaryWorkerBatch};
                 }
                 {
                     ZENGINE_PROFILE_SCOPE("ThumbnailProfile.RenderRecordingWait");

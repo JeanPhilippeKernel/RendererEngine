@@ -1232,7 +1232,7 @@ TEST(RenderGraphDeclarationTest, PassLookupCapacityTracksTheRegisteredPipeline)
 {
     MemoryManager manager;
     manager.Initialize(ZMega(4), {});
-    auto device = std::make_unique<Hardwares::VulkanDevice>();
+    auto device   = std::make_unique<Hardwares::VulkanDevice>();
     device->Arena = &manager.MainArena;
     RenderGraph graph;
     graph.Device = device.get();
@@ -1242,14 +1242,14 @@ TEST(RenderGraphDeclarationTest, PassLookupCapacityTracksTheRegisteredPipeline)
     graph.ImportedResourceIndex.init(&manager.MainArena, 2);
     graph.QueryPools.init(&manager.MainArena, 1);
     graph.QueryPoolIndex.init(&manager.MainArena, 2);
-    RenderGraphResourceBuilder builder;
+    RenderGraphResourceBuilder   builder;
     RenderGraphResourceInspector inspector;
     builder.Initialize(&graph);
     inspector.Initialize(&graph);
-    graph.ResourceBuilder = &builder;
+    graph.ResourceBuilder   = &builder;
     graph.ResourceInspector = &inspector;
     ValidRegistrationPass callback;
-    char names[40][16] = {};
+    char                  names[40][16] = {};
     for (uint32_t i = 0; i < 40; ++i)
     {
         snprintf(names[i], sizeof(names[i]), "Pass-%u", i);

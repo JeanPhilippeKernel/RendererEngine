@@ -1,8 +1,8 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
-#include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
+#include <ZEngine/Core/VFS/VFSScanner.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
 #include "../Misc/SaturatedBackgroundPool.h"
@@ -39,7 +39,7 @@ namespace ZEngine::Core::VFS
 
         static void SetScanner(VFSContext& context, VFSScanner* scanner, VFSDirectoryCache* cache)
         {
-            context.m_scanner = scanner;
+            context.m_scanner         = scanner;
             context.m_directory_cache = cache;
         }
 

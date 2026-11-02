@@ -180,12 +180,12 @@ namespace ZEngine::Hardwares
 #ifdef ENABLE_VULKAN_VALIDATION_LAYER
         VkValidationFeatureEnableEXT synchronization_validation_feature = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
         VkValidationFeaturesEXT      validation_features                = {
-                                .sType                          = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
-                                .pNext                          = nullptr,
-                                .enabledValidationFeatureCount  = 0,
-                                .pEnabledValidationFeatures     = nullptr,
-                                .disabledValidationFeatureCount = 0,
-                                .pDisabledValidationFeatures    = nullptr,
+            .sType                          = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+            .pNext                          = nullptr,
+            .enabledValidationFeatureCount  = 0,
+            .pEnabledValidationFeatures     = nullptr,
+            .disabledValidationFeatureCount = 0,
+            .pDisabledValidationFeatures    = nullptr,
         };
         if (validation_features_available)
         {

@@ -24,15 +24,15 @@ namespace Tetragrama::Panels
     ///        delegates per-frame BuildUI to the panel manager.
     struct ZUIPanelManagerComponent : public Tetragrama::Components::ZUIComponent
     {
-        ZEngine::UI::ZUIPanelManager Manager = {};
+        ZEngine::UI::ZUIPanelManager             Manager = {};
 
-        HierarchyPanel               hierarchy;
-        ViewportPanel                viewport;
-        InspectorPanel               inspector;
-        ConsolePanel                 output;
-        ProjectViewPanel             project;
-        MemoryProfilerPanel          profiler;
-        AssetImporterPanel           importer;
+        HierarchyPanel                           hierarchy;
+        ViewportPanel                            viewport;
+        InspectorPanel                           inspector;
+        ConsolePanel                             output;
+        ProjectViewPanel                         project;
+        MemoryProfilerPanel                      profiler;
+        AssetImporterPanel                       importer;
         Tetragrama::Thumbnails::ThumbnailService thumbnails;
 
         /// @brief Initializes the panel manager, splits the dock tree, and registers
@@ -40,11 +40,11 @@ namespace Tetragrama::Panels
         /// @param parent     Owning ZUI layer.
         /// @param name       Component name used for identification.
         /// @param visibility Initial visibility.
-        void                         Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "PanelManager", bool visibility = true) override;
+        void                                     Initialize(Tetragrama::Layers::ZUILayer* parent, cstring name = "PanelManager", bool visibility = true) override;
 
         /// @brief Delegates to ZUIPanelManager::BuildUI with menu and status bar heights.
         /// @param ctx ZUI context for the current frame.
-        void                         BuildUI(ZEngine::UI::ZUIContext* ctx) override;
+        void                                     BuildUI(ZEngine::UI::ZUIContext* ctx) override;
     };
 
 } // namespace Tetragrama::Panels

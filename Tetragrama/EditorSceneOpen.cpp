@@ -1,9 +1,9 @@
 #include <Tetragrama/Components/ZUI/ZUIRecentScenes.h>
 #include <Tetragrama/Editor.h>
-#include <Tetragrama/Thumbnails/ThumbnailService.h>
 #include <Tetragrama/EditorSceneIO.h>
 #include <Tetragrama/Panels/AssetImporterPanel.h>
 #include <Tetragrama/Panels/ProjectViewPanel.h>
+#include <Tetragrama/Thumbnails/ThumbnailService.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>

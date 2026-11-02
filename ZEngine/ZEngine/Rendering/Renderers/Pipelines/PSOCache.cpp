@@ -1719,7 +1719,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
                 m_active_async_jobs.value.fetch_sub(1, std::memory_order_release);
                 ReturnWorkerPipelineCache(worker_cache_index);
                 job.WorkerCacheIndex = UINT32_MAX;
-                job.State = AsyncPipelineJobState::Queued;
+                job.State            = AsyncPipelineJobState::Queued;
                 return; // Retry next dispatch, never compile on the render thread.
             }
         }

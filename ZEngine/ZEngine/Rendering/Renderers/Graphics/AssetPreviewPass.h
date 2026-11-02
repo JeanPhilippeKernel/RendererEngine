@@ -46,7 +46,7 @@ namespace ZEngine::Rendering::Renderers
         {
             return true;
         }
-        void               Deinitialize(Hardwares::VulkanDevicePtr) override;
+        void Deinitialize(Hardwares::VulkanDevicePtr) override;
 
         /// A separate graph consumer derives the color-write -> sampled barrier.
         struct PublishPass final : IRenderGraphCallbackPass

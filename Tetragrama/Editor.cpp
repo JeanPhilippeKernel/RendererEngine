@@ -387,8 +387,8 @@ namespace Tetragrama
         auto* pm = ZPushStructCtor<Tetragrama::Panels::ZUIPanelManagerComponent>(&EditorArena);
         pm->Initialize(ZUIUILayer, "PanelManager");
         AssetThumbnails = &pm->thumbnails;
-        AssetImporter = &pm->importer;
-        ContentBrowser = &pm->project;
+        AssetImporter   = &pm->importer;
+        ContentBrowser  = &pm->project;
         ZUIUILayer->AddComponent(pm);
 
         // Editor shell: menu bar + floating overlays (settings, etc.)

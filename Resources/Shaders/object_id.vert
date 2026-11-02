@@ -7,8 +7,8 @@ layout(location = 2) out flat uint PickToken;
 void main()
 {
     DrawDataView data = GetDrawDataView();
-    TexCoord = data.TexCoord;
-    MaterialIdx = data.MaterialId;
-    PickToken = FetchDrawData().PickToken;
-    gl_Position = Camera.Projection * Camera.View * data.Transform * data.Vertex;
+    TexCoord          = data.TexCoord;
+    MaterialIdx       = data.MaterialId;
+    PickToken         = FetchDrawData().PickToken;
+    gl_Position       = Camera.Projection * Camera.View * data.Transform * data.Vertex;
 }

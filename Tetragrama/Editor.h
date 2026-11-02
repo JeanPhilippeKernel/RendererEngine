@@ -29,7 +29,7 @@ namespace Tetragrama::Panels
 {
     struct AssetImporterPanel;
     struct ProjectViewPanel;
-}
+} // namespace Tetragrama::Panels
 
 namespace Tetragrama
 {

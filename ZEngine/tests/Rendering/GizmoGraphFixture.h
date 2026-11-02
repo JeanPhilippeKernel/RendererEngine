@@ -10,27 +10,28 @@ namespace
     // background worker zero after five seconds, but that is a test failure.
     struct GizmoBackgroundGate
     {
-        std::mutex Mutex;
+        std::mutex              Mutex;
         std::condition_variable CV;
-        bool Started = false;
-        bool Released = false;
-        bool Finished = false;
-        std::promise<void> RenderFinished;
-        std::future<void> Watchdog;
-        bool Submitted = false;
-        bool CompletedBeforeRelease = false;
+        bool                    Started  = false;
+        bool                    Released = false;
+        bool                    Finished = false;
+        std::promise<void>      RenderFinished;
+        std::future<void>       Watchdog;
+        bool                    Submitted              = false;
+        bool                    CompletedBeforeRelease = false;
 
         GizmoBackgroundGate()
         {
-            Submitted = ZEngine::Helpers::ThreadPoolHelper::SubmitToWorker(0, this, +[](void* context) {
-                auto& gate = *static_cast<GizmoBackgroundGate*>(context);
-                std::unique_lock lock(gate.Mutex);
-                gate.Started = true;
-                gate.CV.notify_all();
-                gate.CV.wait(lock, [&] { return gate.Released; });
-                gate.Finished = true;
-                gate.CV.notify_all();
-            });
+            Submitted = ZEngine::Helpers::ThreadPoolHelper::SubmitToWorker(
+                0, this, +[](void* context) {
+                    auto&            gate = *static_cast<GizmoBackgroundGate*>(context);
+                    std::unique_lock lock(gate.Mutex);
+                    gate.Started = true;
+                    gate.CV.notify_all();
+                    gate.CV.wait(lock, [&] { return gate.Released; });
+                    gate.Finished = true;
+                    gate.CV.notify_all();
+                });
             Watchdog = std::async(std::launch::async, [this] {
                 CompletedBeforeRelease = RenderFinished.get_future().wait_for(std::chrono::seconds(5)) == std::future_status::ready;
                 std::lock_guard lock(Mutex);
@@ -411,10 +412,10 @@ namespace
                 SCOPED_TRACE(step);
                 frame->TriangleCount = frame->LineCount = frame->SpriteCount = 1;
                 frame->Triangles[0]                                          = {
-                                                             .A = { -.9f, -.8f, .5f},
-                                                               .B = { -.2f, -.8f, .5f},
-                                                               .C = {-.55f, .15f, .5f},
-                                                               .Color = colors[step % 3]
+                    .A = { -.9f, -.8f, .5f},
+                      .B = { -.2f, -.8f, .5f},
+                      .C = {-.55f, .15f, .5f},
+                      .Color = colors[step % 3]
                 };
                 frame->Lines[0] = {
                     .A = { .2f, -.5f, .5f},

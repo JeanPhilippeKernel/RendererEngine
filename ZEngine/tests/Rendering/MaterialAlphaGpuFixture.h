@@ -126,8 +126,8 @@ Color = vec4(base.rgb, P.Mode == AlphaBlend ? clamp(base.a, 0.0, 1.0) : 1.0); })
             EXPECT_EQ(vkBeginCommandBuffer(Commands, &begin), VK_SUCCESS);
             const VkClearValue          clears[] = {{.color = {.float32 = {0, 0, preview ? 0.f : 1.f, preview ? 0.f : 1.f}}}, {.depthStencil = {1, 0}}};
             const VkRenderPassBeginInfo pass     = {
-                    .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = RenderPass, .framebuffer = Framebuffer, .renderArea = {{0, 0}, {8, 8}},
-                               .clearValueCount = 2, .pClearValues = clears
+                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = RenderPass, .framebuffer = Framebuffer, .renderArea = {{0, 0}, {8, 8}},
+                           .clearValueCount = 2, .pClearValues = clears
             };
             vkCmdBeginRenderPass(Commands, &pass, VK_SUBPASS_CONTENTS_INLINE);
             for (const auto& draw : draws)

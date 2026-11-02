@@ -34,5 +34,5 @@ void main()
     float emissive     = sMetEmit.g;
 
     vec3  WorldPos     = reconstruct_position(TexCoord, depth);
-    OutColor = vec4(shadePbr(WorldPos, N, albedo, roughness, metallic, ao, albedo * emissive), 1.0);
+    OutColor           = vec4(shadePbr(WorldPos, N, albedo, roughness, metallic, ao, albedo * emissive), 1.0);
 }

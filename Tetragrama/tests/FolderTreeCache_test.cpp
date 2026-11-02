@@ -157,7 +157,7 @@ namespace Tetragrama::Panels
         {
             uint32_t count = 0;
             DirectoryListing::Prepare(entries, panel.m_entries, panel.kMaxEntries, count, panel.m_truncated);
-            panel.m_nentries = static_cast<int>(count);
+            panel.m_nentries      = static_cast<int>(count);
             panel.m_listing_valid = true;
         }
         static int EntryCount(const ProjectViewPanel& panel)
@@ -348,20 +348,20 @@ namespace
 
     struct DeferredListing
     {
-        void* Context = nullptr;
+        void* Context      = nullptr;
         void (*Run)(void*) = nullptr;
         static bool Submit(void* self, void* context, void (*run)(void*))
         {
             auto& queue = *static_cast<DeferredListing*>(self);
             EXPECT_EQ(queue.Run, nullptr);
             queue.Context = context;
-            queue.Run = run;
+            queue.Run     = run;
             return true;
         }
         void Complete()
         {
             auto run = Run;
-            Run = nullptr;
+            Run      = nullptr;
             ASSERT_NE(run, nullptr);
             run(Context);
         }
@@ -516,7 +516,7 @@ protected:
     {
         memory.Initialize(ZMega(64), {});
         memory.MainArena.CreateSubArena(ZMega(32), &scratch, "FolderTreeCacheTest");
-        cache           = std::make_unique<FolderTreeCache>();
+        cache = std::make_unique<FolderTreeCache>();
         cache->Listings.SetSubmitter(&Tetragrama::Panels::ProjectViewPanelTestAccess::Complete);
         vfs.Directories = {"/Assets", "/Assets/Models", "/Assets/Models/Spaceship", "/Other", "/.hidden"};
     }
@@ -2348,8 +2348,8 @@ TEST_F(ContentBrowserFileTest, EmptyNamesDisableSubmissionAndKeyboardCancelNever
 
 TEST_F(FolderTreeCacheTest, AsyncGridDiscardsCompletedOldNavigationBeforePublishing)
 {
-    using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
-    auto panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
+    using Access          = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    auto            panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
     DeferredListing queue;
     Access::ListingExecutor(*panel, &DeferredListing::Submit, &queue);
     Access::Navigate(*panel, "/Assets");
@@ -2372,16 +2372,16 @@ TEST_F(FolderTreeCacheTest, AsyncGridDiscardsCompletedOldNavigationBeforePublish
 TEST_F(FolderTreeCacheTest, AsyncGridShowsLoadingAndFailureSeparatelyFromEmptyAndCanRetry)
 {
     using namespace ZEngine::UI;
-    using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
-    auto panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
+    using Access          = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    auto            panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
     DeferredListing queue;
     Access::ListingExecutor(*panel, &DeferredListing::Submit, &queue);
     Access::Navigate(*panel, "/Other");
     Access::RefreshListing(*panel, &vfs);
     ZUIContext ctx = {};
     ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
-    ctx.ScreenW = 500;
-    ctx.ScreenH = 500;
+    ctx.ScreenW        = 500;
+    ctx.ScreenH        = 500;
     const auto message = [&]() {
         ZUIBeginFrame(&ctx, 1.f / 60.f);
         Access::DrawGrid(*panel, ctx, 500.f, 400.f);
@@ -2396,7 +2396,8 @@ TEST_F(FolderTreeCacheTest, AsyncGridShowsLoadingAndFailureSeparatelyFromEmptyAn
     EXPECT_EQ(message(), "Could not load this folder");
     EXPECT_NE(FindBox(ctx.Root, "Retry##pv_retry_listing"), nullptr);
     const auto calls = vfs.Calls;
-    for (int i = 0; i < 20; ++i) Access::RefreshListing(*panel, &vfs);
+    for (int i = 0; i < 20; ++i)
+        Access::RefreshListing(*panel, &vfs);
     EXPECT_EQ(vfs.Calls, calls);
     vfs.Fail = false;
     panel->RequestRefresh();
