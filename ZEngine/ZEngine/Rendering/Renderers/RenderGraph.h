@@ -303,6 +303,9 @@ namespace ZEngine::Rendering::Renderers
         RGSubresourceRange Range            = {};
     };
 
+    /// Materialize a transition, including ordering recycled transient storage.
+    VkImageMemoryBarrier2 BuildRGImageBarrier(const RGImageBarrierPlan& plan, const RGResourceState& source, VkImage image);
+
     struct RGBufferBarrierPlan
     {
         uint32_t        ResourceIndex    = UINT32_MAX;

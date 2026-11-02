@@ -35,6 +35,57 @@ namespace ZEngine::Rendering::Renderers
     };
 } // namespace ZEngine::Rendering::Renderers
 
+TEST(RenderGraphBarrierTest, DiscardedTransientReuseWaitsForPreviousFrameReadback)
+{
+    const RGImageBarrierPlan plan = {
+        .DestinationState = GetRGAccessState(RGAccess::ColorWrite),
+        .DiscardContents  = true,
+        .Range            = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .LevelCount = 1, .LayerCount = 1},
+    };
+    // Registration resets logical history even though the pooled image was
+    // read by vkCmdCopyImageToBuffer in the previous frame.
+    const auto barrier = BuildRGImageBarrier(plan, {}, VK_NULL_HANDLE);
+    EXPECT_EQ(barrier.oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_NE(barrier.srcStageMask & VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0u);
+    EXPECT_NE(barrier.srcAccessMask & VK_ACCESS_2_MEMORY_WRITE_BIT, 0u);
+    EXPECT_EQ(barrier.dstStageMask, plan.DestinationState.Stage);
+    EXPECT_EQ(barrier.dstAccessMask, plan.DestinationState.Access);
+    EXPECT_EQ(barrier.newLayout, plan.DestinationState.Layout);
+    EXPECT_EQ(barrier.subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(barrier.srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+    EXPECT_EQ(barrier.dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+}
+
+TEST(RenderGraphBarrierTest, DiscardedAliasedDepthWaitsForEarlierColorImageCopy)
+{
+    const RGImageBarrierPlan plan = {
+        .DestinationState = GetRGAccessState(RGAccess::DepthWrite),
+        .DiscardContents  = true,
+        .Range            = {.AspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .LevelCount = 1, .LayerCount = 1},
+    };
+    const auto barrier = BuildRGImageBarrier(plan, GetRGAccessState(RGAccess::TransferRead), VK_NULL_HANDLE);
+    EXPECT_EQ(barrier.srcStageMask, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+    EXPECT_EQ(barrier.oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_EQ(barrier.newLayout, plan.DestinationState.Layout);
+    EXPECT_EQ(barrier.subresourceRange.aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT);
+}
+
+TEST(RenderGraphBarrierTest, PreservedImageUsesItsTrackedSourceScopeAndLayout)
+{
+    const auto               source = GetRGAccessState(RGAccess::TransferRead);
+    const RGImageBarrierPlan plan   = {
+          .DestinationState = GetRGAccessState(RGAccess::ShaderRead),
+          .Range            = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .BaseMipLevel = 2, .LevelCount = 1, .BaseArrayLayer = 3, .LayerCount = 1},
+    };
+    const auto barrier = BuildRGImageBarrier(plan, source, VK_NULL_HANDLE);
+    EXPECT_EQ(barrier.srcStageMask, source.Stage);
+    EXPECT_EQ(barrier.srcAccessMask, source.Access);
+    EXPECT_EQ(barrier.oldLayout, source.Layout);
+    EXPECT_EQ(barrier.newLayout, plan.DestinationState.Layout);
+    EXPECT_EQ(barrier.subresourceRange.baseMipLevel, 2u);
+    EXPECT_EQ(barrier.subresourceRange.baseArrayLayer, 3u);
+}
+
 namespace
 {
     TEST(SelectionOutlineFrameTest, SortAndUniqueKeepsCompleteEntityIdentity)

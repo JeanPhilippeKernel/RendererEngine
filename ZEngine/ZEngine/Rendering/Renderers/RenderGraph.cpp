@@ -834,6 +834,27 @@ namespace ZEngine::Rendering::Renderers
         return {.aspectMask = range.AspectMask, .baseMipLevel = range.BaseMipLevel, .levelCount = range.LevelCount, .baseArrayLayer = range.BaseArrayLayer, .layerCount = range.LayerCount};
     }
 
+    VkImageMemoryBarrier2 BuildRGImageBarrier(const RGImageBarrierPlan& plan, const RGResourceState& source, VkImage image)
+    {
+        // Discarding contents does not end earlier GPU accesses. Transient images
+        // are recycled across frames and logical resources, while their state is
+        // rebuilt at registration. Wait for all earlier uses, including picking
+        // readback copies, before the UNDEFINED layout transition writes storage.
+        return {
+            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask        = plan.DiscardContents ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT : source.Stage,
+            .srcAccessMask       = plan.DiscardContents ? VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT : source.Access,
+            .dstStageMask        = plan.DestinationState.Stage,
+            .dstAccessMask       = plan.DestinationState.Access,
+            .oldLayout           = plan.DiscardContents ? VK_IMAGE_LAYOUT_UNDEFINED : source.Layout,
+            .newLayout           = plan.DestinationState.Layout,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image               = image,
+            .subresourceRange    = ToVkSubresourceRange(plan.Range),
+        };
+    }
+
     struct RGDynamicRenderingBeginResult
     {
         bool Began         = false;
@@ -2018,18 +2039,7 @@ namespace ZEngine::Rendering::Renderers
                         continue;
                     }
 
-                    VkImageMemoryBarrier2 b = {};
-                    b.sType                 = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-                    b.oldLayout             = plan.DiscardContents ? VK_IMAGE_LAYOUT_UNDEFINED : state.State.Layout;
-                    b.newLayout             = dst.Layout;
-                    b.srcStageMask          = plan.DiscardContents ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : state.State.Stage;
-                    b.srcAccessMask         = plan.DiscardContents ? 0 : state.State.Access;
-                    b.dstStageMask          = dst.Stage;
-                    b.dstAccessMask         = dst.Access;
-                    b.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-                    b.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-                    b.image                 = GetVkImage(Device, res.TextureHandle);
-                    b.subresourceRange      = ToVkSubresourceRange(plan.Range);
+                    const VkImageMemoryBarrier2 b = BuildRGImageBarrier(plan, state.State, GetVkImage(Device, res.TextureHandle));
                     if (b.image == VK_NULL_HANDLE)
                         continue;
 
