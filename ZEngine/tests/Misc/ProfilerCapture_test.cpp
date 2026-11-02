@@ -23,12 +23,16 @@ TEST(ProfilerCaptureTest, CapturesAcrossFramesFiltersNamesAndExportsOnlyAfterSto
     EXPECT_EQ(ProfilerBuffer::CaptureCount(), 2u);
     EXPECT_EQ(ProfilerBuffer::CaptureDropped(), 0u);
     ASSERT_TRUE(ProfilerBuffer::WriteCaptureCsv(file.string().c_str()));
-    std::ifstream     input(file);
-    const std::string csv(std::istreambuf_iterator<char>{input}, {});
-    EXPECT_NE(csv.find("scope_ns,\"Test.Scope\","), std::string::npos);
-    EXPECT_NE(csv.find("value,\"Test.\"\"Value\"\"\","), std::string::npos);
-    EXPECT_EQ(csv.find("Ignored"), std::string::npos);
-    std::filesystem::remove(file);
+    {
+        // Windows cannot delete a file while this read handle remains open.
+        std::ifstream input(file);
+        ASSERT_TRUE(input.is_open());
+        const std::string csv(std::istreambuf_iterator<char>{input}, {});
+        EXPECT_NE(csv.find("scope_ns,\"Test.Scope\","), std::string::npos);
+        EXPECT_NE(csv.find("value,\"Test.\"\"Value\"\"\","), std::string::npos);
+        EXPECT_EQ(csv.find("Ignored"), std::string::npos);
+    }
+    EXPECT_TRUE(std::filesystem::remove(file));
 }
 
 TEST(ProfilerCaptureTest, ConcurrentWritersUseFixedStorageAndReportSaturationWithoutOverflow)
