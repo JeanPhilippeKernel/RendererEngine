@@ -20,9 +20,15 @@ namespace Tetragrama::Serializers
     struct EditorSceneSerializer;
 } // namespace Tetragrama::Serializers
 
+namespace Tetragrama::Thumbnails
+{
+    struct ThumbnailService;
+}
+
 namespace Tetragrama::Panels
 {
     struct AssetImporterPanel;
+    struct ProjectViewPanel;
 }
 
 namespace Tetragrama
@@ -71,6 +77,8 @@ namespace Tetragrama
 
         Layers::ZUILayer*                     ZUIUILayer                        = nullptr;
         Panels::AssetImporterPanel*           AssetImporter                     = nullptr;
+        Panels::ProjectViewPanel*             ContentBrowser                    = nullptr;
+        Thumbnails::ThumbnailService*         AssetThumbnails                   = nullptr;
 
         /// @brief Editor-only navigation aid; it never changes game-camera behavior.
         bool                                  ConstrainCameraToAtmosphereGround = false;

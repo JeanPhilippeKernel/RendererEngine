@@ -52,6 +52,10 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GRID_LABEL_VER
 file(READ "${GRID_LABEL_VERTEX_SOURCE}" GRID_LABEL_VERTEX_SOURCE)
 file(READ "${GRID_LABEL_FRAGMENT_SOURCE}" GRID_LABEL_FRAGMENT_SOURCE)
 configure_file(Rendering/GridLabelShaderSources.h.in "generated/GridLabelShaderSources.h" @ONLY)
+set(MATERIAL_ALPHA_SOURCE "${CMAKE_SOURCE_DIR}/Resources/Shaders/material_alpha.glsl")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MATERIAL_ALPHA_SOURCE}")
+file(READ "${MATERIAL_ALPHA_SOURCE}" MATERIAL_ALPHA_SOURCE)
+configure_file(Rendering/MaterialAlphaShaderSource.h.in "generated/MaterialAlphaShaderSource.h" @ONLY)
 set_property(SOURCE Rendering/GpuAllocatorTest.cpp APPEND PROPERTY
     INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/generated")
 

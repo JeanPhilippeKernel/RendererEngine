@@ -353,6 +353,8 @@ namespace ZEngine::Rendering::Scenes
         // CPU-built draw candidates. The compute pass writes a matching indirect
         // array with instanceCount = 0 for frustum-culled candidates.
         uint32_t                    IndirectCommandCount                             = 0;
+        uint32_t                    OpaqueIndirectCommandCount                       = 0;
+        uint32_t                    TransparentIndirectCommandCount                  = 0;
         FrustumCullingPushConstants CullingPushConstants                             = {};
 
         // Per-frame buffers prevent CPU uploads for frame N + 1 from racing GPU

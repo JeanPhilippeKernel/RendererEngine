@@ -24,9 +24,11 @@ namespace ZEngine::Rendering::Renderers
         res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
         res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
-        // A discrete attachment keeps selection tokens exact and reuses the same
-        // GPU-driven indirect geometry records as the material G-buffer.
-        const RGResourceHandle object_id = res_builder->WriteColorAttachment(RendererResourceName::GBufferObjectIdName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R32_UINT});
+        return true;
+    }
+
+    void GbufferPass::RegisterObjectIdReadbacks(RenderGraphResourceBuilderPtr res_builder, RGResourceHandle object_id, uint32_t w, uint32_t h)
+    {
         for (uint32_t request_index = 0; request_index < m_object_id_pick_count; ++request_index)
         {
             const ObjectIdPickRequest& request = m_object_id_picks[request_index];
@@ -55,7 +57,6 @@ namespace ZEngine::Rendering::Renderers
         m_object_id_picks[0]   = {};
         m_object_id_picks[1]   = {};
         m_object_id_pick_count = 0;
-        return true;
     }
 
     Specifications::GraphicsPipelineDesc GbufferPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
@@ -104,7 +105,8 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
             command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
-            command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->IndirectCommandCount);
+            if (scene->OpaqueIndirectCommandCount)
+                command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->OpaqueIndirectCommandCount);
         }
         return true;
     }

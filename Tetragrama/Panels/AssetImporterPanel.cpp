@@ -74,6 +74,7 @@ namespace Tetragrama::Panels
         // import budget for this bounded 8 MiB result slab.
         m_import_result_slab.Init(import_arena, ZMega(8));
         m_import_task.PublishedPaths.init(&m_import_result_slab, 32);
+        m_import_task.PreparedArtifacts.init(&m_import_result_slab, 0);
         import_arena->CreateSubArena(ZMega(64), &m_gltf_importer_arena, "ImportPipeline/EditorGltfImporter");
         import_arena->CreateSubArena(ZMega(128), &m_assimp_importer_arena, "ImportPipeline/EditorAssimpImporter");
 
@@ -688,7 +689,7 @@ namespace Tetragrama::Panels
         m_state.value.store(ImporterState::Importing, std::memory_order_release);
         m_progress.value.store(0.f, std::memory_order_relaxed);
 
-        m_import_task.Outputs.clear();
+        m_import_task.PreparedArtifacts.clear();
         m_import_task.PublishedPaths.clear();
         m_import_task.Error.clear();
         m_import_task.Outcome                           = ImportTaskOutcome::Pending;
@@ -770,7 +771,7 @@ namespace Tetragrama::Panels
         }
 
         // ImportFile's local scratch storage is gone once it returns. The worker
-        // callbacks have already copied the required output paths into ImportTask.
+        // callbacks have finalized metadata and retained compact registration data.
         // Last access by this worker. Main-thread polling can reclaim result strings
         // only after this release, even when the panel is hidden or overlays are full.
         task->Ready.store(true, std::memory_order_release);
@@ -836,8 +837,8 @@ namespace Tetragrama::Panels
         Close();
         EndImportPublication(m_import_task); // Includes queued work abandoned by pool shutdown.
         m_task_pending = false;
-        m_import_task.Outputs.clear();
-        decltype(m_import_task.Outputs){}.swap(m_import_task.Outputs);
+        std::destroy_at(&m_import_task.PreparedArtifacts);
+        std::construct_at(&m_import_task.PreparedArtifacts);
         std::string{}.swap(m_import_task.Error);
         std::destroy_at(&m_import_task.PublishedPaths);
         std::construct_at(&m_import_task.PublishedPaths);
@@ -853,7 +854,7 @@ namespace Tetragrama::Panels
         auto& task = m_import_task;
         if (task.Outcome == ImportTaskOutcome::Completed)
         {
-            CompleteImportOnMainThread(engine, {task.Outputs.data(), task.Outputs.size()});
+            CompleteImportOnMainThread(engine);
         }
         else
         {
@@ -862,7 +863,7 @@ namespace Tetragrama::Panels
         // Metadata/placement rejection must never strand publication ownership.
         EndImportPublication(task);
         task.PublishedPaths.clear();
-        task.Outputs.clear(); // Destroy nontrivial strings, reuse only vector capacity.
+        task.PreparedArtifacts.clear();
         task.Error.clear();
         m_task_pending       = false;
         m_import_scene_epoch = 0;
@@ -930,17 +931,11 @@ namespace Tetragrama::Panels
             return;
         }
 
-        task->Outputs.clear();
-        if (outputs.size() > 0)
-        {
-            task->Outputs.assign(outputs.data(), outputs.data() + outputs.size());
-            for (const auto& output : task->Outputs)
-            {
-                RecordPublishedPath(*task, output.Path.c_str());
-            }
-        }
+        for (const auto& output : outputs)
+            RecordPublishedPath(*task, output.Path.c_str());
         task->Error.clear();
-        task->Outcome = ImportTaskOutcome::Completed;
+        if (PrepareImportMetadata(*task, outputs))
+            task->Outcome = ImportTaskOutcome::Completed;
     }
 
     void AssetImporterPanel::OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType, const char* path)
@@ -991,23 +986,40 @@ namespace Tetragrama::Panels
         task.Publication = {};
     }
 
-    void AssetImporterPanel::CompleteImportOnMainThread(ZEngine::EngineContext* engine, ZEngine::Core::Containers::ArrayView<AssetImporterOutput> outputs)
+    cstring AssetImporterPanel::ImporterName(ImporterKind kind)
     {
-        const auto& task = m_import_task;
-        auto*       vfs  = task.Configuration.VFS;
+        switch (kind)
+        {
+            case ImporterKind::Gltf:
+                return "GltfImporter";
+            case ImporterKind::Fbx:
+                return "FbxImporter";
+            case ImporterKind::Assimp:
+                return "AssimpImporter";
+        }
+        return "UnknownImporter";
+    }
+
+    bool AssetImporterPanel::PrepareImportMetadata(ImportTask& task, ZEngine::Core::Containers::ArrayView<AssetImporterOutput> outputs)
+    {
+        auto* vfs = task.Configuration.VFS;
+        task.PreparedArtifacts.clear();
         if (!vfs)
         {
-            CompleteImportErrorOnMainThread(this, "Import destination is unavailable.");
-            return;
+            OnImportError(&task, "Import destination is unavailable.");
+            return false;
         }
 
-        const char* importer_name         = task.Kind == ImporterKind::Gltf ? "GltfImporter" : task.Kind == ImporterKind::Fbx ? "FbxImporter" : "AssimpImporter";
-        VFSPath     mesh_path             = {};
-        size_t      mesh_count            = 0;
-        bool        identities_registered = true;
-        // All model artifacts retain their embedded identity and captured source,
-        // including material/mesh outputs preceding an unexpected second mesh.
-        // No native-path conversion or current-workspace lookup is valid here.
+        const auto count = std::count_if(outputs.begin(), outputs.end(), [](const auto& output) { return output.Type == AssetFileType::MESH || output.Type == AssetFileType::MATERIAL; });
+        if (!task.PreparedArtifacts.try_reserve(count))
+        {
+            OnImportError(&task, "Import metadata exceeds the result storage budget.");
+            return false;
+        }
+        const char* importer_name = ImporterName(task.Kind);
+        // Finalize on the import worker, before publishing any registry records.
+        // A zero/old hash would make the deferred scanner mark a new artifact
+        // stale, preventing independent thumbnail loading until viewport use.
         for (const auto& output : outputs)
         {
             if (output.Type != AssetFileType::MESH && output.Type != AssetFileType::MATERIAL)
@@ -1018,34 +1030,62 @@ namespace Tetragrama::Panels
             const auto extension = output.Type == AssetFileType::MESH ? ".zemesh" : ".zematerial";
             if (output.Path.find('\0') != std::string::npos || path.Failed() || !path.Value().Extension().Equals(extension))
             {
-                CompleteImportErrorOnMainThread(this, "Importer returned an invalid artifact path.");
-                return;
+                OnImportError(&task, "Importer returned an invalid artifact path.");
+                return false;
             }
             const auto identity = ReadEmbeddedAssetUUID(*vfs, path.Value());
             if (identity.Failed())
             {
-                CompleteImportErrorOnMainThread(this, fmt::format("Failed to read identity for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(identity.Error())));
-                return;
+                OnImportError(&task, fmt::format("Failed to read identity for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(identity.Error())));
+                return false;
             }
             const auto previous = MetaFileIO::Read(*vfs, path.Value());
             if (previous.Failed() && previous.Error() != VFSError::NotFound && previous.Error() != VFSError::Corrupted)
             {
-                CompleteImportErrorOnMainThread(this, fmt::format("Failed to read metadata for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(previous.Error())));
-                return;
+                OnImportError(&task, fmt::format("Failed to read metadata for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(previous.Error())));
+                return false;
+            }
+            const auto hash = MetaFileIO::ComputeHash(*vfs, path.Value());
+            if (hash.Failed())
+            {
+                OnImportError(&task, fmt::format("Failed to hash '{}' (VFS error {})", output.Path, static_cast<uint32_t>(hash.Error())));
+                return false;
             }
             MetaFileData meta = previous.Succeeded() ? previous.Value() : MetaFileData{};
             meta.AssetUUID    = identity.Value();
+            meta.SourceHash   = hash.Value();
             if (secure_strcpy(meta.SourcePath, sizeof(meta.SourcePath), task.SourcePath) != MEMORY_OP_SUCCESS || secure_strcpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), path.Value().CStr()) != MEMORY_OP_SUCCESS || secure_strcpy(meta.ImporterName, sizeof(meta.ImporterName), importer_name) != MEMORY_OP_SUCCESS)
             {
-                CompleteImportErrorOnMainThread(this, "Import metadata exceeds its storage capacity.");
-                return;
+                OnImportError(&task, "Import metadata exceeds its storage capacity.");
+                return false;
             }
             const auto write = MetaFileIO::Write(*vfs, path.Value(), meta);
             if (write.Failed())
             {
-                CompleteImportErrorOnMainThread(this, fmt::format("Failed to persist metadata for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(write.Error())));
-                return;
+                OnImportError(&task, fmt::format("Failed to persist metadata for '{}' (VFS error {})", output.Path, static_cast<uint32_t>(write.Error())));
+                return false;
             }
+            task.PreparedArtifacts.push({output.Type, path.Value(), meta.AssetUUID, meta.SourceHash});
+        }
+        return true;
+    }
+
+    void AssetImporterPanel::CompleteImportOnMainThread(ZEngine::EngineContext* engine)
+    {
+        const auto&  task                  = m_import_task;
+        auto*        vfs                   = task.Configuration.VFS;
+        VFSPath      mesh_path             = {};
+        size_t       mesh_count            = 0;
+        bool         identities_registered = true;
+        // Registry records retain only hash/importer/artifact location. Do not
+        // carry full sidecar settings (or duplicate source paths) per result.
+        MetaFileData meta                  = {};
+        secure_strcpy(meta.ImporterName, sizeof(meta.ImporterName), ImporterName(task.Kind));
+        for (const auto& artifact : task.PreparedArtifacts)
+        {
+            meta.AssetUUID  = artifact.UUID;
+            meta.SourceHash = artifact.SourceHash;
+            secure_strcpy(meta.ArtifactPath, sizeof(meta.ArtifactPath), artifact.Path.CStr());
             // Register identities (not loaded CPU/GPU bindings) immediately. The
             // deferred watcher scan must not race initial placement's dependency
             // lookup. Never publish into a replacement engine VFS/asset context.
@@ -1053,20 +1093,20 @@ namespace Tetragrama::Panels
             if (assets && assets->Registry)
             {
                 std::lock_guard lock(assets->IngestMutex);
-                const auto      type       = output.Type == AssetFileType::MESH ? ZEngine::Managers::AssetType::MESH : ZEngine::Managers::AssetType::MATERIAL;
+                const auto      type       = artifact.Type == AssetFileType::MESH ? ZEngine::Managers::AssetType::MESH : ZEngine::Managers::AssetType::MATERIAL;
                 const auto*     registered = assets->Registry->FindByUUID(meta.AssetUUID);
                 if (registered)
                 {
-                    identities_registered = identities_registered && registered->Type == type && (!registered->Path.IsValid() || registered->Path == path.Value());
+                    identities_registered = identities_registered && registered->Type == type && (!registered->Path.IsValid() || registered->Path == artifact.Path);
                 }
-                else if (!assets->Registry->Register(meta.AssetUUID, type, path.Value(), meta).IsOk())
+                else if (!assets->Registry->Register(meta.AssetUUID, type, artifact.Path, meta).IsOk())
                 {
                     identities_registered = false;
                 }
             }
-            if (output.Type == AssetFileType::MESH)
+            if (artifact.Type == AssetFileType::MESH)
             {
-                mesh_path = path.Value();
+                mesh_path = artifact.Path;
                 ++mesh_count;
             }
         }
@@ -1146,7 +1186,7 @@ namespace Tetragrama::Panels
             return;
         }
 
-        task->Outputs.clear();
+        task->PreparedArtifacts.clear();
         task->Error.assign(err.data(), err.size());
         task->Outcome = ImportTaskOutcome::Failed;
     }

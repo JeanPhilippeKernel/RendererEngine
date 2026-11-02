@@ -30,6 +30,7 @@ TEST(AssetMaterialLifetimeTest, CloneOwnsEveryStringAfterSourceScratchIsReused)
     source.NormalTexUUID                              = source.MaterialUUID;
     source.AlbedoColor[2]                             = 0.75f;
     source.Factors[0]                                 = 0.5f;
+    source.AlphaMode                                  = ZEngine::Rendering::Materials::AlphaMode::Blend;
 
     auto                               copy           = source.Clone(&persistent);
     const std::array<const String*, 6> copied_strings = {&copy.Name, &copy.AlbedoTexPath, &copy.EmissiveTexPath, &copy.NormalTexPath, &copy.OpacityTexPath, &copy.SpecularTexPath};
@@ -44,6 +45,7 @@ TEST(AssetMaterialLifetimeTest, CloneOwnsEveryStringAfterSourceScratchIsReused)
     EXPECT_EQ(copy.NormalTexUUID, source.NormalTexUUID);
     EXPECT_FLOAT_EQ(copy.AlbedoColor[2], 0.75f);
     EXPECT_FLOAT_EQ(copy.Factors[0], 0.5f);
+    EXPECT_EQ(copy.AlphaMode, source.AlphaMode);
 }
 
 TEST(AssetMaterialLifetimeTest, CloneSupportsUninitializedOptionalStrings)

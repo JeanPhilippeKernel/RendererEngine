@@ -18,6 +18,9 @@ namespace ZEngine::Rendering::Shaders
         void                                                                                                              Reload();
         void                                                                                                              Dispose();
         Specifications::LayoutBindingSpecification                                                                        GetLayoutBindingSpecification(cstring name);
+        /// Counts descriptor elements once per set/binding, not once per reflected stage.
+        [[nodiscard]] uint32_t                                                                                            DynamicDescriptorCount() const;
+        [[nodiscard]] bool                                                                                                HasStages(VkShaderStageFlags required) const;
         VkDescriptorPool                                                                                                  m_descriptor_pool              = VK_NULL_HANDLE;
         /// @brief Render-thread-owned module generation; increments when hot reload replaces this module.
         uint32_t                                                                                                          Generation                     = 0;

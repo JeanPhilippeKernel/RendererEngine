@@ -17,6 +17,8 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadBuffer(RendererBufferName::GlobalIndex, "IndexSB");
         res_builder->ReadBuffer(RendererBufferName::Transform, "TransformSB");
         res_builder->ReadBuffer(RendererBufferName::RenderData, "DrawDataSB");
+        res_builder->ReadBuffer(RendererBufferName::Material, "MatSB");
+        res_builder->ReadBindless();
         res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
         res_builder->WriteDepthAttachment(RendererResourceName::FrameDepthRenderTargetName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
         return true;
@@ -31,13 +33,15 @@ namespace ZEngine::Rendering::Renderers
         return desc;
     }
 
-    void DepthPrePass::Prepare(Hardwares::VulkanDevicePtr const /*device*/, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
+    void DepthPrePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
     {
         if (!scene || !pass)
             return;
 
         auto* gp = static_cast<RenderPasses::GraphicPass*>(pass);
         gp->SetDynamicUniform("UBCamera", sizeof(UBOCameraLayout));
+        gp->UseTextureArray("TextureArray");
+        gp->SetSampler("LinearWrapSampler", device->GlobalLinearWrapSamplerImageInfo);
     }
 
     void DepthPrePass::Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer)
@@ -64,7 +68,8 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
-        command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->IndirectCommandCount);
+        if (scene->OpaqueIndirectCommandCount)
+            command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->OpaqueIndirectCommandCount);
         return true;
     }
 } // namespace ZEngine::Rendering::Renderers

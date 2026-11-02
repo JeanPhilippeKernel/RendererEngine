@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <new>
 #include <random>
 #include <type_traits>
@@ -23,7 +24,32 @@ namespace ZEngine::Managers
 {
     static AssetManager* s_Instance = nullptr;
 
-    AssetManager*        AssetManager::Instance()
+    namespace
+    {
+        struct MeshStorageDeleter
+        {
+            void operator()(AssetManager::MeshCacheAllocation* storage) const
+            {
+                AssetManager::MeshCacheAllocation::Destroy(storage);
+            }
+        };
+        using MeshStorage = std::unique_ptr<AssetManager::MeshCacheAllocation, MeshStorageDeleter>;
+        MeshStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy);
+
+        template <typename T>
+        bool ReserveMeshSlot(Array<T>& slots, size_t index)
+        {
+            if (index < slots.capacity())
+                return true;
+            if (index == SIZE_MAX || slots.capacity() > SIZE_MAX / 2)
+                return false;
+            // Reserve geometrically, not one cell per import: moving the whole
+            // descriptor table on each append would make large batches quadratic.
+            return slots.try_reserve(std::max(index + 1, std::max(size_t(4), slots.capacity() * 2)));
+        }
+    } // namespace
+
+    AssetManager* AssetManager::Instance()
     {
         return s_Instance;
     }
@@ -63,7 +89,7 @@ namespace ZEngine::Managers
         s_Instance->GPUMeshMaterials.init(s_Instance->Arena, 5000);
         s_Instance->Textures.init(s_Instance->Arena, 5000);
         s_Instance->UUIDToTextureHandle.init(slab, 5000);
-        s_Instance->MeshToHierarchySlot.init(s_Instance->Arena, 5000);
+        s_Instance->MeshBindings.init(s_Instance->Arena, 5000);
         s_Instance->UUIDToMaterialSlot.init(slab, 5000);
         s_Instance->MeshCacheAllocations.init(slab, 128);
 
@@ -97,7 +123,7 @@ namespace ZEngine::Managers
         if (s_Instance)
         {
             for (auto* allocation : s_Instance->MeshCacheAllocations)
-                delete allocation;
+                MeshCacheAllocation::Destroy(allocation);
             s_Instance->MeshCacheAllocations.clear();
             if (s_Instance->Registry)
             {
@@ -126,42 +152,30 @@ namespace ZEngine::Managers
         return s_Instance && s_Instance->Registry && s_Instance->Registry->FindByUUID(id) != nullptr;
     }
 
-    void AssetManager::IngestMesh(AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy)
+    bool AssetManager::IngestMesh(AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy, const AssetRecordSnapshot* expected_record)
     {
         if (!s_Instance)
-            return;
+            return false;
         std::lock_guard lock(s_Instance->IngestMutex);
-        // Use MeshToHierarchySlot — populated only after data is actually ingested.
-        // IsRegistered / GetAsset both give false positives because VFSScanner
-        // pre-registers UUIDs with SlotHandle=0 before any mesh data exists.
-        uint32_t*       existing_hier_slot = s_Instance->MeshToHierarchySlot.find(mesh.MeshUUID);
-        bool            is_reload          = existing_hier_slot != nullptr;
-
-        // Hot-reload (#762): overwrite the existing slots' data in place instead of
-        // pushing new ones, so the mesh/hierarchy keep the same AssetHandle and
-        // AssetRegistry::MarkStale below can hand RenderResourceManager's OnStaleCallback
-        // a handle that already points at the fresh data.
-        uint32_t        mesh_slot          = 0;
-        AssetMesh*      mp                 = nullptr;
-        if (is_reload)
+        if (!s_Instance->Registry || mesh.MeshUUID.is_nil() || hierarchy.MeshUUID != mesh.MeshUUID || hierarchy.NodeHierarchyUUID.is_nil() || hierarchy.NodeHierarchyUUID == mesh.MeshUUID)
+            return false;
+        AssetRecordSnapshot expected = {};
+        if (expected_record)
+            expected = *expected_record;
+        else if (!s_Instance->Registry->TryReadRecord(mesh.MeshUUID, &expected))
         {
-            mp = GetAsset<AssetMesh>(mesh.MeshUUID);
-            ZENGINE_VALIDATE_ASSERT(mp != nullptr, "IngestMesh: MeshToHierarchySlot has this UUID but the mesh record is missing")
+            if (!s_Instance->Registry->Register(mesh.MeshUUID, AssetType::MESH, {}, {}).IsOk() || !s_Instance->Registry->TryReadRecord(mesh.MeshUUID, &expected))
+                return false;
         }
-        else
-        {
-            mesh_slot    = static_cast<uint32_t>(s_Instance->Meshes.size());
-            mp           = &s_Instance->Meshes.push_use({});
-            mp->MeshUUID = mesh.MeshUUID;
-        }
-        AssetMesh& m = *mp;
-        m.SubMeshes.init(s_Instance->Arena, mesh.SubMeshes.size());
-        m.Vertices.init(s_Instance->Arena, mesh.Vertices.size(), mesh.Vertices.size());
-        m.Indices.init(s_Instance->Arena, mesh.Indices.size(), mesh.Indices.size());
-        Helpers::secure_memcpy(m.Vertices.data(), m.Vertices.size() * sizeof(float), mesh.Vertices.data(), mesh.Vertices.size() * sizeof(float));
-        Helpers::secure_memcpy(m.Indices.data(), m.Indices.size() * sizeof(uint32_t), mesh.Indices.data(), mesh.Indices.size() * sizeof(uint32_t));
-        for (auto& sub : mesh.SubMeshes)
-            m.SubMeshes.push(sub);
+        if (expected.Record.Type != AssetType::MESH || expected.Record.UUID != mesh.MeshUUID)
+            return false;
+        // Stage without touching retained slots. Registry deletion/re-registration
+        // can race ingestion; PublishMesh checks the exact record generation.
+        AssetMesh          m       = {};
+        AssetNodeHierarchy h       = {};
+        auto               storage = CloneMesh(s_Instance->ContainerSlab, mesh, hierarchy, m, h);
+        if (!storage)
+            return false;
 
         // Runtime bounds are not part of the .zemesh codec. Reset on every reload
         // so an empty/malformed replacement cannot retain the previous box/sphere.
@@ -226,74 +240,10 @@ namespace ZEngine::Managers
             }
         }
 
-        if (!is_reload)
-            RegisterAsset(AssetType::MESH, m.MeshUUID, mesh_slot);
-
-        // Hierarchy: same in-place-overwrite treatment as the mesh above. Deliberately
-        // keep the existing NodeHierarchyUUID/MeshUUID on reload rather than the new
-        // AssetNodeHierarchy's freshly-minted one — the registry entry (and this UUID's
-        // identity) must stay stable across reloads, not just the slot index.
-        uint32_t            hier_slot = is_reload ? *existing_hier_slot : static_cast<uint32_t>(s_Instance->NodeHierarchies.size());
-        AssetNodeHierarchy& h         = is_reload ? s_Instance->NodeHierarchies[hier_slot] : s_Instance->NodeHierarchies.push_use({});
-        if (!is_reload)
-        {
-            h.NodeHierarchyUUID = hierarchy.NodeHierarchyUUID;
-            h.MeshUUID          = hierarchy.MeshUUID;
-        }
-
-        h.Hierarchies.init(s_Instance->Arena, hierarchy.Hierarchies.size(), hierarchy.Hierarchies.size());
-        h.LocalTransforms.init(s_Instance->Arena, hierarchy.LocalTransforms.size(), hierarchy.LocalTransforms.size());
-        h.GlobalTransforms.init(s_Instance->Arena, hierarchy.GlobalTransforms.size(), hierarchy.GlobalTransforms.size());
-        h.Names.init(s_Instance->Arena, hierarchy.Names.size());
-        h.MaterialNames.init(s_Instance->Arena, hierarchy.MaterialNames.size());
-        h.NodeNames.init(s_Instance->Arena, hierarchy.NodeNames.size() > 32 ? hierarchy.NodeNames.size() * 2 : 64);
-        h.NodeMeshes.init(s_Instance->Arena, hierarchy.NodeMeshes.size() > 32 ? hierarchy.NodeMeshes.size() * 2 : 64);
-        h.NodeMaterials.init(s_Instance->Arena, hierarchy.NodeMaterials.size() > 32 ? hierarchy.NodeMaterials.size() * 2 : 64);
-
-        Helpers::secure_memcpy(h.Hierarchies.data(), h.Hierarchies.size() * sizeof(Helpers::NodeHierarchy), hierarchy.Hierarchies.data(), hierarchy.Hierarchies.size() * sizeof(Helpers::NodeHierarchy));
-        Helpers::secure_memcpy(h.LocalTransforms.data(), h.LocalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchy.LocalTransforms.data(), hierarchy.LocalTransforms.size() * sizeof(Core::Maths::Mat4f));
-        Helpers::secure_memcpy(h.GlobalTransforms.data(), h.GlobalTransforms.size() * sizeof(Core::Maths::Mat4f), hierarchy.GlobalTransforms.data(), hierarchy.GlobalTransforms.size() * sizeof(Core::Maths::Mat4f));
-
-        for (auto& name : hierarchy.Names)
-        {
-            auto& n = h.Names.push_use({});
-            n.init(s_Instance->Arena, name.c_str());
-        }
-        for (auto& mat_name : hierarchy.MaterialNames)
-        {
-            auto& n = h.MaterialNames.push_use({});
-            n.init(s_Instance->Arena, mat_name.c_str());
-        }
-        for (const auto& [k, v] : hierarchy.NodeNames)
-            h.NodeNames.insert(k, v);
-        for (const auto& [k, v] : hierarchy.NodeMeshes)
-            h.NodeMeshes.insert(k, v);
-        for (const auto& [k, v] : hierarchy.NodeMaterials)
-            h.NodeMaterials.insert(k, v);
-
-        if (!is_reload)
-        {
-            RegisterAsset(AssetType::MESH_HIERARCHY, h.NodeHierarchyUUID, hier_slot);
-            s_Instance->MeshToHierarchySlot.insert(h.MeshUUID, hier_slot);
-        }
-
-        if (s_Instance->Registry)
-        {
-            if (is_reload)
-            {
-                // SetState(Loaded) would hit RenderResourceManager's OnReady callback,
-                // which skips any UUID that already has a GPU buffer — it never reaches
-                // ScheduleSwap. MarkStale is what actually drives the hot-reload swap.
-                s_Instance->Registry->MarkStale(m.MeshUUID);
-                s_Instance->Registry->MarkStale(h.NodeHierarchyUUID);
-            }
-            else
-            {
-                // Notify the registry that both assets are now loaded so hot-reload callbacks fire.
-                s_Instance->Registry->SetState(m.MeshUUID, Core::VFS::AssetState::Loaded);
-                s_Instance->Registry->SetState(h.NodeHierarchyUUID, Core::VFS::AssetState::Loaded);
-            }
-        }
+        if (s_Instance->PublishMesh(expected, std::move(m), std::move(h), storage.get()).Failed())
+            return false;
+        (void) storage.release();
+        return true;
     }
 
     Rendering::Textures::TextureHandle AssetManager::IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path)
@@ -377,6 +327,7 @@ namespace ZEngine::Managers
         gpu_mat.SpecularColor                    = {mat.SpecularColor[0], mat.SpecularColor[1], mat.SpecularColor[2], mat.SpecularColor[3]};
         gpu_mat.AmbientColor                     = {mat.AmbientColor[0], mat.AmbientColor[1], mat.AmbientColor[2], mat.AmbientColor[3]};
         gpu_mat.Factors                          = {mat.Factors[0], mat.Factors[1], mat.Factors[2], mat.Factors[3]};
+        gpu_mat.AlphaMode                        = mat.AlphaMode;
 
         // Resolve handle for each texture slot: UUID lookup first, then fall back to
         // uploading from the stored path — handles scene-reload and dragged-.zmesh cases
@@ -558,8 +509,8 @@ namespace ZEngine::Managers
     {
         if (!s_Instance)
             return nullptr;
-        const uint32_t* slot = s_Instance->MeshToHierarchySlot.find(mesh_id);
-        return (slot && *slot < s_Instance->NodeHierarchies.size()) ? &s_Instance->NodeHierarchies[*slot] : nullptr;
+        const auto* binding = s_Instance->MeshBindings.find(mesh_id);
+        return (s_Instance->GetMeshAsset(mesh_id) && binding && binding->HierarchySlot < s_Instance->NodeHierarchies.size()) ? &s_Instance->NodeHierarchies[binding->HierarchySlot] : nullptr;
     }
 
     AssetHandle AssetManager::GetMeshNodeHierarchyHandle(const uuids::uuid& id)
@@ -625,9 +576,7 @@ namespace ZEngine::Managers
                 auto* rec = s_Instance->Registry->Access(result.Handles[i]);
                 if (!rec || rec->UUID.is_nil())
                     continue;
-                if (rec->State == Core::VFS::AssetState::Loaded)
-                    continue;
-                if (s_Instance->MeshToHierarchySlot.find(rec->UUID) != nullptr)
+                if (s_Instance->GetMeshAsset(rec->UUID) != nullptr)
                     continue;
 
                 char native[MAX_FILE_PATH_COUNT] = {};
@@ -664,6 +613,57 @@ namespace ZEngine::Managers
 
     namespace
     {
+        using NodeMap = UnorderedHashMap<uint32_t, uint32_t>;
+
+        // Immutable copies need space for live entries, not the importer's often
+        // oversized hash table. Keep the same <= 50% occupancy contract as init.
+        size_t MapSlots(const NodeMap& source)
+        {
+            if (source.empty() || source.size() > SIZE_MAX / 2)
+                return 0;
+            size_t slots = 16;
+            while (slots < source.size() * 2)
+            {
+                if (slots > SIZE_MAX / 2)
+                    return 0;
+                slots *= 2;
+            }
+            return slots;
+        }
+
+        struct PayloadSize
+        {
+            size_t Bytes = 0;
+
+            template <typename T>
+            bool Add(size_t count)
+            {
+                if (!count)
+                    return true;
+                constexpr auto padding = alignof(T) - 1;
+                if (Bytes > SIZE_MAX - padding || count > (SIZE_MAX - Bytes - padding) / sizeof(T))
+                    return false;
+                Bytes += padding + count * sizeof(T);
+                return true;
+            }
+
+            bool Names(const Array<String>& names)
+            {
+                if (!Add<String>(names.size()))
+                    return false;
+                for (const auto& name : names)
+                    if (name.size() == SIZE_MAX || !Add<char>(name.size() + 1))
+                        return false;
+                return true;
+            }
+
+            bool Map(const NodeMap& map)
+            {
+                const auto slots = MapSlots(map);
+                return (map.empty() || slots) && Add<NodeMap::Entry>(slots);
+            }
+        };
+
         template <typename T>
         bool CopyArray(const Array<T>& source, Array<T>& destination, ArenaAllocator& arena)
         {
@@ -697,24 +697,70 @@ namespace ZEngine::Managers
             {
                 auto* name = new (&names[destination.m_size]) String{};
                 ++destination.m_size;
-                const auto bytes = source_name.size() + 1; // Checked reader bounded the string and validated its NUL.
+                const auto bytes = source_name.size() + 1; // PayloadSize checked overflow.
                 name->m_data     = static_cast<char*>(arena.AllocateNoZero(bytes, alignof(char)));
-                if (!name->m_data || Helpers::secure_memcpy(name->m_data, bytes, source_name.c_str(), bytes) != Helpers::MEMORY_OP_SUCCESS)
+                if (!name->m_data || (source_name.size() && Helpers::secure_memcpy(name->m_data, bytes, source_name.c_str(), source_name.size()) != Helpers::MEMORY_OP_SUCCESS))
                     return false;
-                name->m_allocator = &arena;
-                name->m_size      = source_name.size();
-                name->m_capacity  = bytes;
+                name->m_data[source_name.size()] = '\0';
+                name->m_allocator                = &arena;
+                name->m_size                     = source_name.size();
+                name->m_capacity                 = bytes;
             }
             return true;
         }
 
         bool CopyMap(const UnorderedHashMap<uint32_t, uint32_t>& source, UnorderedHashMap<uint32_t, uint32_t>& destination, ArenaAllocator& arena)
         {
-            if (!destination.try_init(&arena, source.capacity()))
+            if (source.empty())
+                return true;
+            if (!destination.try_init(&arena, MapSlots(source)))
                 return false;
             for (const auto& [key, value] : source)
                 destination.insert(key, value);
             return true;
+        }
+
+        MeshStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy)
+        {
+            PayloadSize size = {};
+            if (!size.Add<float>(source.Vertices.size()) || !size.Add<uint32_t>(source.Indices.size()) || !size.Add<AssetSubMesh>(source.SubMeshes.size()))
+                return {};
+            if (!size.Add<Helpers::NodeHierarchy>(source_hierarchy.Hierarchies.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.LocalTransforms.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.GlobalTransforms.size()))
+                return {};
+            if (!size.Names(source_hierarchy.Names) || !size.Names(source_hierarchy.MaterialNames) || !size.Map(source_hierarchy.NodeNames) || !size.Map(source_hierarchy.NodeMeshes) || !size.Map(source_hierarchy.NodeMaterials))
+                return {};
+            if (size.Bytes > SIZE_MAX - sizeof(AssetManager::MeshCacheAllocation))
+                return {};
+
+            // Header and retained data share one reclaimable block. The arena
+            // aligns absolute addresses; the budget includes each alignment gap.
+            size.Bytes  = std::max(size_t(1), size.Bytes);
+            auto* block = slab.TryRealloc(nullptr, sizeof(AssetManager::MeshCacheAllocation) + size.Bytes);
+            if (!block)
+                return {};
+            MeshStorage storage(new (block) AssetManager::MeshCacheAllocation{});
+            storage->Slab = &slab;
+            // Borrowed arenas require a nonempty range, even for an empty mesh.
+            if (!storage->Arena.InitializeBorrowed(static_cast<char*>(block) + sizeof(AssetManager::MeshCacheAllocation), size.Bytes, "AssetManager/MeshPayload"))
+                return {};
+            auto& arena = storage->Arena;
+            if (!CopyArray(source.Vertices, mesh.Vertices, arena) || !CopyArray(source.Indices, mesh.Indices, arena) || !CopyArray(source.SubMeshes, mesh.SubMeshes, arena))
+                return {};
+            if (!CopyArray(source_hierarchy.Hierarchies, hierarchy.Hierarchies, arena) || !CopyArray(source_hierarchy.LocalTransforms, hierarchy.LocalTransforms, arena) || !CopyArray(source_hierarchy.GlobalTransforms, hierarchy.GlobalTransforms, arena))
+                return {};
+            if (!CopyNames(source_hierarchy.Names, hierarchy.Names, arena) || !CopyNames(source_hierarchy.MaterialNames, hierarchy.MaterialNames, arena))
+                return {};
+            if (!CopyMap(source_hierarchy.NodeNames, hierarchy.NodeNames, arena) || !CopyMap(source_hierarchy.NodeMeshes, hierarchy.NodeMeshes, arena) || !CopyMap(source_hierarchy.NodeMaterials, hierarchy.NodeMaterials, arena))
+                return {};
+            mesh.MeshUUID               = source.MeshUUID;
+            mesh.BoundsCenter           = source.BoundsCenter;
+            mesh.BoundsRadius           = source.BoundsRadius;
+            mesh.BoundsMin              = source.BoundsMin;
+            mesh.BoundsMax              = source.BoundsMax;
+            mesh.BoundsValid            = source.BoundsValid;
+            hierarchy.MeshUUID          = source_hierarchy.MeshUUID;
+            hierarchy.NodeHierarchyUUID = source_hierarchy.NodeHierarchyUUID;
+            return storage;
         }
 
         void Bounds(AssetMesh& mesh)
@@ -747,6 +793,67 @@ namespace ZEngine::Managers
             mesh.BoundsValid = true;
         }
     } // namespace
+
+    VFSResult<uint32_t> AssetManager::PublishMesh(const AssetRecordSnapshot& expected, AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy, MeshCacheAllocation* storage)
+    {
+        const auto uuid = mesh.MeshUUID;
+        if (!Registry || !storage || uuid != expected.Record.UUID || expected.Record.Type != AssetType::MESH || hierarchy.MeshUUID != uuid)
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        auto*                      binding            = MeshBindings.find(uuid);
+        const bool                 replacing          = binding != nullptr;
+        const auto                 mesh_slot          = replacing ? binding->MeshSlot : Meshes.size();
+        const auto                 hierarchy_slot     = replacing ? binding->HierarchySlot : NodeHierarchies.size();
+        AssetRecordSnapshot        retained_hierarchy = {};
+        const AssetRecordSnapshot* retained           = nullptr;
+        if (replacing)
+        {
+            if (mesh_slot >= Meshes.size() || mesh_slot >= MeshCacheAllocations.size() || !MeshCacheAllocations[mesh_slot] || hierarchy_slot >= NodeHierarchies.size() || Meshes[mesh_slot].MeshUUID != uuid || NodeHierarchies[hierarchy_slot].MeshUUID != uuid)
+                return VFSResult<uint32_t>::Fail(VFSError::Corrupted);
+            hierarchy.NodeHierarchyUUID = NodeHierarchies[hierarchy_slot].NodeHierarchyUUID;
+            if (Registry->TryReadRecord(hierarchy.NodeHierarchyUUID, &retained_hierarchy))
+                retained = &retained_hierarchy;
+        }
+        if (mesh_slot >= 0x10000000 || hierarchy_slot >= 0x10000000 || (!replacing && (MeshBindings.size() + 1) * 4 > MeshBindings.capacity() * 3))
+            return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
+        if (!ReserveMeshSlot(Meshes, mesh_slot) || !ReserveMeshSlot(NodeHierarchies, hierarchy_slot) || !ReserveMeshSlot(MeshCacheAllocations, mesh_slot))
+            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+        const auto mesh_handle      = CreateHandle(uint32_t(mesh_slot), AssetType::MESH);
+        const auto hierarchy_handle = CreateHandle(uint32_t(hierarchy_slot), AssetType::MESH_HIERARCHY);
+        if (!Registry->TryBindLoadedMesh(expected, hierarchy.NodeHierarchyUUID, mesh_handle, hierarchy_handle, retained))
+            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+        const auto draws          = uint32_t(mesh.SubMeshes.size());
+        const auto hierarchy_uuid = hierarchy.NodeHierarchyUUID;
+        // Capacity is established. No allocation, IO or callback between paired
+        // registry publication and the complete CPU descriptor commit.
+        if (replacing)
+        {
+            Meshes[mesh_slot]               = std::move(mesh);
+            NodeHierarchies[hierarchy_slot] = std::move(hierarchy);
+            auto* previous                  = MeshCacheAllocations[mesh_slot];
+            MeshCacheAllocations[mesh_slot] = storage;
+            MeshCacheAllocation::Destroy(previous);
+        }
+        else
+        {
+            new (&Meshes.m_data[mesh_slot]) AssetMesh(std::move(mesh));
+            ++Meshes.m_size;
+            new (&NodeHierarchies.m_data[hierarchy_slot]) AssetNodeHierarchy(std::move(hierarchy));
+            ++NodeHierarchies.m_size;
+            MeshCacheAllocations.push(storage);
+            MeshBindings.insert(uuid, {uint32_t(mesh_slot), uint32_t(hierarchy_slot)});
+        }
+        if (replacing)
+        {
+            // OnReady alone skips an existing GPU buffer. Invalidate it before
+            // announcing readiness so both rendering and thumbnail consumers see
+            // the new payload, including a source deleted and reimported in place.
+            Registry->MarkStale(uuid);
+            Registry->MarkStale(hierarchy_uuid);
+        }
+        (void) Registry->SetState(uuid, AssetState::Loaded);
+        (void) Registry->SetState(hierarchy_uuid, AssetState::Loaded);
+        return VFSResult<uint32_t>::Ok(draws);
+    }
 
     VFSResult<uint32_t> AssetManager::LoadMeshAsset(IVFSContext& vfs, const uuids::uuid& uuid, const AssetCodec::MeshAssetReadLimits& limits, const std::atomic<bool>* cancelled)
     {
@@ -800,63 +907,30 @@ namespace ZEngine::Managers
                 return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
         }
 
-        auto storage = ZEngine::Helpers::Scope<MeshCacheAllocation>(new (std::nothrow) MeshCacheAllocation{});
-        if (!storage)
-            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
-        // Mirror the decoder's allocation order/capacities. Allow for the slab
-        // base's different alignment without reserving/clearing unused capacity.
-        if (scratch.m_current_offset > SIZE_MAX - 64)
-            return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
-        const auto bytes = scratch.m_current_offset + 64;
-        storage->Slab    = &ContainerSlab;
-        storage->Block   = ContainerSlab.TryRealloc(nullptr, bytes);
-        if (!storage->Block || !storage->Arena.InitializeBorrowed(storage->Block, bytes, "AssetManager/LoadedMesh"))
-            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
-        auto&              arena     = storage->Arena;
+        {
+            std::lock_guard lock(IngestMutex);
+            if (stopped() || Registry != registry)
+                return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
+            // Avoid a clone if an importer won during decoding.
+            if (TryGetMeshDrawCountLocked(uuid, &draws))
+                return VFSResult<uint32_t>::Ok(draws);
+        }
         AssetMesh          mesh      = {};
         AssetNodeHierarchy hierarchy = {};
-        if (!CopyArray(source.Vertices, mesh.Vertices, arena) || !CopyArray(source.Indices, mesh.Indices, arena) || !CopyArray(source.SubMeshes, mesh.SubMeshes, arena) || !CopyArray(source_hierarchy.Hierarchies, hierarchy.Hierarchies, arena) || !CopyArray(source_hierarchy.LocalTransforms, hierarchy.LocalTransforms, arena) || !CopyArray(source_hierarchy.GlobalTransforms, hierarchy.GlobalTransforms, arena) || !CopyNames(source_hierarchy.Names, hierarchy.Names, arena) || !CopyNames(source_hierarchy.MaterialNames, hierarchy.MaterialNames, arena) ||
-            !CopyMap(source_hierarchy.NodeNames, hierarchy.NodeNames, arena) || !CopyMap(source_hierarchy.NodeMeshes, hierarchy.NodeMeshes, arena) || !CopyMap(source_hierarchy.NodeMaterials, hierarchy.NodeMaterials, arena))
+        // Large payload copies must not hold the lock needed by frame queries.
+        auto               storage   = CloneMesh(ContainerSlab, source, source_hierarchy, mesh, hierarchy);
+        if (!storage)
             return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
-        mesh.MeshUUID               = source.MeshUUID;
-        mesh.BoundsCenter           = source.BoundsCenter;
-        mesh.BoundsRadius           = source.BoundsRadius;
-        mesh.BoundsMin              = source.BoundsMin;
-        mesh.BoundsMax              = source.BoundsMax;
-        mesh.BoundsValid            = source.BoundsValid;
-        hierarchy.MeshUUID          = source_hierarchy.MeshUUID;
-        hierarchy.NodeHierarchyUUID = source_hierarchy.NodeHierarchyUUID;
-
         std::lock_guard lock(IngestMutex);
-        if (stopped())
+        if (stopped() || Registry != registry)
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
-        // A concurrent importer/second load can win while we decode. Placement
-        // reuses that complete binding; it must never replace or mark it stale.
+        // A competing ingestion may also win during staging. Placement reuses
+        // its complete binding; it must never replace or mark that binding stale.
         if (TryGetMeshDrawCountLocked(uuid, &draws))
             return VFSResult<uint32_t>::Ok(draws);
-        if (Registry != registry || MeshToHierarchySlot.contains(uuid))
-            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
-        const auto mesh_slot      = Meshes.size();
-        const auto hierarchy_slot = NodeHierarchies.size();
-        if (mesh_slot >= 0x10000000 || hierarchy_slot >= 0x10000000 || (MeshToHierarchySlot.size() + 1) * 4 > MeshToHierarchySlot.capacity() * 3)
-            return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
-        if (!Meshes.try_reserve(mesh_slot + 1) || !NodeHierarchies.try_reserve(hierarchy_slot + 1) || !MeshCacheAllocations.try_reserve(MeshCacheAllocations.size() + 1))
-            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
-        const auto mesh_handle      = CreateHandle(uint32_t(mesh_slot), AssetType::MESH);
-        const auto hierarchy_handle = CreateHandle(uint32_t(hierarchy_slot), AssetType::MESH_HIERARCHY);
-        if (!registry->TryBindLoadedMesh(expected, hierarchy.NodeHierarchyUUID, mesh_handle, hierarchy_handle))
-            return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
-        draws = uint32_t(mesh.SubMeshes.size());
-        // Capacity is established. No failure/IO/callback between paired registry
-        // publication and these allocation-free, complete CPU descriptor appends.
-        new (&Meshes.m_data[mesh_slot]) AssetMesh(std::move(mesh));
-        ++Meshes.m_size;
-        new (&NodeHierarchies.m_data[hierarchy_slot]) AssetNodeHierarchy(std::move(hierarchy));
-        ++NodeHierarchies.m_size;
-        MeshToHierarchySlot.insert(uuid, uint32_t(hierarchy_slot));
-        MeshCacheAllocations.push(storage.release());
-        (void) registry->SetState(uuid, AssetState::Loaded);
-        (void) registry->SetState(source_hierarchy.NodeHierarchyUUID, AssetState::Loaded);
-        return VFSResult<uint32_t>::Ok(draws);
+        const auto published = PublishMesh(expected, std::move(mesh), std::move(hierarchy), storage.get());
+        if (published.Succeeded())
+            (void) storage.release();
+        return published;
     }
 } // namespace ZEngine::Managers

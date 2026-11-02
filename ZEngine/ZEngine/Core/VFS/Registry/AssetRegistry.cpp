@@ -49,14 +49,19 @@ namespace ZEngine::Core::VFS
         return m_index.TryReadRecord(uuid, out);
     }
 
+    bool AssetRegistry::TryReadRecordByPath(const Core::VFS::VFSPath& path, AssetRecordSnapshot* out) const
+    {
+        return m_index.TryReadRecordByPath(path, out);
+    }
+
     bool AssetRegistry::TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const
     {
         return m_index.TryReadSlot(uuid, type, out);
     }
 
-    bool AssetRegistry::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot)
+    bool AssetRegistry::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy)
     {
-        return m_index.TryBindLoadedMesh(expected, hierarchy, mesh_slot, hierarchy_slot);
+        return m_index.TryBindLoadedMesh(expected, hierarchy, mesh_slot, hierarchy_slot, retained_hierarchy);
     }
 
     bool AssetRegistry::Remove(const uuids::uuid& uuid)
@@ -105,13 +110,14 @@ namespace ZEngine::Core::VFS
             {
                 m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(&uuid, 1));
             }
-            if (m_ready_cb)
+            const AssetRecord* rec = m_index.Access(h);
+            if (rec)
             {
-                const AssetRecord* rec = m_index.Access(h);
-                if (rec)
+                if (m_ready_cb)
                 {
                     m_ready_cb(m_ready_cb_ctx, uuid, rec->SlotHandle);
                 }
+                NotifyReadyListeners(uuid, rec->SlotHandle);
             }
         }
         return ok;
@@ -162,22 +168,133 @@ namespace ZEngine::Core::VFS
         m_reload_cb     = cb;
     }
 
-    void AssetRegistry::SetOnReadyCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetHandle))
+    void AssetRegistry::SetOnReadyCallback(void* ctx, AssetReadyCallback cb)
     {
         m_ready_cb_ctx = ctx;
         m_ready_cb     = cb;
     }
 
-    void AssetRegistry::SetOnStaleCallback(void* ctx, void (*cb)(void*, const uuids::uuid&))
+    void AssetRegistry::SetOnStaleCallback(void* ctx, AssetStaleCallback cb)
     {
         m_stale_cb_ctx = ctx;
         m_stale_cb     = cb;
     }
 
-    void AssetRegistry::SetOnRemovedCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetType))
+    void AssetRegistry::SetOnRemovedCallback(void* ctx, AssetRemovedCallback cb)
     {
         m_removed_cb_ctx = ctx;
         m_removed_cb     = cb;
+    }
+
+    bool AssetRegistry::AddOnReadyListener(void* ctx, AssetReadyCallback cb)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        if (!cb)
+            return false;
+        for (ReadyListener& listener : m_ready_listeners)
+        {
+            if (listener.Callback == cb && listener.Context == ctx)
+            {
+                return true;
+            }
+        }
+        for (ReadyListener& listener : m_ready_listeners)
+        {
+            if (!listener.Callback)
+            {
+                listener = {ctx, cb};
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AssetRegistry::AddOnStaleListener(void* ctx, AssetStaleCallback cb)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        if (!cb)
+            return false;
+        for (StaleListener& listener : m_stale_listeners)
+        {
+            if (listener.Callback == cb && listener.Context == ctx)
+            {
+                return true;
+            }
+        }
+        for (StaleListener& listener : m_stale_listeners)
+        {
+            if (!listener.Callback)
+            {
+                listener = {ctx, cb};
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AssetRegistry::AddOnRemovedListener(void* ctx, AssetRemovedCallback cb)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        if (!cb)
+            return false;
+        for (RemovedListener& listener : m_removed_listeners)
+        {
+            if (listener.Callback == cb && listener.Context == ctx)
+            {
+                return true;
+            }
+        }
+        for (RemovedListener& listener : m_removed_listeners)
+        {
+            if (!listener.Callback)
+            {
+                listener = {ctx, cb};
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AssetRegistry::RemoveOnReadyListener(void* ctx, AssetReadyCallback cb)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        for (ReadyListener& listener : m_ready_listeners)
+        {
+            if (listener.Callback == cb && listener.Context == ctx)
+            {
+                listener = {};
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AssetRegistry::RemoveOnStaleListener(void* ctx, AssetStaleCallback cb)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        for (StaleListener& listener : m_stale_listeners)
+        {
+            if (listener.Callback == cb && listener.Context == ctx)
+            {
+                listener = {};
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AssetRegistry::RemoveOnRemovedListener(void* ctx, AssetRemovedCallback cb)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        for (RemovedListener& listener : m_removed_listeners)
+        {
+            if (listener.Callback == cb && listener.Context == ctx)
+            {
+                listener = {};
+                return true;
+            }
+        }
+        return false;
     }
 
     void AssetRegistry::OnAssetModified(const Core::VFS::VFSPath& path)
@@ -217,12 +334,13 @@ namespace ZEngine::Core::VFS
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(cascade.data(), cascade.size()));
         }
 
-        if (m_stale_cb)
+        for (uint32_t i = 0; i < cascade.size(); ++i)
         {
-            for (uint32_t i = 0; i < cascade.size(); ++i)
+            if (m_stale_cb)
             {
                 m_stale_cb(m_stale_cb_ctx, cascade[i]);
             }
+            NotifyStaleListeners(cascade[i]);
         }
     }
 
@@ -244,6 +362,7 @@ namespace ZEngine::Core::VFS
         {
             m_stale_cb(m_stale_cb_ctx, uuid);
         }
+        NotifyStaleListeners(uuid);
     }
 
     void AssetRegistry::OnAssetDeleted(const Core::VFS::VFSPath& path)
@@ -270,19 +389,45 @@ namespace ZEngine::Core::VFS
             m_reload_cb(m_reload_cb_ctx, std::span<const uuids::uuid>(cascade.data(), cascade.size()));
         }
 
-        if (m_removed_cb)
+        for (uint32_t i = 0; i < cascade.size(); ++i)
         {
-            for (uint32_t i = 0; i < cascade.size(); ++i)
+            AssetRecord* cascade_rec = FindByUUID(cascade[i]);
+            if (!cascade_rec)
             {
-                AssetRecord* cascade_rec = FindByUUID(cascade[i]);
-                if (cascade_rec)
-                {
-                    m_removed_cb(m_removed_cb_ctx, cascade[i], cascade_rec->Type);
-                }
+                continue;
             }
+            if (m_removed_cb)
+            {
+                m_removed_cb(m_removed_cb_ctx, cascade[i], cascade_rec->Type);
+            }
+            NotifyRemovedListeners(cascade[i], cascade_rec->Type);
         }
 
         Remove(rec->UUID);
+    }
+
+    void AssetRegistry::NotifyReadyListeners(const uuids::uuid& uuid, Managers::AssetHandle handle)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        for (const ReadyListener& listener : m_ready_listeners)
+            if (listener.Callback)
+                listener.Callback(listener.Context, uuid, handle);
+    }
+
+    void AssetRegistry::NotifyStaleListeners(const uuids::uuid& uuid)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        for (const StaleListener& listener : m_stale_listeners)
+            if (listener.Callback)
+                listener.Callback(listener.Context, uuid);
+    }
+
+    void AssetRegistry::NotifyRemovedListeners(const uuids::uuid& uuid, Managers::AssetType type)
+    {
+        std::lock_guard lock(m_listener_mutex);
+        for (const RemovedListener& listener : m_removed_listeners)
+            if (listener.Callback)
+                listener.Callback(listener.Context, uuid, type);
     }
 
     void AssetRegistry::OnAssetRenamed(const Core::VFS::VFSPath& old_path, const Core::VFS::VFSPath& new_path)

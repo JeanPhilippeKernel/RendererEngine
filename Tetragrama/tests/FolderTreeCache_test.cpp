@@ -25,6 +25,11 @@ namespace Tetragrama::Panels
 {
     struct ProjectViewPanelTestAccess
     {
+        static bool Complete(void*, void* context, void (*run)(void*))
+        {
+            run(context);
+            return true;
+        }
         static const char* Category(const char* name)
         {
             return ProjectViewPanel::TypeCategory(name);
@@ -72,6 +77,14 @@ namespace Tetragrama::Panels
         static int DrawGrid(ProjectViewPanel& panel, ZEngine::UI::ZUIContext& ctx, float width, float height)
         {
             return panel.DrawGrid(&ctx, width, height);
+        }
+        static void DrawThumbnailImage(ZEngine::UI::ZUIContext& ctx, uint32_t texture_index, float scale)
+        {
+            ProjectViewPanel::DrawThumbnailImage(&ctx, "##preview", texture_index, scale);
+        }
+        static void DrawTransparentPlaceholder(ZEngine::UI::ZUIContext& ctx, float scale)
+        {
+            ProjectViewPanel::DrawTransparentPlaceholder(&ctx, scale);
         }
         static void Select(ProjectViewPanel& panel, const char* path)
         {
@@ -131,6 +144,10 @@ namespace Tetragrama::Panels
         {
             panel.RefreshListing(vfs);
         }
+        static void ListingExecutor(ProjectViewPanel& panel, DirectoryListing::Submitter submit, void* context)
+        {
+            panel.m_grid_listing.SetSubmitter(submit, context);
+        }
         static void FilterUI(ProjectViewPanel& panel, ZEngine::UI::ZUIContext& ctx)
         {
             panel.DrawFilterControl(&ctx);
@@ -138,7 +155,10 @@ namespace Tetragrama::Panels
         }
         static void Listing(ProjectViewPanel& panel, const ZEngine::Core::Containers::Array<VFSDirEntry>& entries)
         {
-            panel.CacheListing(entries);
+            uint32_t count = 0;
+            DirectoryListing::Prepare(entries, panel.m_entries, panel.kMaxEntries, count, panel.m_truncated);
+            panel.m_nentries = static_cast<int>(count);
+            panel.m_listing_valid = true;
         }
         static int EntryCount(const ProjectViewPanel& panel)
         {
@@ -178,7 +198,7 @@ namespace Tetragrama::Panels
             ProjectViewPanel::Entry b = {};
             ZEngine::Helpers::secure_strcpy(a.name, sizeof(a.name), left);
             ZEngine::Helpers::secure_strcpy(b.name, sizeof(b.name), right);
-            return ProjectViewPanel::EntryLess(a, b);
+            return DirectoryListing::EntryLess(a, b);
         }
         static void Shortcuts(ProjectViewPanel& panel, ZEngine::UI::ZUIContext& ctx, const ZEngine::UI::ZUIBox* root)
         {
@@ -202,6 +222,7 @@ namespace Tetragrama::Panels
         }
         static FolderTreeCache& Cache(ProjectViewPanel& panel)
         {
+            panel.m_folder_tree.Listings.SetSubmitter(&Complete);
             return panel.m_folder_tree;
         }
         static const char* CurrentDirectory(const ProjectViewPanel& panel)
@@ -210,6 +231,7 @@ namespace Tetragrama::Panels
         }
         static void Draw(ProjectViewPanel& panel, ZEngine::UI::ZUIContext& ctx, IVFSContext& vfs, const char* query)
         {
+            Cache(panel);
             snprintf(panel.m_folder_search, sizeof(panel.m_folder_search), "%s", query);
             panel.DrawSourcesTree(&ctx, &vfs);
         }
@@ -321,6 +343,27 @@ namespace
                     result.push({{}, path.Value(), true});
             }
             return VFSResult<ZEngine::Core::Containers::Array<VFSDirEntry>>::Ok(std::move(result));
+        }
+    };
+
+    struct DeferredListing
+    {
+        void* Context = nullptr;
+        void (*Run)(void*) = nullptr;
+        static bool Submit(void* self, void* context, void (*run)(void*))
+        {
+            auto& queue = *static_cast<DeferredListing*>(self);
+            EXPECT_EQ(queue.Run, nullptr);
+            queue.Context = context;
+            queue.Run = run;
+            return true;
+        }
+        void Complete()
+        {
+            auto run = Run;
+            Run = nullptr;
+            ASSERT_NE(run, nullptr);
+            run(Context);
         }
     };
 } // namespace
@@ -474,6 +517,7 @@ protected:
         memory.Initialize(ZMega(64), {});
         memory.MainArena.CreateSubArena(ZMega(32), &scratch, "FolderTreeCacheTest");
         cache           = std::make_unique<FolderTreeCache>();
+        cache->Listings.SetSubmitter(&Tetragrama::Panels::ProjectViewPanelTestAccess::Complete);
         vfs.Directories = {"/Assets", "/Assets/Models", "/Assets/Models/Spaceship", "/Other", "/.hidden"};
     }
     const FolderTreeCache::Node* Find(const char* path)
@@ -484,6 +528,67 @@ protected:
         return nullptr;
     }
 };
+
+TEST_F(FolderTreeCacheTest, TexturePreviewsKeepSquareGeometryAndFileOrientationAtEveryTileScale)
+{
+    using namespace ZEngine::UI;
+    using Access   = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    ZUIContext ctx = {};
+    ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
+    ctx.ScreenW = 400;
+    ctx.ScreenH = 300;
+    for (const float scale : {.75f, 1.f, 1.5f})
+    {
+        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        auto* area      = ZUIBeginColumn(&ctx, "thumbnail-area", ZPx(110.f * scale), ZPx(79.f * scale));
+        area->MainAlign = area->CrossAlign = ZUIAlign::Center;
+        Access::DrawThumbnailImage(ctx, 17, scale);
+        ZUIEndColumn(&ctx);
+        ZUIEndFrame(&ctx);
+        const auto* image = FindBox(ctx.Root, "##preview");
+        ASSERT_NE(image, nullptr);
+        ASSERT_NE(image->Parent, nullptr);
+        EXPECT_NE(image->Parent->CustomDraw, nullptr);
+        EXPECT_EQ(image->TextureIndex, 17u);
+        EXPECT_TRUE(image->TextureFlipV);
+        EXPECT_FLOAT_EQ(image->ComputedSize[0], 79.f * scale);
+        EXPECT_FLOAT_EQ(image->ComputedSize[1], 79.f * scale);
+        EXPECT_NEAR((image->ScreenMin[0] + image->ScreenMax[0]) * .5f, (area->ScreenMin[0] + area->ScreenMax[0]) * .5f, .01f);
+        EXPECT_NEAR((image->ScreenMin[1] + image->ScreenMax[1]) * .5f, (area->ScreenMin[1] + area->ScreenMax[1]) * .5f, .01f);
+    }
+    ZUIContextDestroy(&ctx);
+}
+
+TEST_F(FolderTreeCacheTest, FullyTransparentPlaceholderExplainsInvisibleMaterialsAtEveryTileScale)
+{
+    using namespace ZEngine::UI;
+    using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    ZUIContext ctx;
+    ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
+    BrowserTestFonts fonts;
+    ctx.Atlas   = &fonts.atlas;
+    ctx.ScreenW = 400;
+    ctx.ScreenH = 300;
+    for (float scale : {.75f, 1.f, 1.5f})
+    {
+        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        auto* area      = ZUIBeginColumn(&ctx, "transparent-area", ZPx(110.f * scale), ZPx(79.f * scale));
+        area->MainAlign = area->CrossAlign = ZUIAlign::Center;
+        Access::DrawTransparentPlaceholder(ctx, scale);
+        ZUIEndColumn(&ctx);
+        ZUIEndFrame(&ctx);
+        const auto* label = FindBox(ctx.Root, "Fully transparent");
+        ASSERT_NE(label, nullptr);
+        EXPECT_EQ(BoxLabel(label), "Fully transparent");
+        EXPECT_FLOAT_EQ(label->TextScale, scale);
+        EXPECT_EQ(label->FontSize, ZUIFontSize::Small);
+        EXPECT_GE(label->ScreenMin[0], area->ScreenMin[0]);
+        EXPECT_LE(label->ScreenMax[0], area->ScreenMax[0]);
+        EXPECT_GE(label->ScreenMin[1], area->ScreenMin[1]);
+        EXPECT_LE(label->ScreenMax[1], area->ScreenMax[1]);
+    }
+    ZUIContextDestroy(&ctx);
+}
 
 TEST_F(FolderTreeCacheTest, CachedListingSortsFoldersFirstNaturallyAndSkipsOnlyFilesForMetaSidecars)
 {
@@ -1016,29 +1121,29 @@ TEST_F(FolderTreeCacheTest, CachedListingStaysBoundedWhenTheDirectoryExceedsCapa
     using Access                                          = Tetragrama::Panels::ProjectViewPanelTestAccess;
     auto                                          panel   = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
     ZEngine::Core::Containers::Array<VFSDirEntry> listing = {};
-    listing.init(&scratch, 600);
-    for (int i = 0; i < 600; ++i)
+    listing.init(&scratch, 4200);
+    for (int i = 0; i < 4200; ++i)
     {
         char path[VFS_MAX_PATH] = {};
         snprintf(path, sizeof(path), "/Asset_%d.txt", i);
         listing.push({{}, VFSPath::Parse(path).Value(), false});
     }
     Access::Listing(*panel, listing);
-    ASSERT_EQ(Access::EntryCount(*panel), 512);
+    ASSERT_EQ(Access::EntryCount(*panel), 4096);
     EXPECT_TRUE(Access::Truncated(*panel));
     EXPECT_STREQ(Access::EntryName(*panel, 0), "Asset_0.txt");
-    EXPECT_STREQ(Access::EntryName(*panel, 511), "Asset_511.txt");
+    EXPECT_STREQ(Access::EntryName(*panel, 4095), "Asset_4095.txt");
     ZEngine::UI::ZUIContext ctx   = {};
     BrowserTestFonts        fonts = {};
     ZEngine::UI::ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
     ctx.Atlas = &fonts.atlas;
     ZEngine::UI::ZUIBeginFrame(&ctx, 1.f / 60.f);
     ZEngine::UI::ZUIBeginColumn(&ctx, "root", ZEngine::UI::ZPx(560), ZEngine::UI::ZPx(26));
-    Access::Status(*panel, ctx, 512, 560.f);
+    Access::Status(*panel, ctx, 4096, 560.f);
     ZEngine::UI::ZUIEndColumn(&ctx);
     const auto* count = FindBox(ctx.Root, "##pv_status_count");
     ASSERT_NE(count, nullptr);
-    EXPECT_EQ(BoxLabel(count), "512+ items");
+    EXPECT_EQ(BoxLabel(count), "4096+ items");
     constexpr float orange[4] = ZUI_TOKEN(ZEngine::UI::Tokens::AccentOrange);
     for (int c = 0; c < 4; ++c)
         EXPECT_FLOAT_EQ(count->TextColor[c], orange[c]);
@@ -1050,8 +1155,8 @@ TEST_F(FolderTreeCacheTest, ListingOverflowRequiresARealExtraEntryAndResetsOnNav
     using Access                                          = Tetragrama::Panels::ProjectViewPanelTestAccess;
     auto                                          panel   = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
     ZEngine::Core::Containers::Array<VFSDirEntry> listing = {};
-    listing.init(&scratch, 640);
-    for (int i = 0; i < 512; ++i)
+    listing.init(&scratch, 4224);
+    for (int i = 0; i < 4096; ++i)
     {
         char path[VFS_MAX_PATH] = {};
         snprintf(path, sizeof(path), "/Asset_%d.txt", i);
@@ -1066,7 +1171,7 @@ TEST_F(FolderTreeCacheTest, ListingOverflowRequiresARealExtraEntryAndResetsOnNav
         listing.push({{}, VFSPath::Parse(path).Value(), false});
     }
     Access::Listing(*panel, listing);
-    EXPECT_EQ(Access::EntryCount(*panel), 512);
+    EXPECT_EQ(Access::EntryCount(*panel), 4096);
     EXPECT_FALSE(Access::Truncated(*panel));
     listing.push({{}, VFSPath::Parse("/folder.meta").Value(), true}); // A directory is not a sidecar.
     Access::Listing(*panel, listing);
@@ -1174,7 +1279,7 @@ TEST_F(FolderTreeCacheTest, ThumbnailExtremesScaleTheWholeTileReflowAndKeepVirtu
     using namespace ZEngine::UI;
     using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
     auto panel   = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
-    Access::PopulateGrid(*panel, 512);
+    Access::PopulateGrid(*panel, 2048);
     BrowserTestFonts fonts = {};
     ZUIContext       ctx   = {};
     ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
@@ -1185,7 +1290,7 @@ TEST_F(FolderTreeCacheTest, ThumbnailExtremesScaleTheWholeTileReflowAndKeepVirtu
         Access::ThumbnailScale(*panel, scale);
         ZUIBeginFrame(&ctx, 1.f / 60.f);
         ZUIBeginColumn(&ctx, "root", ZPx(339), ZPx(190));
-        EXPECT_EQ(Access::DrawGrid(*panel, ctx, 327.f, 190.f), 512);
+        EXPECT_EQ(Access::DrawGrid(*panel, ctx, 327.f, 190.f), 2048);
         ZUIEndColumn(&ctx);
         ZUILayoutSolve(&ctx);
         const auto* tile = FindBox(ctx.Root, "##pvc_0");
@@ -1661,7 +1766,7 @@ TEST_F(FolderTreeCacheTest, LargeAssetGridsBuildOnlyVisibleRowsAndPreserveFullSc
     using namespace ZEngine::UI;
     using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
     auto panel   = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
-    Access::PopulateGrid(*panel, 512);
+    Access::PopulateGrid(*panel, 2048);
     ZUIContext ctx = {};
     ZUIContextInit(&ctx, &memory.MainArena, ZMega(16), ZMega(2), 8192, 8192);
     ctx.Style.ReducedMotion = true;
@@ -1670,21 +1775,21 @@ TEST_F(FolderTreeCacheTest, LargeAssetGridsBuildOnlyVisibleRowsAndPreserveFullSc
     auto* scroll            = ZUIStateGetOrInsert(&ctx.StateStore, ZUIHashStr("##pv_grid_scroll", 16));
     for (int columns : {1, 2, 8})
     {
-        const float content_height = 25.f + ((512 + columns - 1) / columns) * 138.f;
+        const float content_height = 25.f + ((2048 + columns - 1) / columns) * 138.f;
         for (float fraction : {0.f, .5f, 1.f})
         {
             scroll->MaxScrollY = content_height - 300.f;
             scroll->ScrollY = scroll->ScrollYTarget = scroll->MaxScrollY * fraction;
             ZUIBeginFrame(&ctx, 1.f / 60.f);
             ZUIBeginColumn(&ctx, "root", ZPx(columns * 120.f + 12.f), ZPx(300.f));
-            EXPECT_EQ(Access::DrawGrid(*panel, ctx, columns * 120.f, 300.f), 512);
+            EXPECT_EQ(Access::DrawGrid(*panel, ctx, columns * 120.f, 300.f), 2048);
             ZUIEndColumn(&ctx);
             ZUIEndFrame(&ctx);
             EXPECT_FLOAT_EQ(scroll->MaxScrollY, content_height - 300.f);
             EXPECT_LT(CountBoxes(ctx.Root), static_cast<uint32_t>(columns * 60 + 30));
             EXPECT_LT(ctx.FrameArena.m_current_offset, ZMega(1));
             if (fraction == 1.f)
-                EXPECT_NE(FindBox(ctx.Root, ZUIHashStr("##pvc_511", 9)), nullptr);
+                EXPECT_NE(FindBox(ctx.Root, ZUIHashStr("##pvc_2047", 10)), nullptr);
         }
     }
     EXPECT_LE(ctx.StateStore.Count, 512u + 16u);
@@ -2241,9 +2346,72 @@ TEST_F(ContentBrowserFileTest, EmptyNamesDisableSubmissionAndKeyboardCancelNever
     ZUIContextDestroy(&ctx);
 }
 
+TEST_F(FolderTreeCacheTest, AsyncGridDiscardsCompletedOldNavigationBeforePublishing)
+{
+    using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    auto panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
+    DeferredListing queue;
+    Access::ListingExecutor(*panel, &DeferredListing::Submit, &queue);
+    Access::Navigate(*panel, "/Assets");
+    Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(vfs.Calls, 0u);
+    queue.Complete();
+    Access::Select(*panel, "/Assets/Models");
+    Access::Navigate(*panel, "/Other");
+    EXPECT_STREQ(Access::SelectedPath(*panel), "");
+    EXPECT_EQ(Access::EntryCount(*panel), 0);
+    Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(Access::EntryCount(*panel), 0); // Old Assets result cannot flash or receive input.
+    queue.Complete();
+    Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(Access::EntryCount(*panel), 0); // Other is genuinely empty.
+    EXPECT_EQ(vfs.Calls, 2u);
+    panel->ShutdownListingsAfterWorkersJoined();
+}
+
+TEST_F(FolderTreeCacheTest, AsyncGridShowsLoadingAndFailureSeparatelyFromEmptyAndCanRetry)
+{
+    using namespace ZEngine::UI;
+    using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    auto panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
+    DeferredListing queue;
+    Access::ListingExecutor(*panel, &DeferredListing::Submit, &queue);
+    Access::Navigate(*panel, "/Other");
+    Access::RefreshListing(*panel, &vfs);
+    ZUIContext ctx = {};
+    ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
+    ctx.ScreenW = 500;
+    ctx.ScreenH = 500;
+    const auto message = [&]() {
+        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        Access::DrawGrid(*panel, ctx, 500.f, 400.f);
+        ZUIEndFrame(&ctx);
+        const auto* title = FindBox(ctx.Root, "##pv_empty_title");
+        return title ? std::string(BoxLabel(title)) : std::string{};
+    };
+    EXPECT_EQ(message(), "Loading folder...");
+    vfs.Fail = true;
+    queue.Complete();
+    Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(message(), "Could not load this folder");
+    EXPECT_NE(FindBox(ctx.Root, "Retry##pv_retry_listing"), nullptr);
+    const auto calls = vfs.Calls;
+    for (int i = 0; i < 20; ++i) Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(vfs.Calls, calls);
+    vfs.Fail = false;
+    panel->RequestRefresh();
+    Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(message(), "Loading folder...");
+    queue.Complete();
+    Access::RefreshListing(*panel, &vfs);
+    EXPECT_EQ(message(), "This folder is empty");
+    panel->ShutdownListingsAfterWorkersJoined();
+    ZUIContextDestroy(&ctx);
+}
+
 TEST_F(FolderTreeCacheTest, SearchFindsCollapsedDescendantsAndRetainsAncestorsCaseInsensitively)
 {
-    cache->UpdateSearch(vfs, scratch, "SPACESHIP");
+    cache->UpdateSearch(vfs, "SPACESHIP");
     ASSERT_NE(Find("/Assets/Models/Spaceship"), nullptr);
     EXPECT_TRUE(Find("/Assets/Models/Spaceship")->Visible);
     EXPECT_TRUE(Find("/Assets/Models")->Visible);
@@ -2256,14 +2424,14 @@ TEST_F(FolderTreeCacheTest, SearchFindsCollapsedDescendantsAndRetainsAncestorsCa
 TEST_F(FolderTreeCacheTest, QueryChangesAndIdleFramesReuseListings)
 {
     const auto scratch_offset = scratch.m_current_offset;
-    cache->UpdateSearch(vfs, scratch, "Spaceship");
+    cache->UpdateSearch(vfs, "Spaceship");
     const auto calls = vfs.Calls;
     for (int i = 0; i < 100; ++i)
-        cache->UpdateSearch(vfs, scratch, "Spaceship");
-    cache->UpdateSearch(vfs, scratch, "other");
+        cache->UpdateSearch(vfs, "Spaceship");
+    cache->UpdateSearch(vfs, "other");
     EXPECT_FALSE(Find("/Assets")->Visible);
     EXPECT_TRUE(Find("/Other")->Visible);
-    cache->UpdateSearch(vfs, scratch, "");
+    cache->UpdateSearch(vfs, "");
     EXPECT_TRUE(Find("/Assets")->Visible);
     EXPECT_EQ(vfs.Calls, calls);
     EXPECT_EQ(scratch.m_current_offset, scratch_offset);
@@ -2271,7 +2439,7 @@ TEST_F(FolderTreeCacheTest, QueryChangesAndIdleFramesReuseListings)
 
 TEST_F(FolderTreeCacheTest, DiscoveryIsBudgetedAndIndicesStayStableAcrossFrames)
 {
-    cache->UpdateSearch(vfs, scratch, "Spaceship", 1);
+    cache->UpdateSearch(vfs, "Spaceship", 1);
     EXPECT_EQ(vfs.Calls, 1u);
     EXPECT_TRUE(cache->Searching());
     const auto* assets = Find("/Assets");
@@ -2279,7 +2447,7 @@ TEST_F(FolderTreeCacheTest, DiscoveryIsBudgetedAndIndicesStayStableAcrossFrames)
     for (int frame = 0; frame < 10 && cache->Searching(); ++frame)
     {
         const auto calls = vfs.Calls;
-        cache->UpdateSearch(vfs, scratch, "Spaceship", 1);
+        cache->UpdateSearch(vfs, "Spaceship", 1);
         EXPECT_LE(vfs.Calls - calls, 1u);
         EXPECT_EQ(Find("/Assets"), assets);
     }
@@ -2289,10 +2457,10 @@ TEST_F(FolderTreeCacheTest, DiscoveryIsBudgetedAndIndicesStayStableAcrossFrames)
 
 TEST_F(FolderTreeCacheTest, RefreshInvalidatesCachedListingsAndFilters)
 {
-    cache->UpdateSearch(vfs, scratch, "Spaceship");
+    cache->UpdateSearch(vfs, "Spaceship");
     vfs.Directories = {"/Other"};
     cache->Invalidate();
-    cache->UpdateSearch(vfs, scratch, "Spaceship");
+    cache->UpdateSearch(vfs, "Spaceship");
     EXPECT_EQ(Find("/Assets"), nullptr);
     ASSERT_NE(Find("/Other"), nullptr);
     EXPECT_FALSE(Find("/Other")->Visible);
@@ -2301,13 +2469,13 @@ TEST_F(FolderTreeCacheTest, RefreshInvalidatesCachedListingsAndFilters)
 TEST_F(FolderTreeCacheTest, FailedListingsAreNotRetriedEveryFrame)
 {
     vfs.Fail = true;
-    cache->UpdateSearch(vfs, scratch, "Spaceship");
+    cache->UpdateSearch(vfs, "Spaceship");
     EXPECT_TRUE(cache->Incomplete);
-    cache->UpdateSearch(vfs, scratch, "Spaceship");
+    cache->UpdateSearch(vfs, "Spaceship");
     EXPECT_EQ(vfs.Calls, 1u);
     vfs.Fail = false;
     cache->Invalidate();
-    cache->UpdateSearch(vfs, scratch, "Spaceship");
+    cache->UpdateSearch(vfs, "Spaceship");
     EXPECT_FALSE(cache->Incomplete);
     EXPECT_NE(Find("/Assets/Models/Spaceship"), nullptr);
 }
@@ -2317,24 +2485,24 @@ TEST_F(FolderTreeCacheTest, CapacityIsBoundedAndOverflowIsReported)
     vfs.Directories.clear();
     for (uint32_t i = 0; i < FolderTreeCache::Capacity + 8; ++i)
         vfs.Directories.push_back("/Folder" + std::to_string(i));
-    cache->UpdateSearch(vfs, scratch, "Folder", 1);
+    cache->UpdateSearch(vfs, "Folder", 1);
     EXPECT_EQ(cache->Count, FolderTreeCache::Capacity);
     EXPECT_TRUE(cache->Incomplete);
     EXPECT_EQ(vfs.Calls, 1u);
-    cache->UpdateSearch(vfs, scratch, "Folder");
+    cache->UpdateSearch(vfs, "Folder");
     EXPECT_FALSE(cache->Searching());
     EXPECT_EQ(vfs.Calls, 1u);
 }
 
 TEST_F(FolderTreeCacheTest, EmptyAndOversizedQueriesAreSafeAndReuseListings)
 {
-    cache->UpdateSearch(vfs, scratch, nullptr);
+    cache->UpdateSearch(vfs, nullptr);
     EXPECT_FALSE(cache->Searching());
     EXPECT_TRUE(Find("/Assets")->Visible);
     const std::string query(1024, 'x');
-    cache->UpdateSearch(vfs, scratch, query.c_str());
+    cache->UpdateSearch(vfs, query.c_str());
     const auto calls = vfs.Calls;
-    cache->UpdateSearch(vfs, scratch, query.c_str());
+    cache->UpdateSearch(vfs, query.c_str());
     EXPECT_EQ(vfs.Calls, calls);
     EXPECT_FALSE(Find("/Assets")->Visible);
 }
@@ -2427,7 +2595,7 @@ TEST_F(FolderTreeCacheTest, LargeTreesVirtualizeRowsPreserveScrollHeightAndBound
     vfs.Directories.clear();
     for (uint32_t i = 0; i < FolderTreeCache::Capacity - 1; ++i)
         vfs.Directories.push_back("/Folder" + std::to_string(i));
-    Access::Cache(*panel).UpdateSearch(vfs, scratch, "Folder");
+    Access::Cache(*panel).UpdateSearch(vfs, "Folder");
 
     ZUIContext       ctx   = {};
     BrowserTestFonts fonts = {};
@@ -2462,7 +2630,10 @@ TEST_F(FolderTreeCacheTest, LargeTreesVirtualizeRowsPreserveScrollHeightAndBound
                 for (auto* child = row->FirstChild; child; child = child->NextSib)
                     ++boxes;
             }
-            EXPECT_FLOAT_EQ(height, (float) (FolderTreeCache::Capacity - (query[0] ? 1 : 0)) * 23.f + 20.f);
+            // Capacity makes this index incomplete. Both the warning and its
+            // explicit retry control contribute to the scrollable height.
+            EXPECT_NE(FindBox(ctx.Root, "Retry folders##pv_src_retry"), nullptr);
+            EXPECT_FLOAT_EQ(height, (float) (FolderTreeCache::Capacity - (query[0] ? 1 : 0)) * 23.f + 20.f + Metrics::HeightControl);
             EXPECT_LT(boxes, 200u);
             EXPECT_LE(ctx.StateStore.Count, FolderTreeCache::Capacity + 16);
         }

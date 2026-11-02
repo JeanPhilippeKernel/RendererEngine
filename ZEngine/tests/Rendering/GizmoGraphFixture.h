@@ -1,10 +1,67 @@
 #pragma once
+#include <future>
 
 // Private extension of the offscreen bootstrap in GpuAllocatorTest.cpp. The
 // production graph owns registration, compilation, targets, barriers, backend
 // pipeline creation, framebuffer resolution and primary/secondary execution.
 namespace
 {
+    // A failing implementation must not hang the suite: the watchdog releases
+    // background worker zero after five seconds, but that is a test failure.
+    struct GizmoBackgroundGate
+    {
+        std::mutex Mutex;
+        std::condition_variable CV;
+        bool Started = false;
+        bool Released = false;
+        bool Finished = false;
+        std::promise<void> RenderFinished;
+        std::future<void> Watchdog;
+        bool Submitted = false;
+        bool CompletedBeforeRelease = false;
+
+        GizmoBackgroundGate()
+        {
+            Submitted = ZEngine::Helpers::ThreadPoolHelper::SubmitToWorker(0, this, +[](void* context) {
+                auto& gate = *static_cast<GizmoBackgroundGate*>(context);
+                std::unique_lock lock(gate.Mutex);
+                gate.Started = true;
+                gate.CV.notify_all();
+                gate.CV.wait(lock, [&] { return gate.Released; });
+                gate.Finished = true;
+                gate.CV.notify_all();
+            });
+            Watchdog = std::async(std::launch::async, [this] {
+                CompletedBeforeRelease = RenderFinished.get_future().wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+                std::lock_guard lock(Mutex);
+                Released = true;
+                CV.notify_all();
+            });
+        }
+        bool WaitForStart()
+        {
+            std::unique_lock lock(Mutex);
+            return CV.wait_for(lock, std::chrono::seconds(2), [&] { return Started; });
+        }
+        void FinishRendering()
+        {
+            if (Watchdog.valid())
+            {
+                RenderFinished.set_value();
+                Watchdog.get();
+            }
+        }
+        ~GizmoBackgroundGate()
+        {
+            FinishRendering();
+            if (Submitted)
+            {
+                std::unique_lock lock(Mutex);
+                CV.wait(lock, [&] { return Finished; });
+            }
+        }
+    };
+
     struct GizmoGraphClearPass final : Renderers::IRenderGraphCallbackPass
     {
         Renderers::GizmoPass*       Template = nullptr;
@@ -182,6 +239,7 @@ namespace
             ASSERT_NO_FATAL_FAILURE(Initialize(pass, binaries, true, recipe.LabelShader));
             Device->GlobalTextures.Initialize(&Arena, 8);
             Device->ImageBufferManager.Initialize(&Arena, 8);
+            Device->ImageViewCacheSlab.Init(&Arena, ZKilo(64));
             Device->MaxGlobalTexture               = 8;
             Device->PhysicalDeviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
             vkGetPhysicalDeviceProperties2(Vulkan.PhysicalDevice, &Device->PhysicalDeviceProperties);
@@ -353,10 +411,10 @@ namespace
                 SCOPED_TRACE(step);
                 frame->TriangleCount = frame->LineCount = frame->SpriteCount = 1;
                 frame->Triangles[0]                                          = {
-                    .A = { -.9f, -.8f, .5f},
-                      .B = { -.2f, -.8f, .5f},
-                      .C = {-.55f, .15f, .5f},
-                      .Color = colors[step % 3]
+                                                             .A = { -.9f, -.8f, .5f},
+                                                               .B = { -.2f, -.8f, .5f},
+                                                               .C = {-.55f, .15f, .5f},
+                                                               .Color = colors[step % 3]
                 };
                 frame->Lines[0] = {
                     .A = { .2f, -.5f, .5f},
@@ -367,7 +425,18 @@ namespace
                     .Position = {.5f, .5f, .5f},
                       .Size = 12.f, .Fill = colors[(step + 2) % 3]
                 };
-                ASSERT_NO_FATAL_FAILURE(owner.RenderGraphFrame(*frame, step % 3, step < 6 ? 96 : 128, step < 6 ? 64 : 96, step % 2 != 0));
+                if (step == 1)
+                {
+                    GizmoBackgroundGate gate;
+                    ASSERT_TRUE(gate.Submitted);
+                    ASSERT_TRUE(gate.WaitForStart());
+                    ASSERT_NO_FATAL_FAILURE(owner.RenderGraphFrame(*frame, step % 3, 96, 64, true));
+                    gate.FinishRendering();
+                    EXPECT_TRUE(gate.CompletedBeforeRelease);
+                    // Destructor still owns joining the held background task.
+                }
+                else
+                    ASSERT_NO_FATAL_FAILURE(owner.RenderGraphFrame(*frame, step % 3, step < 6 ? 96 : 128, step < 6 ? 64 : 96, step % 2 != 0));
                 EXPECT_EQ(owner.Pixel(-.55f, -.5f), frame->Triangles[0].Color);
                 EXPECT_EQ(owner.Pixel(.5f, -.5f), frame->Lines[0].Color);
                 EXPECT_EQ(owner.Pixel(.5f, .5f), frame->Sprites[0].Fill);

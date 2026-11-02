@@ -37,39 +37,62 @@ namespace Tetragrama::Panels
         m_scan           = 0;
         m_filtered_count = None;
         Incomplete       = false;
+        m_pending_parent = None;
+        Listings.Invalidate();
     }
 
-    void FolderTreeCache::LoadChildren(IVFSContext& vfs, ZEngine::Core::Memory::ArenaAllocator& scratch, uint32_t parent)
+    void FolderTreeCache::LoadChildren(IVFSContext& vfs, uint32_t parent)
     {
         if (!Count)
             Invalidate();
+        PollChildren();
         if (parent >= Count || Nodes[parent].Loaded)
             return;
-        Node& node  = Nodes[parent];
-        node.Loaded = true;
-        if (node.Depth >= VFS_MAX_COMPONENTS)
+        if (m_pending_parent != None)
             return;
+        Node& node = Nodes[parent];
+        if (node.Depth >= VFS_MAX_COMPONENTS)
+        {
+            node.Loaded = true;
+            return;
+        }
         if (Count == Capacity)
         {
-            Incomplete = true;
+            Incomplete  = true;
+            node.Loaded = true;
             return;
         }
         auto path = VFSPath::Parse(node.Path);
         if (path.Failed())
         {
-            Incomplete = true;
+            Incomplete  = true;
+            node.Loaded = true;
             return;
         }
-        auto temp    = ZGetScratch(&scratch);
-        auto entries = vfs.List(path.Value(), &scratch);
-        if (entries.Succeeded())
+        m_pending_parent = parent;
+        Listings.Request(vfs, path.Value(), true);
+        PollChildren();
+    }
+
+    void FolderTreeCache::PollChildren()
+    {
+        const auto* result = Listings.Poll();
+        if (m_pending_parent == None)
+            return;
+        if (!result && Listings.GetStatus() != DirectoryListing::Status::Failed)
+            return;
+        const uint32_t parent = m_pending_parent;
+        m_pending_parent      = None;
+        Node& node            = Nodes[parent];
+        node.Loaded           = true; // Failures require explicit refresh, never a frame retry storm.
+        if (result && result->Succeeded)
         {
-            for (const auto& entry : entries.Value())
+            Incomplete |= result->Truncated;
+            for (uint32_t i = 0; i < result->Count; ++i)
             {
-                const auto name = entry.Path.Filename();
-                if (!entry.IsDirectory || name.Empty() || name.Data[0] == '.' || entry.Path.Parent() != path.Value())
-                    continue;
-                if (entry.Path.Length() >= sizeof(Node::Path) || Count == Capacity)
+                const auto&  entry  = result->Entries[i];
+                const size_t length = ZEngine::Helpers::secure_strlen(entry.full_path);
+                if (length >= sizeof(Node::Path) || Count == Capacity)
                 {
                     Incomplete = true;
                     continue;
@@ -77,8 +100,8 @@ namespace Tetragrama::Panels
                 const uint32_t index = Count++;
                 Node&          child = Nodes[index];
                 child                = {};
-                ZEngine::Helpers::secure_memcpy(child.Path, sizeof(child.Path), entry.Path.CStr(), entry.Path.Length() + 1);
-                child.NameOffset  = (uint16_t) (entry.Path.Length() - name.Length);
+                ZEngine::Helpers::secure_memcpy(child.Path, sizeof(child.Path), entry.full_path, length + 1);
+                child.NameOffset  = (uint16_t) (length - ZEngine::Helpers::secure_strlen(entry.name));
                 child.Parent      = parent;
                 child.Depth       = node.Depth + 1;
                 child.PrevSibling = node.LastChild;
@@ -91,13 +114,13 @@ namespace Tetragrama::Panels
         }
         else
             Incomplete = true;
-        ZReleaseScratch(temp);
     }
 
-    void FolderTreeCache::UpdateSearch(IVFSContext& vfs, ZEngine::Core::Memory::ArenaAllocator& scratch, const char* query, uint32_t listing_budget)
+    void FolderTreeCache::UpdateSearch(IVFSContext& vfs, const char* query, uint32_t listing_budget)
     {
         if (!Count)
             Invalidate();
+        PollChildren();
         char next_query[sizeof(m_query)] = {};
         snprintf(next_query, sizeof(next_query), "%s", query ? query : "");
         const bool changed = ZEngine::Helpers::secure_strcmp(m_query, next_query) != 0;
@@ -120,14 +143,16 @@ namespace Tetragrama::Panels
                 {
                     if (listed == listing_budget)
                         break;
-                    LoadChildren(vfs, scratch, m_scan);
+                    LoadChildren(vfs, m_scan);
                     ++listed;
+                    if (!Nodes[m_scan].Loaded)
+                        break; // A pending async request must not advance the cursor.
                 }
                 ++m_scan;
             }
         }
         else
-            LoadChildren(vfs, scratch, 0);
+            LoadChildren(vfs, 0);
 
         if (!changed && m_filtered_count == Count)
             return;

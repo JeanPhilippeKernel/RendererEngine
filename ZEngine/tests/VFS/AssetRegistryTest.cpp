@@ -2,9 +2,12 @@
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <future>
 #include <random>
+#include <thread>
 
 using namespace ZEngine;
 using namespace ZEngine::Core::VFS;
@@ -118,6 +121,86 @@ TEST_F(AssetRegistryTest, CheckedMeshPairBindingUpdatesNeitherRecordOnMismatchAn
     EXPECT_EQ(m_registry.RecordCount(), 2u);
 }
 
+TEST_F(AssetRegistryTest, ScannerPlaceholderIsNotALoadedSlotEvenWhenItsImportStateIsLoaded)
+{
+    const auto mesh = MakeUUID();
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    Managers::AssetHandle slot = 91;
+    EXPECT_FALSE(m_registry.TryReadSlot(mesh, Managers::AssetType::MESH, &slot));
+    ASSERT_TRUE(m_registry.SetState(mesh, AssetState::Loaded));
+    EXPECT_FALSE(m_registry.TryReadSlot(mesh, Managers::AssetType::MESH, &slot));
+    EXPECT_EQ(slot, 91u);
+    ASSERT_TRUE(m_registry.RegisterLoaded(mesh, Managers::AssetType::MESH, {}, {}, 0).IsOk());
+    EXPECT_TRUE(m_registry.TryReadSlot(mesh, Managers::AssetType::MESH, &slot));
+    EXPECT_EQ(slot, 0u);
+    ASSERT_TRUE(m_registry.Remove(mesh));
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    EXPECT_FALSE(m_registry.FindByUUID(mesh)->HasLoadedSlot);
+    EXPECT_FALSE(m_registry.TryReadSlot(mesh, Managers::AssetType::MESH, &slot));
+}
+
+TEST_F(AssetRegistryTest, RetainedHierarchyRebindRequiresItsExactGenerationAndSlot)
+{
+    const auto mesh = MakeUUID(), hierarchy = MakeUUID();
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    AssetRecordSnapshot source = {}, retained = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &source));
+    ASSERT_TRUE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u));
+    ASSERT_TRUE(m_registry.TryReadRecord(hierarchy, &retained));
+    ASSERT_TRUE(m_registry.Remove(mesh));
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &source));
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u));
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000008u, &retained));
+    EXPECT_FALSE(m_registry.FindByUUID(mesh)->HasLoadedSlot);
+    ASSERT_TRUE(m_registry.Remove(hierarchy));
+    ASSERT_TRUE(m_registry.RegisterLoaded(hierarchy, Managers::AssetType::MESH_HIERARCHY, {}, {}, 0x30000007u).IsOk());
+    EXPECT_FALSE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u, &retained));
+    EXPECT_FALSE(m_registry.FindByUUID(mesh)->HasLoadedSlot);
+    ASSERT_TRUE(m_registry.TryReadRecord(hierarchy, &retained));
+    ASSERT_TRUE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u, &retained));
+    EXPECT_TRUE(m_registry.FindByUUID(mesh)->HasLoadedSlot);
+    EXPECT_EQ(m_registry.FindByUUID(mesh)->SlotHandle, 4u);
+    EXPECT_EQ(m_registry.RecordCount(), 2u);
+}
+
+TEST_F(AssetRegistryTest, PairedRebindRejectsEveryChangedSnapshotFieldWithoutPartialPublication)
+{
+    const auto mesh = MakeUUID(), hierarchy = MakeUUID();
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    AssetRecordSnapshot source = {}, retained = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &source));
+    ASSERT_TRUE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u));
+    ASSERT_TRUE(m_registry.TryReadRecord(hierarchy, &retained));
+    ASSERT_TRUE(m_registry.Remove(mesh));
+    Reg(m_registry, mesh, Managers::AssetType::MESH, "/mesh.zemesh");
+    ASSERT_TRUE(m_registry.TryReadRecord(mesh, &source));
+    using Change           = void (*)(AssetRecordSnapshot&);
+    const Change changes[] = {
+        [](AssetRecordSnapshot& snapshot) { ++snapshot.Handle.Index; },
+        [](AssetRecordSnapshot& snapshot) { ++snapshot.Handle.Generation; },
+        [](AssetRecordSnapshot& snapshot) { snapshot.Record.UUID = {}; },
+        [](AssetRecordSnapshot& snapshot) { snapshot.Record.Type = Managers::AssetType::MATERIAL; },
+        [](AssetRecordSnapshot& snapshot) { snapshot.Record.Path = P("/different.zemesh"); },
+        [](AssetRecordSnapshot& snapshot) { snapshot.Record.State = AssetState::Unregistered; },
+        [](AssetRecordSnapshot& snapshot) { snapshot.Record.HasLoadedSlot = !snapshot.Record.HasLoadedSlot; },
+        [](AssetRecordSnapshot& snapshot) { ++snapshot.Record.SlotHandle; },
+        [](AssetRecordSnapshot& snapshot) { ++snapshot.Record.Meta.SourceHash; },
+    };
+    for (size_t i = 0; i < std::size(changes); ++i)
+    {
+        SCOPED_TRACE(i);
+        auto changed_mesh = source, changed_hierarchy = retained;
+        changes[i](changed_mesh);
+        changes[i](changed_hierarchy);
+        EXPECT_FALSE(m_registry.TryBindLoadedMesh(changed_mesh, hierarchy, 4u, 0x30000007u, &retained));
+        EXPECT_FALSE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u, &changed_hierarchy));
+        EXPECT_FALSE(m_registry.FindByUUID(mesh)->HasLoadedSlot);
+        EXPECT_EQ(m_registry.RecordCount(), 2u);
+    }
+    EXPECT_TRUE(m_registry.TryBindLoadedMesh(source, hierarchy, 4u, 0x30000007u, &retained));
+}
+
 // Test 2 — VFSPath lookup returns correct record
 TEST_F(AssetRegistryTest, PathLookupReturnsCorrectRecord)
 {
@@ -131,6 +214,11 @@ TEST_F(AssetRegistryTest, PathLookupReturnsCorrectRecord)
     ASSERT_NE(rec, nullptr);
     EXPECT_EQ(rec->UUID, uuid);
     EXPECT_EQ(rec->Type, Managers::AssetType::TEXTURE);
+
+    AssetRecordSnapshot snapshot = {};
+    ASSERT_TRUE(m_registry.TryReadRecordByPath(path, &snapshot));
+    EXPECT_EQ(snapshot.Record.UUID, uuid);
+    EXPECT_EQ(snapshot.Record.Path, path);
 }
 
 // Test 3 — Type query returns only matching records
@@ -377,6 +465,122 @@ TEST_F(AssetRegistryTest, OnAssetDeletedFiresRemovedCallbackWithType)
     EXPECT_EQ(ctx.uuid, uuid);
     EXPECT_EQ(ctx.type, Managers::AssetType::TEXTURE);
     EXPECT_EQ(m_registry.FindByUUID(uuid), nullptr) << "root record must be removed";
+}
+
+TEST_F(AssetRegistryTest, AdditionalListenersReceiveEventsWithoutReplacingPrimaryHandlers)
+{
+    struct Counts
+    {
+        int Ready   = 0;
+        int Stale   = 0;
+        int Removed = 0;
+    } primary{}, listener{};
+
+    m_registry.SetOnReadyCallback(&primary, [](void* context, const uuids::uuid&, Managers::AssetHandle) { ++static_cast<Counts*>(context)->Ready; });
+    m_registry.SetOnStaleCallback(&primary, [](void* context, const uuids::uuid&) { ++static_cast<Counts*>(context)->Stale; });
+    m_registry.SetOnRemovedCallback(&primary, [](void* context, const uuids::uuid&, Managers::AssetType) { ++static_cast<Counts*>(context)->Removed; });
+    ASSERT_TRUE(m_registry.AddOnReadyListener(&listener, [](void* context, const uuids::uuid&, Managers::AssetHandle) { ++static_cast<Counts*>(context)->Ready; }));
+    ASSERT_TRUE(m_registry.AddOnStaleListener(&listener, [](void* context, const uuids::uuid&) { ++static_cast<Counts*>(context)->Stale; }));
+    ASSERT_TRUE(m_registry.AddOnRemovedListener(&listener, [](void* context, const uuids::uuid&, Managers::AssetType) { ++static_cast<Counts*>(context)->Removed; }));
+
+    const uuids::uuid id = MakeUUID();
+    Reg(m_registry, id, Managers::AssetType::TEXTURE, "/p/listener.png");
+    ASSERT_TRUE(m_registry.SetState(id, AssetState::Loaded));
+    m_registry.MarkStale(id);
+    m_registry.OnAssetDeleted(P("/p/listener.png"));
+
+    EXPECT_EQ(primary.Ready, 1);
+    EXPECT_EQ(primary.Stale, 1);
+    EXPECT_EQ(primary.Removed, 1);
+    EXPECT_EQ(listener.Ready, 1);
+    EXPECT_EQ(listener.Stale, 1);
+    EXPECT_EQ(listener.Removed, 1);
+}
+
+TEST_F(AssetRegistryTest, ListenerDeduplicationSurvivesAnEarlierEmptySlot)
+{
+    int        first = 0, second = 0;
+    const auto ready   = +[](void* context, const uuids::uuid&, Managers::AssetHandle) { ++*static_cast<int*>(context); };
+    const auto stale   = +[](void* context, const uuids::uuid&) { ++*static_cast<int*>(context); };
+    const auto removed = +[](void* context, const uuids::uuid&, Managers::AssetType) { ++*static_cast<int*>(context); };
+    ASSERT_TRUE(m_registry.AddOnReadyListener(&first, ready));
+    ASSERT_TRUE(m_registry.AddOnReadyListener(&second, ready));
+    ASSERT_TRUE(m_registry.RemoveOnReadyListener(&first, ready));
+    ASSERT_TRUE(m_registry.AddOnReadyListener(&second, ready));
+    ASSERT_TRUE(m_registry.AddOnStaleListener(&first, stale));
+    ASSERT_TRUE(m_registry.AddOnStaleListener(&second, stale));
+    ASSERT_TRUE(m_registry.RemoveOnStaleListener(&first, stale));
+    ASSERT_TRUE(m_registry.AddOnStaleListener(&second, stale));
+    ASSERT_TRUE(m_registry.AddOnRemovedListener(&first, removed));
+    ASSERT_TRUE(m_registry.AddOnRemovedListener(&second, removed));
+    ASSERT_TRUE(m_registry.RemoveOnRemovedListener(&first, removed));
+    ASSERT_TRUE(m_registry.AddOnRemovedListener(&second, removed));
+
+    const auto id = MakeUUID();
+    Reg(m_registry, id, Managers::AssetType::TEXTURE, "/p/listener.png");
+    ASSERT_TRUE(m_registry.SetState(id, AssetState::Loaded));
+    m_registry.MarkStale(id);
+    m_registry.OnAssetDeleted(P("/p/listener.png"));
+    EXPECT_EQ(first, 0);
+    EXPECT_EQ(second, 3);
+}
+
+TEST_F(AssetRegistryTest, RemovingAnObserverWaitsForInFlightDelivery)
+{
+    struct Observer
+    {
+        std::promise<void>       Entered;
+        std::shared_future<void> Resume;
+        uint32_t                 Calls = 0;
+    } observer;
+    std::promise<void> resume;
+    observer.Resume     = resume.get_future().share();
+    auto       entered  = observer.Entered.get_future();
+    const auto callback = +[](void* context, const uuids::uuid&) {
+        auto& capture = *static_cast<Observer*>(context);
+        ++capture.Calls;
+        capture.Entered.set_value();
+        capture.Resume.wait();
+    };
+    ASSERT_TRUE(m_registry.AddOnStaleListener(&observer, callback));
+    const auto id = MakeUUID();
+    Reg(m_registry, id, Managers::AssetType::TEXTURE, "/p/listener.png");
+    std::thread delivery([&] { m_registry.MarkStale(id); });
+    EXPECT_EQ(entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    std::promise<void> removing;
+    auto               started = removing.get_future();
+    auto               removed = std::async(std::launch::async, [&] {
+        removing.set_value();
+        return m_registry.RemoveOnStaleListener(&observer, callback);
+    });
+    started.wait();
+    EXPECT_EQ(removed.wait_for(std::chrono::milliseconds(25)), std::future_status::timeout);
+    resume.set_value();
+    delivery.join();
+    EXPECT_TRUE(removed.get());
+    m_registry.MarkStale(id);
+    EXPECT_EQ(observer.Calls, 1u);
+}
+
+TEST_F(AssetRegistryTest, ObserversCanUnsubscribeDuringDelivery)
+{
+    struct Observer
+    {
+        AssetRegistry* Registry;
+        uint32_t       Calls = 0;
+        static void    OnStale(void* context, const uuids::uuid&)
+        {
+            auto& capture = *static_cast<Observer*>(context);
+            ++capture.Calls;
+            EXPECT_TRUE(capture.Registry->RemoveOnStaleListener(context, &OnStale));
+        }
+    } observer{&m_registry};
+    ASSERT_TRUE(m_registry.AddOnStaleListener(&observer, &Observer::OnStale));
+    const auto id = MakeUUID();
+    Reg(m_registry, id, Managers::AssetType::TEXTURE, "/p/listener.png");
+    m_registry.MarkStale(id);
+    m_registry.MarkStale(id);
+    EXPECT_EQ(observer.Calls, 1u);
 }
 
 // Test 11 — Registry initialises within the AssetManager budget (100 MB).

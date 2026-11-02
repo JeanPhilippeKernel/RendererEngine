@@ -42,7 +42,7 @@ namespace Tetragrama
             auto* assets = ZEngine::Managers::AssetManager::Instance();
             return assets && assets->TryGetMeshDrawCount(uuid, out);
         }
-        bool BindMesh(void*, ZEngine::Importers::AssetMesh& mesh, ZEngine::Importers::AssetNodeHierarchy& hierarchy, ZEngine::Core::Memory::ArenaAllocator* arena)
+        bool BindMesh(void*, ZEngine::Importers::AssetMesh& mesh, ZEngine::Importers::AssetNodeHierarchy& hierarchy, ZEngine::Core::Memory::ArenaAllocator* arena, const AssetRecordSnapshot* expected)
         {
             using ZEngine::Managers::AssetManager;
             if (!AssetManager::Instance() || !arena)
@@ -71,8 +71,7 @@ namespace Tetragrama
                     }
                 }
             }
-            AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
-            return DrawCount(nullptr, uuid, &draws) && draws == count;
+            return AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy), expected) && DrawCount(nullptr, uuid, &draws) && draws == count;
         }
     } // namespace
 
@@ -86,6 +85,8 @@ namespace Tetragrama
         bool                                   RequireNewBinding = false;
         ZEngine::Importers::AssetMesh          Mesh              = {};
         ZEngine::Importers::AssetNodeHierarchy Hierarchy         = {};
+        AssetRegistry*                         Registry          = nullptr;
+        AssetRecordSnapshot                    Expected          = {};
         VFSError                               Error             = VFSError::OK;
         PaddedAtomic<bool>                     Ready             = {};
         PaddedAtomic<bool>                     Cancelled         = {};
@@ -97,7 +98,7 @@ namespace Tetragrama
             {
                 auto limits            = ZEngine::Importers::AssetCodec::MeshAssetReadLimits{};
                 limits.MaxDecodedBytes = WorkspaceBytes - ZMega(8);
-                const auto result      = ZEngine::Importers::AssetCodec::ReadMeshAssetFileVFS(work.Arena, *work.VFS, work.Path, &work.Mesh, &work.Hierarchy, {}, limits);
+                const auto result      = ZEngine::Importers::AssetCodec::ReadMeshAssetFileVFS(work.Arena, *work.VFS, work.Path, &work.Mesh, &work.Hierarchy, work.Expected.Record.UUID, limits);
                 if (result.Failed())
                 {
                     work.Error = result.Error();
@@ -113,6 +114,7 @@ namespace Tetragrama
     EditorMeshDrop::~EditorMeshDrop()
     {
         ZENGINE_VALIDATE_ASSERT(!m_work || m_work->Ready.value.load(std::memory_order_acquire), "Mesh-drop workers must be joined before editor destruction")
+        ReleaseWork();
     }
     bool EditorMeshDrop::Initialize(ZEngine::Core::Memory::ArenaAllocator& import_arena)
     {
@@ -163,7 +165,11 @@ namespace Tetragrama
     }
     void EditorMeshDrop::ReleaseWork()
     {
-        m_work.reset();
+        if (m_work)
+        {
+            m_work->~Work();
+            m_work = nullptr;
+        }
         m_arena.Clear();
     }
     void EditorMeshDrop::ShutdownAfterWorkersJoined()
@@ -196,20 +202,31 @@ namespace Tetragrama
         }
         if (!m_work)
         {
-            m_requested = false;
-            m_work.reset(new (std::nothrow) Work{});
-            if (!m_work)
+            m_requested  = false;
+            auto* memory = m_arena.AllocateNoZero(sizeof(Work), alignof(Work));
+            if (!memory)
             {
                 return Reject(diagnostics, "Cannot allocate a mesh-drop request.");
             }
+            m_work                    = new (memory) Work{};
             m_work->VFS               = engine.VFS;
             m_work->Arena             = &m_arena;
             m_work->Path              = m_path;
             m_work->Epoch             = m_epoch;
             m_work->RequireNewBinding = m_require_new_binding;
+            if (!services.BindMesh)
+            {
+                auto* assets     = ZEngine::Managers::AssetManager::Instance();
+                m_work->Registry = assets ? assets->Registry : nullptr;
+                if (!m_work->Registry || !m_work->Registry->TryReadRecordByPath(m_path, &m_work->Expected) || m_work->Expected.Record.Type != ZEngine::Managers::AssetType::MESH)
+                {
+                    ReleaseWork();
+                    return Reject(diagnostics, "Dropped mesh has no current asset identity; refresh and try again.");
+                }
+            }
             ZEngine::Helpers::secure_strcpy(m_work->Name, sizeof(m_work->Name), m_name);
             const auto submit = services.Submit ? services.Submit : &Submit;
-            if (submit(services.Context, m_work.get(), &Work::Read))
+            if (submit(services.Context, m_work, &Work::Read))
             {
                 return true;
             }
@@ -238,6 +255,12 @@ namespace Tetragrama
         {
             return Reject(diagnostics, "Dropped mesh failed checked decoding; the scene was preserved.");
         }
+        if (!services.BindMesh)
+        {
+            auto* assets = ZEngine::Managers::AssetManager::Instance();
+            if (!assets || assets->Registry != m_work->Registry)
+                return Reject(diagnostics, "Dropped mesh belongs to a retired asset context; the scene was preserved.");
+        }
         constexpr auto budget = ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS;
         if (!owner->CanSpawnMeshActor(engine) || owner->Instances.size() >= budget || m_work->Mesh.SubMeshes.empty() || m_work->Mesh.SubMeshes.size() > budget)
         {
@@ -252,8 +275,17 @@ namespace Tetragrama
         }
         for (const auto& instance : owner->Instances)
         {
-            uint32_t count = 0;
-            if (!draw_count(services.Context, instance.MeshUUID, &count) || !count || count > budget - total)
+            uint32_t count    = 0;
+            // This drop can restore a deleted/reimported binding already used by
+            // scene actors. Budget those actors using the checked replacement,
+            // not the deliberately unresolved scanner placeholder.
+            bool     resolved = draw_count(services.Context, instance.MeshUUID, &count);
+            if (!resolved && instance.MeshUUID == m_work->Mesh.MeshUUID)
+            {
+                count    = uint32_t(m_work->Mesh.SubMeshes.size());
+                resolved = true;
+            }
+            if (!resolved || !count || count > budget - total)
             {
                 return Reject(diagnostics, "Dropped mesh exceeds the complete GPU draw budget or has unresolved existing bindings.");
             }
@@ -280,9 +312,9 @@ namespace Tetragrama
         {
             return Reject(diagnostics, "Dropped mesh name is invalid.");
         }
-        const auto bind = services.BindMesh ? services.BindMesh : &BindMesh;
-        const auto uuid = m_work->Mesh.MeshUUID;
-        if (!bind(services.Context, m_work->Mesh, m_work->Hierarchy, &m_arena))
+        const auto uuid  = m_work->Mesh.MeshUUID;
+        const bool bound = services.BindMesh ? services.BindMesh(services.Context, m_work->Mesh, m_work->Hierarchy, &m_arena) : BindMesh(services.Context, m_work->Mesh, m_work->Hierarchy, &m_arena, &m_work->Expected);
+        if (!bound)
         {
             return Reject(diagnostics, "Dropped mesh could not obtain a complete asset binding; the scene was preserved.");
         }

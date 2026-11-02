@@ -77,11 +77,13 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] bool                            SetLoadedHandle(Helpers::Handle<AssetRecord> handle, Managers::AssetHandle slot);
         /// Copies under the index lock; no borrowed record escapes to a worker.
         [[nodiscard]] bool                            TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const;
+        /// Copies a record selected by path while the index lock is held.
+        [[nodiscard]] bool                            TryReadRecordByPath(const Core::VFS::VFSPath& path, AssetRecordSnapshot* out) const;
         /// Hot-path value query: copies only the packed slot, never a full path/meta record.
         [[nodiscard]] bool                            TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const;
-        /// Atomic placement-only binding of one preregistered mesh and its new
-        /// hierarchy. Rejects changed/deleted/recycled records and capacity limits.
-        [[nodiscard]] bool                            TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot);
+        /// Atomic binding/rebinding of a mesh pair. Reusing a retained hierarchy
+        /// requires its exact snapshot; unrelated or recycled records fail closed.
+        [[nodiscard]] bool                            TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy = nullptr);
 
         bool                                          Remove(Helpers::Handle<AssetRecord> handle);
 

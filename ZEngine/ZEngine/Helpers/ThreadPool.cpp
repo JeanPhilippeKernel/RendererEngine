@@ -2,5 +2,5 @@
 
 namespace ZEngine::Helpers
 {
-    Scope<ThreadPool> ThreadPoolHelper::Pool = CreateScope<ThreadPool>();
+    Scope<ThreadPool> ThreadPoolHelper::Pool = CreateScope<ThreadPool>(BackgroundWorkerCount() + 1);
 }

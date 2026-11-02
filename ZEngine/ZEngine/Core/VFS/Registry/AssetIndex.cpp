@@ -4,6 +4,17 @@
 
 namespace ZEngine::Core::VFS
 {
+    namespace
+    {
+        bool MatchesSnapshot(const Helpers::Handle<AssetRecord>* handle, const AssetRecord* record, const AssetRecordSnapshot& expected)
+        {
+            if (!handle || !record || handle->Index != expected.Handle.Index || handle->Generation != expected.Handle.Generation)
+                return false;
+            const auto& previous = expected.Record;
+            return record->UUID == previous.UUID && record->Type == previous.Type && record->Path == previous.Path && record->State == previous.State && record->HasLoadedSlot == previous.HasLoadedSlot && record->SlotHandle == previous.SlotHandle && record->Meta.SourceHash == previous.Meta.SourceHash;
+        }
+    } // namespace
+
     void AssetIndex::Initialize(Core::Memory::ArenaAllocator* arena)
     {
         m_arena = arena;
@@ -45,6 +56,7 @@ namespace ZEngine::Core::VFS
         Helpers::secure_strcpy(rec.Meta.ImporterName, sizeof(rec.Meta.ImporterName), meta.ImporterName);
         Helpers::secure_strcpy(rec.Meta.ArtifactPath, sizeof(rec.Meta.ArtifactPath), meta.ArtifactPath);
         rec.SlotHandle                 = 0;
+        rec.HasLoadedSlot              = false;
         rec.State                      = AssetState::Registered;
 
         // Populate Name from path filename component
@@ -103,6 +115,23 @@ namespace ZEngine::Core::VFS
         return true;
     }
 
+    bool AssetIndex::TryReadRecordByPath(const Core::VFS::VFSPath& path, AssetRecordSnapshot* out) const
+    {
+        if (!out || !path.IsValid())
+        {
+            return false;
+        }
+        std::shared_lock lock(m_mutex);
+        const auto*      handle = m_by_path.find(path.Hash());
+        const auto*      record = handle ? const_cast<Helpers::HandleManager<AssetRecord>&>(m_handles).Access(*handle) : nullptr;
+        if (!record)
+        {
+            return false;
+        }
+        *out = {.Handle = *handle, .Record = *record};
+        return true;
+    }
+
     bool AssetIndex::SetLoadedHandle(Helpers::Handle<AssetRecord> handle, Managers::AssetHandle slot)
     {
         std::unique_lock lock(m_mutex);
@@ -111,8 +140,9 @@ namespace ZEngine::Core::VFS
         {
             return false;
         }
-        record->SlotHandle = slot;
-        record->State      = AssetState::Loaded;
+        record->SlotHandle    = slot;
+        record->HasLoadedSlot = true;
+        record->State         = AssetState::Loaded;
         return true;
     }
 
@@ -125,7 +155,7 @@ namespace ZEngine::Core::VFS
         std::shared_lock lock(m_mutex);
         const auto*      handle = m_by_uuid.find(uuid);
         const auto*      record = handle ? const_cast<Helpers::HandleManager<AssetRecord>&>(m_handles).Access(*handle) : nullptr;
-        if (!record || record->Type != type)
+        if (!record || record->Type != type || !record->HasLoadedSlot)
         {
             return false;
         }
@@ -133,15 +163,33 @@ namespace ZEngine::Core::VFS
         return true;
     }
 
-    bool AssetIndex::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot)
+    bool AssetIndex::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy)
     {
         std::unique_lock lock(m_mutex);
         const auto*      handle = m_by_uuid.find(expected.Record.UUID);
         auto*            mesh   = handle ? m_handles.Access(*handle) : nullptr;
-        if (!mesh || handle->Index != expected.Handle.Index || handle->Generation != expected.Handle.Generation || mesh->Type != Managers::AssetType::MESH || mesh->Type != expected.Record.Type || mesh->Path != expected.Record.Path || mesh->State != expected.Record.State || mesh->State == AssetState::Loaded || mesh->SlotHandle != expected.Record.SlotHandle || mesh->Meta.SourceHash != expected.Record.Meta.SourceHash || hierarchy.is_nil() || m_by_uuid.contains(hierarchy) || (mesh_slot >> 28) != uint32_t(Managers::AssetType::MESH) ||
-            (hierarchy_slot >> 28) != uint32_t(Managers::AssetType::MESH_HIERARCHY))
+        if (!MatchesSnapshot(handle, mesh, expected) || mesh->Type != Managers::AssetType::MESH)
+            return false;
+        const bool valid_slot_types = (mesh_slot >> 28) == uint32_t(Managers::AssetType::MESH) && (hierarchy_slot >> 28) == uint32_t(Managers::AssetType::MESH_HIERARCHY);
+        if (!valid_slot_types || (mesh->HasLoadedSlot && mesh->SlotHandle != mesh_slot) || hierarchy.is_nil() || hierarchy == mesh->UUID)
         {
             return false;
+        }
+        const auto* existing_handle = m_by_uuid.find(hierarchy);
+        auto*       existing        = existing_handle ? m_handles.Access(*existing_handle) : nullptr;
+        if (existing || retained_hierarchy)
+        {
+            if (!retained_hierarchy || !MatchesSnapshot(existing_handle, existing, *retained_hierarchy))
+                return false;
+            if (existing->UUID != hierarchy || existing->Type != Managers::AssetType::MESH_HIERARCHY || !existing->HasLoadedSlot || existing->SlotHandle != hierarchy_slot)
+                return false;
+            // Both snapshots have been checked under the same lock. No partial
+            // publication if deletion/re-registration raced the decode.
+            existing->State     = AssetState::Loaded;
+            mesh->SlotHandle    = mesh_slot;
+            mesh->HasLoadedSlot = true;
+            mesh->State         = AssetState::Loaded;
+            return true;
         }
         auto& by_type = m_by_type[uint8_t(Managers::AssetType::MESH_HIERARCHY)];
         // No growth here: the fixed index/handle storage was reserved at initialization.
@@ -155,16 +203,18 @@ namespace ZEngine::Core::VFS
         {
             return false;
         }
-        auto& record      = m_handles[hierarchy_handle];
-        record            = {};
-        record.UUID       = hierarchy;
-        record.Type       = Managers::AssetType::MESH_HIERARCHY;
-        record.SlotHandle = hierarchy_slot;
-        record.State      = AssetState::Loaded;
+        auto& record         = m_handles[hierarchy_handle];
+        record               = {};
+        record.UUID          = hierarchy;
+        record.Type          = Managers::AssetType::MESH_HIERARCHY;
+        record.SlotHandle    = hierarchy_slot;
+        record.HasLoadedSlot = true;
+        record.State         = AssetState::Loaded;
         m_by_uuid.insert(hierarchy, hierarchy_handle);
         by_type.push(hierarchy_handle);
-        mesh->SlotHandle = mesh_slot;
-        mesh->State      = AssetState::Loaded;
+        mesh->SlotHandle    = mesh_slot;
+        mesh->HasLoadedSlot = true;
+        mesh->State         = AssetState::Loaded;
         return true;
     }
 

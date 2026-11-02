@@ -1,8 +1,11 @@
 #include <Tetragrama/Editor.h>
 #include <Tetragrama/Panels/PanelHelpers.h>
 #include <Tetragrama/Panels/ProjectViewPanel.h>
+#include <Tetragrama/Thumbnails/ThumbnailService.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <algorithm>
 #include <cctype>
@@ -123,50 +126,6 @@ namespace Tetragrama::Panels
                 ZUIOpenPopup(ctx, popup);
         }
 
-        // Compare numeric runs by significant length and then digits. No integer
-        // parsing/overflow, allocation, locale dependence, or repeated rescans.
-        int NaturalNameCompare(const char* a, const char* b)
-        {
-            const auto  digit = [](char c) { return c >= '0' && c <= '9'; };
-            const auto  lower = [](unsigned char c) { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c; };
-            const char* left  = a;
-            const char* right = b;
-            while (*left && *right)
-            {
-                if (digit(*left) && digit(*right))
-                {
-                    while (*left == '0')
-                        ++left;
-                    while (*right == '0')
-                        ++right;
-                    const char* left_digits  = left;
-                    const char* right_digits = right;
-                    while (digit(*left))
-                        ++left;
-                    while (digit(*right))
-                        ++right;
-                    const auto left_length  = left - left_digits;
-                    const auto right_length = right - right_digits;
-                    if (left_length != right_length)
-                        return left_length < right_length ? -1 : 1;
-                    for (decltype(left - left_digits) i = 0; i < left_length; ++i)
-                        if (left_digits[i] != right_digits[i])
-                            return left_digits[i] < right_digits[i] ? -1 : 1;
-                    continue;
-                }
-                const auto lc = lower(static_cast<unsigned char>(*left));
-                const auto rc = lower(static_cast<unsigned char>(*right));
-                if (lc != rc)
-                    return lc < rc ? -1 : 1;
-                ++left;
-                ++right;
-            }
-            if (*left || *right)
-                return *left ? 1 : -1;
-            // Equal numeric values / case folds still have a deterministic order,
-            // independent of backend enumeration (including leading-zero ties).
-            return secure_strcmp(a, b);
-        }
     } // namespace
 
     // Static helpers
@@ -310,6 +269,8 @@ namespace Tetragrama::Panels
         m_nentries                                = 0; // Never show or act on the previous folder's cache.
         m_listing_valid                           = false;
         m_truncated                               = false;
+        m_listing_failed                          = false;
+        m_grid_listing.Invalidate();
         m_needs_refresh = m_reset_grid_input = m_reset_grid_scroll = true;
         return true;
     }
@@ -331,69 +292,56 @@ namespace Tetragrama::Panels
     void ProjectViewPanel::RequestRefresh()
     {
         m_needs_refresh = true;
+        m_grid_listing.Invalidate();
         m_folder_tree.Invalidate();
+    }
+
+    void ProjectViewPanel::CloseListings()
+    {
+        m_grid_listing.Close();
+        m_folder_tree.Listings.Close();
+    }
+
+    void ProjectViewPanel::ShutdownListingsAfterWorkersJoined()
+    {
+        m_grid_listing.ShutdownAfterWorkersJoined();
+        m_folder_tree.Listings.ShutdownAfterWorkersJoined();
     }
 
     // VFS listing
     void ProjectViewPanel::RefreshListing(IVFSContext* vfs)
     {
-        m_nentries           = 0;
-        m_listing_valid      = false;
-        m_truncated          = false;
-        m_reset_grid_input   = true;
-        m_last_click_path[0] = '\0';
-        m_last_click_time    = -1.f;
-        if (!vfs)
-            return;
-        auto* eng = ZEngine::Engine::GetContext();
-        if (!eng)
-            return;
-        auto scratch = ZGetScratch(&eng->VFSArena);
-        auto res     = vfs->List(m_current_dir, scratch.Arena);
-        if (res.Succeeded())
-            CacheListing(res.Value());
-        ZReleaseScratch(scratch);
-        m_needs_refresh = false;
-    }
-
-    bool ProjectViewPanel::EntryLess(const Entry& a, const Entry& b)
-    {
-        if (a.is_dir != b.is_dir)
-            return a.is_dir;
-        const int order = NaturalNameCompare(a.name, b.name);
-        return order ? order < 0 : secure_strcmp(a.full_path, b.full_path) < 0;
-    }
-
-    void ProjectViewPanel::CacheListing(const ZEngine::Core::Containers::Array<VFSDirEntry>& listing)
-    {
-        m_nentries      = 0;
-        m_listing_valid = true;
-        m_truncated     = false;
-        for (size_t i = 0; i < listing.size(); ++i)
+        ZENGINE_PROFILE_SCOPE("ContentBrowser.PollGrid");
+        if (m_needs_refresh || !vfs)
         {
-            const auto& entry = listing[i];
-            const auto  name  = entry.Path.Filename();
-            if (!entry.Path.IsValid() || name.Empty() || name.Data[0] == '.')
-                continue;
-            const auto extension = entry.Path.Extension();
-            if (!entry.IsDirectory && extension.Data && strcasecmp(extension.Data, ".meta") == 0)
-                continue;
-            // Look for one real extra entry. Hidden files and metadata sidecars
-            // beyond the cap must not turn an exact-size listing into overflow.
-            if (m_nentries == kMaxEntries)
-            {
-                m_truncated = true;
-                break;
-            }
-            auto& cached = m_entries[m_nentries++];
-            // VFSPath bounds both lengths. Copy only live bytes, not the whole
-            // cache slot, and terminate reused names without clearing the cache.
-            secure_memcpy(cached.name, sizeof(cached.name), name.Data, name.Length);
-            cached.name[name.Length] = '\0';
-            secure_memcpy(cached.full_path, sizeof(cached.full_path), entry.Path.CStr(), entry.Path.Length() + 1);
-            cached.is_dir = entry.IsDirectory;
+            m_nentries      = 0;
+            m_listing_valid = m_truncated = m_listing_failed = false;
+            m_reset_grid_input                               = true;
+            m_selected_path[0] = m_last_click_path[0] = '\0';
+            m_last_click_time                         = -1.f;
+            if (!vfs)
+                return;
+            m_grid_listing.Request(*vfs, m_current_dir);
+            m_needs_refresh = false;
         }
-        std::sort(m_entries, m_entries + m_nentries, EntryLess);
+        if (const auto* result = m_grid_listing.Poll())
+        {
+            ZENGINE_PROFILE_SCOPE("ContentBrowser.PublishGrid");
+            m_listing_valid  = result->Succeeded;
+            m_listing_failed = !result->Succeeded;
+            m_truncated      = result->Truncated;
+            m_nentries       = static_cast<int>(result->Count);
+            // No sorting or filesystem work here; copy only live string bytes.
+            for (int i = 0; i < m_nentries; ++i)
+            {
+                const auto& src = result->Entries[i];
+                auto&       dst = m_entries[i];
+                secure_strcpy(dst.name, sizeof(dst.name), src.name);
+                secure_strcpy(dst.full_path, sizeof(dst.full_path), src.full_path);
+                dst.is_dir = src.is_dir;
+            }
+        }
+        m_listing_failed = m_grid_listing.GetStatus() == DirectoryListing::Status::Failed;
     }
 
     // Breadcrumb
@@ -565,7 +513,7 @@ namespace Tetragrama::Panels
         if (!vfs)
             return;
 
-        m_folder_tree.UpdateSearch(*vfs, ctx->FrameArena, m_folder_search);
+        m_folder_tree.UpdateSearch(*vfs, m_folder_search);
         const bool searching = m_folder_search[0] != '\0';
         uint32_t*  stk       = ZPushArray<uint32_t>(&ctx->FrameArena, FolderTreeCache::Capacity);
         uint32_t   sp        = 0;
@@ -673,7 +621,7 @@ namespace Tetragrama::Panels
                 // Search discovery is budgeted above; never perform extra listings here.
                 if (!searching && !e.Loaded && listing_budget > 0)
                 {
-                    m_folder_tree.LoadChildren(*vfs, ctx->FrameArena, index);
+                    m_folder_tree.LoadChildren(*vfs, index);
                     --listing_budget;
                 }
                 for (uint32_t i = e.LastChild; i != FolderTreeCache::None; i = m_folder_tree.Nodes[i].PrevSibling)
@@ -684,6 +632,8 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, skipped);
         if (m_folder_tree.Searching())
             DrawTreeNote(ctx, "##pv_src_searching", "Searching folders...", kSecondary);
+        else if (!searching && !m_folder_tree.Nodes[0].Loaded)
+            DrawTreeNote(ctx, "##pv_src_loading", "Loading folders...", kSecondary);
         else if (searching && !has_match && !m_folder_tree.Incomplete)
         {
             char message[sizeof(m_folder_search) + 32] = {};
@@ -694,6 +644,8 @@ namespace Tetragrama::Panels
         {
             constexpr float warning[4] = ZUI_TOKEN(Tokens::AccentOrange);
             DrawTreeNote(ctx, "##pv_src_incomplete", "Folder index incomplete; refresh to retry.", warning);
+            if (ZUIButton(ctx, "Retry folders##pv_src_retry", ZPx(180.f), ZPx(Metrics::HeightControl), ZUIButtonKind::Secondary).Flags & ZUI_SignalClicked)
+                RequestRefresh();
         }
     }
 
@@ -793,7 +745,12 @@ namespace Tetragrama::Panels
         icon->Flags                               = icon->Flags | ZUI_AssetIcon;
         char title[sizeof(m_search) + 32]         = {};
         char hint[128]                            = {};
-        if (!filtered)
+        if (!m_listing_valid)
+        {
+            secure_strcpy(title, sizeof(title), m_listing_failed ? "Could not load this folder" : "Loading folder...");
+            secure_strcpy(hint, sizeof(hint), m_listing_failed ? "Refresh to try again." : "");
+        }
+        else if (!filtered)
         {
             secure_strcpy(title, sizeof(title), "This folder is empty");
             secure_strcpy(hint, sizeof(hint), "Use Add to create a file or a folder, or Import to bring in assets.");
@@ -811,7 +768,9 @@ namespace Tetragrama::Panels
         }
         ZUILabelEllipsized(ctx, title, text_width, kSecondary, ZUIFontSize::Heading, "##pv_empty_title");
         ZUILabelEllipsized(ctx, hint, fminf(380.f, text_width), kSecondary, ZUIFontSize::Small, "##pv_empty_hint");
-        if (filtered && (ZUIButton(ctx, "Clear filters##pv_clear_filters", ZPx(96.f), ZPx(Metrics::HeightControl), ZUIButtonKind::Secondary).Flags & ZUI_SignalClicked))
+        if (m_listing_failed && (ZUIButton(ctx, "Retry##pv_retry_listing", ZPx(96.f), ZPx(Metrics::HeightControl), ZUIButtonKind::Secondary).Flags & ZUI_SignalClicked))
+            RequestRefresh();
+        if (m_listing_valid && filtered && (ZUIButton(ctx, "Clear filters##pv_clear_filters", ZPx(96.f), ZPx(Metrics::HeightControl), ZUIButtonKind::Secondary).Flags & ZUI_SignalClicked))
         {
             m_search[0] = m_selected_path[0] = m_last_click_path[0] = '\0';
             secure_strcpy(m_type_filter, sizeof(m_type_filter), "All");
@@ -821,8 +780,37 @@ namespace Tetragrama::Panels
         ZUIEndColumn(ctx);
     }
 
+    void ProjectViewPanel::DrawThumbnailImage(ZUIContext* ctx, const char* key, uint32_t texture_index, float scale, bool flip_v)
+    {
+        char backdrop_key[64] = {};
+        snprintf(backdrop_key, sizeof(backdrop_key), "%s_checker", key);
+        auto* backdrop       = ZUIBeginColumn(ctx, backdrop_key, ZPx(79.f * scale), ZPx(79.f * scale));
+        backdrop->CustomDraw = [](ZUIDrawList* draw, const ZUIBox* box, const void*) {
+            const uint32_t stops[2] = {ZUIPackColor(.16f, .16f, .16f, .8f), ZUIPackColor(.16f, .16f, .16f, .8f)};
+            ZUIDrawListAddColorRect(draw, box->ScreenMin[0], box->ScreenMin[1], box->ScreenMax[0], box->ScreenMax[1], stops, 2, 0.f, true);
+        };
+        // The worker's aspect-fit canvas is square. Filling the wider card area
+        // distorts it; center a square quad and keep file-decoded rows upright.
+        auto* image         = ZUIPushBox(ctx, key, static_cast<uint32_t>(secure_strlen(key)), ZUI_DrawBackground);
+        image->Size[0]      = ZPx(79.f * scale);
+        image->Size[1]      = ZPx(79.f * scale);
+        image->TextureIndex = texture_index;
+        image->TextureFlipV = flip_v;
+        ZUIBoxSetColor(image, 1.f, 1.f, 1.f, 1.f);
+        ZUIPopBox(ctx);
+        ZUIEndColumn(ctx);
+    }
+
+    void ProjectViewPanel::DrawTransparentPlaceholder(ZUIContext* ctx, float scale)
+    {
+        ZUIIconBox(ctx, ZUIIcon::Circle, 24.f * scale, kSecondary);
+        ZUISpacer(ctx, 4.f * scale);
+        ZUILabelTight(ctx, "Fully transparent", kSecondary, ZUIFontSize::Small, nullptr, scale);
+    }
+
     int ProjectViewPanel::DrawGrid(ZUIContext* ctx, float pw, float height)
     {
+        ZENGINE_PROFILE_SCOPE("ThumbnailProfile.DrawGrid");
         // Card constants
         m_thumbnail_scale                = std::isfinite(m_thumbnail_scale) ? std::clamp(m_thumbnail_scale, .75f, 1.5f) : 1.f;
         const float            scale     = m_thumbnail_scale;
@@ -915,6 +903,8 @@ namespace Tetragrama::Panels
         const float scroll_y  = scroll ? scroll->ScrollY : 0.f;
         const int   first_row = std::clamp(static_cast<int>(fmaxf(0.f, scroll_y - kTop) / kPitchY) - 1, 0, row_count);
         const int   last_row  = std::min(row_count, static_cast<int>(fminf((scroll_y + height) / kPitchY, static_cast<float>(row_count))) + 2);
+        ZENGINE_PROFILE_VALUE("ThumbnailProfile.BuiltCards", std::max(0, std::min(nvis, last_row * col_count) - first_row * col_count));
+        ZENGINE_PROFILE_VALUE("ThumbnailProfile.ScrollY", scroll_y);
         if (nvis)
             ZUISpacer(ctx, kTop);
         if (first_row)
@@ -994,6 +984,8 @@ namespace Tetragrama::Panels
                             strip[k] = green[k];
                     }
 
+                    bool                                     fully_transparent = false;
+                    ZEngine::Rendering::Materials::AlphaInfo alpha_info;
                     // Thumbnail
                     {
                         char tk[32] = {};
@@ -1004,9 +996,38 @@ namespace Tetragrama::Panels
                         th->CrossAlign   = ZUIAlign::Center;
                         th->EdgeSoftness = 0.f;
                         ZUIBoxSetColorArr(th, kControl);
-                        th->CornerRadii[0] = th->CornerRadii[1] = Metrics::Radius3;
-                        auto* icon                              = ZUIIconBox(ctx, glyph, 38.f * scale, kSecondary);
-                        icon->Flags                             = icon->Flags | ZUI_AssetIcon;
+                        th->CornerRadii[0] = th->CornerRadii[1]                  = Metrics::Radius3;
+                        ZEngine::Rendering::Textures::TextureHandle texture      = {};
+                        bool                                        flip_preview = true;
+                        if (!e.is_dir && m_thumbnails)
+                        {
+                            auto*      assets = ZEngine::Managers::AssetManager::Instance();
+                            const auto path   = VFSPath::Parse(e.full_path);
+                            if (assets && assets->Registry && path.Succeeded())
+                            {
+                                ZEngine::Core::VFS::AssetRecordSnapshot snapshot = {};
+                                if (assets->Registry->TryReadRecordByPath(path.Value(), &snapshot))
+                                {
+                                    texture      = m_thumbnails->Acquire(snapshot, &fully_transparent, &alpha_info);
+                                    flip_preview = m_thumbnails->IsFileDecoded(snapshot);
+                                }
+                            }
+                        }
+                        if (fully_transparent)
+                        {
+                            DrawTransparentPlaceholder(ctx, scale);
+                        }
+                        else if (texture.Valid())
+                        {
+                            char image_key[40] = {};
+                            snprintf(image_key, sizeof(image_key), "##pvimg_%d", entry_index);
+                            DrawThumbnailImage(ctx, image_key, static_cast<uint32_t>(texture.Index), scale, flip_preview);
+                        }
+                        else
+                        {
+                            auto* icon  = ZUIIconBox(ctx, glyph, 38.f * scale, kSecondary);
+                            icon->Flags = icon->Flags | ZUI_AssetIcon;
+                        }
                         ZUIEndColumn(ctx);
                     }
                     {
@@ -1047,7 +1068,15 @@ namespace Tetragrama::Panels
 
                     ZUISignal card_sig = ZUISignalFromBox(ctx, card);
                     ZUIEndColumn(ctx); // card
-                    ZUISetTooltip(ctx, card_sig, e.name);
+                    if (fully_transparent)
+                    {
+                        char        explanation[512] = {};
+                        const char* mode             = ZEngine::Rendering::Materials::AlphaModeName(alpha_info.Mode);
+                        snprintf(explanation, sizeof(explanation), "%s | Fully transparent | Base opacity: %.3g | Alpha mode: %s | Cutoff: %.3g%s", e.name, alpha_info.BaseOpacity, mode, alpha_info.Cutoff, alpha_info.Mode == ZEngine::Rendering::Materials::AlphaMode::Legacy ? " (original mode unavailable; reimport to preserve it)" : "");
+                        ZUISetTooltip(ctx, card_sig, explanation);
+                    }
+                    else
+                        ZUISetTooltip(ctx, card_sig, e.name);
 
                     // Single-click → select
                     if (card_sig.Flags & ZUI_SignalClicked)
@@ -1101,7 +1130,7 @@ namespace Tetragrama::Panels
             ZUISpacer(ctx, (row_count - last_row) * kPitchY);
         if (nvis)
             ZUISpacer(ctx, kBottom);
-        else if (m_listing_valid)
+        else if (m_listing_valid || m_listing_failed || m_grid_listing.GetStatus() == DirectoryListing::Status::Loading)
             DrawEmptyState(ctx, pw);
         ZUIEndScrollRegion(ctx);
 
@@ -1431,7 +1460,7 @@ namespace Tetragrama::Panels
         const bool has_selection                = m_selected_path[0] != '\0';
         char       count[64]                    = {};
         if (m_truncated)
-            snprintf(count, sizeof(count), "512+ items%s", has_selection ? " (1 selected)" : "");
+            snprintf(count, sizeof(count), "%d+ items%s", kMaxEntries, has_selection ? " (1 selected)" : "");
         else
             snprintf(count, sizeof(count), "%d item%s%s", visible_count, visible_count == 1 ? "" : "s", has_selection ? " (1 selected)" : "");
         const auto* count_label = ZUILabelTight(ctx, count, m_truncated ? orange : kSecondary, ZUIFontSize::Small, "##pv_status_count");
@@ -1459,6 +1488,8 @@ namespace Tetragrama::Panels
     // BuildContent
     void ProjectViewPanel::BuildContent(ZUIContext* ctx, float rect[4])
     {
+        ZENGINE_PROFILE_SCOPE("ContentBrowser.BuildContent");
+        ZENGINE_PROFILE_SCOPE("ThumbnailProfile.BuildContent");
         constexpr float kSearchH = 33.f;
         constexpr float kStatusH = 25.f;
         auto*           vfs      = static_cast<IVFSContext*>(ZEngine::Engine::GetContext() ? ZEngine::Engine::GetContext()->VFS : nullptr);
@@ -1553,8 +1584,7 @@ namespace Tetragrama::Panels
         // Asset library: filters + search, then the tile grid
         {
             ZUIBeginColumn(ctx, "##pv_right", ZFill(), ZFill());
-            if (m_needs_refresh)
-                RefreshListing(vfs);
+            RefreshListing(vfs);
 
             ZUIBox* sr     = ZUIBeginRow(ctx, "##pv_search_row", ZFill(), ZPx(kSearchH));
             sr->Padding[0] = 12.f;

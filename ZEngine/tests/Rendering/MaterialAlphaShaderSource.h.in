@@ -1,0 +1,5 @@
+#pragma once
+namespace ZEngine::Tests
+{
+    inline constexpr char MaterialAlphaSource[] = R"ALPHA(@MATERIAL_ALPHA_SOURCE@)ALPHA";
+}

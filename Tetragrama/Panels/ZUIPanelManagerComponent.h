@@ -2,6 +2,7 @@
 #include <Tetragrama/Components/ZUI/ZUIComponent.h>
 #include <Tetragrama/Layers/ZUILayer.h>
 #include <Tetragrama/Panels/EditorPanels.h>
+#include <Tetragrama/Thumbnails/ThumbnailService.h>
 #include <ZEngine/UI/ZUIDockSerial.h>
 #include <ZEngine/UI/ZUIPanel.h>
 
@@ -32,6 +33,7 @@ namespace Tetragrama::Panels
         ProjectViewPanel             project;
         MemoryProfilerPanel          profiler;
         AssetImporterPanel           importer;
+        Tetragrama::Thumbnails::ThumbnailService thumbnails;
 
         /// @brief Initializes the panel manager, splits the dock tree, and registers
         ///        all panel views.

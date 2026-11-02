@@ -1,7 +1,9 @@
 #include <Tetragrama/Components/ZUI/ZUIRecentScenes.h>
 #include <Tetragrama/Editor.h>
+#include <Tetragrama/Thumbnails/ThumbnailService.h>
 #include <Tetragrama/EditorSceneIO.h>
 #include <Tetragrama/Panels/AssetImporterPanel.h>
+#include <Tetragrama/Panels/ProjectViewPanel.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -214,6 +216,18 @@ namespace Tetragrama
 
     void Editor::OnWorldShutdown(ZEngine::EngineContext& engine)
     {
+        if (ContentBrowser)
+        {
+            ContentBrowser->ShutdownListingsAfterWorkersJoined();
+            ContentBrowser = nullptr;
+        }
+        if (AssetThumbnails)
+        {
+            // Render and import workers have joined; registry and RRM are still
+            // live here. Arena-owned services have no automatic destructor.
+            AssetThumbnails->Deinitialize();
+            AssetThumbnails = nullptr;
+        }
         CancelSceneOpen();
         MeshDrop.ShutdownAfterWorkersJoined();
         if (AssetImporter)

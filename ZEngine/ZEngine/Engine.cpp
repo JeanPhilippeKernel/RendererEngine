@@ -22,6 +22,7 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Profiling/MemoryProfiler.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/EnvironmentLighting.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Windows/GameWindow.h>
@@ -148,7 +149,7 @@ namespace ZEngine
         // than silently taking unbounded capacity from the bootstrap owner.
         memory->CreateBudgetedArena(memory->Budget.VulkanDevice, &g_engine_ctx->VulkanDeviceArena);
         g_engine_ctx->Device         = ZPushStructCtor<Hardwares::VulkanDevice>(&g_engine_ctx->VulkanDeviceArena);
-        uint32_t worker_thread_count = std::max(1u, (uint32_t) (Helpers::ThreadPoolHelper::Pool->MaxThreadCount / 2u));
+        uint32_t worker_thread_count = Helpers::ThreadPoolHelper::RenderWorkerCount();
         g_engine_ctx->Device->Initialize(&g_engine_ctx->VulkanDeviceArena, window, worker_thread_count);
 
         memory->CreateBudgetedArena(memory->Budget.VirtualFS, &g_engine_ctx->VFSArena);
@@ -575,6 +576,7 @@ namespace ZEngine
                 continue;
             }
 
+            ZENGINE_PROFILE_SCOPE("ThumbnailProfile.RenderFrame");
             uint32_t                              next_overlay_slot = 0;
             Applications::OverlayPayload*         next_overlay      = nullptr;
             const bool                            has_next_overlay  = pipeline->BeginOverlayRead(next_overlay, next_overlay_slot);

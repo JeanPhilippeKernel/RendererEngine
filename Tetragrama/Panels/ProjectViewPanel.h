@@ -7,6 +7,11 @@
 #include <ZEngine/UI/ZUIPanel.h>
 #include <cstdint>
 
+namespace Tetragrama::Thumbnails
+{
+    struct ThumbnailService;
+}
+
 namespace Tetragrama::Panels
 {
     // ProjectViewPanel
@@ -28,6 +33,13 @@ namespace Tetragrama::Panels
 
         /// @brief Invalidates cached listings after a main-thread file operation.
         void                          RequestRefresh();
+        void                          CloseListings();
+        void                          ShutdownListingsAfterWorkersJoined();
+
+        void                          SetThumbnailService(Tetragrama::Thumbnails::ThumbnailService* service)
+        {
+            m_thumbnails = service;
+        }
 
     private:
         friend struct ProjectViewPanelTestAccess;
@@ -43,32 +55,31 @@ namespace Tetragrama::Panels
         bool                        m_reset_grid_scroll                                           = false;
 
         // Grid listing cache
-        struct Entry
-        {
-            char name[ZEngine::Core::VFS::VFS_MAX_PATH]      = {};
-            char full_path[ZEngine::Core::VFS::VFS_MAX_PATH] = {};
-            bool is_dir                                      = false;
-        };
-        static constexpr int kMaxEntries                                         = 512;
-        Entry                m_entries[kMaxEntries]                              = {};
-        int                  m_nentries                                          = 0;
-        bool                 m_needs_refresh                                     = true;
-        bool                 m_listing_valid                                     = false;
-        bool                 m_truncated                                         = false;
-        float                m_thumbnail_scale                                   = 1.f;
-        bool                 m_reset_grid_input                                  = false;
+        using Entry = DirectoryEntry;
+        // Listing capacity is independent of the 512-texture resident LRU.
+        static constexpr int                      kMaxEntries                                         = DirectoryListing::Capacity;
+        Entry                                     m_entries[kMaxEntries]                              = {};
+        int                                       m_nentries                                          = 0;
+        bool                                      m_needs_refresh                                     = true;
+        bool                                      m_listing_valid                                     = false;
+        bool                                      m_truncated                                         = false;
+        bool                                      m_listing_failed                                    = false;
+        DirectoryListing                          m_grid_listing;
+        float                                     m_thumbnail_scale                                   = 1.f;
+        bool                                      m_reset_grid_input                                  = false;
+        Tetragrama::Thumbnails::ThumbnailService* m_thumbnails                                        = nullptr;
 
-        FolderTreeCache      m_folder_tree                                       = {};
+        FolderTreeCache                           m_folder_tree                                       = {};
 
         // Search + type filter
-        char                 m_search[256]                                       = {};
-        char                 m_folder_search[128]                                = {};
-        char                 m_type_filter[32]                                   = "All";
+        char                                      m_search[256]                                       = {};
+        char                                      m_folder_search[128]                                = {};
+        char                                      m_type_filter[32]                                   = "All";
 
         // Selection + double-click
-        char                 m_selected_path[ZEngine::Core::VFS::VFS_MAX_PATH]   = {};
-        char                 m_last_click_path[ZEngine::Core::VFS::VFS_MAX_PATH] = {};
-        float                m_last_click_time                                   = -1.f;
+        char                                      m_selected_path[ZEngine::Core::VFS::VFS_MAX_PATH]   = {};
+        char                                      m_last_click_path[ZEngine::Core::VFS::VFS_MAX_PATH] = {};
+        float                                     m_last_click_time                                   = -1.f;
 
         // Modals
         enum class Modal
@@ -97,11 +108,8 @@ namespace Tetragrama::Panels
         bool                        SubmitModal(ZEngine::Core::VFS::IVFSContext* vfs);
         void                        UpdateNavigationAfterMutation(const ZEngine::Core::VFS::VFSPath& source, const ZEngine::Core::VFS::VFSPath* destination);
         void                        DrawToolbar(ZEngine::UI::ZUIContext* ctx, float width);
-        /// @brief Refresh the current directory file listing.
+        /// @brief Schedule/poll the current listing; publish prepared entries without UI-thread I/O or sorting.
         void                        RefreshListing(ZEngine::Core::VFS::IVFSContext* vfs);
-        /// @brief Copy and sort a listing once; frame builders only filter this bounded cache.
-        void                        CacheListing(const ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSDirEntry>& listing);
-        static bool                 EntryLess(const Entry& a, const Entry& b);
         /// @brief Draw the path breadcrumb navigation bar.
         void                        DrawBreadcrumb(ZEngine::UI::ZUIContext* ctx, float width);
         /// @brief Draw the left-side sources/bookmarks tree.
@@ -115,6 +123,8 @@ namespace Tetragrama::Panels
         void                        DrawEmptyState(ZEngine::UI::ZUIContext* ctx, float width);
         /// @brief Draw visible tile rows and return the filtered item count.
         int                         DrawGrid(ZEngine::UI::ZUIContext* ctx, float pw, float height);
+        static void                 DrawThumbnailImage(ZEngine::UI::ZUIContext* ctx, const char* key, uint32_t texture_index, float scale, bool flip_v = true);
+        static void                 DrawTransparentPlaceholder(ZEngine::UI::ZUIContext* ctx, float scale);
         void                        DrawStatus(ZEngine::UI::ZUIContext* ctx, int visible_count, float width);
         /// @brief Draw any open modal dialogs (rename, delete, etc.).
         void                        DrawModals(ZEngine::UI::ZUIContext* ctx, ZEngine::Core::VFS::IVFSContext* vfs);

@@ -1,6 +1,7 @@
 #include <ZEngine/Hardwares/CommandBufferManager.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Rendering/Renderers/RenderRecordingWorkers.h>
 
 using namespace ZEngine::Rendering;
 
@@ -25,6 +26,7 @@ namespace ZEngine::Hardwares
 
         Device                         = device;
         TotalThreadCount               = override_thread_count > 0 ? override_thread_count : device->WorkerThreadCount;
+        RecordingWorkers               = ZPushStructCtorArgs<Renderers::RenderRecordingWorkers>(Device->Arena, TotalThreadCount);
         TotalPoolCount                 = image_count * TotalThreadCount;
         TotalCommandBufferCount        = TotalPoolCount * MaxBufferPerPool;
         TotalInstantCommandBufferCount = MaxBufferPerPool * MaxBufferPerPool * TotalPoolCount; // We want to have enough instant command buffers for each pool, so we can guarantee that there will always be an instant command buffer available for each pool when needed
@@ -164,6 +166,12 @@ namespace ZEngine::Hardwares
 
     void CommandBufferManager::Deinitialize()
     {
+        // Join command recording before releasing its command pools or arenas.
+        if (RecordingWorkers)
+        {
+            RecordingWorkers->~RenderRecordingWorkers();
+            RecordingWorkers = nullptr;
+        }
         // Explicitly destroy each CommandPool — vkDestroyCommandPool implicitly frees
         // all VkCommandBuffers allocated from it.  The Array::clear() that follows only
         // zeroes the pointer list; it never invokes C++ destructors, so skipping this

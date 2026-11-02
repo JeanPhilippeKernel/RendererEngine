@@ -19,6 +19,7 @@
 #include <limits>
 #include <memory>
 #include <thread>
+#include <vector>
 
 using namespace ZEngine::UI;
 
@@ -107,12 +108,21 @@ namespace Tetragrama::Panels
         {
             return panel.m_import_scene_epoch;
         }
+        static const void* PreparedStorage(const AssetImporterPanel& panel)
+        {
+            return panel.m_import_task.PreparedArtifacts.data();
+        }
+        static size_t PreparedArtifactBytes()
+        {
+            return sizeof(AssetImporterPanel::ImportTask::PreparedArtifact);
+        }
         static void Prepare(AssetImporterPanel& panel, ZEngine::Core::VFS::IVFSContext& vfs, ZEngine::Core::Memory::ArenaAllocator& arena, bool place = false)
         {
             if (!panel.m_import_task.PublishedPaths.capacity())
             {
                 panel.m_import_result_slab.Init(&arena, ZMega(1));
                 panel.m_import_task.PublishedPaths.init(&panel.m_import_result_slab, 8);
+                panel.m_import_task.PreparedArtifacts.init(&panel.m_import_result_slab, 0);
             }
             auto& task             = panel.m_import_task;
             task.Panel             = &panel;
@@ -120,7 +130,7 @@ namespace Tetragrama::Panels
             task.Configuration.VFS = &vfs;
             task.Kind              = Kind::Assimp;
             task.Outcome           = AssetImporterPanel::ImportTaskOutcome::Pending;
-            task.Outputs.clear();
+            task.PreparedArtifacts.clear();
             task.PublishedPaths.clear();
             task.Error.clear();
             task.Scene        = {};
@@ -149,6 +159,7 @@ namespace Tetragrama::Panels
             {
                 panel.m_import_result_slab.Init(&arena, ZMega(1));
                 panel.m_import_task.PublishedPaths.init(&panel.m_import_result_slab, 8);
+                panel.m_import_task.PreparedArtifacts.init(&panel.m_import_result_slab, 0);
             }
             panel.m_assimp_importer                = &importer;
             auto& task                             = panel.m_import_task;
@@ -158,7 +169,7 @@ namespace Tetragrama::Panels
             task.Configuration.OnArtifactPublished = &AssetImporterPanel::OnImportArtifactPublished;
             task.Kind                              = AssetImporterPanel::ImporterKind::Assimp;
             task.Outcome                           = AssetImporterPanel::ImportTaskOutcome::Pending;
-            task.Outputs.clear();
+            task.PreparedArtifacts.clear();
             task.Error.clear();
             task.PublishedPaths.clear();
             task.Ready.store(false, std::memory_order_relaxed);
@@ -859,10 +870,61 @@ TEST_F(AssetImporterPanelTest, HiddenPanelPollUsesCapturedVFSAndSourceForEveryAr
         EXPECT_STREQ(meta.Value().SourcePath, "/Source/Original.OBJ");
         EXPECT_STREQ(meta.Value().ArtifactPath, output.Path.c_str());
         EXPECT_STREQ(meta.Value().ImporterName, "AssimpImporter");
+        const auto hash = MetaFileIO::ComputeHash(vfs, VFSPath::Parse(output.Path.c_str()).Value());
+        ASSERT_TRUE(hash.Succeeded());
+        EXPECT_EQ(meta.Value().SourceHash, hash.Value());
     }
     importer.Poll();
     EXPECT_EQ(Access::HistoryCount(importer), 1);
     EXPECT_EQ(vfs.Ends, 1);
+}
+
+TEST_F(AssetImporterPanelTest, CompactMetadataResultsReuseBudgetedStorageAcrossImports)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    WriteMeshIdentity("/mesh.zemesh");
+    ZEngine::Importers::AssetImporterOutput output  = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+    const void*                             storage = nullptr;
+    for (uint32_t attempt = 0; attempt < 3; ++attempt)
+    {
+        Access::Prepare(importer, vfs, memory.MainArena);
+        auto borrowed = output;
+        Access::Complete(importer, {&borrowed, 1});
+        borrowed.Path = "/NoLongerTheImportedArtifact.zemesh";
+        ASSERT_NE(Access::PreparedStorage(importer), nullptr);
+        if (storage)
+            EXPECT_EQ(Access::PreparedStorage(importer), storage);
+        storage = Access::PreparedStorage(importer);
+        importer.Poll();
+        EXPECT_TRUE(Access::LastImportSucceeded(importer));
+    }
+    EXPECT_LT(Access::PreparedArtifactBytes(), sizeof(ZEngine::Core::VFS::MetaFileData) / 2);
+    RecordProperty("prepared_artifact_bytes", static_cast<int>(Access::PreparedArtifactBytes()));
+    RecordProperty("full_sidecar_bytes", static_cast<int>(sizeof(ZEngine::Core::VFS::MetaFileData)));
+}
+
+TEST_F(AssetImporterPanelTest, MetadataBudgetExhaustionReportsFailureAndReleasesPublication)
+{
+    using Access = Tetragrama::Panels::AssetImporterPanelTestAccess;
+    WriteMeshIdentity("/mesh.zemesh");
+    const ZEngine::Importers::AssetImporterOutput        output = {.Type = ZEngine::Importers::AssetFileType::MESH, .Path = "/mesh.zemesh"};
+    std::vector<ZEngine::Importers::AssetImporterOutput> outputs(4096, output);
+    Access::Prepare(importer, vfs, memory.MainArena);
+    Access::Complete(importer, {outputs.data(), outputs.size()});
+    importer.Poll();
+    EXPECT_TRUE(Access::Idle(importer));
+    EXPECT_FALSE(Access::LastImportSucceeded(importer));
+    EXPECT_NE(std::string_view(Access::LastMessage(importer)).find("budget"), std::string_view::npos);
+    EXPECT_EQ(vfs.Ends, 1);
+    EXPECT_FALSE(Access::Pending(importer));
+
+    // A rejected large result must not poison the slab or a later small import.
+    Access::Prepare(importer, vfs, memory.MainArena);
+    auto small_output = output;
+    Access::Complete(importer, {&small_output, 1});
+    importer.Poll();
+    EXPECT_TRUE(Access::LastImportSucceeded(importer));
+    EXPECT_EQ(vfs.Ends, 2);
 }
 
 TEST_F(AssetImporterPanelTest, MetadataRegistersDependenciesWithoutBindingRuntimeAssetsOrRedirectingVFS)
@@ -910,6 +972,24 @@ TEST_F(AssetImporterPanelTest, MetadataRegistersDependenciesWithoutBindingRuntim
     EXPECT_EQ(registered->Type, ZEngine::Managers::AssetType::MATERIAL);
     EXPECT_FALSE(registered->IsLoaded());
     EXPECT_STREQ(registered->Meta.ImporterName, "AssimpImporter");
+
+    // The normal post-import scanner must observe the already-finalized hash,
+    // not transition a fresh unloaded material/mesh into a permanent stale state.
+    for (const auto& output : outputs)
+    {
+        const auto path = VFSPath::Parse(output.Path.c_str()).Value();
+        const auto hash = MetaFileIO::ComputeHash(vfs, path);
+        ASSERT_TRUE(hash.Succeeded());
+        const auto meta = MetaFileIO::GetOrCreate(vfs, path, "VFSScanner", hash.Value(), true);
+        ASSERT_TRUE(meta.Succeeded());
+        EXPECT_EQ(meta.Value().Status, ImportStatus::UpToDate);
+        auto* registry = AssetManager::Instance()->Registry;
+        registry->OnScanFileDiscovered(vfs, path, ZEngine::Core::VFS::AssetRegistry::InferTypeFromExtension(path));
+        AssetRecordSnapshot snapshot;
+        ASSERT_TRUE(registry->TryReadRecordByPath(path, &snapshot));
+        EXPECT_EQ(snapshot.Record.State, AssetState::Registered);
+        EXPECT_EQ(snapshot.Record.Meta.SourceHash, hash.Value());
+    }
 
     // A cooked artifact can conflict with an already registered identity without
     // turning successful cooking into a scene write or a false cooking failure.

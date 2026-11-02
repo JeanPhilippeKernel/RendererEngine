@@ -4,6 +4,7 @@
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Helpers/NodeHierarchyHelper.h>
+#include <ZEngine/Rendering/Materials/MaterialAlpha.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
 #include <uuid.h>
 #include <string>
@@ -51,30 +52,31 @@ namespace ZEngine::Importers
 
     struct AssetMaterial
     {
-        Core::Containers::String    Name              = {};
-        uuids::uuid                 MaterialUUID      = {};
+        Core::Containers::String        Name              = {};
+        uuids::uuid                     MaterialUUID      = {};
         // Texture UUIDs — runtime lookup key into AssetManager
-        uuids::uuid                 AlbedoTexUUID     = {};
-        uuids::uuid                 EmissiveTexUUID   = {};
-        uuids::uuid                 NormalTexUUID     = {};
-        uuids::uuid                 OpacityTexUUID    = {};
-        uuids::uuid                 SpecularTexUUID   = {};
+        uuids::uuid                     AlbedoTexUUID     = {};
+        uuids::uuid                     EmissiveTexUUID   = {};
+        uuids::uuid                     NormalTexUUID     = {};
+        uuids::uuid                     OpacityTexUUID    = {};
+        uuids::uuid                     SpecularTexUUID   = {};
         // Texture paths — project-relative VFS path to the extracted image file
         // Stored in .zematerial so no separate .zetextures file is needed
-        Core::Containers::String    AlbedoTexPath     = {};
-        Core::Containers::String    EmissiveTexPath   = {};
-        Core::Containers::String    NormalTexPath     = {};
-        Core::Containers::String    OpacityTexPath    = {};
-        Core::Containers::String    SpecularTexPath   = {};
-        float                       AmbientColor[4]   = {0};
-        float                       AlbedoColor[4]    = {0};
-        float                       EmissiveColor[4]  = {0};
-        float                       RoughnessColor[4] = {0};
-        float                       SpecularColor[4]  = {0};
-        float                       Factors[4]        = {0};
+        Core::Containers::String        AlbedoTexPath     = {};
+        Core::Containers::String        EmissiveTexPath   = {};
+        Core::Containers::String        NormalTexPath     = {};
+        Core::Containers::String        OpacityTexPath    = {};
+        Core::Containers::String        SpecularTexPath   = {};
+        float                           AmbientColor[4]   = {0};
+        float                           AlbedoColor[4]    = {0};
+        float                           EmissiveColor[4]  = {0};
+        float                           RoughnessColor[4] = {0};
+        float                           SpecularColor[4]  = {0};
+        float                           Factors[4]        = {0};
+        Rendering::Materials::AlphaMode AlphaMode         = Rendering::Materials::AlphaMode::Legacy;
 
         // Copy string storage as well as values when crossing an arena lifetime boundary.
-        [[nodiscard]] AssetMaterial Clone(Core::Memory::ArenaAllocator* arena) const
+        [[nodiscard]] AssetMaterial     Clone(Core::Memory::ArenaAllocator* arena) const
         {
             AssetMaterial copy = *this;
             copy.Name.init(arena, Name.c_str());

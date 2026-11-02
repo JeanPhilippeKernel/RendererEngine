@@ -42,6 +42,9 @@ namespace ZEngine::Rendering::Renderers
             return true;
         }
 
+    protected:
+        void RegisterObjectIdReadbacks(RenderGraphResourceBuilderPtr builder, RGResourceHandle object_id, uint32_t width, uint32_t height);
+
     private:
         ObjectIdPickRequest m_object_id_picks[MaxObjectIdPickRequests] = {};
         uint32_t            m_object_id_pick_count                     = 0;

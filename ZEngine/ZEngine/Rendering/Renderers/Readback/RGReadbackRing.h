@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
     /// @details `data` remains valid only for the duration of the callback. The
     /// callback must copy any result that it needs to retain.
     using RGReadbackFn       = void (*)(const void* data, size_t size, void* context);
-    /// @brief Notifies a requester that its declared copy will never be submitted.
+    /// @brief Notifies a requester that its declared copy cannot be delivered.
     /// @details Runs on the render thread. It must only release request-local
     /// state; it must not interpret missing data as a successful background hit.
     using RGReadbackCancelFn = void (*)(void* context);
@@ -31,6 +31,7 @@ namespace ZEngine::Rendering::Renderers
         uint64_t                          TimelineValue = 0;
         VkDeviceSize                      DataSize      = 0;
         RGReadbackFn                      Callback      = nullptr;
+        RGReadbackCancelFn                Cancellation  = nullptr;
         void*                             Context       = nullptr;
         bool                              Reserved      = false;
         bool                              Submitted     = false;
@@ -50,7 +51,7 @@ namespace ZEngine::Rendering::Renderers
         uint32_t                                      Acquire(VkDeviceSize size);
         /// @brief Associates one reserved allocation with the successful copy submission.
         /// @return True if the lease was recorded.
-        bool                                          Submit(uint32_t allocation_index, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value, VkDeviceSize data_size, RGReadbackFn callback, void* context);
+        bool                                          Submit(uint32_t allocation_index, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value, VkDeviceSize data_size, RGReadbackFn callback, void* context, RGReadbackCancelFn cancellation = nullptr);
         /// @brief Releases a reservation whose command buffer will not be submitted.
         void                                          Cancel(uint32_t allocation_index);
         /// @brief Releases all reservations that were not associated with a submission.

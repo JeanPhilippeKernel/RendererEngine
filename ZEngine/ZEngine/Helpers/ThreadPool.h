@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/ZEngineDef.h>
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -79,7 +80,8 @@ namespace ZEngine::Helpers
         }
 
         /// @brief Submit a C-style task without allocating a closure.
-        /// @return False when the pool is shutting down and the task was not run.
+        /// @return False when unavailable or saturated. Never executes inline:
+        /// callers must retry, reject, or explicitly handle CPU-only fallback.
         bool Submit(void* ctx, TaskFn fn)
         {
             if (!fn || m_cancellation.value.load(std::memory_order_relaxed))
@@ -96,14 +98,12 @@ namespace ZEngine::Helpers
                     return true;
                 }
             }
-            // All queues full — execute inline as last resort.
-            task();
-            return true;
+            return false;
         }
 
         /// @brief Submits a task to one specific worker without an inline fallback.
-        /// @details Render-graph command recording uses this to preserve command-pool
-        ///          ownership. The render thread is its only caller.
+        /// @details Background callers use this for bounded, non-inline admission.
+        /// Render recording has a separate device-owned execution domain.
         /// @return False when the worker is invalid, its queue is full, or shutdown began.
         bool SubmitToWorker(uint32_t worker_index, void* ctx, TaskFn fn)
         {
@@ -208,10 +208,28 @@ namespace ZEngine::Helpers
     {
         static Scope<ThreadPool> Pool;
 
-        static void              Initialize()
+        // Split the original hardware-minus-one (capped) budget between render
+        // and background workers instead of adding another full-size pool.
+        static size_t            DefaultWorkerBudget()
+        {
+            const size_t hardware = std::thread::hardware_concurrency();
+            return std::min<size_t>(hardware > 1 ? hardware - 1 : 1, ThreadPool::MAX_WORKERS);
+        }
+
+        static uint32_t RenderWorkerCount()
+        {
+            return static_cast<uint32_t>(std::max<size_t>(1, DefaultWorkerBudget() / 2));
+        }
+
+        static size_t BackgroundWorkerCount()
+        {
+            return std::max<size_t>(1, DefaultWorkerBudget() - RenderWorkerCount());
+        }
+
+        static void Initialize()
         {
             if (!Pool)
-                Pool = CreateScope<ThreadPool>();
+                Pool = CreateScope<ThreadPool>(BackgroundWorkerCount() + 1);
         }
 
         static bool IsInitialized()
@@ -229,13 +247,13 @@ namespace ZEngine::Helpers
         }
 
         /// @brief Submit a C-style task without allocating a closure.
-        /// @return False when the pool has not been initialized or is shutting down.
+        /// @return False when unavailable or saturated; never runs inline.
         static bool Submit(void* ctx, TaskFn fn)
         {
             return Pool && Pool->Submit(ctx, fn);
         }
 
-        /// @brief Submits a render-thread task to a specific worker.
+        /// @brief Submits a background task to a specific worker.
         /// @return False when the pool is unavailable or that worker cannot accept work.
         static bool SubmitToWorker(uint32_t worker_index, void* ctx, TaskFn fn)
         {

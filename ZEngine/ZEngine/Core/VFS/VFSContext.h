@@ -109,6 +109,7 @@ namespace ZEngine::Core::VFS
         VFSFileWatcher*                        m_file_watcher                                                      = nullptr;
         VFSDirectoryCache*                     m_directory_cache                                                   = nullptr;
         VFSScanner*                            m_scanner                                                           = nullptr;
+        bool                                   m_rescan_requested                                                  = false;
         AssetRegistry*                         m_registry                                                          = nullptr;
         Importers::ImportCoordinator*          m_coordinator                                                       = nullptr;
         FileChangeListener                     m_file_change_listener                                              = nullptr;

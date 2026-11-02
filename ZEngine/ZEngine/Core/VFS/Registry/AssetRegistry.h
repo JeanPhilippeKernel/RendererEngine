@@ -4,6 +4,7 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/Registry/AssetIndex.h>
 #include <ZEngine/Core/VFS/Registry/DependencyGraph.h>
+#include <mutex>
 #include <optional>
 #include <span>
 
@@ -12,8 +13,12 @@ namespace ZEngine::Core::VFS
     class AssetRegistry
     {
     public:
-        AssetRegistry()  = default;
-        ~AssetRegistry() = default;
+        using AssetReadyCallback   = void (*)(void*, const uuids::uuid&, Managers::AssetHandle);
+        using AssetStaleCallback   = void (*)(void*, const uuids::uuid&);
+        using AssetRemovedCallback = void (*)(void*, const uuids::uuid&, Managers::AssetType);
+
+        AssetRegistry()            = default;
+        ~AssetRegistry()           = default;
 
         // arena: persistent arena. scratch_size: byte size of BFS scratch sub-arena.
         void               Initialize(Core::Memory::ArenaAllocator* arena, uint64_t scratch_size = 65536);
@@ -23,10 +28,11 @@ namespace ZEngine::Core::VFS
 
         RegisterResult     RegisterLoaded(const uuids::uuid& uuid, Managers::AssetType type, const Core::VFS::VFSPath& path, const Core::VFS::MetaFileData& meta, Managers::AssetHandle slot_handle);
         [[nodiscard]] bool TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const;
+        [[nodiscard]] bool TryReadRecordByPath(const Core::VFS::VFSPath& path, AssetRecordSnapshot* out) const;
         [[nodiscard]] bool TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const;
         /// No callbacks are fired until the cache owner has published complete CPU data
         /// and calls SetState(Loaded). Failure changes neither record.
-        [[nodiscard]] bool TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot);
+        [[nodiscard]] bool TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy = nullptr);
 
         bool               Remove(const uuids::uuid& uuid);
         bool               Remove(Helpers::Handle<AssetRecord> handle);
@@ -74,12 +80,22 @@ namespace ZEngine::Core::VFS
         //           Signature: void(void* ctx, const uuids::uuid& uuid, Managers::AssetHandle slot_handle)
         // OnStale:  fired when OnAssetModified marks an asset Stale.
         //           Signature: void(void* ctx, const uuids::uuid& uuid)
-        void                   SetOnReadyCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetHandle));
-        void                   SetOnStaleCallback(void* ctx, void (*cb)(void*, const uuids::uuid&));
+        void                   SetOnReadyCallback(void* ctx, AssetReadyCallback cb);
+        void                   SetOnStaleCallback(void* ctx, AssetStaleCallback cb);
 
         /// @brief Register a callback fired once per cascade UUID from OnAssetDeleted,
         ///        before each record is erased (so it can still read the record's Type).
-        void                   SetOnRemovedCallback(void* ctx, void (*cb)(void*, const uuids::uuid&, Managers::AssetType));
+        void                   SetOnRemovedCallback(void* ctx, AssetRemovedCallback cb);
+
+        /// @brief Adds an observer without replacing the RRM's primary callback.
+        /// @details Observer lifecycle is serialized with delivery. Removing an observer
+        ///          waits for concurrent delivery; callbacks must return promptly.
+        [[nodiscard]] bool     AddOnReadyListener(void* ctx, AssetReadyCallback cb);
+        [[nodiscard]] bool     AddOnStaleListener(void* ctx, AssetStaleCallback cb);
+        [[nodiscard]] bool     AddOnRemovedListener(void* ctx, AssetRemovedCallback cb);
+        bool                   RemoveOnReadyListener(void* ctx, AssetReadyCallback cb);
+        bool                   RemoveOnStaleListener(void* ctx, AssetStaleCallback cb);
+        bool                   RemoveOnRemovedListener(void* ctx, AssetRemovedCallback cb);
 
         void                   OnAssetModified(const Core::VFS::VFSPath& path);
         void                   OnAssetDeleted(const Core::VFS::VFSPath& path);
@@ -108,19 +124,44 @@ namespace ZEngine::Core::VFS
         static bool                ExtensionMatches(const Core::VFS::VFSPath& path, const char* ext);
 
     private:
-        AssetIndex      m_index                                              = {};
-        DependencyGraph m_graph                                              = {};
-        void*           m_reload_cb_ctx                                      = nullptr;
-        void (*m_reload_cb)(void*, std::span<const uuids::uuid>)             = nullptr;
+        AssetIndex      m_index                                  = {};
+        DependencyGraph m_graph                                  = {};
+        void*           m_reload_cb_ctx                          = nullptr;
+        void (*m_reload_cb)(void*, std::span<const uuids::uuid>) = nullptr;
 
-        void* m_ready_cb_ctx                                                 = nullptr;
-        void (*m_ready_cb)(void*, const uuids::uuid&, Managers::AssetHandle) = nullptr;
-        void* m_stale_cb_ctx                                                 = nullptr;
-        void (*m_stale_cb)(void*, const uuids::uuid&)                        = nullptr;
-        void* m_removed_cb_ctx                                               = nullptr;
-        void (*m_removed_cb)(void*, const uuids::uuid&, Managers::AssetType) = nullptr;
+        void*                     m_ready_cb_ctx                 = nullptr;
+        AssetReadyCallback        m_ready_cb                     = nullptr;
+        void*                     m_stale_cb_ctx                 = nullptr;
+        AssetStaleCallback        m_stale_cb                     = nullptr;
+        void*                     m_removed_cb_ctx               = nullptr;
+        AssetRemovedCallback      m_removed_cb                   = nullptr;
 
-        Core::Memory::ArenaAllocator m_scratch                               = {};
+        static constexpr uint32_t kMaxEventListeners             = 4;
+        struct ReadyListener
+        {
+            void*              Context  = nullptr;
+            AssetReadyCallback Callback = nullptr;
+        };
+        struct StaleListener
+        {
+            void*              Context  = nullptr;
+            AssetStaleCallback Callback = nullptr;
+        };
+        struct RemovedListener
+        {
+            void*                Context  = nullptr;
+            AssetRemovedCallback Callback = nullptr;
+        };
+        ReadyListener                m_ready_listeners[kMaxEventListeners]   = {};
+        StaleListener                m_stale_listeners[kMaxEventListeners]   = {};
+        RemovedListener              m_removed_listeners[kMaxEventListeners] = {};
+        std::recursive_mutex         m_listener_mutex                        = {};
+
+        void                         NotifyReadyListeners(const uuids::uuid& uuid, Managers::AssetHandle handle);
+        void                         NotifyStaleListeners(const uuids::uuid& uuid);
+        void                         NotifyRemovedListeners(const uuids::uuid& uuid, Managers::AssetType type);
+
+        Core::Memory::ArenaAllocator m_scratch = {};
 
         bool                         PassesFilter(const AssetRecord& rec, const QueryFilter& f) const;
     };

@@ -361,6 +361,53 @@ ArenaAllocator* GpuAllocatorTest::s_logger_arena = nullptr;
 HeadlessVulkan* GpuAllocatorTest::s_vk           = nullptr;
 GpuAllocator*   GpuAllocatorTest::s_allocator    = nullptr;
 
+TEST_F(GpuAllocatorTest, RuntimeImageMetadataCannotRewindOrOverwriteRenderScratch)
+{
+    ASSERT_NE(s_allocator, nullptr);
+    ArenaAllocator arena;
+    arena.Initialize(ZMega(2), 0);
+    auto                                device = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    ZEngine::Hardwares::DeviceSwapchain swapchain{};
+    device->Arena            = &arena;
+    device->LogicalDevice    = s_vk->Device;
+    device->SwapchainPtr     = &swapchain;
+    device->GpuMem.Allocator = allocator().Allocator;
+    device->ImageViewCacheSlab.Init(&arena, ZKilo(64));
+    device->ImageBufferManager.Initialize(&arena, 16);
+    device->GlobalTextures.Initialize(&arena, 16);
+    const auto                                  before = arena.m_current_offset;
+    ZEngine::Rendering::Textures::TextureHandle handle;
+    {
+        const auto scratch    = ZGetScratch(&arena);
+        auto*      completion = ZPushStructCtor<PaddedAtomic<uint32_t>>(&arena);
+        completion->value.store(42);
+        const auto  scratch_end = arena.m_current_offset;
+        // The main/UI thread can request a preview while the render thread owns
+        // an active temporary allocation scope on Device->Arena.
+        std::thread ui([&] { handle = device->CreateTexture({.Width = 4, .Height = 4, .Format = ZEngine::Rendering::Specifications::ImageFormat::R8G8B8A8_UNORM}); });
+        ui.join();
+        ASSERT_TRUE(handle.Valid());
+        EXPECT_EQ(arena.m_current_offset, scratch_end);
+        EXPECT_EQ(completion->value.load(), 42u);
+        ZReleaseScratch(scratch);
+    }
+    EXPECT_EQ(arena.m_current_offset, before);
+    auto* image = device->ImageBufferManager.Access(device->GlobalTextures.Access(handle)->BufferHandle);
+    ASSERT_NE(image, nullptr);
+    // Grow the actual persistent subresource cache after aggressively reusing
+    // the render scratch that used to own it. Validate exact view reuse too.
+    auto* overwritten = arena.Allocate(4096);
+    std::memset(overwritten, 0xa5, 4096);
+    const VkImageSubresourceRange range = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1};
+    const auto                    view  = image->GetImageViewHandle(VK_IMAGE_VIEW_TYPE_2D_ARRAY, range);
+    EXPECT_NE(view, VK_NULL_HANDLE);
+    EXPECT_EQ(image->GetImageViewHandle(VK_IMAGE_VIEW_TYPE_2D_ARRAY, range), view);
+    image->Dispose();
+    device->PendingFree.Drain(&device->GpuMem, device->LogicalDevice, UINT64_MAX);
+    device->ImageViewCacheSlab.Shutdown();
+    device->GpuMem.Allocator = nullptr; // Borrowed from the fixture.
+}
+
 TEST_F(GpuAllocatorTest, PoolsAreCreatedForExpectedDomains)
 {
     ASSERT_NE(s_allocator, nullptr);
@@ -985,10 +1032,10 @@ namespace
                 const auto color     = (step + cycle) % 3;
                 frame->TriangleCount = frame->LineCount = frame->SpriteCount = 1;
                 frame->Triangles[0]                                          = {
-                    .A = { -.9f, -.8f, .5f},
-                      .B = { -.2f, -.8f, .5f},
-                      .C = {-.55f, .15f, .5f},
-                      .Color = colors[color]
+                                                             .A = { -.9f, -.8f, .5f},
+                                                               .B = { -.2f, -.8f, .5f},
+                                                               .C = {-.55f, .15f, .5f},
+                                                               .Color = colors[color]
                 };
                 frame->Lines[0] = {
                     .A = { .2f, -.5f, .5f},
@@ -1101,6 +1148,8 @@ TEST_F(GpuAllocatorTest, DynamicGizmoJoinedStrokesHaveNoOpaqueGapsOrTranslucentO
 
 #include "GizmoGraphFixture.h"
 #include "GridLabelGraphFixture.h"
+#include "MaterialAlphaGpuFixture.h"
+#include "DelayedReadbackGpuFixture.h"
 
 class RenderResourceManagerBatchTest : public GpuAllocatorTest
 {

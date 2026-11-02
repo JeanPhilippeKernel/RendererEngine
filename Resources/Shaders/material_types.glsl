@@ -15,5 +15,5 @@ struct MaterialData
     uint SpecularMap;
     uint NormalMap;
     uint OpacityMap;
-    uint _pad;
+    uint AlphaMode;
 };
