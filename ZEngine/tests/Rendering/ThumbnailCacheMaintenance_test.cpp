@@ -11,8 +11,8 @@ namespace
     class ThumbnailCacheMaintenanceTest : public ::testing::Test
     {
     protected:
-        fs::path                              Root, Cache, Directory;
-        ThumbnailCacheMaintenance::CurrentKey Key;
+        fs::path                              Root{}, Cache{}, Directory{};
+        ThumbnailCacheMaintenance::CurrentKey Key{};
         ThumbnailCacheMaintenance::Resolution Resolution = ThumbnailCacheMaintenance::Resolution::Current;
         void                                  SetUp() override
         {
@@ -24,7 +24,7 @@ namespace
         }
         void TearDown() override
         {
-            std::error_code ignored;
+            std::error_code ignored{};
             fs::remove_all(Root, ignored);
         }
         fs::path File(const char* name, std::chrono::hours age = std::chrono::hours(1))

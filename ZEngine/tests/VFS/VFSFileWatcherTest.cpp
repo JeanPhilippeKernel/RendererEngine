@@ -228,7 +228,7 @@ TEST_F(VFSFileWatcherTest, OverflowBroadcastsToEveryWatch)
 
 TEST_F(VFSFileWatcherTest, LargeImportBurstCoalescesIntoOneOverflowAndRecovers)
 {
-    MockPlatformWatcher mock;
+    MockPlatformWatcher mock{};
     VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{0});
     watcher.Initialize(&m_manager.MainArena);
     int overflow_a = 0, overflow_b = 0, modified = 0;
@@ -261,7 +261,7 @@ TEST_F(VFSFileWatcherTest, LargeImportBurstCoalescesIntoOneOverflowAndRecovers)
 
 TEST_F(VFSFileWatcherTest, DuplicateAtDebounceLoadCeilingDoesNotOverflow)
 {
-    MockPlatformWatcher mock;
+    MockPlatformWatcher mock{};
     VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{0});
     watcher.Initialize(&m_manager.MainArena, 16);
     int changes = 0, overflows = 0;

@@ -23,14 +23,14 @@ namespace Tetragrama::Panels
         using Submitter                    = bool (*)(void*, void*, void (*)(void*));
         enum class Status
         {
-            Idle,
+            Idle = 0,
             Loading,
             Ready,
             Failed
         };
         struct Result
         {
-            DirectoryEntry Entries[Capacity];
+            DirectoryEntry Entries[Capacity]{};
             uint32_t       Count     = 0;
             bool           Truncated = false;
             bool           Succeeded = false;
@@ -60,7 +60,7 @@ namespace Tetragrama::Panels
 
     private:
         struct Work;
-        std::unique_ptr<Work>            m_work;
+        std::unique_ptr<Work>            m_work{};
         ZEngine::Core::VFS::IVFSContext* m_vfs              = nullptr;
         ZEngine::Core::VFS::VFSPath      m_path             = {};
         uint64_t                         m_generation       = 0;

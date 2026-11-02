@@ -101,10 +101,10 @@ namespace Tetragrama::Panels
         {
             struct PreparedArtifact
             {
-                ZEngine::Importers::AssetFileType Type;
-                ZEngine::Core::VFS::VFSPath       Path;
-                uuids::uuid                       UUID;
-                uint64_t                          SourceHash;
+                ZEngine::Importers::AssetFileType Type = ZEngine::Importers::AssetFileType::UNKNOWN;
+                ZEngine::Core::VFS::VFSPath       Path{};
+                uuids::uuid                       UUID{};
+                uint64_t                          SourceHash{};
             };
             AssetImporterPanel*                                           Panel                           = nullptr;
             ZEngine::Importers::AssetCodec::ImportConfiguration           Configuration                   = {};

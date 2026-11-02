@@ -958,9 +958,9 @@ TEST(RenderGraphDeclarationTest, RenderedPreviewReadbackRestoresSampledAfterTheE
     // Reverse declaration order to prove the copy->restore edge, not the
     // topological sort's stable tie-break, guarantees the final layout.
     std::swap(graph.Passes[1], graph.Passes[2]);
-    Array<uint32_t> order;
+    Array<uint32_t> order{};
     order.init(&arena, 3);
-    Array<RGPassDependency> dependencies;
+    Array<RGPassDependency> dependencies{};
     dependencies.init(&arena, 4);
     ASSERT_TRUE(BuildPassTopology(&arena, graph.Passes, order, nullptr, &dependencies));
     ASSERT_EQ(order.size(), 3u);
@@ -1230,11 +1230,11 @@ TEST(RenderGraphDeclarationTest, FailedRegistrationRollsBackResourceVersions)
 
 TEST(RenderGraphDeclarationTest, PassLookupCapacityTracksTheRegisteredPipeline)
 {
-    MemoryManager manager;
+    MemoryManager manager{};
     manager.Initialize(ZMega(4), {});
     auto device   = std::make_unique<Hardwares::VulkanDevice>();
     device->Arena = &manager.MainArena;
-    RenderGraph graph;
+    RenderGraph graph{};
     graph.Device = device.get();
     graph.FrameArena.Initialize(ZMega(1), manager.MainArena.m_mem_page_size);
     graph.PersistentPasses.init(&manager.MainArena, 40);
@@ -1242,13 +1242,13 @@ TEST(RenderGraphDeclarationTest, PassLookupCapacityTracksTheRegisteredPipeline)
     graph.ImportedResourceIndex.init(&manager.MainArena, 2);
     graph.QueryPools.init(&manager.MainArena, 1);
     graph.QueryPoolIndex.init(&manager.MainArena, 2);
-    RenderGraphResourceBuilder   builder;
-    RenderGraphResourceInspector inspector;
+    RenderGraphResourceBuilder   builder{};
+    RenderGraphResourceInspector inspector{};
     builder.Initialize(&graph);
     inspector.Initialize(&graph);
     graph.ResourceBuilder   = &builder;
     graph.ResourceInspector = &inspector;
-    ValidRegistrationPass callback;
+    ValidRegistrationPass callback{};
     char                  names[40][16] = {};
     for (uint32_t i = 0; i < 40; ++i)
     {

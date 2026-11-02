@@ -26,7 +26,7 @@ namespace ZEngine::Rendering
             if (!name.ends_with(".png"))
                 return false;
             name.remove_suffix(4);
-            std::string_view parts[4];
+            std::string_view parts[4]{};
             uint32_t         count = 0;
             while (!name.empty() && count < 4)
             {
@@ -52,13 +52,13 @@ namespace ZEngine::Rendering
     ThumbnailCacheMaintenance::Statistics ThumbnailCacheMaintenance::Cleanup(const char* project_root, uint32_t schema, uint32_t renderer, Resolve resolve, void* context, const std::atomic<bool>* accepting)
     {
         namespace fs = std::filesystem;
-        Statistics stats;
+        Statistics stats{};
         if (!project_root || !project_root[0] || !schema || !renderer || !resolve)
             return stats;
         const auto      running = [&] { return !accepting || accepting->load(std::memory_order_acquire); };
         const auto      started = fs::file_time_type::clock::now();
         fs::path        root(project_root);
-        std::error_code error;
+        std::error_code error{};
         // Check every generated ancestor, not just the leaf: an intermediate
         // symlink must not redirect a cleanup pass outside this project's cache.
         for (const char* component : {".zodiacengine", "cache", "thumbnails"})
@@ -79,9 +79,9 @@ namespace ZEngine::Rendering
                 error.clear();
                 continue;
             }
-            CurrentKey             current;
+            CurrentKey             current{};
             const auto             resolution = resolve(context, *id, &current);
-            std::error_code        file_error;
+            std::error_code        file_error{};
             fs::directory_iterator files(directory, file_error);
             if (file_error)
                 ++stats.Errors;
@@ -109,7 +109,7 @@ namespace ZEngine::Rendering
                         temporary = true;
                     }
                 }
-                DiskKey disk;
+                DiskKey disk{};
                 if (!Parse(name, disk))
                     continue;
                 const auto modified = fs::last_write_time(path, file_error);
@@ -145,7 +145,7 @@ namespace ZEngine::Rendering
             // Unknown files, symlinks, and active writer temporaries keep it alive.
             if (running())
             {
-                std::error_code ignored;
+                std::error_code ignored{};
                 fs::remove(directory, ignored);
             }
         }

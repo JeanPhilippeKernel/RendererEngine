@@ -173,3 +173,38 @@ TEST_F(ThreadPoolTest, SubmitVariantsRejectAFilledQueueWithoutRunningInline)
 
     blocking.Release.store(true, std::memory_order_release);
 }
+
+TEST_F(ThreadPoolTest, SubmitUsesAnotherWorkerWhenTheFirstQueueIsSaturated)
+{
+    struct Probe
+    {
+        std::thread::id   Thread{};
+        std::atomic<bool> Done = false;
+    } probe{};
+    BlockingTaskContext          blocking = {};
+    std::atomic<int>             counter  = 0;
+    ZEngine::Helpers::ThreadPool pool(3);
+    ReleaseBlockedWorker         release = {&blocking};
+    ASSERT_EQ(pool.WorkerCount, 2u);
+    ASSERT_TRUE(pool.SubmitToWorker(0, &blocking, &BlockWorker));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!blocking.Started.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    ASSERT_TRUE(blocking.Started.load(std::memory_order_acquire));
+    for (uint32_t i = 0; i < ZEngine::Helpers::ThreadPool::MAX_TASKS_PER_WORKER; ++i)
+        ASSERT_TRUE(pool.SubmitToWorker(0, &counter, &Increment));
+
+    ASSERT_TRUE(pool.Submit(
+        &probe, +[](void* context) {
+            auto& output  = *static_cast<Probe*>(context);
+            output.Thread = std::this_thread::get_id();
+            output.Done.store(true, std::memory_order_release);
+        }));
+    const auto completion_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!probe.Done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < completion_deadline)
+        std::this_thread::yield();
+    ASSERT_TRUE(probe.Done.load(std::memory_order_acquire));
+    EXPECT_NE(probe.Thread, std::this_thread::get_id());
+    EXPECT_EQ(counter.load(std::memory_order_acquire), 0);
+    EXPECT_FALSE(blocking.Release.load(std::memory_order_acquire));
+}

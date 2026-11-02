@@ -64,7 +64,7 @@ namespace Tetragrama::Panels
         bool                                      m_listing_valid                                 = false;
         bool                                      m_truncated                                     = false;
         bool                                      m_listing_failed                                = false;
-        DirectoryListing                          m_grid_listing;
+        DirectoryListing                          m_grid_listing{};
         float                                     m_thumbnail_scale                                   = 1.f;
         bool                                      m_reset_grid_input                                  = false;
         Tetragrama::Thumbnails::ThumbnailService* m_thumbnails                                        = nullptr;

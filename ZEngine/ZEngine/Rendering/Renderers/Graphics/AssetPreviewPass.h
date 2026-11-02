@@ -17,7 +17,7 @@ namespace ZEngine::Rendering::Renderers
         static constexpr uint32_t MaxDraws            = 256;
         enum class Result : uint8_t
         {
-            Pending,
+            Pending = 0,
             Succeeded,
             Failed
         };
@@ -62,13 +62,13 @@ namespace ZEngine::Rendering::Renderers
                 return RGPassFlags::NeverCull;
             }
             void Execute(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
-        } Publish;
+        } Publish{};
 
     private:
         friend struct AssetPreviewPassTestAccess;
         enum class State : uint8_t
         {
-            Empty,
+            Empty = 0,
             Queued,
             Recording,
             Submitted,
@@ -108,7 +108,7 @@ namespace ZEngine::Rendering::Renderers
         void                     Release(Task& task);
         Task*                    Find(Textures::TextureHandle texture);
         Hardwares::VulkanDevice* m_device = nullptr;
-        std::mutex               m_mutex;
+        std::mutex               m_mutex{};
         Task                     m_tasks[Capacity] = {};
         Task*                    m_current         = nullptr;
         uint32_t                 m_cursor          = 0;

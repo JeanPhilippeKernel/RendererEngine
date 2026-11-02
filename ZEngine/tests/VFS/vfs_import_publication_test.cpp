@@ -15,35 +15,35 @@ namespace ZEngine::Core::VFS
     // regression test to model a native event delivered after publication end.
     struct VFSContextTestAccess
     {
-        static void Configure(VFSContext& context, const char* project_root, FileChangeListener listener, void* listener_context)
+        static void Configure(ZEngine::Core::VFS::VFSContext& context, const char* project_root, FileChangeListener listener, void* listener_context)
         {
             Helpers::secure_strcpy(context.m_project_root_native, sizeof(context.m_project_root_native), project_root);
             context.m_file_change_listener = listener;
             context.m_file_change_context  = listener_context;
         }
 
-        static void Deliver(VFSContext& context, const VFSWatchEvent& event)
+        static void Deliver(ZEngine::Core::VFS::VFSContext& context, const VFSWatchEvent& event)
         {
             context.HandleWatchEvent(event);
         }
 
-        static VFSResult<VFSPath> Resolve(VFSContext& context, const char* native)
+        static VFSResult<ZEngine::Core::VFS::VFSPath> Resolve(ZEngine::Core::VFS::VFSContext& context, const char* native)
         {
             return context.ToRelativeVFSPath(native);
         }
 
-        static void SetRegistry(VFSContext& context, AssetRegistry* registry)
+        static void SetRegistry(ZEngine::Core::VFS::VFSContext& context, ZEngine::Core::VFS::AssetRegistry* registry)
         {
             context.m_registry = registry;
         }
 
-        static void SetScanner(VFSContext& context, VFSScanner* scanner, VFSDirectoryCache* cache)
+        static void SetScanner(ZEngine::Core::VFS::VFSContext& context, ZEngine::Core::VFS::VFSScanner* scanner, ZEngine::Core::VFS::VFSDirectoryCache* cache)
         {
             context.m_scanner         = scanner;
             context.m_directory_cache = cache;
         }
 
-        static bool RescanRequested(const VFSContext& context)
+        static bool RescanRequested(const ZEngine::Core::VFS::VFSContext& context)
         {
             return context.m_rescan_requested;
         }
@@ -93,37 +93,36 @@ namespace
 
 TEST(VFSScanAdmissionTest, RetriesSaturatedRootOnTickWithoutLosingTheRequest)
 {
-    using namespace ZEngine::Core::VFS;
-    MemoryManager memory;
+    MemoryManager memory{};
     memory.Initialize(ZGiga(1), {});
-    VFSContext context;
+    ZEngine::Core::VFS::VFSContext context{};
     context.Initialize(&memory.MainArena);
-    VFSMemoryBackend backend;
+    ZEngine::Core::VFS::VFSMemoryBackend backend{};
     backend.Initialize(&memory.MainArena);
-    ASSERT_TRUE(context.Mount(&backend, VFSPath::Root(), 0).Succeeded());
-    VFSDirectoryCache cache;
+    ASSERT_TRUE(context.Mount(&backend, ZEngine::Core::VFS::VFSPath::Root(), 0).Succeeded());
+    ZEngine::Core::VFS::VFSDirectoryCache cache{};
     cache.Initialize(&memory.MainArena);
-    VFSScanner scanner;
+    ZEngine::Core::VFS::VFSScanner scanner{};
     scanner.Initialize(&memory.MainArena);
     std::atomic<bool> complete = false;
-    scanner.SetOnScanComplete(&complete, +[](void* ctx, ScanStats) { static_cast<std::atomic<bool>*>(ctx)->store(true); });
-    VFSContextTestAccess::SetScanner(context, &scanner, &cache);
-    SaturatedBackgroundPool background;
+    scanner.SetOnScanComplete(&complete, +[](void* ctx, ZEngine::Core::VFS::ScanStats) { static_cast<std::atomic<bool>*>(ctx)->store(true); });
+    ZEngine::Core::VFS::VFSContextTestAccess::SetScanner(context, &scanner, &cache);
+    SaturatedBackgroundPool background{};
     ASSERT_TRUE(background.Fill());
     context.ScanProject();
-    EXPECT_TRUE(VFSContextTestAccess::RescanRequested(context));
+    EXPECT_TRUE(ZEngine::Core::VFS::VFSContextTestAccess::RescanRequested(context));
     EXPECT_FALSE(scanner.IsScanning());
     context.Tick();
-    EXPECT_TRUE(VFSContextTestAccess::RescanRequested(context));
+    EXPECT_TRUE(ZEngine::Core::VFS::VFSContextTestAccess::RescanRequested(context));
     EXPECT_FALSE(complete.load());
     background.Release();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (VFSContextTestAccess::RescanRequested(context) && std::chrono::steady_clock::now() < deadline)
+    while (ZEngine::Core::VFS::VFSContextTestAccess::RescanRequested(context) && std::chrono::steady_clock::now() < deadline)
     {
         context.Tick();
         std::this_thread::yield();
     }
-    EXPECT_FALSE(VFSContextTestAccess::RescanRequested(context));
+    EXPECT_FALSE(ZEngine::Core::VFS::VFSContextTestAccess::RescanRequested(context));
     while (!complete.load() && std::chrono::steady_clock::now() < deadline)
         std::this_thread::yield();
     EXPECT_TRUE(complete.load());
@@ -170,48 +169,46 @@ TEST(VFSImportPublicationTest, SuppressesArtifactEventDeliveredAfterPublicationE
 
 TEST(VFSImportPublicationTest, NativeWatcherPathsPreserveProjectRootBoundary)
 {
-    using namespace ZEngine::Core::VFS;
-    VFSContext context;
-    VFSContextTestAccess::Configure(context, ProjectRootNative, nullptr, nullptr);
+    ZEngine::Core::VFS::VFSContext context{};
+    ZEngine::Core::VFS::VFSContextTestAccess::Configure(context, ProjectRootNative, nullptr, nullptr);
 
-    const auto root = VFSContextTestAccess::Resolve(context, ProjectRootNative);
+    const auto root = ZEngine::Core::VFS::VFSContextTestAccess::Resolve(context, ProjectRootNative);
     ASSERT_TRUE(root.Succeeded());
-    EXPECT_EQ(root.Value(), VFSPath::Root());
+    EXPECT_EQ(root.Value(), ZEngine::Core::VFS::VFSPath::Root());
 
-    const auto artifact = VFSContextTestAccess::Resolve(context, ArtifactPathNative);
+    const auto artifact = ZEngine::Core::VFS::VFSContextTestAccess::Resolve(context, ArtifactPathNative);
     ASSERT_TRUE(artifact.Succeeded());
-    EXPECT_EQ(artifact.Value(), VFSPath::Parse("/Assets/Meshes/robot.zemesh").Value());
+    EXPECT_EQ(artifact.Value(), ZEngine::Core::VFS::VFSPath::Parse("/Assets/Meshes/robot.zemesh").Value());
 
-    const auto sibling = VFSContextTestAccess::Resolve(context, SiblingRootNative);
+    const auto sibling = ZEngine::Core::VFS::VFSContextTestAccess::Resolve(context, SiblingRootNative);
     ASSERT_TRUE(sibling.Succeeded());
-    EXPECT_EQ(sibling.Value(), VFSPath::Parse("/project2/Assets/Meshes/robot.zemesh").Value());
+    EXPECT_EQ(sibling.Value(), ZEngine::Core::VFS::VFSPath::Parse("/project2/Assets/Meshes/robot.zemesh").Value());
 }
 
 TEST(VFSImportPublicationTest, IgnoresEngineCacheWatcherEvents)
 {
-    using namespace ZEngine::Core::VFS;
-    MemoryManager   manager;
-    VFSContext      context;
-    ListenerCounter listener;
+    MemoryManager                  manager{};
+    ZEngine::Core::VFS::VFSContext context{};
+    ListenerCounter                listener{};
 
     manager.Initialize(ZMega(2), {});
     context.Initialize(&manager.MainArena);
-    VFSContextTestAccess::Configure(context, ProjectRootNative, &CountEvent, &listener);
+    ZEngine::Core::VFS::VFSContextTestAccess::Configure(context, ProjectRootNative, &CountEvent, &listener);
 
-    const WatchEventKind kinds[] = {WatchEventKind::Created, WatchEventKind::Modified, WatchEventKind::Deleted, WatchEventKind::Renamed};
-    for (const WatchEventKind kind : kinds)
+    const ZEngine::Core::VFS::WatchEventKind kinds[] = {ZEngine::Core::VFS::WatchEventKind::Created, ZEngine::Core::VFS::WatchEventKind::Modified, ZEngine::Core::VFS::WatchEventKind::Deleted, ZEngine::Core::VFS::WatchEventKind::Renamed};
+    for (const ZEngine::Core::VFS::WatchEventKind kind : kinds)
     {
         auto event = MakeEvent(CachePathNative);
         event.Kind = kind;
-        VFSContextTestAccess::Deliver(context, event);
+        ZEngine::Core::VFS::VFSContextTestAccess::Deliver(context, event);
         event.IsDirectory = true;
-        VFSContextTestAccess::Deliver(context, event);
+        ZEngine::Core::VFS::VFSContextTestAccess::Deliver(context, event);
     }
     EXPECT_EQ(listener.Count, 0);
 
     char user_path[MAX_FILE_PATH_COUNT] = {};
-    VFSPath::Parse("/.zodiacengine-assets/preview.png").Value().ResolveNative(ProjectRootNative, user_path, sizeof(user_path));
-    VFSContextTestAccess::Deliver(context, MakeEvent(user_path));
+    ZEngine::Core::VFS::VFSPath::Parse("/.zodiacengine-assets/preview.png").Value().ResolveNative(ProjectRootNative, user_path, sizeof(user_path));
+    ZEngine::Core::VFS::VFSContextTestAccess::Deliver(context, MakeEvent(user_path));
     EXPECT_EQ(listener.Count, 1);
 
     context.Shutdown();
@@ -220,50 +217,48 @@ TEST(VFSImportPublicationTest, IgnoresEngineCacheWatcherEvents)
 
 TEST(VFSImportPublicationTest, RenameIntoEngineCacheRemovesTheSourceAsset)
 {
-    using namespace ZEngine::Core::VFS;
-    MemoryManager manager;
+    MemoryManager manager{};
     manager.Initialize(ZMega(32), {});
-    AssetRegistry registry;
+    ZEngine::Core::VFS::AssetRegistry registry{};
     registry.Initialize(&manager.MainArena);
-    const auto   id = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
-    MetaFileData meta{};
+    const auto                       id = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
+    ZEngine::Core::VFS::MetaFileData meta{};
     meta.AssetUUID    = id;
-    const auto source = VFSPath::Parse("/Assets/Meshes/robot.zemesh").Value();
+    const auto source = ZEngine::Core::VFS::VFSPath::Parse("/Assets/Meshes/robot.zemesh").Value();
     ASSERT_TRUE(registry.Register(id, ZEngine::Managers::AssetType::MESH, source, meta).IsOk());
-    VFSContext      context;
-    ListenerCounter listener;
+    ZEngine::Core::VFS::VFSContext context{};
+    ListenerCounter                listener{};
     context.Initialize(&manager.MainArena);
-    VFSContextTestAccess::Configure(context, ProjectRootNative, &CountEvent, &listener);
-    VFSContextTestAccess::SetRegistry(context, &registry);
+    ZEngine::Core::VFS::VFSContextTestAccess::Configure(context, ProjectRootNative, &CountEvent, &listener);
+    ZEngine::Core::VFS::VFSContextTestAccess::SetRegistry(context, &registry);
     auto event = MakeEvent(CachePathNative);
-    event.Kind = WatchEventKind::Renamed;
+    event.Kind = ZEngine::Core::VFS::WatchEventKind::Renamed;
     ZEngine::Helpers::secure_strcpy(event.OldPath, sizeof(event.OldPath), ArtifactPathNative);
-    VFSContextTestAccess::Deliver(context, event);
+    ZEngine::Core::VFS::VFSContextTestAccess::Deliver(context, event);
 
     EXPECT_EQ(registry.FindByUUID(id), nullptr);
     EXPECT_EQ(listener.Count, 1);
     EXPECT_EQ(listener.LastPath, source);
-    EXPECT_EQ(listener.LastKind, WatchEventKind::Deleted);
+    EXPECT_EQ(listener.LastKind, ZEngine::Core::VFS::WatchEventKind::Deleted);
     context.Shutdown();
     manager.Shutdown();
 }
 
 TEST(VFSImportPublicationTest, RenameOutOfEngineCacheIsANewUserAsset)
 {
-    using namespace ZEngine::Core::VFS;
-    MemoryManager manager;
+    MemoryManager manager{};
     manager.Initialize(ZMega(2), {});
-    VFSContext      context;
-    ListenerCounter listener;
+    ZEngine::Core::VFS::VFSContext context{};
+    ListenerCounter                listener{};
     context.Initialize(&manager.MainArena);
-    VFSContextTestAccess::Configure(context, ProjectRootNative, &CountEvent, &listener);
+    ZEngine::Core::VFS::VFSContextTestAccess::Configure(context, ProjectRootNative, &CountEvent, &listener);
     auto event = MakeEvent(ArtifactPathNative);
-    event.Kind = WatchEventKind::Renamed;
+    event.Kind = ZEngine::Core::VFS::WatchEventKind::Renamed;
     ZEngine::Helpers::secure_strcpy(event.OldPath, sizeof(event.OldPath), CachePathNative);
-    VFSContextTestAccess::Deliver(context, event);
+    ZEngine::Core::VFS::VFSContextTestAccess::Deliver(context, event);
 
     EXPECT_EQ(listener.Count, 1);
-    EXPECT_EQ(listener.LastKind, WatchEventKind::Created);
+    EXPECT_EQ(listener.LastKind, ZEngine::Core::VFS::WatchEventKind::Created);
     context.Shutdown();
     manager.Shutdown();
 }

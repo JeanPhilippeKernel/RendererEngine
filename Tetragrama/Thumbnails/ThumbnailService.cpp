@@ -8,9 +8,6 @@
 #include <algorithm>
 #include <cstdio>
 
-using namespace ZEngine::Core::VFS;
-using namespace ZEngine::Rendering;
-
 namespace Tetragrama::Thumbnails
 {
     void ThumbnailService::AssetLoad::Run(void* context)
@@ -27,7 +24,7 @@ namespace Tetragrama::Thumbnails
     {
         if (Cancelled.load(std::memory_order_acquire) || !Assets->Registry)
             return false;
-        AssetRecordSnapshot current;
+        ZEngine::Core::VFS::AssetRecordSnapshot current{};
         if (!Assets->Registry->TryReadRecord(Record.Record.UUID, &current) || !IsPreviewable(current))
             return false;
         if (current.Record.Type != Record.Record.Type || current.Record.Path != Record.Record.Path || current.Record.Meta.SourceHash != Record.Record.Meta.SourceHash)
@@ -49,15 +46,10 @@ namespace Tetragrama::Thumbnails
 
     bool ThumbnailService::SubmitAssetLoad(void*, void* context, void (*run)(void*))
     {
-        auto* pool = ZEngine::Helpers::ThreadPoolHelper::Pool.get();
-        if (pool)
-            for (uint32_t worker = 0; worker < pool->WorkerCount; ++worker)
-                if (pool->SubmitToWorker(worker, context, run))
-                    return true;
-        return false; // Never execute file IO inline on the UI/render thread.
+        return ZEngine::Helpers::ThreadPoolHelper::Submit(context, run);
     }
 
-    bool ThumbnailService::EnsureAssetLoaded(const AssetRecordSnapshot& record)
+    bool ThumbnailService::EnsureAssetLoaded(const ZEngine::Core::VFS::AssetRecordSnapshot& record)
     {
         using ZEngine::Managers::AssetManager;
         using ZEngine::Managers::AssetType;
@@ -120,7 +112,7 @@ namespace Tetragrama::Thumbnails
                 work.Cancelled.store(true, std::memory_order_release);
     }
 
-    void ThumbnailService::Initialize(AssetRegistry* registry, RenderResourceManager* resource_manager, cstring project_root, Renderers::AssetPreviewPass* previews, IVFSContext* vfs)
+    void ThumbnailService::Initialize(ZEngine::Core::VFS::AssetRegistry* registry, ZEngine::Rendering::RenderResourceManager* resource_manager, cstring project_root, ZEngine::Rendering::Renderers::AssetPreviewPass* previews, ZEngine::Core::VFS::IVFSContext* vfs)
     {
         Deinitialize();
         if (!registry || !resource_manager || !project_root || project_root[0] == '\0' || ZEngine::Helpers::secure_strlen(project_root) >= sizeof(m_project_root))
@@ -268,18 +260,18 @@ namespace Tetragrama::Thumbnails
         return true;
     }
 
-    bool ThumbnailService::IsPreviewable(const AssetRecordSnapshot& record)
+    bool ThumbnailService::IsPreviewable(const ZEngine::Core::VFS::AssetRecordSnapshot& record)
     {
         using ZEngine::Managers::AssetType;
-        return (record.Record.Type == AssetType::TEXTURE || record.Record.Type == AssetType::MESH || record.Record.Type == AssetType::MATERIAL) && !record.Record.UUID.is_nil() && record.Record.Path.IsValid() && (record.Record.State == AssetState::Registered || record.Record.State == AssetState::Loaded);
+        return (record.Record.Type == AssetType::TEXTURE || record.Record.Type == AssetType::MESH || record.Record.Type == AssetType::MATERIAL) && !record.Record.UUID.is_nil() && record.Record.Path.IsValid() && (record.Record.State == ZEngine::Core::VFS::AssetState::Registered || record.Record.State == ZEngine::Core::VFS::AssetState::Loaded);
     }
 
-    bool ThumbnailService::IsFileDecoded(const AssetRecordSnapshot& record) const
+    bool ThumbnailService::IsFileDecoded(const ZEngine::Core::VFS::AssetRecordSnapshot& record) const
     {
         return record.Record.Type == ZEngine::Managers::AssetType::TEXTURE;
     }
 
-    Textures::TextureHandle ThumbnailService::Acquire(const AssetRecordSnapshot& record, bool* fully_transparent, Materials::AlphaInfo* alpha_info)
+    ZEngine::Rendering::Textures::TextureHandle ThumbnailService::Acquire(const ZEngine::Core::VFS::AssetRecordSnapshot& record, bool* fully_transparent, ZEngine::Rendering::Materials::AlphaInfo* alpha_info)
     {
         ZENGINE_PROFILE_SCOPE("ThumbnailProfile.Acquire");
         if (fully_transparent)
@@ -318,7 +310,7 @@ namespace Tetragrama::Thumbnails
         uint64_t dependency_hash = 0;
         uint64_t persistent_hash = 0;
         bool     transparent     = false;
-        if (record.Record.Type != ZEngine::Managers::AssetType::TEXTURE && (!m_previews || !Renderers::AssetPreviewPass::DependencyFingerprint(record, &dependency_hash, &persistent_hash, &transparent, alpha_info)))
+        if (record.Record.Type != ZEngine::Managers::AssetType::TEXTURE && (!m_previews || !ZEngine::Rendering::Renderers::AssetPreviewPass::DependencyFingerprint(record, &dependency_hash, &persistent_hash, &transparent, alpha_info)))
         {
             Invalidate(uuid);
             return {};
@@ -356,9 +348,9 @@ namespace Tetragrama::Thumbnails
             return {};
         }
         char           cache_path[MAX_FILE_PATH_COUNT] = {};
-        const uint32_t renderer_revision               = entry->Kind == ZEngine::Managers::AssetType::TEXTURE ? 0 : Renderers::AssetPreviewPass::RendererRevision;
+        const uint32_t renderer_revision               = entry->Kind == ZEngine::Managers::AssetType::TEXTURE ? 0 : ZEngine::Rendering::Renderers::AssetPreviewPass::RendererRevision;
         BuildCachePath(uuid, source_hash, cache_path, persistent_hash, renderer_revision);
-        const RenderResourceManager::ThumbnailCacheIdentity identity = {.AssetUUID = uuid, .SourceHash = source_hash, .DependencyHash = persistent_hash, .SchemaRevision = kSchemaRevision, .RendererRevision = renderer_revision};
+        const ZEngine::Rendering::RenderResourceManager::ThumbnailCacheIdentity identity = {.AssetUUID = uuid, .SourceHash = source_hash, .DependencyHash = persistent_hash, .SchemaRevision = kSchemaRevision, .RendererRevision = renderer_revision};
         if (entry->Kind != ZEngine::Managers::AssetType::TEXTURE)
         {
             // A cache-only worker miss is a normal transition, not a failed
@@ -495,7 +487,7 @@ namespace Tetragrama::Thumbnails
         if (m_frame >= m_next_cleanup_frame)
         {
             auto* context = ZEngine::Engine::GetContext();
-            if (context && !context->VFSScanner.IsScanning() && m_resource_manager->SubmitThumbnailCacheCleanup(m_project_root, kSchemaRevision, Renderers::AssetPreviewPass::RendererRevision))
+            if (context && !context->VFSScanner.IsScanning() && m_resource_manager->SubmitThumbnailCacheCleanup(m_project_root, kSchemaRevision, ZEngine::Rendering::Renderers::AssetPreviewPass::RendererRevision))
                 m_next_cleanup_frame = m_frame + 3600;
         }
 
@@ -505,20 +497,20 @@ namespace Tetragrama::Thumbnails
             {
                 continue;
             }
-            auto state = RenderResourceManager::TextureDecodeState::Failed;
+            auto state = ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Failed;
             if (!entry.GraphRequest)
                 state = m_resource_manager->GetTextureDecodeState(entry.Texture);
             else if (m_previews)
             {
                 const auto preview = m_previews->Observe(entry.Texture);
-                state              = preview == Renderers::AssetPreviewPass::Result::Pending ? RenderResourceManager::TextureDecodeState::Pending : preview == Renderers::AssetPreviewPass::Result::Succeeded ? RenderResourceManager::TextureDecodeState::Succeeded : RenderResourceManager::TextureDecodeState::Failed;
+                state              = preview == ZEngine::Rendering::Renderers::AssetPreviewPass::Result::Pending ? ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Pending : preview == ZEngine::Rendering::Renderers::AssetPreviewPass::Result::Succeeded ? ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Succeeded : ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Failed;
             }
-            if (state == RenderResourceManager::TextureDecodeState::Pending || state == RenderResourceManager::TextureDecodeState::Untracked)
+            if (state == ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Pending || state == ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Untracked)
             {
                 continue;
             }
 
-            if (state == RenderResourceManager::TextureDecodeState::Failed)
+            if (state == ZEngine::Rendering::RenderResourceManager::TextureDecodeState::Failed)
             {
                 if (!entry.GraphRequest)
                     m_resource_manager->ForgetTextureDecode(entry.Texture);
@@ -550,9 +542,9 @@ namespace Tetragrama::Thumbnails
             }
             else
             {
-                AssetRecordSnapshot current         = {};
-                uint64_t            dependency_hash = 0;
-                const bool          valid           = m_registry && m_registry->TryReadRecord(entry.AssetUUID, &current) && IsPreviewable(current) && current.Record.Type == entry.Kind && current.Record.Meta.SourceHash == entry.SourceHash && (entry.Kind == ZEngine::Managers::AssetType::TEXTURE || (Renderers::AssetPreviewPass::DependencyFingerprint(current, &dependency_hash) && dependency_hash == entry.DependencyHash));
+                ZEngine::Core::VFS::AssetRecordSnapshot current         = {};
+                uint64_t                                dependency_hash = 0;
+                const bool                              valid           = m_registry && m_registry->TryReadRecord(entry.AssetUUID, &current) && IsPreviewable(current) && current.Record.Type == entry.Kind && current.Record.Meta.SourceHash == entry.SourceHash && (entry.Kind == ZEngine::Managers::AssetType::TEXTURE || (ZEngine::Rendering::Renderers::AssetPreviewPass::DependencyFingerprint(current, &dependency_hash) && dependency_hash == entry.DependencyHash));
                 if (!valid)
                 {
                     ReleaseAndClear(entry);

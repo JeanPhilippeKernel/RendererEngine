@@ -13,9 +13,6 @@
 #include <strings.h>
 #endif
 
-using namespace ZEngine::Core::VFS;
-using namespace ZEngine::Helpers;
-
 namespace Tetragrama::Panels
 {
     namespace
@@ -60,20 +57,20 @@ namespace Tetragrama::Panels
             }
             if (*left || *right)
                 return *left ? 1 : -1;
-            return secure_strcmp(a, b);
+            return ZEngine::Helpers::secure_strcmp(a, b);
         }
     } // namespace
 
     struct DirectoryListing::Work
     {
-        IVFSContext*                          VFS             = nullptr;
-        VFSPath                               Path            = {};
+        ZEngine::Core::VFS::IVFSContext*      VFS             = nullptr;
+        ZEngine::Core::VFS::VFSPath           Path            = {};
         uint64_t                              Generation      = 0;
         bool                                  DirectoriesOnly = false;
         std::atomic<bool>                     Cancelled       = false;
         std::atomic<bool>                     Done            = false;
-        ZEngine::Core::Memory::ArenaAllocator Scratch;
-        std::unique_ptr<Result>               Output;
+        ZEngine::Core::Memory::ArenaAllocator Scratch{};
+        std::unique_ptr<Result>               Output{};
     };
 
     DirectoryListing::DirectoryListing() = default;
@@ -85,7 +82,7 @@ namespace Tetragrama::Panels
 
     bool DirectoryListing::Submit(void*, void* work, void (*run)(void*))
     {
-        return ThreadPoolHelper::Submit(work, run);
+        return ZEngine::Helpers::ThreadPoolHelper::Submit(work, run);
     }
 
     void DirectoryListing::SetSubmitter(Submitter submit, void* context)
@@ -104,7 +101,7 @@ namespace Tetragrama::Panels
             m_work->Cancelled.store(true, std::memory_order_release);
     }
 
-    void DirectoryListing::Request(IVFSContext& vfs, const VFSPath& path, bool directories_only)
+    void DirectoryListing::Request(ZEngine::Core::VFS::IVFSContext& vfs, const ZEngine::Core::VFS::VFSPath& path, bool directories_only)
     {
         if (m_closed)
             return;
@@ -134,7 +131,7 @@ namespace Tetragrama::Panels
         if (!m_requested)
             return nullptr;
         if (!m_work)
-            m_work.reset(new (std::nothrow) Work);
+            m_work.reset(new (std::nothrow) Work{});
         if (!m_work)
         {
             m_requested = false;
@@ -166,7 +163,7 @@ namespace Tetragrama::Panels
         // Large result storage is initialized on the worker, not the first UI
         // frame. No per-refresh allocation after this channel has warmed up.
         if (!work.Output)
-            work.Output.reset(new (std::nothrow) Result);
+            work.Output.reset(new (std::nothrow) Result{});
         if (!work.Output)
         {
             work.Done.store(true, std::memory_order_release);
@@ -214,10 +211,10 @@ namespace Tetragrama::Panels
         if (a.is_dir != b.is_dir)
             return a.is_dir;
         const int order = NaturalNameCompare(a.name, b.name);
-        return order ? order < 0 : secure_strcmp(a.full_path, b.full_path) < 0;
+        return order ? order < 0 : ZEngine::Helpers::secure_strcmp(a.full_path, b.full_path) < 0;
     }
 
-    void DirectoryListing::Prepare(const ZEngine::Core::Containers::Array<VFSDirEntry>& raw, DirectoryEntry* output, uint32_t capacity, uint32_t& count, bool& truncated, bool directories_only, const VFSPath* parent)
+    void DirectoryListing::Prepare(const ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSDirEntry>& raw, DirectoryEntry* output, uint32_t capacity, uint32_t& count, bool& truncated, bool directories_only, const ZEngine::Core::VFS::VFSPath* parent)
     {
         ZENGINE_PROFILE_SCOPE("ContentBrowser.PrepareListing");
         count     = 0;
@@ -238,9 +235,9 @@ namespace Tetragrama::Panels
                 break;
             }
             auto& cached = output[count++];
-            secure_memcpy(cached.name, sizeof(cached.name), name.Data, name.Length);
+            ZEngine::Helpers::secure_memcpy(cached.name, sizeof(cached.name), name.Data, name.Length);
             cached.name[name.Length] = '\0';
-            secure_memcpy(cached.full_path, sizeof(cached.full_path), entry.Path.CStr(), entry.Path.Length() + 1);
+            ZEngine::Helpers::secure_memcpy(cached.full_path, sizeof(cached.full_path), entry.Path.CStr(), entry.Path.Length() + 1);
             cached.is_dir = entry.IsDirectory;
         }
         std::sort(output, output + count, EntryLess);

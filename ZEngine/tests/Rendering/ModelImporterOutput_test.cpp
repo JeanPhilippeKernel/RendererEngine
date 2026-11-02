@@ -2095,7 +2095,7 @@ TEST_F(ModelImporterOutputTest, GltfAlphaModesCutoffAndBaseOpacitySurviveCooking
     using ZEngine::Rendering::Materials::AlphaMode;
     Config.Options.ImportMaterials = true;
     const auto     filename        = WriteGltf(4);
-    nlohmann::json document;
+    nlohmann::json document{};
     {
         std::ifstream input(filename);
         input >> document;
@@ -2137,7 +2137,7 @@ TEST_F(ModelImporterOutputTest, GltfAlphaModesCutoffAndBaseOpacitySurviveCooking
             std::ofstream output(native, std::ios::binary);
             output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         }
-        AssetMaterial loaded;
+        AssetMaterial loaded{};
         DeserializeMaterialAssetFile(&Arena, native.c_str(), loaded);
         EXPECT_EQ(loaded.AlphaMode, expected[count]);
         EXPECT_FLOAT_EQ(loaded.Factors[2], cutoffs[count]);
@@ -2157,7 +2157,7 @@ TEST_F(ModelImporterOutputTest, OldCookedMaterialsKeepLegacySemanticsWithoutSour
         std::ofstream output(filename);
         output << source;
     }
-    AssetMaterial material;
+    AssetMaterial material{};
     material.AlphaMode = AlphaMode::Opaque;
     DeserializeMaterialAssetFile(&Arena, filename.c_str(), material);
     EXPECT_EQ(material.AlphaMode, AlphaMode::Legacy);
@@ -2171,7 +2171,7 @@ TEST_F(ModelImporterOutputTest, GltfDefaultAlphaModeIsOpaqueNotInferredFromBaseO
 {
     Config.Options.ImportMaterials = true;
     const auto     filename        = WriteGltf(1);
-    nlohmann::json document;
+    nlohmann::json document{};
     {
         std::ifstream input(filename);
         input >> document;

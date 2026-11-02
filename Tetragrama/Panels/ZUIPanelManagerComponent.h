@@ -26,14 +26,14 @@ namespace Tetragrama::Panels
     {
         ZEngine::UI::ZUIPanelManager             Manager = {};
 
-        HierarchyPanel                           hierarchy;
-        ViewportPanel                            viewport;
-        InspectorPanel                           inspector;
-        ConsolePanel                             output;
-        ProjectViewPanel                         project;
-        MemoryProfilerPanel                      profiler;
-        AssetImporterPanel                       importer;
-        Tetragrama::Thumbnails::ThumbnailService thumbnails;
+        HierarchyPanel                           hierarchy{};
+        ViewportPanel                            viewport{};
+        InspectorPanel                           inspector{};
+        ConsolePanel                             output{};
+        ProjectViewPanel                         project{};
+        MemoryProfilerPanel                      profiler{};
+        AssetImporterPanel                       importer{};
+        Tetragrama::Thumbnails::ThumbnailService thumbnails{};
 
         /// @brief Initializes the panel manager, splits the dock tree, and registers
         ///        all panel views.

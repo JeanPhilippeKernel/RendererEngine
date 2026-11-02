@@ -531,20 +531,19 @@ protected:
 
 TEST_F(FolderTreeCacheTest, TexturePreviewsFillCheckerboardWhileKeepingSquareGeometryAndFileOrientationAtEveryTileScale)
 {
-    using namespace ZEngine::UI;
-    using Access   = Tetragrama::Panels::ProjectViewPanelTestAccess;
-    ZUIContext ctx = {};
-    ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
+    using Access                = Tetragrama::Panels::ProjectViewPanelTestAccess;
+    ZEngine::UI::ZUIContext ctx = {};
+    ZEngine::UI::ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
     ctx.ScreenW = 400;
     ctx.ScreenH = 300;
     for (const float scale : {.75f, 1.f, 1.5f})
     {
-        ZUIBeginFrame(&ctx, 1.f / 60.f);
-        auto* area      = ZUIBeginColumn(&ctx, "thumbnail-area", ZPx(110.f * scale), ZPx(79.f * scale));
-        area->MainAlign = area->CrossAlign = ZUIAlign::Center;
+        ZEngine::UI::ZUIBeginFrame(&ctx, 1.f / 60.f);
+        auto* area      = ZEngine::UI::ZUIBeginColumn(&ctx, "thumbnail-area", ZEngine::UI::ZPx(110.f * scale), ZEngine::UI::ZPx(79.f * scale));
+        area->MainAlign = area->CrossAlign = ZEngine::UI::ZUIAlign::Center;
         Access::DrawThumbnailImage(ctx, 17, scale);
-        ZUIEndColumn(&ctx);
-        ZUIEndFrame(&ctx);
+        ZEngine::UI::ZUIEndColumn(&ctx);
+        ZEngine::UI::ZUIEndFrame(&ctx);
         const auto* image = FindBox(ctx.Root, "##preview");
         ASSERT_NE(image, nullptr);
         ASSERT_NE(image->Parent, nullptr);
@@ -564,38 +563,37 @@ TEST_F(FolderTreeCacheTest, TexturePreviewsFillCheckerboardWhileKeepingSquareGeo
         EXPECT_NEAR((image->ScreenMin[0] + image->ScreenMax[0]) * .5f, (area->ScreenMin[0] + area->ScreenMax[0]) * .5f, .01f);
         EXPECT_NEAR((image->ScreenMin[1] + image->ScreenMax[1]) * .5f, (area->ScreenMin[1] + area->ScreenMax[1]) * .5f, .01f);
     }
-    ZUIContextDestroy(&ctx);
+    ZEngine::UI::ZUIContextDestroy(&ctx);
 }
 
 TEST_F(FolderTreeCacheTest, FullyTransparentPlaceholderExplainsInvisibleMaterialsAtEveryTileScale)
 {
-    using namespace ZEngine::UI;
     using Access = Tetragrama::Panels::ProjectViewPanelTestAccess;
-    ZUIContext ctx;
-    ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
-    BrowserTestFonts fonts;
+    ZEngine::UI::ZUIContext ctx{};
+    ZEngine::UI::ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
+    BrowserTestFonts fonts{};
     ctx.Atlas   = &fonts.atlas;
     ctx.ScreenW = 400;
     ctx.ScreenH = 300;
     for (float scale : {.75f, 1.f, 1.5f})
     {
-        ZUIBeginFrame(&ctx, 1.f / 60.f);
-        auto* area      = ZUIBeginColumn(&ctx, "transparent-area", ZPx(110.f * scale), ZPx(79.f * scale));
-        area->MainAlign = area->CrossAlign = ZUIAlign::Center;
+        ZEngine::UI::ZUIBeginFrame(&ctx, 1.f / 60.f);
+        auto* area      = ZEngine::UI::ZUIBeginColumn(&ctx, "transparent-area", ZEngine::UI::ZPx(110.f * scale), ZEngine::UI::ZPx(79.f * scale));
+        area->MainAlign = area->CrossAlign = ZEngine::UI::ZUIAlign::Center;
         Access::DrawTransparentPlaceholder(ctx, scale);
-        ZUIEndColumn(&ctx);
-        ZUIEndFrame(&ctx);
+        ZEngine::UI::ZUIEndColumn(&ctx);
+        ZEngine::UI::ZUIEndFrame(&ctx);
         const auto* label = FindBox(ctx.Root, "Fully transparent");
         ASSERT_NE(label, nullptr);
         EXPECT_EQ(BoxLabel(label), "Fully transparent");
         EXPECT_FLOAT_EQ(label->TextScale, scale);
-        EXPECT_EQ(label->FontSize, ZUIFontSize::Small);
+        EXPECT_EQ(label->FontSize, ZEngine::UI::ZUIFontSize::Small);
         EXPECT_GE(label->ScreenMin[0], area->ScreenMin[0]);
         EXPECT_LE(label->ScreenMax[0], area->ScreenMax[0]);
         EXPECT_GE(label->ScreenMin[1], area->ScreenMin[1]);
         EXPECT_LE(label->ScreenMax[1], area->ScreenMax[1]);
     }
-    ZUIContextDestroy(&ctx);
+    ZEngine::UI::ZUIContextDestroy(&ctx);
 }
 
 TEST_F(FolderTreeCacheTest, CachedListingSortsFoldersFirstNaturallyAndSkipsOnlyFilesForMetaSidecars)
@@ -2358,7 +2356,7 @@ TEST_F(FolderTreeCacheTest, AsyncGridDiscardsCompletedOldNavigationBeforePublish
 {
     using Access          = Tetragrama::Panels::ProjectViewPanelTestAccess;
     auto            panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
-    DeferredListing queue;
+    DeferredListing queue{};
     Access::ListingExecutor(*panel, &DeferredListing::Submit, &queue);
     Access::Navigate(*panel, "/Assets");
     Access::RefreshListing(*panel, &vfs);
@@ -2379,21 +2377,20 @@ TEST_F(FolderTreeCacheTest, AsyncGridDiscardsCompletedOldNavigationBeforePublish
 
 TEST_F(FolderTreeCacheTest, AsyncGridShowsLoadingAndFailureSeparatelyFromEmptyAndCanRetry)
 {
-    using namespace ZEngine::UI;
     using Access          = Tetragrama::Panels::ProjectViewPanelTestAccess;
     auto            panel = std::make_unique<Tetragrama::Panels::ProjectViewPanel>();
-    DeferredListing queue;
+    DeferredListing queue{};
     Access::ListingExecutor(*panel, &DeferredListing::Submit, &queue);
     Access::Navigate(*panel, "/Other");
     Access::RefreshListing(*panel, &vfs);
-    ZUIContext ctx = {};
-    ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
+    ZEngine::UI::ZUIContext ctx = {};
+    ZEngine::UI::ZUIContextInit(&ctx, &memory.MainArena, ZMega(8), ZMega(2), 1024, 1024);
     ctx.ScreenW        = 500;
     ctx.ScreenH        = 500;
     const auto message = [&]() {
-        ZUIBeginFrame(&ctx, 1.f / 60.f);
+        ZEngine::UI::ZUIBeginFrame(&ctx, 1.f / 60.f);
         Access::DrawGrid(*panel, ctx, 500.f, 400.f);
-        ZUIEndFrame(&ctx);
+        ZEngine::UI::ZUIEndFrame(&ctx);
         const auto* title = FindBox(ctx.Root, "##pv_empty_title");
         return title ? std::string(BoxLabel(title)) : std::string{};
     };
@@ -2415,7 +2412,7 @@ TEST_F(FolderTreeCacheTest, AsyncGridShowsLoadingAndFailureSeparatelyFromEmptyAn
     Access::RefreshListing(*panel, &vfs);
     EXPECT_EQ(message(), "This folder is empty");
     panel->ShutdownListingsAfterWorkersJoined();
-    ZUIContextDestroy(&ctx);
+    ZEngine::UI::ZUIContextDestroy(&ctx);
 }
 
 TEST_F(FolderTreeCacheTest, SearchFindsCollapsedDescendantsAndRetainsAncestorsCaseInsensitively)

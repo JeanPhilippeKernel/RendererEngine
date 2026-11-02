@@ -16,6 +16,7 @@
 #include <random>
 #include <thread>
 #include <vector>
+#include "../Misc/SaturatedBackgroundPool.h"
 
 using namespace ZEngine;
 using namespace ZEngine::Core::Memory;
@@ -139,7 +140,7 @@ static uuids::uuid MakeUUID()
 class ThumbnailCacheTest : public ::testing::Test
 {
 protected:
-    std::filesystem::path Directory;
+    std::filesystem::path Directory{};
 
     void                  SetUp() override
     {
@@ -149,7 +150,7 @@ protected:
 
     void TearDown() override
     {
-        std::error_code error;
+        std::error_code error{};
         std::filesystem::remove_all(Directory, error);
     }
 };
@@ -241,7 +242,7 @@ TEST_F(ThumbnailCacheTest, CompletedReadbackCopiesPixelsAndPublishesOnWorker)
     const auto                                          path   = Directory / "worker.png";
     const auto                                          native = path.string();
     const RenderResourceManager::ThumbnailCacheIdentity key    = {.SourceHash = 12, .DependencyHash = 34, .RendererRevision = 1};
-    std::array<uint8_t, 128 * 128 * 4>                  pixels;
+    std::array<uint8_t, 128 * 128 * 4>                  pixels{};
     pixels.fill(255);
     pixels[0]    = 37;
     void* ticket = resources->ReserveThumbnailCacheWrite(native.c_str(), key);
@@ -267,35 +268,9 @@ TEST_F(ThumbnailCacheTest, CompletedReadbackCopiesPixelsAndPublishesOnWorker)
 
 TEST_F(ThumbnailCacheTest, SaturatedWorkerQueuesRejectPersistenceWithoutInlineIoOrDeadlock)
 {
-    struct PoolGuard
-    {
-        Helpers::Scope<Helpers::ThreadPool> Previous = std::move(Helpers::ThreadPoolHelper::Pool);
-        std::atomic<bool>                   Begun = false, Release = false;
-        PoolGuard()
-        {
-            Helpers::ThreadPoolHelper::Pool = Helpers::CreateScope<Helpers::ThreadPool>(2);
-        }
-        ~PoolGuard()
-        {
-            Release.store(true);
-            Helpers::ThreadPoolHelper::Shutdown();
-            Helpers::ThreadPoolHelper::Pool = std::move(Previous);
-        }
-        static void Block(void* context)
-        {
-            auto& guard = *static_cast<PoolGuard*>(context);
-            guard.Begun.store(true);
-            while (!guard.Release.load())
-                std::this_thread::yield();
-        }
-    } guard;
-    auto* pool = Helpers::ThreadPoolHelper::Pool.get();
-    ASSERT_TRUE(pool->SubmitToWorker(0, &guard, &PoolGuard::Block));
-    while (!guard.Begun.load())
-        std::this_thread::yield();
-    for (uint32_t i = 0; i < Helpers::ThreadPool::MAX_TASKS_PER_WORKER; ++i)
-        ASSERT_TRUE(pool->SubmitToWorker(0, nullptr, +[](void*) {}));
-    ASSERT_FALSE(pool->SubmitToWorker(0, nullptr, +[](void*) {}));
+    SaturatedBackgroundPool background{};
+    ASSERT_TRUE(background.Fill());
+    ASSERT_FALSE(Helpers::ThreadPoolHelper::SubmitToWorker(0, nullptr, +[](void*) {}));
     auto resources = std::make_unique<RenderResourceManager>();
     RRMDecodeTestHelper::AcceptWork(*resources);
     const auto path   = (Directory / "saturated.png").string();
@@ -342,13 +317,13 @@ TEST_F(ThumbnailCacheTest, MaintenanceRunsOnWorkerWithCopiedRootAndPreservesCurr
             if (Owned)
                 Helpers::ThreadPoolHelper::Shutdown();
         }
-    } pool;
-    MemoryManager memory;
+    } pool{};
+    MemoryManager memory{};
     memory.Initialize(ZMega(64), {});
-    AssetRegistry registry;
+    AssetRegistry registry{};
     registry.Initialize(&memory.MainArena);
     const auto   uuid = MakeUUID();
-    MetaFileData meta;
+    MetaFileData meta{};
     meta.AssetUUID  = uuid;
     meta.SourceHash = 0x123;
     ASSERT_TRUE(registry.Register(uuid, AssetType::TEXTURE, VFSPath::Parse("/texture.png").Value(), meta).IsOk());
@@ -461,7 +436,7 @@ TEST_F(ThumbnailCacheTest, ConcurrentWritersPublishACompleteImageWithoutOrphaned
     constexpr uint32_t extent                = 32;
     constexpr uint32_t writer_count          = 4;
     bool               results[writer_count] = {};
-    std::thread        writers[writer_count];
+    std::thread        writers[writer_count]{};
     for (uint32_t index = 0; index < writer_count; ++index)
     {
         writers[index] = std::thread([&, index] {
@@ -698,7 +673,7 @@ TEST(RenderResourceManagerThumbnailPolicy, AspectFitClearsPaddingAndPreservesAlp
 
     for (const bool portrait : {false, true})
     {
-        uint8_t destination[8 * 8 * 4];
+        uint8_t destination[8 * 8 * 4]{};
         std::fill(std::begin(destination), std::end(destination), 0xcd);
         ASSERT_TRUE(RRMDecodeTestHelper::Fit(source, portrait ? 2 : 4, portrait ? 4 : 2, destination, 8));
         for (uint32_t y = 0; y < 8; ++y)

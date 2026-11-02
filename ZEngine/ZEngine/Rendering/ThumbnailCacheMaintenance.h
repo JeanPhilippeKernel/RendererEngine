@@ -11,8 +11,8 @@ namespace ZEngine::Rendering
     {
         enum class Resolution : uint8_t
         {
-            Unknown,    // transient/importing/unavailable: preserve all current-format keys
-            SourceOnly, // registered source known, material dependencies not yet loaded
+            Unknown = 0, // transient/importing/unavailable: preserve all current-format keys
+            SourceOnly,  // registered source known, material dependencies not yet loaded
             Missing,
             Current
         };

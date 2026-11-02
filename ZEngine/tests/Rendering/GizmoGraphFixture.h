@@ -10,13 +10,13 @@ namespace
     // background worker zero after five seconds, but that is a test failure.
     struct GizmoBackgroundGate
     {
-        std::mutex              Mutex;
-        std::condition_variable CV;
+        std::mutex              Mutex{};
+        std::condition_variable CV{};
         bool                    Started  = false;
         bool                    Released = false;
         bool                    Finished = false;
-        std::promise<void>      RenderFinished;
-        std::future<void>       Watchdog;
+        std::promise<void>      RenderFinished{};
+        std::future<void>       Watchdog{};
         bool                    Submitted              = false;
         bool                    CompletedBeforeRelease = false;
 
@@ -428,7 +428,7 @@ namespace
                 };
                 if (step == 1)
                 {
-                    GizmoBackgroundGate gate;
+                    GizmoBackgroundGate gate{};
                     ASSERT_TRUE(gate.Submitted);
                     ASSERT_TRUE(gate.WaitForStart());
                     ASSERT_NO_FATAL_FAILURE(owner.RenderGraphFrame(*frame, step % 3, 96, 64, true));

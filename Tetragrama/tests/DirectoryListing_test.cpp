@@ -10,9 +10,6 @@
 #include <thread>
 #include <vector>
 
-using namespace ZEngine::Core::VFS;
-using namespace Tetragrama::Panels;
-
 namespace
 {
     struct ManualExecutor
@@ -41,35 +38,35 @@ namespace
         }
     };
 
-    struct ListingVFS : VFSContext
+    struct ListingVFS : ZEngine::Core::VFS::VFSContext
     {
-        std::vector<std::string>                                 Paths;
-        bool                                                     Fail  = false;
-        uint32_t                                                 Calls = 0;
-        VFSResult<ZEngine::Core::Containers::Array<VFSDirEntry>> List(const VFSPath& parent, ZEngine::Core::Memory::ArenaAllocator* arena) override
+        std::vector<std::string>                                                                         Paths{};
+        bool                                                                                             Fail  = false;
+        uint32_t                                                                                         Calls = 0;
+        ZEngine::Core::VFS::VFSResult<ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSDirEntry>> List(const ZEngine::Core::VFS::VFSPath& parent, ZEngine::Core::Memory::ArenaAllocator* arena) override
         {
-            using Array = ZEngine::Core::Containers::Array<VFSDirEntry>;
+            using Array = ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSDirEntry>;
             ++Calls;
             if (Fail)
-                return VFSResult<Array>::Fail(VFSError::IOError);
-            Array raw;
+                return ZEngine::Core::VFS::VFSResult<Array>::Fail(ZEngine::Core::VFS::VFSError::IOError);
+            Array raw{};
             raw.init(arena, Paths.size() + 1);
             for (const auto& text : Paths)
             {
-                auto path = VFSPath::Parse(text.c_str()).Value();
+                auto path = ZEngine::Core::VFS::VFSPath::Parse(text.c_str()).Value();
                 if (path.Parent() == parent)
                     raw.push({{}, path, true});
             }
-            return VFSResult<Array>::Ok(std::move(raw));
+            return ZEngine::Core::VFS::VFSResult<Array>::Ok(std::move(raw));
         }
     };
 
     struct DirectoryListingTest : testing::Test
     {
-        ManualExecutor   Executor;
-        ListingVFS       VFS;
-        DirectoryListing Listing;
-        void             SetUp() override
+        ManualExecutor                       Executor{};
+        ListingVFS                           VFS{};
+        Tetragrama::Panels::DirectoryListing Listing{};
+        void                                 SetUp() override
         {
             Listing.SetSubmitter(&ManualExecutor::Submit, &Executor);
         }
@@ -82,7 +79,7 @@ namespace
         }
         void Request(const char* path)
         {
-            Listing.Request(VFS, VFSPath::Parse(path).Value());
+            Listing.Request(VFS, ZEngine::Core::VFS::VFSPath::Parse(path).Value());
         }
     };
 } // namespace
@@ -93,7 +90,7 @@ TEST_F(DirectoryListingTest, ListingAndNaturalSortRunOnlyOnAcceptedWorker)
     Request("/Assets");
     EXPECT_EQ(Listing.Poll(), nullptr);
     EXPECT_EQ(VFS.Calls, 0u);
-    EXPECT_EQ(Listing.GetStatus(), DirectoryListing::Status::Loading);
+    EXPECT_EQ(Listing.GetStatus(), Tetragrama::Panels::DirectoryListing::Status::Loading);
     for (int i = 0; i < 100; ++i)
         EXPECT_EQ(Listing.Poll(), nullptr);
     EXPECT_EQ(Executor.Submissions, 1u);
@@ -115,7 +112,7 @@ TEST_F(DirectoryListingTest, SaturationRetriesWithoutInlineIO)
     for (int i = 0; i < 10; ++i)
         EXPECT_EQ(Listing.Poll(), nullptr);
     EXPECT_EQ(VFS.Calls, 0u);
-    EXPECT_EQ(Listing.GetStatus(), DirectoryListing::Status::Loading);
+    EXPECT_EQ(Listing.GetStatus(), Tetragrama::Panels::DirectoryListing::Status::Loading);
     Executor.Reject = false;
     Listing.Poll();
     Executor.Complete();
@@ -169,7 +166,7 @@ TEST_F(DirectoryListingTest, FailureIsNotEmptyAndRequiresExplicitRetry)
     const auto* failed = Listing.Poll();
     ASSERT_NE(failed, nullptr);
     EXPECT_FALSE(failed->Succeeded);
-    EXPECT_EQ(Listing.GetStatus(), DirectoryListing::Status::Failed);
+    EXPECT_EQ(Listing.GetStatus(), Tetragrama::Panels::DirectoryListing::Status::Failed);
     for (int i = 0; i < 100; ++i)
         Listing.Poll();
     EXPECT_EQ(VFS.Calls, 1u);
@@ -181,7 +178,7 @@ TEST_F(DirectoryListingTest, FailureIsNotEmptyAndRequiresExplicitRetry)
     ASSERT_NE(empty, nullptr);
     EXPECT_TRUE(empty->Succeeded);
     EXPECT_EQ(empty->Count, 0u);
-    EXPECT_EQ(Listing.GetStatus(), DirectoryListing::Status::Ready);
+    EXPECT_EQ(Listing.GetStatus(), Tetragrama::Panels::DirectoryListing::Status::Ready);
 }
 
 TEST_F(DirectoryListingTest, CloseCancelsQueuedWorkAndRetainsLeaseUntilWorkersJoin)
@@ -210,9 +207,9 @@ TEST_F(DirectoryListingTest, JoinedShutdownReclaimsAcceptedButNeverStartedWork)
 
 TEST(FolderTreeAsyncTest, PendingRootDoesNotAdvanceSearchAndRefreshRejectsOldChildren)
 {
-    ManualExecutor executor;
-    ListingVFS     vfs;
-    auto           tree = std::make_unique<FolderTreeCache>();
+    ManualExecutor executor{};
+    ListingVFS     vfs{};
+    auto           tree = std::make_unique<Tetragrama::Panels::FolderTreeCache>();
     tree->Listings.SetSubmitter(&ManualExecutor::Submit, &executor);
     vfs.Paths = {"/Old"};
     tree->UpdateSearch(vfs, "new");
@@ -239,12 +236,12 @@ TEST(DirectoryListingWorkerTest, BlockedFilesystemNeverBlocksPollingOrNavigation
 {
     struct GatedVFS : ListingVFS
     {
-        std::mutex                                               Mutex;
-        std::condition_variable                                  CV;
-        bool                                                     Entered = false;
-        bool                                                     Open    = false;
-        std::thread::id                                          Thread;
-        VFSResult<ZEngine::Core::Containers::Array<VFSDirEntry>> List(const VFSPath& path, ZEngine::Core::Memory::ArenaAllocator* arena) override
+        std::mutex                                                                                       Mutex{};
+        std::condition_variable                                                                          CV{};
+        bool                                                                                             Entered = false;
+        bool                                                                                             Open    = false;
+        std::thread::id                                                                                  Thread{};
+        ZEngine::Core::VFS::VFSResult<ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSDirEntry>> List(const ZEngine::Core::VFS::VFSPath& path, ZEngine::Core::Memory::ArenaAllocator* arena) override
         {
             {
                 std::unique_lock lock(Mutex);
@@ -255,12 +252,12 @@ TEST(DirectoryListingWorkerTest, BlockedFilesystemNeverBlocksPollingOrNavigation
             }
             return ListingVFS::List(path, arena);
         }
-    } vfs;
-    ZEngine::Helpers::ThreadPool pool(2);
-    DirectoryListing             listing;
+    } vfs{};
+    ZEngine::Helpers::ThreadPool         pool(2);
+    Tetragrama::Panels::DirectoryListing listing{};
     listing.SetSubmitter([](void* pool, void* context, void (*run)(void*)) { return static_cast<ZEngine::Helpers::ThreadPool*>(pool)->Submit(context, run); }, &pool);
     vfs.Paths = {"/Latest/current"};
-    listing.Request(vfs, VFSPath::Parse("/Old").Value());
+    listing.Request(vfs, ZEngine::Core::VFS::VFSPath::Parse("/Old").Value());
     EXPECT_EQ(listing.Poll(), nullptr);
     {
         std::unique_lock lock(vfs.Mutex);
@@ -268,7 +265,7 @@ TEST(DirectoryListingWorkerTest, BlockedFilesystemNeverBlocksPollingOrNavigation
         EXPECT_NE(vfs.Thread, std::this_thread::get_id());
     }
     const auto start = std::chrono::steady_clock::now();
-    listing.Request(vfs, VFSPath::Parse("/Latest").Value());
+    listing.Request(vfs, ZEngine::Core::VFS::VFSPath::Parse("/Latest").Value());
     for (int i = 0; i < 100; ++i)
         EXPECT_EQ(listing.Poll(), nullptr);
     EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::milliseconds(100));
@@ -277,8 +274,8 @@ TEST(DirectoryListingWorkerTest, BlockedFilesystemNeverBlocksPollingOrNavigation
         vfs.Open = true;
         vfs.CV.notify_all();
     }
-    const DirectoryListing::Result* result   = nullptr;
-    const auto                      deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const Tetragrama::Panels::DirectoryListing::Result* result   = nullptr;
+    const auto                                          deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!(result = listing.Poll()) && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     EXPECT_NE(result, nullptr);

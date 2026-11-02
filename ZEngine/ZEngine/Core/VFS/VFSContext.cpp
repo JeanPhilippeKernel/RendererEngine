@@ -559,7 +559,7 @@ namespace ZEngine::Core::VFS
         // Content-hashed strings, not the padded VFSPath representation. Keys
         // live in scratch rather than the growing output array. Hash collisions
         // still compare the complete canonical path; first mount/entry wins.
-        Containers::UnorderedHashMap<cstring, bool> seen;
+        Containers::UnorderedHashMap<cstring, bool> seen{};
         seen.init(scratch.Arena, 16);
 
         for (size_t m = 0; m < matches.size(); ++m)

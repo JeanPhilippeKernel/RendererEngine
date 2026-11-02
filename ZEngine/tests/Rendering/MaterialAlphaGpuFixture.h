@@ -19,8 +19,8 @@ namespace
             float    Depth      = .5f;
         };
         static_assert(sizeof(Draw) == 48);
-        HeadlessVulkan   Vulkan;
-        GpuAllocator     Allocator;
+        HeadlessVulkan   Vulkan{};
+        GpuAllocator     Allocator{};
         bool             AllocatorReady = false;
         VkImage          Images[2]      = {};
         VmaAllocation    Allocations[2] = {};
@@ -80,7 +80,7 @@ void main() { vec4 base = resolveBaseColor(P.Factor, P.Sampled, P.HasMap != 0u, 
 if (P.Mode == AlphaBlend && base.a <= 0.0) discard;
 Color = vec4(base.rgb, P.Mode == AlphaBlend ? clamp(base.a, 0.0, 1.0) : 1.0); })";
             glslang::InitializeProcess();
-            std::vector<uint32_t> binaries[2];
+            std::vector<uint32_t> binaries[2]{};
             ASSERT_TRUE(CompileGizmoStage(vertex.data(), static_cast<int>(vertex.size()), EShLangVertex, binaries[0]));
             ASSERT_TRUE(CompileGizmoStage(fragment.data(), static_cast<int>(fragment.size()), EShLangFragment, binaries[1]));
             glslang::FinalizeProcess();

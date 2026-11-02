@@ -6,9 +6,9 @@
 // process pool and joins the held worker before its context can be destroyed.
 struct SaturatedBackgroundPool
 {
-    ZEngine::Helpers::Scope<ZEngine::Helpers::ThreadPool> Original;
-    std::mutex                                            Mutex;
-    std::condition_variable                               CV;
+    ZEngine::Helpers::Scope<ZEngine::Helpers::ThreadPool> Original{};
+    std::mutex                                            Mutex{};
+    std::condition_variable                               CV{};
     bool                                                  Started  = false;
     bool                                                  Released = false;
 
@@ -18,8 +18,7 @@ struct SaturatedBackgroundPool
     }
     bool Fill()
     {
-        using namespace ZEngine::Helpers;
-        if (!ThreadPoolHelper::SubmitToWorker(
+        if (!ZEngine::Helpers::ThreadPoolHelper::SubmitToWorker(
                 0, this, +[](void* context) {
                     auto&            gate = *static_cast<SaturatedBackgroundPool*>(context);
                     std::unique_lock lock(gate.Mutex);
@@ -33,8 +32,8 @@ struct SaturatedBackgroundPool
             if (!CV.wait_for(lock, std::chrono::seconds(2), [&] { return Started; }))
                 return false;
         }
-        for (uint32_t i = 0; i < ThreadPool::MAX_TASKS_PER_WORKER; ++i)
-            if (!ThreadPoolHelper::SubmitToWorker(0, nullptr, +[](void*) {}))
+        for (uint32_t i = 0; i < ZEngine::Helpers::ThreadPool::MAX_TASKS_PER_WORKER; ++i)
+            if (!ZEngine::Helpers::ThreadPoolHelper::SubmitToWorker(0, nullptr, +[](void*) {}))
                 return false;
         return true;
     }

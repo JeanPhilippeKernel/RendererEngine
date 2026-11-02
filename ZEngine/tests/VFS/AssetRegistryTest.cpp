@@ -529,11 +529,11 @@ TEST_F(AssetRegistryTest, RemovingAnObserverWaitsForInFlightDelivery)
 {
     struct Observer
     {
-        std::promise<void>       Entered;
-        std::shared_future<void> Resume;
+        std::promise<void>       Entered{};
+        std::shared_future<void> Resume{};
         uint32_t                 Calls = 0;
-    } observer;
-    std::promise<void> resume;
+    } observer{};
+    std::promise<void> resume{};
     observer.Resume     = resume.get_future().share();
     auto       entered  = observer.Entered.get_future();
     const auto callback = +[](void* context, const uuids::uuid&) {
@@ -547,7 +547,7 @@ TEST_F(AssetRegistryTest, RemovingAnObserverWaitsForInFlightDelivery)
     Reg(m_registry, id, Managers::AssetType::TEXTURE, "/p/listener.png");
     std::thread delivery([&] { m_registry.MarkStale(id); });
     EXPECT_EQ(entered.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-    std::promise<void> removing;
+    std::promise<void> removing{};
     auto               started = removing.get_future();
     auto               removed = std::async(std::launch::async, [&] {
         removing.set_value();

@@ -34,7 +34,6 @@ namespace ZEngine::Managers
             }
         };
         using MeshStorage = std::unique_ptr<AssetManager::MeshCacheAllocation, MeshStorageDeleter>;
-        MeshStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy);
 
         template <typename T>
         bool ReserveMeshSlot(Array<T>& slots, size_t index)
@@ -46,6 +45,186 @@ namespace ZEngine::Managers
             // Reserve geometrically, not one cell per import: moving the whole
             // descriptor table on each append would make large batches quadratic.
             return slots.try_reserve(std::max(index + 1, std::max(size_t(4), slots.capacity() * 2)));
+        }
+
+        using NodeMap = UnorderedHashMap<uint32_t, uint32_t>;
+
+        // Immutable copies need space for live entries, not the importer's often
+        // oversized hash table. Keep the same <= 50% occupancy contract as init.
+        size_t MapSlots(const NodeMap& source)
+        {
+            if (source.empty() || source.size() > SIZE_MAX / 2)
+                return 0;
+            size_t slots = 16;
+            while (slots < source.size() * 2)
+            {
+                if (slots > SIZE_MAX / 2)
+                    return 0;
+                slots *= 2;
+            }
+            return slots;
+        }
+
+        struct PayloadSize
+        {
+            size_t Bytes = 0;
+
+            template <typename T>
+            bool Add(size_t count)
+            {
+                if (!count)
+                    return true;
+                constexpr auto padding = alignof(T) - 1;
+                if (Bytes > SIZE_MAX - padding || count > (SIZE_MAX - Bytes - padding) / sizeof(T))
+                    return false;
+                Bytes += padding + count * sizeof(T);
+                return true;
+            }
+
+            bool Names(const Array<String>& names)
+            {
+                if (!Add<String>(names.size()))
+                    return false;
+                for (const auto& name : names)
+                    if (name.size() == SIZE_MAX || !Add<char>(name.size() + 1))
+                        return false;
+                return true;
+            }
+
+            bool Map(const NodeMap& map)
+            {
+                const auto slots = MapSlots(map);
+                return (map.empty() || slots) && Add<NodeMap::Entry>(slots);
+            }
+        };
+
+        template <typename T>
+        bool CopyArray(const Array<T>& source, Array<T>& destination, ArenaAllocator& arena)
+        {
+            static_assert(std::is_trivially_copyable_v<T>);
+            destination.m_allocator = &arena;
+            if (source.empty())
+                return true;
+            if (source.size() > SIZE_MAX / sizeof(T))
+                return false;
+            auto* data = static_cast<T*>(arena.AllocateNoZero(source.size() * sizeof(T), alignof(T)));
+            if (!data || Helpers::secure_memcpy(data, source.size() * sizeof(T), source.data(), source.size() * sizeof(T)) != Helpers::MEMORY_OP_SUCCESS)
+                return false;
+            destination.m_data = data;
+            destination.m_size = destination.m_capacity = source.size();
+            return true;
+        }
+
+        bool CopyNames(const Array<String>& source, Array<String>& destination, ArenaAllocator& arena)
+        {
+            destination.m_allocator = &arena;
+            if (source.empty())
+                return true;
+            if (source.size() > SIZE_MAX / sizeof(String))
+                return false;
+            auto* names = static_cast<String*>(arena.AllocateNoZero(source.size() * sizeof(String), alignof(String)));
+            if (!names)
+                return false;
+            destination.m_data     = names;
+            destination.m_capacity = source.size();
+            for (const auto& source_name : source)
+            {
+                auto* name = new (&names[destination.m_size]) String{};
+                ++destination.m_size;
+                const auto bytes = source_name.size() + 1; // PayloadSize checked overflow.
+                name->m_data     = static_cast<char*>(arena.AllocateNoZero(bytes, alignof(char)));
+                if (!name->m_data || (source_name.size() && Helpers::secure_memcpy(name->m_data, bytes, source_name.c_str(), source_name.size()) != Helpers::MEMORY_OP_SUCCESS))
+                    return false;
+                name->m_data[source_name.size()] = '\0';
+                name->m_allocator                = &arena;
+                name->m_size                     = source_name.size();
+                name->m_capacity                 = bytes;
+            }
+            return true;
+        }
+
+        bool CopyMap(const UnorderedHashMap<uint32_t, uint32_t>& source, UnorderedHashMap<uint32_t, uint32_t>& destination, ArenaAllocator& arena)
+        {
+            if (source.empty())
+                return true;
+            if (!destination.try_init(&arena, MapSlots(source)))
+                return false;
+            for (const auto& [key, value] : source)
+                destination.insert(key, value);
+            return true;
+        }
+
+        MeshStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy)
+        {
+            PayloadSize size = {};
+            if (!size.Add<float>(source.Vertices.size()) || !size.Add<uint32_t>(source.Indices.size()) || !size.Add<AssetSubMesh>(source.SubMeshes.size()))
+                return {};
+            if (!size.Add<Helpers::NodeHierarchy>(source_hierarchy.Hierarchies.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.LocalTransforms.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.GlobalTransforms.size()))
+                return {};
+            if (!size.Names(source_hierarchy.Names) || !size.Names(source_hierarchy.MaterialNames) || !size.Map(source_hierarchy.NodeNames) || !size.Map(source_hierarchy.NodeMeshes) || !size.Map(source_hierarchy.NodeMaterials))
+                return {};
+            if (size.Bytes > SIZE_MAX - sizeof(AssetManager::MeshCacheAllocation))
+                return {};
+
+            // Header and retained data share one reclaimable block. The arena
+            // aligns absolute addresses; the budget includes each alignment gap.
+            size.Bytes  = std::max(size_t(1), size.Bytes);
+            auto* block = slab.TryRealloc(nullptr, sizeof(AssetManager::MeshCacheAllocation) + size.Bytes);
+            if (!block)
+                return {};
+            MeshStorage storage(new (block) AssetManager::MeshCacheAllocation{});
+            storage->Slab = &slab;
+            // Borrowed arenas require a nonempty range, even for an empty mesh.
+            if (!storage->Arena.InitializeBorrowed(static_cast<char*>(block) + sizeof(AssetManager::MeshCacheAllocation), size.Bytes, "AssetManager/MeshPayload"))
+                return {};
+            auto& arena = storage->Arena;
+            if (!CopyArray(source.Vertices, mesh.Vertices, arena) || !CopyArray(source.Indices, mesh.Indices, arena) || !CopyArray(source.SubMeshes, mesh.SubMeshes, arena))
+                return {};
+            if (!CopyArray(source_hierarchy.Hierarchies, hierarchy.Hierarchies, arena) || !CopyArray(source_hierarchy.LocalTransforms, hierarchy.LocalTransforms, arena) || !CopyArray(source_hierarchy.GlobalTransforms, hierarchy.GlobalTransforms, arena))
+                return {};
+            if (!CopyNames(source_hierarchy.Names, hierarchy.Names, arena) || !CopyNames(source_hierarchy.MaterialNames, hierarchy.MaterialNames, arena))
+                return {};
+            if (!CopyMap(source_hierarchy.NodeNames, hierarchy.NodeNames, arena) || !CopyMap(source_hierarchy.NodeMeshes, hierarchy.NodeMeshes, arena) || !CopyMap(source_hierarchy.NodeMaterials, hierarchy.NodeMaterials, arena))
+                return {};
+            mesh.MeshUUID               = source.MeshUUID;
+            mesh.BoundsCenter           = source.BoundsCenter;
+            mesh.BoundsRadius           = source.BoundsRadius;
+            mesh.BoundsMin              = source.BoundsMin;
+            mesh.BoundsMax              = source.BoundsMax;
+            mesh.BoundsValid            = source.BoundsValid;
+            hierarchy.MeshUUID          = source_hierarchy.MeshUUID;
+            hierarchy.NodeHierarchyUUID = source_hierarchy.NodeHierarchyUUID;
+            return storage;
+        }
+
+        void Bounds(AssetMesh& mesh)
+        {
+            // Checked decode guarantees a nonempty, finite 8-float vertex stream.
+            auto minimum = Core::Maths::Vec3f(mesh.Vertices[0], mesh.Vertices[1], mesh.Vertices[2]);
+            auto maximum = minimum;
+            for (size_t i = 8; i < mesh.Vertices.size(); i += 8)
+                for (uint32_t axis = 0; axis < 3; ++axis)
+                {
+                    minimum[axis] = std::min(minimum[axis], mesh.Vertices[i + axis]);
+                    maximum[axis] = std::max(maximum[axis], mesh.Vertices[i + axis]);
+                }
+            double squared = 0.0;
+            for (uint32_t axis = 0; axis < 3; ++axis)
+            {
+                mesh.BoundsCenter[axis]  = float((double(minimum[axis]) + maximum[axis]) * 0.5);
+                const double extent      = std::max(double(maximum[axis]) - mesh.BoundsCenter[axis], double(mesh.BoundsCenter[axis]) - minimum[axis]);
+                squared                 += extent * extent;
+            }
+            const double radius = std::sqrt(squared);
+            if (radius < std::numeric_limits<float>::max())
+            {
+                mesh.BoundsRadius = float(radius);
+                if (double(mesh.BoundsRadius) < radius)
+                    mesh.BoundsRadius = std::nextafter(mesh.BoundsRadius, std::numeric_limits<float>::infinity());
+            }
+            mesh.BoundsMin   = minimum;
+            mesh.BoundsMax   = maximum;
+            mesh.BoundsValid = true;
         }
     } // namespace
 
@@ -610,189 +789,6 @@ namespace ZEngine::Managers
         uuids::uuid_random_generator gen{generator};
         return gen();
     }
-
-    namespace
-    {
-        using NodeMap = UnorderedHashMap<uint32_t, uint32_t>;
-
-        // Immutable copies need space for live entries, not the importer's often
-        // oversized hash table. Keep the same <= 50% occupancy contract as init.
-        size_t MapSlots(const NodeMap& source)
-        {
-            if (source.empty() || source.size() > SIZE_MAX / 2)
-                return 0;
-            size_t slots = 16;
-            while (slots < source.size() * 2)
-            {
-                if (slots > SIZE_MAX / 2)
-                    return 0;
-                slots *= 2;
-            }
-            return slots;
-        }
-
-        struct PayloadSize
-        {
-            size_t Bytes = 0;
-
-            template <typename T>
-            bool Add(size_t count)
-            {
-                if (!count)
-                    return true;
-                constexpr auto padding = alignof(T) - 1;
-                if (Bytes > SIZE_MAX - padding || count > (SIZE_MAX - Bytes - padding) / sizeof(T))
-                    return false;
-                Bytes += padding + count * sizeof(T);
-                return true;
-            }
-
-            bool Names(const Array<String>& names)
-            {
-                if (!Add<String>(names.size()))
-                    return false;
-                for (const auto& name : names)
-                    if (name.size() == SIZE_MAX || !Add<char>(name.size() + 1))
-                        return false;
-                return true;
-            }
-
-            bool Map(const NodeMap& map)
-            {
-                const auto slots = MapSlots(map);
-                return (map.empty() || slots) && Add<NodeMap::Entry>(slots);
-            }
-        };
-
-        template <typename T>
-        bool CopyArray(const Array<T>& source, Array<T>& destination, ArenaAllocator& arena)
-        {
-            static_assert(std::is_trivially_copyable_v<T>);
-            destination.m_allocator = &arena;
-            if (source.empty())
-                return true;
-            if (source.size() > SIZE_MAX / sizeof(T))
-                return false;
-            auto* data = static_cast<T*>(arena.AllocateNoZero(source.size() * sizeof(T), alignof(T)));
-            if (!data || Helpers::secure_memcpy(data, source.size() * sizeof(T), source.data(), source.size() * sizeof(T)) != Helpers::MEMORY_OP_SUCCESS)
-                return false;
-            destination.m_data = data;
-            destination.m_size = destination.m_capacity = source.size();
-            return true;
-        }
-
-        bool CopyNames(const Array<String>& source, Array<String>& destination, ArenaAllocator& arena)
-        {
-            destination.m_allocator = &arena;
-            if (source.empty())
-                return true;
-            if (source.size() > SIZE_MAX / sizeof(String))
-                return false;
-            auto* names = static_cast<String*>(arena.AllocateNoZero(source.size() * sizeof(String), alignof(String)));
-            if (!names)
-                return false;
-            destination.m_data     = names;
-            destination.m_capacity = source.size();
-            for (const auto& source_name : source)
-            {
-                auto* name = new (&names[destination.m_size]) String{};
-                ++destination.m_size;
-                const auto bytes = source_name.size() + 1; // PayloadSize checked overflow.
-                name->m_data     = static_cast<char*>(arena.AllocateNoZero(bytes, alignof(char)));
-                if (!name->m_data || (source_name.size() && Helpers::secure_memcpy(name->m_data, bytes, source_name.c_str(), source_name.size()) != Helpers::MEMORY_OP_SUCCESS))
-                    return false;
-                name->m_data[source_name.size()] = '\0';
-                name->m_allocator                = &arena;
-                name->m_size                     = source_name.size();
-                name->m_capacity                 = bytes;
-            }
-            return true;
-        }
-
-        bool CopyMap(const UnorderedHashMap<uint32_t, uint32_t>& source, UnorderedHashMap<uint32_t, uint32_t>& destination, ArenaAllocator& arena)
-        {
-            if (source.empty())
-                return true;
-            if (!destination.try_init(&arena, MapSlots(source)))
-                return false;
-            for (const auto& [key, value] : source)
-                destination.insert(key, value);
-            return true;
-        }
-
-        MeshStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy)
-        {
-            PayloadSize size = {};
-            if (!size.Add<float>(source.Vertices.size()) || !size.Add<uint32_t>(source.Indices.size()) || !size.Add<AssetSubMesh>(source.SubMeshes.size()))
-                return {};
-            if (!size.Add<Helpers::NodeHierarchy>(source_hierarchy.Hierarchies.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.LocalTransforms.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.GlobalTransforms.size()))
-                return {};
-            if (!size.Names(source_hierarchy.Names) || !size.Names(source_hierarchy.MaterialNames) || !size.Map(source_hierarchy.NodeNames) || !size.Map(source_hierarchy.NodeMeshes) || !size.Map(source_hierarchy.NodeMaterials))
-                return {};
-            if (size.Bytes > SIZE_MAX - sizeof(AssetManager::MeshCacheAllocation))
-                return {};
-
-            // Header and retained data share one reclaimable block. The arena
-            // aligns absolute addresses; the budget includes each alignment gap.
-            size.Bytes  = std::max(size_t(1), size.Bytes);
-            auto* block = slab.TryRealloc(nullptr, sizeof(AssetManager::MeshCacheAllocation) + size.Bytes);
-            if (!block)
-                return {};
-            MeshStorage storage(new (block) AssetManager::MeshCacheAllocation{});
-            storage->Slab = &slab;
-            // Borrowed arenas require a nonempty range, even for an empty mesh.
-            if (!storage->Arena.InitializeBorrowed(static_cast<char*>(block) + sizeof(AssetManager::MeshCacheAllocation), size.Bytes, "AssetManager/MeshPayload"))
-                return {};
-            auto& arena = storage->Arena;
-            if (!CopyArray(source.Vertices, mesh.Vertices, arena) || !CopyArray(source.Indices, mesh.Indices, arena) || !CopyArray(source.SubMeshes, mesh.SubMeshes, arena))
-                return {};
-            if (!CopyArray(source_hierarchy.Hierarchies, hierarchy.Hierarchies, arena) || !CopyArray(source_hierarchy.LocalTransforms, hierarchy.LocalTransforms, arena) || !CopyArray(source_hierarchy.GlobalTransforms, hierarchy.GlobalTransforms, arena))
-                return {};
-            if (!CopyNames(source_hierarchy.Names, hierarchy.Names, arena) || !CopyNames(source_hierarchy.MaterialNames, hierarchy.MaterialNames, arena))
-                return {};
-            if (!CopyMap(source_hierarchy.NodeNames, hierarchy.NodeNames, arena) || !CopyMap(source_hierarchy.NodeMeshes, hierarchy.NodeMeshes, arena) || !CopyMap(source_hierarchy.NodeMaterials, hierarchy.NodeMaterials, arena))
-                return {};
-            mesh.MeshUUID               = source.MeshUUID;
-            mesh.BoundsCenter           = source.BoundsCenter;
-            mesh.BoundsRadius           = source.BoundsRadius;
-            mesh.BoundsMin              = source.BoundsMin;
-            mesh.BoundsMax              = source.BoundsMax;
-            mesh.BoundsValid            = source.BoundsValid;
-            hierarchy.MeshUUID          = source_hierarchy.MeshUUID;
-            hierarchy.NodeHierarchyUUID = source_hierarchy.NodeHierarchyUUID;
-            return storage;
-        }
-
-        void Bounds(AssetMesh& mesh)
-        {
-            // Checked decode guarantees a nonempty, finite 8-float vertex stream.
-            auto minimum = Core::Maths::Vec3f(mesh.Vertices[0], mesh.Vertices[1], mesh.Vertices[2]);
-            auto maximum = minimum;
-            for (size_t i = 8; i < mesh.Vertices.size(); i += 8)
-                for (uint32_t axis = 0; axis < 3; ++axis)
-                {
-                    minimum[axis] = std::min(minimum[axis], mesh.Vertices[i + axis]);
-                    maximum[axis] = std::max(maximum[axis], mesh.Vertices[i + axis]);
-                }
-            double squared = 0.0;
-            for (uint32_t axis = 0; axis < 3; ++axis)
-            {
-                mesh.BoundsCenter[axis]  = float((double(minimum[axis]) + maximum[axis]) * 0.5);
-                const double extent      = std::max(double(maximum[axis]) - mesh.BoundsCenter[axis], double(mesh.BoundsCenter[axis]) - minimum[axis]);
-                squared                 += extent * extent;
-            }
-            const double radius = std::sqrt(squared);
-            if (radius < std::numeric_limits<float>::max())
-            {
-                mesh.BoundsRadius = float(radius);
-                if (double(mesh.BoundsRadius) < radius)
-                    mesh.BoundsRadius = std::nextafter(mesh.BoundsRadius, std::numeric_limits<float>::infinity());
-            }
-            mesh.BoundsMin   = minimum;
-            mesh.BoundsMax   = maximum;
-            mesh.BoundsValid = true;
-        }
-    } // namespace
 
     VFSResult<uint32_t> AssetManager::PublishMesh(const AssetRecordSnapshot& expected, AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy, MeshCacheAllocation* storage)
     {

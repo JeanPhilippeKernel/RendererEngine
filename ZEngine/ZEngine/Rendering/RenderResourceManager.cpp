@@ -86,9 +86,9 @@ namespace ZEngine::Rendering
         std::array<uint8_t, kThumbnailMetadataSize> ThumbnailMetadata(const RenderResourceManager::ThumbnailCacheIdentity& key, uint32_t width, uint32_t height)
         {
             std::array<uint8_t, kThumbnailMetadataSize> bytes = {};
-            std::memcpy(bytes.data(), "ZTHUMB03", 8);
+            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(bytes.data(), bytes.size(), "ZTHUMB03", 8) == Helpers::MEMORY_OP_SUCCESS, "Thumbnail metadata signature exceeds its buffer")
             const auto uuid_bytes = key.AssetUUID.as_bytes();
-            std::memcpy(bytes.data() + 8, uuid_bytes.data(), 16);
+            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(bytes.data() + 8, bytes.size() - 8, uuid_bytes.data(), uuid_bytes.size()) == Helpers::MEMORY_OP_SUCCESS, "Thumbnail metadata UUID exceeds its buffer")
             StoreThumbnailInteger(bytes.data() + 24, key.SourceHash, 8);
             StoreThumbnailInteger(bytes.data() + 32, key.DependencyHash, 8);
             StoreThumbnailInteger(bytes.data() + 40, key.SchemaRevision, 4);
@@ -99,107 +99,7 @@ namespace ZEngine::Rendering
             StoreThumbnailInteger(bytes.data() + 60, 1, 4); // encoder contract revision
             return bytes;
         }
-    } // namespace
 
-    uint8_t* RenderResourceManager::ReadThumbnailCache(const char* filename, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity)
-    {
-        if (!filename || !filename[0] || !width || !height || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
-            return nullptr;
-        FILE* file = std::fopen(filename, "rb");
-        if (!file)
-            return nullptr;
-        bool       valid = std::fseek(file, 0, SEEK_END) == 0;
-        const long size  = valid ? std::ftell(file) : -1;
-        valid            = valid && size > static_cast<long>(kThumbnailMetadataSize) && size <= static_cast<long>(kMaxThumbnailPayload + kThumbnailMetadataSize) && std::fseek(file, 0, SEEK_SET) == 0;
-        auto* bytes      = valid ? static_cast<uint8_t*>(STBI_MALLOC(static_cast<size_t>(size))) : nullptr;
-        valid            = bytes && std::fread(bytes, 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
-        std::fclose(file);
-        uint8_t* pixels = nullptr;
-        if (valid)
-        {
-            const size_t   payload_size = static_cast<size_t>(size) - kThumbnailMetadataSize;
-            const uint8_t* metadata     = bytes + payload_size;
-            const auto     expected     = ThumbnailMetadata(identity, width, height);
-            valid                       = std::memcmp(expected.data(), metadata, 64) == 0 && LoadThumbnailInteger(metadata + 64, 8) == payload_size;
-            const uint64_t checksum     = ThumbnailChecksum(metadata, 72, ThumbnailChecksum(bytes, payload_size));
-            valid                       = valid && checksum == LoadThumbnailInteger(metadata + 72, 8);
-            int decoded_width = 0, decoded_height = 0, channels = 0;
-            // Reject oversized headers before asking the decoder to allocate.
-            valid = valid && stbi_info_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels) && decoded_width == static_cast<int>(width) && decoded_height == static_cast<int>(height) && channels == 4;
-            if (valid)
-                pixels = stbi_load_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels, STBI_rgb_alpha);
-        }
-        STBI_FREE(bytes);
-        return pixels;
-    }
-
-    bool RenderResourceManager::WriteThumbnailCache(const char* filename, const uint8_t* pixels, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity, bool bottom_up)
-    {
-        if (!filename || filename[0] == '\0' || !pixels || width == 0 || height == 0 || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
-        {
-            return false;
-        }
-
-        const size_t                row_size  = static_cast<size_t>(width) * STBI_rgb_alpha;
-        // Decode/upload pixels are bottom-up. Walk rows backwards for PNG
-        // without mutating upload memory or changing STB's global flip flag.
-        const uint8_t* const        first_row = bottom_up ? pixels + static_cast<size_t>(height - 1) * row_size : pixels;
-
-        const std::filesystem::path cache_path(filename);
-        std::error_code             error;
-        std::filesystem::create_directories(cache_path.parent_path(), error);
-        bool published = false;
-        if (!error)
-        {
-            // Each job owns an exclusively created sibling. A fixed .tmp name
-            // lets overlapping jobs/editors truncate or unlink each other's
-            // output, even though the final rename itself is atomic.
-            std::random_device           entropy;
-            std::mt19937                 random(entropy());
-            uuids::uuid_random_generator generator(random);
-            const std::filesystem::path  temporary_path = cache_path.string() + "." + uuids::to_string(generator()) + ".tmp";
-            FILE*                        temporary      = std::fopen(temporary_path.string().c_str(), "wbx");
-            struct Writer
-            {
-                FILE*    File     = nullptr;
-                bool     Success  = true;
-                uint64_t Checksum = 14695981039346656037ull;
-                size_t   Size     = 0;
-            } writer{temporary};
-            if (temporary)
-            {
-                const auto write = +[](void* context, void* data, int size) {
-                    auto& output = *static_cast<Writer*>(context);
-                    if (size < 0 || output.Size + static_cast<size_t>(size) > kMaxThumbnailPayload || std::fwrite(data, 1, static_cast<size_t>(size), output.File) != static_cast<size_t>(size))
-                        output.Success = false;
-                    else
-                    {
-                        output.Checksum  = ThumbnailChecksum(static_cast<const uint8_t*>(data), static_cast<size_t>(size), output.Checksum);
-                        output.Size     += static_cast<size_t>(size);
-                    }
-                };
-                const bool encoded  = stbi_write_png_to_func(write, &writer, static_cast<int>(width), static_cast<int>(height), STBI_rgb_alpha, first_row, (bottom_up ? -1 : 1) * static_cast<int>(row_size)) != 0;
-                auto       metadata = ThumbnailMetadata(identity, width, height);
-                StoreThumbnailInteger(metadata.data() + 64, writer.Size, 8);
-                StoreThumbnailInteger(metadata.data() + 72, ThumbnailChecksum(metadata.data(), 72, writer.Checksum), 8);
-                const bool metadata_written = std::fwrite(metadata.data(), 1, metadata.size(), temporary) == metadata.size();
-                const bool flushed          = std::fflush(temporary) == 0;
-                const bool closed           = std::fclose(temporary) == 0;
-                if (encoded && writer.Success && metadata_written && flushed && closed)
-                {
-                    std::filesystem::rename(temporary_path, cache_path, error);
-                    published = !error;
-                }
-                if (!published)
-                    std::filesystem::remove(temporary_path, error);
-            }
-        }
-
-        return published;
-    }
-
-    namespace
-    {
         uint16_t FloatToHalf(float value)
         {
             uint32_t bits = 0;
@@ -300,6 +200,103 @@ namespace ZEngine::Rendering
             }
         }
     } // namespace
+
+    uint8_t* RenderResourceManager::ReadThumbnailCache(const char* filename, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity)
+    {
+        if (!filename || !filename[0] || !width || !height || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
+            return nullptr;
+        FILE* file = std::fopen(filename, "rb");
+        if (!file)
+            return nullptr;
+        bool       valid = std::fseek(file, 0, SEEK_END) == 0;
+        const long size  = valid ? std::ftell(file) : -1;
+        valid            = valid && size > static_cast<long>(kThumbnailMetadataSize) && size <= static_cast<long>(kMaxThumbnailPayload + kThumbnailMetadataSize) && std::fseek(file, 0, SEEK_SET) == 0;
+        auto* bytes      = valid ? static_cast<uint8_t*>(STBI_MALLOC(static_cast<size_t>(size))) : nullptr;
+        valid            = bytes && std::fread(bytes, 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
+        std::fclose(file);
+        uint8_t* pixels = nullptr;
+        if (valid)
+        {
+            const size_t   payload_size = static_cast<size_t>(size) - kThumbnailMetadataSize;
+            const uint8_t* metadata     = bytes + payload_size;
+            const auto     expected     = ThumbnailMetadata(identity, width, height);
+            valid                       = std::memcmp(expected.data(), metadata, 64) == 0 && LoadThumbnailInteger(metadata + 64, 8) == payload_size;
+            const uint64_t checksum     = ThumbnailChecksum(metadata, 72, ThumbnailChecksum(bytes, payload_size));
+            valid                       = valid && checksum == LoadThumbnailInteger(metadata + 72, 8);
+            int decoded_width = 0, decoded_height = 0, channels = 0;
+            // Reject oversized headers before asking the decoder to allocate.
+            valid = valid && stbi_info_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels) && decoded_width == static_cast<int>(width) && decoded_height == static_cast<int>(height) && channels == 4;
+            if (valid)
+                pixels = stbi_load_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels, STBI_rgb_alpha);
+        }
+        STBI_FREE(bytes);
+        return pixels;
+    }
+
+    bool RenderResourceManager::WriteThumbnailCache(const char* filename, const uint8_t* pixels, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity, bool bottom_up)
+    {
+        if (!filename || filename[0] == '\0' || !pixels || width == 0 || height == 0 || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
+        {
+            return false;
+        }
+
+        const size_t                row_size  = static_cast<size_t>(width) * STBI_rgb_alpha;
+        // Decode/upload pixels are bottom-up. Walk rows backwards for PNG
+        // without mutating upload memory or changing STB's global flip flag.
+        const uint8_t* const        first_row = bottom_up ? pixels + static_cast<size_t>(height - 1) * row_size : pixels;
+
+        const std::filesystem::path cache_path(filename);
+        std::error_code             error{};
+        std::filesystem::create_directories(cache_path.parent_path(), error);
+        bool published = false;
+        if (!error)
+        {
+            // Each job owns an exclusively created sibling. A fixed .tmp name
+            // lets overlapping jobs/editors truncate or unlink each other's
+            // output, even though the final rename itself is atomic.
+            std::random_device           entropy{};
+            std::mt19937                 random(entropy());
+            uuids::uuid_random_generator generator(random);
+            const std::filesystem::path  temporary_path = cache_path.string() + "." + uuids::to_string(generator()) + ".tmp";
+            FILE*                        temporary      = std::fopen(temporary_path.string().c_str(), "wbx");
+            struct Writer
+            {
+                FILE*    File     = nullptr;
+                bool     Success  = true;
+                uint64_t Checksum = 14695981039346656037ull;
+                size_t   Size     = 0;
+            } writer{temporary};
+            if (temporary)
+            {
+                const auto write = +[](void* context, void* data, int size) {
+                    auto& output = *static_cast<Writer*>(context);
+                    if (size < 0 || output.Size + static_cast<size_t>(size) > kMaxThumbnailPayload || std::fwrite(data, 1, static_cast<size_t>(size), output.File) != static_cast<size_t>(size))
+                        output.Success = false;
+                    else
+                    {
+                        output.Checksum  = ThumbnailChecksum(static_cast<const uint8_t*>(data), static_cast<size_t>(size), output.Checksum);
+                        output.Size     += static_cast<size_t>(size);
+                    }
+                };
+                const bool encoded  = stbi_write_png_to_func(write, &writer, static_cast<int>(width), static_cast<int>(height), STBI_rgb_alpha, first_row, (bottom_up ? -1 : 1) * static_cast<int>(row_size)) != 0;
+                auto       metadata = ThumbnailMetadata(identity, width, height);
+                StoreThumbnailInteger(metadata.data() + 64, writer.Size, 8);
+                StoreThumbnailInteger(metadata.data() + 72, ThumbnailChecksum(metadata.data(), 72, writer.Checksum), 8);
+                const bool metadata_written = std::fwrite(metadata.data(), 1, metadata.size(), temporary) == metadata.size();
+                const bool flushed          = std::fflush(temporary) == 0;
+                const bool closed           = std::fclose(temporary) == 0;
+                if (encoded && writer.Success && metadata_written && flushed && closed)
+                {
+                    std::filesystem::rename(temporary_path, cache_path, error);
+                    published = !error;
+                }
+                if (!published)
+                    std::filesystem::remove(temporary_path, error);
+            }
+        }
+
+        return published;
+    }
 
     void RenderResourceManager::Initialize(VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena)
     {
@@ -2107,8 +2104,7 @@ namespace ZEngine::Rendering
     bool RenderResourceManager::SubmitThumbnailCacheCleanup(const char* project_root, uint32_t schema_revision, uint32_t renderer_revision)
     {
         std::lock_guard lock(m_pending_mutex);
-        auto*           pool = Helpers::ThreadPoolHelper::Pool.get();
-        if (!pool || !m_registry || !m_accept_texture_decodes.value.load(std::memory_order_acquire) || m_thumbnail_cache_cleanup.WorkerQueued || !project_root || !project_root[0] || Helpers::secure_strlen(project_root) >= MAX_FILE_PATH_COUNT || !schema_revision || !renderer_revision)
+        if (!Helpers::ThreadPoolHelper::IsInitialized() || !m_registry || !m_accept_texture_decodes.value.load(std::memory_order_acquire) || m_thumbnail_cache_cleanup.WorkerQueued || !project_root || !project_root[0] || Helpers::secure_strlen(project_root) >= MAX_FILE_PATH_COUNT || !schema_revision || !renderer_revision)
             return false;
         auto& task            = m_thumbnail_cache_cleanup;
         task.Owner            = this;
@@ -2118,9 +2114,8 @@ namespace ZEngine::Rendering
         task.WorkerQueued                     = true;
         m_thumbnail_maintenance_stats.Pending = true;
         m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
-        for (uint32_t worker = 0; worker < pool->WorkerCount; ++worker)
-            if (pool->SubmitToWorker(worker, &task, &RenderResourceManager::RunThumbnailCacheCleanup))
-                return true;
+        if (Helpers::ThreadPoolHelper::Submit(&task, &RenderResourceManager::RunThumbnailCacheCleanup))
+            return true;
         task.WorkerQueued                     = false;
         m_thumbnail_maintenance_stats.Pending = false;
         m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
@@ -2138,14 +2133,14 @@ namespace ZEngine::Rendering
         ZENGINE_PROFILE_SCOPE("ThumbnailProfile.CacheCleanup");
         auto&                                 task    = *static_cast<ThumbnailCacheCleanupTask*>(context);
         auto*                                 manager = task.Owner;
-        ThumbnailCacheMaintenance::Statistics stats;
+        ThumbnailCacheMaintenance::Statistics stats{};
         try
         {
             const auto resolve = +[](void* context, const uuids::uuid& uuid, ThumbnailCacheMaintenance::CurrentKey* key) {
                 auto& task = *static_cast<ThumbnailCacheCleanupTask*>(context);
                 if (auto* engine = Engine::GetContext(); engine && engine->VFSScanner.IsScanning())
                     return ThumbnailCacheMaintenance::Resolution::Unknown;
-                AssetRecordSnapshot record;
+                AssetRecordSnapshot record{};
                 if (!task.Owner->m_registry->TryReadRecord(uuid, &record))
                     return ThumbnailCacheMaintenance::Resolution::Missing;
                 if (record.Record.State != AssetState::Loaded && record.Record.State != AssetState::Registered)
@@ -2221,23 +2216,18 @@ namespace ZEngine::Rendering
         auto&           task    = *static_cast<ThumbnailCacheWriteTask*>(context);
         auto*           manager = task.Owner;
         std::lock_guard lock(manager->m_pending_mutex);
-        if (!task.Accepted || !data || size != sizeof(task.Pixels) || !manager->m_accept_texture_decodes.value.load(std::memory_order_acquire))
+        if (!task.Accepted || !data || size != sizeof(task.Pixels) || !manager->m_accept_texture_decodes.value.load(std::memory_order_acquire) || Helpers::secure_memcpy(task.Pixels, sizeof(task.Pixels), data, size) != Helpers::MEMORY_OP_SUCCESS)
         {
             task.Reserved = false;
             return;
         }
-        std::memcpy(task.Pixels, data, size);
         // Share the shutdown counter with texture workers. Increment while the
         // acceptance mutex is held, before publishing any worker job.
         manager->m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
         task.WorkerQueued = true;
         // Bounded admission: reject saturated disk work, never execute it inline
         // (which would also re-enter m_pending_mutex).
-        bool submitted    = false;
-        if (auto* pool = Helpers::ThreadPoolHelper::Pool.get())
-            for (uint32_t worker = 0; worker < pool->WorkerCount && !submitted; ++worker)
-                submitted = pool->SubmitToWorker(worker, &task, &RenderResourceManager::RunThumbnailCacheWrite);
-        if (!submitted)
+        if (!Helpers::ThreadPoolHelper::Submit(&task, &RenderResourceManager::RunThumbnailCacheWrite))
         {
             task.Reserved     = false;
             task.WorkerQueued = false;
@@ -2339,7 +2329,7 @@ namespace ZEngine::Rendering
             }
             else
             {
-                int w, h, ch;
+                int w = 0, h = 0, ch = 0;
                 if (!stbi_info(filename, &w, &h, &ch))
                     return {};
                 spec.Width  = static_cast<uint32_t>(w);
@@ -2437,16 +2427,7 @@ namespace ZEngine::Rendering
 
             task->DecodeSlabIndex = decode_slab_index;
             m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
-            bool submitted = false;
-            if (task->FitIntoSquare)
-            {
-                if (auto* pool = Helpers::ThreadPoolHelper::Pool.get())
-                    for (uint32_t worker = 0; worker < pool->WorkerCount && !submitted; ++worker)
-                        submitted = pool->SubmitToWorker(worker, task, &RenderResourceManager::RunTextureDecodeTask);
-            }
-            else
-                submitted = Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask);
-            if (submitted)
+            if (Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
                 continue;
 
             if (task->TrackCompletion)

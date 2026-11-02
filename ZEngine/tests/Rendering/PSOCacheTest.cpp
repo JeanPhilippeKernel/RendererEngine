@@ -349,7 +349,7 @@ TEST_F(PSOCacheWarmupTest, RejectsShortAndFailedPayloadReadsAndRecovers)
 
 TEST(PSOCacheAdmissionTest, SaturatedBackgroundPoolReturnsLeaseAndLeavesJobQueued)
 {
-    SaturatedBackgroundPool background;
+    SaturatedBackgroundPool background{};
     ASSERT_TRUE(background.Fill());
     auto cache = std::make_unique<PSOCache>();
     PSOCacheTestAccess::CheckSaturatedAsyncDispatch(*cache);

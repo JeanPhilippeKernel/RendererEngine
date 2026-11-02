@@ -1,7 +1,7 @@
 #pragma once
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Rendering/Renderers/Readback/RGReadbackRing.h>
 #include <chrono>
-#include <cstring>
 #include <thread>
 #include "AssetPreviewPassTestAccess.h"
 
@@ -12,13 +12,13 @@ namespace
 {
     struct DelayedReadbackGpuFixture : ::testing::Test
     {
-        HeadlessVulkan                                             Vulkan;
-        MemoryManager                                              Memory;
-        ArenaAllocator                                             LoggerArena;
-        ZEngine::Hardwares::DeviceSwapchain                        Swapchain;
+        HeadlessVulkan                                             Vulkan{};
+        MemoryManager                                              Memory{};
+        ArenaAllocator                                             LoggerArena{};
+        ZEngine::Hardwares::DeviceSwapchain                        Swapchain{};
         std::unique_ptr<ZEngine::Hardwares::VulkanDevice>          Device = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
-        ZEngine::Rendering::Renderers::RGReadbackRing              Ring;
-        std::unique_ptr<ZEngine::Rendering::Primitives::Semaphore> Gate, Completion;
+        ZEngine::Rendering::Renderers::RGReadbackRing              Ring{};
+        std::unique_ptr<ZEngine::Rendering::Primitives::Semaphore> Gate{}, Completion{};
         VkCommandPool                                              Pool           = VK_NULL_HANDLE;
         VkQueue                                                    Queue          = VK_NULL_HANDLE;
         bool                                                       AllocatorReady = false;
@@ -34,7 +34,7 @@ namespace
             ++self.Deliveries;
             EXPECT_EQ(size, sizeof(self.Pixel));
             if (size == sizeof(self.Pixel))
-                std::memcpy(&self.Pixel, data, size);
+                EXPECT_EQ(ZEngine::Helpers::secure_memcpy(&self.Pixel, sizeof(self.Pixel), data, size), ZEngine::Helpers::MEMORY_OP_SUCCESS);
         }
 
         static void Cancelled(void* context)
@@ -50,7 +50,7 @@ namespace
             RecordProperty("synchronization_validation_enabled", Vulkan.SynchronizationValidationEnabled ? 1 : 0);
             Memory.Initialize(ZMega(4), {});
             Memory.MainArena.CreateSubArena(ZMega(2), &LoggerArena);
-            LoggerConfiguration logger;
+            LoggerConfiguration logger{};
             logger.OutputDirectory = (std::filesystem::temp_directory_path() / "zengine_delayed_readback_test_logs").string();
             logger.RingBufferSize  = 64;
             std::filesystem::create_directories(logger.OutputDirectory);
@@ -139,32 +139,30 @@ namespace
 
     TEST_F(DelayedReadbackGpuFixture, PreviewCompletionWaitsForItsExactRealSubmissionTimeline)
     {
-        using namespace ZEngine::Rendering;
-        using namespace ZEngine::Rendering::Renderers;
         const uint32_t index = Ring.Acquire(sizeof(Pixel));
         ASSERT_NE(index, UINT32_MAX);
         SubmitBlockedCopy(index);
         ASSERT_FALSE(HasFatalFailure());
         // The handle is an identity only: this test exercises the preview's
         // production completion polling, not a second draw or target allocation.
-        const Textures::TextureHandle texture = {.Index = 7, .Generation = 2};
-        AssetPreviewPass              preview;
-        AssetPreviewPassTestAccess::Arm(preview, texture, Device.get());
-        AssetPreviewPassTestAccess::Submitted(preview, Completion.get(), 3);
+        const ZEngine::Rendering::Textures::TextureHandle texture = {.Index = 7, .Generation = 2};
+        ZEngine::Rendering::Renderers::AssetPreviewPass   preview{};
+        ZEngine::Rendering::Renderers::AssetPreviewPassTestAccess::Arm(preview, texture, Device.get());
+        ZEngine::Rendering::Renderers::AssetPreviewPassTestAccess::Submitted(preview, Completion.get(), 3);
         const VkSemaphoreSignalInfo partial = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, .semaphore = Completion->GetHandle(), .value = 2};
         ASSERT_EQ(vkSignalSemaphore(Vulkan.Device, &partial), VK_SUCCESS);
         for (uint32_t frame = 0; frame < 256; ++frame)
         {
             preview.BeginFrame();
-            EXPECT_EQ(preview.Observe(texture), AssetPreviewPass::Result::Pending);
+            EXPECT_EQ(preview.Observe(texture), ZEngine::Rendering::Renderers::AssetPreviewPass::Result::Pending);
         }
         ReleaseGate();
         WaitForCopy();
         ASSERT_FALSE(HasFatalFailure());
         preview.BeginFrame();
-        EXPECT_EQ(preview.Observe(texture), AssetPreviewPass::Result::Succeeded);
+        EXPECT_EQ(preview.Observe(texture), ZEngine::Rendering::Renderers::AssetPreviewPass::Result::Succeeded);
         preview.Forget(texture);
-        EXPECT_TRUE(AssetPreviewPassTestAccess::Empty(preview));
+        EXPECT_TRUE(ZEngine::Rendering::Renderers::AssetPreviewPassTestAccess::Empty(preview));
         preview.Deinitialize(Device.get());
     }
 

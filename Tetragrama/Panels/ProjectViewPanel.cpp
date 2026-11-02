@@ -988,7 +988,7 @@ namespace Tetragrama::Panels
                     }
 
                     bool                                     fully_transparent = false;
-                    ZEngine::Rendering::Materials::AlphaInfo alpha_info;
+                    ZEngine::Rendering::Materials::AlphaInfo alpha_info{};
                     // Thumbnail
                     {
                         char tk[32] = {};

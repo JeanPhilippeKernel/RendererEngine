@@ -102,7 +102,7 @@ namespace Tetragrama::Thumbnails
         // Separate leases survive entry eviction/cancellation until their workers
         // finish. Navigation cannot grow the number of concurrent CPU decodes.
         static constexpr uint32_t        kMaxAssetLoads = 4;
-        AssetLoad                        m_asset_loads[kMaxAssetLoads];
+        AssetLoad                        m_asset_loads[kMaxAssetLoads]{};
         ZEngine::Core::VFS::IVFSContext* m_vfs = nullptr;
         static bool                      SubmitAssetLoad(void*, void*, void (*)(void*));
         bool                             EnsureAssetLoaded(const ZEngine::Core::VFS::AssetRecordSnapshot&);

@@ -248,7 +248,7 @@ namespace ZEngine::Applications
 
             Core::Containers::Array<Rendering::Meshes::SubMeshAllocation>   allocs;
             Core::Containers::Array<Rendering::Scenes::FrustumCullingInput> culling_inputs;
-            Core::Containers::Array<TransparentCommand>                     transparent_inputs;
+            Core::Containers::Array<TransparentCommand>                     transparent_inputs{};
             Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
             Core::Containers::Array<uint32_t>                               selection_token_states;
             allocs.init(scratch.Arena, scene.InstanceCount * 4);

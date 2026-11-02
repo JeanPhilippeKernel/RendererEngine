@@ -2,15 +2,14 @@
 #include <gtest/gtest.h>
 #include <future>
 
-using namespace ZEngine::Helpers;
 using ZEngine::Rendering::Renderers::RenderRecordingWorkers;
 
 namespace
 {
     struct Gate
     {
-        std::mutex              Mutex;
-        std::condition_variable CV;
+        std::mutex              Mutex{};
+        std::condition_variable CV{};
         bool                    Started  = false;
         bool                    Released = false;
         static void             Block(void* context)
@@ -45,7 +44,7 @@ namespace
 
     struct Probe
     {
-        std::thread::id Thread;
+        std::thread::id Thread{};
         uint32_t        Calls = 0;
         static void     Run(void* context)
         {
@@ -58,20 +57,20 @@ namespace
 
 TEST(RenderRecordingWorkersTest, CompletesBeforeBlockedSaturatedBackgroundWorkerIsReleased)
 {
-    Gate        gate;
-    Probe       background_probe;
-    ThreadPool  background(1);
-    ReleaseGate release{gate};
+    Gate                         gate{};
+    Probe                        background_probe{};
+    ZEngine::Helpers::ThreadPool background(1);
+    ReleaseGate                  release{gate};
     ASSERT_TRUE(background.SubmitToWorker(0, &gate, &Gate::Block));
     ASSERT_TRUE(gate.WaitForStart());
-    for (uint32_t i = 0; i < ThreadPool::MAX_TASKS_PER_WORKER; ++i)
+    for (uint32_t i = 0; i < ZEngine::Helpers::ThreadPool::MAX_TASKS_PER_WORKER; ++i)
         ASSERT_TRUE(background.Submit(&background_probe, &Probe::Run));
     EXPECT_FALSE(background.Submit(&background_probe, &Probe::Run));
     EXPECT_EQ(background_probe.Calls, 0u); // no caller-thread I/O fallback
 
     RenderRecordingWorkers recording(2);
-    Probe                  probes[2];
-    Task                   tasks[] = {
+    Probe                  probes[2]{};
+    ZEngine::Helpers::Task tasks[] = {
         {&probes[0], &Probe::Run},
         {&probes[1], &Probe::Run}
     };
@@ -90,8 +89,8 @@ TEST(RenderRecordingWorkersTest, PreservesAffinityAcrossSparseBatchesAndRepeated
     for (uint32_t cycle = 0; cycle < 3; ++cycle)
     {
         RenderRecordingWorkers recording(3);
-        Probe                  probes[3];
-        Task                   tasks[] = {
+        Probe                  probes[3]{};
+        ZEngine::Helpers::Task tasks[] = {
             {&probes[0], &Probe::Run},
             {&probes[1], &Probe::Run},
             {&probes[2], &Probe::Run}
@@ -100,7 +99,7 @@ TEST(RenderRecordingWorkersTest, PreservesAffinityAcrossSparseBatchesAndRepeated
         const std::thread::id owners[] = {probes[0].Thread, probes[1].Thread, probes[2].Thread};
         for (uint32_t batch = 0; batch < 200; ++batch)
         {
-            tasks[1] = batch % 2 ? Task{&probes[1], &Probe::Run} : Task{};
+            tasks[1] = batch % 2 ? ZEngine::Helpers::Task{&probes[1], &Probe::Run} : ZEngine::Helpers::Task{};
             recording.Record(tasks, 3);
             for (uint32_t i = 0; i < 3; ++i)
             {
@@ -117,9 +116,9 @@ TEST(RenderRecordingWorkersTest, PreservesAffinityAcrossSparseBatchesAndRepeated
 
 TEST(RenderRecordingWorkersTest, KeepsCallerContextsAliveUntilEveryTaskCompletes)
 {
-    Gate                   gate;
+    Gate                   gate{};
     RenderRecordingWorkers recording(2);
-    Task                   tasks[] = {
+    ZEngine::Helpers::Task tasks[] = {
         {&gate, &Gate::Block},
         {}
     };
@@ -136,8 +135,8 @@ TEST(RenderRecordingWorkersTest, KeepsCallerContextsAliveUntilEveryTaskCompletes
 TEST(RenderRecordingWorkersTest, SequentialFallbackOnlyAfterWorkersHaveJoined)
 {
     RenderRecordingWorkers recording(2);
-    Probe                  probes[2];
-    Task                   tasks[] = {
+    Probe                  probes[2]{};
+    ZEngine::Helpers::Task tasks[] = {
         {&probes[0], &Probe::Run},
         {&probes[1], &Probe::Run}
     };

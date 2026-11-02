@@ -211,7 +211,7 @@ protected:
 
 TEST_F(VFSScannerTest, SaturatedAdmissionDefersRootWithoutCallerThreadEnumeration)
 {
-    SaturatedBackgroundPool background;
+    SaturatedBackgroundPool background{};
     ASSERT_TRUE(background.Fill());
     EXPECT_FALSE(m_scanner.Scan(&m_mock, P("/"), &m_cache));
     EXPECT_EQ(m_mock.ListCalls.load(), 0);

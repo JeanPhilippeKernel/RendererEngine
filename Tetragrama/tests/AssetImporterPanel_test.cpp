@@ -985,7 +985,7 @@ TEST_F(AssetImporterPanelTest, MetadataRegistersDependenciesWithoutBindingRuntim
         EXPECT_EQ(meta.Value().Status, ImportStatus::UpToDate);
         auto* registry = AssetManager::Instance()->Registry;
         registry->OnScanFileDiscovered(vfs, path, ZEngine::Core::VFS::AssetRegistry::InferTypeFromExtension(path));
-        AssetRecordSnapshot snapshot;
+        AssetRecordSnapshot snapshot{};
         ASSERT_TRUE(registry->TryReadRecordByPath(path, &snapshot));
         EXPECT_EQ(snapshot.Record.State, AssetState::Registered);
         EXPECT_EQ(snapshot.Record.Meta.SourceHash, hash.Value());

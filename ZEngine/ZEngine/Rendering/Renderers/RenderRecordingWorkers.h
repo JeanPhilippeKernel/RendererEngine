@@ -83,17 +83,17 @@ namespace ZEngine::Rendering::Renderers
     private:
         struct Worker
         {
-            std::thread             Thread;
-            std::mutex              Mutex;
-            std::condition_variable CV;
-            Helpers::Task           Task;
+            std::thread             Thread{};
+            std::mutex              Mutex{};
+            std::condition_variable CV{};
+            Helpers::Task           Task{};
             bool                    Stopping = false;
         };
-        Worker                  m_workers[MaxWorkers];
-        uint32_t                m_count;
+        Worker                  m_workers[MaxWorkers]{};
+        uint32_t                m_count{};
         bool                    m_stopped = false;
-        std::mutex              m_completion_mutex;
-        std::condition_variable m_completion;
+        std::mutex              m_completion_mutex{};
+        std::condition_variable m_completion{};
         uint32_t                m_remaining = 0;
 
         void                    Run(uint32_t index)
@@ -101,7 +101,7 @@ namespace ZEngine::Rendering::Renderers
             auto& worker = m_workers[index];
             for (;;)
             {
-                Helpers::Task task;
+                Helpers::Task task{};
                 {
                     std::unique_lock lock(worker.Mutex);
                     worker.CV.wait(lock, [&] { return worker.Stopping || bool(worker.Task); });

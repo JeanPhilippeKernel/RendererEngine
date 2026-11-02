@@ -29,7 +29,7 @@ namespace Tetragrama::Panels
         Node             Nodes[Capacity] = {};
         uint32_t         Count           = 0;
         bool             Incomplete      = false;
-        DirectoryListing Listings;
+        DirectoryListing Listings{};
 
         void             Invalidate();
         void             LoadChildren(ZEngine::Core::VFS::IVFSContext& vfs, uint32_t parent);

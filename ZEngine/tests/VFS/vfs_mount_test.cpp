@@ -24,7 +24,7 @@ namespace
         VFSBackendCaps           Caps          = VFSBackendCaps::None;
         VFSPath                  LastOpen      = {};
         uint32_t                 MutationCalls = 0;
-        std::vector<VFSDirEntry> Entries;
+        std::vector<VFSDirEntry> Entries{};
 
         explicit MockBackend(const char* name, VFSBackendCaps caps = VFSBackendCaps::Read) : Name(name), Caps(caps) {}
 
@@ -64,7 +64,7 @@ namespace
         }
         VFSResult<Array<VFSDirEntry>> List(ArenaAllocator* arena, const VFSPath&) const override
         {
-            Array<VFSDirEntry> result;
+            Array<VFSDirEntry> result{};
             result.init(arena, Entries.size() + 1);
             for (const auto& entry : Entries)
                 result.push(entry);
@@ -282,11 +282,11 @@ TEST_F(VFSContextTest, MutationsNeverFallThroughAReadOnlyOwningMount)
 
 TEST(VFSListingTest, DeduplicationPreservesPriorityOrderAndWinningEntryMetadata)
 {
-    MemoryManager memory;
+    MemoryManager memory{};
     memory.Initialize(ZMega(16), {});
-    VFSContext vfs;
+    VFSContext vfs{};
     vfs.Initialize(&memory.MainArena, 8);
-    ArenaAllocator output;
+    ArenaAllocator output{};
     output.Initialize(ZMega(8), 0);
     MockBackend base("base"), overlay("overlay");
     VFSDirEntry winner = {};
@@ -321,11 +321,11 @@ TEST(VFSListingTest, DeduplicationPreservesPriorityOrderAndWinningEntryMetadata)
 
 TEST(VFSListingTest, LargeDuplicateListingSurvivesHashAndOutputGrowth)
 {
-    MemoryManager memory;
+    MemoryManager memory{};
     memory.Initialize(ZMega(64), {});
-    VFSContext vfs;
+    VFSContext vfs{};
     vfs.Initialize(&memory.MainArena, 8);
-    ArenaAllocator output;
+    ArenaAllocator output{};
     output.Initialize(ZMega(32), 0);
     MockBackend backend("large");
     for (int i = 0; i < 4096; ++i)

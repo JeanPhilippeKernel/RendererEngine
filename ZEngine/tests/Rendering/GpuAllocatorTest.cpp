@@ -364,7 +364,7 @@ GpuAllocator*   GpuAllocatorTest::s_allocator    = nullptr;
 TEST_F(GpuAllocatorTest, RuntimeImageMetadataCannotRewindOrOverwriteRenderScratch)
 {
     ASSERT_NE(s_allocator, nullptr);
-    ArenaAllocator arena;
+    ArenaAllocator arena{};
     arena.Initialize(ZMega(2), 0);
     auto                                device = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
     ZEngine::Hardwares::DeviceSwapchain swapchain{};
@@ -376,7 +376,7 @@ TEST_F(GpuAllocatorTest, RuntimeImageMetadataCannotRewindOrOverwriteRenderScratc
     device->ImageBufferManager.Initialize(&arena, 16);
     device->GlobalTextures.Initialize(&arena, 16);
     const auto                                  before = arena.m_current_offset;
-    ZEngine::Rendering::Textures::TextureHandle handle;
+    ZEngine::Rendering::Textures::TextureHandle handle{};
     {
         const auto scratch    = ZGetScratch(&arena);
         auto*      completion = ZPushStructCtor<PaddedAtomic<uint32_t>>(&arena);

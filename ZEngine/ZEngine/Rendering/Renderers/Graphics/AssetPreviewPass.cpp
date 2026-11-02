@@ -9,10 +9,6 @@
 #include <bit>
 #include <cmath>
 
-using namespace ZEngine::Core::Maths;
-using namespace ZEngine::Core::VFS;
-using namespace ZEngine::Managers;
-
 namespace ZEngine::Rendering::Renderers
 {
     namespace
@@ -26,9 +22,9 @@ namespace ZEngine::Rendering::Renderers
             return hash;
         }
         // No file I/O, no borrowed importer arrays escaping the try-lock.
-        bool ReadMaterial(const AssetRecordSnapshot& record, Meshes::MeshMaterial* output, uint64_t* fingerprint, uint64_t* persistent_hash = nullptr)
+        bool ReadMaterial(const Core::VFS::AssetRecordSnapshot& record, Meshes::MeshMaterial* output, uint64_t* fingerprint, uint64_t* persistent_hash = nullptr)
         {
-            auto* assets = AssetManager::Instance();
+            auto* assets = Managers::AssetManager::Instance();
             if (!assets || !assets->Registry)
                 return false;
             std::unique_lock lock(assets->IngestMutex, std::try_to_lock);
@@ -63,17 +59,17 @@ namespace ZEngine::Rendering::Renderers
             uint64_t runtime = hash;
             for (uint32_t i = 0; i < 5; ++i)
             {
-                AssetRecordSnapshot dependency = {};
-                bool                found      = !ids[i].is_nil() && assets->Registry->TryReadRecord(ids[i], &dependency);
+                Core::VFS::AssetRecordSnapshot dependency = {};
+                bool                           found      = !ids[i].is_nil() && assets->Registry->TryReadRecord(ids[i], &dependency);
                 if (!found && !paths[i]->empty())
                 {
-                    const auto path = VFSPath::Parse(paths[i]->c_str());
+                    const auto path = Core::VFS::VFSPath::Parse(paths[i]->c_str());
                     found           = path.Succeeded() && assets->Registry->TryReadRecordByPath(path.Value(), &dependency);
                 }
                 hash = Mix(hash, i);
                 for (const auto byte : ids[i].as_bytes())
                     hash = Mix(hash, static_cast<uint8_t>(byte));
-                if ((!ids[i].is_nil() || !paths[i]->empty()) && (!found || dependency.Record.Type != AssetType::TEXTURE || (dependency.Record.State != AssetState::Registered && dependency.Record.State != AssetState::Loaded)))
+                if ((!ids[i].is_nil() || !paths[i]->empty()) && (!found || dependency.Record.Type != Managers::AssetType::TEXTURE || (dependency.Record.State != Core::VFS::AssetState::Registered && dependency.Record.State != Core::VFS::AssetState::Loaded)))
                     return false; // Missing/stale dependencies retain the authored fallback.
                 if (!found)
                     continue;
@@ -81,7 +77,7 @@ namespace ZEngine::Rendering::Renderers
                     hash = Mix(hash, static_cast<uint8_t>(byte));
                 hash              = Mix(hash, dependency.Record.Meta.SourceHash);
                 runtime           = Mix(runtime, static_cast<uint64_t>(dependency.Record.State));
-                const auto handle = AssetManager::FindTextureHandle(dependency.Record.UUID);
+                const auto handle = Managers::AssetManager::FindTextureHandle(dependency.Record.UUID);
                 if (!handle.Valid())
                     return false;
                 runtime  = Mix(Mix(runtime, handle.Index), handle.Generation);
@@ -100,7 +96,7 @@ namespace ZEngine::Rendering::Renderers
         return Materials::IsConstantFullyTransparent(material.AlphaMode, material.AlbedoColor.w, material.Factors.z, material.AlbedoMap != UINT32_MAX);
     }
 
-    bool AssetPreviewPass::DependencyFingerprint(const AssetRecordSnapshot& record, uint64_t* hash, uint64_t* persistent_hash, bool* fully_transparent, Materials::AlphaInfo* alpha_info)
+    bool AssetPreviewPass::DependencyFingerprint(const Core::VFS::AssetRecordSnapshot& record, uint64_t* hash, uint64_t* persistent_hash, bool* fully_transparent, Materials::AlphaInfo* alpha_info)
     {
         if (fully_transparent)
             *fully_transparent = false;
@@ -108,14 +104,14 @@ namespace ZEngine::Rendering::Renderers
             *alpha_info = {};
         if (!hash)
             return false;
-        if (record.Record.Type == AssetType::MESH)
+        if (record.Record.Type == Managers::AssetType::MESH)
         {
             *hash = EnvironmentRevision;
             if (persistent_hash)
                 *persistent_hash = EnvironmentRevision;
             return true;
         }
-        if (record.Record.Type != AssetType::MATERIAL)
+        if (record.Record.Type != Managers::AssetType::MATERIAL)
             return false;
         Meshes::MeshMaterial material = {};
         if (!ReadMaterial(record, &material, hash, persistent_hash))
@@ -127,21 +123,21 @@ namespace ZEngine::Rendering::Renderers
         return true;
     }
 
-    bool AssetPreviewPass::FrameBounds(const Vec3f& center, float radius, Mat4f* output)
+    bool AssetPreviewPass::FrameBounds(const Core::Maths::Vec3f& center, float radius, Core::Maths::Mat4f* output)
     {
         if (!output || !std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z) || !std::isfinite(radius) || radius < 1e-12f || radius > 1e12f)
             return false;
         // Vertices are recentered and divided by the validated bound's radius.
         // Thus clipping and distance are radius-relative, including tiny meshes.
-        const Vec3f     back     = Vec3f(1.f, 0.65f, 1.35f).normalize();
-        const Vec3f     right    = cross3d(Vec3f(0, 1, 0), back).normalize();
-        const Vec3f     up       = cross3d(back, right);
-        constexpr float distance = 3.2f; // > 1.15 / sin(45 degrees / 2)
-        const Vec3f     eye      = back * distance;
-        const Mat4f     view(right.x, right.y, right.z, -dot(right, eye), up.x, up.y, up.z, -dot(up, eye), back.x, back.y, back.z, -dot(back, eye), 0, 0, 0, 1);
-        constexpr float n = distance - 1.25f, f = distance + 1.25f;
-        const float     scale = 1.f / std::tan(3.14159265359f / 8.f);
-        const Mat4f     projection(scale, 0, 0, 0, 0, -scale, 0, 0, 0, 0, f / (n - f), (n * f) / (n - f), 0, 0, -1, 0);
+        const Core::Maths::Vec3f back     = Core::Maths::Vec3f(1.f, 0.65f, 1.35f).normalize();
+        const Core::Maths::Vec3f right    = Core::Maths::cross3d(Core::Maths::Vec3f(0, 1, 0), back).normalize();
+        const Core::Maths::Vec3f up       = Core::Maths::cross3d(back, right);
+        constexpr float          distance = 3.2f; // > 1.15 / sin(45 degrees / 2)
+        const Core::Maths::Vec3f eye      = back * distance;
+        const Core::Maths::Mat4f view(right.x, right.y, right.z, -Core::Maths::dot(right, eye), up.x, up.y, up.z, -Core::Maths::dot(up, eye), back.x, back.y, back.z, -Core::Maths::dot(back, eye), 0, 0, 0, 1);
+        constexpr float          n = distance - 1.25f, f = distance + 1.25f;
+        const float              scale = 1.f / std::tan(3.14159265359f / 8.f);
+        const Core::Maths::Mat4f projection(scale, 0, 0, 0, 0, -scale, 0, 0, 0, 0, f / (n - f), (n * f) / (n - f), 0, 0, -1, 0);
         *output = projection * view;
         return true;
     }
@@ -161,10 +157,10 @@ namespace ZEngine::Rendering::Renderers
         return nullptr;
     }
 
-    Textures::TextureHandle AssetPreviewPass::Request(const AssetRecordSnapshot& record, uint64_t dependency_hash, const char* cache_path, const RenderResourceManager::ThumbnailCacheIdentity* identity)
+    Textures::TextureHandle AssetPreviewPass::Request(const Core::VFS::AssetRecordSnapshot& record, uint64_t dependency_hash, const char* cache_path, const RenderResourceManager::ThumbnailCacheIdentity* identity)
     {
         std::lock_guard lock(m_mutex);
-        if (!m_device || (record.Record.Type != AssetType::MESH && record.Record.Type != AssetType::MATERIAL))
+        if (!m_device || (record.Record.Type != Managers::AssetType::MESH && record.Record.Type != Managers::AssetType::MATERIAL))
             return {};
         for (auto& task : m_tasks)
         {
@@ -220,17 +216,17 @@ namespace ZEngine::Rendering::Renderers
 
     bool AssetPreviewPass::PrepareTask(Task& task)
     {
-        auto*               assets    = AssetManager::Instance();
-        auto*               resources = static_cast<RenderResourceManager*>(m_device->RRM);
-        AssetRecordSnapshot current   = {};
-        if (!assets || !assets->Registry || !assets->Registry->TryReadRecord(task.Record.Record.UUID, &current) || current.Record.Meta.SourceHash != task.Record.Record.Meta.SourceHash || (current.Record.State != AssetState::Loaded && current.Record.State != AssetState::Registered))
+        auto*                          assets    = Managers::AssetManager::Instance();
+        auto*                          resources = static_cast<RenderResourceManager*>(m_device->RRM);
+        Core::VFS::AssetRecordSnapshot current   = {};
+        if (!assets || !assets->Registry || !assets->Registry->TryReadRecord(task.Record.Record.UUID, &current) || current.Record.Meta.SourceHash != task.Record.Record.Meta.SourceHash || (current.Record.State != Core::VFS::AssetState::Loaded && current.Record.State != Core::VFS::AssetState::Registered))
         {
             task.CurrentState = State::Failed;
             return false;
         }
         m_uniform    = {};
         m_draw_count = 0;
-        if (current.Record.Type == AssetType::MATERIAL)
+        if (current.Record.Type == Managers::AssetType::MATERIAL)
         {
             // Never persist a render made from an allocated-but-not-decoded map,
             // or from the preceding bytes of a reload under the new source key.
