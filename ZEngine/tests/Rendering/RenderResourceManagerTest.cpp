@@ -7,12 +7,15 @@
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <gtest/gtest.h>
 #include <stb/stb_image.h>
+#include <stb/stb_image_write.h>
 #include <uuid.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <new>
 #include <random>
 #include <thread>
 #include <vector>
@@ -26,6 +29,41 @@ using namespace ZEngine::Managers;
 
 struct RRMDecodeTestHelper
 {
+    static void InitDecode(RenderResourceManager& manager, ArenaAllocator& arena, Hardwares::VulkanDevice& device)
+    {
+        manager.m_device = &device;
+        manager.m_upload_slabs[0].Init(&arena, RenderResourceManager::UPLOAD_SLAB_BYTES);
+        manager.m_texture_task_slab.Init(&arena, RenderResourceManager::TEXTURE_TASK_SLAB_BYTES);
+    }
+
+    static bool Decode(RenderResourceManager& manager, const char* filename, uint32_t extent, bool fit = false)
+    {
+        uint8_t index = UINT8_MAX;
+        if (!Acquire(manager, &index))
+            return false;
+        auto* task                = new (manager.m_texture_task_slab.Alloc(sizeof(RenderResourceManager::TextureDecodeTask))) RenderResourceManager::TextureDecodeTask{};
+        task->Owner               = &manager;
+        task->DecodeSlabIndex     = index;
+        task->Specification.Width = task->Specification.Height = extent;
+        task->FitIntoSquare                                    = fit;
+        std::snprintf(task->Filename, sizeof(task->Filename), "%s", filename);
+        manager.m_pending_texture_decodes.value.fetch_add(1);
+        RenderResourceManager::RunTextureDecodeTask(task);
+        RenderResourceManager::TextureDeferral deferral = {};
+        if (!manager.m_tex_deferral_queue.pop(deferral))
+            return false;
+        const bool valid = deferral.Pixels && deferral.ByteSize == static_cast<size_t>(extent) * extent * 4;
+        deferral.Slab->Free(deferral.Pixels);
+        Release(manager, deferral.DecodeSlabIndex);
+        return valid;
+    }
+
+    static void ShutdownDecode(RenderResourceManager& manager)
+    {
+        manager.m_upload_slabs[0].Shutdown();
+        manager.m_texture_task_slab.Shutdown();
+    }
+
     static bool Acquire(RenderResourceManager& manager, uint8_t* out_index)
     {
         return manager.TryAcquireTextureDecodeSlab(out_index);
@@ -658,6 +696,33 @@ TEST(RenderResourceManagerDecodePolicy, PendingReleaseIsDeduplicatedAndDoesNotFo
     RRMDecodeTestHelper::FlushReleases(*manager);
     EXPECT_EQ(RRMDecodeTestHelper::ReleaseCount(*manager), 1u);
     EXPECT_EQ(manager->GetTextureDecodeState(texture), RenderResourceManager::TextureDecodeState::Pending);
+}
+
+TEST_F(ThumbnailCacheTest, FourKTextureDecodeFitsOneLeaseAndReleasesItForReuse)
+{
+    const auto           source = Directory / "four-k.jpg";
+    std::vector<uint8_t> pixels(4096 * 4096 * 3, 120);
+    ASSERT_NE(stbi_write_jpg(source.string().c_str(), 4096, 4096, 3, pixels.data(), 80), 0);
+    pixels.clear();
+    pixels.shrink_to_fit();
+
+    MemoryManager memory;
+    memory.Initialize(ZMega(136), {});
+    auto manager = std::make_unique<RenderResourceManager>();
+    auto device  = std::make_unique<Hardwares::VulkanDevice>();
+    RRMDecodeTestHelper::InitDecode(*manager, memory.MainArena, *device);
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        EXPECT_TRUE(RRMDecodeTestHelper::Decode(*manager, source.string().c_str(), 4096));
+        EXPECT_EQ(RRMDecodeTestHelper::Pending(*manager), 0u);
+    }
+    // A larger requested output cannot fit alongside the source. Fail without
+    // asserting, then prove the lease and source allocation were reclaimed.
+    EXPECT_FALSE(RRMDecodeTestHelper::Decode(*manager, source.string().c_str(), 8192));
+    EXPECT_TRUE(RRMDecodeTestHelper::Decode(*manager, source.string().c_str(), 128, true));
+    EXPECT_EQ(RRMDecodeTestHelper::Pending(*manager), 0u);
+    EXPECT_EQ(Helpers::GetWorkerSlab(), nullptr);
+    RRMDecodeTestHelper::ShutdownDecode(*manager);
 }
 
 TEST(RenderResourceManagerThumbnailPolicy, AspectFitClearsPaddingAndPreservesAlpha)

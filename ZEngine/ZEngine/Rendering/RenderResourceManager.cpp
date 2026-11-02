@@ -6,8 +6,8 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Profiling/Profiling.h>
 #include <cstdlib>
-#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
-#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Realloc(p, newsz) : std::realloc(p, newsz))
+#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(nullptr, sz) : std::malloc(sz))
+#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(p, newsz) : std::realloc(p, newsz))
 #define STBI_FREE(p)                                    \
     do                                                  \
     {                                                   \
@@ -2485,8 +2485,9 @@ namespace ZEngine::Rendering
                 else
                 {
                     byte_size = cubemap.BufferSize;
-                    pixels    = static_cast<uint8_t*>(slab->Alloc(byte_size));
-                    Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
+                    pixels    = static_cast<uint8_t*>(slab->TryRealloc(nullptr, byte_size));
+                    if (pixels)
+                        Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
                 }
             }
             else
@@ -2520,22 +2521,30 @@ namespace ZEngine::Rendering
                 const uint32_t target_height = task->Specification.Height;
                 const size_t   total_pixels  = static_cast<size_t>(target_width) * static_cast<size_t>(target_height);
                 byte_size                    = total_pixels * STBI_rgb_alpha;
-                pixels                       = static_cast<uint8_t*>(slab->Alloc(byte_size));
-                if (task->FitIntoSquare)
+                // Keep the decoded allocation when its dimensions already match.
+                // Two 4K RGBA buffers plus TLSF overhead exceed a 128 MiB lease.
+                if (width == static_cast<int>(target_width) && height == static_cast<int>(target_height))
                 {
-                    if (!AspectFitThumbnail(image_data, width, height, pixels, target_width))
-                    {
-                        slab->Free(pixels);
-                        pixels = nullptr;
-                    }
+                    pixels = image_data;
                 }
                 else
                 {
-                    stbir_resize_uint8(image_data, width, height, 0, pixels, static_cast<int>(target_width), static_cast<int>(target_height), 0, STBI_rgb_alpha);
+                    pixels = static_cast<uint8_t*>(slab->TryRealloc(nullptr, byte_size));
+                    if (pixels)
+                    {
+                        const bool resized = task->FitIntoSquare ? AspectFitThumbnail(image_data, width, height, pixels, target_width) : stbir_resize_uint8(image_data, width, height, 0, pixels, static_cast<int>(target_width), static_cast<int>(target_height), 0, STBI_rgb_alpha) != 0;
+                        if (!resized)
+                        {
+                            slab->Free(pixels);
+                            pixels = nullptr;
+                        }
+                    }
+                    stbi_image_free(image_data);
                 }
-                stbi_image_free(image_data);
+                if (!pixels)
+                    ZENGINE_CORE_ERROR("[RRM] Texture resize failed or exceeded the decode memory budget: {}", task->Filename)
 
-                if (task->FitIntoSquare && !cache_hit && task->CacheFilename[0] != '\0')
+                if (pixels && task->FitIntoSquare && !cache_hit && task->CacheFilename[0] != '\0')
                 {
                     WriteThumbnailCache(task->CacheFilename, pixels, target_width, target_height, task->CacheIdentity);
                 }
