@@ -529,7 +529,7 @@ protected:
     }
 };
 
-TEST_F(FolderTreeCacheTest, TexturePreviewsKeepSquareGeometryAndFileOrientationAtEveryTileScale)
+TEST_F(FolderTreeCacheTest, TexturePreviewsFillCheckerboardWhileKeepingSquareGeometryAndFileOrientationAtEveryTileScale)
 {
     using namespace ZEngine::UI;
     using Access   = Tetragrama::Panels::ProjectViewPanelTestAccess;
@@ -548,7 +548,15 @@ TEST_F(FolderTreeCacheTest, TexturePreviewsKeepSquareGeometryAndFileOrientationA
         const auto* image = FindBox(ctx.Root, "##preview");
         ASSERT_NE(image, nullptr);
         ASSERT_NE(image->Parent, nullptr);
-        EXPECT_NE(image->Parent->CustomDraw, nullptr);
+        const auto* backdrop = image->Parent;
+        EXPECT_NE(backdrop->CustomDraw, nullptr);
+        EXPECT_FLOAT_EQ(backdrop->ComputedSize[0], 110.f * scale);
+        EXPECT_FLOAT_EQ(backdrop->ComputedSize[1], 79.f * scale);
+        for (int axis = 0; axis < 2; ++axis)
+        {
+            EXPECT_FLOAT_EQ(backdrop->ScreenMin[axis], area->ScreenMin[axis]);
+            EXPECT_FLOAT_EQ(backdrop->ScreenMax[axis], area->ScreenMax[axis]);
+        }
         EXPECT_EQ(image->TextureIndex, 17u);
         EXPECT_TRUE(image->TextureFlipV);
         EXPECT_FLOAT_EQ(image->ComputedSize[0], 79.f * scale);

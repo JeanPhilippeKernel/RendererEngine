@@ -20,13 +20,14 @@ not define shipped behavior. Implemented contracts belong in the
 
 - [3D gizmo](../design/completed/gizmo-3d-pass.md)
 - [Serialized editor grid](../design/completed/editor-grid.md)
+- [Thumbnail generation and editor asset previews](../design/completed/thumbnail-generation.md)
 
 ## Engine-system proposals
 
 - [Animation](../design/future-plan/animation-system.md), [audio](../design/future-plan/audio-system.md), [input](../design/future-plan/input-system.md), [physics](../design/future-plan/physics-system.md), and [networking](../design/future-plan/networking.md)
 - [Component reflection](../design/future-plan/component-reflection.md), [game/runtime boundary](../design/future-plan/game-runtime-boundary.md), and [save system](../design/future-plan/save-system.md)
 - [Memory budget](../design/future-plan/memory-budget.md), [GPU allocator](../design/future-plan/gpu-allocator-rearchitecture.md), and [per-frame upload heap](../design/future-plan/per-frame-upload-heap.md)
-- [Import pipeline](../design/future-plan/import-pipeline.md), [shader asset pipeline](../design/future-plan/shader-asset-pipeline.md), [thumbnail generation](../design/future-plan/thumbnail-generation.md), and [cook pipeline](../design/future-plan/cook-pipeline.md)
+- [Import pipeline](../design/future-plan/import-pipeline.md), [shader asset pipeline](../design/future-plan/shader-asset-pipeline.md), and [cook pipeline](../design/future-plan/cook-pipeline.md)
 - [Compute](../design/future-plan/compute-pipeline.md), [post-processing](../design/future-plan/post-processing.md), [shadows](../design/future-plan/shadows.md), [sky rendering](../design/future-plan/sky-rendering.md), and [draw-call sorting](../design/future-plan/draw-call-sorting.md)
 - [Profiling](../design/future-plan/profiling.md), [text rendering](../design/future-plan/text-rendering.md), [UI docking](../design/future-plan/ui-docking-floating-windows.md), and [Panzerfaust integration](../design/future-plan/panzerfaust.md)
 

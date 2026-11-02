@@ -784,8 +784,11 @@ namespace Tetragrama::Panels
     {
         char backdrop_key[64] = {};
         snprintf(backdrop_key, sizeof(backdrop_key), "%s_checker", key);
-        auto* backdrop       = ZUIBeginColumn(ctx, backdrop_key, ZPx(79.f * scale), ZPx(79.f * scale));
-        backdrop->CustomDraw = [](ZUIDrawList* draw, const ZUIBox* box, const void*) {
+        // The transparency backdrop fills the preview well independently of the
+        // square image, so aspect-fit thumbnails do not leave solid side bars.
+        auto* backdrop      = ZUIBeginColumn(ctx, backdrop_key, ZFill(), ZPx(79.f * scale));
+        backdrop->MainAlign = backdrop->CrossAlign = ZUIAlign::Center;
+        backdrop->CustomDraw                       = [](ZUIDrawList* draw, const ZUIBox* box, const void*) {
             const uint32_t stops[2] = {ZUIPackColor(.16f, .16f, .16f, .8f), ZUIPackColor(.16f, .16f, .16f, .8f)};
             ZUIDrawListAddColorRect(draw, box->ScreenMin[0], box->ScreenMin[1], box->ScreenMax[0], box->ScreenMax[1], stops, 2, 0.f, true);
         };
