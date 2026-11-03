@@ -59,6 +59,7 @@ namespace Tetragrama
         uuids::uuid                                       SceneUUID   = {};
         ZEngine::Core::VFS::IVFSContext*                  VFS         = nullptr;
         const ZEngine::ECS::SceneComponentSchemaRegistry* Schemas     = nullptr;
+        const ZEngine::ECS::SceneMigrationRegistry*       Migrations  = nullptr;
         ZEngine::Core::VFS::VFSPath                       Path        = {};
         std::string                                       Workspace   = {};
         uint64_t                                          Epoch       = 0;
@@ -90,7 +91,7 @@ namespace Tetragrama
         // owner tokens; their services must remain alive until it has retired.
         bool Matches(const Editor& editor, const ZEngine::EngineContext& engine) const
         {
-            if (EngineOwner != &engine || SceneOwner != editor.CurrentScene || World != engine.Scene || Actors != engine.ActorManager || VFS != engine.VFS || Schemas != engine.SceneSchemas || !SceneOwner || SceneOwner->UUID != SceneUUID || !editor.WorkingSpacePath)
+            if (EngineOwner != &engine || SceneOwner != editor.CurrentScene || World != engine.Scene || Actors != engine.ActorManager || VFS != engine.VFS || Schemas != engine.SceneSchemas || Migrations != engine.SceneMigrations || !SceneOwner || SceneOwner->UUID != SceneUUID || !editor.WorkingSpacePath)
             {
                 return false;
             }
@@ -116,7 +117,7 @@ namespace Tetragrama
                     }
                     else
                     {
-                        work.Succeeded = ZEngine::ECS::SceneDocument::Read(*work.VFS, work.Path, *work.Schemas, &work.Document, &work.Diagnostics);
+                        work.Succeeded = ZEngine::ECS::SceneDocument::Read(*work.VFS, work.Path, *work.Schemas, &work.Document, &work.Diagnostics, {}, work.Migrations);
                         if (work.Succeeded)
                         {
                             work.Succeeded = work.LoadMeshes();
@@ -506,6 +507,7 @@ namespace Tetragrama
         work->Registry    = work->Assets ? work->Assets->Registry : nullptr;
         work->VFS         = engine.VFS;
         work->Schemas     = engine.SceneSchemas;
+        work->Migrations  = engine.SceneMigrations;
         work->Path        = m_scene_open.Path;
         work->Workspace   = WorkingSpacePath;
         work->Epoch       = m_scene_open.Owner.Epoch;

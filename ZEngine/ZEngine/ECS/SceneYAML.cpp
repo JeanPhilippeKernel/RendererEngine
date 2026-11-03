@@ -103,6 +103,46 @@ namespace ZEngine::ECS::SceneYAML
         uuids::to_string<char>(value, text);
         return Scalar({text, sizeof(text)});
     }
+    Node Storage::Clone(const Node& source, uint32_t max_depth)
+    {
+        uint32_t visited = 0;
+        if (!max_depth || max_depth > 32)
+        {
+            Fail();
+            return {};
+        }
+        return CloneNode(source, max_depth, visited);
+    }
+    Node Storage::CloneNode(const Node& source, uint32_t remaining, uint32_t& visited)
+    {
+        if (!source.IsDefined() || ++visited > m_max_nodes || (!remaining && (source.IsMap() || source.IsSequence())))
+        {
+            Fail();
+            return {};
+        }
+        if (source.IsScalar())
+            return Scalar(source.Scalar(), source.Plain());
+        const auto result = Make(source.Type(), source.Style());
+        if (!result.IsDefined())
+            return {};
+        if (source.IsMap())
+        {
+            for (const auto& entry : source.Mapping())
+            {
+                const auto key   = Scalar(entry.Key);
+                const auto value = CloneNode(entry.Value, remaining - 1, visited);
+                if (!AppendField(result, key, value))
+                    return {};
+            }
+            if (!UniqueKeys(result))
+                return {};
+        }
+        else if (source.IsSequence())
+            for (const auto& item : source.Sequence())
+                if (!Append(result, CloneNode(item, remaining - 1, visited)))
+                    return {};
+        return result;
+    }
     bool Storage::Contains(Node node, Node target, uint32_t depth, uint32_t& visited) const
     {
         if (node.m_index == target.m_index)

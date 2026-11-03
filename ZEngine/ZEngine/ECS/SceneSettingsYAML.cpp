@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Containers/FixedArray.h>
+#include <ZEngine/ECS/SceneSettingsFields.h>
 #include <ZEngine/ECS/SceneSettingsYAML.h>
 #include <ZEngine/ECS/SceneYamlValue.h>
 #include <cmath>
@@ -7,12 +8,11 @@ namespace ZEngine::ECS
 {
     namespace
     {
-        struct FloatField
-        {
-            cstring Key   = nullptr;
-            float*  Data  = nullptr;
-            size_t  Count = 0;
-        };
+        using SceneSettingsDetail::FloatField;
+        using SceneSettingsDetail::SkyAtmosphere;
+        using SceneSettingsDetail::SkyEnvironment;
+        using SceneSettingsDetail::SkyPresentation;
+        using SceneSettingsDetail::SkySphere;
 
         bool Reject(SceneDiagnostics* diagnostics)
         {
@@ -78,11 +78,13 @@ namespace ZEngine::ECS
         }
 
         template <size_t Count>
-        bool DecodeFloats(const SceneYAML::Node& node, const Core::Containers::FixedArray<FloatField, Count>& fields)
+        bool DecodeFloats(const SceneYAML::Node& node, const Core::Containers::FixedArray<FloatField, Count>& fields, bool optional = false)
         {
             for (const auto& field : fields)
             {
                 const auto data = FindSceneYAMLField(node, field.Key);
+                if (optional && !data.IsDefined())
+                    continue;
                 if (field.Count == 1)
                 {
                     if (!ReadFloat(data, *field.Data))
@@ -110,49 +112,6 @@ namespace ZEngine::ECS
             };
         }
 
-        auto SkyEnvironment(Rendering::Scenes::SkyConfig& sky)
-        {
-            return Core::Containers::FixedArray{
-                FloatField{  "environment_intensity",  &sky.EnvironmentIntensity, 1},
-                FloatField{       "environment_tint",        sky.EnvironmentTint, 4},
-                FloatField{"environment_yaw_radians", &sky.EnvironmentYawRadians, 1},
-            };
-        }
-
-        auto SkyAtmosphere(Rendering::Scenes::AtmosphereSettings& sky)
-        {
-            return Core::Containers::FixedArray{
-                FloatField{              "planet_center_world",              sky.PlanetCenterWorld, 3},
-                FloatField{            "world_units_per_meter",            &sky.WorldUnitsPerMeter, 1},
-                FloatField{         "planet_radius_kilometers",        &sky.PlanetRadiusKilometers, 1},
-                FloatField{     "atmosphere_radius_kilometers",    &sky.AtmosphereRadiusKilometers, 1},
-                FloatField{"rayleigh_scattering_per_kilometer", sky.RayleighScatteringPerKilometer, 3},
-                FloatField{ "rayleigh_scale_height_kilometers", &sky.RayleighScaleHeightKilometers, 1},
-                FloatField{     "mie_scattering_per_kilometer",     &sky.MieScatteringPerKilometer, 1},
-                FloatField{     "mie_absorption_per_kilometer",     &sky.MieAbsorptionPerKilometer, 1},
-                FloatField{      "mie_scale_height_kilometers",      &sky.MieScaleHeightKilometers, 1},
-                FloatField{                   "mie_anisotropy",                 &sky.MieAnisotropy, 1},
-                FloatField{   "ozone_absorption_per_kilometer",    sky.OzoneAbsorptionPerKilometer, 3},
-                FloatField{          "ozone_center_kilometers",         &sky.OzoneCenterKilometers, 1},
-                FloatField{       "ozone_thickness_kilometers",      &sky.OzoneThicknessKilometers, 1},
-                FloatField{       "sun_angular_radius_radians",       &sky.SunAngularRadiusRadians, 1},
-                FloatField{              "sun_illuminance_lux",             &sky.SunIlluminanceLux, 1},
-                FloatField{                    "ground_albedo",                   sky.GroundAlbedo, 3},
-                FloatField{        "ground_ambient_irradiance",       &sky.GroundAmbientIrradiance, 1},
-            };
-        }
-
-        auto SkySphere(Rendering::Scenes::SkySphereSettings& sky)
-        {
-            return Core::Containers::FixedArray{
-                FloatField{                  "horizon_color",                 sky.HorizonColor, 4},
-                FloatField{                   "zenith_color",                  sky.ZenithColor, 4},
-                FloatField{                   "ground_color",                  sky.GroundColor, 4},
-                FloatField{"sun_disc_angular_radius_radians", &sky.SunDiscAngularRadiusRadians, 1},
-                FloatField{             "sun_disc_intensity",            &sky.SunDiscIntensity, 1},
-                FloatField{              "horizon_sharpness",            &sky.HorizonSharpness, 1},
-            };
-        }
     } // namespace
 
     bool EncodeSceneGridYAML(const SceneGridSettings& source, SceneYAML::Node* out, SceneDiagnostics* diagnostics)
@@ -206,8 +165,8 @@ namespace ZEngine::ECS
         const auto node       = storage.Make(SceneYAML::NodeType::Map);
         const auto atmosphere = storage.Make(SceneYAML::NodeType::Map);
         const auto sphere     = storage.Make(SceneYAML::NodeType::Map);
-        if (!storage.Set(node, "mode", storage.UInt(static_cast<uint32_t>(value.Mode))) || !storage.Set(node, "environment_map", storage.UUID(value.EnvironmentMap)) || !EncodeFloats(storage, node, SkyEnvironment(value)) || !storage.Set(node, "primary_celestial_light", storage.UUID(value.PrimaryCelestialLight)) || !EncodeFloats(storage, atmosphere, SkyAtmosphere(value.Atmosphere)) || !EncodeFloats(storage, sphere, SkySphere(value.Sphere)) || !storage.Set(sphere, "show_sun_disc", storage.Bool(value.Sphere.ShowSunDisc)) ||
-            !storage.Set(node, "atmosphere", atmosphere) || !storage.Set(node, "sphere", sphere))
+        if (!storage.Set(node, "mode", storage.UInt(static_cast<uint32_t>(value.Mode))) || !storage.Set(node, "environment_map", storage.UUID(value.EnvironmentMap)) || !EncodeFloats(storage, node, SkyEnvironment(value)) || !EncodeFloats(storage, node, SkyPresentation(value)) || !storage.Set(node, "primary_celestial_light", storage.UUID(value.PrimaryCelestialLight)) || !EncodeFloats(storage, atmosphere, SkyAtmosphere(value.Atmosphere)) || !EncodeFloats(storage, sphere, SkySphere(value.Sphere)) ||
+            !storage.Set(sphere, "show_sun_disc", storage.Bool(value.Sphere.ShowSunDisc)) || !storage.Set(node, "atmosphere", atmosphere) || !storage.Set(node, "sphere", sphere))
             return Reject(diagnostics);
         *out = node;
         return true;
@@ -215,13 +174,22 @@ namespace ZEngine::ECS
 
     bool DecodeSceneSkyYAML(const SceneYAML::Node& input, Rendering::Scenes::SkyConfig* out, SceneDiagnostics* diagnostics)
     {
-        if (!out || !input.IsMap() || input.size() != 8)
+        if (!out || !input.IsMap())
             return Reject(diagnostics);
         {
-            Rendering::Scenes::SkyConfig value      = {};
-            uint32_t                     mode       = 0;
-            const auto                   atmosphere = FindSceneYAMLField(input, "atmosphere");
-            const auto                   sphere     = FindSceneYAMLField(input, "sphere");
+            Rendering::Scenes::SkyConfig value           = {};
+            uint32_t                     mode            = 0;
+            const auto                   atmosphere      = FindSceneYAMLField(input, "atmosphere");
+            const auto                   sphere          = FindSceneYAMLField(input, "sphere");
+            // Additive fields absent in older schema-2 scenes retain their authored
+            // defaults. Present values are still strictly validated; unknown keys
+            // are rejected rather than silently discarded on the next save.
+            const auto                   presentation    = SkyPresentation(value);
+            size_t                       expected_fields = 5 + SkyEnvironment(value).size();
+            for (const auto& field : presentation)
+                expected_fields += FindSceneYAMLField(input, field.Key).IsDefined() ? 1 : 0;
+            if (input.size() != expected_fields || !DecodeFloats(input, presentation, true))
+                return Reject(diagnostics);
             if (!atmosphere.IsMap() || atmosphere.size() != SkyAtmosphere(value.Atmosphere).size() || !sphere.IsMap() || sphere.size() != SkySphere(value.Sphere).size() + 1 || !ReadUInt(FindSceneYAMLField(input, "mode"), mode) || mode > static_cast<uint32_t>(Rendering::Scenes::SkyMode::SkySphere) || !ReadUUID(FindSceneYAMLField(input, "environment_map"), value.EnvironmentMap) || !ReadUUID(FindSceneYAMLField(input, "primary_celestial_light"), value.PrimaryCelestialLight) || !DecodeFloats(input, SkyEnvironment(value)) ||
                 !DecodeFloats(atmosphere, SkyAtmosphere(value.Atmosphere)) || !DecodeFloats(sphere, SkySphere(value.Sphere)) || !ReadBool(sphere["show_sun_disc"], value.Sphere.ShowSunDisc))
                 return Reject(diagnostics);

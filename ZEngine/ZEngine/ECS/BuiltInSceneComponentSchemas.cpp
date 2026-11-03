@@ -172,6 +172,66 @@ namespace ZEngine::ECS
             }
         };
 
+        struct RigidBodyCodec
+        {
+            using Component                           = Components::RigidBodyComponent;
+            using Value                               = AuthoredRigidBodyValue;
+            static constexpr cstring    Key           = "RigidBodyComponent";
+            static constexpr size_t     PayloadFields = 4;
+            static constexpr size_t     BinaryBytes   = sizeof(uint32_t) + 3 * sizeof(float);
+            static constexpr std::array Fields        = {
+                SceneFieldSchema{"motion_type"},
+                SceneFieldSchema{"mass"},
+                SceneFieldSchema{"friction"},
+                SceneFieldSchema{"restitution"},
+                SceneFieldSchema{"body_id", SceneFieldClass::RuntimeDerived},
+            };
+
+            static Value Capture(const Component& component)
+            {
+                return CaptureAuthoredRigidBody(component);
+            }
+            static bool Valid(const Value& value)
+            {
+                return ValidAuthoredRigidBody(value);
+            }
+            static void Apply(Component& component, const Value& value)
+            {
+                ApplyAuthoredRigidBody(component, value);
+            }
+            static bool Read(const SceneValue& payload, Value& value)
+            {
+                const auto* motion      = payload.Find<uint32_t>("motion_type");
+                const auto* mass        = payload.Find<float>("mass");
+                const auto* friction    = payload.Find<float>("friction");
+                const auto* restitution = payload.Find<float>("restitution");
+                if (payload.Fields().size() != PayloadFields || !motion || *motion > static_cast<uint32_t>(Component::MotionType::Dynamic) || !mass || !friction || !restitution)
+                {
+                    return false;
+                }
+                value = {static_cast<Component::MotionType>(*motion), *mass, *friction, *restitution};
+                return Valid(value);
+            }
+            static bool Write(const Value& value, SceneValueWriter& writer)
+            {
+                return writer.Add("motion_type", static_cast<uint32_t>(value.MotionKind)) && writer.Add("mass", value.Mass) && writer.Add("friction", value.Friction) && writer.Add("restitution", value.Restitution);
+            }
+            static bool Encode(const Value& value, SceneBinaryWriter& writer)
+            {
+                return writer.UInt32(static_cast<uint32_t>(value.MotionKind)) && writer.Float(value.Mass) && writer.Float(value.Friction) && writer.Float(value.Restitution);
+            }
+            static bool Decode(SceneBinaryReader& reader, Value& value)
+            {
+                uint32_t motion = 0;
+                if (!reader.UInt32(motion) || motion > static_cast<uint32_t>(Component::MotionType::Dynamic))
+                {
+                    return false;
+                }
+                value.MotionKind = static_cast<Component::MotionType>(motion);
+                return reader.Float(value.Mass) && reader.Float(value.Friction) && reader.Float(value.Restitution) && Valid(value);
+            }
+        };
+
         template <typename Codec>
         struct Callbacks
         {
@@ -313,6 +373,6 @@ namespace ZEngine::ECS
 
     bool RegisterBuiltInSceneComponentSchemas(SceneComponentSchemaRegistry& registry, SceneDiagnostics* diagnostics)
     {
-        return Register<TransformCodec>(registry, diagnostics) && Register<LightCodec>(registry, diagnostics) && Register<CameraCodec>(registry, diagnostics) && RegisterSceneIdentityComponentSchemas(registry, diagnostics);
+        return Register<TransformCodec>(registry, diagnostics) && Register<LightCodec>(registry, diagnostics) && Register<CameraCodec>(registry, diagnostics) && Register<RigidBodyCodec>(registry, diagnostics) && RegisterSceneIdentityComponentSchemas(registry, diagnostics);
     }
 } // namespace ZEngine::ECS

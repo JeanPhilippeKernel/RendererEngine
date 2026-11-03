@@ -1,4 +1,5 @@
 #include <ZEngine/ECS/SceneComponentSchemaRegistry.h>
+#include <ZEngine/ECS/SceneSchemaKey.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/ZEngineDef.h>
@@ -7,32 +8,9 @@ namespace ZEngine::ECS
 {
     namespace
     {
-        constexpr uint32_t MAX_KEY_LEN = 128;
-
-        bool               IsValidKey(cstring key)
+        bool IsValidKey(cstring key)
         {
-            if (!key || key[0] == '\0')
-            {
-                return false;
-            }
-
-            const size_t len = Helpers::secure_strlen(key);
-            if (len >= MAX_KEY_LEN)
-            {
-                return false;
-            }
-
-            // Wire keys use portable printable ASCII and are separator-free so they
-            // survive any format without depending on the target's char signedness.
-            for (size_t i = 0; i < len; ++i)
-            {
-                const unsigned char c = static_cast<unsigned char>(key[i]);
-                if (c < 0x21u || c > 0x7Eu || c == '/' || c == '\\' || c == '"')
-                {
-                    return false;
-                }
-            }
-            return true;
+            return key && IsValidSceneSchemaKey(key);
         }
 
         bool IsValidFieldClass(SceneFieldClass field_class)

@@ -1,4 +1,5 @@
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/MaterialComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
@@ -66,36 +67,14 @@ namespace ZEngine::ECS
             }
         };
 
-        struct MeshCodec
+        struct UUIDReferenceCodec
         {
-            using Component                    = Components::MeshComponent;
-            using Value                        = uuids::uuid;
-            static constexpr cstring    Key    = "MeshComponent";
-            static constexpr cstring    Field  = "mesh_uuid";
-            static constexpr std::array Fields = {
-                SceneFieldSchema{Field},
-                SceneFieldSchema{"render_instance_id", SceneFieldClass::RuntimeDerived}
-            };
+            using Value                                       = uuids::uuid;
             static constexpr bool               IsReference   = true;
             static constexpr SceneReferenceKind ReferenceKind = SceneReferenceKind::Asset;
             static bool                         Valid(const Value& value)
             {
                 return !value.is_nil();
-            }
-            static bool Capture(EntityID entity, const Scene& scene, Value& out)
-            {
-                const auto* component = scene.GetComponent<Component>(entity);
-                if (!component)
-                    return false;
-                out = component->MeshUUID;
-                return Valid(out);
-            }
-            static bool Populate(EntityID entity, Scene& scene, const Value& value)
-            {
-                Component component = {};
-                component.MeshUUID  = value;
-                scene.AddComponent<Component>(entity, component);
-                return true;
             }
             static size_t Bytes(const Value&)
             {
@@ -116,7 +95,60 @@ namespace ZEngine::ECS
             }
         };
 
-        struct ParentCodec : MeshCodec
+        struct MeshCodec : UUIDReferenceCodec
+        {
+            using Component                    = Components::MeshComponent;
+            static constexpr cstring    Key    = "MeshComponent";
+            static constexpr cstring    Field  = "mesh_uuid";
+            static constexpr std::array Fields = {
+                SceneFieldSchema{Field},
+                SceneFieldSchema{"render_instance_id", SceneFieldClass::RuntimeDerived}
+            };
+
+            static bool Capture(EntityID entity, const Scene& scene, Value& out)
+            {
+                const auto* component = scene.GetComponent<Component>(entity);
+                if (!component)
+                {
+                    return false;
+                }
+                out = component->MeshUUID;
+                return Valid(out);
+            }
+            static bool Populate(EntityID entity, Scene& scene, const Value& value)
+            {
+                Component component = {};
+                component.MeshUUID  = value;
+                scene.AddComponent<Component>(entity, component);
+                return true;
+            }
+        };
+
+        struct MaterialCodec : UUIDReferenceCodec
+        {
+            using Component                    = Components::MaterialComponent;
+            static constexpr cstring    Key    = "MaterialComponent";
+            static constexpr cstring    Field  = "material_uuid";
+            static constexpr std::array Fields = {SceneFieldSchema{Field}};
+
+            static bool                 Capture(EntityID entity, const Scene& scene, Value& out)
+            {
+                const auto* component = scene.GetComponent<Component>(entity);
+                if (!component)
+                {
+                    return false;
+                }
+                out = component->MaterialUUID;
+                return Valid(out);
+            }
+            static bool Populate(EntityID entity, Scene& scene, const Value& value)
+            {
+                scene.AddComponent<Component>(entity, {value});
+                return true;
+            }
+        };
+
+        struct ParentCodec : UUIDReferenceCodec
         {
             using Component                                   = Components::ParentComponent;
             static constexpr cstring            Key           = "ParentComponent";
@@ -167,7 +199,7 @@ namespace ZEngine::ECS
             }
             static bool Reject(SceneDiagnostics* diagnostics)
             {
-                SceneDiagnosticError(diagnostics, "Invalid name, mesh asset UUID or parent UUID component payload.");
+                SceneDiagnosticError(diagnostics, "Invalid name, asset UUID or parent UUID component payload.");
                 return false;
             }
             static bool Read(const SceneValue& payload, Value& value)
@@ -300,6 +332,6 @@ namespace ZEngine::ECS
 
     bool RegisterSceneIdentityComponentSchemas(SceneComponentSchemaRegistry& registry, SceneDiagnostics* diagnostics)
     {
-        return Register<NameCodec>(registry, diagnostics) && Register<MeshCodec>(registry, diagnostics) && Register<ParentCodec>(registry, diagnostics);
+        return Register<NameCodec>(registry, diagnostics) && Register<MeshCodec>(registry, diagnostics) && Register<MaterialCodec>(registry, diagnostics) && Register<ParentCodec>(registry, diagnostics);
     }
 } // namespace ZEngine::ECS

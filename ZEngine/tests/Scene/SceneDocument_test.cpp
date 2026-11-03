@@ -4,6 +4,7 @@
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
+#include <ZEngine/ECS/Components/MaterialComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
@@ -43,6 +44,11 @@ namespace
     const auto FirstUUID  = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
     const auto SecondUUID = *uuids::uuid::from_string("33333333-3333-4333-8333-333333333333");
     const auto AssetUUID  = *uuids::uuid::from_string("44444444-4444-4444-8444-444444444444");
+
+    struct UnsupportedSceneComponent
+    {
+        uint32_t Value = 0;
+    };
 
     struct SceneFaultVFS : VFSContext
     {
@@ -348,10 +354,65 @@ TEST_F(SceneDocumentTest, MissingNilDuplicateAndUnterminatedIdentityOrNamesRejec
 TEST_F(SceneDocumentTest, UnknownRuntimeComponentsCannotBeSilentlyDroppedOnSave)
 {
     const auto entity = Add(FirstUUID);
-    Source.AddComponent<RigidBodyComponent>(entity, {});
+    Source.AddComponent<UnsupportedSceneComponent>(entity, {});
     EXPECT_FALSE(Capture());
     EXPECT_EQ(Document.Settings(), nullptr);
     EXPECT_TRUE(Diagnostics.HasErrors());
+}
+
+TEST_F(SceneDocumentTest, MaterialAndRigidBodyRoundTripWithStableReferencesAndNoRuntimeBodyIdentity)
+{
+    const auto entity = Add(FirstUUID);
+    Source.AddComponent<MaterialComponent>(entity, {AssetUUID});
+    Source.AddComponent<RigidBodyComponent>(entity, {.MotionKind = RigidBodyComponent::MotionType::Kinematic, .Mass = 7.5f, .Friction = 0.25f, .Restitution = 0.75f, .BodyID = 99});
+    ASSERT_TRUE(Capture());
+    const auto text = Emit();
+    EXPECT_NE(text.find("MaterialComponent"), std::string::npos);
+    EXPECT_NE(text.find("RigidBodyComponent"), std::string::npos);
+    EXPECT_EQ(text.find("body_id"), std::string::npos);
+    EXPECT_EQ(text.find("BodyID"), std::string::npos);
+    ASSERT_TRUE(Parse(text));
+    EXPECT_FALSE(Document.ReadOnly());
+    SceneReference reference = {};
+    ASSERT_TRUE(Document.EnumerateComponentReferences(
+        ComponentTypeOf<MaterialComponent>(),
+        Schemas,
+        [](void* context, const SceneReference& item) {
+            *static_cast<SceneReference*>(context) = item;
+            return true;
+        },
+        &reference,
+        &Diagnostics));
+    EXPECT_EQ(reference.Kind, SceneReferenceKind::Asset);
+    EXPECT_EQ(reference.UUID, AssetUUID);
+    ASSERT_TRUE(Document.PopulateCandidate(Candidate, Schemas, &Diagnostics));
+    const auto loaded = Find(Candidate, FirstUUID);
+    ASSERT_TRUE(loaded.IsValid());
+    const auto* material = Candidate.GetComponent<MaterialComponent>(loaded);
+    const auto* body     = Candidate.GetComponent<RigidBodyComponent>(loaded);
+    ASSERT_NE(material, nullptr);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(material->MaterialUUID, AssetUUID);
+    EXPECT_EQ(body->MotionKind, RigidBodyComponent::MotionType::Kinematic);
+    EXPECT_FLOAT_EQ(body->Mass, 7.5f);
+    EXPECT_FLOAT_EQ(body->Friction, 0.25f);
+    EXPECT_FLOAT_EQ(body->Restitution, 0.75f);
+    EXPECT_EQ(body->BodyID, UINT32_MAX);
+    EXPECT_EQ(Emit(), text);
+}
+
+TEST_F(SceneDocumentTest, InvalidMaterialOrRigidBodyCannotReplaceAValidCapturedDocument)
+{
+    const auto entity = Add(FirstUUID);
+    ASSERT_TRUE(Capture());
+    const auto original = Emit();
+    Source.AddComponent<MaterialComponent>(entity, {});
+    EXPECT_FALSE(Capture());
+    EXPECT_EQ(Emit(), original);
+    Source.RemoveComponent<MaterialComponent>(entity);
+    Source.AddComponent<RigidBodyComponent>(entity, {.Mass = 0.f});
+    EXPECT_FALSE(Capture());
+    EXPECT_EQ(Emit(), original);
 }
 
 TEST_F(SceneDocumentTest, NonFiniteFieldsAndInvalidOrStaleHierarchyRejectCapture)
