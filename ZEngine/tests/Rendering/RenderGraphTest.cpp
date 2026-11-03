@@ -74,8 +74,8 @@ TEST(RenderGraphBarrierTest, PreservedImageUsesItsTrackedSourceScopeAndLayout)
 {
     const auto               source = GetRGAccessState(RGAccess::TransferRead);
     const RGImageBarrierPlan plan   = {
-          .DestinationState = GetRGAccessState(RGAccess::ShaderRead),
-          .Range            = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .BaseMipLevel = 2, .LevelCount = 1, .BaseArrayLayer = 3, .LayerCount = 1},
+        .DestinationState = GetRGAccessState(RGAccess::ShaderRead),
+        .Range            = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .BaseMipLevel = 2, .LevelCount = 1, .BaseArrayLayer = 3, .LayerCount = 1},
     };
     const auto barrier = BuildRGImageBarrier(plan, source, VK_NULL_HANDLE);
     EXPECT_EQ(barrier.srcStageMask, source.Stage);
