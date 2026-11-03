@@ -508,7 +508,7 @@ namespace
                 EXPECT_EQ(sky, decoded);
             }
             auto                   invalid = bytes;
-            ECS::SceneBinaryWriter version(std::span(invalid).first(4));
+            ECS::SceneBinaryWriter version{std::span(invalid).first(4)};
             ASSERT_TRUE(version.UInt32(2));
             EXPECT_FALSE(ECS::DecodeSceneSkyBinary({invalid.data(), invalid.size()}, decoded));
             EXPECT_EQ(sky, decoded);
