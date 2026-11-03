@@ -133,6 +133,9 @@ namespace ZEngine::ECS::SceneYAML
         Node               Float(float value);
         Node               Bool(bool value);
         Node               UUID(const uuids::uuid& value);
+        /// Deep owned copy, including map keys and scalar presentation. Rejects
+        /// undefined values, duplicate keys, excessive depth and budget overflow.
+        [[nodiscard]] Node Clone(const Node& source, uint32_t max_depth = 32);
         [[nodiscard]] bool Set(Node map, std::string_view key, Node value);
         [[nodiscard]] bool AppendField(Node map, Node key, Node value);
         [[nodiscard]] bool Append(Node sequence, Node value);
@@ -187,6 +190,7 @@ namespace ZEngine::ECS::SceneYAML
         bool                            Owns(Node node) const;
         bool                            AddLink(Node parent, uint32_t key, Node value);
         bool                            Contains(Node node, Node target, uint32_t depth, uint32_t& visited) const;
+        Node                            CloneNode(const Node& source, uint32_t remaining, uint32_t& visited);
         bool                            Fail()
         {
             m_good = false;

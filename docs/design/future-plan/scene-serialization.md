@@ -1,7 +1,7 @@
 # Scene Serialization — Authoring Source and Cooked Runtime
 
 **Priority:** P1 — foundation for persistent editor authoring
-**Status:** In progress; serializer foundation exists, production schema contract remains open
+**Status:** In progress; source documents, binary codec, and source compatibility framework implemented; cook/package and standalone runtime integration remain
 **Owner:** jnyfah
 **Tracked by:** [#714](https://github.com/JeanPhilippeKernel/RendererEngine/issues/714)–[#719](https://github.com/JeanPhilippeKernel/RendererEngine/issues/719), [#829](https://github.com/JeanPhilippeKernel/RendererEngine/issues/829), and [#830](https://github.com/JeanPhilippeKernel/RendererEngine/issues/830). Their issue descriptions are subordinate to this current schema and source-backed lifecycle contract.
 **Depends on:** actor-ecs-architecture.md, VFS stable UUID/asset registry,
@@ -182,19 +182,40 @@ discard one side.
 
 ## 8. Unknown data, migrations, and compatibility
 
-Unknown data needs one deliberate policy, selected before release:
-
-1. Preserve it as an opaque component payload including schema key/version and
-   emit it unchanged on re-save; or
-2. permit read-only inspection but reject save with a clear compatibility error.
+The implemented policy is read-only inspection with explicit save rejection.
+Unknown component keys and newer component versions remain in their owning
+document; `SceneDocument::ReadOnly()` prevents source save and cooked output.
+There is no opaque-data re-save mode. Missing migration routes for older known
+schemas fail loading instead of pretending that the old fields are current.
 
 Skipping an unknown component and writing the rest of the document is forbidden.
 
-Schema migrations are pure, deterministic transformations from an older document
-version to the current in-memory source model. They are versioned, tested with
-fixtures, and run before candidate ECS construction. Binary cooked files have
-their own header/version/table validation and reference stable schema keys, never
-runtime type counter values or pointer-sized memory dumps.
+`SceneMigrationRegistry` registers pure document-tree and component-field-tree
+transformations with explicit increasing source/target versions. Callbacks use
+the existing engine-owned value tree (`SceneYAML::Node`), not YAML text, native
+component layouts, or a current codec's restricted `SceneValue` field shape.
+Inputs are deep-owned frozen snapshots; outputs must belong to the bounded
+destination storage. Duplicate/branching edges, incomplete or overshooting
+routes, borrowed outputs, input mutation, duplicate keys, and invalid results
+are rejected. Routes contain at most 32 steps; registry capacity is bounded to
+256 entries. At most two scratch trees survive a step, each bounded by
+`SceneDocumentLimits`, in addition to the destination document's bounded tree.
+
+`SceneCompatibilityService` is the shared source-load/save policy boundary.
+`SceneDocument::Parse` and VFS `Read` run document upgrades, then component
+upgrades, before the ordinary current-codec and UUID graph validation. Failed
+upgrades discard the unpublished candidate and preserve the caller's previous
+document. The editor captures the startup registry for its load worker and
+rejects stale completions if that registry owner changes. Source emission and
+binary encoding both use the compatibility save gate.
+
+Startup intentionally registers no guessed historical conversions. Test-only
+versioned fixtures cover the extension point; real migrations must be added
+with fixtures for the actual retired schema when versions change. Cooked
+binary containers and payload versions remain strict/current-only: migrate
+authoring source and recook. They retain their own header/version/table
+validation and reference stable schema keys, never runtime type counter values
+or pointer-sized memory dumps.
 
 ## 9. Binary cook path
 
@@ -242,12 +263,15 @@ the history dirty checkpoint; selection and editor preferences do not affect it.
 
 ## 12. Delivery checklist
 
-- [ ] Versioned SceneDocument source model and UUID entity records
-- [ ] Stable component/field schema registry and explicit startup registration
-- [ ] Built-in codecs, UUID reference enumeration, and staged hierarchy resolver
-- [ ] SceneGridSettings codec and validation
-- [ ] Immutable save snapshot, canonical YAML emitter, atomic VFS write
-- [ ] Transactional candidate load and renderer/actor rebuild
-- [ ] Unknown-data policy and migration framework
-- [ ] Stable-schema binary cook/load and asset validation
-- [ ] Cross-process, negative, recovery, and integration tests
+- [x] Versioned SceneDocument source model and UUID entity records
+- [x] Stable component/field schema registry and explicit startup registration
+- [x] Built-in codecs, UUID reference enumeration, and staged hierarchy resolver
+- [x] SceneGridSettings codec and validation
+- [x] Immutable save snapshot, canonical YAML emitter, atomic VFS write
+- [x] Transactional editor candidate load and renderer/actor reconstruction
+- [x] Read-only unknown-data policy and bounded source migration framework
+- [x] Stable-schema binary artifact encode/decode
+- [x] Source/binary cross-process, malformed-input, migration, and editor lifecycle tests
+- [ ] Scene cook asset validation, incremental fingerprints, and package manifests
+- [ ] Standalone runtime publication and Play restoration integration
+- [ ] Confirm macOS, Windows, and Linux CI before merge

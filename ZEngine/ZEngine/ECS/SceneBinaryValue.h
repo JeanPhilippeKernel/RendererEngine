@@ -12,10 +12,19 @@ namespace ZEngine::ECS
     class SceneBinaryWriter
     {
     public:
-        explicit SceneBinaryWriter(std::span<std::byte> bytes) : m_bytes(bytes) {}
+        explicit SceneBinaryWriter(std::span<std::byte> bytes) : m_bytes(bytes), m_limit(bytes.size()) {}
+        /// Executes the same codec with bounded counting, without allocating a
+        /// maximum-sized output buffer or introducing a second payload schema.
+        [[nodiscard]] static SceneBinaryWriter Measure(size_t maximum)
+        {
+            SceneBinaryWriter writer({});
+            writer.m_limit     = maximum;
+            writer.m_measuring = true;
+            return writer;
+        }
         [[nodiscard]] size_t Remaining() const
         {
-            return m_bytes.size() - m_position;
+            return m_limit - m_position;
         }
         [[nodiscard]] size_t Position() const
         {
@@ -27,10 +36,10 @@ namespace ZEngine::ECS
             {
                 return false;
             }
-            for (uint32_t shift = 0; shift < 32; shift += 8)
-            {
-                m_bytes[m_position++] = std::byte((value >> shift) & 0xffu);
-            }
+            if (!m_measuring)
+                for (uint32_t shift = 0; shift < 32; shift += 8)
+                    m_bytes[m_position + shift / 8] = std::byte((value >> shift) & 0xffu);
+            m_position += sizeof(value);
             return true;
         }
         [[nodiscard]] bool Float(float value)
@@ -51,16 +60,18 @@ namespace ZEngine::ECS
             {
                 return false;
             }
-            for (const auto byte : value)
-            {
-                m_bytes[m_position++] = std::byte(byte);
-            }
+            if (!m_measuring)
+                for (size_t i = 0; i < value.size(); ++i)
+                    m_bytes[m_position + i] = std::byte(value[i]);
+            m_position += value.size();
             return true;
         }
 
     private:
-        std::span<std::byte> m_bytes    = {};
-        size_t               m_position = 0;
+        std::span<std::byte> m_bytes     = {};
+        size_t               m_position  = 0;
+        size_t               m_limit     = 0;
+        bool                 m_measuring = false;
     };
 
     class SceneBinaryReader

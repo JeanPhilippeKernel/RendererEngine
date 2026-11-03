@@ -162,6 +162,54 @@ TEST_F(SceneYAMLTest, HandleReassignmentDoesNotRewriteAnotherPayload)
     EXPECT_EQ(root["child"].Scalar(), "replacement");
 }
 
+TEST_F(SceneYAMLTest, CloneOwnsEveryScalarAndKeyAfterSourceDestruction)
+{
+    auto copy = Storage.Destination();
+    {
+        SceneYAML::Storage source = {};
+        ASSERT_TRUE(source.Initialize(ZMega(1)));
+        const auto root = source.Make(SceneYAML::NodeType::Map);
+        const auto list = source.Make(SceneYAML::NodeType::Sequence, SceneYAML::EmitterStyle::Flow);
+        ASSERT_TRUE(source.Append(list, source.Scalar("owned text")));
+        ASSERT_TRUE(source.Append(list, source.Make(SceneYAML::NodeType::Null)));
+        ASSERT_TRUE(source.Set(root, "list", list));
+        ASSERT_TRUE(source.Set(root, "number", source.UInt(123)));
+        source.Freeze();
+        copy = Storage.Clone(root);
+        ASSERT_TRUE(copy.IsMap());
+        EXPECT_NE(copy.Owner(), root.Owner());
+    }
+    EXPECT_EQ(copy["list"].Style(), SceneYAML::EmitterStyle::Flow);
+    EXPECT_EQ(copy["list"][size_t{0}].Scalar(), "owned text");
+    EXPECT_TRUE(copy["list"][size_t{1}].IsNull());
+    EXPECT_EQ(copy["number"].Scalar(), "123");
+    EXPECT_TRUE(copy["number"].Plain());
+}
+
+TEST_F(SceneYAMLTest, CloneRejectsDuplicateKeysDepthAndMemoryOverflow)
+{
+    for (uint32_t mode = 0; mode < 4; ++mode)
+    {
+        SceneYAML::Storage source = {}, destination = {};
+        ASSERT_TRUE(source.Initialize(ZMega(1)));
+        ASSERT_TRUE(destination.Initialize(mode == 3 ? 32 : ZMega(1)));
+        auto root = source.Make(SceneYAML::NodeType::Map);
+        ASSERT_TRUE(source.Set(root, "value", source.Scalar("text")));
+        if (mode == 0)
+            root = {};
+        if (mode == 1)
+            ASSERT_TRUE(source.AppendField(root, source.Scalar("value"), source.UInt(7)));
+        if (mode == 2)
+        {
+            const auto nested = source.Make(SceneYAML::NodeType::Map);
+            ASSERT_TRUE(source.Set(nested, "nested", root));
+            root = nested;
+        }
+        EXPECT_FALSE(destination.Clone(root, mode == 2 ? 1 : 32).IsDefined());
+        EXPECT_FALSE(destination.Good());
+    }
+}
+
 TEST_F(SceneYAMLTest, IndicesAndTextRemainStableAcrossRecordAndLinkGrowth)
 {
     const auto  root    = Storage.Make(SceneYAML::NodeType::Sequence);

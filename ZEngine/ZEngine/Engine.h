@@ -8,6 +8,7 @@
 #include <ZEngine/Core/VFS/VFSWatchEvent.h>
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/ECS/Scene.h>
+#include <ZEngine/ECS/SceneCompatibility.h>
 #include <ZEngine/ECS/SceneComponentSchemaRegistry.h>
 #include <ZEngine/ECS/WorldCommands.h>
 #include <ZEngine/ECS/WorldTick.h>
@@ -86,6 +87,7 @@ namespace ZEngine
         ECS::WorldTick*                    WorldTick                       = nullptr;
 
         ECS::SceneComponentSchemaRegistry* SceneSchemas                    = nullptr;
+        ECS::SceneMigrationRegistry*       SceneMigrations                 = nullptr;
         Importers::ImportCoordinator*      ImportCoordinator               = nullptr;
         Rendering::RenderResourceManager*  RenderResourceManager           = nullptr;
         Applications::GameApplicationPtr   App                             = nullptr;

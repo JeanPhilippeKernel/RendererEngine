@@ -1,6 +1,7 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/ECS/AuthoredComponentValues.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/MaterialComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/ParentComponent.h>
@@ -12,6 +13,7 @@
 #include <gtest/gtest.h>
 #include <array>
 #include <limits>
+#include <utility>
 
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
@@ -68,15 +70,21 @@ protected:
 
 TEST_F(BuiltInSceneCodecTest, StartupRegistersRealIdempotentCallbacksAndDerivedFieldPolicy)
 {
-    EXPECT_EQ(schemas.Count(), 6u);
+    EXPECT_EQ(schemas.Count(), 8u);
     ASSERT_TRUE(RegisterBuiltInSceneComponentSchemas(schemas, &diagnostics));
-    EXPECT_EQ(schemas.Count(), 6u);
+    EXPECT_EQ(schemas.Count(), 8u);
     const auto& schema = Schema<TransformComponent>();
     EXPECT_STREQ(schema.Key, "TransformComponent");
     EXPECT_EQ(schema.Version, 1u);
     EXPECT_EQ(schema.FieldCount, 5u);
     EXPECT_EQ(schema.Fields[3].Class, SceneFieldClass::RuntimeDerived);
     EXPECT_EQ(schema.Fields[4].Class, SceneFieldClass::RuntimeDerived);
+    EXPECT_STREQ(Schema<MaterialComponent>().Key, "MaterialComponent");
+    const auto& body = Schema<RigidBodyComponent>();
+    EXPECT_STREQ(body.Key, "RigidBodyComponent");
+    ASSERT_EQ(body.FieldCount, 5u);
+    EXPECT_STREQ(body.Fields[4].Key, "body_id");
+    EXPECT_EQ(body.Fields[4].Class, SceneFieldClass::RuntimeDerived);
     EXPECT_FALSE(diagnostics.HasErrors());
 }
 
@@ -350,21 +358,325 @@ TEST_F(BuiltInSceneCodecTest, BinaryLightAndCameraRoundTripsRejectIllegalEnumsAn
     EXPECT_EQ(bad_camera.Position(), 0u);
 }
 
-TEST_F(BuiltInSceneCodecTest, RepeatedCaptureAndBinaryConversionReuseReservedMemory)
+TEST_F(BuiltInSceneCodecTest, RigidBodyYAMLAndBinaryRoundTripsPreserveAllMotionTypesWithoutRuntimeState)
 {
-    scene.AddComponent<TransformComponent>(source, {});
-    const auto                offset = memory.MainArena.m_current_offset;
-    const auto&               codec  = Schema<TransformComponent>().Codecs;
-    std::array<std::byte, 36> bytes  = {};
-    for (int i = 0; i < 1000; ++i)
+    RigidBodyComponent body = {.Mass = 12.5f, .Friction = 0.75f, .Restitution = 0.25f, .BodyID = 12345};
+    scene.AddComponent<RigidBodyComponent>(source, body);
+    const auto& codec = Schema<RigidBodyComponent>().Codecs;
+    for (const auto motion : {RigidBodyComponent::MotionType::Static, RigidBodyComponent::MotionType::Kinematic, RigidBodyComponent::MotionType::Dynamic})
     {
+        SCOPED_TRACE(static_cast<uint32_t>(motion));
+        scene.GetComponent<RigidBodyComponent>(source)->MotionKind = motion;
         writer.Reset();
-        ASSERT_TRUE(Capture<TransformComponent>());
-        SceneBinaryWriter binary(bytes);
+        ASSERT_TRUE(Capture<RigidBodyComponent>());
+        EXPECT_EQ(writer.Value().Fields().size(), 4u);
+        EXPECT_EQ(writer.Value().Find<uint32_t>("body_id"), nullptr);
+        std::array<std::byte, 16> bytes = {};
+        SceneBinaryWriter         binary(bytes);
         ASSERT_TRUE(codec.EncodeBinary(codec.Context, writer.Value(), &binary, &diagnostics));
+        EXPECT_EQ(binary.Position(), bytes.size());
+        EXPECT_EQ(bytes[0], std::byte(static_cast<uint32_t>(motion)));
+        EXPECT_EQ(bytes[1], std::byte{0});
+        EXPECT_EQ(bytes[2], std::byte{0});
+        EXPECT_EQ(bytes[3], std::byte{0});
         writer.Reset();
         SceneBinaryReader reader(bytes);
         ASSERT_TRUE(codec.DecodeBinary(codec.Context, 1, &reader, &writer, &diagnostics));
+        EXPECT_EQ(reader.Remaining(), 0u);
+        auto yaml = yaml_storage.Destination();
+        ASSERT_TRUE(codec.EncodeYAML(codec.Context, writer.Value(), &yaml, &diagnostics));
+        EXPECT_FALSE(yaml["body_id"].IsDefined());
+        writer.Reset();
+        ASSERT_TRUE(codec.DecodeYAML(codec.Context, 1, yaml, &writer, &diagnostics));
+        ASSERT_TRUE(Populate<RigidBodyComponent>(writer.Value()));
+        const auto* loaded = scene.GetComponent<RigidBodyComponent>(candidate);
+        ASSERT_NE(loaded, nullptr);
+        EXPECT_EQ(loaded->MotionKind, motion);
+        EXPECT_FLOAT_EQ(loaded->Mass, body.Mass);
+        EXPECT_FLOAT_EQ(loaded->Friction, body.Friction);
+        EXPECT_FLOAT_EQ(loaded->Restitution, body.Restitution);
+        EXPECT_EQ(loaded->BodyID, UINT32_MAX);
+        EXPECT_FALSE(Populate<RigidBodyComponent>(writer.Value()));
+        scene.RemoveComponent<RigidBodyComponent>(candidate);
+    }
+}
+
+TEST_F(BuiltInSceneCodecTest, RigidBodyYAMLRejectsInvalidFieldsVersionsAndCapacityWithoutPublishingValues)
+{
+    const auto&                       codec   = Schema<RigidBodyComponent>().Codecs;
+    constexpr std::array<cstring, 15> invalid = {
+        "motion_type: 3\nmass: 1\nfriction: 0.5\nrestitution: 0",
+        "motion_type: 256\nmass: 1\nfriction: 0.5\nrestitution: 0",
+        "motion_type: -1\nmass: 1\nfriction: 0.5\nrestitution: 0",
+        "motion_type: 2\nmass: 0\nfriction: 0.5\nrestitution: 0",
+        "motion_type: 2\nmass: -1\nfriction: 0.5\nrestitution: 0",
+        "motion_type: 2\nmass: .nan\nfriction: 0.5\nrestitution: 0",
+        "motion_type: 2\nmass: 1\nfriction: -0.1\nrestitution: 0",
+        "motion_type: 2\nmass: 1\nfriction: .inf\nrestitution: 0",
+        "motion_type: 2\nmass: 1\nfriction: 0.5\nrestitution: -0.1",
+        "motion_type: 2\nmass: 1\nfriction: 0.5\nrestitution: 1.1",
+        "motion_type: 2\nmass: 1\nfriction: 0.5\nrestitution: .nan",
+        "motion_type: 2\nmass: 1\nfriction: 0.5",
+        "body_id: 2\nmass: 1\nfriction: 0.5\nrestitution: 0",
+        "motion_type: 2\nmass: 1\nfriction: 0.5\nrestitution: 0\nbody_id: 9",
+        "motion_type: true\nmass: 1\nfriction: 0.5\nrestitution: 0",
+    };
+    for (const auto source_yaml : invalid)
+    {
+        SCOPED_TRACE(source_yaml);
+        auto yaml = yaml_storage.Destination();
+        ASSERT_TRUE(ReadSceneYAML(source_yaml, {}, &yaml, &diagnostics));
+        EXPECT_FALSE(codec.DecodeYAML(codec.Context, 1, yaml, &writer, &diagnostics));
+        EXPECT_TRUE(writer.Empty());
+        EXPECT_FALSE(scene.HasComponent<RigidBodyComponent>(candidate));
+    }
+    auto yaml = yaml_storage.Destination();
+    ASSERT_TRUE(ReadSceneYAML("motion_type: 2\nmass: 1\nfriction: 0.5\nrestitution: 0", {}, &yaml, &diagnostics));
+    EXPECT_FALSE(codec.DecodeYAML(codec.Context, 2, yaml, &writer, &diagnostics));
+    EXPECT_TRUE(writer.Empty());
+    std::array<SceneValueField, 3> small = {};
+    SceneValueWriter               limited(small);
+    EXPECT_FALSE(codec.DecodeYAML(codec.Context, 1, yaml, &limited, &diagnostics));
+    EXPECT_TRUE(limited.Empty());
+    scene.AddComponent<RigidBodyComponent>(source, {});
+    EXPECT_FALSE(codec.Capture(codec.Context, source, scene, &limited, &diagnostics));
+    EXPECT_TRUE(limited.Empty());
+}
+
+TEST_F(BuiltInSceneCodecTest, RigidBodyBinaryRejectsTruncationTrailingBytesAndInvalidScalarsWithoutConsumingInput)
+{
+    scene.AddComponent<RigidBodyComponent>(source, {});
+    ASSERT_TRUE(Capture<RigidBodyComponent>());
+    const auto&               codec = Schema<RigidBodyComponent>().Codecs;
+    std::array<std::byte, 17> bytes = {};
+    SceneBinaryWriter         binary(std::span<std::byte>(bytes).first(16));
+    ASSERT_TRUE(codec.EncodeBinary(codec.Context, writer.Value(), &binary, &diagnostics));
+    writer.Reset();
+    for (size_t size = 0; size <= bytes.size(); ++size)
+    {
+        if (size == 16)
+        {
+            continue;
+        }
+        SCOPED_TRACE(size);
+        SceneBinaryReader reader(std::span<const std::byte>(bytes).first(size));
+        EXPECT_FALSE(codec.DecodeBinary(codec.Context, 1, &reader, &writer, &diagnostics));
+        EXPECT_EQ(reader.Position(), 0u);
+        EXPECT_TRUE(writer.Empty());
+    }
+    SceneBinaryReader versioned(std::span<const std::byte>(bytes).first(16));
+    EXPECT_FALSE(codec.DecodeBinary(codec.Context, 2, &versioned, &writer, &diagnostics));
+    EXPECT_EQ(versioned.Position(), 0u);
+    const auto           valid   = bytes;
+    constexpr std::array invalid = {
+        std::pair<size_t, uint32_t>{ 0,           3},
+        std::pair<size_t, uint32_t>{ 0,         256},
+        std::pair<size_t, uint32_t>{ 4,           0},
+        std::pair<size_t, uint32_t>{ 4, 0xbf800000u},
+        std::pair<size_t, uint32_t>{ 4, 0x7f800000u},
+        std::pair<size_t, uint32_t>{ 8, 0xbf800000u},
+        std::pair<size_t, uint32_t>{ 8, 0x7fc00000u},
+        std::pair<size_t, uint32_t>{12, 0xbf800000u},
+        std::pair<size_t, uint32_t>{12, 0x40000000u},
+    };
+    for (const auto& [offset, bits] : invalid)
+    {
+        bytes = valid;
+        SceneBinaryWriter corrupt(std::span<std::byte>(bytes).subspan(offset, 4));
+        ASSERT_TRUE(corrupt.UInt32(bits));
+        SceneBinaryReader reader(std::span<const std::byte>(bytes).first(16));
+        EXPECT_FALSE(codec.DecodeBinary(codec.Context, 1, &reader, &writer, &diagnostics));
+        EXPECT_EQ(reader.Position(), 0u);
+        EXPECT_TRUE(writer.Empty());
+    }
+}
+
+TEST_F(BuiltInSceneCodecTest, InvalidRigidBodyCapturePopulateAndEncodePreserveCallerState)
+{
+    scene.AddComponent<RigidBodyComponent>(source, {});
+    ASSERT_TRUE(Capture<RigidBodyComponent>());
+    const auto& codec   = Schema<RigidBodyComponent>().Codecs;
+    fields[0].Value     = uint32_t{256};
+    const auto revision = scene.StructuralRevision();
+    EXPECT_FALSE(Populate<RigidBodyComponent>(writer.Value()));
+    EXPECT_EQ(scene.StructuralRevision(), revision);
+    std::array<std::byte, 16> bytes = {};
+    bytes.fill(std::byte{0xa5});
+    const auto        original = bytes;
+    SceneBinaryWriter binary(bytes);
+    EXPECT_FALSE(codec.EncodeBinary(codec.Context, writer.Value(), &binary, &diagnostics));
+    EXPECT_EQ(binary.Position(), 0u);
+    EXPECT_EQ(bytes, original);
+    writer.Reset();
+    scene.GetComponent<RigidBodyComponent>(source)->Mass = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(Capture<RigidBodyComponent>());
+    EXPECT_TRUE(writer.Empty());
+    scene.GetComponent<RigidBodyComponent>(source)->Mass = 1.f;
+    ASSERT_TRUE(Capture<RigidBodyComponent>());
+    SceneBinaryWriter small(std::span<std::byte>(bytes).first(15));
+    EXPECT_FALSE(codec.EncodeBinary(codec.Context, writer.Value(), &small, &diagnostics));
+    EXPECT_EQ(small.Position(), 0u);
+    EXPECT_EQ(bytes, original);
+}
+
+TEST_F(BuiltInSceneCodecTest, MaterialYAMLAndBinaryRoundTripPreserveAndRemapAssetReferences)
+{
+    const auto uuid        = *uuids::uuid::from_string("e823e956-d1a9-48d9-bba3-724791072320");
+    const auto replacement = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
+    scene.AddComponent<MaterialComponent>(source, {uuid});
+    ASSERT_TRUE(Capture<MaterialComponent>());
+    const auto&               schema = Schema<MaterialComponent>();
+    std::array<std::byte, 16> bytes  = {};
+    SceneBinaryWriter         binary(bytes);
+    ASSERT_TRUE(schema.Codecs.EncodeBinary(schema.Codecs.Context, writer.Value(), &binary, &diagnostics));
+    EXPECT_EQ(binary.Position(), bytes.size());
+    const auto uuid_bytes = uuid.as_bytes();
+    for (size_t i = 0; i < bytes.size(); ++i)
+    {
+        EXPECT_EQ(bytes[i], std::byte(uuid_bytes[i]));
+    }
+    writer.Reset();
+    SceneBinaryReader reader(bytes);
+    ASSERT_TRUE(schema.Codecs.DecodeBinary(schema.Codecs.Context, 1, &reader, &writer, &diagnostics));
+    EXPECT_EQ(reader.Remaining(), 0u);
+    auto yaml = yaml_storage.Destination();
+    ASSERT_TRUE(schema.Codecs.EncodeYAML(schema.Codecs.Context, writer.Value(), &yaml, &diagnostics));
+    EXPECT_EQ(yaml["material_uuid"].Scalar(), uuids::to_string(uuid));
+    writer.Reset();
+    ASSERT_TRUE(schema.Codecs.DecodeYAML(schema.Codecs.Context, 1, yaml, &writer, &diagnostics));
+    ASSERT_TRUE(Populate<MaterialComponent>(writer.Value()));
+    EXPECT_EQ(scene.GetComponent<MaterialComponent>(candidate)->MaterialUUID, uuid);
+    SceneReference reference = {};
+    ASSERT_TRUE(schema.References.Enumerate(
+        schema.References.Context,
+        writer.Value(),
+        [](void* context, const SceneReference& value) {
+            *static_cast<SceneReference*>(context) = value;
+            return true;
+        },
+        &reference,
+        &diagnostics));
+    EXPECT_EQ(reference.Kind, SceneReferenceKind::Asset);
+    EXPECT_EQ(reference.UUID, uuid);
+    EXPECT_FALSE(schema.References.Enumerate(schema.References.Context, writer.Value(), [](void*, const SceneReference&) { return false; }, nullptr, &diagnostics));
+    struct RemapContext
+    {
+        uuids::uuid From = {};
+        uuids::uuid To   = {};
+    } context                                      = {uuid, replacement};
+    const SceneUUIDRemap           remap           = {&context, [](void* input, const uuids::uuid& from, uuids::uuid* out) {
+                                      const auto& mapping = *static_cast<RemapContext*>(input);
+                                      if (from != mapping.From)
+                                      {
+                                          return false;
+                                      }
+                                      *out = mapping.To;
+                                      return true;
+                                                      }};
+    std::array<SceneValueField, 1> remapped_fields = {};
+    SceneValueWriter               remapped(remapped_fields);
+    ASSERT_TRUE(schema.References.Remap(schema.References.Context, writer.Value(), remap, &remapped, &diagnostics));
+    ASSERT_NE(remapped.Value().Find<uuids::uuid>("material_uuid"), nullptr);
+    EXPECT_EQ(*remapped.Value().Find<uuids::uuid>("material_uuid"), replacement);
+    EXPECT_EQ(*writer.Value().Find<uuids::uuid>("material_uuid"), uuid);
+    remapped.Reset();
+    EXPECT_FALSE(schema.References.Remap(schema.References.Context, writer.Value(), {}, &remapped, &diagnostics));
+    EXPECT_TRUE(remapped.Empty());
+    context.To = {};
+    EXPECT_FALSE(schema.References.Remap(schema.References.Context, writer.Value(), remap, &remapped, &diagnostics));
+    EXPECT_TRUE(remapped.Empty());
+}
+
+TEST_F(BuiltInSceneCodecTest, MaterialRejectsMalformedOrNilUUIDsAndUnsupportedFields)
+{
+    const auto&                      codec   = Schema<MaterialComponent>().Codecs;
+    constexpr std::array<cstring, 6> invalid = {
+        "material_uuid: null",
+        "material_uuid: 00000000-0000-0000-0000-000000000000",
+        "material_uuid: invalid",
+        "material_uuid: [1, 2, 3]",
+        "mesh_uuid: e823e956-d1a9-48d9-bba3-724791072320",
+        "material_uuid: e823e956-d1a9-48d9-bba3-724791072320\nslot: 1",
+    };
+    for (const auto source_yaml : invalid)
+    {
+        SCOPED_TRACE(source_yaml);
+        auto yaml = yaml_storage.Destination();
+        ASSERT_TRUE(ReadSceneYAML(source_yaml, {}, &yaml, &diagnostics));
+        EXPECT_FALSE(codec.DecodeYAML(codec.Context, 1, yaml, &writer, &diagnostics));
+        EXPECT_TRUE(writer.Empty());
+    }
+    scene.AddComponent<MaterialComponent>(source, {});
+    EXPECT_FALSE(Capture<MaterialComponent>());
+    EXPECT_TRUE(writer.Empty());
+    const std::array fields_with_nil = {
+        SceneValueField{"material_uuid", uuids::uuid{}}
+    };
+    EXPECT_FALSE(Populate<MaterialComponent>(SceneValue(fields_with_nil)));
+    EXPECT_FALSE(scene.HasComponent<MaterialComponent>(candidate));
+}
+
+TEST_F(BuiltInSceneCodecTest, MaterialBinaryChecksVersionLengthUUIDAndOutputCapacity)
+{
+    const auto uuid = *uuids::uuid::from_string("e823e956-d1a9-48d9-bba3-724791072320");
+    scene.AddComponent<MaterialComponent>(source, {uuid});
+    ASSERT_TRUE(Capture<MaterialComponent>());
+    const auto&               codec = Schema<MaterialComponent>().Codecs;
+    std::array<std::byte, 17> bytes = {};
+    bytes.fill(std::byte{0xa5});
+    const auto        untouched = bytes;
+    SceneBinaryWriter small(std::span<std::byte>(bytes).first(15));
+    EXPECT_FALSE(codec.EncodeBinary(codec.Context, writer.Value(), &small, &diagnostics));
+    EXPECT_EQ(small.Position(), 0u);
+    EXPECT_EQ(bytes, untouched);
+    SceneBinaryWriter binary(std::span<std::byte>(bytes).first(16));
+    ASSERT_TRUE(codec.EncodeBinary(codec.Context, writer.Value(), &binary, &diagnostics));
+    writer.Reset();
+    for (size_t size = 0; size <= bytes.size(); ++size)
+    {
+        if (size == 16)
+        {
+            continue;
+        }
+        SceneBinaryReader reader(std::span<const std::byte>(bytes).first(size));
+        EXPECT_FALSE(codec.DecodeBinary(codec.Context, 1, &reader, &writer, &diagnostics));
+        EXPECT_EQ(reader.Position(), 0u);
+        EXPECT_TRUE(writer.Empty());
+    }
+    SceneBinaryReader versioned(std::span<const std::byte>(bytes).first(16));
+    EXPECT_FALSE(codec.DecodeBinary(codec.Context, 2, &versioned, &writer, &diagnostics));
+    EXPECT_EQ(versioned.Position(), 0u);
+    SceneValueWriter full(ZEngine::Core::Containers::ArrayView<SceneValueField>{});
+    EXPECT_FALSE(codec.DecodeBinary(codec.Context, 1, &versioned, &full, &diagnostics));
+    EXPECT_EQ(versioned.Position(), 0u);
+    bytes.fill(std::byte{0});
+    SceneBinaryReader nil(std::span<const std::byte>(bytes).first(16));
+    EXPECT_FALSE(codec.DecodeBinary(codec.Context, 1, &nil, &writer, &diagnostics));
+    EXPECT_EQ(nil.Position(), 0u);
+    EXPECT_TRUE(writer.Empty());
+}
+
+TEST_F(BuiltInSceneCodecTest, RepeatedCaptureAndBinaryConversionReuseReservedMemory)
+{
+    scene.AddComponent<TransformComponent>(source, {});
+    scene.AddComponent<RigidBodyComponent>(source, {});
+    const auto material = *uuids::uuid::from_string("e823e956-d1a9-48d9-bba3-724791072320");
+    scene.AddComponent<MaterialComponent>(source, {material});
+    const auto                offset = memory.MainArena.m_current_offset;
+    const std::array          codecs = {&Schema<TransformComponent>().Codecs, &Schema<RigidBodyComponent>().Codecs, &Schema<MaterialComponent>().Codecs};
+    std::array<std::byte, 36> bytes  = {};
+    for (int i = 0; i < 1000; ++i)
+    {
+        for (const auto* codec : codecs)
+        {
+            writer.Reset();
+            ASSERT_TRUE(codec->Capture(codec->Context, source, scene, &writer, &diagnostics));
+            SceneBinaryWriter binary(bytes);
+            ASSERT_TRUE(codec->EncodeBinary(codec->Context, writer.Value(), &binary, &diagnostics));
+            writer.Reset();
+            SceneBinaryReader reader(std::span<const std::byte>(bytes).first(binary.Position()));
+            ASSERT_TRUE(codec->DecodeBinary(codec->Context, 1, &reader, &writer, &diagnostics));
+        }
     }
     EXPECT_EQ(memory.MainArena.m_current_offset, offset);
 }

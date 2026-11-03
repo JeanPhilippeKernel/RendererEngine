@@ -19,6 +19,12 @@ jobs:
         with:
           name: Build-Windows-x64-${{ inputs.configuration }}
 
+      - name: Run Independent-Process Scene Tests
+        shell: pwsh
+        run: |
+          $env:PATH = "${{github.workspace}}\lib;$env:PATH"
+          cmake -P "${{github.workspace}}/tests/SceneDocumentProcess.cmake"
+
       - name: Run Tests
         shell: pwsh
         env:

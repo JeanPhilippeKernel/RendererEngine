@@ -207,6 +207,10 @@ namespace ZEngine
         g_engine_ctx->SceneSchemas->Initialize(&g_engine_ctx->ECSArena);
         ZENGINE_VALIDATE_ASSERT(g_engine_ctx->SceneSchemas->IsInitialized(), "Engine::Initialize: scene schema registry could not be initialized")
         ZENGINE_VALIDATE_ASSERT(ECS::RegisterBuiltInSceneComponentSchemas(*g_engine_ctx->SceneSchemas), "Engine::Initialize: built-in scene codecs could not be registered")
+        g_engine_ctx->SceneMigrations = ZPushStructCtor<ECS::SceneMigrationRegistry>(&g_engine_ctx->ECSArena);
+        ZENGINE_VALIDATE_ASSERT(g_engine_ctx->SceneMigrations->Initialize(&g_engine_ctx->ECSArena), "Engine::Initialize: scene migration registry could not be initialized")
+        // No guessed legacy formats: register only documented, fixture-covered
+        // migrations here as real schema versions are introduced.
 
         ECS::ComponentReflectionRegistry::Get().Initialize(&g_engine_ctx->ECSArena);
         ECS::Components::RegisterBuiltInComponentReflection();

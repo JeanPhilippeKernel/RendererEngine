@@ -6,9 +6,12 @@
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/MaterialComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/RigidBodyComponent.h>
 #include <ZEngine/ECS/Components/UUIDComponent.h>
+#include <ZEngine/ECS/SceneCompatibility.h>
+#include <ZEngine/ECS/SceneYAMLReader.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/IAssetImporter.h>
@@ -31,6 +34,11 @@ using namespace ZEngine::ECS::Components;
 
 namespace
 {
+    struct UnsupportedSceneComponent
+    {
+        uint32_t Value = 0;
+    };
+
     struct SaveFaultVFS : VFSContext
     {
         bool            FailRename = false;
@@ -69,6 +77,7 @@ namespace
     {
         VFS,
         Schemas,
+        Migrations,
         Workspace,
         EmptyWorkspace,
         NullWorkspace,
@@ -318,6 +327,23 @@ protected:
         return source;
     }
 
+    void WriteLegacyOpenFixture()
+    {
+        ASSERT_TRUE(Save(Path));
+        const auto         current = SavedSource(Path);
+        SceneYAML::Storage storage = {};
+        ASSERT_TRUE(storage.Initialize(ZMega(2)));
+        auto root = storage.Destination();
+        ASSERT_TRUE(ReadSceneYAML(current, {}, &root, &Diagnostics));
+        // Test-only document v1; no production migration is guessed or shipped.
+        ASSERT_TRUE(storage.Set(root["scene"], "schema_version", storage.UInt(1)));
+        SceneYAML::Emitter emitter(SceneDocumentLimits{}.MaxFileBytes);
+        emitter << root;
+        std::string legacy = {};
+        ASSERT_TRUE(emitter.Output(&legacy));
+        ASSERT_TRUE(Backend.WriteFile(Path, {reinterpret_cast<const uint8_t*>(legacy.data()), legacy.size()}).Succeeded());
+    }
+
     bool Exists(const VFSPath& path)
     {
         const auto result = VFS.Exists(path);
@@ -516,6 +542,8 @@ protected:
         SceneComponentSchemaRegistry schemas = {};
         schemas.Initialize(&Memory.MainArena);
         ASSERT_TRUE(RegisterBuiltInSceneComponentSchemas(schemas, &Diagnostics));
+        SceneMigrationRegistry migrations = {};
+        ASSERT_TRUE(migrations.Initialize(&Memory.MainArena));
         Scene        other_world   = {};
         ActorManager other_actors  = {};
         EditorScene  other_owner   = {};
@@ -535,6 +563,9 @@ protected:
                 break;
             case SceneOpenOwnerChange::Schemas:
                 Engine->SceneSchemas = &schemas;
+                break;
+            case SceneOpenOwnerChange::Migrations:
+                Engine->SceneMigrations = &migrations;
                 break;
             case SceneOpenOwnerChange::Workspace:
                 App->WorkingSpacePath = other_workspace.c_str();
@@ -570,13 +601,14 @@ protected:
         EXPECT_EQ(App->Session.History().UndoCount(), 1u);
         EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
         EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
-        Engine->VFS           = &ReadGate;
-        Engine->SceneSchemas  = &Schemas;
-        Engine->Scene         = &ECS;
-        Engine->ActorManager  = nullptr;
-        App->CurrentScene     = &Owner;
-        App->WorkingSpacePath = Workspace.c_str();
-        Owner.UUID            = scene_uuid;
+        Engine->VFS             = &ReadGate;
+        Engine->SceneSchemas    = &Schemas;
+        Engine->SceneMigrations = nullptr;
+        Engine->Scene           = &ECS;
+        Engine->ActorManager    = nullptr;
+        App->CurrentScene       = &Owner;
+        App->WorkingSpacePath   = Workspace.c_str();
+        Owner.UUID              = scene_uuid;
 
         // Restoring a pointer/value must not re-arm work already observed stale.
         ReadGate.Release.store(true, std::memory_order_release);
@@ -1568,12 +1600,41 @@ TEST_F(EditorSceneIOTest, FailedAtomicReplacementPreservesFileCheckpointAndSaveA
 TEST_F(EditorSceneIOTest, UnsupportedRuntimeComponentNeverProducesALossySaveOrClearsDirty)
 {
     Edit(5.f);
-    ECS.AddComponent<RigidBodyComponent>(Entity, {});
+    ECS.AddComponent<UnsupportedSceneComponent>(Entity, {});
     EXPECT_FALSE(Save(Path));
     EXPECT_FALSE(Exists(Path));
     EXPECT_FALSE(Owner.SourcePath.IsValid());
     EXPECT_TRUE(Owner.IsDirty());
     EXPECT_TRUE(Diagnostics.HasErrors());
+}
+
+TEST_F(EditorSceneIOTest, MaterialAndRigidBodySaveAndReopenThroughTheDocumentPath)
+{
+    Edit(5.f);
+    const auto material_uuid = *uuids::uuid::from_string("e823e956-d1a9-48d9-bba3-724791072320");
+    ECS.AddComponent<MaterialComponent>(Entity, {material_uuid});
+    ECS.AddComponent<RigidBodyComponent>(Entity, {.Mass = 3.5f, .Friction = 0.25f, .Restitution = 0.5f, .BodyID = 12345});
+    ASSERT_TRUE(Save(Path));
+    EXPECT_FALSE(Owner.IsDirty());
+    EXPECT_EQ(Owner.SourcePath, Path);
+    SceneDocument document = {};
+    ASSERT_TRUE(SceneDocument::Read(VFS, Path, Schemas, &document, &Diagnostics));
+    EXPECT_FALSE(document.ReadOnly());
+    LoadSlots();
+    ZEngine::Helpers::Scope<EditorSceneCandidate> loaded = {};
+    ASSERT_TRUE(EditorSceneCandidate::Prepare(*Engine, std::move(document), Schemas, Path, {}, &loaded, &Diagnostics));
+    uint32_t bodies = 0;
+    loaded->World().ForEach<MaterialComponent, RigidBodyComponent>([&](EntityID, const MaterialComponent& material, const RigidBodyComponent& body) {
+        ++bodies;
+        EXPECT_EQ(material.MaterialUUID, material_uuid);
+        EXPECT_EQ(body.MotionKind, RigidBodyComponent::MotionType::Dynamic);
+        EXPECT_FLOAT_EQ(body.Mass, 3.5f);
+        EXPECT_FLOAT_EQ(body.Friction, 0.25f);
+        EXPECT_FLOAT_EQ(body.Restitution, 0.5f);
+        EXPECT_EQ(body.BodyID, UINT32_MAX);
+    });
+    EXPECT_EQ(bodies, 1u);
+    EXPECT_FALSE(Diagnostics.HasErrors());
 }
 
 TEST_F(EditorSceneIOTest, ActivePreviewCannotBeSavedOrCommittedImplicitly)
@@ -2826,6 +2887,61 @@ TEST_F(EditorSceneIOTest, OpenIsQueuedAndOnlyASuccessfulLoadUpdatesRecentScenes)
     EXPECT_STREQ(Tetragrama::Components::Recent().Items[0].Path, native.c_str());
 }
 
+TEST_F(EditorSceneIOTest, SourceMigrationRunsOnWorkerBeforeCandidatePublication)
+{
+    LoadSlots();
+    WriteLegacyOpenFixture();
+    SceneMigrationRegistry migrations = {};
+    ASSERT_TRUE(migrations.Initialize(&Memory.MainArena));
+    auto       owner_thread = std::this_thread::get_id();
+    const auto migrate      = [](void* context, const SceneYAML::Node& source, SceneYAML::Node* out, SceneDiagnostics*) {
+        EXPECT_NE(std::this_thread::get_id(), *static_cast<const std::thread::id*>(context));
+        auto&      storage = *out->Owner();
+        const auto result  = storage.Clone(source);
+        if (!storage.Set(result["scene"], "schema_version", storage.UInt(SceneDocument::SchemaVersion)) || !storage.Set(result["scene"], "name", storage.Scalar("Migrated open")))
+            return false;
+        *out = result;
+        return true;
+    };
+    ASSERT_TRUE(migrations.RegisterDocumentMigration(1, 2, &owner_thread, migrate, &Diagnostics));
+    Engine->SceneMigrations = &migrations;
+    const auto epoch        = App->Session.SceneEpoch();
+    ASSERT_TRUE(App->RequestSceneOpen(Path, epoch));
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    FinishOpen();
+    EXPECT_NE(Engine->Scene, &ECS);
+    EXPECT_GT(App->Session.SceneEpoch(), epoch);
+    EXPECT_STREQ(static_cast<const EditorScene*>(App->CurrentScene)->Name, "Migrated open");
+    EXPECT_FALSE(static_cast<const EditorScene*>(App->CurrentScene)->SourceReadOnly);
+    Engine->SceneMigrations = nullptr;
+}
+
+TEST_F(EditorSceneIOTest, SourceMigrationFailurePreservesActiveSceneAndEpoch)
+{
+    LoadSlots();
+    WriteLegacyOpenFixture();
+    SceneMigrationRegistry migrations = {};
+    ASSERT_TRUE(migrations.Initialize(&Memory.MainArena));
+    const auto fail = [](void*, const SceneYAML::Node& source, SceneYAML::Node* out, SceneDiagnostics*) {
+        *out = out->Owner()->Clone(source);
+        return false;
+    };
+    ASSERT_TRUE(migrations.RegisterDocumentMigration(1, 2, nullptr, fail, &Diagnostics));
+    Engine->SceneMigrations = &migrations;
+    const auto epoch        = App->Session.SceneEpoch();
+    ASSERT_TRUE(App->RequestSceneOpen(Path, epoch));
+    EXPECT_TRUE(ProcessOpen());
+    FinishOpen();
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(App->CurrentScene, &Owner);
+    EXPECT_EQ(App->Session.SceneEpoch(), epoch);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
+    Engine->SceneMigrations = nullptr;
+}
+
 TEST_F(EditorSceneIOTest, MissingOpenSourceAndDirtyCurrentScenePreserveTheActiveWorld)
 {
     LoadSlots();
@@ -2983,13 +3099,15 @@ TEST_P(EditorSceneOpenOwnerTest, OwnerChangeAfterReadingRejectsTheReadyCompletio
     CheckStaleOpenOwner(GetParam(), true);
 }
 
-INSTANTIATE_TEST_SUITE_P(CapturedOwners, EditorSceneOpenOwnerTest, testing::Values(SceneOpenOwnerChange::VFS, SceneOpenOwnerChange::Schemas, SceneOpenOwnerChange::Workspace, SceneOpenOwnerChange::EmptyWorkspace, SceneOpenOwnerChange::NullWorkspace, SceneOpenOwnerChange::RenderOwner, SceneOpenOwnerChange::SceneUUID, SceneOpenOwnerChange::World, SceneOpenOwnerChange::Actors, SceneOpenOwnerChange::Engine), [](const testing::TestParamInfo<SceneOpenOwnerChange>& info) {
+INSTANTIATE_TEST_SUITE_P(CapturedOwners, EditorSceneOpenOwnerTest, testing::Values(SceneOpenOwnerChange::VFS, SceneOpenOwnerChange::Schemas, SceneOpenOwnerChange::Migrations, SceneOpenOwnerChange::Workspace, SceneOpenOwnerChange::EmptyWorkspace, SceneOpenOwnerChange::NullWorkspace, SceneOpenOwnerChange::RenderOwner, SceneOpenOwnerChange::SceneUUID, SceneOpenOwnerChange::World, SceneOpenOwnerChange::Actors, SceneOpenOwnerChange::Engine), [](const testing::TestParamInfo<SceneOpenOwnerChange>& info) {
     switch (info.param)
     {
         case SceneOpenOwnerChange::VFS:
             return "VFS";
         case SceneOpenOwnerChange::Schemas:
             return "Schemas";
+        case SceneOpenOwnerChange::Migrations:
+            return "Migrations";
         case SceneOpenOwnerChange::Workspace:
             return "Workspace";
         case SceneOpenOwnerChange::EmptyWorkspace:

@@ -9,6 +9,7 @@
 
 namespace ZEngine::ECS
 {
+    class SceneMigrationRegistry;
     struct SceneDocumentLimits
     {
         size_t   MaxFileBytes           = 32 * 1024 * 1024;
@@ -45,8 +46,11 @@ namespace ZEngine::ECS
         SceneDocument&                             operator=(const SceneDocument&) = delete;
 
         [[nodiscard]] static bool                  Capture(const Scene& scene, const SceneDocumentSettings& settings, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
-        [[nodiscard]] static bool                  Parse(cstring source, size_t size, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
-        [[nodiscard]] static bool                  Read(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
+        /// Pure registered source upgrades precede current codec/graph validation.
+        /// Unknown/newer component schemas remain inspect-only; old known schemas
+        /// need a complete migration route. Failure preserves out.
+        [[nodiscard]] static bool                  Parse(cstring source, size_t size, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const SceneMigrationRegistry* migrations = nullptr);
+        [[nodiscard]] static bool                  Read(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const SceneMigrationRegistry* migrations = nullptr);
 
         [[nodiscard]] const SceneDocumentSettings* Settings() const;
         [[nodiscard]] uint32_t                     EntityCount() const;
@@ -63,6 +67,7 @@ namespace ZEngine::ECS
         [[nodiscard]] bool                         PopulateCandidate(Scene& candidate, const SceneComponentSchemaRegistry& schemas, SceneDiagnostics* diagnostics) const;
 
     private:
+        friend class BinarySceneCodec;
         struct Impl;
         ZEngine::Helpers::Scope<Impl> m_impl;
     };
