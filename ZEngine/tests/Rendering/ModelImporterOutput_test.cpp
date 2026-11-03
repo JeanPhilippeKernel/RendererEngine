@@ -2089,3 +2089,106 @@ TEST_P(ModelImporterWriteFailureTest, TextureFailureStopsImportAndPreservesExist
 }
 
 INSTANTIATE_TEST_SUITE_P(VFSStages, ModelImporterWriteFailureTest, ::testing::Values(FailurePoint::CreateDir, FailurePoint::Open, FailurePoint::Write, FailurePoint::ShortWrite, FailurePoint::Flush, FailurePoint::Close, FailurePoint::Rename));
+
+TEST_F(ModelImporterOutputTest, GltfAlphaModesCutoffAndBaseOpacitySurviveCookingAndRuntimeLoading)
+{
+    using ZEngine::Rendering::Materials::AlphaMode;
+    Config.Options.ImportMaterials = true;
+    const auto     filename        = WriteGltf(4);
+    nlohmann::json document{};
+    {
+        std::ifstream input(filename);
+        input >> document;
+    }
+    const char* modes[]   = {"OPAQUE", "MASK", "BLEND", "BLEND"};
+    const float alphas[]  = {0.f, .25f, .5f, 0.f};
+    const float cutoffs[] = {0.f, 1.5f, .27f, .5f};
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        auto& material                                      = document["materials"][index];
+        material["name"]                                    = std::string("alpha_") + std::to_string(index);
+        material["alphaMode"]                               = modes[index];
+        material["alphaCutoff"]                             = cutoffs[index];
+        material["pbrMetallicRoughness"]["baseColorFactor"] = {1.f, .5f, .25f, alphas[index]};
+    }
+    {
+        std::ofstream output(filename);
+        output << document.dump();
+    }
+    ImportGltf(filename);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    const AlphaMode expected[] = {AlphaMode::Opaque, AlphaMode::Mask, AlphaMode::Blend, AlphaMode::Blend};
+    uint32_t        count      = 0;
+    for (const auto& artifact : Callbacks.Outputs)
+    {
+        if (artifact.Type != AssetFileType::MATERIAL)
+            continue;
+        const auto bytes = ReadFile(artifact.Path.c_str());
+        const auto json  = nlohmann::json::parse(bytes.begin(), bytes.end());
+        ASSERT_LT(count, 4u);
+        EXPECT_EQ(json["material_version"], MATERIAL_FILE_VERSION);
+        EXPECT_EQ(json["source_material"]["importer"], "GltfImporter");
+        EXPECT_EQ(json["source_material"]["path"], filename);
+        EXPECT_EQ(json["source_material"]["index"], count);
+        EXPECT_EQ(json["alpha_mode"], modes[count]);
+        EXPECT_FLOAT_EQ(json["alpha_cutoff"].get<float>(), cutoffs[count]);
+        const auto native = (TempDirectory / ("cooked_" + std::to_string(count) + ".zematerial")).string();
+        {
+            std::ofstream output(native, std::ios::binary);
+            output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        }
+        AssetMaterial loaded{};
+        DeserializeMaterialAssetFile(&Arena, native.c_str(), loaded);
+        EXPECT_EQ(loaded.AlphaMode, expected[count]);
+        EXPECT_FLOAT_EQ(loaded.Factors[2], cutoffs[count]);
+        EXPECT_FLOAT_EQ(loaded.AlbedoColor[3], alphas[count]);
+        EXPECT_EQ(loaded.Clone(&Arena).AlphaMode, expected[count]);
+        ++count;
+    }
+    EXPECT_EQ(count, 4u);
+}
+
+TEST_F(ModelImporterOutputTest, OldCookedMaterialsKeepLegacySemanticsWithoutSourceRewrites)
+{
+    using ZEngine::Rendering::Materials::AlphaMode;
+    const auto        filename = (TempDirectory / "legacy.zematerial").string();
+    const std::string source   = R"({"albedo_color":[1,1,1,0],"factors":[0,0,0.5,0]})";
+    {
+        std::ofstream output(filename);
+        output << source;
+    }
+    AssetMaterial material{};
+    material.AlphaMode = AlphaMode::Opaque;
+    DeserializeMaterialAssetFile(&Arena, filename.c_str(), material);
+    EXPECT_EQ(material.AlphaMode, AlphaMode::Legacy);
+    EXPECT_FLOAT_EQ(material.Factors[2], .5f);
+    std::ifstream     input(filename);
+    const std::string after((std::istreambuf_iterator<char>(input)), {});
+    EXPECT_EQ(after, source);
+}
+
+TEST_F(ModelImporterOutputTest, GltfDefaultAlphaModeIsOpaqueNotInferredFromBaseOpacity)
+{
+    Config.Options.ImportMaterials = true;
+    const auto     filename        = WriteGltf(1);
+    nlohmann::json document{};
+    {
+        std::ifstream input(filename);
+        input >> document;
+    }
+    document["materials"][0]["pbrMetallicRoughness"]["baseColorFactor"] = {1, 1, 1, 0};
+    {
+        std::ofstream output(filename);
+        output << document.dump();
+    }
+    ImportGltf(filename);
+    ASSERT_EQ(Callbacks.Completed, 1) << Callbacks.Error;
+    for (const auto& artifact : Callbacks.Outputs)
+        if (artifact.Type == AssetFileType::MATERIAL)
+        {
+            const auto bytes = ReadFile(artifact.Path.c_str());
+            const auto json  = nlohmann::json::parse(bytes.begin(), bytes.end());
+            EXPECT_EQ(json["alpha_mode"], "OPAQUE");
+            EXPECT_EQ(json["albedo_color"][3], 0);
+        }
+}

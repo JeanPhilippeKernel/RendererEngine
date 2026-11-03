@@ -524,6 +524,36 @@ namespace ZEngine::Rendering::Shaders
         ZReleaseScratch(scratch);
     }
 
+    uint32_t Shader::DynamicDescriptorCount() const
+    {
+        uint32_t count = 0;
+        for (const auto& set : LayoutBindingSpecificationMap)
+        {
+            const auto& bindings = set.second;
+            for (uint32_t i = 0; i < bindings.size(); ++i)
+            {
+                const auto& binding = bindings[i];
+                if (binding.DescriptorTypeValue != DescriptorType::UNIFORM_BUFFER_DYNAMIC && binding.DescriptorTypeValue != DescriptorType::STORAGE_BUFFER_DYNAMIC)
+                    continue;
+                bool duplicate = false;
+                for (uint32_t earlier = 0; earlier < i; ++earlier)
+                    duplicate |= bindings[earlier].Binding == binding.Binding;
+                if (!duplicate)
+                    count += binding.Count;
+            }
+        }
+        return count;
+    }
+
+    bool Shader::HasStages(VkShaderStageFlags required) const
+    {
+        VkShaderStageFlags available = 0;
+        for (const auto& stage : ShaderCreateInfos)
+            if (stage.module != VK_NULL_HANDLE)
+                available |= stage.stage;
+        return (available & required) == required;
+    }
+
     Specifications::LayoutBindingSpecification Shader::GetLayoutBindingSpecification(cstring name)
     {
         if (!Helpers::secure_strlen(name))

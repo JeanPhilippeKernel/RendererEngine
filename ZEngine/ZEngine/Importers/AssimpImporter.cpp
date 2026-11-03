@@ -85,7 +85,11 @@ namespace ZEngine::Importers
             Managers::AssetManager::IngestTextures(std::move(textures));
             for (size_t i = 0; i < materials.size(); ++i)
                 Managers::AssetManager::IngestMaterial(std::move(materials[i]));
-            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchies));
+            if (!Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchies)))
+            {
+                Arena.Clear();
+                return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::Cancelled);
+            }
         }
 
         Arena.Clear();

@@ -10,6 +10,7 @@
 
 namespace ZEngine::Importers::AssetCodec
 {
+    inline constexpr uint32_t MATERIAL_FILE_VERSION            = 1;
     inline constexpr uint32_t ENVIRONMENT_MAP_FILE_VERSION     = 2;
     inline constexpr uint32_t ENVIRONMENT_MAP_IMPORTER_VERSION = 1;
     inline constexpr uint32_t ENVIRONMENT_MAP_MAX_FACE_SIZE    = 1024;
@@ -54,6 +55,9 @@ namespace ZEngine::Importers::AssetCodec
         Core::Containers::String OutputWorkingSpacePath                                  = {};
         Core::Containers::String OutputTextureFilesPath                                  = {};
         Core::VFS::IVFSContext*  VFS                                                     = nullptr;
+        // Optional cook provenance. Never used to infer runtime alpha behavior.
+        const char*              MaterialSourcePath                                      = nullptr;
+        const char*              MaterialSourceImporter                                  = nullptr;
         // Called synchronously after an artifact commits. This remains separate from
         // the completion callback so a failed import can still report partial output.
         void*                    ArtifactContext                                         = nullptr;

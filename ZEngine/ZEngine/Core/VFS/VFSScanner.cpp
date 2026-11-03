@@ -19,6 +19,15 @@ namespace ZEngine::Core::VFS
                     return true;
             return false;
         }
+
+        // Engine-generated project state is writable and may use ordinary asset
+        // extensions (thumbnail PNGs, for example). It is never user content, so
+        // scanning it would create sidecars and feed generated files back into the
+        // asset registry.
+        static bool IsEngineCachePath(const VFSPath& path)
+        {
+            return path.ComponentCount() > 0 && path.ComponentAt(0).Equals(".zodiacengine");
+        }
     } // namespace
 
     void VFSScanner::Initialize(Core::Memory::ArenaAllocator* page_source)
@@ -105,7 +114,7 @@ namespace ZEngine::Core::VFS
         return true;
     }
 
-    void VFSScanner::Scan(IVFSContext* context, VFSPath root, VFSDirectoryCache* cache)
+    bool VFSScanner::Scan(IVFSContext* context, VFSPath root, VFSDirectoryCache* cache)
     {
         ZENGINE_VALIDATE_ASSERT(m_arenas_ready, "VFSScanner::Initialize must be called before Scan")
 
@@ -130,17 +139,15 @@ namespace ZEngine::Core::VFS
         ScanContext ctx{context, root, cache};
         if (!TrySubmitDirectory(ctx, root))
         {
-            // All task contexts are occupied. Running this branch inline keeps the
-            // scanner bounded without blocking a worker that could drain queued work.
-            m_pending_tasks.value.store(1, std::memory_order_relaxed);
-            ScanDirectory(ctx, root);
-            OnTaskComplete(m_cancel_requested.value.load(std::memory_order_relaxed));
+            m_is_scanning.value.store(false, std::memory_order_release);
+            return false;
         }
+        return true;
     }
 
     void VFSScanner::ScanDirectory(ScanContext ctx, VFSPath dir)
     {
-        if (m_cancel_requested.value.load(std::memory_order_relaxed))
+        if (m_cancel_requested.value.load(std::memory_order_relaxed) || IsEngineCachePath(dir))
             return;
 
         m_dir_semaphore.acquire();
@@ -166,7 +173,13 @@ namespace ZEngine::Core::VFS
             {
                 m_dirs_found.value.fetch_add(1, std::memory_order_relaxed);
                 VFSPath sub = entries[i].Path;
+                if (IsEngineCachePath(sub))
+                {
+                    continue;
+                }
                 if (!TrySubmitDirectory(ctx, sub))
+                    // Already on a background scan worker. Recursing here keeps
+                    // bounded contexts without blocking admission on the UI.
                     ScanDirectory(ctx, sub);
             }
             else

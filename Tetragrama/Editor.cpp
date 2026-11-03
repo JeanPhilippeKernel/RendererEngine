@@ -386,7 +386,9 @@ namespace Tetragrama
         // It owns the dock tree, tab bars, and all panel views.
         auto* pm = ZPushStructCtor<Tetragrama::Panels::ZUIPanelManagerComponent>(&EditorArena);
         pm->Initialize(ZUIUILayer, "PanelManager");
-        AssetImporter = &pm->importer;
+        AssetThumbnails = &pm->thumbnails;
+        AssetImporter   = &pm->importer;
+        ContentBrowser  = &pm->project;
         ZUIUILayer->AddComponent(pm);
 
         // Editor shell: menu bar + floating overlays (settings, etc.)
@@ -978,6 +980,8 @@ namespace Tetragrama
     void Editor::OnClosing()
     {
         DiscardSceneSettings();
+        if (ContentBrowser)
+            ContentBrowser->CloseListings();
         if (AssetImporter)
         {
             AssetImporter->Close();

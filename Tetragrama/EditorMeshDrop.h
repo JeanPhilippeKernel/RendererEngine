@@ -2,9 +2,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/ECS/SceneComponentSchemaRegistry.h>
-#include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Importers/AssetTypes.h>
-#include <memory>
 #include <string_view>
 
 namespace ZEngine::Core::VFS
@@ -57,8 +55,8 @@ namespace Tetragrama
 
     private:
         struct Work;
-        ZEngine::Core::Memory::ArenaAllocator m_arena = {};
-        ZEngine::Helpers::Scope<Work>         m_work;
+        ZEngine::Core::Memory::ArenaAllocator m_arena               = {};
+        Work*                                 m_work                = nullptr;
         ZEngine::Core::VFS::VFSPath           m_path                = {};
         ZEngine::Core::VFS::IVFSContext*      m_expected_vfs        = nullptr;
         char                                  m_name[128]           = {};

@@ -49,6 +49,9 @@ namespace ZEngine::Core::VFS
 
         // Packed slot index into AssetManager's flat CPU buffer (type in high 4 bits, index in low 28).
         Managers::AssetHandle SlotHandle               = 0;
+        // Import state and runtime residency are independent. In particular, zero
+        // is both a scanner placeholder and the valid handle for mesh slot zero.
+        bool                  HasLoadedSlot            = false;
 
         // State
         AssetState            State                    = AssetState::Unregistered;

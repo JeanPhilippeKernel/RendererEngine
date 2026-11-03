@@ -226,6 +226,63 @@ TEST_F(VFSFileWatcherTest, OverflowBroadcastsToEveryWatch)
     EXPECT_EQ(fired_b, 1);
 }
 
+TEST_F(VFSFileWatcherTest, LargeImportBurstCoalescesIntoOneOverflowAndRecovers)
+{
+    MockPlatformWatcher mock{};
+    VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{0});
+    watcher.Initialize(&m_manager.MainArena);
+    int overflow_a = 0, overflow_b = 0, modified = 0;
+    watcher.Watch("/project", true, [&](const VFSWatchEvent& event) {
+        if (event.Kind == WatchEventKind::Overflow)
+            ++overflow_a;
+        else
+            ++modified;
+    });
+    watcher.Watch("/other", true, [&](const VFSWatchEvent& event) {
+        if (event.Kind == WatchEventKind::Overflow)
+            ++overflow_b;
+    });
+    for (uint32_t i = 0; i < 2048; ++i)
+    {
+        char path[128] = {};
+        std::snprintf(path, sizeof(path), "/project/texture-%u.png.meta", i);
+        mock.InjectEvent(MakeEvent(path, WatchEventKind::Created));
+    }
+    watcher.Tick();
+    EXPECT_EQ(overflow_a, 1);
+    EXPECT_EQ(overflow_b, 1);
+    EXPECT_EQ(modified, 0);
+    EXPECT_EQ(watcher.PendingCount(), 0u);
+    mock.InjectEvent(MakeEvent("/project/reimport.png", WatchEventKind::Modified));
+    watcher.Tick();
+    EXPECT_EQ(modified, 1);
+    EXPECT_EQ(overflow_a, 1);
+}
+
+TEST_F(VFSFileWatcherTest, DuplicateAtDebounceLoadCeilingDoesNotOverflow)
+{
+    MockPlatformWatcher mock{};
+    VFSFileWatcher      watcher(&mock, std::chrono::milliseconds{0});
+    watcher.Initialize(&m_manager.MainArena, 16);
+    int changes = 0, overflows = 0;
+    watcher.Watch("/project", true, [&](const VFSWatchEvent& event) {
+        if (event.Kind == WatchEventKind::Overflow)
+            ++overflows;
+        else
+            ++changes;
+    });
+    for (uint32_t i = 0; i < 12; ++i)
+    {
+        char path[128] = {};
+        std::snprintf(path, sizeof(path), "/project/texture-%u.png", i);
+        mock.InjectEvent(MakeEvent(path, WatchEventKind::Created));
+    }
+    mock.InjectEvent(MakeEvent("/project/texture-0.png", WatchEventKind::Modified));
+    watcher.Tick();
+    EXPECT_EQ(changes, 12);
+    EXPECT_EQ(overflows, 0);
+}
+
 TEST_F(VFSFileWatcherTest, RenamePreservesOldPath)
 {
     MockPlatformWatcher mock;

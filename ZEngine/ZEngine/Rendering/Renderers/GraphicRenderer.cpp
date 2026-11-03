@@ -6,6 +6,7 @@
 #include <ZEngine/Rendering/Renderers/Compute/SkyAtmosphereViewPass.h>
 #include <ZEngine/Rendering/Renderers/Compute/SkyEnvironmentBakePass.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/Rendering/Renderers/Graphics/AssetPreviewPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/DepthPrePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/EnvironmentBackgroundPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
@@ -13,10 +14,12 @@
 #include <ZEngine/Rendering/Renderers/Graphics/GridLabelPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/LightingPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/ObjectIdPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SelectionOutlinePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkySpherePass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/ToneMappingPass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/TransparentPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <algorithm>
@@ -142,7 +145,9 @@ namespace ZEngine::Rendering::Renderers
         auto scene_depth_prepass         = ZPushStructCtor<DepthPrePass>(Device->Arena);
         auto frustum_culling_pass        = ZPushStructCtor<FrustumCullingPass>(Device->Arena);
         auto gbuffer_pass                = ZPushStructCtor<GbufferPass>(Device->Arena);
+        auto object_id_pass              = ZPushStructCtor<ObjectIdPass>(Device->Arena);
         auto lighting_pass               = ZPushStructCtor<LightingPass>(Device->Arena);
+        m_transparent_pass               = ZPushStructCtor<TransparentPass>(Device->Arena);
         auto environment_background_pass = ZPushStructCtor<EnvironmentBackgroundPass>(Device->Arena);
         auto sky_sphere_pass             = ZPushStructCtor<SkySpherePass>(Device->Arena);
         auto sky_view_lut_pass           = ZPushStructCtor<SkyViewLutPass>(Device->Arena);
@@ -177,7 +182,7 @@ namespace ZEngine::Rendering::Renderers
         m_sky_environment.Initialize(fallback_environment, fallback_lighting, Device->EnvironmentLightingBakeSettings);
         const uint64_t fallback_memory_bytes = GetTextureBytes(Device, fallback_environment) + GetTextureBytes(Device, fallback_lighting.DiffuseIrradiance) + GetTextureBytes(Device, fallback_lighting.SpecularEnvironment) + GetTextureBytes(Device, fallback_lighting.BrdfIntegrationLut);
         m_sky_environment.ConfigureMemoryBudget(Device->EnvironmentLightingMemoryBudget, fallback_memory_bytes);
-        m_gbuffer_pass                             = gbuffer_pass;
+        m_object_id_pass                           = object_id_pass;
         m_lighting_pass                            = lighting_pass;
         m_grid_pass                                = grid_pass;
         m_environment_background_pass              = environment_background_pass;
@@ -204,9 +209,14 @@ namespace ZEngine::Rendering::Renderers
         m_sky_diffuse_irradiance_pass         = ZPushStructCtorArgs<SkyEnvironmentDiffuseIrradiancePass>(Device->Arena, &m_sky_environment);
         m_sky_specular_prefilter_pass         = ZPushStructCtorArgs<SkyEnvironmentSpecularPrefilterPass>(Device->Arena, &m_sky_environment);
         m_lighting_pass->SetEnvironmentLighting(fallback_lighting, m_sky_environment.GetPresentationConfig());
+        m_transparent_pass->SetEnvironmentLighting(fallback_lighting, m_sky_environment.GetPresentationConfig());
         m_environment_background_pass->SetEnvironment(fallback_environment, m_sky_environment.GetPresentationConfig());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalVertex, rrm->GetGlobalVertexBuffer());
         RenderGraph->ImportBuffer(RendererBufferName::GlobalIndex, rrm->GetGlobalIndexBuffer());
+        m_asset_preview_pass = ZPushStructCtor<AssetPreviewPass>(Device->Arena);
+        m_asset_preview_pass->Initialize(Device);
+        RenderGraph->AddCallbackPass("Asset Preview", m_asset_preview_pass);
+        RenderGraph->AddCallbackPass("Asset Preview Publish", &m_asset_preview_pass->Publish);
 
         RenderGraph->AddCallbackPass("Frustum Culling Pass", frustum_culling_pass);
         RenderGraph->AddCallbackPass("Sky Atmosphere Transmittance", m_sky_atmosphere_transmittance_pass);
@@ -218,12 +228,14 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Sky Specular Prefilter", m_sky_specular_prefilter_pass);
         RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
         RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
+        RenderGraph->AddCallbackPass("Object ID Pass", object_id_pass);
         RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
         RenderGraph->AddCallbackPass("Sky Sphere Pass", sky_sphere_pass);
         RenderGraph->AddCallbackPass("Environment Background Pass", environment_background_pass);
         RenderGraph->AddCallbackPass("Sky View LUT Pass", sky_view_lut_pass);
         RenderGraph->AddCallbackPass("Aerial Perspective Pass", aerial_pass);
         RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass);
+        RenderGraph->AddCallbackPass("Transparent Pass", m_transparent_pass);
         RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
         RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
         RenderGraph->AddCallbackPass("Grid Labels Pass", grid_label_pass);
@@ -249,6 +261,8 @@ namespace ZEngine::Rendering::Renderers
         while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_resources))
             DiscardSkyResources(retired_sky_resources);
         m_lighting_pass                            = nullptr;
+        m_object_id_pass                           = nullptr;
+        m_transparent_pass                         = nullptr;
         m_grid_pass                                = nullptr;
         m_gizmo_pass                               = nullptr;
         m_environment_background_pass              = nullptr;
@@ -287,9 +301,9 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::RequestObjectIdPick(const ObjectIdPickRequest& request)
     {
-        if (m_gbuffer_pass)
+        if (m_object_id_pass)
         {
-            m_gbuffer_pass->SetObjectIdPickRequest(request);
+            m_object_id_pass->SetObjectIdPickRequest(request);
         }
     }
 
@@ -325,11 +339,13 @@ namespace ZEngine::Rendering::Renderers
         // Light buffer is uploaded by AppRenderPipeline::RenderScene from the retained frame snapshot.
 
         // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
-        auto& heap                             = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
-        auto  camera_alloc                     = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
-        RenderSceneData->CameraHeapOffset      = camera_alloc.Offset;
+        auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
+        auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
+        RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
 
+        m_asset_preview_pass->BeginFrame();
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
+        m_asset_preview_pass->EndFrame();
         PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
         PublishMemoryStatistics();
         return output;
@@ -486,6 +502,7 @@ namespace ZEngine::Rendering::Renderers
         m_environment_background_pass->SetCameraDepthConvention(camera.UsesReverseZ);
         m_grid_pass->SetCameraDepthConvention(camera.UsesReverseZ);
         m_tone_mapping_pass->SetUseCompositedSceneColor(false);
+        m_transparent_pass->SetUseCompositedSceneColor(false);
         m_environment_background_pass->SetActive(true);
         if (!snapshot)
             return;
@@ -493,6 +510,7 @@ namespace ZEngine::Rendering::Renderers
         const Scenes::SkyConfig& presentation   = m_sky_environment.GetPresentationConfig();
         const bool               use_sky_sphere = presentation.IsSkySphere();
         m_lighting_pass->SetEnvironmentLighting(use_sky_sphere ? m_sky_environment.GetFallbackLighting() : snapshot->Lighting, presentation);
+        m_transparent_pass->SetEnvironmentLighting(use_sky_sphere ? m_sky_environment.GetFallbackLighting() : snapshot->Lighting, presentation);
         m_environment_background_pass->SetEnvironment(snapshot->SourceRadiance, presentation);
         m_sky_sphere_pass->SetEnvironment(use_sky_sphere ? presentation : Scenes::SkyConfig{}, use_sky_sphere ? m_sky_environment.GetPresentationCelestialLight() : Scenes::SkyCelestialLight{});
         const Scenes::AtmosphereSettings  view_atmosphere = Scenes::MakeAtmosphereViewSettings(snapshot->Config.Atmosphere, presentation.Atmosphere);
@@ -516,6 +534,7 @@ namespace ZEngine::Rendering::Renderers
         m_aerial_perspective_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_sky_composite_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_tone_mapping_pass->SetUseCompositedSceneColor(use_atmosphere_view);
+        m_transparent_pass->SetUseCompositedSceneColor(use_atmosphere_view);
         Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
         if (m_sky_environment.CanRecordGpuBakeStage())
             Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyBakeStageSubmitted, this);

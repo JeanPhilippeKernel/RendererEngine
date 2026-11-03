@@ -21,13 +21,6 @@ namespace
         Increment(context);
     }
 
-    void SubmitTasks(std::atomic<int>* counter)
-    {
-        static constexpr int tasks_per_producer = 128;
-        for (int i = 0; i < tasks_per_producer; ++i)
-            ThreadPoolHelper::Submit(counter, &Increment);
-    }
-
     struct BlockingTaskContext
     {
         std::atomic<bool> Started = false;
@@ -107,16 +100,35 @@ TEST_F(ThreadPoolTest, ConcurrentSubmitters)
     static constexpr int expected_task_count = producer_count * tasks_per_producer;
 
     std::atomic<int>     counter             = 0;
+    std::atomic<int>     accepted            = 0;
+    // Exercise bounded admission even on machines with many cores. Contexts
+    // outlive pool shutdown, including when submission or completion times out.
+    ThreadPool           pool(1);
+    const auto           submission_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     std::thread          producers[producer_count];
     for (std::thread& producer : producers)
     {
-        producer = std::thread(&SubmitTasks, &counter);
+        producer = std::thread([&] {
+            for (int i = 0; i < tasks_per_producer; ++i)
+            {
+                // A full queue rejects without running inline. Retry explicitly
+                // instead of silently dropping work on low-core CI runners.
+                while (!pool.Submit(&counter, &Increment))
+                {
+                    if (std::chrono::steady_clock::now() >= submission_deadline)
+                        return;
+                    std::this_thread::yield();
+                }
+                accepted.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
     }
     for (std::thread& producer : producers)
         producer.join();
 
+    EXPECT_EQ(accepted.load(std::memory_order_relaxed), expected_task_count);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (counter.load(std::memory_order_acquire) != expected_task_count && std::chrono::steady_clock::now() < deadline)
+    while (counter.load(std::memory_order_acquire) != accepted.load(std::memory_order_relaxed) && std::chrono::steady_clock::now() < deadline)
         std::this_thread::yield();
 
     EXPECT_EQ(counter.load(std::memory_order_acquire), expected_task_count);
@@ -138,7 +150,7 @@ TEST_F(ThreadPoolTest, SubmitToWorker)
     EXPECT_EQ(counter.load(std::memory_order_acquire), 1);
 }
 
-TEST_F(ThreadPoolTest, SubmitToWorkerRejectsAFilledQueue)
+TEST_F(ThreadPoolTest, SubmitVariantsRejectAFilledQueueWithoutRunningInline)
 {
     BlockingTaskContext  blocking = {};
     std::atomic<int>     counter  = 0;
@@ -156,6 +168,43 @@ TEST_F(ThreadPoolTest, SubmitToWorkerRejectsAFilledQueue)
     for (uint32_t i = 0; i < ThreadPool::MAX_TASKS_PER_WORKER; ++i)
         ASSERT_TRUE(pool.SubmitToWorker(0, &counter, &Increment));
     EXPECT_FALSE(pool.SubmitToWorker(0, &counter, &Increment));
+    EXPECT_FALSE(pool.Submit(&counter, &Increment));
+    EXPECT_EQ(counter.load(std::memory_order_acquire), 0);
 
     blocking.Release.store(true, std::memory_order_release);
+}
+
+TEST_F(ThreadPoolTest, SubmitUsesAnotherWorkerWhenTheFirstQueueIsSaturated)
+{
+    struct Probe
+    {
+        std::thread::id   Thread{};
+        std::atomic<bool> Done = false;
+    } probe{};
+    BlockingTaskContext          blocking = {};
+    std::atomic<int>             counter  = 0;
+    ZEngine::Helpers::ThreadPool pool(3);
+    ReleaseBlockedWorker         release = {&blocking};
+    ASSERT_EQ(pool.WorkerCount, 2u);
+    ASSERT_TRUE(pool.SubmitToWorker(0, &blocking, &BlockWorker));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!blocking.Started.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    ASSERT_TRUE(blocking.Started.load(std::memory_order_acquire));
+    for (uint32_t i = 0; i < ZEngine::Helpers::ThreadPool::MAX_TASKS_PER_WORKER; ++i)
+        ASSERT_TRUE(pool.SubmitToWorker(0, &counter, &Increment));
+
+    ASSERT_TRUE(pool.Submit(
+        &probe, +[](void* context) {
+            auto& output  = *static_cast<Probe*>(context);
+            output.Thread = std::this_thread::get_id();
+            output.Done.store(true, std::memory_order_release);
+        }));
+    const auto completion_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!probe.Done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < completion_deadline)
+        std::this_thread::yield();
+    ASSERT_TRUE(probe.Done.load(std::memory_order_acquire));
+    EXPECT_NE(probe.Thread, std::this_thread::get_id());
+    EXPECT_EQ(counter.load(std::memory_order_acquire), 0);
+    EXPECT_FALSE(blocking.Release.load(std::memory_order_acquire));
 }

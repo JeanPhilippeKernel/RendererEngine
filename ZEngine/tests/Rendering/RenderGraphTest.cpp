@@ -1,10 +1,12 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Renderers/Base/IInlineComputePass.h>
 #include <ZEngine/Rendering/Renderers/Base/ITransferPass.h>
 #include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
 #include <ZEngine/Rendering/Renderers/SelectionOutlineFrame.h>
+#include <ZEngine/Rendering/Renderers/ZUIPass.h>
 #include <gtest/gtest.h>
 #include <cstring>
 #include <memory>
@@ -26,8 +28,63 @@ namespace ZEngine::Rendering::Renderers
         {
             graph.CancelUnsubmittedReadbacks(preserve_recorded);
         }
+        static void BuildStreamingAcquirePlans(RenderGraph& graph)
+        {
+            graph.BuildStreamingAcquirePlans();
+        }
     };
 } // namespace ZEngine::Rendering::Renderers
+
+TEST(RenderGraphBarrierTest, DiscardedTransientReuseWaitsForPreviousFrameReadback)
+{
+    const RGImageBarrierPlan plan = {
+        .DestinationState = GetRGAccessState(RGAccess::ColorWrite),
+        .DiscardContents  = true,
+        .Range            = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .LevelCount = 1, .LayerCount = 1},
+    };
+    // Registration resets logical history even though the pooled image was
+    // read by vkCmdCopyImageToBuffer in the previous frame.
+    const auto barrier = BuildRGImageBarrier(plan, {}, VK_NULL_HANDLE);
+    EXPECT_EQ(barrier.oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_NE(barrier.srcStageMask & VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0u);
+    EXPECT_NE(barrier.srcAccessMask & VK_ACCESS_2_MEMORY_WRITE_BIT, 0u);
+    EXPECT_EQ(barrier.dstStageMask, plan.DestinationState.Stage);
+    EXPECT_EQ(barrier.dstAccessMask, plan.DestinationState.Access);
+    EXPECT_EQ(barrier.newLayout, plan.DestinationState.Layout);
+    EXPECT_EQ(barrier.subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(barrier.srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+    EXPECT_EQ(barrier.dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+}
+
+TEST(RenderGraphBarrierTest, DiscardedAliasedDepthWaitsForEarlierColorImageCopy)
+{
+    const RGImageBarrierPlan plan = {
+        .DestinationState = GetRGAccessState(RGAccess::DepthWrite),
+        .DiscardContents  = true,
+        .Range            = {.AspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .LevelCount = 1, .LayerCount = 1},
+    };
+    const auto barrier = BuildRGImageBarrier(plan, GetRGAccessState(RGAccess::TransferRead), VK_NULL_HANDLE);
+    EXPECT_EQ(barrier.srcStageMask, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+    EXPECT_EQ(barrier.oldLayout, VK_IMAGE_LAYOUT_UNDEFINED);
+    EXPECT_EQ(barrier.newLayout, plan.DestinationState.Layout);
+    EXPECT_EQ(barrier.subresourceRange.aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT);
+}
+
+TEST(RenderGraphBarrierTest, PreservedImageUsesItsTrackedSourceScopeAndLayout)
+{
+    const auto               source = GetRGAccessState(RGAccess::TransferRead);
+    const RGImageBarrierPlan plan   = {
+        .DestinationState = GetRGAccessState(RGAccess::ShaderRead),
+        .Range            = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .BaseMipLevel = 2, .LevelCount = 1, .BaseArrayLayer = 3, .LayerCount = 1},
+    };
+    const auto barrier = BuildRGImageBarrier(plan, source, VK_NULL_HANDLE);
+    EXPECT_EQ(barrier.srcStageMask, source.Stage);
+    EXPECT_EQ(barrier.srcAccessMask, source.Access);
+    EXPECT_EQ(barrier.oldLayout, source.Layout);
+    EXPECT_EQ(barrier.newLayout, plan.DestinationState.Layout);
+    EXPECT_EQ(barrier.subresourceRange.baseMipLevel, 2u);
+    EXPECT_EQ(barrier.subresourceRange.baseArrayLayer, 3u);
+}
 
 namespace
 {
@@ -681,6 +738,53 @@ TEST(RenderGraphSynchronizationTest, DepthReadPreservesStoredAttachmentState)
     EXPECT_EQ(state.Layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
 
+TEST(RenderGraphDeclarationTest, ZuiDeclaresBindlessReadsWithoutASceneOrPayload)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto&       arena = manager.MainArena;
+
+    RenderGraph graph = {};
+    graph.FrameArena.Initialize(ZMega(1), arena.m_mem_page_size);
+    graph.Passes.init(&arena, 1);
+    graph.Resources.init(&arena, 2);
+    graph.ResourceIndex.init(&arena, 2);
+    graph.Passes.push(MakePass(&arena, "ZUI"));
+    RenderGraphResourceBuilder builder = {};
+    builder.Initialize(&graph);
+    builder.CurrentPass = 0;
+
+    ZUIPass pass        = {};
+    ASSERT_TRUE(pass.Register(nullptr, "ZUI", {}, &builder, nullptr));
+    EXPECT_TRUE(graph.Passes[0].ReadsBindless);
+    EXPECT_EQ(graph.Passes[0].Reads.size(), 1u);
+    EXPECT_EQ(graph.Passes[0].Writes.size(), 1u);
+
+    graph.Passes[0].StreamingAcquirePlans.init(&arena, 1);
+    graph.SortedPassIndices.init(&arena, 1);
+    graph.SortedPassIndices.push(0);
+    graph.StreamingUploadTickets.init(&arena, 1);
+    // The planner compares timeline identity without issuing any Vulkan calls.
+    const ZEngine::Hardwares::StreamingUploadTicket ticket = {
+        .Texture             = {.Index = 7, .Generation = 2},
+        .CompletionTimeline  = reinterpret_cast<ZEngine::Rendering::Primitives::Semaphore*>(uintptr_t{1}
+                      ),
+        .CompletionValue     = 42,
+        .PostReleaseLayout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .ProducerQueueFamily = 1,
+    };
+    graph.StreamingUploadTickets.push(ticket);
+    RenderGraphTestAccess::BuildStreamingAcquirePlans(graph);
+    ASSERT_EQ(graph.Passes[0].StreamingAcquirePlans.size(), 1u);
+    const auto& acquire = graph.Passes[0].StreamingAcquirePlans[0];
+    EXPECT_EQ(acquire.Ticket.Texture.Index, 7u);
+    EXPECT_EQ(acquire.Ticket.CompletionValue, 42u);
+    EXPECT_EQ(acquire.DestinationState.Access, VK_ACCESS_2_SHADER_READ_BIT);
+    EXPECT_EQ(acquire.DestinationState.Layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    graph.FrameArena.Shutdown();
+    manager.Shutdown();
+}
+
 TEST(RenderGraphDeclarationTest, ExactBindlessReadKeepsVersionAndShaderStages)
 {
     MemoryManager manager{};
@@ -871,6 +975,68 @@ TEST(RenderGraphDeclarationTest, ImageReadbackUsesTheGraphicsQueueForProducerOrd
 
     graph.FrameArena.Shutdown();
     manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, RenderedPreviewReadbackRestoresSampledAfterTheExactCopy)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(2), {});
+    auto&       arena = manager.MainArena;
+    RenderGraph graph = {};
+    graph.FrameArena.Initialize(ZMega(1), arena.m_mem_page_size);
+    graph.Passes.init(&arena, 4);
+    graph.Resources.init(&arena, 1);
+    graph.ReadbackRequests.init(&arena, 1);
+    graph.Passes.push(MakePass(&arena, "Producer"));
+    auto& resource         = graph.Resources.push_use({});
+    resource.Name          = "Preview";
+    resource.Kind          = RGResourceKind::Attachment;
+    resource.LatestVersion = 1;
+    AddWrite(graph.Passes[0], 0, 1);
+    RenderGraphResourceBuilder builder = {};
+    builder.Initialize(&graph);
+    builder.CurrentPass                = 0;
+    const RGImageReadbackRegion region = {
+        .Subresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1},
+          .Extent = {128, 128, 1}
+    };
+    ASSERT_TRUE(builder.DeclareImageReadback("PreviewReadback", {0, 1}, region, &TestReadbackCallback, nullptr, 128 * 128 * 4, nullptr, true).Valid());
+    RenderGraphTestAccess::AddReadbackPasses(graph);
+    ASSERT_EQ(graph.Passes.size(), 3u);
+    EXPECT_EQ(graph.Passes[1].Reads[0].Access, RGAccess::TransferRead);
+    EXPECT_EQ(graph.Passes[2].Reads[0].Access, RGAccess::ShaderRead);
+    EXPECT_EQ(graph.Passes[2].Reads[0].Handle.Version, 1u);
+    // Reverse declaration order to prove the copy->restore edge, not the
+    // topological sort's stable tie-break, guarantees the final layout.
+    std::swap(graph.Passes[1], graph.Passes[2]);
+    Array<uint32_t> order{};
+    order.init(&arena, 3);
+    Array<RGPassDependency> dependencies{};
+    dependencies.init(&arena, 4);
+    ASSERT_TRUE(BuildPassTopology(&arena, graph.Passes, order, nullptr, &dependencies));
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], 0u);
+    EXPECT_EQ(order[1], 2u);
+    EXPECT_EQ(order[2], 1u);
+    graph.FrameArena.Shutdown();
+    manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, DisposingSubmittedReadbacksCancelsOutstandingCpuOwnershipOnce)
+{
+    MemoryManager memory = {};
+    memory.Initialize(ZMega(2), {});
+    auto device         = std::make_unique<Hardwares::VulkanDevice>();
+    device->Arena       = &memory.MainArena;
+    RGReadbackRing ring = {};
+    ring.Initialize(device.get());
+    uint32_t cancellations = 0;
+    ring.Allocations.push({.Cancellation = &CountReadbackCancellation, .Context = &cancellations, .Reserved = true, .Submitted = true});
+    ring.Dispose();
+    EXPECT_EQ(cancellations, 1u);
+    ring.Dispose();
+    EXPECT_EQ(cancellations, 1u);
+    memory.Shutdown();
 }
 
 TEST(RenderGraphDeclarationTest, RecordedReadbackSurvivesUntilDeferredGraphicsSubmission)
@@ -1109,6 +1275,45 @@ TEST(RenderGraphDeclarationTest, FailedRegistrationRollsBackResourceVersions)
     EXPECT_EQ(valid.Consumed.Version, 1u);
     EXPECT_TRUE(ValidatePassDeclarations(&arena, graph.Passes, graph.Resources));
 
+    graph.FrameArena.Shutdown();
+    manager.Shutdown();
+}
+
+TEST(RenderGraphDeclarationTest, PassLookupCapacityTracksTheRegisteredPipeline)
+{
+    MemoryManager manager{};
+    manager.Initialize(ZMega(4), {});
+    auto device   = std::make_unique<Hardwares::VulkanDevice>();
+    device->Arena = &manager.MainArena;
+    RenderGraph graph{};
+    graph.Device = device.get();
+    graph.FrameArena.Initialize(ZMega(1), manager.MainArena.m_mem_page_size);
+    graph.PersistentPasses.init(&manager.MainArena, 40);
+    graph.ImportedResources.init(&manager.MainArena, 1);
+    graph.ImportedResourceIndex.init(&manager.MainArena, 2);
+    graph.QueryPools.init(&manager.MainArena, 1);
+    graph.QueryPoolIndex.init(&manager.MainArena, 2);
+    RenderGraphResourceBuilder   builder{};
+    RenderGraphResourceInspector inspector{};
+    builder.Initialize(&graph);
+    inspector.Initialize(&graph);
+    graph.ResourceBuilder   = &builder;
+    graph.ResourceInspector = &inspector;
+    ValidRegistrationPass callback{};
+    char                  names[40][16] = {};
+    for (uint32_t i = 0; i < 40; ++i)
+    {
+        snprintf(names[i], sizeof(names[i]), "Pass-%u", i);
+        graph.AddCallbackPass(names[i], &callback);
+    }
+    graph.Register();
+    ASSERT_EQ(graph.Passes.size(), 40u);
+    for (uint32_t i = 0; i < 40; ++i)
+    {
+        const auto* index = graph.PassIndex.find(names[i]);
+        ASSERT_NE(index, nullptr);
+        EXPECT_EQ(*index, i);
+    }
     graph.FrameArena.Shutdown();
     manager.Shutdown();
 }

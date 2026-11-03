@@ -861,10 +861,12 @@ namespace ZEngine::Hardwares
         GlobalLinearClampToEdgeSamplerImageInfo                               = VkDescriptorImageInfo{.sampler = GlobalLinearClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
         GlobalLinearWrapUClampToEdgeVSamplerImageInfo                         = VkDescriptorImageInfo{.sampler = GlobalLinearWrapUClampToEdgeVSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
         GlobalNearestClampToEdgeSamplerImageInfo                              = VkDescriptorImageInfo{.sampler = GlobalNearestClampToEdgeSampler, .imageView = VK_NULL_HANDLE, .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED};
-        MaxGlobalTexture                                                      = std::min(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages - 1);
+        MaxGlobalTexture                                                      = GlobalTextureCapacity(MaxGlobalTexture, PhysicalDeviceVulkan12Properties.maxPerStageDescriptorUpdateAfterBindSampledImages);
+        ZENGINE_VALIDATE_ASSERT(MaxGlobalTexture > 0, "Device must support material textures plus three local environment bindings")
 
         GlobalTextures.Initialize(Arena, MaxGlobalTexture);
         ImageBufferManager.Initialize(Arena, MaxGlobalTexture);
+        ImageViewCacheSlab.Init(Arena, ZMega(2));
         {
             VkDescriptorSetLayoutCreateInfo empty_layout_info = {};
             empty_layout_info.sType                           = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -1066,6 +1068,7 @@ namespace ZEngine::Hardwares
 
         // Drain deferred frees enqueued during the Dispose() calls above
         PendingFree.Drain(&GpuMem, LogicalDevice, UINT64_MAX);
+        ImageViewCacheSlab.Shutdown();
     }
 
     void VulkanDevice::Dispose()
@@ -2296,18 +2299,13 @@ namespace ZEngine::Hardwares
 
             if (!frame_sets.empty())
             {
-                // Count actual dynamic bindings in this shader to avoid validation errors
-                uint32_t actual_dynamic_count = 0;
-                for (const auto& lbs : shader->LayoutBindingSpecificationMap)
+                // Reflection may list the same binding in both vertex and fragment stages.
+                const uint32_t actual_dynamic_count = shader->DynamicDescriptorCount();
+                if (actual_dynamic_count && (!dynamic_offsets || dynamic_offset_count < actual_dynamic_count))
                 {
-                    for (uint32_t i = 0; i < lbs.second.size(); ++i)
-                    {
-                        if (lbs.second[i].DescriptorTypeValue == Rendering::Specifications::DescriptorType::UNIFORM_BUFFER_DYNAMIC ||
-                            lbs.second[i].DescriptorTypeValue == Rendering::Specifications::DescriptorType::STORAGE_BUFFER_DYNAMIC)
-                        {
-                            ++actual_dynamic_count;
-                        }
-                    }
+                    ZENGINE_CORE_ERROR("Insufficient dynamic descriptor offsets: expected {}, supplied {}", actual_dynamic_count, dynamic_offset_count)
+                    ZReleaseScratch(scratch);
+                    return;
                 }
 
                 const uint32_t* offsets = (actual_dynamic_count > 0) ? dynamic_offsets : nullptr;
@@ -2630,7 +2628,7 @@ namespace ZEngine::Hardwares
         if (m_cached_image_views.data())
             m_cached_image_views.clear();
         else
-            m_cached_image_views.init(Device->Arena, 4);
+            m_cached_image_views.init(&Device->ImageViewCacheSlab, 4);
         ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
 
@@ -2664,7 +2662,7 @@ namespace ZEngine::Hardwares
         if (m_cached_image_views.data())
             m_cached_image_views.clear();
         else
-            m_cached_image_views.init(Device->Arena, 4);
+            m_cached_image_views.init(&Device->ImageViewCacheSlab, 4);
         ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
         ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
 
@@ -2819,9 +2817,12 @@ namespace ZEngine::Hardwares
         buffer_res->Specification.IsAliasable = spec.IsAliasable;
     }
 
-    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name)
+    Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name, uint32_t reserved_slots)
     {
         std::unique_lock l(Mutex);
+
+        if (reserved_slots && GlobalTextures.Size() + reserved_slots >= MaxGlobalTexture)
+            return {};
 
         auto             handle = GlobalTextures.Create();
 
@@ -2964,8 +2965,11 @@ namespace ZEngine::Hardwares
                 const auto* texture = GlobalTextures.Access(texture_handle);
                 if (!texture)
                 {
-                    RequestDescriptorUpdate(texture_handle);
-                    break;
+                    // An evicted/invalidated thumbnail can retire before its
+                    // queued descriptor write drains. That handle generation
+                    // cannot become live again; requeueing it stalls readiness
+                    // forever and delays later real-image descriptor updates.
+                    continue;
                 }
                 auto* image_buffer = ImageBufferManager.Access(texture->BufferHandle);
                 if (!image_buffer)

@@ -117,7 +117,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         ZENGINE_VALIDATE_ASSERT(device != nullptr && device->Arena != nullptr, "Descriptor bindings require an initialized Vulkan device")
         m_device = device;
-        BoundBindings.init(m_device->Arena, 16);
+        // Match the supported replay budget. Forward material passes bind more
+        // than twelve distinct inputs; a 16-slot map trips its 75% load guard.
+        BoundBindings.init(m_device->Arena, 2 * kMaxDescriptorReplayBindings);
     }
 
     bool DescriptorBoundPass::VerifyDescriptorBindings()
@@ -126,26 +128,23 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         if (!pipeline || !pipeline->Shader)
             return false;
 
-        bool        verify                       = true;
         const auto& layout_binding_specification = pipeline->Shader->LayoutBindingSpecifications;
-
-        if (BoundBindings.size() != layout_binding_specification.size())
+        // A shared binding can occur in multiple reflected shader stages while
+        // BoundBindings is a set of names. Verify membership, not array length.
+        uint32_t    missing_count                = 0;
+        for (const auto& specification : layout_binding_specification)
         {
-            uint32_t missing_count = 0;
-            for (const auto& specification : layout_binding_specification)
+            if (!BoundBindings.contains(specification.Name))
             {
-                if (!BoundBindings.contains(specification.Name))
-                {
-                    ++missing_count;
-                    ZENGINE_CORE_WARN("Pipeline '{}': unset input '{}'", Specification.PipelineDescription.DebugName ? Specification.PipelineDescription.DebugName : "?", specification.Name)
-                }
+                ++missing_count;
+                ZENGINE_CORE_WARN("Pipeline '{}': unset input '{}'", Specification.PipelineDescription.DebugName ? Specification.PipelineDescription.DebugName : "?", specification.Name)
             }
-            ZENGINE_CORE_WARN("Pipeline '{}': {} unset input(s)", Specification.PipelineDescription.DebugName ? Specification.PipelineDescription.DebugName : "?", missing_count)
-
-            verify = false;
         }
-
-        return verify;
+        if (missing_count)
+        {
+            ZENGINE_CORE_WARN("Pipeline '{}': {} unset input(s)", Specification.PipelineDescription.DebugName ? Specification.PipelineDescription.DebugName : "?", missing_count)
+        }
+        return missing_count == 0;
     }
 
     GraphicPass::~GraphicPass()

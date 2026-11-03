@@ -7,12 +7,15 @@
 namespace ZEngine::Rendering::Renderers
 {
     struct LightingPass;
+    struct TransparentPass;
     struct GbufferPass;
+    struct ObjectIdPass;
     struct ObjectIdPickRequest;
     struct GridPass;
     struct GridLabelPass;
     struct GridLabelFrameData;
     struct GizmoPass;
+    struct AssetPreviewPass;
     struct GizmoFrameData;
     struct EnvironmentBackgroundPass;
     struct SkySpherePass;
@@ -87,6 +90,10 @@ namespace ZEngine::Rendering::Renderers
         Textures::TextureHandle                GetFrameOutput();
         /// @brief Returns a coherent renderer-memory snapshot for a non-render-thread UI reader.
         [[nodiscard]] RendererMemoryStatistics GetMemoryStatistics() const;
+        AssetPreviewPass*                      GetAssetPreviews() const
+        {
+            return m_asset_preview_pass;
+        }
 
     private:
         void                                            PublishFrameOutput(Textures::TextureHandle output);
@@ -134,11 +141,13 @@ namespace ZEngine::Rendering::Renderers
         PaddedAtomic<uint64_t>                          m_transient_image_backing_count            = {};
         PaddedAtomic<uint64_t>                          m_transient_buffer_backing_count           = {};
         Scenes::SkyEnvironment                          m_sky_environment                          = {};
-        GbufferPass*                                    m_gbuffer_pass                             = nullptr;
+        ObjectIdPass*                                   m_object_id_pass                           = nullptr;
         LightingPass*                                   m_lighting_pass                            = nullptr;
+        TransparentPass*                                m_transparent_pass                         = nullptr;
         GridPass*                                       m_grid_pass                                = nullptr;
         GridLabelPass*                                  m_grid_label_pass                          = nullptr;
         GizmoPass*                                      m_gizmo_pass                               = nullptr;
+        AssetPreviewPass*                               m_asset_preview_pass                       = nullptr;
         EnvironmentBackgroundPass*                      m_environment_background_pass              = nullptr;
         SkySpherePass*                                  m_sky_sphere_pass                          = nullptr;
         SkyViewLutPass*                                 m_sky_view_lut_pass                        = nullptr;

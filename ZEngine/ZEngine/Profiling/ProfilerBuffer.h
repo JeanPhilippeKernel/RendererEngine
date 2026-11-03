@@ -48,6 +48,21 @@ namespace ZEngine::Profiling
 
         static uint64_t           CurrentFrameIndex();
 
+        /// Opt-in bounded multi-frame capture for debugger/benchmark tooling.
+        /// Start/stop/export require quiescent writers (e.g. a stopped debugger).
+        /// Recording is allocation-free and never performs file I/O. Literal
+        /// names must remain alive through export; prefix is copied at start.
+        static constexpr uint32_t CAPTURE_CAPACITY = 262144;
+        static bool               StartCapture(const char* prefix = "");
+        /// Stops accepting samples at the first matching record at/after the
+        /// deadline, without a debugger stop inside the measured interval.
+        /// The same quiescent-writer start/export contract applies.
+        static bool               StartTimedCapture(uint32_t duration_ms, const char* prefix = "");
+        static void               StopCapture();
+        static uint32_t           CaptureCount();
+        static uint32_t           CaptureDropped();
+        static bool               WriteCaptureCsv(const char* filename);
+
     private:
         static ProfilerSample         s_samples[CAPACITY];
         static ProfilerValue          s_values[CAPACITY];
@@ -59,6 +74,19 @@ namespace ZEngine::Profiling
         // Snapshot of previous frame's data (copied atomically at BeginFrame).
         static ProfilerSample         s_last_samples[CAPACITY];
         static ProfilerValue          s_last_values[CAPACITY];
+        struct CaptureRecord
+        {
+            const char* Name        = nullptr;
+            uint64_t    TimestampNs = 0;
+            double      Value       = 0;
+            bool        IsValue     = false;
+        };
+        static CaptureRecord          s_capture[CAPTURE_CAPACITY];
+        static PaddedAtomic<bool>     s_capture_enabled;
+        static PaddedAtomic<uint32_t> s_capture_count;
+        static char                   s_capture_prefix[64];
+        static uint64_t               s_capture_deadline_ns;
+        static void                   Capture(const char* name, double value, bool is_value);
     };
 
     // RAII scope guard for the lightweight (non-Tracy) profiling path.

@@ -12,6 +12,7 @@
 #include <cstring>
 #include <random>
 #include <thread>
+#include "SaturatedBackgroundPool.h"
 
 using namespace ZEngine;
 using namespace ZEngine::Core::VFS;
@@ -208,6 +209,24 @@ protected:
     }
 };
 
+TEST_F(VFSScannerTest, SaturatedAdmissionDefersRootWithoutCallerThreadEnumeration)
+{
+    SaturatedBackgroundPool background{};
+    ASSERT_TRUE(background.Fill());
+    EXPECT_FALSE(m_scanner.Scan(&m_mock, P("/"), &m_cache));
+    EXPECT_EQ(m_mock.ListCalls.load(), 0);
+    EXPECT_FALSE(m_scanner.IsScanning());
+    EXPECT_FALSE(m_completed.load());
+    background.Release();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    bool       admitted = false;
+    while (!(admitted = m_scanner.Scan(&m_mock, P("/"), &m_cache)) && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    ASSERT_TRUE(admitted);
+    EXPECT_TRUE(WaitForCompletion(2000));
+    EXPECT_GT(m_mock.ListCalls.load(), 0);
+}
+
 TEST_F(VFSScannerTest, Scan_EmptyRoot_FiresComplete)
 {
     m_scanner.Scan(&m_mock, P("/"), &m_cache);
@@ -230,6 +249,48 @@ TEST_F(VFSScannerTest, Scan_TwoLevels_PopulatesCache)
     EXPECT_EQ(m_stats.DirsFound, 1u);
     EXPECT_EQ(m_cache.GetListing(P("/root")).size(), 1u);
     EXPECT_EQ(m_cache.GetListing(P("/root/sub")).size(), 2u);
+}
+
+TEST_F(VFSScannerTest, Scan_SkipsEngineCacheSubtree)
+{
+    // VFS paths are relative to the mounted project, not native absolute paths.
+    m_mock.AddChild("/", "/.zodiacengine", true);
+    m_mock.AddChild("/.zodiacengine", "/.zodiacengine/cache", true);
+    m_mock.AddChild("/.zodiacengine/cache", "/.zodiacengine/cache/preview.png", false);
+
+    m_scanner.Scan(&m_mock, P("/"), &m_cache);
+    ASSERT_TRUE(WaitForCompletion(2000));
+
+    EXPECT_EQ(m_mock.ListCalls.load(), 1);
+    EXPECT_EQ(m_stats.FilesFound, 0u);
+    EXPECT_EQ(m_cache.GetListing(P("/.zodiacengine")).size(), 0u);
+}
+
+TEST_F(VFSScannerTest, Scan_SkipsDirectEngineCacheRescan)
+{
+    m_mock.AddChild("/.zodiacengine/cache", "/.zodiacengine/cache/preview.png", false);
+
+    m_scanner.Scan(&m_mock, P("/.zodiacengine/cache"), &m_cache);
+    ASSERT_TRUE(WaitForCompletion(2000));
+
+    EXPECT_EQ(m_mock.ListCalls.load(), 0);
+    EXPECT_EQ(m_stats.FilesFound, 0u);
+    EXPECT_EQ(m_stats.MetasCreated, 0u);
+}
+
+TEST_F(VFSScannerTest, Scan_KeepsSimilarlyNamedAndNestedUserDirectories)
+{
+    m_mock.AddChild("/", "/.zodiacengine-assets", true);
+    m_mock.AddChild("/.zodiacengine-assets", "/.zodiacengine-assets/readme.txt", false);
+    m_mock.AddChild("/", "/Assets", true);
+    m_mock.AddChild("/Assets", "/Assets/.zodiacengine", true);
+    m_mock.AddChild("/Assets/.zodiacengine", "/Assets/.zodiacengine/readme.txt", false);
+
+    m_scanner.Scan(&m_mock, P("/"), &m_cache);
+    ASSERT_TRUE(WaitForCompletion(2000));
+
+    EXPECT_EQ(m_mock.ListCalls.load(), 4);
+    EXPECT_EQ(m_stats.FilesFound, 2u);
 }
 
 TEST_F(VFSScannerTest, Cancel_StopsWalk_NoCallback)

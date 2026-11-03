@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/Maths/Vec.h>
+#include <ZEngine/Rendering/Materials/MaterialAlpha.h>
 #include <ZEngine/ZEngineDef.h>
 
 #define INVALID_MAP_HANDLE 0xFFFFFFFFu
@@ -48,7 +49,7 @@ namespace ZEngine::Rendering::Meshes
         uint32_t TotalByteSize        = 0;
     };
 
-    struct MeshMaterial
+    struct alignas(16) MeshMaterial
     {
         ZEngine::Core::Maths::Vec4f AmbientColor   = {1.f, 1.f, 1.f, 1.f};
         ZEngine::Core::Maths::Vec4f EmissiveColor  = {};
@@ -61,8 +62,9 @@ namespace ZEngine::Rendering::Meshes
         uint32_t                    SpecularMap    = INVALID_MAP_HANDLE;
         uint32_t                    NormalMap      = INVALID_MAP_HANDLE;
         uint32_t                    OpacityMap     = INVALID_MAP_HANDLE;
-        uint32_t                    _pad           = 0;
+        Materials::AlphaMode        AlphaMode      = Materials::AlphaMode::Legacy;
     };
+    static_assert(sizeof(MeshMaterial) == 128, "Material arrays must match the std140 shader stride");
 
     struct MaterialFile
     {

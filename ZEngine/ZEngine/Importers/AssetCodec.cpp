@@ -291,6 +291,13 @@ namespace ZEngine::Importers::AssetCodec
         };
 
         nlohmann::json j;
+        j["material_version"] = MATERIAL_FILE_VERSION;
+        if (config.MaterialSourcePath && config.MaterialSourceImporter)
+            j["source_material"] = {
+                {    "path",     config.MaterialSourcePath},
+                {"importer", config.MaterialSourceImporter},
+                {   "index",                material_index}
+            };
         j["name"]                 = material.Name.empty() ? "" : material.Name.c_str();
         j["uuid"]                 = uuids::to_string(material.MaterialUUID);
         j["textures"]["albedo"]   = tex_obj(material.AlbedoTexUUID, material.AlbedoTexPath);
@@ -304,6 +311,8 @@ namespace ZEngine::Importers::AssetCodec
         j["roughness_color"]      = nlohmann::json::array({material.RoughnessColor[0], material.RoughnessColor[1], material.RoughnessColor[2], material.RoughnessColor[3]});
         j["specular_color"]       = nlohmann::json::array({material.SpecularColor[0], material.SpecularColor[1], material.SpecularColor[2], material.SpecularColor[3]});
         j["factors"]              = nlohmann::json::array({material.Factors[0], material.Factors[1], material.Factors[2], material.Factors[3]});
+        j["alpha_mode"]           = Rendering::Materials::AlphaModeName(material.AlphaMode);
+        j["alpha_cutoff"]         = material.Factors[2];
 
         auto write                = WriteVFS(config.VFS, mat_path, j.dump(4));
         if (write.Failed())
@@ -413,6 +422,18 @@ namespace ZEngine::Importers::AssetCodec
         read_color("roughness_color", material.RoughnessColor, 4);
         read_color("specular_color", material.SpecularColor, 4);
         read_color("factors", material.Factors, 4);
+        // A missing mode denotes the old contract. Do not guess BLEND from a
+        // cutoff or zero alpha: the original mode cannot be recovered reliably.
+        material.AlphaMode = Rendering::Materials::AlphaMode::Legacy;
+        if (j.contains("alpha_mode") && j["alpha_mode"].is_string())
+            material.AlphaMode = Rendering::Materials::ParseAlphaMode(j["alpha_mode"].get<std::string>());
+        if (j.contains("alpha_cutoff") && j["alpha_cutoff"].is_number())
+        {
+            const float cutoff = j["alpha_cutoff"].get<float>();
+            // glTF requires a nonnegative cutoff, but does not cap it at one.
+            if (std::isfinite(cutoff) && cutoff >= 0.f)
+                material.Factors[2] = cutoff;
+        }
     }
 
     void DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures)

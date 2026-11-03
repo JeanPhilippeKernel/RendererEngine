@@ -17,7 +17,6 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <vector>
 
 namespace ZEngine
 {
@@ -100,13 +99,20 @@ namespace Tetragrama::Panels
 
         struct ImportTask
         {
+            struct PreparedArtifact
+            {
+                ZEngine::Importers::AssetFileType Type = ZEngine::Importers::AssetFileType::UNKNOWN;
+                ZEngine::Core::VFS::VFSPath       Path{};
+                uuids::uuid                       UUID{};
+                uint64_t                          SourceHash{};
+            };
             AssetImporterPanel*                                           Panel                           = nullptr;
             ZEngine::Importers::AssetCodec::ImportConfiguration           Configuration                   = {};
             ImporterKind                                                  Kind                            = ImporterKind::Gltf;
             char                                                          SourcePath[MAX_FILE_PATH_COUNT] = {};
-            // The importer releases its scratch arena after it calls its callback.
-            // Retain the small output list until the main thread consumes it.
-            std::vector<ZEngine::Importers::AssetImporterOutput>          Outputs                         = {};
+            // Only registration fields cross the worker boundary. Full settings
+            // stay in the persisted sidecar; borrowed importer strings do not escape.
+            ZEngine::Core::Containers::Array<PreparedArtifact>            PreparedArtifacts               = {};
             ZEngine::Core::Containers::Array<ZEngine::Core::VFS::VFSPath> PublishedPaths                  = {};
             ZEngine::Core::VFS::VFSImportPublication                      Publication                     = {};
             std::string                                                   Error                           = {};
@@ -172,55 +178,58 @@ namespace Tetragrama::Panels
             char  text[256] = {};
             float color[4]  = {0.8f, 0.8f, 0.8f, 1.f};
         };
-        LogEntry    m_log[kLogMax] = {};
-        int         m_log_head     = 0;
-        int         m_log_count    = 0;
-        std::mutex  m_log_mutex    = {};
-        char        m_status[256]  = {};
+        LogEntry       m_log[kLogMax] = {};
+        int            m_log_head     = 0;
+        int            m_log_count    = 0;
+        std::mutex     m_log_mutex    = {};
+        char           m_status[256]  = {};
 
         // Build helpers
         /// @brief Build the idle state UI (file selection).
-        void        BuildIdle(ZEngine::UI::ZUIContext* ctx);
+        void           BuildIdle(ZEngine::UI::ZUIContext* ctx);
         /// @brief Build the options state UI (import settings).
-        void        BuildOptions(ZEngine::UI::ZUIContext* ctx);
+        void           BuildOptions(ZEngine::UI::ZUIContext* ctx);
         /// @brief Build the in-progress state UI (progress bar and latest worker status).
-        void        BuildImporting(ZEngine::UI::ZUIContext* ctx);
-        void        CancelSelection();
+        void           BuildImporting(ZEngine::UI::ZUIContext* ctx);
+        void           CancelSelection();
 
         /// @brief Open the file browser dialog synchronously.
-        void        BrowseFile();
+        void           BrowseFile();
         /// @brief Open the file browser dialog asynchronously.
-        void        PollFileDialog();
-        void        ConsumePendingImport();
+        void           PollFileDialog();
+        void           ConsumePendingImport();
         /// @brief Validates a source selected by browsing or dropping, then shows import options.
-        bool        SelectSource(const char* path);
+        bool           SelectSource(const char* path);
         /// @brief Validates names/options and builds a coherent configuration in the scratch arena.
-        bool        BuildImportConfiguration(ZEngine::Importers::AssetCodec::ImportConfiguration& config, ZEngine::Core::VFS::IVFSContext* vfs);
+        bool           BuildImportConfiguration(ZEngine::Importers::AssetCodec::ImportConfiguration& config, ZEngine::Core::VFS::IVFSContext* vfs);
         /// @brief Begin the import process with the current settings.
-        void        StartImport();
+        void           StartImport();
         /// @brief Append a log message to the import log.
-        void        PushLog(const char* text, float r, float g, float b);
+        void           PushLog(const char* text, float r, float g, float b);
         /// @brief Record the completed import in the history list.
-        void        PushHistory(const char* name, bool ok, const char* msg);
+        void           PushHistory(const char* name, bool ok, const char* msg);
 
         /// @brief Runs one import on a worker through the C-style task API.
-        static void RunImportTask(void* context);
+        static void    RunImportTask(void* context);
         /// @brief Consumes a completed worker task on the main thread.
-        void        FinalizeImportTask(ZEngine::EngineContext* engine);
+        void           FinalizeImportTask(ZEngine::EngineContext* engine);
 
-        // Static callbacks for ImportFile. They execute on a worker, so they only
-        // copy the result into ImportTask; FinalizeImportTask performs editor work.
-        static void OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
-        static void OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType type, const char* path);
-        static void OnImportProgress(void* ctx, float pct);
-        static void OnImportError(void* ctx, std::string_view err);
-        static void OnImportLog(void* ctx, std::string_view msg);
+        // Worker callbacks finalize disk metadata and retain owned registration
+        // fields. FinalizeImportTask publishes those records on the editor thread.
+        static void    OnImportFileComplete(void* ctx, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        static void    OnImportArtifactPublished(void* ctx, ZEngine::Importers::AssetFileType type, const char* path);
+        static void    OnImportProgress(void* ctx, float pct);
+        static void    OnImportError(void* ctx, std::string_view err);
+        static void    OnImportLog(void* ctx, std::string_view msg);
 
+        // Import-worker metadata finalization; main thread only publishes records.
+        static cstring ImporterName(ImporterKind kind);
+        static bool    PrepareImportMetadata(ImportTask& task, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
+        static void    RecordPublishedPath(ImportTask& task, const char* path);
         // Main-thread-only completion handlers.
-        void        CompleteImportOnMainThread(ZEngine::EngineContext* engine, ZEngine::Core::Containers::ArrayView<ZEngine::Importers::AssetImporterOutput> outputs);
-        static void CompleteImportErrorOnMainThread(void* ctx, std::string_view err);
-        static void RecordPublishedPath(ImportTask& task, const char* path);
-        static void EndImportPublication(ImportTask& task);
+        void           CompleteImportOnMainThread(ZEngine::EngineContext* engine);
+        static void    CompleteImportErrorOnMainThread(void* ctx, std::string_view err);
+        static void    EndImportPublication(ImportTask& task);
     };
 
 } // namespace Tetragrama::Panels

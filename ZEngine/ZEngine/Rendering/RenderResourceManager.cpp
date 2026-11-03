@@ -4,9 +4,10 @@
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <cstdlib>
-#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Alloc(sz) : std::malloc(sz))
-#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->Realloc(p, newsz) : std::realloc(p, newsz))
+#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(nullptr, sz) : std::malloc(sz))
+#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(p, newsz) : std::realloc(p, newsz))
 #define STBI_FREE(p)                                    \
     do                                                  \
     {                                                   \
@@ -30,14 +31,19 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Buffers/Bitmap.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
+#include <ZEngine/Rendering/Renderers/Graphics/AssetPreviewPass.h>
+#include <ZEngine/Rendering/ThumbnailCacheMaintenance.h>
 #include <ZEngine/ZEngineDef.h>
 #include <stb/deprecated/stb_image_resize.h>
 #include <stb/stb_image_write.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <limits>
+#include <random>
 #include <thread>
 
 using namespace ZEngine::Core::Memory;
@@ -51,10 +57,50 @@ namespace ZEngine::Rendering
 {
     namespace
     {
-        constexpr uint32_t kBrdfLutResolution  = 512;
-        constexpr uint32_t kBrdfLutSampleCount = 64;
+        constexpr uint32_t kBrdfLutResolution     = 512;
+        constexpr uint32_t kBrdfLutSampleCount    = 64;
+        constexpr uint32_t kMaxThumbnailExtent    = 512;
 
-        uint16_t           FloatToHalf(float value)
+        // A single atomically renamed file contains PNG bytes followed by a
+        // versioned, little-endian validation record. No torn PNG/sidecar pairs.
+        constexpr size_t   kThumbnailMetadataSize = 80;
+        constexpr size_t   kMaxThumbnailPayload   = 2 * 1024 * 1024;
+        uint64_t           ThumbnailChecksum(const uint8_t* bytes, size_t size, uint64_t hash = 14695981039346656037ull)
+        {
+            for (size_t i = 0; i < size; ++i)
+                hash = (hash ^ bytes[i]) * 1099511628211ull;
+            return hash;
+        }
+        void StoreThumbnailInteger(uint8_t* bytes, uint64_t value, size_t count)
+        {
+            for (size_t i = 0; i < count; ++i)
+                bytes[i] = static_cast<uint8_t>(value >> (i * 8));
+        }
+        uint64_t LoadThumbnailInteger(const uint8_t* bytes, size_t count)
+        {
+            uint64_t value = 0;
+            for (size_t i = 0; i < count; ++i)
+                value |= static_cast<uint64_t>(bytes[i]) << (i * 8);
+            return value;
+        }
+        std::array<uint8_t, kThumbnailMetadataSize> ThumbnailMetadata(const RenderResourceManager::ThumbnailCacheIdentity& key, uint32_t width, uint32_t height)
+        {
+            std::array<uint8_t, kThumbnailMetadataSize> bytes = {};
+            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(bytes.data(), bytes.size(), "ZTHUMB03", 8) == Helpers::MEMORY_OP_SUCCESS, "Thumbnail metadata signature exceeds its buffer")
+            const auto uuid_bytes = key.AssetUUID.as_bytes();
+            ZENGINE_VALIDATE_ASSERT(Helpers::secure_memcpy(bytes.data() + 8, bytes.size() - 8, uuid_bytes.data(), uuid_bytes.size()) == Helpers::MEMORY_OP_SUCCESS, "Thumbnail metadata UUID exceeds its buffer")
+            StoreThumbnailInteger(bytes.data() + 24, key.SourceHash, 8);
+            StoreThumbnailInteger(bytes.data() + 32, key.DependencyHash, 8);
+            StoreThumbnailInteger(bytes.data() + 40, key.SchemaRevision, 4);
+            StoreThumbnailInteger(bytes.data() + 44, key.RendererRevision, 4);
+            StoreThumbnailInteger(bytes.data() + 48, width, 4);
+            StoreThumbnailInteger(bytes.data() + 52, height, 4);
+            StoreThumbnailInteger(bytes.data() + 56, 1, 4); // display-encoded RGBA8 UNORM
+            StoreThumbnailInteger(bytes.data() + 60, 1, 4); // encoder contract revision
+            return bytes;
+        }
+
+        uint16_t FloatToHalf(float value)
         {
             uint32_t bits = 0;
             ZENGINE_VALIDATE_ASSERT(secure_memcpy(&bits, sizeof(bits), &value, sizeof(value)) == MEMORY_OP_SUCCESS, "FloatToHalf: failed to copy float bits")
@@ -155,6 +201,103 @@ namespace ZEngine::Rendering
         }
     } // namespace
 
+    uint8_t* RenderResourceManager::ReadThumbnailCache(const char* filename, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity)
+    {
+        if (!filename || !filename[0] || !width || !height || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
+            return nullptr;
+        FILE* file = std::fopen(filename, "rb");
+        if (!file)
+            return nullptr;
+        bool       valid = std::fseek(file, 0, SEEK_END) == 0;
+        const long size  = valid ? std::ftell(file) : -1;
+        valid            = valid && size > static_cast<long>(kThumbnailMetadataSize) && size <= static_cast<long>(kMaxThumbnailPayload + kThumbnailMetadataSize) && std::fseek(file, 0, SEEK_SET) == 0;
+        auto* bytes      = valid ? static_cast<uint8_t*>(STBI_MALLOC(static_cast<size_t>(size))) : nullptr;
+        valid            = bytes && std::fread(bytes, 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
+        std::fclose(file);
+        uint8_t* pixels = nullptr;
+        if (valid)
+        {
+            const size_t   payload_size = static_cast<size_t>(size) - kThumbnailMetadataSize;
+            const uint8_t* metadata     = bytes + payload_size;
+            const auto     expected     = ThumbnailMetadata(identity, width, height);
+            valid                       = std::memcmp(expected.data(), metadata, 64) == 0 && LoadThumbnailInteger(metadata + 64, 8) == payload_size;
+            const uint64_t checksum     = ThumbnailChecksum(metadata, 72, ThumbnailChecksum(bytes, payload_size));
+            valid                       = valid && checksum == LoadThumbnailInteger(metadata + 72, 8);
+            int decoded_width = 0, decoded_height = 0, channels = 0;
+            // Reject oversized headers before asking the decoder to allocate.
+            valid = valid && stbi_info_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels) && decoded_width == static_cast<int>(width) && decoded_height == static_cast<int>(height) && channels == 4;
+            if (valid)
+                pixels = stbi_load_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels, STBI_rgb_alpha);
+        }
+        STBI_FREE(bytes);
+        return pixels;
+    }
+
+    bool RenderResourceManager::WriteThumbnailCache(const char* filename, const uint8_t* pixels, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity, bool bottom_up)
+    {
+        if (!filename || filename[0] == '\0' || !pixels || width == 0 || height == 0 || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
+        {
+            return false;
+        }
+
+        const size_t                row_size  = static_cast<size_t>(width) * STBI_rgb_alpha;
+        // Decode/upload pixels are bottom-up. Walk rows backwards for PNG
+        // without mutating upload memory or changing STB's global flip flag.
+        const uint8_t* const        first_row = bottom_up ? pixels + static_cast<size_t>(height - 1) * row_size : pixels;
+
+        const std::filesystem::path cache_path(filename);
+        std::error_code             error{};
+        std::filesystem::create_directories(cache_path.parent_path(), error);
+        bool published = false;
+        if (!error)
+        {
+            // Each job owns an exclusively created sibling. A fixed .tmp name
+            // lets overlapping jobs/editors truncate or unlink each other's
+            // output, even though the final rename itself is atomic.
+            std::random_device           entropy{};
+            std::mt19937                 random(entropy());
+            uuids::uuid_random_generator generator(random);
+            const std::filesystem::path  temporary_path = cache_path.string() + "." + uuids::to_string(generator()) + ".tmp";
+            FILE*                        temporary      = std::fopen(temporary_path.string().c_str(), "wbx");
+            struct Writer
+            {
+                FILE*    File     = nullptr;
+                bool     Success  = true;
+                uint64_t Checksum = 14695981039346656037ull;
+                size_t   Size     = 0;
+            } writer{temporary};
+            if (temporary)
+            {
+                const auto write = +[](void* context, void* data, int size) {
+                    auto& output = *static_cast<Writer*>(context);
+                    if (size < 0 || output.Size + static_cast<size_t>(size) > kMaxThumbnailPayload || std::fwrite(data, 1, static_cast<size_t>(size), output.File) != static_cast<size_t>(size))
+                        output.Success = false;
+                    else
+                    {
+                        output.Checksum  = ThumbnailChecksum(static_cast<const uint8_t*>(data), static_cast<size_t>(size), output.Checksum);
+                        output.Size     += static_cast<size_t>(size);
+                    }
+                };
+                const bool encoded  = stbi_write_png_to_func(write, &writer, static_cast<int>(width), static_cast<int>(height), STBI_rgb_alpha, first_row, (bottom_up ? -1 : 1) * static_cast<int>(row_size)) != 0;
+                auto       metadata = ThumbnailMetadata(identity, width, height);
+                StoreThumbnailInteger(metadata.data() + 64, writer.Size, 8);
+                StoreThumbnailInteger(metadata.data() + 72, ThumbnailChecksum(metadata.data(), 72, writer.Checksum), 8);
+                const bool metadata_written = std::fwrite(metadata.data(), 1, metadata.size(), temporary) == metadata.size();
+                const bool flushed          = std::fflush(temporary) == 0;
+                const bool closed           = std::fclose(temporary) == 0;
+                if (encoded && writer.Success && metadata_written && flushed && closed)
+                {
+                    std::filesystem::rename(temporary_path, cache_path, error);
+                    published = !error;
+                }
+                if (!published)
+                    std::filesystem::remove(temporary_path, error);
+            }
+        }
+
+        return published;
+    }
+
     void RenderResourceManager::Initialize(VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena)
     {
         ZENGINE_VALIDATE_ASSERT(device != nullptr, "RenderResourceManager::Initialize: device must not be null")
@@ -166,6 +309,8 @@ namespace ZEngine::Rendering
         m_upload_arena = upload_arena;
         m_pending_texture_decodes.value.store(0, std::memory_order_relaxed);
         m_accept_texture_decodes.value.store(true, std::memory_order_release);
+        m_thumbnail_cache_cleanup       = {};
+        m_thumbnail_maintenance_stats   = {};
         m_fallback_cubemap              = {};
         m_fallback_environment_lighting = {};
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
@@ -262,6 +407,7 @@ namespace ZEngine::Rendering
             std::lock_guard lock(m_pending_mutex);
             m_accept_texture_decodes.value.store(false, std::memory_order_release);
         }
+        CancelStoppedThumbnailCacheWrites();
         while (m_pending_texture_decodes.value.load(std::memory_order_acquire) > 0)
             std::this_thread::yield();
 
@@ -269,6 +415,19 @@ namespace ZEngine::Rendering
         m_device->QueueWaitAll();
         ShutdownTextureTimelines();
         DiscardTextureDeferrals();
+
+        // No workers or queued uploads remain. Pending tracked work was cancelled
+        // by shutdown, so editor-owned releases must not wait for another frame.
+        {
+            std::lock_guard lock(m_texture_decode_mutex);
+            for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+                if (tracked.State == TextureDecodeState::Pending)
+                    tracked.State = TextureDecodeState::Failed;
+        }
+        // QueueWaitAll proved every producer complete; their semaphores were just
+        // retired by ShutdownTextureTimelines and must no longer be polled.
+        m_streaming_upload_tickets.clear();
+        FlushPendingTextureReleases();
 
         ZENGINE_VALIDATE_ASSERT(m_active_texture_decode_slabs.value.load(std::memory_order_acquire) == 0, "RenderResourceManager::Shutdown: texture decode slab lease was not released")
         for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
@@ -1066,7 +1225,7 @@ namespace ZEngine::Rendering
 
     const Rendering::Textures::Texture* RenderResourceManager::GetTexture(const Rendering::Textures::TextureHandle& handle) const
     {
-        return m_device->GlobalTextures.Access(handle);
+        return m_device ? m_device->GlobalTextures.Access(handle) : nullptr;
     }
 
     void RenderResourceManager::EnqueueDeletion(DeferredFreeEntry entry)
@@ -1676,7 +1835,11 @@ namespace ZEngine::Rendering
     void RenderResourceManager::OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket)
     {
         if (context)
-            static_cast<RenderResourceManager*>(context)->PublishStreamingUploadTicket(ticket);
+        {
+            auto* manager = static_cast<RenderResourceManager*>(context);
+            manager->PublishStreamingUploadTicket(ticket);
+            manager->MarkTextureUploadSubmitted(ticket.Texture);
+        }
     }
 
     void RenderResourceManager::AcknowledgeStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket)
@@ -1786,6 +1949,17 @@ namespace ZEngine::Rendering
         return SubmitTextureFile(absolute_path, existing);
     }
 
+    bool RenderResourceManager::HasPendingTextureUploads()
+    {
+        std::scoped_lock lock(m_pending_mutex, m_pending_texture_reload_mutex);
+        // Deferred registration deliberately publishes the fallback for one graph
+        // frame before the real descriptor. Pixel readiness alone is insufficient:
+        // do not bake that temporary magenta fallback into a persistent preview.
+        if (m_device && (!m_device->DeferredTextureDescriptorUpdates.empty() || !m_device->TextureHandleToUpdates.empty()))
+            return true;
+        return m_pending_texture_reload_count != 0 || !m_queued_texture_decodes.empty() || m_active_texture_decode_slabs.value.load(std::memory_order_acquire) != 0 || m_async_uploads.HasPendingJobs();
+    }
+
     void RenderResourceManager::ScheduleTextureReload(const uuids::uuid& uuid)
     {
         std::lock_guard lock(m_pending_texture_reload_mutex);
@@ -1843,7 +2017,15 @@ namespace ZEngine::Rendering
         if (!handle.Valid())
             return;
 
+        QueueTextureRelease(handle);
+    }
+
+    void RenderResourceManager::QueueTextureRelease(const Rendering::Textures::TextureHandle& handle)
+    {
         std::lock_guard lock(m_pending_texture_release_mutex);
+        for (uint32_t index = 0; index < m_pending_texture_release_count; ++index)
+            if (m_pending_texture_releases[index].Index == handle.Index && m_pending_texture_releases[index].Generation == handle.Generation)
+                return;
         if (m_pending_texture_release_count >= MAX_PENDING)
         {
             ZENGINE_LOG_RENDER_ERR("[RRM] Pending texture release queue full — texture handle (index {}) leaked", handle.Index)
@@ -1852,22 +2034,241 @@ namespace ZEngine::Rendering
         m_pending_texture_releases[m_pending_texture_release_count++] = handle;
     }
 
+    void RenderResourceManager::ReleaseTexture(const Rendering::Textures::TextureHandle& handle)
+    {
+        if (!handle.Valid() || !m_device)
+        {
+            return;
+        }
+        QueueTextureRelease(handle);
+    }
+
     void RenderResourceManager::FlushPendingTextureReleases()
     {
-        uint32_t                           count = 0;
-        Rendering::Textures::TextureHandle local[MAX_PENDING];
+        std::lock_guard lock(m_pending_texture_release_mutex);
+        for (uint32_t index = 0; index < m_pending_texture_release_count;)
         {
-            std::lock_guard lock(m_pending_texture_release_mutex);
-            count = m_pending_texture_release_count;
-            secure_memcpy(local, sizeof(local), m_pending_texture_releases, count * sizeof(local[0]));
-            m_pending_texture_release_count = 0;
-        }
+            const auto handle = m_pending_texture_releases[index];
+            if (GetTextureDecodeState(handle) == TextureDecodeState::Pending)
+            {
+                ++index;
+                continue;
+            }
+            if (const auto* ticket = FindStreamingUploadTicket(handle))
+            {
+                uint64_t       completed = 0;
+                const VkResult result    = vkGetSemaphoreCounterValue(m_device->LogicalDevice, ticket->CompletionTimeline->GetHandle(), &completed);
+                if (result != VK_SUCCESS || completed < ticket->CompletionValue)
+                {
+                    ++index;
+                    continue;
+                }
+                // An obsolete preview may never be drawn/imported by the graph.
+                // Its producer has finished; remove its otherwise orphaned ticket.
+                AcknowledgeStreamingUploadTicket(*ticket);
+            }
 
-        for (uint32_t i = 0; i < count; ++i)
-            m_device->DestroyTexture(local[i]);
+            ForgetTextureDecode(handle);
+            m_device->DestroyTexture(handle);
+            m_pending_texture_releases[index] = m_pending_texture_releases[--m_pending_texture_release_count];
+        }
     }
 
     Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing, bool track_decode)
+    {
+        return SubmitTextureFileInternal(filename, existing, track_decode, 0);
+    }
+
+    void RenderResourceManager::CancelStoppedThumbnailCacheWrites()
+    {
+        // Engine teardown joins/destroys the pool before RRM. Its shutdown can
+        // discard jobs that never started. No callback can run once Pool is null.
+        if (Helpers::ThreadPoolHelper::IsInitialized())
+            return;
+        std::lock_guard lock(m_pending_mutex);
+        for (auto& task : m_thumbnail_cache_writes)
+            if (task.WorkerQueued)
+            {
+                task.WorkerQueued = false;
+                task.Reserved     = false;
+                m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+            }
+        if (m_thumbnail_cache_cleanup.WorkerQueued)
+        {
+            m_thumbnail_cache_cleanup.WorkerQueued = false;
+            m_thumbnail_maintenance_stats.Pending  = false;
+            m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+        }
+    }
+
+    bool RenderResourceManager::SubmitThumbnailCacheCleanup(const char* project_root, uint32_t schema_revision, uint32_t renderer_revision)
+    {
+        std::lock_guard lock(m_pending_mutex);
+        if (!Helpers::ThreadPoolHelper::IsInitialized() || !m_registry || !m_accept_texture_decodes.value.load(std::memory_order_acquire) || m_thumbnail_cache_cleanup.WorkerQueued || !project_root || !project_root[0] || Helpers::secure_strlen(project_root) >= MAX_FILE_PATH_COUNT || !schema_revision || !renderer_revision)
+            return false;
+        auto& task            = m_thumbnail_cache_cleanup;
+        task.Owner            = this;
+        task.SchemaRevision   = schema_revision;
+        task.RendererRevision = renderer_revision;
+        Helpers::secure_strcpy(task.ProjectRoot, sizeof(task.ProjectRoot), project_root);
+        task.WorkerQueued                     = true;
+        m_thumbnail_maintenance_stats.Pending = true;
+        m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
+        if (Helpers::ThreadPoolHelper::Submit(&task, &RenderResourceManager::RunThumbnailCacheCleanup))
+            return true;
+        task.WorkerQueued                     = false;
+        m_thumbnail_maintenance_stats.Pending = false;
+        m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+        return false;
+    }
+
+    RenderResourceManager::ThumbnailMaintenanceStatistics RenderResourceManager::GetThumbnailMaintenanceStatistics()
+    {
+        std::lock_guard lock(m_pending_mutex);
+        return m_thumbnail_maintenance_stats;
+    }
+
+    void RenderResourceManager::RunThumbnailCacheCleanup(void* context)
+    {
+        ZENGINE_PROFILE_SCOPE("ThumbnailProfile.CacheCleanup");
+        auto&                                 task    = *static_cast<ThumbnailCacheCleanupTask*>(context);
+        auto*                                 manager = task.Owner;
+        ThumbnailCacheMaintenance::Statistics stats{};
+        try
+        {
+            const auto resolve = +[](void* context, const uuids::uuid& uuid, ThumbnailCacheMaintenance::CurrentKey* key) {
+                auto& task = *static_cast<ThumbnailCacheCleanupTask*>(context);
+                if (auto* engine = Engine::GetContext(); engine && engine->VFSScanner.IsScanning())
+                    return ThumbnailCacheMaintenance::Resolution::Unknown;
+                AssetRecordSnapshot record{};
+                if (!task.Owner->m_registry->TryReadRecord(uuid, &record))
+                    return ThumbnailCacheMaintenance::Resolution::Missing;
+                if (record.Record.State != AssetState::Loaded && record.Record.State != AssetState::Registered)
+                    return ThumbnailCacheMaintenance::Resolution::Unknown;
+                key->Identity = {.AssetUUID = uuid, .SourceHash = record.Record.Meta.SourceHash, .SchemaRevision = task.SchemaRevision};
+                if (record.Record.Type == AssetType::TEXTURE)
+                    return ThumbnailCacheMaintenance::Resolution::Current;
+                if (record.Record.Type != AssetType::MATERIAL && record.Record.Type != AssetType::MESH)
+                    return ThumbnailCacheMaintenance::Resolution::Missing;
+                uint64_t runtime = 0;
+                if (!Renderers::AssetPreviewPass::DependencyFingerprint(record, &runtime, &key->Identity.DependencyHash, &key->FullyTransparent))
+                    return ThumbnailCacheMaintenance::Resolution::SourceOnly;
+                key->Identity.RendererRevision = task.RendererRevision;
+                return ThumbnailCacheMaintenance::Resolution::Current;
+            };
+            stats = ThumbnailCacheMaintenance::Cleanup(task.ProjectRoot, task.SchemaRevision, task.RendererRevision, resolve, &task, &manager->m_accept_texture_decodes.value);
+        }
+        catch (...)
+        {
+            ++stats.Errors;
+        }
+        {
+            std::lock_guard lock(manager->m_pending_mutex);
+            auto&           total = manager->m_thumbnail_maintenance_stats;
+            ++total.Runs;
+            total.Examined       += stats.Examined;
+            total.Removed        += stats.Removed;
+            total.ReclaimedBytes += stats.ReclaimedBytes;
+            total.Errors         += stats.Errors;
+            total.Pending         = false;
+            task.WorkerQueued     = false;
+        }
+        manager->m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+    }
+
+    void* RenderResourceManager::ReserveThumbnailCacheWrite(const char* filename, const ThumbnailCacheIdentity& identity)
+    {
+        std::lock_guard lock(m_pending_mutex);
+        if (!m_accept_texture_decodes.value.load(std::memory_order_acquire) || !filename || !filename[0] || Helpers::secure_strlen(filename) >= MAX_FILE_PATH_COUNT)
+            return nullptr;
+        for (auto& task : m_thumbnail_cache_writes)
+        {
+            if (task.Reserved)
+                continue;
+            task.Owner    = this;
+            task.Identity = identity;
+            Helpers::secure_strcpy(task.Filename, sizeof(task.Filename), filename);
+            task.Reserved     = true;
+            task.Accepted     = false;
+            task.WorkerQueued = false;
+            return &task;
+        }
+        return nullptr;
+    }
+
+    void RenderResourceManager::AcceptThumbnailCacheWrite(void* context)
+    {
+        if (!context)
+            return;
+        std::lock_guard lock(m_pending_mutex);
+        static_cast<ThumbnailCacheWriteTask*>(context)->Accepted = true;
+    }
+
+    void RenderResourceManager::CancelThumbnailCacheReadback(void* context)
+    {
+        auto&           task = *static_cast<ThumbnailCacheWriteTask*>(context);
+        std::lock_guard lock(task.Owner->m_pending_mutex);
+        task.Reserved = false;
+    }
+
+    void RenderResourceManager::CompleteThumbnailCacheReadback(const void* data, size_t size, void* context)
+    {
+        auto&           task    = *static_cast<ThumbnailCacheWriteTask*>(context);
+        auto*           manager = task.Owner;
+        std::lock_guard lock(manager->m_pending_mutex);
+        if (!task.Accepted || !data || size != sizeof(task.Pixels) || !manager->m_accept_texture_decodes.value.load(std::memory_order_acquire) || Helpers::secure_memcpy(task.Pixels, sizeof(task.Pixels), data, size) != Helpers::MEMORY_OP_SUCCESS)
+        {
+            task.Reserved = false;
+            return;
+        }
+        // Share the shutdown counter with texture workers. Increment while the
+        // acceptance mutex is held, before publishing any worker job.
+        manager->m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
+        task.WorkerQueued = true;
+        // Bounded admission: reject saturated disk work, never execute it inline
+        // (which would also re-enter m_pending_mutex).
+        if (!Helpers::ThreadPoolHelper::Submit(&task, &RenderResourceManager::RunThumbnailCacheWrite))
+        {
+            task.Reserved     = false;
+            task.WorkerQueued = false;
+            manager->m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+        }
+    }
+
+    void RenderResourceManager::RunThumbnailCacheWrite(void* context)
+    {
+        auto& task     = *static_cast<ThumbnailCacheWriteTask*>(context);
+        auto* manager  = task.Owner;
+        auto* previous = Helpers::GetWorkerSlab();
+        Helpers::SetWorkerSlab(nullptr);
+        try
+        {
+            WriteThumbnailCache(task.Filename, task.Pixels, 128, 128, task.Identity, false);
+        }
+        catch (...)
+        {
+            // Optional persistence must not strand a slot or delay shutdown.
+        }
+        Helpers::SetWorkerSlab(previous);
+        {
+            std::lock_guard lock(manager->m_pending_mutex);
+            task.Reserved     = false;
+            task.WorkerQueued = false;
+        }
+        manager->m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::SubmitThumbnailTextureFile(const char* filename, uint32_t extent, bool track_decode, const char* cache_filename, const ThumbnailCacheIdentity* identity, bool cache_only)
+    {
+        constexpr uint32_t kMinThumbnailExtent = 16;
+        if (extent < kMinThumbnailExtent || extent > kMaxThumbnailExtent)
+        {
+            return {};
+        }
+        return SubmitTextureFileInternal(filename, {}, track_decode, extent, cache_filename, identity, cache_only);
+    }
+
+    Rendering::Textures::TextureHandle RenderResourceManager::SubmitTextureFileInternal(const char* filename, Rendering::Textures::TextureHandle existing, bool track_decode, uint32_t thumbnail_extent, const char* cache_filename, const ThumbnailCacheIdentity* identity, bool cache_only)
     {
         using namespace Rendering::Specifications;
 
@@ -1881,10 +2282,19 @@ namespace ZEngine::Rendering
             ZENGINE_CORE_ERROR("Texture path exceeds the {} byte engine limit: {}", MAX_FILE_PATH_COUNT - 1, filename)
             return {};
         }
+        if (cache_filename && Helpers::secure_strlen(cache_filename) >= MAX_FILE_PATH_COUNT)
+        {
+            ZENGINE_CORE_ERROR("Thumbnail cache path exceeds the {} byte engine limit: {}", MAX_FILE_PATH_COUNT - 1, cache_filename)
+            return {};
+        }
         cstring file_ext = std::strrchr(filename, '.');
         if (!file_ext)
             file_ext = "";
         const bool is_environment_map = Helpers::secure_strcmp(file_ext, ".zenvmap") == 0;
+        if (thumbnail_extent != 0 && is_environment_map)
+        {
+            return {};
+        }
         if (Helpers::secure_strcmp(file_ext, ".hdr") == 0 || Helpers::secure_strcmp(file_ext, ".exr") == 0)
         {
             ZENGINE_CORE_ERROR("[RRM] Raw HDR environment maps must be imported into a .zenvmap artifact before runtime upload: {}", filename)
@@ -1909,13 +2319,26 @@ namespace ZEngine::Rendering
         }
         else
         {
-            int w, h, ch;
-            if (!stbi_info(filename, &w, &h, &ch))
-                return {};
-
-            spec.Width  = static_cast<uint32_t>(w);
-            spec.Height = static_cast<uint32_t>(h);
-            spec.Format = ImageFormat::R8G8B8A8_SRGB;
+            if (thumbnail_extent != 0)
+            {
+                // Preview output dimensions are known up front. Keep source/cache
+                // header I/O on the worker, including corrupt-cache failures, so
+                // visible-card construction does not synchronously open images.
+                spec.Width  = thumbnail_extent;
+                spec.Height = thumbnail_extent;
+            }
+            else
+            {
+                int w = 0, h = 0, ch = 0;
+                if (!stbi_info(filename, &w, &h, &ch))
+                    return {};
+                spec.Width  = static_cast<uint32_t>(w);
+                spec.Height = static_cast<uint32_t>(h);
+            }
+            // ZUI composites display-encoded RGB into a UNORM swapchain (like its
+            // tokens and font atlas). SRGB sampling here would linearize preview
+            // bytes without a matching output encode, making them visibly dark.
+            spec.Format = thumbnail_extent != 0 ? ImageFormat::R8G8B8A8_UNORM : ImageFormat::R8G8B8A8_SRGB;
         }
 
         if (spec.IsCubemap)
@@ -1944,7 +2367,7 @@ namespace ZEngine::Rendering
         }
         else
         {
-            tex_handle = m_device->CreateTexture(spec);
+            tex_handle = m_device->CreateTexture(spec, nullptr, thumbnail_extent ? ThumbnailTextureSlotReserve : 0);
         }
 
         if (track_decode && (!tex_handle.Valid() || !TrackTextureDecode(tex_handle)))
@@ -1963,7 +2386,15 @@ namespace ZEngine::Rendering
         task->Texture          = tex_handle;
         task->IsEnvironmentMap = is_environment_map;
         task->TrackCompletion  = track_decode;
+        task->FitIntoSquare    = thumbnail_extent != 0;
+        task->CacheOnly        = cache_only;
+        if (identity)
+            task->CacheIdentity = *identity;
         Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
+        if (cache_filename)
+        {
+            Helpers::secure_strcpy(task->CacheFilename, sizeof(task->CacheFilename), cache_filename);
+        }
 
         if (!m_queued_texture_decodes.push(task))
         {
@@ -2003,7 +2434,7 @@ namespace ZEngine::Rendering
                 PublishTextureDecodeCompletion(task->Texture, false);
             ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
             CompleteTextureDecodeTask(task);
-            ZENGINE_CORE_ERROR("[RRM] Texture decode rejected because the thread pool is shutting down")
+            ZENGINE_CORE_WARN("[RRM] Texture decode rejected because the worker pool is unavailable or saturated")
             return;
         }
     }
@@ -2013,6 +2444,22 @@ namespace ZEngine::Rendering
         TextureDecodeTask* task = nullptr;
         while (m_queued_texture_decodes.pop(task))
             m_texture_task_slab.Free(task);
+    }
+
+    bool RenderResourceManager::AspectFitThumbnail(const uint8_t* source, int width, int height, uint8_t* destination, uint32_t extent)
+    {
+        if (!source || !destination || width <= 0 || height <= 0 || extent == 0 || extent > kMaxThumbnailExtent)
+            return false;
+
+        const size_t byte_size = static_cast<size_t>(extent) * extent * STBI_rgb_alpha;
+        Helpers::secure_memset(destination, 0, byte_size, byte_size);
+        const uint32_t source_width  = static_cast<uint32_t>(width);
+        const uint32_t source_height = static_cast<uint32_t>(height);
+        const bool     width_limited = source_width >= source_height;
+        const uint32_t scaled_width  = width_limited ? extent : std::max(1u, static_cast<uint32_t>((static_cast<uint64_t>(source_width) * extent) / source_height));
+        const uint32_t scaled_height = width_limited ? std::max(1u, static_cast<uint32_t>((static_cast<uint64_t>(source_height) * extent) / source_width)) : extent;
+        uint8_t* const fitted        = destination + ((extent - scaled_height) / 2u) * extent * STBI_rgb_alpha + ((extent - scaled_width) / 2u) * STBI_rgb_alpha;
+        return stbir_resize_uint8(source, width, height, 0, fitted, static_cast<int>(scaled_width), static_cast<int>(scaled_height), static_cast<int>(extent * STBI_rgb_alpha), STBI_rgb_alpha) != 0;
     }
 
     void RenderResourceManager::RunTextureDecodeTask(void* context)
@@ -2038,8 +2485,9 @@ namespace ZEngine::Rendering
                 else
                 {
                     byte_size = cubemap.BufferSize;
-                    pixels    = static_cast<uint8_t*>(slab->Alloc(byte_size));
-                    Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
+                    pixels    = static_cast<uint8_t*>(slab->TryRealloc(nullptr, byte_size));
+                    if (pixels)
+                        Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
                 }
             }
             else
@@ -2049,29 +2497,57 @@ namespace ZEngine::Rendering
         }
         else
         {
-            stbi_set_flip_vertically_on_load_thread(1);
-            int      width = 0, height = 0, channels = 0;
-            stbi_uc* image_data = stbi_load(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
+            // Rendered previews retain top-down GPU rows; ordinary source previews
+            // use the existing bottom-up upload + UI V-flip convention.
+            stbi_set_flip_vertically_on_load_thread(task->CacheOnly ? 0 : 1);
+            int        width = 0, height = 0, channels = 0;
+            stbi_uc*   image_data = task->FitIntoSquare ? ReadThumbnailCache(task->CacheFilename, task->Specification.Width, task->Specification.Height, task->CacheIdentity) : nullptr;
+            const bool cache_hit  = image_data != nullptr;
+            if (cache_hit)
+            {
+                width  = static_cast<int>(task->Specification.Width);
+                height = static_cast<int>(task->Specification.Height);
+            }
+            else if (!task->CacheOnly)
+                image_data = stbi_load(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
             if (!image_data)
             {
-                ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
+                if (!task->CacheOnly)
+                    ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
             }
             else
             {
-                const size_t total_pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
-                byte_size                 = total_pixels * STBI_rgb_alpha;
-                pixels                    = static_cast<uint8_t*>(slab->Alloc(byte_size));
-                if (channels <= STBI_rgb)
+                const uint32_t target_width  = task->Specification.Width;
+                const uint32_t target_height = task->Specification.Height;
+                const size_t   total_pixels  = static_cast<size_t>(target_width) * static_cast<size_t>(target_height);
+                byte_size                    = total_pixels * STBI_rgb_alpha;
+                // Keep the decoded allocation when its dimensions already match.
+                // Two 4K RGBA buffers plus TLSF overhead exceed a 128 MiB lease.
+                if (width == static_cast<int>(target_width) && height == static_cast<int>(target_height))
                 {
-                    stbir_resize_uint8(image_data, width, height, 0, pixels, width, height, 0, STBI_rgb_alpha);
-                    for (size_t i = 0; i < total_pixels; ++i)
-                        pixels[i * STBI_rgb_alpha + 3] = 255;
+                    pixels = image_data;
                 }
                 else
                 {
-                    Helpers::secure_memmove(pixels, byte_size, image_data, byte_size);
+                    pixels = static_cast<uint8_t*>(slab->TryRealloc(nullptr, byte_size));
+                    if (pixels)
+                    {
+                        const bool resized = task->FitIntoSquare ? AspectFitThumbnail(image_data, width, height, pixels, target_width) : stbir_resize_uint8(image_data, width, height, 0, pixels, static_cast<int>(target_width), static_cast<int>(target_height), 0, STBI_rgb_alpha) != 0;
+                        if (!resized)
+                        {
+                            slab->Free(pixels);
+                            pixels = nullptr;
+                        }
+                    }
+                    stbi_image_free(image_data);
                 }
-                stbi_image_free(image_data);
+                if (!pixels)
+                    ZENGINE_CORE_ERROR("[RRM] Texture resize failed or exceeded the decode memory budget: {}", task->Filename)
+
+                if (pixels && task->FitIntoSquare && !cache_hit && task->CacheFilename[0] != '\0')
+                {
+                    WriteThumbnailCache(task->CacheFilename, pixels, target_width, target_height, task->CacheIdentity);
+                }
             }
         }
 
@@ -2097,8 +2573,10 @@ namespace ZEngine::Rendering
             }
         }
 
-        if (task->TrackCompletion)
-            manager->PublishTextureDecodeCompletion(task->Texture, decode_succeeded);
+        // CPU success is not GPU readiness. The render-thread submission callback
+        // publishes success only after a streaming ticket exists for this texture.
+        if (task->TrackCompletion && !decode_succeeded)
+            manager->PublishTextureDecodeCompletion(task->Texture, false);
         Helpers::SetWorkerSlab(previous);
         if (!decode_succeeded)
             manager->ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
@@ -2116,6 +2594,7 @@ namespace ZEngine::Rendering
         if (!handle.Valid())
             return false;
 
+        std::lock_guard lock(m_texture_decode_mutex);
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
         {
             if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
@@ -2138,6 +2617,7 @@ namespace ZEngine::Rendering
     RenderResourceManager::TextureDecodeState RenderResourceManager::GetTextureDecodeState(const Rendering::Textures::TextureHandle& handle)
     {
         DrainTextureDecodeCompletions();
+        std::lock_guard lock(m_texture_decode_mutex);
         for (const TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
         {
             if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
@@ -2148,6 +2628,7 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::ForgetTextureDecode(const Rendering::Textures::TextureHandle& handle)
     {
+        std::lock_guard lock(m_texture_decode_mutex);
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
         {
             if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
@@ -2166,6 +2647,7 @@ namespace ZEngine::Rendering
 
     void RenderResourceManager::DrainTextureDecodeCompletions()
     {
+        std::lock_guard         lock(m_texture_decode_mutex);
         TextureDecodeCompletion completion = {};
         while (m_texture_decode_tracker.Completions.pop(completion))
         {
@@ -2176,6 +2658,19 @@ namespace ZEngine::Rendering
                     tracked.State = completion.Success ? TextureDecodeState::Succeeded : TextureDecodeState::Failed;
                     break;
                 }
+            }
+        }
+    }
+
+    void RenderResourceManager::MarkTextureUploadSubmitted(const Rendering::Textures::TextureHandle& handle)
+    {
+        std::lock_guard lock(m_texture_decode_mutex);
+        for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
+            if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation && tracked.State == TextureDecodeState::Pending)
+            {
+                tracked.State = TextureDecodeState::Succeeded;
+                return;
             }
         }
     }

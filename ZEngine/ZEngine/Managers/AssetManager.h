@@ -23,7 +23,7 @@ namespace ZEngine::Managers
         Core::Memory::ArenaAllocator*                                                       Arena                   = nullptr;
         cstring                                                                             CurrentWorkingSpacePath = "";
 
-        // TLSF slab for the 5 long-lived growing containers below.
+        // TLSF slab for growing containers and individually reclaimable mesh payloads.
         // Realloc extends in-place when the following block is free — eliminates
         // the dead-block accumulation from arena-backed grows (~20 MB per 100 sessions).
         static constexpr size_t                                                             CONTAINER_SLAB_BYTES    = 256 * 1024 * 1024; // 256 MB
@@ -41,29 +41,38 @@ namespace ZEngine::Managers
         // GPU texture handle map — needed to resolve material → texture handles at upload time.
         Core::Containers::UnorderedHashMap<uuids::uuid, Rendering::Textures::TextureHandle> UUIDToTextureHandle     = {};
 
-        // Mesh UUID → NodeHierarchy slot — O(1) lookup replacing the old linear scan.
-        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           MeshToHierarchySlot     = {};
+        struct MeshBinding
+        {
+            uint32_t MeshSlot      = 0;
+            uint32_t HierarchySlot = 0;
+        };
+        // Stable CPU slots outlive a deleted source/registry record: live actors
+        // may still use them. Reimport replaces this pair, never resolves it via
+        // a scanner placeholder's packed handle.
+        Core::Containers::UnorderedHashMap<uuids::uuid, MeshBinding> MeshBindings       = {};
         // Populated only when asset data is actually ingested — not by VFSScanner
         // pre-registration (which sets SlotHandle=0, causing GetAsset to return a
         // false match for any material at slot 0).
-        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>                           UUIDToMaterialSlot      = {};
+        Core::Containers::UnorderedHashMap<uuids::uuid, uint32_t>    UUIDToMaterialSlot = {};
 
         struct MeshCacheAllocation
         {
             Core::Memory::ArenaAllocator Arena = {};
             Core::Memory::TLSFSlab*      Slab  = nullptr;
-            void*                        Block = nullptr;
-            ~MeshCacheAllocation()
+            // Header and borrowed payload arena occupy one slab block. Destroy
+            // the arena before freeing its containing block; never use delete.
+            static void                  Destroy(MeshCacheAllocation* allocation)
             {
-                Arena.Shutdown();
-                if (Slab)
+                if (allocation)
                 {
-                    Slab->Free(Block);
+                    auto* slab = allocation->Slab;
+                    allocation->~MeshCacheAllocation();
+                    slab->Free(allocation);
                 }
             }
         };
-        // Immutable checked-load payloads share the existing bounded asset slab.
-        // Their arena views stay at stable addresses while cache arrays can grow.
+        // One immutable payload per Meshes slot, for both ingestion paths. Arena
+        // views stay at stable addresses while the descriptor arrays can grow.
         Core::Containers::Array<MeshCacheAllocation*> MeshCacheAllocations  = {};
 
         // (255, 20, 147) fallback handle used when a texture file cannot be resolved.
@@ -119,10 +128,10 @@ namespace ZEngine::Managers
         // Returns true if uuid is already registered — used by Ingest* for deduplication.
         static bool                                   IsRegistered(const uuids::uuid& id);
 
-        // Direct ingest — called from ImportCoordinator thread after AssetCodec cooks the file.
-        // Each method deduplicates (no-ops if uuid is already registered), copies data into
-        // arena-backed flat buffers, and calls RegisterAsset. Thread-safe via IngestMutex.
-        static void                                   IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy);
+        // Direct ingest is serialized by IngestMutex. Mesh replacement preserves
+        // stable CPU slots and fails without modifying them on registry conflicts.
+        // Async callers pass the pre-read snapshot to reject obsolete decodes.
+        static bool                                   IngestMesh(Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy, const Core::VFS::AssetRecordSnapshot* expected_record = nullptr);
         static Rendering::Textures::TextureHandle     IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path);
         static void                                   IngestTextures(Core::Containers::Array<Importers::AssetTexture>&& textures);
         static void                                   IngestMaterial(Importers::AssetMaterial&& material);
@@ -155,7 +164,10 @@ namespace ZEngine::Managers
     private:
         /// Caller must hold IngestMutex. Kept separate so checked loading can
         /// recheck a competing completed binding without re-entering the lock.
-        [[nodiscard]] bool TryGetMeshDrawCountLocked(const uuids::uuid& id, uint32_t* out_draws);
+        [[nodiscard]] bool                           TryGetMeshDrawCountLocked(const uuids::uuid& id, uint32_t* out_draws);
+        /// Caller holds IngestMutex. Publishes complete staged data and its two
+        /// registry handles as one checked transaction; takes storage on success.
+        [[nodiscard]] Core::VFS::VFSResult<uint32_t> PublishMesh(const Core::VFS::AssetRecordSnapshot& expected, Importers::AssetMesh&& mesh, Importers::AssetNodeHierarchy&& hierarchy, MeshCacheAllocation* storage);
 
     public:
         template <typename T, typename K>

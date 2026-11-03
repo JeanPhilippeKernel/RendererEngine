@@ -75,7 +75,16 @@ namespace ZEngine::Hardwares
     struct AsyncGPUOperation;
     struct AsyncGPUOperationHandle;
 
-    inline constexpr uint32_t kMaxShaderReloadPathBytes = 512;
+    inline constexpr uint32_t kMaxShaderReloadPathBytes       = 512;
+
+    // The forward material pass combines the bindless array with diffuse and
+    // specular environment maps plus the BRDF LUT in the same fragment stage.
+    inline constexpr uint32_t kMaterialPassLocalSampledImages = 3;
+    constexpr uint32_t        GlobalTextureCapacity(uint32_t requested, uint32_t per_stage_limit)
+    {
+        const uint32_t available = per_stage_limit > kMaterialPassLocalSampledImages ? per_stage_limit - kMaterialPassLocalSampledImages : 0;
+        return requested < available ? requested : available;
+    }
 
     /// @brief Cross-thread request consumed by the render thread before command recording.
     struct ShaderReloadRequest
@@ -378,6 +387,9 @@ namespace ZEngine::Hardwares
         Core::Containers::HashSet<uint32_t>                                                                                          ShaderReservedBindingSets                                                   = {};
         Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                                                              = {};
         Helpers::HandleManager<ImageBuffer>                                                                                          ImageBufferManager                                                          = {};
+        // Image creation can originate on the UI thread. Its persistent view
+        // metadata must never allocate from the render thread's scratch arena.
+        Core::Memory::TLSFSlab                                                                                                       ImageViewCacheSlab                                                          = {};
         Core::Containers::MPSCQueue<Rendering::Textures::TextureHandle, 8192>                                                        TextureHandleToUpdates                                                      = {};
         Core::Containers::SPSCQueue<Rendering::Textures::TextureHandle, 128>                                                         DeferredTextureDescriptorUpdates                                            = {};
         TextureDisposeQueue                                                                                                          TextureHandleToDispose                                                      = {};
@@ -448,7 +460,8 @@ namespace ZEngine::Hardwares
         bool                                            ReloadShader(cstring shader_name);
 
         /// @brief Creates a texture and assigns the optional allocator debug name.
-        Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr);
+        /// Optional work may reserve bindless slots for scene/graph allocations.
+        Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr, uint32_t reserved_slots = 0);
         /// @brief Creates a texture object aliased to the backing allocation of `source`.
         Rendering::Textures::TextureHandle              CreateAliasingTexture(const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source, cstring debug_name = nullptr);
 

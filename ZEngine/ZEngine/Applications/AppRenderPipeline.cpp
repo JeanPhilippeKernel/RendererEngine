@@ -14,6 +14,7 @@
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -23,6 +24,11 @@ using namespace ZEngine::Core::Maths;
 
 namespace
 {
+    struct TransparentCommand
+    {
+        ZEngine::Rendering::Scenes::FrustumCullingInput Input     = {};
+        float                                           ViewDepth = 0.f;
+    };
     // Gribb-Hartmann frustum extraction from a combined VP matrix (row-major, Vulkan NDC z∈[0,1]).
     // Each plane is stored as (nx, ny, nz, d) — normalized so distance = dot(n,p)+d.
     struct FrustumPlane
@@ -242,10 +248,12 @@ namespace ZEngine::Applications
 
             Core::Containers::Array<Rendering::Meshes::SubMeshAllocation>   allocs;
             Core::Containers::Array<Rendering::Scenes::FrustumCullingInput> culling_inputs;
+            Core::Containers::Array<TransparentCommand>                     transparent_inputs{};
             Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
             Core::Containers::Array<uint32_t>                               selection_token_states;
             allocs.init(scratch.Arena, scene.InstanceCount * 4);
             culling_inputs.init(scratch.Arena, scene.InstanceCount * 4);
+            transparent_inputs.init(scratch.Arena, scene.InstanceCount * 4);
             transforms.init(scratch.Arena, scene.InstanceCount);
             if (state.SelectionOutline.Enabled())
             {
@@ -342,11 +350,25 @@ namespace ZEngine::Applications
                         selection_token_states[alloc.PickToken] = feedback_state;
                     }
                     allocs.push(alloc);
-                    VkDrawIndirectCommand draw = {.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx};
-                    culling_inputs.push({.WorldBounds = world_bounds, .Command = draw});
+                    VkDrawIndirectCommand                        draw  = {.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx};
+                    const Rendering::Scenes::FrustumCullingInput input = {.WorldBounds = world_bounds, .Command = draw};
+                    if (mat_idx < mgr->GPUMeshMaterials.size() && mgr->GPUMeshMaterials[mat_idx].AlphaMode == Rendering::Materials::AlphaMode::Blend)
+                    {
+                        const auto center      = inst.Transform * Vec4f(mesh->BoundsCenter, 1.f);
+                        const auto view_center = camera.View * center;
+                        transparent_inputs.push({.Input = input, .ViewDepth = -view_center.z});
+                    }
+                    else
+                        culling_inputs.push(input);
                 }
             }
 
+            gpu->OpaqueIndirectCommandCount      = static_cast<uint32_t>(culling_inputs.size());
+            gpu->TransparentIndirectCommandCount = static_cast<uint32_t>(transparent_inputs.size());
+            if (transparent_inputs.size() > 1)
+                std::sort(transparent_inputs.data(), transparent_inputs.data() + transparent_inputs.size(), [](const TransparentCommand& a, const TransparentCommand& b) { return Rendering::Materials::TransparentDepthBefore(a.ViewDepth, a.Input.Command.firstInstance, b.ViewDepth, b.Input.Command.firstInstance); });
+            for (const auto& transparent : transparent_inputs)
+                culling_inputs.push(transparent.Input);
             gpu->IndirectCommandCount = static_cast<uint32_t>(culling_inputs.size());
             ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
 

@@ -288,6 +288,7 @@ namespace ZEngine::Rendering::Renderers
     {
         None,
         Readback,
+        ReadbackRestore,
         QueryReadback,
     };
 
@@ -301,6 +302,9 @@ namespace ZEngine::Rendering::Renderers
         bool               DiscardContents  = false;
         RGSubresourceRange Range            = {};
     };
+
+    /// Materialize a transition, including ordering recycled transient storage.
+    VkImageMemoryBarrier2 BuildRGImageBarrier(const RGImageBarrierPlan& plan, const RGResourceState& source, VkImage image);
 
     struct RGBufferBarrierPlan
     {
@@ -455,6 +459,7 @@ namespace ZEngine::Rendering::Renderers
         bool                  Recorded              = false;
         bool                  Submitted             = false;
         bool                  CancellationDelivered = false;
+        bool                  RestoreSampled        = false;
     };
 
     /// @brief Persistent Vulkan storage for one logical occlusion query pool.
@@ -945,8 +950,9 @@ namespace ZEngine::Rendering::Renderers
         /// @details The image is copied to the graph's timeline-gated readback ring.
         /// `size` is explicit so callers choose the intended output packing; it must
         /// describe the bytes written by `region`. The callback runs on the render
-        /// thread and may retain data only by copying it.
-        RGReadbackHandle DeclareImageReadback(cstring name, RGResourceHandle image, const RGImageReadbackRegion& region, RGReadbackFn callback, void* context, VkDeviceSize size, RGReadbackCancelFn cancellation = nullptr);
+        /// thread and may retain data only by copying it. `restore_sampled` adds
+        /// a graph-managed shader-read transition explicitly ordered after copy.
+        RGReadbackHandle DeclareImageReadback(cstring name, RGResourceHandle image, const RGImageReadbackRegion& region, RGReadbackFn callback, void* context, VkDeviceSize size, RGReadbackCancelFn cancellation = nullptr, bool restore_sampled = false);
 
         /// @brief Declares a graph-owned occlusion query pool.
         /// @details The same named declaration may be made by several passes,

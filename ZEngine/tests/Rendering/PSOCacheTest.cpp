@@ -5,6 +5,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <gtest/gtest.h>
+#include "../Misc/SaturatedBackgroundPool.h"
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::VFS;
@@ -14,6 +15,19 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 {
     struct PSOCacheTestAccess
     {
+        static void CheckSaturatedAsyncDispatch(PSOCache& cache)
+        {
+            cache.m_accept_async_jobs           = true;
+            cache.m_worker_pipeline_cache_count = 1;
+            cache.m_available_worker_pipeline_caches.value.store(1);
+            auto& job = cache.m_async_jobs[0];
+            job.State = PSOCache::AsyncPipelineJobState::Queued;
+            cache.DispatchQueuedAsyncPipelineJobs();
+            EXPECT_EQ(job.State, PSOCache::AsyncPipelineJobState::Queued);
+            EXPECT_EQ(job.WorkerCacheIndex, UINT32_MAX);
+            EXPECT_EQ(cache.m_active_async_jobs.value.load(), 0u);
+            EXPECT_EQ(cache.m_available_worker_pipeline_caches.value.load(), 1u);
+        }
         static void SetDevice(PSOCache& cache, ZEngine::Hardwares::VulkanDevice* device)
         {
             cache.m_device = device;
@@ -331,6 +345,14 @@ TEST_F(PSOCacheWarmupTest, RejectsShortAndFailedPayloadReadsAndRecovers)
     EXPECT_EQ(DeviceArena.m_current_offset, Context.ExpectedCurrentOffset);
     EXPECT_EQ(DeviceArena.m_previous_offset, Context.ExpectedPreviousOffset);
     EXPECT_EQ(Cache->GetTelemetry().WarmupRecipeLoadSuccesses, 1u);
+}
+
+TEST(PSOCacheAdmissionTest, SaturatedBackgroundPoolReturnsLeaseAndLeavesJobQueued)
+{
+    SaturatedBackgroundPool background{};
+    ASSERT_TRUE(background.Fill());
+    auto cache = std::make_unique<PSOCache>();
+    PSOCacheTestAccess::CheckSaturatedAsyncDispatch(*cache);
 }
 
 TEST(PSOCacheInvalidationTest, RetainsPinnedComputePipeline)

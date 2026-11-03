@@ -416,6 +416,24 @@ namespace ZEngine::Importers
         return true;
     }
 
+    static void ExtractMaterialProperties(const fastgltf::Material& src, AssetMaterial& dst)
+    {
+        const auto& pbr       = src.pbrData;
+        dst.AlbedoColor[0]    = pbr.baseColorFactor.x();
+        dst.AlbedoColor[1]    = pbr.baseColorFactor.y();
+        dst.AlbedoColor[2]    = pbr.baseColorFactor.z();
+        dst.AlbedoColor[3]    = pbr.baseColorFactor.w();
+        dst.RoughnessColor[0] = pbr.metallicFactor;
+        dst.RoughnessColor[1] = pbr.roughnessFactor;
+        dst.EmissiveColor[0]  = src.emissiveFactor.x();
+        dst.EmissiveColor[1]  = src.emissiveFactor.y();
+        dst.EmissiveColor[2]  = src.emissiveFactor.z();
+        dst.EmissiveColor[3]  = 1.f;
+        using Rendering::Materials::AlphaMode;
+        dst.AlphaMode  = src.alphaMode == fastgltf::AlphaMode::Blend ? AlphaMode::Blend : src.alphaMode == fastgltf::AlphaMode::Mask ? AlphaMode::Mask : AlphaMode::Opaque;
+        dst.Factors[2] = src.alphaCutoff;
+    }
+
     static void ExtractMaterials(Core::Memory::ArenaAllocator* arena, const fastgltf::Asset& asset, uuid_random_generator& gen, Array<AssetMaterial>& out)
     {
         uint32_t n = (uint32_t) asset.materials.size();
@@ -428,23 +446,7 @@ namespace ZEngine::Importers
             dst.MaterialUUID   = gen();
             dst.Name.init(arena, src.name.empty() ? "material" : src.name.data());
 
-            {
-                const auto& pbr       = src.pbrData;
-                dst.AlbedoColor[0]    = pbr.baseColorFactor.x();
-                dst.AlbedoColor[1]    = pbr.baseColorFactor.y();
-                dst.AlbedoColor[2]    = pbr.baseColorFactor.z();
-                dst.AlbedoColor[3]    = pbr.baseColorFactor.w();
-                dst.RoughnessColor[0] = pbr.metallicFactor;
-                dst.RoughnessColor[1] = pbr.roughnessFactor;
-            }
-
-            dst.EmissiveColor[0] = src.emissiveFactor.x();
-            dst.EmissiveColor[1] = src.emissiveFactor.y();
-            dst.EmissiveColor[2] = src.emissiveFactor.z();
-            dst.EmissiveColor[3] = 1.f;
-
-            if (src.alphaMode == fastgltf::AlphaMode::Blend)
-                dst.Factors[2] = 0.5f;
+            ExtractMaterialProperties(src, dst);
         }
     }
 
@@ -711,7 +713,11 @@ namespace ZEngine::Importers
             Managers::AssetManager::IngestTextures(std::move(textures));
             for (size_t i = 0; i < materials.size(); ++i)
                 Managers::AssetManager::IngestMaterial(std::move(materials[i]));
-            Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy));
+            if (!Managers::AssetManager::IngestMesh(std::move(mesh), std::move(hierarchy)))
+            {
+                Arena.Clear();
+                return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::Cancelled);
+            }
         }
 
         Arena.Clear();
@@ -735,13 +741,16 @@ namespace ZEngine::Importers
         // strings independently and remain valid throughout the completion callback.
         Core::Memory::ArenaAllocator scratch{};
         Arena.CreateSubArena(ZMega(32), &scratch, "ImportPipeline/GltfImporter/EditorScratch");
-        arena               = &scratch;
+        arena                         = &scratch;
 
-        // Config remains borrowed throughout this synchronous call; no scratch copy.
-        const auto& config  = cfg;
+        // Strings remain borrowed throughout this synchronous call. Add source
+        // provenance to the local configuration without changing the caller.
+        auto config                   = cfg;
+        config.MaterialSourcePath     = filename;
+        config.MaterialSourceImporter = "GltfImporter";
 
-        auto        fs_path = std::filesystem::path(filename);
-        auto        buf     = fastgltf::GltfDataBuffer::FromPath(fs_path);
+        auto fs_path                  = std::filesystem::path(filename);
+        auto buf                      = fastgltf::GltfDataBuffer::FromPath(fs_path);
         if (buf.error() != fastgltf::Error::None)
         {
             if (on_error)

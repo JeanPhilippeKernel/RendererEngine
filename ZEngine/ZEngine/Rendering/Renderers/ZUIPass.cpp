@@ -107,6 +107,10 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_VALIDATE_ASSERT(res_builder != nullptr, "ZUI pass requires a render graph resource builder")
         res_builder->ReadTexture(RendererResourceName::FrameColorRenderTargetName);
+        // Dynamic Project View images share the bindless array with the atlas.
+        // This read makes the graph acquire published uploads even in an empty
+        // scene where no G-buffer/material pass consumes the descriptor array.
+        res_builder->ReadBindless();
         res_builder->WriteSwapchain();
 
         m_vtx_upload = 0;

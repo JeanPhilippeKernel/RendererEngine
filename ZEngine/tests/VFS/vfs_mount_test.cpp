@@ -4,6 +4,8 @@
 #include <ZEngine/Core/VFS/VFSMountTable.h>
 #include <gtest/gtest.h>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Core::Containers;
@@ -18,10 +20,11 @@ namespace
 
     struct MockBackend : IVFSBackend
     {
-        const char*    Name          = nullptr;
-        VFSBackendCaps Caps          = VFSBackendCaps::None;
-        VFSPath        LastOpen      = {};
-        uint32_t       MutationCalls = 0;
+        const char*              Name          = nullptr;
+        VFSBackendCaps           Caps          = VFSBackendCaps::None;
+        VFSPath                  LastOpen      = {};
+        uint32_t                 MutationCalls = 0;
+        std::vector<VFSDirEntry> Entries{};
 
         explicit MockBackend(const char* name, VFSBackendCaps caps = VFSBackendCaps::Read) : Name(name), Caps(caps) {}
 
@@ -59,9 +62,13 @@ namespace
             ++MutationCalls;
             return VFSResult<void>::Ok();
         }
-        VFSResult<Array<VFSDirEntry>> List(ArenaAllocator*, const VFSPath&) const override
+        VFSResult<Array<VFSDirEntry>> List(ArenaAllocator* arena, const VFSPath&) const override
         {
-            return VFSResult<Array<VFSDirEntry>>::Fail(VFSError::Unsupported);
+            Array<VFSDirEntry> result{};
+            result.init(arena, Entries.size() + 1);
+            for (const auto& entry : Entries)
+                result.push(entry);
+            return VFSResult<Array<VFSDirEntry>>::Ok(std::move(result));
         }
         cstring BackendType() const override
         {
@@ -271,4 +278,68 @@ TEST_F(VFSContextTest, MutationsNeverFallThroughAReadOnlyOwningMount)
     EXPECT_TRUE(m_ctx.RemoveAll(P("/writable/folder")).Succeeded());
     EXPECT_TRUE(m_ctx.Rename(P("/writable/file"), P("/other")).Succeeded());
     EXPECT_EQ(base.MutationCalls, 4u);
+}
+
+TEST(VFSListingTest, DeduplicationPreservesPriorityOrderAndWinningEntryMetadata)
+{
+    MemoryManager memory{};
+    memory.Initialize(ZMega(16), {});
+    VFSContext vfs{};
+    vfs.Initialize(&memory.MainArena, 8);
+    ArenaAllocator output{};
+    output.Initialize(ZMega(8), 0);
+    MockBackend base("base"), overlay("overlay");
+    VFSDirEntry winner = {};
+    winner.Path        = P("/shared");
+    winner.IsDirectory = true;
+    overlay.Entries    = {
+        winner, {{}, P("/overlay-only"), false},
+         winner
+    };
+    base.Entries = {
+        {{},    P("/assets/shared"), false},
+        {{}, P("/assets/base-only"), false},
+        {{},    P("/assets/Shared"), false}
+    };
+    ASSERT_TRUE(vfs.Mount(&base, VFSPath::Root(), 0).Succeeded());
+    ASSERT_TRUE(vfs.Mount(&overlay, P("/assets"), 10).Succeeded());
+    const size_t before = memory.MainArena.m_current_offset;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        output.Clear();
+        auto result = vfs.List(P("/assets"), &output);
+        ASSERT_TRUE(result.Succeeded());
+        ASSERT_EQ(result.Value().size(), 4u);
+        EXPECT_TRUE(result.Value()[0].Path == P("/assets/shared"));
+        EXPECT_TRUE(result.Value()[0].IsDirectory);
+        EXPECT_TRUE(result.Value()[1].Path == P("/assets/overlay-only"));
+        EXPECT_TRUE(result.Value()[2].Path == P("/assets/base-only"));
+        EXPECT_TRUE(result.Value()[3].Path == P("/assets/Shared"));
+        EXPECT_EQ(memory.MainArena.m_current_offset, before);
+    }
+}
+
+TEST(VFSListingTest, LargeDuplicateListingSurvivesHashAndOutputGrowth)
+{
+    MemoryManager memory{};
+    memory.Initialize(ZMega(64), {});
+    VFSContext vfs{};
+    vfs.Initialize(&memory.MainArena, 8);
+    ArenaAllocator output{};
+    output.Initialize(ZMega(32), 0);
+    MockBackend backend("large");
+    for (int i = 0; i < 4096; ++i)
+    {
+        const std::string path = "/Asset_" + std::to_string(i);
+        backend.Entries.push_back({{}, P(path.c_str()), false});
+    }
+    // Keys must survive output growth; probing collisions compare full strings.
+    for (int i = 0; i < 4096; ++i)
+        backend.Entries.push_back(backend.Entries[i]);
+    ASSERT_TRUE(vfs.Mount(&backend, VFSPath::Root(), 0).Succeeded());
+    auto result = vfs.List(VFSPath::Root(), &output);
+    ASSERT_TRUE(result.Succeeded());
+    ASSERT_EQ(result.Value().size(), 4096u);
+    for (size_t i = 0; i < result.Value().size(); ++i)
+        EXPECT_TRUE(result.Value()[i].Path == backend.Entries[i].Path);
 }

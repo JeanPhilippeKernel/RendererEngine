@@ -1,7 +1,9 @@
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
+#include <ZEngine/Rendering/Renderers/RenderRecordingWorkers.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -336,11 +338,10 @@ namespace ZEngine::Rendering::Renderers
 
         struct RenderGraphSecondaryRecordTask
         {
-            RenderGraph*            Graph      = nullptr;
-            const RGTopologyLevel*  Level      = nullptr;
-            uint32_t                Worker     = UINT32_MAX;
-            uint8_t                 FrameIndex = 0;
-            PaddedAtomic<uint32_t>* Completion = nullptr;
+            RenderGraph*           Graph      = nullptr;
+            const RGTopologyLevel* Level      = nullptr;
+            uint32_t               Worker     = UINT32_MAX;
+            uint8_t                FrameIndex = 0;
         };
 
         void RecordGraphSecondary(RenderGraph* graph, RGPass& pass, uint8_t frame_index)
@@ -380,8 +381,6 @@ namespace ZEngine::Rendering::Renderers
                     }
                 }
             }
-            if (task.Completion)
-                task.Completion->value.fetch_sub(1, std::memory_order_release);
         }
 
         void AppendUnsigned(Core::Containers::String& output, uint64_t value)
@@ -833,6 +832,27 @@ namespace ZEngine::Rendering::Renderers
     static VkImageSubresourceRange ToVkSubresourceRange(const RGSubresourceRange& range)
     {
         return {.aspectMask = range.AspectMask, .baseMipLevel = range.BaseMipLevel, .levelCount = range.LevelCount, .baseArrayLayer = range.BaseArrayLayer, .layerCount = range.LayerCount};
+    }
+
+    VkImageMemoryBarrier2 BuildRGImageBarrier(const RGImageBarrierPlan& plan, const RGResourceState& source, VkImage image)
+    {
+        // Discarding contents does not end earlier GPU accesses. Transient images
+        // are recycled across frames and logical resources, while their state is
+        // rebuilt at registration. Wait for all earlier uses, including picking
+        // readback copies, before the UNDEFINED layout transition writes storage.
+        return {
+            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask        = plan.DiscardContents ? VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT : source.Stage,
+            .srcAccessMask       = plan.DiscardContents ? VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT : source.Access,
+            .dstStageMask        = plan.DestinationState.Stage,
+            .dstAccessMask       = plan.DestinationState.Access,
+            .oldLayout           = plan.DiscardContents ? VK_IMAGE_LAYOUT_UNDEFINED : source.Layout,
+            .newLayout           = plan.DestinationState.Layout,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image               = image,
+            .subresourceRange    = ToVkSubresourceRange(plan.Range),
+        };
     }
 
     struct RGDynamicRenderingBeginResult
@@ -1392,7 +1412,9 @@ namespace ZEngine::Rendering::Renderers
         ReadbackRequests.init(&FrameArena, 4);
         QueryReadbackRequests.init(&FrameArena, 4);
         ResourceIndex.init(&FrameArena, 64);
-        PassIndex.init(&FrameArena, 32);
+        // The lookup map does not grow automatically and requires <=75% load.
+        // Additional scene/editor passes must not trip its fixed-capacity guard.
+        PassIndex.init(&FrameArena, std::max(size_t(32), PersistentPasses.size() * 2));
     }
 
     void RenderGraph::AddImportedResourceToFrame(const RGImportedResource& resource)
@@ -1724,7 +1746,8 @@ namespace ZEngine::Rendering::Renderers
             pass.SecondaryRecorded = false;
         }
 
-        const uint32_t available_workers = Helpers::ThreadPoolHelper::Pool ? static_cast<uint32_t>(Helpers::ThreadPoolHelper::Pool->WorkerCount) : 0;
+        auto*          recording_workers = Device->CommandBufferMgr->RecordingWorkers;
+        const uint32_t available_workers = recording_workers ? recording_workers->WorkerCount() : 0;
         const uint32_t worker_count      = std::min(Device->CommandBufferMgr->TotalThreadCount, available_workers);
         if (worker_count > 0 && !TopologyLevels.empty())
         {
@@ -1789,43 +1812,25 @@ namespace ZEngine::Rendering::Renderers
                 if (task_count == 0)
                     continue;
 
-                // The countdown is frame-scratch owned. The render thread waits
-                // for every submitted worker before this scratch scope ends.
-                auto* completion = ZPushStructCtor<PaddedAtomic<uint32_t>>(scratch.Arena);
-                completion->value.store(task_count, std::memory_order_relaxed);
-                RenderGraphSecondaryRecordTask tasks[Helpers::ThreadPool::MAX_WORKERS]                   = {};
-                bool                           record_on_render_thread[Helpers::ThreadPool::MAX_WORKERS] = {};
-                uint32_t                       task_index                                                = 0;
+                RenderGraphSecondaryRecordTask tasks[Helpers::ThreadPool::MAX_WORKERS] = {};
+                Helpers::Task                  batch[Helpers::ThreadPool::MAX_WORKERS] = {};
                 for (uint32_t worker = 0; worker < worker_count; ++worker)
                 {
                     if (!worker_has_work[worker])
                         continue;
 
-                    auto& task      = tasks[task_index++];
+                    auto& task      = tasks[worker];
                     task.Graph      = this;
                     task.Level      = &level;
                     task.Worker     = worker;
                     task.FrameIndex = frame_index;
-                    task.Completion = completion;
-                    if (!Helpers::ThreadPoolHelper::SubmitToWorker(worker, &task, &RecordGraphSecondaryWorkerBatch))
-                    {
-                        // SubmitToWorker never executes inline. Once the jobs
-                        // already accepted for this level finish, this worker's
-                        // otherwise-exclusive pool can be recorded safely here.
-                        record_on_render_thread[worker] = true;
-                        completion->value.fetch_sub(1, std::memory_order_release);
-                    }
+                    batch[worker]   = {&task, &RecordGraphSecondaryWorkerBatch};
                 }
-                while (completion->value.load(std::memory_order_acquire) != 0)
                 {
-                }
-
-                for (uint32_t worker = 0; worker < worker_count; ++worker)
-                {
-                    if (!record_on_render_thread[worker])
-                        continue;
-                    RenderGraphSecondaryRecordTask fallback = {.Graph = this, .Level = &level, .Worker = worker, .FrameIndex = frame_index};
-                    RecordGraphSecondaryWorkerBatch(&fallback);
+                    ZENGINE_PROFILE_SCOPE("ThumbnailProfile.RenderRecordingWait");
+                    // Joins the batch before stack tasks or frame scratch retire.
+                    // These mailboxes cannot contain imports, scans or disk I/O.
+                    recording_workers->Record(batch, worker_count);
                 }
             }
         }
@@ -2034,18 +2039,7 @@ namespace ZEngine::Rendering::Renderers
                         continue;
                     }
 
-                    VkImageMemoryBarrier2 b = {};
-                    b.sType                 = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-                    b.oldLayout             = plan.DiscardContents ? VK_IMAGE_LAYOUT_UNDEFINED : state.State.Layout;
-                    b.newLayout             = dst.Layout;
-                    b.srcStageMask          = plan.DiscardContents ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : state.State.Stage;
-                    b.srcAccessMask         = plan.DiscardContents ? 0 : state.State.Access;
-                    b.dstStageMask          = dst.Stage;
-                    b.dstAccessMask         = dst.Access;
-                    b.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-                    b.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-                    b.image                 = GetVkImage(Device, res.TextureHandle);
-                    b.subresourceRange      = ToVkSubresourceRange(plan.Range);
+                    const VkImageMemoryBarrier2 b = BuildRGImageBarrier(plan, state.State, GetVkImage(Device, res.TextureHandle));
                     if (b.image == VK_NULL_HANDLE)
                         continue;
 
@@ -4102,6 +4096,17 @@ namespace ZEngine::Rendering::Renderers
             }
         }
 
+        // A sampled restoration must run after its copy, not merely after their
+        // common producer. Both accesses are reads, so no RAW edge implies this.
+        for (uint32_t restore = 0; restore < pass_count; ++restore)
+        {
+            if (!passes[restore].IsActive() || passes[restore].InternalOperation != RGInternalPassOperation::ReadbackRestore)
+                continue;
+            for (uint32_t copy = 0; copy < pass_count; ++copy)
+                if (passes[copy].IsActive() && passes[copy].InternalOperation == RGInternalPassOperation::Readback && passes[copy].InternalRequestIndex == passes[restore].InternalRequestIndex)
+                    add_edge(copy, restore);
+        }
+
         // Query pools are non-resource Vulkan objects, so their result-copy
         // pass has no RGResource read to infer dependencies from. Every
         // explicit WriteQueryPool declaration therefore feeds the matching
@@ -4882,6 +4887,25 @@ namespace ZEngine::Rendering::Renderers
             pass.AliasingBarrierPlans.init(&FrameArena, 0);
             pass.StreamingAcquirePlans.init(&FrameArena, 0);
             RecordAccess(this, pass_index, request.Source.Index, RGAccess::TransferRead, nullptr, false, request.Source.Version);
+            if (request.RestoreSampled)
+            {
+                const uint32_t restore_index = static_cast<uint32_t>(Passes.size());
+                auto&          restore       = Passes.push_use({});
+                restore.Name                 = "Readback Restore Sampled";
+                restore.Flags                = RGPassFlags::NeverCull;
+                restore.RequiresRenderPass   = false;
+                restore.InternalOperation    = RGInternalPassOperation::ReadbackRestore;
+                restore.InternalRequestIndex = request_index;
+                restore.Reads.init(&FrameArena, 1);
+                restore.Writes.init(&FrameArena, 0);
+                restore.QueryWrites.init(&FrameArena, 0);
+                restore.QueryResets.init(&FrameArena, 0);
+                restore.BarrierPlans.init(&FrameArena, 1);
+                restore.BufferBarrierPlans.init(&FrameArena, 0);
+                restore.AliasingBarrierPlans.init(&FrameArena, 0);
+                restore.StreamingAcquirePlans.init(&FrameArena, 0);
+                RecordAccess(this, restore_index, request.Source.Index, RGAccess::ShaderRead, nullptr, false, request.Source.Version);
+            }
         }
     }
 
@@ -5104,7 +5128,7 @@ namespace ZEngine::Rendering::Renderers
                 RGReadbackRequest& request = ReadbackRequests[pass.InternalRequestIndex];
                 if (!request.Recorded || request.Submitted)
                     continue;
-                request.Submitted = ReadbackRing.Submit(request.AllocationIndex, timeline, timeline_value, request.Size, request.Callback, request.Context);
+                request.Submitted = ReadbackRing.Submit(request.AllocationIndex, timeline, timeline_value, request.Size, request.Callback, request.Context, request.Cancellation);
                 continue;
             }
             if (pass.InternalOperation != RGInternalPassOperation::QueryReadback || pass.InternalRequestIndex >= QueryReadbackRequests.size() || !pass.InternalQueryPool.Valid() || pass.InternalQueryPool.Index >= QueryPools.size())
@@ -5427,7 +5451,7 @@ namespace ZEngine::Rendering::Renderers
         return {index};
     }
 
-    RGReadbackHandle RenderGraphResourceBuilder::DeclareImageReadback(cstring name, RGResourceHandle image, const RGImageReadbackRegion& region, RGReadbackFn callback, void* context, VkDeviceSize size, RGReadbackCancelFn cancellation)
+    RGReadbackHandle RenderGraphResourceBuilder::DeclareImageReadback(cstring name, RGResourceHandle image, const RGImageReadbackRegion& region, RGReadbackFn callback, void* context, VkDeviceSize size, RGReadbackCancelFn cancellation, bool restore_sampled)
     {
         if (!Graph || CurrentPass == UINT32_MAX || CurrentPass >= Graph->Passes.size() || !name || !image.Valid() || image.Index >= Graph->Resources.size() || !callback || size == 0 || size == VK_WHOLE_SIZE)
         {
@@ -5447,7 +5471,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
         const uint32_t index = static_cast<uint32_t>(Graph->ReadbackRequests.size());
-        Graph->ReadbackRequests.push({.Name = name, .Source = image, .SourceKind = RGReadbackSourceKind::Image, .Size = size, .ImageRegion = region, .Callback = callback, .Cancellation = cancellation, .Context = context});
+        Graph->ReadbackRequests.push({.Name = name, .Source = image, .SourceKind = RGReadbackSourceKind::Image, .Size = size, .ImageRegion = region, .Callback = callback, .Cancellation = cancellation, .Context = context, .RestoreSampled = restore_sampled});
         return {index};
     }
 

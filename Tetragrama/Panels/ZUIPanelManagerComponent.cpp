@@ -3,6 +3,7 @@
 #include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/Engine.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIDockspace.h>
 #include <ZEngine/UI/ZUIWidgets.h>
 #include <cstdio>
@@ -31,6 +32,16 @@ namespace Tetragrama::Panels
         hierarchy.m_layer            = parent;
         inspector.m_layer            = parent;
         project.m_layer              = parent;
+        if (auto* engine = ZEngine::Engine::GetContext())
+        {
+            if (auto* assets = ZEngine::Managers::AssetManager::Instance())
+            {
+                auto* editor   = reinterpret_cast<Tetragrama::Editor*>(parent->CurrentApp);
+                auto* previews = editor && editor->RenderPipeline && editor->RenderPipeline->SceneRenderer ? editor->RenderPipeline->SceneRenderer->GetAssetPreviews() : nullptr;
+                thumbnails.Initialize(assets->Registry, engine->RenderResourceManager, assets->CurrentWorkingSpacePath, previews, engine->VFS);
+                project.SetThumbnailService(&thumbnails);
+            }
+        }
         viewport.Initialize(parent);
 
         // Default layout follows the Figma editor frame (3:2503, 1600x1000):
@@ -98,6 +109,7 @@ namespace Tetragrama::Panels
         {
             return;
         }
+        thumbnails.Update();
         // Import entry points (Content Browser, File menu, viewport drop) raise ShowImporter; surface the
         // Importer tab here so the request is actually honoured.
         if (ParentLayer && ParentLayer->CurrentApp)

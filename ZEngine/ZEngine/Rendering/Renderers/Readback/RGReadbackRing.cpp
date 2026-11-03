@@ -20,6 +20,8 @@ namespace ZEngine::Rendering::Renderers
         // on DeferredFreeQueue: readback delivery is tied to its own queue timeline.
         for (auto& allocation : Allocations)
         {
+            if (allocation.Submitted && allocation.Cancellation)
+                allocation.Cancellation(allocation.Context);
             if (allocation.Buffer)
                 m_device->GpuMem.FreeBuffer(allocation.Buffer);
             allocation = {};
@@ -58,7 +60,7 @@ namespace ZEngine::Rendering::Renderers
         return static_cast<uint32_t>(Allocations.size() - 1);
     }
 
-    bool RGReadbackRing::Submit(uint32_t allocation_index, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value, VkDeviceSize data_size, RGReadbackFn callback, void* context)
+    bool RGReadbackRing::Submit(uint32_t allocation_index, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value, VkDeviceSize data_size, RGReadbackFn callback, void* context, RGReadbackCancelFn cancellation)
     {
         if (allocation_index >= Allocations.size() || !timeline || timeline_value == 0 || data_size == 0)
             return false;
@@ -71,6 +73,7 @@ namespace ZEngine::Rendering::Renderers
         allocation.TimelineValue = timeline_value;
         allocation.DataSize      = data_size;
         allocation.Callback      = callback;
+        allocation.Cancellation  = cancellation;
         allocation.Context       = context;
         allocation.Submitted     = true;
         return true;
@@ -118,10 +121,13 @@ namespace ZEngine::Rendering::Renderers
             if (!m_device->GpuMem.InvalidateAllocation(allocation.Buffer.Allocation, 0, allocation.DataSize))
             {
                 ZENGINE_CORE_ERROR("[RenderGraph] Failed to invalidate completed readback allocation")
+                if (allocation.Cancellation)
+                    allocation.Cancellation(allocation.Context);
                 allocation.Timeline      = nullptr;
                 allocation.TimelineValue = 0;
                 allocation.DataSize      = 0;
                 allocation.Callback      = nullptr;
+                allocation.Cancellation  = nullptr;
                 allocation.Context       = nullptr;
                 allocation.Reserved      = false;
                 allocation.Submitted     = false;
@@ -137,6 +143,7 @@ namespace ZEngine::Rendering::Renderers
             allocation.TimelineValue = 0;
             allocation.DataSize      = 0;
             allocation.Callback      = nullptr;
+            allocation.Cancellation  = nullptr;
             allocation.Context       = nullptr;
             allocation.Reserved      = false;
             allocation.Submitted     = false;

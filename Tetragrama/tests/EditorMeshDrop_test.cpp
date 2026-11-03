@@ -8,6 +8,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Managers/AssetManager.h>
 #include <gtest/gtest.h>
 #include <thread>
 
@@ -19,30 +20,32 @@ using namespace ZEngine::ECS::Components;
 class EditorMeshDropTest : public testing::Test
 {
 protected:
-    ZEngine::Core::Memory::MemoryManager    Memory        = {};
-    std::unique_ptr<Editor>                 App           = {};
-    std::unique_ptr<ZEngine::EngineContext> Engine        = {};
-    Scene                                   World         = {};
-    ActorManager                            Actors        = {};
-    EditorScene                             Owner         = {};
-    VFSMemoryBackend                        Backend       = {};
-    VFSContext                              VFS           = {};
-    SceneDiagnostics                        Diagnostics   = {};
-    ZEngine::Importers::AssetMesh           Mesh          = {};
-    ZEngine::Importers::AssetNodeHierarchy  Hierarchy     = {};
-    EntityID                                Original      = {};
-    const uuids::uuid                       MeshID        = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
-    const VFSPath                           Path          = VFSPath::Parse("/meshes/triangle.zemesh").Value();
-    void*                                   QueuedContext = nullptr;
-    void (*QueuedTask)(void*)                             = nullptr;
-    uint32_t Submissions                                  = 0;
-    uint32_t Binds                                        = 0;
-    uint32_t ExistingDraws                                = 1;
-    bool     AcceptSubmission                             = true;
-    bool     BindSucceeds                                 = true;
-    bool     IncomingLoaded                               = true;
+    ZEngine::Core::Memory::MemoryManager    Memory                          = {};
+    std::unique_ptr<Editor>                 App                             = {};
+    std::unique_ptr<ZEngine::EngineContext> Engine                          = {};
+    Scene                                   World                           = {};
+    ActorManager                            Actors                          = {};
+    EditorScene                             Owner                           = {};
+    VFSMemoryBackend                        Backend                         = {};
+    VFSContext                              VFS                             = {};
+    SceneDiagnostics                        Diagnostics                     = {};
+    ZEngine::Importers::AssetMesh           Mesh                            = {};
+    ZEngine::Importers::AssetNodeHierarchy  Hierarchy                       = {};
+    EntityID                                Original                        = {};
+    const uuids::uuid                       MeshID                          = *uuids::uuid::from_string("11111111-1111-4111-8111-111111111111");
+    const VFSPath                           Path                            = VFSPath::Parse("/meshes/triangle.zemesh").Value();
+    void*                                   QueuedContext                   = nullptr;
+    void (*QueuedTask)(void*)                                               = nullptr;
+    uint32_t                                              Submissions       = 0;
+    uint32_t                                              Binds             = 0;
+    uint32_t                                              ExistingDraws     = 1;
+    bool                                                  AcceptSubmission  = true;
+    bool                                                  BindSucceeds      = true;
+    bool                                                  IncomingLoaded    = true;
+    bool                                                  ProductionBinding = false;
+    std::unique_ptr<ZEngine::Core::Memory::MemoryManager> AssetMemory       = {};
 
-    void     SetUp() override
+    void                                                  SetUp() override
     {
         Memory.Initialize(ZMega(512), {});
         App    = std::make_unique<Editor>();
@@ -108,10 +111,12 @@ protected:
         Actors.Shutdown();
         World.Shutdown();
         VFS.Shutdown();
+        if (ProductionBinding)
+            ZEngine::Managers::AssetManager::Shutdown();
     }
     EditorMeshDropServices Services()
     {
-        return {
+        EditorMeshDropServices services = {
             .Context = this,
             .Submit =
                 [](void* context, void* request, void (*task)(void*)) {
@@ -143,6 +148,12 @@ protected:
                     return fixture.IncomingLoaded;
                 },
         };
+        if (ProductionBinding)
+        {
+            services.BindMesh  = nullptr;
+            services.DrawCount = nullptr;
+        }
+        return services;
     }
     void RunQueued()
     {
@@ -169,6 +180,23 @@ protected:
         ASSERT_TRUE(Process());
         ASSERT_NE(QueuedTask, nullptr);
     }
+    void EnableProductionBinding()
+    {
+        ASSERT_EQ(ZEngine::Managers::AssetManager::Instance(), nullptr);
+        AssetMemory = std::make_unique<ZEngine::Core::Memory::MemoryManager>();
+        AssetMemory->Initialize(ZMega(512), {});
+        ZEngine::Managers::AssetManager::Initialize(&AssetMemory->MainArena, nullptr, "/project");
+        ProductionBinding = true;
+        ASSERT_TRUE(ZEngine::Managers::AssetManager::Instance()->Registry->Register(MeshID, ZEngine::Managers::AssetType::MESH, Path, {}).IsOk());
+    }
+    void RewriteMesh()
+    {
+        ZEngine::Importers::AssetCodec::ImportConfiguration config = {};
+        config.VFS                                                 = &VFS;
+        config.OutputAssetsPath.init(&Memory.MainArena, "/meshes");
+        config.OutputAssetFile.init(&Memory.MainArena, "triangle.zemesh");
+        ASSERT_TRUE(ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(&Memory.MainArena, Mesh, Hierarchy, config).Succeeded());
+    }
     void Preview(float x, bool commit = false)
     {
         ASSERT_TRUE(App->Session.BeginMutationPhase());
@@ -184,6 +212,69 @@ protected:
         App->Session.EndMutationPhase();
     }
 };
+
+TEST_F(EditorMeshDropTest, ProductionDropRestoresDeletedReimportedMeshAlreadyUsedByAnActor)
+{
+    EnableProductionBinding();
+    auto* assets = ZEngine::Managers::AssetManager::Instance();
+    ASSERT_TRUE(assets->LoadMeshAsset(VFS, MeshID).Succeeded()); // Thumbnail/scene preload.
+    Start();
+    RunQueued();
+    ASSERT_TRUE(Process());
+    ASSERT_EQ(Actors.Count(), 1u);
+    const auto handle = assets->Registry->FindByUUID(MeshID)->SlotHandle;
+    assets->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(assets->Registry->Register(MeshID, ZEngine::Managers::AssetType::MESH, Path, {}).IsOk());
+    EXPECT_EQ(assets->GetMeshAsset(MeshID), nullptr);
+    Mesh.Vertices[8] = 7.f;
+    RewriteMesh();
+    Start();
+    RunQueued();
+    ASSERT_TRUE(Process());
+    EXPECT_EQ(Actors.Count(), 2u);
+    EXPECT_EQ(Owner.Instances.size(), 2u);
+    EXPECT_EQ(assets->Meshes.size(), 1u);
+    EXPECT_EQ(assets->NodeHierarchies.size(), 1u);
+    EXPECT_EQ(assets->Registry->FindByUUID(MeshID)->SlotHandle, handle);
+    ASSERT_NE(assets->GetMeshAsset(MeshID), nullptr);
+    EXPECT_FLOAT_EQ(assets->GetMeshAsset(MeshID)->Vertices[8], 7.f);
+    for (const auto& instance : Owner.Instances)
+        EXPECT_EQ(instance.MeshUUID, MeshID);
+}
+
+TEST_F(EditorMeshDropTest, ProductionDropReusesFreshThumbnailBindingAfterDeleteAndReimport)
+{
+    EnableProductionBinding();
+    auto* assets = ZEngine::Managers::AssetManager::Instance();
+    ASSERT_TRUE(ZEngine::Managers::AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    assets->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(assets->Registry->Register(MeshID, ZEngine::Managers::AssetType::MESH, Path, {}).IsOk());
+    Mesh.Vertices[8] = 11.f;
+    RewriteMesh();
+    ASSERT_TRUE(assets->LoadMeshAsset(VFS, MeshID).Succeeded());
+    Start();
+    RunQueued();
+    ASSERT_TRUE(Process());
+    EXPECT_EQ(Actors.Count(), 1u);
+    EXPECT_EQ(assets->Meshes.size(), 1u);
+    EXPECT_FLOAT_EQ(assets->GetMeshAsset(MeshID)->Vertices[8], 11.f);
+}
+
+TEST_F(EditorMeshDropTest, ProductionDropRejectsDeletedAndReregisteredIdentityWhileReadWasPending)
+{
+    EnableProductionBinding();
+    Start();
+    RunQueued(); // A complete old decode is waiting for the main-thread commit.
+    auto* assets = ZEngine::Managers::AssetManager::Instance();
+    assets->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(assets->Registry->Register(MeshID, ZEngine::Managers::AssetType::MESH, Path, {}).IsOk());
+    EXPECT_FALSE(Process());
+    EXPECT_EQ(Actors.Count(), 0u);
+    EXPECT_TRUE(Owner.Instances.empty());
+    EXPECT_TRUE(assets->Meshes.empty());
+    EXPECT_FALSE(assets->Registry->FindByUUID(MeshID)->HasLoadedSlot);
+    EXPECT_FALSE(App->MeshDrop.Pending());
+}
 
 TEST_F(EditorMeshDropTest, CompletionCreatesOneSaveableIdentityAndRestoresPreviewBeforeInvalidatingHistory)
 {
@@ -464,10 +555,14 @@ TEST_F(EditorMeshDropTest, CorruptSourceDoesNotCreateAnEntityOrInvalidateHistory
 
 TEST_F(EditorMeshDropTest, RepeatedCancelledLoadsReuseTheSameImportWorkspace)
 {
-    const auto used = Memory.MainArena.m_current_offset;
+    const auto used            = Memory.MainArena.m_current_offset;
+    void*      request_storage = nullptr;
     for (uint32_t i = 0; i < 100; ++i)
     {
         Start();
+        if (!request_storage)
+            request_storage = QueuedContext;
+        EXPECT_EQ(QueuedContext, request_storage);
         RunQueued();
         App->MeshDrop.Cancel();
         ASSERT_TRUE(Process());

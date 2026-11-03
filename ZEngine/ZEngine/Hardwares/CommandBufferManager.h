@@ -5,6 +5,11 @@
 #include <ZEngine/ZEngineDef.h>
 #include <cstdint>
 
+namespace ZEngine::Rendering::Renderers
+{
+    class RenderRecordingWorkers;
+}
+
 namespace ZEngine::Hardwares
 {
     struct VulkanDevice;
@@ -47,6 +52,7 @@ namespace ZEngine::Hardwares
         void                                                    ResetEnqueuedBufferIndex();
         /// @brief Returns whether the manager currently owns initialized command resources.
         bool                                                    IsInitialized() const;
+        Rendering::Renderers::RenderRecordingWorkers*           RecordingWorkers               = nullptr;
 
         uint32_t                                                TotalCommandBufferCount        = 0;
         uint32_t                                                TotalInstantCommandBufferCount = 0;

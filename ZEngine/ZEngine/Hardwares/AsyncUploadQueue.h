@@ -58,6 +58,11 @@ namespace ZEngine::Hardwares
         void                      Enqueue(const AsyncUploadJob& job);
         void                      SubmitAll();
         void                      Clear();
+        /// Render-thread query: recorded texture copies are submitted after Present.
+        bool                      HasPendingJobs() const
+        {
+            return !m_jobs.empty();
+        }
 
     private:
         VulkanDevice*                                         m_device = nullptr;

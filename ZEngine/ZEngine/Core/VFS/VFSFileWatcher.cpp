@@ -128,14 +128,33 @@ namespace ZEngine::Core::VFS
     {
         std::lock_guard<std::mutex> lock(m_mutex);
 
-        const bool                  is_overflow = (ev.Kind == WatchEventKind::Overflow);
-        const WatchHandle           owner       = is_overflow ? INVALID_WATCH_HANDLE : ResolveOwner(ev.Path);
-        if (!is_overflow && owner == INVALID_WATCH_HANDLE)
+        if (m_overflow_pending)
+            return; // One full rescan supersedes the remainder of this burst.
+        if (ev.Kind == WatchEventKind::Overflow)
+        {
+            m_pending.clear();
+            m_overflow_pending = true;
+            return;
+        }
+        const WatchHandle owner = ResolveOwner(ev.Path);
+        if (owner == INVALID_WATCH_HANDLE)
         {
             return;
         }
 
-        DebounceEntry& entry = m_pending[VFSWatchPathKey{ev.Path}];
+        const VFSWatchPathKey key{ev.Path};
+        auto*                 existing = m_pending.find(key);
+        // The arena map is fixed-capacity with a 75% load ceiling. A large
+        // import/initial scan can publish thousands of .meta events in one poll.
+        // Coalesce saturation into the existing overflow/rescan protocol rather
+        // than asserting or dropping individual changes silently.
+        if (!existing && (m_pending.size() + 1) * 4 > m_pending.capacity() * 3)
+        {
+            m_pending.clear();
+            m_overflow_pending = true;
+            return;
+        }
+        DebounceEntry& entry = existing ? *existing : m_pending[key];
         entry.Event          = ev;
         entry.Owner          = owner;
         entry.LastSeen       = std::chrono::steady_clock::now();
@@ -150,6 +169,13 @@ namespace ZEngine::Core::VFS
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_overflow_pending)
+            {
+                ready.push({
+                    .Event = {.Kind = WatchEventKind::Overflow, .ObservedAtNanoseconds = VFSWatchTimestampNowNanoseconds()}
+                });
+                m_overflow_pending = false;
+            }
             for (auto it = m_pending.begin(); it != m_pending.end(); ++it)
             {
                 const DebounceEntry& entry = (*it).second;

@@ -21,7 +21,7 @@ namespace ZEngine::Rendering::Renderers
             return true;
         }
 
-    private:
+    protected:
         EnvironmentLightingResources m_environment_lighting = {};
         Rendering::Scenes::SkyConfig m_sky_config           = {};
     };

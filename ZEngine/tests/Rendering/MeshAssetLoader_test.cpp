@@ -4,6 +4,8 @@
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -217,6 +219,13 @@ protected:
         auto& test = *static_cast<MeshAssetLoaderTest*>(context);
         AssetManager::IngestMesh(std::move(test.Mesh), std::move(test.Hierarchy));
     }
+    static void RecycleRecordBeforeRead(void* context)
+    {
+        auto& test     = *static_cast<MeshAssetLoaderTest*>(context);
+        auto* registry = AssetManager::Instance()->Registry;
+        registry->OnAssetDeleted(test.Path);
+        EXPECT_TRUE(registry->Register(test.ID, AssetType::MESH, test.Path, {}).IsOk());
+    }
 };
 
 TEST_F(MeshAssetLoaderTest, LoadsCompleteMeshAndHierarchyWithOwnedNamesBoundsAndReadyNotifications)
@@ -281,6 +290,255 @@ TEST_F(MeshAssetLoaderTest, RepeatedPlacementReusesTheBindingWithoutReadingAlloc
     EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
 }
 
+TEST_F(MeshAssetLoaderTest, DeletedMeshSlotZeroIsNotResidentAfterScannerReregistration)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    manager->Registry->OnAssetDeleted(Path);
+    EXPECT_EQ(manager->GetMeshAsset(ID), nullptr);
+    EXPECT_EQ(manager->GetMeshNodeHierarchy(ID), nullptr);
+    ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+    // Import completion state alone must not restore the preceding CPU payload.
+    ASSERT_TRUE(manager->Registry->SetState(ID, AssetState::Loaded));
+    uint32_t draws = 73;
+    EXPECT_FALSE(manager->TryGetMeshDrawCount(ID, &draws));
+    EXPECT_EQ(draws, 73u);
+    EXPECT_EQ(manager->GetMeshAsset(ID), nullptr);
+    Mesh.Vertices[8] = 19.f;
+    WriteMesh();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    EXPECT_FLOAT_EQ(manager->GetMeshAsset(ID)->Vertices[8], 19.f);
+    EXPECT_EQ(manager->Meshes.size(), 1u);
+    EXPECT_EQ(manager->NodeHierarchies.size(), 1u);
+}
+
+TEST_F(MeshAssetLoaderTest, DirectIngestRestoresDeletedNonzeroSlotWithoutAliasingAnotherMesh)
+{
+    auto*      manager          = AssetManager::Instance();
+    const auto original         = ID;
+    const auto other            = *uuids::uuid::from_string("44444444-4444-4444-8444-444444444444");
+    Mesh.MeshUUID               = other;
+    Hierarchy.MeshUUID          = other;
+    Hierarchy.NodeHierarchyUUID = *uuids::uuid::from_string("55555555-5555-4555-8555-555555555555");
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    Mesh.MeshUUID               = original;
+    Hierarchy.MeshUUID          = original;
+    Hierarchy.NodeHierarchyUUID = HierarchyID;
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    const auto handle = manager->Registry->FindByUUID(ID)->SlotHandle;
+    ASSERT_EQ(AssetManager::ReadAssetHandleIndex(handle), 1u);
+    manager->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+    EXPECT_EQ(manager->GetMeshAsset(ID), nullptr);
+    Mesh.Vertices[8]            = 23.f;
+    Hierarchy.NodeHierarchyUUID = *uuids::uuid::from_string("66666666-6666-4666-8666-666666666666");
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    EXPECT_EQ(manager->Registry->FindByUUID(ID)->SlotHandle, handle);
+    EXPECT_EQ(manager->GetMeshNodeHierarchy(ID)->NodeHierarchyUUID, HierarchyID);
+    EXPECT_FLOAT_EQ(manager->GetMeshAsset(ID)->Vertices[8], 23.f);
+    EXPECT_FLOAT_EQ(manager->GetMeshAsset(other)->Vertices[8], 2.f);
+    EXPECT_EQ(manager->Meshes.size(), 2u);
+    EXPECT_EQ(manager->NodeHierarchies.size(), 2u);
+    EXPECT_EQ(manager->Registry->FindByUUID(ID)->State, AssetState::Loaded);
+}
+
+TEST_F(MeshAssetLoaderTest, RepeatedDeleteReimportReusesSlotsAndReplacesCheckedLoadStorage)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    const auto mesh_handle      = manager->Registry->FindByUUID(ID)->SlotHandle;
+    const auto hierarchy_handle = manager->Registry->FindByUUID(HierarchyID)->SlotHandle;
+    uint32_t   stale_calls      = 0;
+    manager->Registry->SetOnStaleCallback(&stale_calls, [](void* context, const uuids::uuid&) { ++*static_cast<uint32_t*>(context); });
+    for (uint32_t i = 0; i < 24; ++i)
+    {
+        manager->Registry->OnAssetDeleted(Path);
+        ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+        Mesh.Vertices[8] = float(i + 4);
+        WriteMesh();
+        ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+        ASSERT_NE(manager->GetMeshAsset(ID), nullptr);
+        EXPECT_FLOAT_EQ(manager->GetMeshAsset(ID)->Vertices[8], float(i + 4));
+        EXPECT_EQ(manager->Registry->FindByUUID(ID)->SlotHandle, mesh_handle);
+        EXPECT_EQ(manager->Registry->FindByUUID(HierarchyID)->SlotHandle, hierarchy_handle);
+        EXPECT_EQ(manager->Registry->FindByUUID(ID)->State, AssetState::Loaded);
+        EXPECT_EQ(manager->Meshes.size(), 1u);
+        EXPECT_EQ(manager->NodeHierarchies.size(), 1u);
+        ASSERT_EQ(manager->MeshCacheAllocations.size(), 1u);
+        EXPECT_NE(manager->MeshCacheAllocations[0], nullptr);
+    }
+    EXPECT_EQ(stale_calls, 48u); // Every replacement invalidates the old GPU payload.
+    EXPECT_TRUE(ReadySawCompleteData);
+}
+
+TEST_F(MeshAssetLoaderTest, DirectReplacementAndRejectedSnapshotsReclaimTheirPayloadWithoutGrowingTheLifetimeArena)
+{
+    auto* manager = AssetManager::Instance();
+    Mesh.Vertices.reserve(ZMega(1) / sizeof(float));
+    Mesh.Vertices.m_size = Mesh.Vertices.capacity();
+    std::fill(Mesh.Vertices.begin(), Mesh.Vertices.end(), 0.f);
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    AssetRecordSnapshot obsolete = {};
+    ASSERT_TRUE(manager->Registry->TryReadRecord(ID, &obsolete));
+    manager->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+    const auto cursor = Memory.MainArena.m_current_offset;
+    // Each transaction stages >1 MiB. Leaking successes OR rejected snapshots
+    // would exhaust the 256 MiB slab long before this loop finishes.
+    for (uint32_t i = 0; i < 320; ++i)
+    {
+        Mesh.Vertices[8] = float(i + 1);
+        ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+        auto* payload = manager->MeshCacheAllocations[0];
+        EXPECT_FALSE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy), &obsolete));
+        EXPECT_EQ(manager->MeshCacheAllocations[0], payload);
+        EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], float(i + 1));
+    }
+    EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
+    EXPECT_EQ(manager->Meshes.size(), 1u);
+    EXPECT_EQ(manager->NodeHierarchies.size(), 1u);
+    EXPECT_EQ(manager->MeshBindings.size(), 1u);
+    EXPECT_EQ(manager->MeshCacheAllocations.size(), 1u);
+    auto* spare = manager->ContainerSlab.TryRealloc(nullptr, ZMega(128));
+    EXPECT_NE(spare, nullptr);
+    manager->ContainerSlab.Free(spare);
+}
+
+TEST_F(MeshAssetLoaderTest, SharedCloneCompactsSparseMapsAndDeepCopiesNamesIncludingEmptyStrings)
+{
+    Hierarchy.NodeNames.init(&Memory.MainArena, 4096);
+    Hierarchy.NodeNames.insert(0, 0);
+    Hierarchy.NodeMaterials.clear();
+    Hierarchy.Names.push({}); // Default String has no backing NUL to copy.
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    auto* retained = manager->GetMeshNodeHierarchy(ID);
+    ASSERT_NE(retained, nullptr);
+    EXPECT_EQ(retained->NodeNames.capacity(), 16u);
+    EXPECT_EQ(retained->NodeMaterials.capacity(), 0u);
+    ASSERT_NE(retained->NodeNames.find(0), nullptr);
+    EXPECT_EQ(*retained->NodeNames.find(0), 0u);
+    ASSERT_EQ(retained->Names.size(), 2u);
+    EXPECT_STREQ(retained->Names[0].c_str(), "Triangle");
+    EXPECT_STREQ(retained->Names[1].c_str(), "");
+    EXPECT_NE(retained->Names[0].c_str(), Hierarchy.Names[0].c_str());
+    Hierarchy.Names[0][0] = 'X';
+    EXPECT_STREQ(retained->Names[0].c_str(), "Triangle");
+    EXPECT_LT(manager->MeshCacheAllocations[0]->Arena.m_total_size, ZKilo(4));
+}
+
+TEST_F(MeshAssetLoaderTest, ImportBatchGrowsStorageGeometricallyAndKeepsEachPayloadAtItsMeshSlot)
+{
+    auto* manager = AssetManager::Instance();
+    for (uint32_t i = 0; i < 200; ++i)
+    {
+        std::array<uint8_t, 16> bytes = {};
+        bytes[0]                      = 1;
+        bytes[15]                     = uint8_t(i);
+        Mesh.MeshUUID                 = uuids::uuid(bytes);
+        Hierarchy.MeshUUID            = Mesh.MeshUUID;
+        bytes[0]                      = 2;
+        Hierarchy.NodeHierarchyUUID   = uuids::uuid(bytes);
+        Mesh.Vertices[8]              = float(i + 1);
+        ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    }
+    EXPECT_EQ(manager->MeshCacheAllocations.capacity(), 256u);
+    ASSERT_EQ(manager->MeshCacheAllocations.size(), 200u);
+    ASSERT_EQ(manager->Meshes.size(), 200u);
+    for (size_t i = 0; i < manager->Meshes.size(); ++i)
+    {
+        auto*       payload  = manager->MeshCacheAllocations[i];
+        const auto* vertices = reinterpret_cast<const uint8_t*>(manager->Meshes[i].Vertices.data());
+        EXPECT_GE(vertices, payload->Arena.m_memory);
+        EXPECT_LT(vertices, payload->Arena.m_memory + payload->Arena.m_total_size);
+        EXPECT_FLOAT_EQ(manager->Meshes[i].Vertices[8], float(i + 1));
+        EXPECT_EQ(manager->MeshBindings.find(manager->Meshes[i].MeshUUID)->MeshSlot, i);
+    }
+}
+
+TEST_F(MeshAssetLoaderTest, ReimportWithNewIdentityAtSamePathDoesNotOverwriteRetainedActorsMesh)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    manager->Registry->OnAssetDeleted(Path);
+    const auto replacement      = *uuids::uuid::from_string("44444444-4444-4444-8444-444444444444");
+    Mesh.MeshUUID               = replacement;
+    Hierarchy.MeshUUID          = replacement;
+    Hierarchy.NodeHierarchyUUID = *uuids::uuid::from_string("55555555-5555-4555-8555-555555555555");
+    Mesh.Vertices[8]            = 31.f;
+    WriteMesh();
+    ASSERT_TRUE(manager->Registry->Register(replacement, AssetType::MESH, Path, {}).IsOk());
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, replacement).Succeeded());
+    EXPECT_EQ(manager->GetMeshAsset(ID), nullptr);
+    EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], 2.f);
+    EXPECT_FLOAT_EQ(manager->GetMeshAsset(replacement)->Vertices[8], 31.f);
+    EXPECT_EQ(manager->Meshes.size(), 2u);
+}
+
+TEST_F(MeshAssetLoaderTest, RecycledRecordDuringDecodeCannotRestoreAnObsoletePayload)
+{
+    VFS.BeforeReadContext = this;
+    VFS.BeforeRead        = &RecycleRecordBeforeRead;
+    EXPECT_EQ(AssetManager::Instance()->LoadMeshAsset(VFS, ID).Error(), VFSError::Cancelled);
+    ExpectUnpublished();
+    VFS.BeforeRead = nullptr;
+    ASSERT_TRUE(AssetManager::Instance()->LoadMeshAsset(VFS, ID).Succeeded());
+}
+
+TEST_F(MeshAssetLoaderTest, DirectIngestRejectsPreReadSnapshotAfterDeleteAndReregistration)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    AssetRecordSnapshot before = {};
+    ASSERT_TRUE(manager->Registry->TryReadRecord(ID, &before));
+    manager->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+    Mesh.Vertices[8] = 99.f;
+    EXPECT_FALSE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy), &before));
+    EXPECT_FALSE(manager->Registry->FindByUUID(ID)->HasLoadedSlot);
+    EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], 2.f);
+    EXPECT_EQ(manager->Meshes.size(), 1u);
+    EXPECT_EQ(manager->MeshCacheAllocations.size(), 1u);
+}
+
+TEST_F(MeshAssetLoaderTest, RestoresBothDeletedRecordsUsingTheRetainedHierarchyIdentity)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    manager->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(manager->Registry->Remove(HierarchyID));
+    ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+    Hierarchy.NodeHierarchyUUID = *uuids::uuid::from_string("66666666-6666-4666-8666-666666666666");
+    Mesh.Vertices[8]            = 15.f;
+    WriteMesh();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    ASSERT_NE(manager->GetMeshNodeHierarchy(ID), nullptr);
+    EXPECT_EQ(manager->GetMeshNodeHierarchy(ID)->NodeHierarchyUUID, HierarchyID);
+    EXPECT_NE(manager->Registry->FindByUUID(HierarchyID), nullptr);
+    EXPECT_EQ(manager->Registry->FindByUUID(Hierarchy.NodeHierarchyUUID), nullptr);
+    EXPECT_FLOAT_EQ(manager->GetMeshAsset(ID)->Vertices[8], 15.f);
+    EXPECT_EQ(manager->Registry->RecordCount(), 2u);
+}
+
+TEST_F(MeshAssetLoaderTest, ConflictingRetainedHierarchyRejectsReplacementWithoutChangingCpuData)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    manager->Registry->OnAssetDeleted(Path);
+    ASSERT_TRUE(manager->Registry->Register(ID, AssetType::MESH, Path, {}).IsOk());
+    ASSERT_TRUE(manager->Registry->Remove(HierarchyID));
+    ASSERT_TRUE(manager->Registry->Register(HierarchyID, AssetType::MATERIAL, {}, {}).IsOk());
+    Mesh.Vertices[8] = 99.f;
+    EXPECT_FALSE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], 2.f);
+    EXPECT_FALSE(manager->Registry->FindByUUID(ID)->HasLoadedSlot);
+    EXPECT_EQ(manager->Registry->FindByUUID(HierarchyID)->Type, AssetType::MATERIAL);
+    WriteMesh();
+    EXPECT_EQ(manager->LoadMeshAsset(VFS, ID).Error(), VFSError::Cancelled);
+    EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], 2.f);
+    EXPECT_EQ(manager->MeshCacheAllocations.size(), 1u);
+}
+
 TEST_F(MeshAssetLoaderTest, CorruptOrSubstitutedIdentityNeverPublishesPartialCacheData)
 {
     Mesh.MeshUUID = HierarchyID;
@@ -331,7 +589,7 @@ TEST_F(MeshAssetLoaderTest, AConcurrentCompleteBindingWinsInsteadOfBeingHotReloa
     ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
     EXPECT_EQ(manager->Meshes.size(), 1u);
     EXPECT_EQ(manager->NodeHierarchies.size(), 1u);
-    EXPECT_EQ(manager->MeshCacheAllocations.size(), 0u);
+    EXPECT_EQ(manager->MeshCacheAllocations.size(), 1u);
     EXPECT_EQ(ReadyCalls, 2u);
     EXPECT_TRUE(ReadySawCompleteData);
 }
@@ -365,6 +623,46 @@ TEST_F(MeshAssetLoaderTest, SlabExhaustionIsRecoverableAndDoesNotPublishAPartial
     EXPECT_EQ(result.Error(), VFSError::OutOfMemory);
     ExpectUnpublished();
     EXPECT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+}
+
+TEST_F(MeshAssetLoaderTest, ExhaustedSlabRejectsDirectReplacementAndPreservesTheExistingPayload)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    auto*      payload     = manager->MeshCacheAllocations[0];
+    auto*      vertices    = manager->Meshes[0].Vertices.data();
+    const auto ready_calls = ReadyCalls;
+    void*      blocks[512] = {};
+    size_t     count       = 0;
+    while (count < 512)
+    {
+        auto* block = manager->ContainerSlab.TryRealloc(nullptr, ZMega(1));
+        if (!block)
+            break;
+        blocks[count++] = block;
+    }
+    void*  tail[2048] = {};
+    size_t tail_count = 0;
+    while (tail_count < 2048)
+    {
+        auto* block = manager->ContainerSlab.TryRealloc(nullptr, 512);
+        if (!block)
+            break;
+        tail[tail_count++] = block;
+    }
+    Mesh.Vertices[8]    = 41.f;
+    const bool replaced = AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy));
+    for (size_t i = 0; i < count; ++i)
+        manager->ContainerSlab.Free(blocks[i]);
+    for (size_t i = 0; i < tail_count; ++i)
+        manager->ContainerSlab.Free(tail[i]);
+    EXPECT_FALSE(replaced);
+    EXPECT_EQ(manager->MeshCacheAllocations[0], payload);
+    EXPECT_EQ(manager->Meshes[0].Vertices.data(), vertices);
+    EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], 2.f);
+    EXPECT_EQ(ReadyCalls, ready_calls);
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    EXPECT_FLOAT_EQ(manager->Meshes[0].Vertices[8], 41.f);
 }
 
 TEST_F(MeshAssetLoaderTest, ConcurrentLoadsCannotMultiplyDecodeMemoryOrWaitOnAnExistingLoad)

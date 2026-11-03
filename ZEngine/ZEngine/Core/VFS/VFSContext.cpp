@@ -1,3 +1,4 @@
+#include <ZEngine/Core/Containers/UnorderedHashMap.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSScanner.h>
@@ -16,6 +17,14 @@
 
 namespace ZEngine::Core::VFS
 {
+    namespace
+    {
+        bool IsEngineCachePath(const VFSPath& path)
+        {
+            return path.ComponentCount() > 0 && path.ComponentAt(0).Equals(".zodiacengine");
+        }
+    } // namespace
+
     void VFSContext::Initialize(Memory::ArenaAllocator* arena, size_t mount_table_capacity)
     {
         m_arena = arena;
@@ -302,6 +311,30 @@ namespace ZEngine::Core::VFS
         VFSResult<VFSPath> path        = full_rescan ? ToRelativeVFSPath(m_project_root_native) : ToRelativeVFSPath(event.Path);
         if (path.Failed())
             return;
+        if (event.Kind == WatchEventKind::Renamed && event.OldPath[0] != '\0')
+        {
+            const auto old_path = ToRelativeVFSPath(event.OldPath);
+            if (old_path.Succeeded() && IsEngineCachePath(old_path.Value()) != IsEngineCachePath(path.Value()))
+            {
+                // A cache boundary is a removal/creation in the user asset tree,
+                // never a rename that preserves a registered source in the cache.
+                VFSWatchEvent boundary = event;
+                if (IsEngineCachePath(path.Value()))
+                {
+                    Helpers::secure_strcpy(boundary.Path, sizeof(boundary.Path), event.OldPath);
+                    boundary.Kind = WatchEventKind::Deleted;
+                }
+                else
+                {
+                    boundary.Kind = WatchEventKind::Created;
+                }
+                boundary.OldPath[0] = '\0';
+                ProcessWatchEvent(boundary);
+                return;
+            }
+        }
+        if (IsEngineCachePath(path.Value()))
+            return;
 
         const VFSPath target    = (event.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
         const VFSPath file_path = path.Value();
@@ -362,7 +395,7 @@ namespace ZEngine::Core::VFS
         }
 
         if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
-            m_scanner->Scan(this, target, m_directory_cache);
+            m_rescan_requested |= !m_scanner->Scan(this, target, m_directory_cache);
     }
 
     void VFSContext::FlushDeferredImportScan()
@@ -404,7 +437,7 @@ namespace ZEngine::Core::VFS
     void VFSContext::ScanProject()
     {
         if (m_scanner && m_directory_cache)
-            m_scanner->Scan(this, VFSPath::Root(), m_directory_cache);
+            m_rescan_requested = !m_scanner->Scan(this, VFSPath::Root(), m_directory_cache);
     }
 
     void VFSContext::Tick()
@@ -414,6 +447,8 @@ namespace ZEngine::Core::VFS
             m_file_watcher->Tick();
         }
         FlushDeferredImportScan();
+        if (m_rescan_requested && m_scanner && !m_scanner->IsScanning())
+            ScanProject();
     }
 
     void VFSContext::ShutdownWatcher()
@@ -434,6 +469,7 @@ namespace ZEngine::Core::VFS
         }
         m_directory_cache                       = nullptr;
         m_scanner                               = nullptr;
+        m_rescan_requested                      = false;
         m_active_import_publication.Publication = {};
         m_active_import_publication.Artifacts.clear();
         m_active_import_publication.DirtyDirectories.clear();
@@ -520,6 +556,11 @@ namespace ZEngine::Core::VFS
 
         Containers::Array<VFSDirEntry> merged;
         merged.init(out_arena, 16);
+        // Content-hashed strings, not the padded VFSPath representation. Keys
+        // live in scratch rather than the growing output array. Hash collisions
+        // still compare the complete canonical path; first mount/entry wins.
+        Containers::UnorderedHashMap<cstring, bool> seen{};
+        seen.init(scratch.Arena, 16);
 
         for (size_t m = 0; m < matches.size(); ++m)
         {
@@ -530,6 +571,7 @@ namespace ZEngine::Core::VFS
             }
 
             Containers::Array<VFSDirEntry>& entries = sub.Value();
+            seen.reserve((merged.size() + entries.size()) * 2 + 16);
             for (size_t e = 0; e < entries.size(); ++e)
             {
                 VFSPathComponent name                   = entries[e].Path.Filename();
@@ -544,19 +586,20 @@ namespace ZEngine::Core::VFS
                     continue;
                 }
 
-                bool already_present = false;
-                for (size_t k = 0; k < merged.size(); ++k)
-                {
-                    if (merged[k].Path == child.Value())
-                    {
-                        already_present = true;
-                        break;
-                    }
-                }
-                if (already_present)
+                if (seen.contains(child.Value().CStr()))
                 {
                     continue;
                 }
+
+                const size_t key_size = child.Value().Length() + 1;
+                auto*        key      = static_cast<char*>(scratch.Arena->AllocateNoZero(key_size, alignof(char)));
+                if (!key)
+                {
+                    ZReleaseScratch(scratch);
+                    return ResultT::Fail(VFSError::OutOfMemory);
+                }
+                Helpers::secure_memcpy(key, key_size, child.Value().CStr(), key_size);
+                seen.insert(key, true);
 
                 VFSDirEntry entry = entries[e];
                 entry.Path        = child.Value();

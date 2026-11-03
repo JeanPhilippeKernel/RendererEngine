@@ -81,6 +81,7 @@ namespace ZEngine::Core::VFS
         Memory::ArenaAllocator                                       m_local_arena;
 
         mutable std::mutex                                           m_mutex;
+        bool                                                         m_overflow_pending = false;
         Containers::UnorderedHashMap<VFSWatchPathKey, DebounceEntry> m_pending;
         Containers::UnorderedHashMap<WatchHandle, WatchEntry>        m_callbacks;
     };

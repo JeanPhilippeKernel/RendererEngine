@@ -42,7 +42,9 @@ namespace ZEngine::Core::VFS
         ~VFSScanner();
 
         void Initialize(Core::Memory::ArenaAllocator* page_source);
-        void Scan(IVFSContext* context, VFSPath root, VFSDirectoryCache* cache);
+        // False means background admission is saturated/unavailable. Retry later;
+        // the root is never enumerated inline on the caller.
+        bool Scan(IVFSContext* context, VFSPath root, VFSDirectoryCache* cache);
 
         void Cancel();
 

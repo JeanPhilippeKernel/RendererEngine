@@ -1,4 +1,5 @@
 #pragma once
+#include <Tetragrama/Panels/DirectoryListing.h>
 #include <ZEngine/Core/VFS/IVFSContext.h>
 #include <cstdint>
 
@@ -25,14 +26,15 @@ namespace Tetragrama::Panels
             bool     Visible     = true;
         };
 
-        Node     Nodes[Capacity] = {};
-        uint32_t Count           = 0;
-        bool     Incomplete      = false;
+        Node             Nodes[Capacity] = {};
+        uint32_t         Count           = 0;
+        bool             Incomplete      = false;
+        DirectoryListing Listings{};
 
-        void     Invalidate();
-        void     LoadChildren(ZEngine::Core::VFS::IVFSContext& vfs, ZEngine::Core::Memory::ArenaAllocator& scratch, uint32_t parent);
-        void     UpdateSearch(ZEngine::Core::VFS::IVFSContext& vfs, ZEngine::Core::Memory::ArenaAllocator& scratch, const char* query, uint32_t listing_budget = 16);
-        bool     Searching() const
+        void             Invalidate();
+        void             LoadChildren(ZEngine::Core::VFS::IVFSContext& vfs, uint32_t parent);
+        void             UpdateSearch(ZEngine::Core::VFS::IVFSContext& vfs, const char* query, uint32_t listing_budget = 16);
+        bool             Searching() const
         {
             return m_query[0] && m_scan < Count;
         }
@@ -41,5 +43,7 @@ namespace Tetragrama::Panels
         char     m_query[128]     = {};
         uint32_t m_scan           = 0;
         uint32_t m_filtered_count = None;
+        uint32_t m_pending_parent = None;
+        void     PollChildren();
     };
 } // namespace Tetragrama::Panels
