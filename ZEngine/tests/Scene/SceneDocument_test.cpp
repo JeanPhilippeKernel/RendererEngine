@@ -1,7 +1,10 @@
+#include <ZEngine/Core/Containers/HeapSort.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/Serialization/YAMLAllocation.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
+#include <ZEngine/ECS/BinarySceneCodec.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MaterialComponent.h>
@@ -13,6 +16,7 @@
 #include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ECS/SceneDocument.h>
+#include <ZEngine/ECS/SceneDocumentInternal.h>
 #include <ZEngine/ECS/SceneSettingsYAML.h>
 #include <ZEngine/ECS/SceneYAMLReader.h>
 #include <gtest/gtest.h>
@@ -24,6 +28,7 @@
 #include <limits>
 #include <vector>
 #include "../TemporaryDirectory.h"
+#include "SceneWorkingMemoryTestSupport.h"
 
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
@@ -48,6 +53,55 @@ namespace
     struct UnsupportedSceneComponent
     {
         uint32_t Value = 0;
+    };
+
+    struct FieldScratchTrace
+    {
+        SceneComponentSchemaRegistry* Registry    = nullptr;
+        SceneDiagnostics*             Diagnostics = nullptr;
+        SceneComponentCodecFns        Original    = {};
+        const SceneValueField*        First       = nullptr;
+        size_t                        Calls       = 0;
+        bool                          Registered  = true;
+
+        bool                          Observe(const SceneValue& value)
+        {
+            if (value.Fields().empty())
+                return false;
+            ++Calls;
+            if (!First)
+                First = value.Fields().data();
+            return First == value.Fields().data();
+        }
+        static void Register(void* opaque, const SceneComponentSchema& schema)
+        {
+            auto&                    trace = *static_cast<FieldScratchTrace*>(opaque);
+            SceneComponentSchemaDesc desc  = {.Key = schema.Key, .Version = schema.Version, .RuntimeType = schema.RuntimeType, .Fields = schema.Fields, .FieldCount = schema.FieldCount, .Codecs = schema.Codecs, .References = schema.References};
+            if (std::string_view(schema.Key) == "NameComponent")
+            {
+                trace.Original = schema.Codecs;
+                // The remaining built-in Name callbacks have unused contexts.
+                EXPECT_EQ(trace.Original.Context, nullptr);
+                desc.Codecs.Context = &trace;
+                desc.Codecs.Capture = [](void* context, EntityID entity, const Scene& scene, SceneValueWriter* value, SceneDiagnostics* diagnostics) {
+                    auto& state = *static_cast<FieldScratchTrace*>(context);
+                    return state.Original.Capture(state.Original.Context, entity, scene, value, diagnostics) && state.Observe(value->Value());
+                };
+                desc.Codecs.DecodeYAML = [](void* context, uint32_t version, const SceneYAML::Node& source, SceneValueWriter* value, SceneDiagnostics* diagnostics) {
+                    auto& state = *static_cast<FieldScratchTrace*>(context);
+                    return state.Original.DecodeYAML(state.Original.Context, version, source, value, diagnostics) && state.Observe(value->Value());
+                };
+                desc.Codecs.DecodeBinary = [](void* context, uint32_t version, SceneBinaryReader* source, SceneValueWriter* value, SceneDiagnostics* diagnostics) {
+                    auto& state = *static_cast<FieldScratchTrace*>(context);
+                    return state.Original.DecodeBinary(state.Original.Context, version, source, value, diagnostics) && state.Observe(value->Value());
+                };
+                desc.Codecs.EncodeBinary = [](void* context, const SceneValue& value, SceneBinaryWriter* output, SceneDiagnostics* diagnostics) {
+                    auto& state = *static_cast<FieldScratchTrace*>(context);
+                    return state.Observe(value) && state.Original.EncodeBinary(state.Original.Context, value, output, diagnostics);
+                };
+            }
+            trace.Registered = trace.Registry->Register(desc, trace.Diagnostics) && trace.Registered;
+        }
     };
 
     struct SceneFaultVFS : VFSContext
@@ -265,6 +319,368 @@ TEST_F(SceneDocumentTest, SortingShuffledComponentRecordsCannotAliasOrReplaceAno
     EXPECT_STREQ(Candidate.GetComponent<NameComponent>(loaded)->Value, "Not a transform");
     EXPECT_FLOAT_EQ(Candidate.GetComponent<TransformComponent>(loaded)->Position.z, 14.f);
     EXPECT_EQ(Candidate.GetComponent<MeshComponent>(loaded)->MeshUUID, AssetUUID);
+}
+
+TEST_F(SceneDocumentTest, EntityAndComponentSortRefusalsPreserveThePriorSourceAndBinaryDocument)
+{
+    Add(SecondUUID, "Second");
+    Add(FirstUUID, "First");
+    ASSERT_TRUE(Capture());
+    const auto                                canonical = Emit();
+    const auto*                               original  = Document.Settings();
+    ZEngine::Core::Containers::Array<uint8_t> binary    = {};
+    ASSERT_TRUE(BinarySceneCodec::Encode(Document, Schemas, &Memory.MainArena, &binary, &Diagnostics));
+    constexpr size_t component_bytes = sizeof(ZEngine::Core::Containers::HeapSortState<SceneDocumentDetail::ComponentRecord>) + sizeof(ZEngine::Core::Memory::WorkingMemoryCharge);
+    constexpr size_t entity_bytes    = sizeof(ZEngine::Core::Containers::HeapSortState<SceneDocumentDetail::EntityRecord>) + sizeof(ZEngine::Core::Memory::WorkingMemoryCharge);
+    static_assert(component_bytes != entity_bytes);
+    for (const bool from_binary : {false, true})
+        for (const size_t refused : {component_bytes, entity_bytes})
+        {
+            SCOPED_TRACE(from_binary);
+            SCOPED_TRACE(refused);
+            ZEngine::Tests::SceneTestAllocationRoute route = {};
+            route.Limit                                    = SIZE_MAX;
+            route.RefuseBytes                              = refused;
+            Diagnostics.Clear();
+            EXPECT_FALSE(from_binary ? BinarySceneCodec::Decode({binary.data(), binary.size()}, Schemas, &Document, &Diagnostics, {}, &route) : SceneDocument::Parse(canonical.data(), canonical.size(), Schemas, &Document, &Diagnostics, {}, nullptr, &route));
+            EXPECT_EQ(route.Refusals, 1u);
+            EXPECT_EQ(route.Live, 0u);
+            EXPECT_EQ(route.Blocks, 0u);
+            EXPECT_TRUE(Diagnostics.HasError(SceneDiagnosticCode::LimitExceeded));
+            EXPECT_EQ(Document.Settings(), original);
+            EXPECT_EQ(Emit(), canonical);
+            // The same route succeeds once the explicit sorting refusal is lifted.
+            route.RefuseBytes = 0;
+            {
+                SceneDocument accepted = {};
+                ASSERT_TRUE(from_binary ? BinarySceneCodec::Decode({binary.data(), binary.size()}, Schemas, &accepted, &Diagnostics, {}, &route) : SceneDocument::Parse(canonical.data(), canonical.size(), Schemas, &accepted, &Diagnostics, {}, nullptr, &route));
+                std::string output = {};
+                ASSERT_TRUE(accepted.Emit(&output, &Diagnostics));
+                EXPECT_EQ(output, canonical);
+                EXPECT_EQ(route.Live, 0u);
+            }
+            EXPECT_EQ(route.Blocks, 0u);
+        }
+}
+
+TEST(SceneTreeWalkTest, ExactDepthAndNodeLimitsIncludeKeysButNotLeafFrames)
+{
+    SceneYAML::Storage storage = {};
+    ASSERT_TRUE(storage.Initialize(ZMega(2)));
+    auto value = storage.Scalar("leaf");
+    for (uint32_t level = 0; level < 32; ++level)
+    {
+        const auto parent = storage.Make(level % 2 ? SceneYAML::NodeType::Map : SceneYAML::NodeType::Sequence);
+        ASSERT_TRUE(level % 2 ? storage.AppendField(parent, storage.Scalar("key"), value) : storage.Append(parent, value));
+        value = parent;
+    }
+    SceneDocumentLimits limits  = {};
+    limits.MaxNodes             = 49; // 32 collections, 16 keys and one scalar leaf.
+    uint32_t            count   = 0;
+    SceneDiagnosticCode failure = SceneDiagnosticCode::None;
+    ASSERT_TRUE(SceneDocumentDetail::CountCapturedNodes(value, limits, count, 1, &failure, true));
+    EXPECT_EQ(count, 49u);
+    EXPECT_EQ(failure, SceneDiagnosticCode::None);
+    for (const bool depth_limit : {false, true})
+    {
+        count        = 0;
+        auto smaller = limits;
+        if (depth_limit)
+            --smaller.MaxDepth;
+        else
+            --smaller.MaxNodes;
+        EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(value, smaller, count, 1, &failure));
+        EXPECT_EQ(failure, SceneDiagnosticCode::LimitExceeded);
+    }
+    // Capture starts some payloads at depth four, rather than at the root.
+    count = 0;
+    EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(value, limits, count, 4, &failure));
+    count = 0;
+    EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(value, limits, count, UINT32_MAX, &failure));
+    count = UINT32_MAX;
+    EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(value, limits, count, 1, &failure));
+    EXPECT_EQ(count, UINT32_MAX);
+}
+
+TEST(SceneTreeWalkTest, WideForwardTraversalHasOneReservationAndNoAllocation)
+{
+    ZEngine::Tests::SceneTestAllocationRoute route = {};
+    route.Limit                                    = SIZE_MAX;
+    route.WatchBytes                               = SceneDocumentDetail::SceneTreeWalkWorkingBytes();
+    {
+        SceneYAML::Storage storage = {};
+        ASSERT_TRUE(storage.Initialize(ZMega(16), 1048576, 65536, 4096, &route));
+        const auto sequence = storage.Make(SceneYAML::NodeType::Sequence);
+        const auto scalar   = storage.Scalar("shared leaf");
+        for (uint32_t i = 0; i < 65536; ++i)
+            ASSERT_TRUE(storage.Append(sequence, scalar));
+        const auto          attempts   = route.Attempts;
+        const auto          arena_used = storage.Allocator()->m_current_offset;
+        uint32_t            count      = 0;
+        SceneDocumentLimits limits     = {};
+        limits.MaxNodes                = 65537;
+        ASSERT_TRUE(SceneDocumentDetail::CountCapturedNodes(sequence, limits, count, 1, nullptr, true));
+        EXPECT_EQ(count, 65537u);
+        EXPECT_EQ(route.WatchCalls, 1u);
+        EXPECT_EQ(route.WatchReleases, 1u);
+        EXPECT_EQ(route.Attempts, attempts);
+        EXPECT_EQ(route.Live, 0u);
+        EXPECT_EQ(storage.Allocator()->m_current_offset, arena_used);
+        --limits.MaxCollectionItems;
+        count                       = 0;
+        SceneDiagnosticCode failure = SceneDiagnosticCode::None;
+        EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(sequence, limits, count, 1, &failure));
+        EXPECT_EQ(failure, SceneDiagnosticCode::LimitExceeded);
+    }
+    EXPECT_EQ(route.Blocks, 0u);
+}
+
+TEST(SceneTreeWalkTest, ExactBudgetUsesActualOwnerAndRefusesBeforeChangingCount)
+{
+    ZEngine::Tests::SceneTestAllocationRoute route = {}, unrelated = {};
+    unrelated.Limit  = 0;
+    route.WatchBytes = SceneDocumentDetail::SceneTreeWalkWorkingBytes();
+    {
+        SceneYAML::Storage storage = {};
+        ASSERT_TRUE(storage.Initialize(ZMega(2), 1048576, 65536, 4096, &route));
+        const auto root = storage.Make(SceneYAML::NodeType::Map);
+        ASSERT_TRUE(storage.Set(root, "key", storage.Scalar("value")));
+        const auto attempts = route.Attempts;
+        const auto used     = storage.Allocator()->m_current_offset;
+        for (const bool exact : {false, true})
+        {
+            route.Limit                                               = route.WatchBytes - (exact ? 0 : 1);
+            uint32_t                                          count   = 7;
+            SceneDiagnosticCode                               failure = SceneDiagnosticCode::None;
+            ZEngine::Core::Serialization::YAMLAllocationScope scope(unrelated);
+            EXPECT_EQ(SceneDocumentDetail::CountCapturedNodes(root, {}, count, 1, &failure, true), exact);
+            EXPECT_EQ(count, exact ? 10u : 7u);
+            EXPECT_EQ(failure, exact ? SceneDiagnosticCode::None : SceneDiagnosticCode::LimitExceeded);
+            EXPECT_TRUE(storage.Good());
+            EXPECT_EQ(route.Live, 0u);
+            EXPECT_EQ(unrelated.Required, 0u);
+            EXPECT_EQ(route.Attempts, attempts);
+            EXPECT_EQ(storage.Allocator()->m_current_offset, used);
+        }
+        EXPECT_EQ(route.WatchCalls, 2u);
+        EXPECT_EQ(route.WatchReleases, 1u);
+        EXPECT_EQ(route.Peak, route.WatchBytes);
+    }
+    EXPECT_EQ(route.Blocks, 0u);
+}
+
+TEST(SceneTreeWalkTest, NestedDuplicatesAndInvalidScalarsKeepFailureClassification)
+{
+    for (uint32_t invalid = 0; invalid < 5; ++invalid)
+    {
+        SCOPED_TRACE(invalid);
+        SceneYAML::Storage storage = {};
+        ASSERT_TRUE(storage.Initialize(ZMega(2)));
+        const auto root = storage.Make(SceneYAML::NodeType::Sequence);
+        const auto map  = storage.Make(SceneYAML::NodeType::Map);
+        ASSERT_TRUE(storage.Append(root, map));
+        const auto key    = storage.Scalar("key");
+        const auto scalar = storage.Scalar("value");
+        ASSERT_TRUE(storage.AppendField(map, key, scalar));
+        // Normal construction already rejects NUL. Corrupt owned text here
+        // specifically to exercise the walk's defensive validation.
+        if (invalid == 1 || invalid == 2)
+            const_cast<char*>((invalid == 1 ? key : scalar).Scalar().data())[1] = '\0';
+        if (invalid == 0)
+            ASSERT_TRUE(storage.AppendField(map, storage.Scalar("key"), storage.Make(SceneYAML::NodeType::Null)));
+        SceneDocumentLimits limits = {};
+        if (invalid >= 3)
+            limits.MaxScalarBytes = invalid == 3 ? 2 : 4;
+        uint32_t            count   = 0;
+        SceneDiagnosticCode failure = SceneDiagnosticCode::None;
+        EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(root, limits, count, 1, &failure, true));
+        EXPECT_EQ(failure, invalid < 3 ? SceneDiagnosticCode::InvalidData : SceneDiagnosticCode::LimitExceeded);
+    }
+    uint32_t            count   = 0;
+    SceneDiagnosticCode failure = SceneDiagnosticCode::None;
+    EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes({}, {}, count, 1, &failure));
+    EXPECT_EQ(failure, SceneDiagnosticCode::InvalidData);
+}
+
+TEST_F(SceneDocumentTest, CaptureAndSourceBinaryCodecPhasesShareOneChargedFieldBuffer)
+{
+    Add(SecondUUID, "Second");
+    Add(FirstUUID, "First");
+    ASSERT_TRUE(Capture());
+    const auto                                canonical = Emit();
+    ZEngine::Core::Containers::Array<uint8_t> binary    = {};
+    ASSERT_TRUE(BinarySceneCodec::Encode(Document, Schemas, &Memory.MainArena, &binary, &Diagnostics));
+    SceneComponentSchemaRegistry traced = {};
+    traced.Initialize(&Memory.MainArena);
+    FieldScratchTrace trace = {.Registry = &traced, .Diagnostics = &Diagnostics};
+    Schemas.ForEachCanonical(FieldScratchTrace::Register, &trace);
+    ASSERT_TRUE(trace.Registered);
+    for (uint32_t operation = 0; operation < 5; ++operation)
+    {
+        SCOPED_TRACE(operation);
+        ZEngine::Tests::SceneTestAllocationRoute route = {};
+        route.Limit                                    = SIZE_MAX;
+        route.WatchBytes                               = SceneDocumentDetail::SceneFieldScratchWorkingBytes();
+        trace.First                                    = nullptr;
+        trace.Calls                                    = 0;
+        {
+            ZEngine::Core::Serialization::YAMLAllocationScope scope(route);
+            SceneDocument                                     accepted = {};
+            switch (operation)
+            {
+                case 0:
+                    ASSERT_TRUE(SceneDocument::Capture(Source, Settings, traced, &accepted, &Diagnostics));
+                    break;
+                case 1:
+                    ASSERT_TRUE(SceneDocument::Parse(canonical.data(), canonical.size(), traced, &accepted, &Diagnostics, {}, nullptr, &route));
+                    break;
+                case 2:
+                    ASSERT_TRUE(BinarySceneCodec::Decode({binary.data(), binary.size()}, traced, &accepted, &Diagnostics, {}, &route));
+                    break;
+                case 3:
+                {
+                    size_t measured = 0;
+                    ASSERT_TRUE(BinarySceneCodec::Measure(Document, traced, &measured, &Diagnostics));
+                    EXPECT_EQ(measured, binary.size());
+                    break;
+                }
+                case 4:
+                {
+                    ZEngine::Core::Containers::Array<uint8_t> encoded = {};
+                    ASSERT_TRUE(BinarySceneCodec::Encode(Document, traced, &Memory.MainArena, &encoded, &Diagnostics));
+                    EXPECT_EQ(encoded.size(), binary.size());
+                    EXPECT_TRUE(std::equal(encoded.begin(), encoded.end(), binary.begin()));
+                    break;
+                }
+            }
+            EXPECT_EQ(route.Live, 0u);
+            if (operation < 3)
+            {
+                std::string text = {};
+                ASSERT_TRUE(accepted.Emit(&text, &Diagnostics));
+                EXPECT_EQ(text, canonical);
+                EXPECT_EQ(route.WatchCalls, 1u);
+                EXPECT_EQ(route.WatchReleases, 1u);
+            }
+        }
+        EXPECT_EQ(route.Blocks, 0u);
+        EXPECT_EQ(trace.Calls, operation == 0 || operation == 2 ? 6u : operation == 4 ? 8u : 4u);
+    }
+}
+
+TEST_F(SceneDocumentTest, FieldAndGraphPrincipalRefusalsPreserveSourceAndBinaryDocuments)
+{
+    Add(FirstUUID);
+    ASSERT_TRUE(Capture());
+    const auto                                canonical = Emit();
+    const auto*                               original  = Document.Settings();
+    ZEngine::Core::Containers::Array<uint8_t> binary    = {};
+    ASSERT_TRUE(BinarySceneCodec::Encode(Document, Schemas, &Memory.MainArena, &binary, &Diagnostics));
+    ZEngine::Tests::SceneTestAllocationRoute probe = {};
+    probe.Limit                                    = SIZE_MAX;
+    {
+        SceneDocument accepted = {};
+        ASSERT_TRUE(BinarySceneCodec::Decode({binary.data(), binary.size()}, Schemas, &accepted, &Diagnostics, {}, &probe));
+    }
+    const auto graph_bytes = probe.Required; // Graph validation is the final reservation.
+    ASSERT_NE(graph_bytes, SceneDocumentDetail::SceneFieldScratchWorkingBytes());
+    EXPECT_EQ(probe.Blocks, 0u);
+    for (const bool from_binary : {false, true})
+        for (const size_t refused : {SceneDocumentDetail::SceneFieldScratchWorkingBytes(), graph_bytes})
+        {
+            SCOPED_TRACE(from_binary);
+            SCOPED_TRACE(refused);
+            ZEngine::Tests::SceneTestAllocationRoute route = {};
+            route.Limit                                    = SIZE_MAX;
+            route.RefuseBytes                              = refused;
+            Diagnostics.Clear();
+            EXPECT_FALSE(from_binary ? BinarySceneCodec::Decode({binary.data(), binary.size()}, Schemas, &Document, &Diagnostics, {}, &route) : SceneDocument::Parse(canonical.data(), canonical.size(), Schemas, &Document, &Diagnostics, {}, nullptr, &route));
+            EXPECT_EQ(route.Refusals, 1u);
+            EXPECT_EQ(route.Live, 0u);
+            EXPECT_EQ(route.Blocks, 0u);
+            if (from_binary && refused == SceneDocumentDetail::SceneFieldScratchWorkingBytes())
+                EXPECT_EQ(route.Attempts, 0u);
+            EXPECT_TRUE(Diagnostics.HasError(SceneDiagnosticCode::LimitExceeded));
+            EXPECT_EQ(Document.Settings(), original);
+            EXPECT_EQ(Emit(), canonical);
+        }
+}
+
+TEST_F(SceneDocumentTest, BinaryFieldAndLayoutExactBudgetPreservesMeasuredSizeOutputAndArenaOnRefusal)
+{
+    Add(FirstUUID);
+    ASSERT_TRUE(Capture());
+    size_t required = 0;
+    for (const bool encoding : {false, true})
+        for (uint32_t attempt = 0; attempt < 3; ++attempt)
+        {
+            ZEngine::Tests::SceneTestAllocationRoute route     = {};
+            route.Limit                                        = attempt == 0 ? 0 : required - (attempt == 1 ? 1 : 0);
+            size_t                                    measured = SIZE_MAX;
+            ZEngine::Core::Containers::Array<uint8_t> encoded  = {};
+            const auto                                used     = Memory.MainArena.m_current_offset;
+            Diagnostics.Clear();
+            {
+                ZEngine::Core::Serialization::YAMLAllocationScope scope(route);
+                EXPECT_EQ(encoding ? BinarySceneCodec::Encode(Document, Schemas, &Memory.MainArena, &encoded, &Diagnostics) : BinarySceneCodec::Measure(Document, Schemas, &measured, &Diagnostics), attempt == 2);
+            }
+            if (attempt == 0)
+                required = route.Required;
+            EXPECT_GT(required, SceneDocumentDetail::SceneFieldScratchWorkingBytes());
+            EXPECT_EQ(route.Required, required);
+            EXPECT_EQ(route.Live, 0u);
+            EXPECT_EQ(route.Attempts, 0u);
+            if (attempt < 2)
+            {
+                EXPECT_TRUE(Diagnostics.HasError(SceneDiagnosticCode::LimitExceeded));
+                EXPECT_EQ(measured, SIZE_MAX);
+                EXPECT_TRUE(encoded.empty());
+                EXPECT_EQ(Memory.MainArena.m_current_offset, used);
+            }
+            else
+                EXPECT_EQ(route.Peak, required);
+        }
+}
+
+TEST_F(SceneDocumentTest, ReferenceFieldBudgetRefusesBeforeVisitorsAndDrainsAfterRetry)
+{
+    const auto entity = Add(FirstUUID);
+    Source.AddComponent<MeshComponent>(entity, {AssetUUID, 31});
+    ASSERT_TRUE(Capture());
+    for (const bool all : {false, true})
+        for (const bool refused : {true, false})
+        {
+            ZEngine::Tests::SceneTestAllocationRoute route = {};
+            route.Limit                                    = refused ? 0 : SIZE_MAX;
+            size_t calls                                   = 0;
+            Diagnostics.Clear();
+            {
+                ZEngine::Core::Serialization::YAMLAllocationScope scope(route);
+                EXPECT_EQ(
+                    all ? Document.EnumerateReferences(
+                              Schemas,
+                              [](void* context, const SceneReferenceOccurrence&) {
+                                  ++*static_cast<size_t*>(context);
+                                  return true;
+                              },
+                              &calls,
+                              &Diagnostics)
+                        : Document.EnumerateComponentReferences(
+                              ComponentTypeOf<MeshComponent>(),
+                              Schemas,
+                              [](void* context, const SceneReference&) {
+                                  ++*static_cast<size_t*>(context);
+                                  return true;
+                              },
+                              &calls,
+                              &Diagnostics),
+                    !refused);
+            }
+            EXPECT_EQ(calls, refused ? 0u : 1u);
+            EXPECT_EQ(route.Live, 0u);
+            EXPECT_EQ(route.Attempts, 0u);
+            EXPECT_EQ(Diagnostics.HasError(SceneDiagnosticCode::LimitExceeded), refused);
+        }
 }
 
 TEST_F(SceneDocumentTest, CaptureHonorsNodeDepthScalarAndCollectionBudgetsBeforeRetainingWholeScene)
@@ -917,6 +1333,150 @@ TEST_F(SceneDocumentTest, ReferenceEnumerationHandlesEmptyKindsAndPropagatesVisi
     EXPECT_FALSE(Document.EnumerateComponentReferences(ComponentTypeOf<NameComponent>(), Schemas, visit, &visits, &Diagnostics));
     const SceneDocument empty = {};
     EXPECT_FALSE(empty.EnumerateComponentReferences(ComponentTypeOf<MeshComponent>(), Schemas, visit, &visits, &Diagnostics));
+}
+
+TEST_F(SceneDocumentTest, DocumentReferencesPreserveTypesAndPerEntityProvenanceWithoutAnECSWorld)
+{
+    const auto first  = Add(FirstUUID);
+    const auto second = Add(SecondUUID);
+    Source.AddComponent<MeshComponent>(first, {AssetUUID, 1});
+    Source.AddComponent<MaterialComponent>(first, {AssetUUID});
+    Source.AddComponent<MeshComponent>(second, {AssetUUID, 2});
+    Source.AddComponent<ParentComponent>(second, {first});
+    ASSERT_TRUE(Capture());
+    Source.DestroyEntity(second);
+    Source.DestroyEntity(first);
+
+    size_t visits = 0;
+    ASSERT_TRUE(Document.EnumerateReferences(
+        Schemas,
+        [](void* opaque, const SceneReferenceOccurrence& occurrence) {
+            const auto index = (*static_cast<size_t*>(opaque))++;
+            if (index > 3)
+                return false;
+            EXPECT_EQ(occurrence.EntityUUID, index < 2 ? FirstUUID : SecondUUID);
+            const auto& reference = occurrence.Reference;
+            EXPECT_EQ(reference.Kind, index == 3 ? SceneReferenceKind::Entity : SceneReferenceKind::Asset);
+            EXPECT_EQ(reference.UUID, index == 3 ? FirstUUID : AssetUUID);
+            if (index == 0)
+            {
+                EXPECT_STREQ(occurrence.SchemaKey, "MaterialComponent");
+                EXPECT_STREQ(reference.FieldKey, "material_uuid");
+                EXPECT_STREQ(reference.AssetKindKey, "material");
+            }
+            else if (index < 3)
+            {
+                EXPECT_STREQ(occurrence.SchemaKey, "MeshComponent");
+                EXPECT_STREQ(reference.FieldKey, "mesh_uuid");
+                EXPECT_STREQ(reference.AssetKindKey, "mesh");
+            }
+            else
+            {
+                EXPECT_STREQ(occurrence.SchemaKey, "ParentComponent");
+                EXPECT_STREQ(reference.FieldKey, "parent_uuid");
+                EXPECT_EQ(reference.AssetKindKey, nullptr);
+            }
+            return true;
+        },
+        &visits,
+        &Diagnostics));
+    EXPECT_EQ(visits, 4u);
+    EXPECT_EQ(Source.AliveCount(), 0u);
+    EXPECT_EQ(Candidate.AliveCount(), 0u);
+}
+
+TEST_F(SceneDocumentTest, DocumentReferencesIncludeRetainedInactiveSkyEnvironmentAndSkipNil)
+{
+    Settings.Sky.EnvironmentMap = AssetUUID;
+    Settings.Sky.Mode           = ZEngine::Rendering::Scenes::SkyMode::Atmosphere;
+    ASSERT_TRUE(Capture());
+    struct Reference
+    {
+        uint32_t    Count = 0;
+        uuids::uuid UUID  = {};
+    } result         = {};
+    const auto visit = [](void* opaque, const SceneReferenceOccurrence& occurrence) {
+        auto& output = *static_cast<Reference*>(opaque);
+        ++output.Count;
+        output.UUID = occurrence.Reference.UUID;
+        EXPECT_TRUE(occurrence.EntityUUID.is_nil());
+        EXPECT_STREQ(occurrence.SchemaKey, "SceneSettings");
+        EXPECT_EQ(occurrence.Reference.Kind, SceneReferenceKind::Asset);
+        EXPECT_STREQ(occurrence.Reference.FieldKey, "sky.environment");
+        EXPECT_STREQ(occurrence.Reference.AssetKindKey, "environment-map");
+        return true;
+    };
+    ASSERT_TRUE(Document.EnumerateReferences(Schemas, visit, &result, &Diagnostics));
+    EXPECT_EQ(result.Count, 1u);
+    EXPECT_EQ(result.UUID, AssetUUID);
+    Settings.Sky.EnvironmentMap = {};
+    ASSERT_TRUE(Capture());
+    ASSERT_TRUE(Document.EnumerateReferences(Schemas, visit, &result, &Diagnostics));
+    EXPECT_EQ(result.Count, 1u);
+}
+
+TEST_F(SceneDocumentTest, DocumentReferenceVisitorFailureStopsBeforeLaterComponentsAndSettings)
+{
+    const auto entity = Add(FirstUUID);
+    Source.AddComponent<MeshComponent>(entity, {AssetUUID, 0});
+    Source.AddComponent<MaterialComponent>(entity, {AssetUUID});
+    Settings.Sky.EnvironmentMap = AssetUUID;
+    ASSERT_TRUE(Capture());
+    uint32_t   visits = 0;
+    const auto stop   = [](void* opaque, const SceneReferenceOccurrence&) {
+        ++*static_cast<uint32_t*>(opaque);
+        return false;
+    };
+    EXPECT_FALSE(Document.EnumerateReferences(Schemas, stop, &visits, &Diagnostics));
+    EXPECT_EQ(visits, 1u);
+    Source.DestroyEntity(entity);
+    ASSERT_TRUE(Capture());
+    EXPECT_FALSE(Document.EnumerateReferences(Schemas, stop, &visits, &Diagnostics));
+    EXPECT_EQ(visits, 2u);
+}
+
+TEST_F(SceneDocumentTest, DocumentReferencesRejectMissingInputsAndChangedSchemas)
+{
+    uint32_t   visits = 0;
+    const auto visit  = [](void* opaque, const SceneReferenceOccurrence&) {
+        ++*static_cast<uint32_t*>(opaque);
+        return true;
+    };
+    EXPECT_FALSE(Document.EnumerateReferences(Schemas, visit, &visits, &Diagnostics));
+    ASSERT_TRUE(Capture());
+    EXPECT_TRUE(Document.EnumerateReferences(Schemas, visit, &visits, &Diagnostics));
+    EXPECT_FALSE(Document.EnumerateReferences(Schemas, nullptr, nullptr, &Diagnostics));
+    SceneComponentSchemaRegistry missing = {};
+    EXPECT_FALSE(Document.EnumerateReferences(missing, visit, &visits, &Diagnostics));
+    const auto entity = Add(FirstUUID);
+    Source.AddComponent<MeshComponent>(entity, {AssetUUID, 0});
+    ASSERT_TRUE(Capture());
+    missing.Initialize(&Memory.MainArena);
+    EXPECT_FALSE(Document.EnumerateReferences(missing, visit, &visits, &Diagnostics));
+    EXPECT_EQ(visits, 0u);
+}
+
+TEST_F(SceneDocumentTest, DocumentReferencesRejectInspectOnlyUnknownComponents)
+{
+    Add(FirstUUID);
+    ASSERT_TRUE(Capture());
+    auto root      = ReadTestYAML(Emit());
+    auto component = YAMLStorage.Make(SceneYAML::NodeType::Map);
+    ASSERT_TRUE(YAMLStorage.Set(component, "schema_version", YAMLStorage.UInt(999)));
+    ASSERT_TRUE(YAMLStorage.Set(component, "fields", YAMLStorage.Make(SceneYAML::NodeType::Map)));
+    ASSERT_TRUE(YAMLStorage.Set(root["scene"]["entities"][0]["components"], "FutureComponent", component));
+    ASSERT_TRUE(Parse(EmitTestYAML(root)));
+    ASSERT_TRUE(Document.ReadOnly());
+    uint32_t visits = 0;
+    EXPECT_FALSE(Document.EnumerateReferences(
+        Schemas,
+        [](void* opaque, const SceneReferenceOccurrence&) {
+            ++*static_cast<uint32_t*>(opaque);
+            return true;
+        },
+        &visits,
+        &Diagnostics));
+    EXPECT_EQ(visits, 0u);
 }
 
 TEST(SceneSettingsComparisonTest, SkyIncludesHiddenModesAllScalarsColorAlphaAndStableReferences)

@@ -6,19 +6,63 @@
 #include <cerrno>
 #endif
 
+#include <ZEngine/Core/Memory/AllocationRoute.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <algorithm>
 #include <limits>
+#include <new>
 
 namespace ZEngine::Core::Memory
 {
     struct ArenaCommitTracker
     {
-        uint8_t* CommittedPages  = nullptr;
-        size_t   PageCount       = 0;
-        size_t   AllocationBytes = 0;
+        uint8_t*              CommittedPages  = nullptr;
+        size_t                PageCount       = 0;
+        size_t                AllocationBytes = 0;
+        size_t                CommittedBytes  = 0;
+        const ArenaAllocator* Owner           = nullptr;
     };
+
+    void ArenaAllocator::MoveFrom(ArenaAllocator& other) noexcept
+    {
+        m_memory                  = other.m_memory;
+        m_is_sub_arena            = other.m_is_sub_arena;
+        m_is_borrowed             = other.m_is_borrowed;
+        m_total_size              = other.m_total_size;
+        m_reserved_size           = other.m_reserved_size;
+        m_initial_current_offset  = other.m_initial_current_offset;
+        m_initial_previous_offset = other.m_initial_previous_offset;
+        m_current_offset          = other.m_current_offset;
+        m_previous_offset         = other.m_previous_offset;
+        m_committed_size          = other.m_committed_size;
+        m_mem_page_size           = other.m_mem_page_size;
+        m_owner_name              = other.m_owner_name;
+        m_last_failure            = other.m_last_failure;
+        m_commit_tracker          = other.m_commit_tracker;
+        m_root_offset             = other.m_root_offset;
+        m_owns_commit_tracker     = other.m_owns_commit_tracker;
+        m_growth_route            = other.m_growth_route;
+        m_growth_first            = other.m_growth_first;
+        m_growth_current          = other.m_growth_current;
+        m_growth_initial_size     = other.m_growth_initial_size;
+        if (m_owns_commit_tracker && m_commit_tracker)
+            m_commit_tracker->Owner = this;
+
+        other.m_memory              = nullptr;
+        other.m_total_size          = 0;
+        other.m_reserved_size       = 0;
+        other.m_committed_size      = 0;
+        other.m_is_sub_arena        = false;
+        other.m_is_borrowed         = false;
+        other.m_commit_tracker      = nullptr;
+        other.m_root_offset         = 0;
+        other.m_owns_commit_tracker = false;
+        other.m_growth_route        = nullptr;
+        other.m_growth_first        = nullptr;
+        other.m_growth_current      = nullptr;
+        other.m_growth_initial_size = 0;
+    }
 
     static bool RoundUpToPage(size_t value, size_t page_size, size_t* result)
     {
@@ -46,6 +90,152 @@ namespace ZEngine::Core::Memory
     {
         arena->m_last_failure = {};
     }
+
+    struct alignas(std::max_align_t) ArenaGrowthChunk
+    {
+        ArenaGrowthChunk* Next     = nullptr;
+        size_t            Offset   = 0;
+        size_t            Capacity = 0;
+    };
+
+    // Logical offsets span block capacities, including skipped tails. They stay
+    // stable across growth and allow ordinary arena marks to rewind in O(1).
+    // The cached block makes sequential allocation/last-allocation resize O(1);
+    // only a rewind or an older-pointer resize walks the geometric block list.
+    struct ArenaGrowth
+    {
+        struct Region
+        {
+            uint8_t*          Memory   = nullptr;
+            size_t            Offset   = 0;
+            size_t            Capacity = 0;
+            ArenaGrowthChunk* Chunk    = nullptr;
+        };
+
+        static Region At(ArenaAllocator& arena, size_t offset)
+        {
+            if (offset < arena.m_growth_initial_size || !arena.m_growth_first)
+                return {arena.m_memory, 0, arena.m_growth_initial_size};
+            auto* chunk = arena.m_growth_current;
+            if (!chunk || offset < chunk->Offset)
+                chunk = arena.m_growth_first;
+            while (chunk->Next && offset >= chunk->Next->Offset)
+                chunk = chunk->Next;
+            return {reinterpret_cast<uint8_t*>(chunk + 1), chunk->Offset, chunk->Capacity, chunk};
+        }
+
+        static void Shutdown(ArenaAllocator& arena)
+        {
+            auto* chunk = arena.m_growth_first;
+            while (chunk)
+            {
+                auto* next = chunk->Next;
+                chunk->~ArenaGrowthChunk();
+                arena.m_growth_route->Free(chunk);
+                chunk = next;
+            }
+            arena.m_growth_route        = nullptr;
+            arena.m_growth_first        = nullptr;
+            arena.m_growth_current      = nullptr;
+            arena.m_growth_initial_size = 0;
+        }
+
+        static void* Allocate(ArenaAllocator& arena, size_t size, size_t alignment)
+        {
+            auto   region = At(arena, arena.m_current_offset);
+            size_t used   = arena.m_current_offset - region.Offset;
+            for (;;)
+            {
+                const auto base    = reinterpret_cast<uintptr_t>(region.Memory);
+                const auto address = base + used;
+                const auto padding = (alignment - address % alignment) % alignment;
+                if (used <= region.Capacity && padding <= region.Capacity - used && size <= region.Capacity - used - padding)
+                {
+                    const size_t offset     = used + padding;
+                    arena.m_previous_offset = region.Offset + offset;
+                    arena.m_current_offset  = arena.m_previous_offset + size;
+                    arena.m_growth_current  = region.Chunk;
+                    ClearAllocationFailure(&arena);
+                    return region.Memory + offset;
+                }
+                auto* next = region.Chunk ? region.Chunk->Next : arena.m_growth_first;
+                if (!next)
+                {
+                    const size_t remaining = arena.m_total_size - arena.m_reserved_size;
+                    // Route alignment covers the block header/data. Larger
+                    // requested alignments need at most alignment-1 slack.
+                    const size_t slack     = alignment > alignof(ArenaGrowthChunk) ? alignment - 1 : 0;
+                    if (size > remaining || slack > remaining - size)
+                    {
+                        SetAllocationFailure(&arena, ArenaAllocationFailureKind::CapacityExceeded, size);
+                        return nullptr;
+                    }
+                    const size_t doubled  = region.Capacity > remaining / 2 ? remaining : region.Capacity * 2;
+                    const size_t capacity = std::max(size + slack, doubled);
+                    if (capacity > std::numeric_limits<size_t>::max() - sizeof(ArenaGrowthChunk))
+                    {
+                        SetAllocationFailure(&arena, ArenaAllocationFailureKind::CapacityExceeded, size);
+                        return nullptr;
+                    }
+                    void* memory = arena.m_growth_route->Allocate(sizeof(ArenaGrowthChunk) + capacity);
+                    if (!memory)
+                    {
+                        SetAllocationFailure(&arena, ArenaAllocationFailureKind::CommitFailed, size);
+                        return nullptr;
+                    }
+                    next = new (memory) ArenaGrowthChunk{.Offset = arena.m_reserved_size, .Capacity = capacity};
+                    if (region.Chunk)
+                        region.Chunk->Next = next;
+                    else
+                        arena.m_growth_first = next;
+                    arena.m_reserved_size  += capacity;
+                    arena.m_committed_size += capacity;
+                }
+                region = {reinterpret_cast<uint8_t*>(next + 1), next->Offset, next->Capacity, next};
+                used   = 0;
+            }
+        }
+
+        static void* Resize(ArenaAllocator& arena, void* old_memory, size_t old_size, size_t new_size, size_t alignment)
+        {
+            const auto address  = reinterpret_cast<uintptr_t>(old_memory);
+            auto       region   = At(arena, arena.m_previous_offset);
+            const auto contains = [address](const Region& candidate) {
+                const auto base = reinterpret_cast<uintptr_t>(candidate.Memory);
+                return address >= base && address - base < candidate.Capacity;
+            };
+            if (!contains(region))
+            {
+                region = {arena.m_memory, 0, arena.m_growth_initial_size};
+                for (auto* chunk = arena.m_growth_first; !contains(region) && chunk; chunk = chunk->Next)
+                    region = {reinterpret_cast<uint8_t*>(chunk + 1), chunk->Offset, chunk->Capacity, chunk};
+            }
+            if (!contains(region) || address % alignment != 0)
+                return nullptr;
+            const size_t offset = address - reinterpret_cast<uintptr_t>(region.Memory);
+            if (old_size > region.Capacity - offset || region.Offset + offset > arena.m_current_offset || old_size > arena.m_current_offset - region.Offset - offset)
+                return nullptr;
+            if (region.Offset + offset == arena.m_previous_offset && new_size <= region.Capacity - offset)
+            {
+                const auto start = std::min(old_size, new_size);
+                const auto bytes = std::max(old_size, new_size) - start;
+                if (bytes)
+                    Helpers::secure_memset(region.Memory + offset + start, 0, bytes, bytes);
+                arena.m_current_offset = region.Offset + offset + new_size;
+                ClearAllocationFailure(&arena);
+                return old_memory;
+            }
+            void* memory = arena.Allocate(new_size, alignment);
+            if (memory)
+                Helpers::secure_memcpy(memory, new_size, old_memory, std::min(old_size, new_size));
+            return memory;
+        }
+
+        static bool Enabled(const ArenaAllocator& arena)
+        {
+            return arena.m_growth_route != nullptr;
+        }
+    };
 
     static ArenaCommitTracker* CreateCommitTracker(size_t reserved_size, size_t page_size, int* platform_error)
     {
@@ -75,6 +265,8 @@ namespace ZEngine::Core::Memory
         tracker->CommittedPages  = reinterpret_cast<uint8_t*>(tracker) + sizeof(ArenaCommitTracker);
         tracker->PageCount       = page_count;
         tracker->AllocationBytes = tracker_size;
+        tracker->CommittedBytes  = 0;
+        tracker->Owner           = nullptr;
         return tracker;
     }
 
@@ -89,6 +281,44 @@ namespace ZEngine::Core::Memory
 #else
         munmap(tracker, tracker->AllocationBytes);
 #endif
+    }
+
+    size_t ArenaAllocator::AllocationTrackingBytes() const noexcept
+    {
+        if (!m_owns_commit_tracker || !m_commit_tracker)
+            return 0;
+        size_t rounded = 0;
+        return RoundUpToPage(m_commit_tracker->AllocationBytes, m_mem_page_size, &rounded) ? rounded : std::numeric_limits<size_t>::max();
+    }
+
+    bool ArenaAllocator::RetainedStorage(ArenaRetainedStorage* output) const noexcept
+    {
+        if (!output || !m_memory || m_is_borrowed || !m_commit_tracker || !m_commit_tracker->Owner || !m_mem_page_size)
+            return false;
+        size_t tracking = 0;
+        if (!RoundUpToPage(m_commit_tracker->AllocationBytes, m_mem_page_size, &tracking) || m_commit_tracker->PageCount > SIZE_MAX / m_mem_page_size)
+            return false;
+        *output = {m_commit_tracker, m_commit_tracker->CommittedBytes, tracking, m_commit_tracker->PageCount * m_mem_page_size, m_commit_tracker->Owner};
+        return true;
+    }
+
+    bool ArenaAllocator::RetainsStorage(const void* pointer, size_t bytes) const noexcept
+    {
+        if (!pointer || !bytes || !m_memory || m_is_borrowed || !m_commit_tracker || !m_mem_page_size || m_commit_tracker->PageCount > SIZE_MAX / m_mem_page_size)
+            return false;
+        const auto root    = reinterpret_cast<uintptr_t>(m_memory) - m_root_offset;
+        const auto address = reinterpret_cast<uintptr_t>(pointer);
+        if (address < root)
+            return false;
+        const auto offset   = address - root;
+        const auto capacity = m_commit_tracker->PageCount * m_mem_page_size;
+        if (offset >= capacity || bytes > capacity - offset)
+            return false;
+        const auto last = (offset + bytes - 1) / m_mem_page_size;
+        for (size_t page = offset / m_mem_page_size; page <= last; ++page)
+            if (!m_commit_tracker->CommittedPages[page])
+                return false;
+        return true;
     }
 
     bool CommitAllocationPages(ArenaAllocator* arena, size_t allocation_offset, size_t allocation_size)
@@ -150,7 +380,9 @@ namespace ZEngine::Core::Memory
                 ++newly_committed_pages;
             }
         }
-        arena->m_committed_size += newly_committed_pages * page_size;
+        const size_t bytes                       = newly_committed_pages * page_size;
+        arena->m_committed_size                 += bytes;
+        arena->m_commit_tracker->CommittedBytes += bytes;
         ClearAllocationFailure(arena);
         return true;
     }
@@ -233,6 +465,7 @@ namespace ZEngine::Core::Memory
         m_committed_size          = 0;
         m_root_offset             = 0;
         m_owns_commit_tracker     = true;
+        m_commit_tracker->Owner   = this;
     }
 
     bool ArenaAllocator::InitializeBorrowed(void* memory, size_t bytes, cstring owner_name)
@@ -251,8 +484,19 @@ namespace ZEngine::Core::Memory
         return true;
     }
 
+    bool ArenaAllocator::InitializeGrowingBorrowed(void* memory, size_t initial_bytes, size_t max_bytes, IAllocationRoute& route, cstring owner_name)
+    {
+        if (max_bytes < initial_bytes || !InitializeBorrowed(memory, initial_bytes, owner_name))
+            return false;
+        m_total_size          = max_bytes;
+        m_growth_initial_size = initial_bytes;
+        m_growth_route        = &route;
+        return true;
+    }
+
     void ArenaAllocator::Shutdown()
     {
+        ArenaGrowth::Shutdown(*this);
         // Not thread-safe: external synchronization is required if the arena is shared across threads.
         const size_t total        = m_reserved_size; // save before zero — munmap requires the original size
         auto*        tracker      = m_commit_tracker;
@@ -299,6 +543,8 @@ namespace ZEngine::Core::Memory
             SetAllocationFailure(a, ArenaAllocationFailureKind::ArenaNotInitialized, size);
             return nullptr;
         }
+        if (ArenaGrowth::Enabled(*a))
+            return ArenaGrowth::Allocate(*a, size, alignment);
 
         uintptr_t current_ptr  = (uintptr_t) a->m_memory + (uintptr_t) a->m_current_offset;
         uintptr_t offset       = Helpers::memory_align(current_ptr, alignment);
@@ -363,6 +609,8 @@ namespace ZEngine::Core::Memory
         {
             return Allocate(new_size, alignment);
         }
+        if (m_growth_route)
+            return ArenaGrowth::Resize(*this, old_memory, old_size, new_size, alignment);
         const uintptr_t base    = reinterpret_cast<uintptr_t>(m_memory);
         const uintptr_t address = reinterpret_cast<uintptr_t>(old_memory);
         if (!m_memory || address < base || address - base > m_current_offset || old_size > m_current_offset - (address - base) || address % alignment != 0)
@@ -409,6 +657,11 @@ namespace ZEngine::Core::Memory
 
     void ArenaAllocator::CreateSubArena(size_t size, ArenaAllocator* out_arena, cstring owner_name)
     {
+        if (m_growth_route)
+        {
+            SetAllocationFailure(this, ArenaAllocationFailureKind::CapacityExceeded, size);
+            return; // A segmented owner cannot expose a contiguous child range.
+        }
         ZENGINE_VALIDATE_ASSERT(out_arena != nullptr, "ArenaAllocator::CreateSubArena: out_arena must not be null")
         ZENGINE_VALIDATE_ASSERT(size > 0, "ArenaAllocator::CreateSubArena: size must be > 0")
         ZENGINE_VALIDATE_ASSERT(m_memory != nullptr, "ArenaAllocator::CreateSubArena: parent arena not initialized")
@@ -470,24 +723,31 @@ namespace ZEngine::Core::Memory
 
     void PoolAllocator::Initialize(Arena* arena, size_t size, size_t chk_size, size_t alignment)
     {
-        // Let Allocate manage alignment internally — do not pre-subtract padding.
-        // Pre-subtracting caused a double-reduction: size was reduced by the padding
-        // computed here, then Allocate re-aligned internally, potentially adding no
-        // padding (if the arena was already aligned) while size was already shrunk.
+        const bool initialized = TryInitialize(arena, size, chk_size, alignment);
+        ZENGINE_VALIDATE_ASSERT(initialized, "PoolAllocator::Initialize: invalid layout or allocation failure");
+    }
+
+    bool PoolAllocator::TryInitialize(Arena* arena, size_t size, size_t chk_size, size_t alignment)
+    {
+        if (!arena || !alignment || (alignment & (alignment - 1)))
+            return false;
+        // Every free chunk contains a pointer, even when the caller's objects
+        // themselves only require byte alignment.
+        alignment = std::max(alignment, alignof(PoolFreeNode));
+        if (chk_size > SIZE_MAX - (alignment - 1))
+            return false;
         chk_size = Helpers::memory_align_size_t(chk_size, alignment);
-
-        ZENGINE_VALIDATE_ASSERT(chk_size >= sizeof(PoolFreeNode), "Chunk size is too small");
-        ZENGINE_VALIDATE_ASSERT(size >= chk_size, "Backing buffer length is smaller than the chunk size");
-
-        memory = (uint8_t*) arena->Allocate(size, alignment);
-
-        ZENGINE_VALIDATE_ASSERT(memory != nullptr, "PoolAllocator::Initialize: allocation failed");
-
+        if (chk_size < sizeof(PoolFreeNode) || size < chk_size)
+            return false;
+        auto* storage = static_cast<uint8_t*>(arena->Allocate(size, alignment));
+        if (!storage)
+            return false;
+        memory     = storage;
         total_size = size;
         chunk_size = chk_size;
         head       = nullptr;
-
         Clear();
+        return true;
     }
 
     void* PoolAllocator::Allocate()

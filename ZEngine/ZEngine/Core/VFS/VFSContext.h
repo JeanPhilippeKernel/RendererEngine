@@ -35,6 +35,12 @@ namespace ZEngine::Core::VFS
     {
         void                                                    Initialize(Memory::ArenaAllocator* arena, size_t mount_table_capacity = 16);
 
+        [[nodiscard]] VFSResult<VFSContextStorage>              NativeStorage() const noexcept override;
+
+        [[nodiscard]] VFSResult<void>                           AcquirePublicationRoot(const VFSPath&, VFSPublicationRootLease*, IVFSWorkingMemoryBudget* = nullptr) override;
+        [[nodiscard]] VFSResult<void>                           AcquireScratchRoot(const VFSPath&, VFSScratchRootLease*, IVFSWorkingMemoryBudget* = nullptr) override;
+        [[nodiscard]] VFSResult<void>                           AcquireReadRoot(const VFSPath&, VFSReadRootLease*, IVFSWorkingMemoryBudget* = nullptr) override;
+
         // Start the platform file watcher for the project root.
         // registry and coordinator are optional — pass nullptr if not yet available.
         // When a file is modified: registry->OnAssetModified + coordinator->Enqueue(Immediate)

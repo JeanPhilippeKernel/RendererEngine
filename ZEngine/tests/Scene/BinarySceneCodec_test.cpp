@@ -1,3 +1,4 @@
+#include <ZEngine/Core/Memory/AllocationRoute.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/ECS/BinarySceneCodec.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
@@ -45,6 +46,26 @@ namespace
     {
         SetWord(bytes, Format::ChecksumOffset, Format::Checksum(bytes));
     }
+
+    struct RefusingRoute final : ZEngine::Core::Memory::IAllocationRoute
+    {
+        size_t Calls = 0;
+
+        void*  Allocate(size_t) noexcept override
+        {
+            ++Calls;
+            return nullptr;
+        }
+        void* Reallocate(void*, size_t, size_t) noexcept override
+        {
+            ++Calls;
+            return nullptr;
+        }
+        void Free(void*) noexcept override
+        {
+            ++Calls;
+        }
+    };
 
     class BinarySceneCodecTest : public testing::Test
     {
@@ -131,12 +152,12 @@ namespace
             }
             return true;
         }
-        void Rejects(std::span<const uint8_t> bytes, const ECS::SceneDocumentLimits& limits = {}, const ECS::SceneComponentSchemaRegistry* schemas = nullptr)
+        void Rejects(std::span<const uint8_t> bytes, const ECS::SceneDocumentLimits& limits = {}, const ECS::SceneComponentSchemaRegistry* schemas = nullptr, ZEngine::Core::Memory::IAllocationRoute* route = nullptr)
         {
             std::string before = {}, after = {};
             ASSERT_TRUE(Document.Emit(&before, &Diagnostics));
             Diagnostics.Clear();
-            EXPECT_FALSE(ECS::BinarySceneCodec::Decode(bytes, schemas ? *schemas : Schemas, &Document, &Diagnostics, limits));
+            EXPECT_FALSE(ECS::BinarySceneCodec::Decode(bytes, schemas ? *schemas : Schemas, &Document, &Diagnostics, limits, route));
             EXPECT_TRUE(Diagnostics.HasErrors());
             ASSERT_TRUE(Document.Emit(&after, &Diagnostics));
             EXPECT_EQ(before, after);
@@ -355,11 +376,83 @@ namespace
         const auto before = Copy();
         for (const auto* registry : {&missing, &incompatible})
         {
-            Rejects(before, {}, registry);
+            RefusingRoute route = {};
+            Rejects(before, {}, registry, &route);
+            EXPECT_TRUE(Diagnostics.HasError(ECS::SceneDiagnosticCode::UnsupportedVersion));
+            EXPECT_EQ(route.Calls, 0u);
             const auto offset = Output.m_current_offset;
             EXPECT_FALSE(ECS::BinarySceneCodec::Encode(Document, *registry, &Output, &Bytes, &Diagnostics));
             EXPECT_EQ(Output.m_current_offset, offset);
             EXPECT_EQ(Copy(), before);
+        }
+    }
+
+    TEST_F(BinarySceneCodecTest, WellFormedUnknownKeysAndNewerVersionsReportUnsupportedWithoutAllocation)
+    {
+        const auto row = Entry("NameComponent");
+        for (const bool unknown_key : {false, true})
+        {
+            auto bytes = Copy();
+            if (unknown_key)
+                bytes[Word(bytes, row)] = 'O'; // Valid key, still before ParentComponent.
+            else
+                SetWord(bytes, row + 8, 2);
+            FixChecksum(bytes);
+            RefusingRoute route = {};
+            Rejects(bytes, {}, nullptr, &route);
+            EXPECT_TRUE(Diagnostics.HasError(ECS::SceneDiagnosticCode::UnsupportedVersion));
+            EXPECT_EQ(route.Calls, 0u);
+        }
+    }
+
+    TEST_F(BinarySceneCodecTest, MalformedTablesTakePrecedenceOverMissingSchemasWithoutAllocation)
+    {
+        ECS::SceneComponentSchemaRegistry missing = {};
+        missing.Initialize(&Memory.MainArena);
+        const auto last = ComponentsOffset() + (Word({Bytes.data(), Bytes.size()}, 56) - 1) * Format::ComponentBytes;
+        for (uint32_t mode = 0; mode < 5; ++mode)
+        {
+            SCOPED_TRACE(mode);
+            auto bytes = Copy();
+            switch (mode)
+            {
+                case 0:
+                    bytes[Word(bytes, last)] = ' ';
+                    break;
+                case 1:
+                    SetWord(bytes, last + 12, Word(bytes, last + 12) - 1);
+                    break;
+                case 2:
+                    SetWord(bytes, last + 16, UINT32_MAX);
+                    break;
+                case 3:
+                    bytes.push_back(0);
+                    SetWord(bytes, 24, static_cast<uint32_t>(bytes.size()));
+                    break;
+                case 4:
+                {
+                    // NameComponent and UUIDComponent have the same key length;
+                    // leave only this row so canonical-order rejection cannot
+                    // mask the explicit reserved-identity-key rule.
+                    Source.ForEachEntity([&](ECS::EntityID entity) {
+                        Source.RemoveComponent<Components::ParentComponent>(entity);
+                        Source.RemoveComponent<Components::TransformComponent>(entity);
+                    });
+                    ASSERT_TRUE(ECS::SceneDocument::Capture(Source, Settings, Schemas, &Document, &Diagnostics));
+                    ASSERT_TRUE(ECS::BinarySceneCodec::Encode(Document, Schemas, &Output, &Bytes, &Diagnostics));
+                    bytes = Copy();
+                    ASSERT_EQ(Word(bytes, 56), 1u);
+                    const auto key = Word(bytes, Entry("NameComponent"));
+                    ASSERT_EQ(ZEngine::Helpers::secure_memcpy(bytes.data() + key, bytes.size() - key, "UUIDComponent", 13), ZEngine::Helpers::MEMORY_OP_SUCCESS);
+                    break;
+                }
+            }
+            FixChecksum(bytes);
+            RefusingRoute route = {};
+            Rejects(bytes, {}, &missing, &route);
+            EXPECT_TRUE(Diagnostics.HasError(ECS::SceneDiagnosticCode::InvalidData));
+            EXPECT_FALSE(Diagnostics.HasError(ECS::SceneDiagnosticCode::UnsupportedVersion));
+            EXPECT_EQ(route.Calls, 0u);
         }
     }
 

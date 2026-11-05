@@ -388,3 +388,37 @@ TEST_F(HashMapTest, RemoveHeadOfCollisionChain)
     EXPECT_TRUE(map.contains(64));
     EXPECT_EQ(*map.find(64), 6400);
 }
+
+TEST_F(HashMapTest, CheckedReservePreservesLiveKeysAndRemovesTombstones)
+{
+    UnorderedHashMap<uint32_t, uint32_t> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    for (uint32_t i = 0; i < 10; ++i)
+        map.insert(i, i * 3);
+    map.remove(4);
+    ASSERT_TRUE(map.try_reserve(64));
+    EXPECT_EQ(map.capacity(), 64u);
+    EXPECT_EQ(map.size(), 9u);
+    EXPECT_EQ(map.find(4), nullptr);
+    for (uint32_t i = 0; i < 10; ++i)
+        if (i != 4)
+        {
+            ASSERT_NE(map.find(i), nullptr);
+            EXPECT_EQ(*map.find(i), i * 3);
+        }
+}
+
+TEST_F(HashMapTest, CheckedReserveFailurePreservesIndexAndArena)
+{
+    UnorderedHashMap<uint32_t, uint32_t> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    map.insert(7, 21);
+    auto* const value  = map.find(7);
+    const auto  offset = manager.MainArena.m_current_offset;
+    EXPECT_FALSE(map.try_reserve(SIZE_MAX));
+    EXPECT_EQ(manager.MainArena.m_current_offset, offset);
+    EXPECT_EQ(map.capacity(), 16u);
+    EXPECT_EQ(map.find(7), value);
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(*value, 21u);
+}

@@ -1,25 +1,9 @@
-// Route STBI allocation through the per-worker TLSFSlab when available so
-// stbi_load pixel buffers stay on the slab rather than the system heap.
-// Falls back to malloc/free/realloc on the main thread (slab = nullptr).
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/ImageCodec.h>
 #include <ZEngine/Profiling/Profiling.h>
 #include <cstdlib>
-#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(nullptr, sz) : std::malloc(sz))
-#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(p, newsz) : std::realloc(p, newsz))
-#define STBI_FREE(p)                                    \
-    do                                                  \
-    {                                                   \
-        if (ZEngine::Helpers::GetWorkerSlab())          \
-            ZEngine::Helpers::GetWorkerSlab()->Free(p); \
-        else                                            \
-            std::free(p);                               \
-    } while (0)
-#define STB_IMAGE_IMPLEMENTATION
-#ifdef __GNUC__
-#define STBI_NO_SIMD
-#endif
 #include <stb/stb_image.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -211,7 +195,7 @@ namespace ZEngine::Rendering
         bool       valid = std::fseek(file, 0, SEEK_END) == 0;
         const long size  = valid ? std::ftell(file) : -1;
         valid            = valid && size > static_cast<long>(kThumbnailMetadataSize) && size <= static_cast<long>(kMaxThumbnailPayload + kThumbnailMetadataSize) && std::fseek(file, 0, SEEK_SET) == 0;
-        auto* bytes      = valid ? static_cast<uint8_t*>(STBI_MALLOC(static_cast<size_t>(size))) : nullptr;
+        auto* bytes      = valid ? static_cast<uint8_t*>(Importers::ImageCodec::Allocate(static_cast<size_t>(size))) : nullptr;
         valid            = bytes && std::fread(bytes, 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
         std::fclose(file);
         uint8_t* pixels = nullptr;
@@ -229,7 +213,7 @@ namespace ZEngine::Rendering
             if (valid)
                 pixels = stbi_load_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels, STBI_rgb_alpha);
         }
-        STBI_FREE(bytes);
+        Importers::ImageCodec::Free(bytes);
         return pixels;
     }
 

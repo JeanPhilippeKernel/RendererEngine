@@ -1,0 +1,80 @@
+"scene":
+  "schema_version": 2
+  "uuid": "10000000-0000-0000-0000-000000000001"
+  "name": "Cook process é 東京"
+  "settings":
+    "grid":
+      "enabled": true
+      "origin": [0, 0, 0]
+      "orientation": [0, 0, 0, 1]
+      "base_spacing": 0.025
+      "major_line_every": 10
+      "minor_color": [0.6, 0.6, 0.6, 1]
+      "major_color": [0.3, 0.3, 0.3, 1]
+      "u_color": [0.9, 0.2, 0.2, 1]
+      "v_color": [0.2, 0.4, 1, 1]
+      "line_width": 1.5
+      "fade_radius": 500
+      "fade_strength": 0.5
+      "max_lod": 5
+      "labels": 0
+    "sky":
+      "mode": 1
+      "environment_map": "60000000-0000-0000-0000-000000000006"
+      "environment_intensity": 2.5
+      "environment_tint": [1, 1, 1, 1]
+      "environment_yaw_radians": 0
+      "sky_luminance_factor": 1
+      "sky_diffuse_intensity": 1
+      "sky_specular_intensity": 1
+      "sky_lower_hemisphere_color": [0, 0, 0]
+      "aerial_perspective_start_depth_kilometers": 0
+      "aerial_perspective_distance_scale": 1
+      "primary_celestial_light": null
+      "atmosphere":
+        "planet_center_world": [0, -6360000, 0]
+        "world_units_per_meter": 1
+        "planet_radius_kilometers": 6360
+        "atmosphere_radius_kilometers": 6460
+        "rayleigh_scattering_per_kilometer": [0.005802, 0.013558, 0.0331]
+        "rayleigh_scale_height_kilometers": 8
+        "mie_scattering_per_kilometer": 0.003996
+        "mie_absorption_per_kilometer": 0.00444
+        "mie_scale_height_kilometers": 1.2
+        "mie_anisotropy": 0.8
+        "ozone_absorption_per_kilometer": [0.00065, 0.001881, 8.5e-05]
+        "ozone_center_kilometers": 25
+        "ozone_thickness_kilometers": 15
+        "sun_angular_radius_radians": 0.00465
+        "sun_illuminance_lux": 120000
+        "ground_albedo": [0.18, 0.18, 0.18]
+        "ground_ambient_irradiance": 0.5
+      "sphere":
+        "horizon_color": [0.38, 0.58, 0.88, 1]
+        "zenith_color": [0.04, 0.13, 0.35, 1]
+        "ground_color": [0.08, 0.08, 0.1, 1]
+        "sun_disc_angular_radius_radians": 0.00465
+        "sun_disc_intensity": 1
+        "horizon_sharpness": 1
+        "show_sun_disc": true
+  "entities":
+  - "uuid": "20000000-0000-0000-0000-000000000002"
+    "components":
+      "MaterialComponent":
+        "schema_version": 1
+        "fields":
+          "material_uuid": "40000000-0000-0000-0000-000000000004"
+      "MeshComponent":
+        "schema_version": 1
+        "fields":
+          "mesh_uuid": "30000000-0000-0000-0000-000000000003"
+      "NameComponent":
+        "schema_version": 1
+        "fields":
+          "value": "Actor é 東京"
+      "TransformComponent":
+        "schema_version": 1
+        "fields":
+          "position": [1, 2, 3]
+          "rotation": [0, 0, 0]
+          "scale": [1, 1, 1]

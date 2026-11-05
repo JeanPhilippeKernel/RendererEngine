@@ -25,6 +25,24 @@ jobs:
           $env:PATH = "${{github.workspace}}\lib;$env:PATH"
           cmake -P "${{github.workspace}}/tests/SceneDocumentProcess.cmake"
 
+      - name: Run Independent-Process Cook Package Tests
+        shell: pwsh
+        run: |
+          $env:PATH = "${{github.workspace}}\lib;$env:PATH"
+          cmake -P "${{github.workspace}}/tests/SceneCookProcess.cmake"
+
+      - name: Run Cook Resource Limits
+        shell: pwsh
+        run: |
+          $env:PATH = "${{github.workspace}}\lib;$env:PATH"
+          & "${{github.workspace}}\tests\SceneCookResourceProcess.exe"
+
+      - name: Run Combined Cook Publication Stress
+        shell: pwsh
+        run: |
+          $env:PATH = "${{github.workspace}}\lib;$env:PATH"
+          cmake -P "${{github.workspace}}/tests/SceneCookStressProcess.cmake"
+
       - name: Run Tests
         shell: pwsh
         env:

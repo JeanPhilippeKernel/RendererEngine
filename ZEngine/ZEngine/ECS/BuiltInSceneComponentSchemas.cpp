@@ -282,7 +282,7 @@ namespace ZEngine::ECS
             static bool Encode(void*, const SceneValue& payload, SceneBinaryWriter* writer, SceneDiagnostics* diagnostics)
             {
                 typename Codec::Value value = {};
-                if (!writer || writer->Remaining() < Codec::BinaryBytes || !Codec::Read(payload, value))
+                if (!writer || !Codec::Read(payload, value) || !writer->Require(Codec::BinaryBytes))
                 {
                     return Reject(diagnostics);
                 }

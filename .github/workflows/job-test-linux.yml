@@ -23,12 +23,36 @@ jobs:
           name: Build-linux-${{ inputs.configuration }}
 
       - name: Update test executable permissions
-        run: chmod +x ${{github.workspace}}/tests/ZEngineTests ${{github.workspace}}/tests/TetragramaTests ${{github.workspace}}/tests/SceneDocumentProcess
+        run: chmod +x ${{github.workspace}}/tests/ZEngineTests ${{github.workspace}}/tests/TetragramaTests ${{github.workspace}}/tests/SceneDocumentProcess ${{github.workspace}}/tests/SceneCookProcess ${{github.workspace}}/tests/SceneCookResourceProcess
 
       - name: Run Independent-Process Scene Tests
         env:
           LD_LIBRARY_PATH: ${{github.workspace}}/lib
         run: cmake -P "${{github.workspace}}/tests/SceneDocumentProcess.cmake"
+
+      - name: Run Independent-Process Cook Package Tests
+        env:
+          LD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: cmake -P "${{github.workspace}}/tests/SceneCookProcess.cmake"
+
+      - name: Run Bounded Native Cook ENOSPC Tests
+        env:
+          LD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: |
+          fixture_root="$(mktemp -d "${RUNNER_TEMP}/scene-cook-enospc.XXXXXX")"
+          sudo mount -t tmpfs -o "size=2m,mode=0700,uid=$(id -u),gid=$(id -g)" tmpfs "$fixture_root"
+          trap 'sudo umount "$fixture_root"; rmdir "$fixture_root"' EXIT
+          cmake "-DTEST_ROOT=$fixture_root" -P "${{github.workspace}}/tests/SceneCookDiskFullProcess.cmake"
+
+      - name: Run Cook Resource Limits
+        env:
+          LD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: ${{github.workspace}}/tests/SceneCookResourceProcess
+
+      - name: Run Combined Cook Publication Stress
+        env:
+          LD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: cmake -P "${{github.workspace}}/tests/SceneCookStressProcess.cmake"
 
       - name: Run Tests
         env:

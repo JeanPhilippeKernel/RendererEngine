@@ -17,6 +17,7 @@ else()
     set_target_properties(TetragramaTests PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 endif()
 install(TARGETS TetragramaTests RUNTIME DESTINATION tests)
+zengine_sign_installed_target(TetragramaTests tests)
 if(APPLE)
     add_custom_command(TARGET TetragramaTests POST_BUILD
         COMMAND codesign --force --sign - $<TARGET_FILE:TetragramaTests>)

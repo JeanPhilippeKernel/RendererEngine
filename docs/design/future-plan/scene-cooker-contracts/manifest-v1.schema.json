@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ZEngine scene cook manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest_version", "recipe_revision", "target", "schema_key", "settings", "settings_key", "scenes", "assets"],
+  "properties": {
+    "manifest_version": {"const": 1},
+    "recipe_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "target": {"const": "desktop-vulkan-le64"},
+    "schema_key": {"$ref": "#/$defs/digest"},
+    "settings": {"type": "object", "additionalProperties": false, "maxProperties": 0},
+    "settings_key": {"$ref": "#/$defs/digest"},
+    "scenes": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/scene"}},
+    "assets": {"type": "array", "maxItems": 8192, "items": {"$ref": "#/$defs/asset"}}
+  },
+  "$defs": {
+    "digest": {"type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}(?![\\s\\S])"},
+    "uuid": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])",
+      "not": {"const": "00000000-0000-0000-0000-000000000000"}
+    },
+    "kind": {"enum": ["environment-map", "material", "mesh", "texture"]},
+    "logicalPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^/\\\\:\u0000-\u001f\u007f][^\\\\:\u0000-\u001f\u007f]*(?![\\s\\S])"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "uuid"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/kind"},
+        "uuid": {"$ref": "#/$defs/uuid"}
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot", "kind", "uuid"],
+      "properties": {
+        "slot": {"type": "string", "minLength": 1, "maxLength": 127},
+        "kind": {"$ref": "#/$defs/kind"},
+        "uuid": {"$ref": "#/$defs/uuid"}
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest", "size"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^objects/[0-9a-f]{64}\\.(zescenebin|zemesh|zematerial|zenvmap|png|jpg|bmp|tga|gif|psd|pic)(?![\\s\\S])"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 1, "maximum": 17179869184}
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uuid", "source", "source_digest", "input_key", "object", "roots"],
+      "properties": {
+        "uuid": {"$ref": "#/$defs/uuid"},
+        "source": {"$ref": "#/$defs/logicalPath"},
+        "source_digest": {"$ref": "#/$defs/digest"},
+        "input_key": {"$ref": "#/$defs/digest"},
+        "object": {"$ref": "#/$defs/object"},
+        "roots": {"type": "array", "uniqueItems": true, "maxItems": 8192, "items": {"$ref": "#/$defs/identity"}}
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "uuid", "format", "adapter_revision", "input_key", "object", "dependencies"],
+      "properties": {
+        "kind": {"$ref": "#/$defs/kind"},
+        "uuid": {"$ref": "#/$defs/uuid"},
+        "format": {"enum": ["zemesh-v1-le64", "zematerial-v1-json", "zenvmap-v2-le64", "image-png", "image-jpeg", "image-bmp", "image-tga", "image-gif", "image-psd", "image-pic"]},
+        "adapter_revision": {"const": 1},
+        "input_key": {"$ref": "#/$defs/digest"},
+        "object": {"$ref": "#/$defs/object"},
+        "dependencies": {"type": "array", "uniqueItems": true, "maxItems": 65536, "items": {"$ref": "#/$defs/dependency"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "mesh"}}},
+          "then": {"properties": {"format": {"const": "zemesh-v1-le64"}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "material"}}},
+          "then": {"properties": {"format": {"const": "zematerial-v1-json"}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "environment-map"}}},
+          "then": {"properties": {"format": {"const": "zenvmap-v2-le64"}, "dependencies": {"maxItems": 0}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "texture"}}},
+          "then": {"properties": {"format": {"enum": ["image-png", "image-jpeg", "image-bmp", "image-tga", "image-gif", "image-psd", "image-pic"]}, "dependencies": {"maxItems": 0}}}
+        }
+      ]
+    }
+  }
+}

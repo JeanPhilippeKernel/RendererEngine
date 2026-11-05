@@ -340,8 +340,8 @@ namespace Tetragrama
             SceneDiagnosticError(diagnostics, "Scene name exceeds the source document byte limit");
             return false;
         }
-        SceneDocumentSettings settings = {.UUID = owner.UUID, .Name = std::string(name), .Grid = owner.AuthoredGrid, .Sky = owner.Sky};
-        SceneDocument         document = {};
+        SceneDocumentSettingsView settings = {.UUID = owner.UUID, .Name = name, .Grid = owner.AuthoredGrid, .Sky = owner.Sky};
+        SceneDocument             document = {};
         if (!SceneDocument::Capture(*session.Scene(), settings, schemas, &document, diagnostics))
         {
             return false;

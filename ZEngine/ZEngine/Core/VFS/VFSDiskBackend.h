@@ -22,25 +22,28 @@ namespace ZEngine::Core::VFS
 
     struct VFSDiskFile : IVFSFile
     {
-        VFSResult<size_t>      Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset) override;
-        VFSResult<size_t>      Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) override;
-        VFSResult<uint64_t>    Size() const override;
-        VFSResult<VFSFileStat> Stat() const override;
-        VFSResult<void>        Flush() override;
-        const VFSPath&         Path() const override;
-        VFSResult<void>        Close() override;
+        VFSResult<size_t>          Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset) override;
+        VFSResult<size_t>          Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) override;
+        VFSResult<uint64_t>        Size() const override;
+        VFSResult<VFSFileStat>     Stat() const override;
+        VFSResult<VFSFileIdentity> Identity() const override;
+        VFSResult<void>            Flush() override;
+        const VFSPath&             Path() const override;
+        VFSResult<void>            Close() override;
 
-        VFSResult<void*>       MemoryMap(uint64_t& out_size);
+        VFSResult<void*>           MemoryMap(uint64_t& out_size);
 
-        static void            Unmap(void* ptr, uint64_t size);
+        static void                Unmap(void* ptr, uint64_t size);
 
         ~VFSDiskFile();
 
     private:
         friend struct VFSDiskBackend;
+        friend struct VFSDiskRoot;
 
 #if defined(_WIN32)
         HANDLE m_handle = INVALID_HANDLE_VALUE;
+        bool   m_append = false;
 #else
         int m_fd = -1;
 #endif
@@ -53,6 +56,8 @@ namespace ZEngine::Core::VFS
 
     struct VFSDiskBackend : IVFSBackend
     {
+        ~VFSDiskBackend() override;
+        Helpers::Ref<IVFSRootProvider>                                RootProvider() const override;
         void                                                          Initialize(cstring native_root, VFSBackendCaps caps, Memory::ArenaAllocator* arena, size_t max_open_files = kVFSMaxOpenFiles);
 
         [[nodiscard]] VFSResult<IVFSFile*>                            Open(const VFSPath& relative_path, VFSOpenFlags flags) override;
@@ -81,22 +86,23 @@ namespace ZEngine::Core::VFS
 #endif
         // Virtual paths and NativeRoot stay UTF-8. Convert only at the native
         // disk boundary; never feed UTF-8 to Windows ANSI or locale converters.
-        bool                    ResolveNativePath(const VFSPath& relative, NativePathChar* out_buf) const;
+        bool                           ResolveNativePath(const VFSPath& relative, NativePathChar* out_buf) const;
 
-        static bool             ProbeCaseSensitivity(cstring native_root);
+        static bool                    ProbeCaseSensitivity(cstring native_root);
 
-        char                    m_native_root[MAX_FILE_PATH_COUNT] = {0};
-        size_t                  m_native_root_len                  = 0;
-        VFSBackendCaps          m_caps                             = VFSBackendCaps::Read;
-        Memory::ArenaAllocator* m_arena                            = nullptr;
-        Memory::PoolAllocator   m_file_pool                        = {};
+        char                           m_native_root[MAX_FILE_PATH_COUNT] = {0};
+        size_t                         m_native_root_len                  = 0;
+        VFSBackendCaps                 m_caps                             = VFSBackendCaps::Read;
+        Memory::ArenaAllocator*        m_arena                            = nullptr;
+        Memory::PoolAllocator          m_file_pool                        = {};
         // Guards m_file_pool — VFSScanner runs ScanDirectory concurrently across ThreadPool
         // workers (one task per subdirectory), and PoolAllocator's free-list has no internal
         // synchronization of its own; concurrent Open/Close calls corrupt it (issue #764
         // follow-up investigation — this manifested as unrelated-looking heap corruption
         // crashes much later, since a corrupted free-list can hand out aliased memory).
-        std::mutex              m_file_pool_mutex                  = {};
-        bool                    m_case_sensitive                   = true;
+        std::mutex                     m_file_pool_mutex                  = {};
+        bool                           m_case_sensitive                   = true;
+        Helpers::Ref<IVFSRootProvider> m_root_provider                    = {};
     };
 
 } // namespace ZEngine::Core::VFS

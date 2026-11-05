@@ -1,8 +1,8 @@
+#include <ZEngine/Core/Hash/SourceContentHash.h>
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <nlohmann/json.hpp>
-#include <rapidhash.h>
 #include <uuid.h>
 #include <algorithm>
 #include <chrono>
@@ -219,9 +219,9 @@ namespace ZEngine::Core::VFS
         }
 
         // Stream through the file in 4 KB chunks, chaining rapidhash via the seed parameter.
-        uint8_t  chunk[4096];
-        uint64_t hash   = 0;
-        uint64_t offset = 0;
+        uint8_t                 chunk[Hash::SourceContentHash::ChunkBytes] = {};
+        Hash::SourceContentHash source_hash                                = {};
+        uint64_t                offset                                     = 0;
 
         while (offset < size_result.Value())
         {
@@ -238,11 +238,20 @@ namespace ZEngine::Core::VFS
                 filled += read.Value();
             }
             // Keep chunk boundaries stable even when the backend returns partial reads.
-            hash    = rapidhash_withSeed(chunk, count, hash);
+            const auto hashed = source_hash.Update({chunk, count});
+            if (hashed.Failed())
+            {
+                ctx.Close(file);
+                return VFSResult<uint64_t>::Fail(hashed.Error());
+            }
             offset += count;
         }
-        ctx.Close(file);
-        return VFSResult<uint64_t>::Ok(hash);
+        const auto closed = ctx.CloseChecked(file);
+        if (closed.Failed())
+            return VFSResult<uint64_t>::Fail(closed.Error());
+        uint64_t   hash      = 0;
+        const auto finalized = source_hash.Finalize(&hash);
+        return finalized.Failed() ? VFSResult<uint64_t>::Fail(finalized.Error()) : VFSResult<uint64_t>::Ok(hash);
     }
 
 } // namespace ZEngine::Core::VFS

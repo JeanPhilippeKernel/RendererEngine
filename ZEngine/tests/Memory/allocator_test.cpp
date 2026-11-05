@@ -1,7 +1,9 @@
+#include <ZEngine/Core/Memory/AllocationRoute.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
+#include <new>
 
 #if defined(__linux__)
 #include <spawn.h>
@@ -24,6 +26,173 @@ TEST(AllocatorTest, ArenaInit)
     MemoryManager manager{};
     manager.Initialize(200, {});
     manager.Shutdown();
+}
+
+TEST(AllocatorTest, TrackerStorageIsPageRoundedAndChargedOnlyByItsOwningRoot)
+{
+    ArenaAllocator root = {}, child = {}, borrowed = {};
+    EXPECT_EQ(root.AllocationTrackingBytes(), 0u);
+    root.Initialize(ZKilo(64), 0, "TrackerStorageTest");
+    ASSERT_NE(root.m_memory, nullptr);
+    const auto tracking = root.AllocationTrackingBytes();
+    EXPECT_GT(tracking, 0u);
+    EXPECT_EQ(tracking % root.m_mem_page_size, 0u);
+    root.CreateSubArena(root.m_mem_page_size, &child, "SharedTrackerChild");
+    ASSERT_NE(child.m_memory, nullptr);
+    ASSERT_NE(child.AllocateNoZero(1, 1), nullptr);
+    EXPECT_EQ(child.AllocationTrackingBytes(), 0u);
+    EXPECT_EQ(root.AllocationTrackingBytes(), tracking);
+    child.Shutdown();
+    alignas(16) uint8_t bytes[64] = {};
+    ASSERT_TRUE(borrowed.InitializeBorrowed(bytes, sizeof(bytes)));
+    EXPECT_EQ(borrowed.AllocationTrackingBytes(), 0u);
+    ArenaAllocator moved(std::move(root));
+    EXPECT_EQ(root.AllocationTrackingBytes(), 0u);
+    EXPECT_EQ(moved.AllocationTrackingBytes(), tracking);
+    moved.Shutdown();
+    EXPECT_EQ(moved.AllocationTrackingBytes(), 0u);
+}
+
+TEST(AllocatorTest, RetainedStorageCountsNativePagesAcrossDiscontiguousRootAndChildAllocations)
+{
+    ZEngine::Core::Memory::ArenaAllocator       root = {}, first = {}, second = {};
+    ZEngine::Core::Memory::ArenaRetainedStorage snapshot = {};
+    root.Initialize(ZMega(4), 0, "RetainedStorageRoot");
+    ASSERT_NE(root.m_memory, nullptr);
+    const auto page = root.m_mem_page_size;
+    ASSERT_TRUE(root.RetainedStorage(&snapshot));
+    EXPECT_NE(snapshot.Identity, nullptr);
+    EXPECT_EQ(snapshot.Owner, &root);
+    EXPECT_EQ(snapshot.CommittedBytes, 0u);
+    EXPECT_EQ(snapshot.TrackingBytes, root.AllocationTrackingBytes());
+    EXPECT_EQ(snapshot.ReservedAddressBytes, root.m_reserved_size);
+    ASSERT_NE(root.AllocateNoZero(1, 1), nullptr);
+    root.CreateSubArena(4 * page, &first);
+    root.CreateSubArena(4 * page, &second);
+    ASSERT_NE(first.AllocateNoZero(1, 1), nullptr);
+    ASSERT_NE(second.AllocateNoZero(1, 1), nullptr);
+    ASSERT_NE(root.AllocateNoZero(1, 1), nullptr);
+    ASSERT_TRUE(root.RetainedStorage(&snapshot));
+    EXPECT_EQ(snapshot.CommittedBytes, 4 * page);
+    EXPECT_EQ(root.m_committed_size, 2 * page);
+    EXPECT_EQ(first.m_committed_size, page);
+    EXPECT_EQ(second.m_committed_size, page);
+    for (const auto* arena : {&first, &second})
+    {
+        ZEngine::Core::Memory::ArenaRetainedStorage child = {};
+        ASSERT_TRUE(arena->RetainedStorage(&child));
+        EXPECT_EQ(child.Identity, snapshot.Identity);
+        EXPECT_EQ(child.CommittedBytes, snapshot.CommittedBytes);
+        EXPECT_EQ(child.TrackingBytes, snapshot.TrackingBytes);
+        EXPECT_EQ(child.ReservedAddressBytes, snapshot.ReservedAddressBytes);
+        EXPECT_EQ(child.Owner, &root);
+    }
+    first.Clear();
+    ASSERT_NE(first.AllocateNoZero(1, 1), nullptr);
+    ASSERT_TRUE(root.RetainedStorage(&snapshot));
+    EXPECT_EQ(snapshot.CommittedBytes, 4 * page); // Reusing a page does not charge it twice.
+    first.Shutdown();
+    second.Shutdown();
+    ASSERT_TRUE(root.RetainedStorage(&snapshot));
+    EXPECT_EQ(snapshot.CommittedBytes, 4 * page); // Child teardown does not unmap root pages.
+    ZEngine::Core::Memory::ArenaAllocator       moved(std::move(root));
+    ZEngine::Core::Memory::ArenaRetainedStorage retained = {};
+    EXPECT_FALSE(root.RetainedStorage(&retained));
+    ASSERT_TRUE(moved.RetainedStorage(&retained));
+    EXPECT_EQ(retained.Identity, snapshot.Identity);
+    EXPECT_EQ(retained.Owner, &moved);
+    EXPECT_EQ(retained.CommittedBytes, snapshot.CommittedBytes);
+    moved.Shutdown();
+    EXPECT_FALSE(moved.RetainedStorage(&retained));
+    EXPECT_EQ(retained.CommittedBytes, snapshot.CommittedBytes); // Failure preserves output.
+}
+
+TEST(AllocatorTest, RetainedStorageQueriesRejectUnknownBackingAndDoNotCommitOrAdvanceCursors)
+{
+    ZEngine::Core::Memory::ArenaAllocator       root = {}, borrowed = {};
+    ZEngine::Core::Memory::ArenaRetainedStorage retained = {.Identity = &root, .CommittedBytes = 73};
+    EXPECT_FALSE(root.RetainedStorage(&retained));
+    EXPECT_EQ(retained.CommittedBytes, 73u);
+    alignas(16) uint8_t storage[128] = {};
+    ASSERT_TRUE(borrowed.InitializeBorrowed(storage, sizeof(storage)));
+    EXPECT_FALSE(borrowed.RetainedStorage(&retained));
+    EXPECT_EQ(retained.CommittedBytes, 73u);
+    root.Initialize(ZMega(4), 0);
+    ASSERT_NE(root.AllocateNoZero(1, 1), nullptr);
+    const auto offset = root.m_current_offset;
+    const auto pages  = root.m_committed_size;
+    for (size_t repeat = 0; repeat < 128; ++repeat)
+        ASSERT_TRUE(root.RetainedStorage(&retained));
+    EXPECT_EQ(root.m_current_offset, offset);
+    EXPECT_EQ(root.m_committed_size, pages);
+    EXPECT_EQ(retained.CommittedBytes, pages);
+    EXPECT_FALSE(root.RetainedStorage(nullptr));
+}
+
+TEST(AllocatorTest, NativeOwnerIdentityFollowsMovesWhileSubArenaViewsRemainAlive)
+{
+    ArenaAllocator root = {}, child = {}, destination = {};
+    root.Initialize(ZMega(4), 0);
+    root.CreateSubArena(ZKilo(64), &child);
+    ASSERT_NE(child.AllocateNoZero(1, 1), nullptr);
+    ArenaRetainedStorage before = {};
+    ASSERT_TRUE(child.RetainedStorage(&before));
+    EXPECT_EQ(before.Owner, &root);
+    ArenaAllocator       moved(std::move(root));
+    ArenaRetainedStorage after = {};
+    ASSERT_TRUE(child.RetainedStorage(&after));
+    EXPECT_EQ(after.Identity, before.Identity);
+    EXPECT_EQ(after.CommittedBytes, before.CommittedBytes);
+    EXPECT_EQ(after.Owner, &moved);
+    destination = std::move(moved);
+    ASSERT_TRUE(child.RetainedStorage(&after));
+    EXPECT_EQ(after.Identity, before.Identity);
+    EXPECT_EQ(after.Owner, &destination);
+    ArenaAllocator moved_child(std::move(child));
+    ASSERT_TRUE(moved_child.RetainedStorage(&after));
+    EXPECT_EQ(after.Owner, &destination);
+    moved_child.Shutdown();
+    destination.Shutdown();
+}
+
+TEST(AllocatorTest, RetainsStorageChecksEveryCommittedPageInTheWholeNativeFamilyWithoutMutation)
+{
+    ArenaAllocator root = {}, first = {}, second = {};
+    root.Initialize(ZMega(4), 0);
+    ASSERT_NE(root.m_memory, nullptr);
+    const auto page = root.m_mem_page_size;
+    root.CreateSubArena(4 * page, &first);
+    root.CreateSubArena(4 * page, &second);
+    auto* one = first.AllocateNoZero(page + 1, 1);
+    auto* two = second.AllocateNoZero(1, 1);
+    ASSERT_NE(one, nullptr);
+    ASSERT_NE(two, nullptr);
+    const auto offset    = root.m_current_offset;
+    const auto committed = root.m_committed_size;
+    for (size_t repeat = 0; repeat < 128; ++repeat)
+    {
+        EXPECT_TRUE(root.RetainsStorage(one, 2 * page));
+        EXPECT_TRUE(first.RetainsStorage(two, 1));
+        EXPECT_TRUE(second.RetainsStorage(one, 1));
+        EXPECT_FALSE(root.RetainsStorage(nullptr, 1));
+        EXPECT_FALSE(root.RetainsStorage(one, 0));
+        EXPECT_FALSE(root.RetainsStorage(one, SIZE_MAX));
+        EXPECT_FALSE(root.RetainsStorage(&root, 1));
+        EXPECT_FALSE(root.RetainsStorage(one, 2 * page + 1));
+        EXPECT_FALSE(root.RetainsStorage(one, 4 * page + 1)); // Commits on both ends do not cover the gap.
+        EXPECT_FALSE(root.RetainsStorage(root.m_memory + root.m_reserved_size, 1));
+    }
+    EXPECT_EQ(root.m_current_offset, offset);
+    EXPECT_EQ(root.m_committed_size, committed);
+    first.Shutdown();
+    EXPECT_TRUE(root.RetainsStorage(one, 1)); // Root retains the native pages, not the object's lifetime.
+    second.Shutdown();
+    root.Shutdown();
+    EXPECT_FALSE(root.RetainsStorage(one, 1));
+    alignas(16) uint8_t bytes[64] = {};
+    ArenaAllocator      borrowed  = {};
+    ASSERT_TRUE(borrowed.InitializeBorrowed(bytes, sizeof(bytes)));
+    EXPECT_FALSE(borrowed.RetainsStorage(bytes, 1));
 }
 
 TEST(AllocatorBorrowedTest, CheckedViewPreservesBackingAndBoundsAcrossMoveAndShutdown)
@@ -80,6 +249,246 @@ TEST(AllocatorBorrowedTest, InvalidViewLeavesAnUninitializedArenaUnchanged)
     EXPECT_EQ(arena.m_memory, nullptr);
     EXPECT_EQ(arena.m_current_offset, 0u);
 }
+
+namespace ZEngine::Core::Memory::Tests
+{
+    struct GrowthRoute final : IAllocationRoute
+    {
+        struct Block
+        {
+            void*  Pointer = nullptr;
+            size_t Bytes   = 0;
+        };
+        Block  Blocks[64] = {};
+        size_t Calls      = 0;
+        size_t Frees      = 0;
+        size_t FailAt     = 0;
+        size_t LiveBytes  = 0;
+
+        void*  Allocate(size_t bytes) noexcept override
+        {
+            if (++Calls == FailAt)
+                return nullptr;
+            for (auto& block : Blocks)
+            {
+                if (block.Pointer)
+                    continue;
+                void* memory = ::operator new(bytes, std::align_val_t(DEFAULT_ALIGNMENT), std::nothrow);
+                if (!memory)
+                    return nullptr;
+                block      = {memory, bytes};
+                LiveBytes += bytes;
+                return memory;
+            }
+            ADD_FAILURE() << "Growth-route tracking slots exhausted.";
+            return nullptr;
+        }
+        void* Reallocate(void* pointer, size_t old_bytes, size_t new_bytes) noexcept override
+        {
+            void* memory = Allocate(new_bytes);
+            if (memory && pointer)
+            {
+                Helpers::secure_memcpy(memory, new_bytes, pointer, std::min(old_bytes, new_bytes));
+                Free(pointer);
+            }
+            return memory;
+        }
+        void Free(void* pointer) noexcept override
+        {
+            if (!pointer)
+                return;
+            for (auto& block : Blocks)
+            {
+                if (block.Pointer != pointer)
+                    continue;
+                LiveBytes -= block.Bytes;
+                block      = {};
+                ++Frees;
+                ::operator delete(pointer, std::align_val_t(DEFAULT_ALIGNMENT));
+                return;
+            }
+            ADD_FAILURE() << "Growth-route foreign or duplicate release.";
+        }
+        ~GrowthRoute() override
+        {
+            EXPECT_EQ(LiveBytes, 0u);
+            for (auto& block : Blocks)
+                if (block.Pointer)
+                    Free(block.Pointer);
+        }
+    };
+
+    TEST(AllocatorGrowingTest, InvalidInitializationPreservesStateAndDoesNotAllocate)
+    {
+        alignas(16) uint8_t bytes[64] = {};
+        GrowthRoute         route     = {};
+        ArenaAllocator      arena     = {};
+        EXPECT_FALSE(arena.InitializeGrowingBorrowed(nullptr, 64, 128, route));
+        EXPECT_FALSE(arena.InitializeGrowingBorrowed(bytes, 0, 128, route));
+        EXPECT_FALSE(arena.InitializeGrowingBorrowed(bytes, 64, 32, route));
+        EXPECT_EQ(arena.m_memory, nullptr);
+        ASSERT_TRUE(arena.InitializeGrowingBorrowed(bytes, sizeof(bytes), 1024, route));
+        EXPECT_FALSE(arena.InitializeGrowingBorrowed(bytes, sizeof(bytes), 1024, route));
+        EXPECT_EQ(arena.m_total_size, 1024u);
+        EXPECT_EQ(arena.m_committed_size, sizeof(bytes));
+        EXPECT_EQ(arena.AllocationTrackingBytes(), 0u);
+        EXPECT_EQ(route.Calls, 0u);
+        ArenaAllocator child = {};
+        arena.CreateSubArena(16, &child);
+        EXPECT_EQ(child.m_memory, nullptr);
+        EXPECT_EQ(arena.m_current_offset, 0u);
+    }
+
+    TEST(AllocatorGrowingTest, RetainedStorageCannotInferExternalBackingBeforeOrAfterRoutedGrowth)
+    {
+        alignas(16) uint8_t initial[64] = {};
+        GrowthRoute         route       = {};
+        ArenaAllocator      arena       = {};
+        ASSERT_TRUE(arena.InitializeGrowingBorrowed(initial, sizeof(initial), ZKilo(8), route));
+        ArenaRetainedStorage snapshot = {.Identity = &route, .CommittedBytes = 73};
+        EXPECT_FALSE(arena.RetainedStorage(&snapshot));
+        ASSERT_NE(arena.AllocateNoZero(ZKilo(1), 16), nullptr);
+        const auto calls  = route.Calls;
+        const auto bytes  = route.LiveBytes;
+        const auto offset = arena.m_current_offset;
+        EXPECT_GT(bytes, 0u);
+        for (size_t repeat = 0; repeat < 128; ++repeat)
+            EXPECT_FALSE(arena.RetainedStorage(&snapshot));
+        EXPECT_EQ(snapshot.Identity, &route);
+        EXPECT_EQ(snapshot.CommittedBytes, 73u);
+        EXPECT_EQ(route.Calls, calls);
+        EXPECT_EQ(route.LiveBytes, bytes);
+        EXPECT_EQ(arena.m_current_offset, offset);
+    }
+
+    TEST(AllocatorGrowingTest, StableGeometricBlocksAreReusedAfterCrossBlockRewinds)
+    {
+        alignas(16) uint8_t initial[64] = {};
+        GrowthRoute         route       = {};
+        ArenaAllocator      arena       = {};
+        ASSERT_TRUE(arena.InitializeGrowingBorrowed(initial, sizeof(initial), ZKilo(8), route));
+        auto* retained = static_cast<uint8_t*>(arena.Allocate(48, 16));
+        ASSERT_EQ(retained, initial);
+        retained[0]           = 71;
+        const auto mark       = BeginTempArena(&arena);
+        void*      blocks[20] = {};
+        for (auto& block : blocks)
+        {
+            block = arena.Allocate(160, 16);
+            ASSERT_NE(block, nullptr);
+        }
+        EXPECT_LE(route.Calls, 5u);
+        EXPECT_GT(route.LiveBytes, arena.m_committed_size - sizeof(initial)); // Includes inline headers.
+        EXPECT_LE(arena.m_committed_size, arena.m_total_size);
+        const auto calls = route.Calls;
+        const auto bytes = route.LiveBytes;
+        for (size_t iteration = 0; iteration < 8; ++iteration)
+        {
+            EndTempArena(mark);
+            for (const auto block : blocks)
+                EXPECT_EQ(arena.Allocate(160, 16), block);
+            EXPECT_EQ(route.Calls, calls);
+            EXPECT_EQ(route.LiveBytes, bytes);
+            EXPECT_EQ(retained[0], 71);
+        }
+        arena.Clear();
+        EXPECT_EQ(arena.Allocate(48, 16), retained);
+        arena.Shutdown();
+        EXPECT_EQ(route.LiveBytes, 0u);
+        EXPECT_EQ(route.Frees, calls);
+        EXPECT_EQ(initial[0], 0u); // Clear does not zero; the final Allocate does.
+    }
+
+    TEST(AllocatorGrowingTest, FailedGrowthAndHardCapacityPreserveCursorBackingAndOldValues)
+    {
+        alignas(16) uint8_t initial[64] = {};
+        GrowthRoute         route       = {};
+        ArenaAllocator      arena       = {};
+        ASSERT_TRUE(arena.InitializeGrowingBorrowed(initial, sizeof(initial), 256, route));
+        auto* retained = static_cast<uint8_t*>(arena.Allocate(64));
+        ASSERT_NE(retained, nullptr);
+        retained[0]  = 93;
+        route.FailAt = 1;
+        EXPECT_EQ(arena.TryResize(retained, 64, 96), nullptr);
+        EXPECT_EQ(arena.m_current_offset, 64u);
+        EXPECT_EQ(arena.m_previous_offset, 0u);
+        EXPECT_EQ(arena.m_committed_size, 64u);
+        EXPECT_EQ(arena.LastFailure().Kind, ArenaAllocationFailureKind::CommitFailed);
+        EXPECT_EQ(retained[0], 93);
+        route.FailAt = 0;
+        auto* grown  = static_cast<uint8_t*>(arena.TryResize(retained, 64, 96));
+        ASSERT_NE(grown, nullptr);
+        EXPECT_EQ(grown[0], 93);
+        EXPECT_EQ(arena.LastFailure().Kind, ArenaAllocationFailureKind::None);
+        const auto calls  = route.Calls;
+        const auto offset = arena.m_current_offset;
+        EXPECT_EQ(arena.Allocate(257), nullptr);
+        EXPECT_EQ(arena.m_current_offset, offset);
+        EXPECT_EQ(route.Calls, calls);
+        EXPECT_EQ(arena.LastFailure().Kind, ArenaAllocationFailureKind::CapacityExceeded);
+    }
+
+    TEST(AllocatorGrowingTest, ResizeValidatesRegionsAndHandlesInPlaceGrowthShrinkAndAlignment)
+    {
+        alignas(16) uint8_t initial[64] = {};
+        GrowthRoute         route       = {};
+        ArenaAllocator      arena       = {};
+        ASSERT_TRUE(arena.InitializeGrowingBorrowed(initial, sizeof(initial), ZKilo(8), route));
+        auto* first = static_cast<uint8_t*>(arena.Allocate(16));
+        ASSERT_NE(first, nullptr);
+        first[0] = 17;
+        ASSERT_EQ(arena.TryResize(first, 16, 48), first);
+        for (size_t index = 16; index < 48; ++index)
+            EXPECT_EQ(first[index], 0u);
+        auto* second = static_cast<uint8_t*>(arena.Allocate(100, 64));
+        ASSERT_NE(second, nullptr);
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(second) % 64, 0u);
+        second[0] = 29;
+        EXPECT_EQ(arena.TryResize(second, 100, 80, 64), second);
+        for (size_t index = 80; index < 100; ++index)
+            EXPECT_EQ(second[index], 0u);
+        auto* copy = static_cast<uint8_t*>(arena.TryResize(first, 48, 256));
+        ASSERT_NE(copy, nullptr);
+        EXPECT_EQ(copy[0], 17);
+        EXPECT_EQ(first[0], 17);
+        EXPECT_EQ(second[0], 29);
+        const auto cursor      = arena.m_current_offset;
+        uint8_t    foreign[16] = {};
+        EXPECT_EQ(arena.TryResize(foreign, sizeof(foreign), 32), nullptr);
+        EXPECT_EQ(arena.TryResize(first + 1, 15, 32, 16), nullptr);
+        EXPECT_EQ(arena.TryResize(first, 65, 128), nullptr);
+        EXPECT_EQ(arena.m_current_offset, cursor);
+        const auto mark  = BeginTempArena(&arena);
+        void*      stale = arena.Allocate(32);
+        ASSERT_NE(stale, nullptr);
+        EndTempArena(mark);
+        EXPECT_EQ(arena.TryResize(stale, 32, 64), nullptr);
+    }
+
+    TEST(AllocatorGrowingTest, MoveAndReplacementReleaseOnlyTheOriginalRoutesGrowthBlocks)
+    {
+        alignas(16) uint8_t initial_a[64] = {}, initial_b[64] = {};
+        GrowthRoute         route_a = {}, route_b = {};
+        ArenaAllocator      a = {}, b = {};
+        ASSERT_TRUE(a.InitializeGrowingBorrowed(initial_a, sizeof(initial_a), 1024, route_a));
+        ASSERT_TRUE(b.InitializeGrowingBorrowed(initial_b, sizeof(initial_b), 1024, route_b));
+        auto* retained = static_cast<uint8_t*>(a.Allocate(256));
+        ASSERT_NE(retained, nullptr);
+        retained[0] = 37;
+        ASSERT_NE(b.Allocate(256), nullptr);
+        b = std::move(a);
+        EXPECT_EQ(route_b.LiveBytes, 0u);
+        EXPECT_EQ(a.m_memory, nullptr);
+        EXPECT_EQ(retained[0], 37);
+        ArenaAllocator moved(std::move(b));
+        EXPECT_EQ(b.m_memory, nullptr);
+        moved.Shutdown();
+        moved.Shutdown();
+        EXPECT_EQ(route_a.LiveBytes, 0u);
+        EXPECT_EQ(route_a.Frees, 1u);
+        EXPECT_EQ(route_b.Frees, 1u);
+    }
+} // namespace ZEngine::Core::Memory::Tests
 
 TEST(MemoryBudgetConfigTest, BuiltinProfilesFitRootReservation)
 {
@@ -1012,6 +1421,42 @@ TEST(AllocatorTest, StandaloneArenaDetectsNativePageSizeWhenRequested)
     second[arena.m_mem_page_size - 1] = 29;
     EXPECT_EQ(*first, 17);
     EXPECT_EQ(second[arena.m_mem_page_size - 1], 29);
+}
+
+TEST(AllocatorTest, CheckedPoolRejectsInvalidLayoutWithoutChangingArenaOrPool)
+{
+    ArenaAllocator arena = {};
+    arena.Initialize(ZKilo(4), 0, "CheckedPoolTest");
+    PoolAllocator pool = {};
+    ASSERT_TRUE(pool.TryInitialize(&arena, 128, 16));
+    auto* const memory = pool.memory;
+    auto* const head   = pool.head;
+    const auto  offset = arena.m_current_offset;
+    EXPECT_FALSE(pool.TryInitialize(nullptr, 128, 16));
+    EXPECT_FALSE(pool.TryInitialize(&arena, 128, 16, 0));
+    EXPECT_FALSE(pool.TryInitialize(&arena, 128, 16, 3));
+    EXPECT_FALSE(pool.TryInitialize(&arena, 128, 0));
+    EXPECT_FALSE(pool.TryInitialize(&arena, 8, 16));
+    EXPECT_FALSE(pool.TryInitialize(&arena, 128, SIZE_MAX));
+    EXPECT_FALSE(pool.TryInitialize(&arena, ZMega(1), 16));
+    EXPECT_EQ(arena.m_current_offset, offset);
+    EXPECT_EQ(pool.memory, memory);
+    EXPECT_EQ(pool.head, head);
+    EXPECT_EQ(pool.chunk_size, 16u);
+}
+
+TEST(AllocatorTest, CheckedPoolPromotesByteAlignmentForFreeListPointers)
+{
+    ArenaAllocator arena = {};
+    arena.Initialize(ZKilo(4), 0, "CheckedPoolAlignmentTest");
+    ASSERT_NE(arena.Allocate(1, 1), nullptr);
+    PoolAllocator pool = {};
+    ASSERT_TRUE(pool.TryInitialize(&arena, 64, 9, 1));
+    EXPECT_EQ(pool.chunk_size % alignof(PoolFreeNode), 0u);
+    while (pool.head)
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(pool.Allocate()) % alignof(PoolFreeNode), 0u);
+    pool.Clear();
+    EXPECT_NE(pool.head, nullptr);
 }
 
 // Double-free detection — debug builds only

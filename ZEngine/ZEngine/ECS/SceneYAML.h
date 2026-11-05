@@ -1,6 +1,8 @@
 #pragma once
 #include <ZEngine/Core/Containers/Array.h>
+#include <ZEngine/Core/Memory/AllocationRoute.h>
 #include <ZEngine/Core/Memory/Allocator.h>
+#include <ZEngine/ECS/SceneDiagnostics.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <uuid.h>
 #include <cstdint>
@@ -103,13 +105,30 @@ namespace ZEngine::ECS::SceneYAML
     class Storage
     {
     public:
-        Storage()                                    = default;
-        Storage(const Storage&)                      = delete;
-        Storage&           operator=(const Storage&) = delete;
-        [[nodiscard]] bool Initialize(size_t byte_budget = ZMega(128), uint32_t max_nodes = 1048576, uint32_t max_items = 65536, uint32_t max_scalar = 4096);
+        Storage()                                         = default;
+        Storage(const Storage&)                           = delete;
+        Storage&                operator=(const Storage&) = delete;
+        /// Routed owners start small and grow with stable checked arena blocks,
+        /// never a byte_budget-sized reservation. The route must outlive this
+        /// Storage; no heap/OS fallback is used.
+        [[nodiscard]] bool      Initialize(size_t byte_budget = ZMega(128), uint32_t max_nodes = 1048576, uint32_t max_items = 65536, uint32_t max_scalar = 4096, Core::Memory::IAllocationRoute* allocation_route = nullptr);
+        static constexpr size_t InitialRoutedCapacity(size_t byte_budget)
+        {
+            return byte_budget < ZKilo(32) ? byte_budget : ZKilo(32);
+        }
+        /// No allocation/reservation/commit: tree records/text use this already
+        /// writable, caller-owned block. Its owner must outlive this Storage and
+        /// all borrowed nodes. Invalid/repeated initialization preserves state.
+        [[nodiscard]] bool InitializeBorrowed(void* memory, size_t bytes, uint32_t max_nodes = 1048576, uint32_t max_items = 65536, uint32_t max_scalar = 4096);
+        /// Caller owns the initial block; additional stable blocks use route.
+        [[nodiscard]] bool InitializeGrowingBorrowed(void* memory, size_t initial_bytes, size_t byte_budget, Core::Memory::IAllocationRoute& route, uint32_t max_nodes = 1048576, uint32_t max_items = 65536, uint32_t max_scalar = 4096);
         [[nodiscard]] bool Good() const
         {
             return m_good;
+        }
+        [[nodiscard]] SceneDiagnosticCode Failure() const
+        {
+            return m_failure;
         }
         size_t BytesUsed() const
         {
@@ -123,7 +142,10 @@ namespace ZEngine::ECS::SceneYAML
         {
             return &m_arena;
         }
-        Node Destination()
+        // The storage's actual route wins over an unrelated nested YAML scope.
+        // Native/unrouted documents may borrow the active parser budget.
+        [[nodiscard]] Core::Memory::IWorkingMemoryBudget* WorkingMemoryBudget() const noexcept;
+        Node                                              Destination()
         {
             return {this, UINT32_MAX};
         }
@@ -155,6 +177,8 @@ namespace ZEngine::ECS::SceneYAML
             size_t                  LinkCapacity = 0;
             void*                   LinkData     = nullptr;
             bool                    Good         = false;
+            bool                    Frozen       = false;
+            SceneDiagnosticCode     Failure      = SceneDiagnosticCode::None;
         };
         Checkpoint Mark();
         void       Rollback(const Checkpoint& checkpoint);
@@ -179,6 +203,19 @@ namespace ZEngine::ECS::SceneYAML
             uint32_t Value = UINT32_MAX;
             uint32_t Next  = UINT32_MAX;
         };
+        struct RoutedBacking
+        {
+            Core::Memory::IAllocationRoute* Route   = nullptr;
+            void*                           Pointer = nullptr;
+            ~RoutedBacking()
+            {
+                if (Pointer)
+                    Route->Free(Pointer);
+            }
+        };
+        // Declared first, freed last: arrays and borrowed arena must finish
+        // before the optional routed backing block is returned to its owner.
+        RoutedBacking                   m_backing    = {};
         Core::Memory::ArenaAllocator    m_arena      = {};
         Core::Containers::Array<Record> m_nodes      = {};
         Core::Containers::Array<Link>   m_links      = {};
@@ -187,14 +224,23 @@ namespace ZEngine::ECS::SceneYAML
         uint32_t                        m_max_scalar = 0;
         bool                            m_good       = false;
         bool                            m_frozen     = false;
+        SceneDiagnosticCode             m_failure    = SceneDiagnosticCode::None;
+        [[nodiscard]] bool              InitializeStorage(void* memory, size_t byte_budget, uint32_t max_nodes, uint32_t max_items, uint32_t max_scalar, Core::Memory::IAllocationRoute* allocation_route = nullptr, size_t initial_bytes = 0);
         bool                            Owns(Node node) const;
         bool                            AddLink(Node parent, uint32_t key, Node value);
-        bool                            Contains(Node node, Node target, uint32_t depth, uint32_t& visited) const;
-        Node                            CloneNode(const Node& source, uint32_t remaining, uint32_t& visited);
-        bool                            Fail()
+        bool                            Contains(Node node, Node target);
+        bool                            ContainsChildren(Node node, Node target);
+        Node                            CloneTree(const Node& source, uint32_t max_depth);
+        bool                            Fail(SceneDiagnosticCode code = SceneDiagnosticCode::InvalidData)
         {
             m_good = false;
+            if (m_failure == SceneDiagnosticCode::None)
+                m_failure = code;
             return false;
+        }
+        bool FailAllocation()
+        {
+            return Fail(m_arena.LastFailure().Kind == Core::Memory::ArenaAllocationFailureKind::CommitFailed ? SceneDiagnosticCode::AllocationFailed : SceneDiagnosticCode::LimitExceeded);
         }
     };
 
@@ -205,6 +251,7 @@ namespace ZEngine::ECS::SceneYAML
         class Iterator
         {
         public:
+            Iterator() = default;
             auto operator*() const
             {
                 const auto& link = m_owner->m_links[m_link];

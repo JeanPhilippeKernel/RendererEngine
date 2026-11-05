@@ -16,6 +16,8 @@ proposed work, or implementation history.
 - [Production execution plan](execution-plan.md)
 - [CPU memory budget reference](memory-budget.md)
 - [Scene serialization proposal](future-plan/scene-serialization.md)
+- [Scene cooker review proposal](future-plan/scene-cooker.md)
+- [Scene cooker v1 contracts](future-plan/scene-cooker-contracts.md)
 - [Renderer resource-management proposal](future-plan/render-resource-manager.md)
 - [Zodiac Engine Hub / Panzerfaust integration](future-plan/panzerfaust.md)
 

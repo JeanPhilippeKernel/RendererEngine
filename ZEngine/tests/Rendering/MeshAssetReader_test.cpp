@@ -157,7 +157,183 @@ protected:
             offset += 8 + (name.size() ? name.size() + 1 : 0);
         return offset;
     }
+
+    struct ByteProbe
+    {
+        const std::vector<uint8_t>* Data       = nullptr;
+        size_t                      Chunk      = SIZE_MAX;
+        uint32_t                    Reads      = 0;
+        bool                        Overreport = false;
+        VFSError                    Error      = VFSError::OK;
+
+        AssetByteSource             View()
+        {
+            return {this, ReadBytes, Data ? Data->size() : 0};
+        }
+        static VFSResult<size_t> ReadBytes(void* context, ZEngine::Core::Containers::ArrayView<uint8_t> output, uint64_t offset)
+        {
+            auto& self = *static_cast<ByteProbe*>(context);
+            ++self.Reads;
+            if (self.Error != VFSError::OK)
+                return VFSResult<size_t>::Fail(self.Error);
+            if (self.Overreport)
+                return VFSResult<size_t>::Ok(output.size() + 1);
+            const size_t size = !self.Data || offset >= self.Data->size() ? 0 : std::min({output.size(), self.Data->size() - static_cast<size_t>(offset), self.Chunk});
+            if (size)
+                ZEngine::Helpers::secure_memcpy(output.data(), output.size(), self.Data->data() + offset, size);
+            return VFSResult<size_t>::Ok(size);
+        }
+    };
 };
+
+TEST_F(MeshAssetReaderTest, LayoutMeasurementMatchesExactDecodeHighWaterIncludingAlignmentAndTemporaryState)
+{
+    for (cstring name : {"", "R", "Root", "Root123456789012345"})
+    {
+        Hierarchy.Names[0].init(&Memory.MainArena, name);
+        ASSERT_TRUE(Cook());
+        const auto bytes    = Bytes();
+        ByteProbe  probe    = {&bytes};
+        size_t     capacity = 0;
+        ASSERT_TRUE(MeasureMeshAssetReadWorkspace(probe.View(), &capacity, ID).Succeeded());
+        EXPECT_GT(capacity, 0u);
+        EXPECT_EQ(DecodeArena.m_current_offset, 0u);
+        alignas(DEFAULT_ALIGNMENT) uint8_t storage[4096] = {};
+        ASSERT_LE(capacity, sizeof(storage));
+        ArenaAllocator exact = {};
+        ASSERT_TRUE(exact.InitializeBorrowed(storage, capacity));
+        MeshAssetReadLimits limits   = {};
+        limits.MaxDecodedBytes       = capacity;
+        AssetMesh          mesh      = {};
+        AssetNodeHierarchy hierarchy = {};
+        ASSERT_TRUE(ReadMeshAsset(probe.View(), &exact, &mesh, &hierarchy, ID, limits).Succeeded());
+        EXPECT_EQ(exact.m_current_offset + hierarchy.Hierarchies.size(), capacity);
+        EXPECT_EQ(mesh.MeshUUID, ID);
+        EXPECT_STREQ(hierarchy.Names[0].c_str(), name);
+        exact.Shutdown();
+        ASSERT_TRUE(exact.InitializeBorrowed(storage, capacity - 1));
+        mesh.MeshUUID = HierarchyID;
+        EXPECT_TRUE(ReadMeshAsset(probe.View(), &exact, &mesh, &hierarchy, ID, limits).Failed());
+        EXPECT_EQ(mesh.MeshUUID, HierarchyID);
+        EXPECT_EQ(exact.m_current_offset, 0u);
+        limits.MaxDecodedBytes = capacity - 1;
+        size_t prior           = 12345;
+        EXPECT_EQ(MeasureMeshAssetReadWorkspace(probe.View(), &prior, ID, limits).Error(), VFSError::SizeLimitExceeded);
+        EXPECT_EQ(prior, 12345u);
+    }
+}
+
+TEST_F(MeshAssetReaderTest, LayoutMeasurementNeverSubstitutesForGeometryMapOrUTF8Validation)
+{
+    ASSERT_TRUE(Cook());
+    const auto original = Bytes();
+    for (uint32_t malformed = 0; malformed < 6; ++malformed)
+    {
+        auto bytes = original;
+        if (malformed == 0)
+            Set(bytes, 24 + 8, std::numeric_limits<float>::quiet_NaN());
+        if (malformed == 1)
+            Set(bytes, NamesCount() + 4 + 8, uint8_t(0xc0));
+        if (malformed == 2)
+            Set(bytes, NodeNamesMap() + 8 + 8, uint32_t(0)); // Duplicate node-name key.
+        if (malformed == 3)
+            Set(bytes, SubMeshesCount() + 8 + offsetof(AssetSubMesh, StreamOffset), uint32_t(1));
+        if (malformed == 4)
+            Set(bytes, SubMeshesCount() + 8 + offsetof(AssetSubMesh, IndexStreamOffset), uint32_t(1));
+        if (malformed == 5)
+            Set(bytes, SubMeshesCount() + 8 + offsetof(AssetSubMesh, TotalByteSize), uint32_t(0));
+        ByteProbe probe    = {&bytes};
+        size_t    capacity = 0;
+        ASSERT_TRUE(MeasureMeshAssetReadWorkspace(probe.View(), &capacity, ID).Succeeded());
+        const auto before = DecodeArena.m_current_offset;
+        EXPECT_EQ(ReadMeshAsset(probe.View(), &DecodeArena, &Output, &OutputHierarchy, ID).Error(), VFSError::Corrupted);
+        EXPECT_EQ(DecodeArena.m_current_offset, before);
+        EXPECT_TRUE(Output.MeshUUID.is_nil());
+    }
+}
+
+TEST_F(MeshAssetReaderTest, BorrowedByteSourcesAcceptShortReadsAndPreserveReadFailures)
+{
+    ASSERT_TRUE(Cook());
+    const auto bytes = Bytes();
+    for (size_t chunk : {size_t(1), size_t(7), size_t(16384)})
+    {
+        ByteProbe probe    = {&bytes, chunk};
+        size_t    capacity = 0;
+        ASSERT_TRUE(MeasureMeshAssetReadWorkspace(probe.View(), &capacity, ID).Succeeded());
+        ASSERT_TRUE(ReadMeshAsset(probe.View(), &DecodeArena, &Output, &OutputHierarchy, ID).Succeeded());
+        EXPECT_EQ(Output.Indices[2], 2u);
+        EXPECT_GT(probe.Reads, 0u);
+        DecodeArena.Clear();
+    }
+    for (uint32_t malformed = 0; malformed < 3; ++malformed)
+    {
+        ByteProbe probe = {&bytes};
+        if (malformed == 0)
+            probe.Chunk = 0;
+        if (malformed == 1)
+            probe.Overreport = true;
+        if (malformed == 2)
+            probe.Error = VFSError::PermissionDenied;
+        size_t     capacity = 12345;
+        const auto expected = malformed == 2 ? VFSError::PermissionDenied : VFSError::Corrupted;
+        EXPECT_EQ(MeasureMeshAssetReadWorkspace(probe.View(), &capacity, ID).Error(), expected);
+        EXPECT_EQ(capacity, 12345u);
+        EXPECT_EQ(ReadMeshAsset(probe.View(), &DecodeArena, &Output, &OutputHierarchy, ID).Error(), expected);
+        EXPECT_EQ(DecodeArena.m_current_offset, 0u);
+    }
+}
+
+TEST_F(MeshAssetReaderTest, MeasurementRejectsTruncatedLayoutsAndInvalidRequestsWithoutPublishingSize)
+{
+    ASSERT_TRUE(Cook());
+    const auto bytes = Bytes();
+    ByteProbe  probe = {&bytes};
+    for (size_t size = 0; size < bytes.size(); ++size)
+    {
+        auto view     = probe.View();
+        view.Size     = size;
+        size_t output = 12345;
+        EXPECT_TRUE(MeasureMeshAssetReadWorkspace(view, &output, ID).Failed()) << size;
+        EXPECT_EQ(output, 12345u);
+    }
+    size_t output = 12345;
+    EXPECT_EQ(MeasureMeshAssetReadWorkspace({}, &output, ID).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(MeasureMeshAssetReadWorkspace(probe.View(), nullptr, ID).Error(), VFSError::InvalidPath);
+    EXPECT_EQ(MeasureMeshAssetReadWorkspace(probe.View(), &output, HierarchyID).Error(), VFSError::Corrupted);
+    auto limits         = MeshAssetReadLimits{};
+    limits.MaxFileBytes = bytes.size() - 1;
+    EXPECT_EQ(MeasureMeshAssetReadWorkspace(probe.View(), &output, ID, limits).Error(), VFSError::SizeLimitExceeded);
+    EXPECT_EQ(output, 12345u);
+}
+
+TEST_F(MeshAssetReaderTest, CheckedCloseFailureDoesNotPublishDecodedResultsOrArenaAllocations)
+{
+    ASSERT_TRUE(Cook());
+    ASSERT_TRUE(Read().Succeeded());
+    const auto               before   = DecodeArena.m_current_offset;
+    const auto               previous = DecodeArena.m_previous_offset;
+    const auto*              vertices = Output.Vertices.data();
+    struct CloseFaultContext final : VFSContext
+    {
+        uint32_t        Closes = 0;
+        VFSResult<void> CloseChecked(IVFSFile* file) override
+        {
+            ++Closes;
+            const auto closed = VFSContext::CloseChecked(file);
+            return closed.Failed() ? closed : VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
+    } context = {};
+    context.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(context.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
+    EXPECT_EQ(ReadMeshAssetFileVFS(&DecodeArena, context, Path, &Output, &OutputHierarchy, ID).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(context.Closes, 1u);
+    EXPECT_EQ(DecodeArena.m_current_offset, before);
+    EXPECT_EQ(DecodeArena.m_previous_offset, previous);
+    EXPECT_EQ(Output.Vertices.data(), vertices);
+    EXPECT_EQ(Output.MeshUUID, ID);
+    context.Shutdown();
+}
 
 TEST_F(MeshAssetReaderTest, RoundTripsCurrentCookerWithOwnedArenaDataAndStableIdentity)
 {

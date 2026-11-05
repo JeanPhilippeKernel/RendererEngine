@@ -97,10 +97,11 @@ namespace ZEngine::ECS
 
         struct MeshCodec : UUIDReferenceCodec
         {
-            using Component                    = Components::MeshComponent;
-            static constexpr cstring    Key    = "MeshComponent";
-            static constexpr cstring    Field  = "mesh_uuid";
-            static constexpr std::array Fields = {
+            using Component                       = Components::MeshComponent;
+            static constexpr cstring    Key       = "MeshComponent";
+            static constexpr cstring    Field     = "mesh_uuid";
+            static constexpr cstring    AssetKind = "mesh";
+            static constexpr std::array Fields    = {
                 SceneFieldSchema{Field},
                 SceneFieldSchema{"render_instance_id", SceneFieldClass::RuntimeDerived}
             };
@@ -126,10 +127,11 @@ namespace ZEngine::ECS
 
         struct MaterialCodec : UUIDReferenceCodec
         {
-            using Component                    = Components::MaterialComponent;
-            static constexpr cstring    Key    = "MaterialComponent";
-            static constexpr cstring    Field  = "material_uuid";
-            static constexpr std::array Fields = {SceneFieldSchema{Field}};
+            using Component                       = Components::MaterialComponent;
+            static constexpr cstring    Key       = "MaterialComponent";
+            static constexpr cstring    Field     = "material_uuid";
+            static constexpr cstring    AssetKind = "material";
+            static constexpr std::array Fields    = {SceneFieldSchema{Field}};
 
             static bool                 Capture(EntityID entity, const Scene& scene, Value& out)
             {
@@ -153,6 +155,7 @@ namespace ZEngine::ECS
             using Component                                   = Components::ParentComponent;
             static constexpr cstring            Key           = "ParentComponent";
             static constexpr cstring            Field         = "parent_uuid";
+            static constexpr cstring            AssetKind     = nullptr;
             static constexpr std::array         Fields        = {SceneFieldSchema{Field}};
             static constexpr SceneReferenceKind ReferenceKind = SceneReferenceKind::Entity;
             static bool                         Valid(const Value&)
@@ -227,7 +230,7 @@ namespace ZEngine::ECS
             static bool Encode(void*, const SceneValue& payload, SceneBinaryWriter* out, SceneDiagnostics* diagnostics)
             {
                 Value value = {};
-                if (!out || !Read(payload, value) || out->Remaining() < Codec::Bytes(value))
+                if (!out || !Read(payload, value) || !out->Require(Codec::Bytes(value)))
                     return Reject(diagnostics);
                 auto candidate = *out;
                 if (!Codec::Encode(value, candidate))
@@ -272,7 +275,7 @@ namespace ZEngine::ECS
                     Value value = {};
                     if (!visitor || !Read(payload, value))
                         return Reject(diagnostics);
-                    return value.is_nil() || visitor(context, {Codec::ReferenceKind, value});
+                    return value.is_nil() || visitor(context, {Codec::ReferenceKind, value, Codec::Field, Codec::AssetKind});
                 }
                 return Reject(diagnostics);
             }

@@ -6,6 +6,7 @@
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <cstring>
+#include <typeinfo>
 
 #if defined(__APPLE__)
 #include <ZEngine/Core/VFS/Platform/VFSFSEventsWatcher.h>
@@ -35,6 +36,33 @@ namespace ZEngine::Core::VFS
         m_active_import_publication.DeferredEvents.init(m_arena, 32);
         for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
             m_completed_import_publications[i].Artifacts.init(m_arena, 16);
+    }
+
+    VFSResult<VFSContextStorage> VFSContext::NativeStorage() const noexcept
+    {
+        // Inherited sizeof(base) is not a complete custom-facade contract.
+        // Derived contexts must explicitly describe their complete storage.
+        if (typeid(*this) != typeid(VFSContext) || !m_arena || m_platform_watcher || m_file_watcher || m_directory_cache || m_scanner || m_registry || m_coordinator || m_file_change_listener || m_file_change_context || m_active_import_publication.Publication.IsValid())
+            return VFSResult<VFSContextStorage>::Fail(VFSError::Unsupported);
+        Memory::ArenaRetainedStorage storage = {};
+        if (!m_arena->RetainedStorage(&storage))
+            return VFSResult<VFSContextStorage>::Fail(VFSError::Unsupported);
+        return VFSResult<VFSContextStorage>::Ok({this, sizeof(*this), m_arena});
+    }
+
+    VFSResult<void> VFSContext::AcquirePublicationRoot(const VFSPath& root, VFSPublicationRootLease* output, IVFSWorkingMemoryBudget* budget)
+    {
+        return m_mount_table.AcquirePublicationRoot(root, output, budget);
+    }
+
+    VFSResult<void> VFSContext::AcquireScratchRoot(const VFSPath& root, VFSScratchRootLease* output, IVFSWorkingMemoryBudget* budget)
+    {
+        return m_mount_table.AcquireScratchRoot(root, output, budget);
+    }
+
+    VFSResult<void> VFSContext::AcquireReadRoot(const VFSPath& root, VFSReadRootLease* output, IVFSWorkingMemoryBudget* budget)
+    {
+        return m_mount_table.AcquireReadRoot(root, output, budget);
     }
 
     void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry, Importers::ImportCoordinator* coordinator, FileChangeListener file_change_listener, void* file_change_context)

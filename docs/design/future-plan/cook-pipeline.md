@@ -1,9 +1,18 @@
 # Cook / Package Pipeline
 
 **Priority:** P4 — Implement after import pipeline and asset registry are stable
-**Status:** Design
-**Depends on:** `import-pipeline.md`, `vfs-ticket6-asset-registry.md`, `render-resource-manager.md`
+**Status:** Longer-horizon sketch; current scene-cook design is under review
+**Depends on:** `import-pipeline.md`, `../completed/vfs-ticket6-asset-registry.md`, `render-resource-manager.md`
 **Blocks:** Shipping / release builds
+
+> For the next implementation milestone (#718), review
+> [Scene Cooker — Review Proposal](scene-cooker.md). The code sketches below
+> predate the merged scene codec, current metadata, and VFS APIs. They are not
+> implementation contracts: source hash alone is not a sufficient reuse key,
+> mutable artifact replacement does not preserve an old manifest's build, and
+> the proposed archive/native-struct layouts and runtime mount APIs are not
+> implemented or approved. Texture compression, archives, and shipping UI remain
+> later milestones; none is implied by the first scene cooker.
 
 **Goal**: Transform raw source assets (imported, meta-file-tracked) into platform-optimised,
 pak-packaged artifacts that the runtime can mount without any further processing. The pipeline

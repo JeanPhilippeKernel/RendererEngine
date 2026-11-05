@@ -30,12 +30,21 @@ namespace ZEngine::ECS
     class BinarySceneCodec
     {
     public:
+        /// No output allocation. Uses the same bounded codec/layout preparation
+        /// as Encode, so callers can reserve exact output storage, not MaxFileBytes.
+        /// Failure preserves out_size. Codecs/registries must remain unchanged
+        /// between measurement and encoding, as during a synchronous cook.
+        [[nodiscard]] static bool Measure(const SceneDocument& document, const SceneComponentSchemaRegistry& schemas, size_t* out_size, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
         /// Failure preserves out_bytes and rewinds tentative output-arena storage.
         /// Applies file, entity, component, collection and scalar limits. Tree
         /// node/depth and decoded-memory budgets apply to Decode, not Encode.
         [[nodiscard]] static bool Encode(const SceneDocument& document, const SceneComponentSchemaRegistry& schemas, Core::Memory::ArenaAllocator* output_arena, Core::Containers::Array<uint8_t>* out_bytes, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
         /// Success owns every value independently of bytes and schemas. Failure
         /// preserves out_document; no candidate ECS entities are created.
-        [[nodiscard]] static bool Decode(std::span<const uint8_t> bytes, const SceneComponentSchemaRegistry& schemas, SceneDocument* out_document, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
+        /// Canonical tables with unknown/non-current schemas report
+        /// UnsupportedVersion before allocation. Malformed tables/keys report
+        /// InvalidData even when another row's schema is unavailable.
+        /// Optional route has the same owner/lifetime contract as SceneDocument::Parse.
+        [[nodiscard]] static bool Decode(std::span<const uint8_t> bytes, const SceneComponentSchemaRegistry& schemas, SceneDocument* out_document, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, Core::Memory::IAllocationRoute* allocation_route = nullptr);
     };
 } // namespace ZEngine::ECS

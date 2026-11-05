@@ -1,0 +1,32 @@
+{
+  "base": "manifest-v1.golden.json",
+  "patch_format": "RFC 6902; each case starts from a fresh base",
+  "cases": [
+    {"name": "empty-scenes", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes", "value": []}]},
+    {"name": "unknown-field", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "add", "path": "/timestamp", "value": 1}]},
+    {"name": "unknown-settings", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "add", "path": "/settings/quality", "value": "high"}]},
+    {"name": "nil-identity", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/uuid", "value": "00000000-0000-0000-0000-000000000000"}]},
+    {"name": "uppercase-digest", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/schema_key", "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]},
+    {"name": "digest-trailing-lf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/schema_key", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"}]},
+    {"name": "digest-trailing-crlf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/schema_key", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n"}]},
+    {"name": "uuid-trailing-lf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/uuid", "value": "00000000-0000-4000-8000-000000000001\n"}]},
+    {"name": "uuid-trailing-crlf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/uuid", "value": "00000000-0000-4000-8000-000000000001\r\n"}]},
+    {"name": "object-path-trailing-lf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/object/path", "value": "objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.zescenebin\n"}]},
+    {"name": "object-path-trailing-crlf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/object/path", "value": "objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.zescenebin\r\n"}]},
+    {"name": "source-trailing-lf", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/source", "value": "scenes/main.yaml\n"}]},
+    {"name": "source-embedded-nul", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/source", "value": "scenes/ma\u0000in.yaml"}]},
+    {"name": "negative-size", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/object/size", "value": -1}]},
+    {"name": "boolean-size", "phase": "schema", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/object/size", "value": true}]},
+    {"name": "future-manifest", "phase": "compatibility", "code": "UnsupportedVersion", "patch": [{"op": "replace", "path": "/manifest_version", "value": 2}]},
+    {"name": "future-recipe", "phase": "compatibility", "code": "UnsupportedVersion", "patch": [{"op": "replace", "path": "/recipe_revision", "value": 2}]},
+    {"name": "wrong-target", "phase": "compatibility", "code": "UnsupportedTarget", "patch": [{"op": "replace", "path": "/target", "value": "mobile-astc"}]},
+    {"name": "duplicate-scene", "phase": "semantic", "code": "InvalidManifest", "patch": [{"op": "copy", "from": "/scenes/0", "path": "/scenes/-"}]},
+    {"name": "traversal-source", "phase": "semantic", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/source", "value": "scenes/../outside.yaml"}]},
+    {"name": "object-digest-mismatch", "phase": "semantic", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/scenes/0/object/digest", "value": "5555555555555555555555555555555555555555555555555555555555555555"}]},
+    {"name": "settings-key-mismatch", "phase": "semantic", "code": "InvalidManifest", "patch": [{"op": "replace", "path": "/settings_key", "value": "5555555555555555555555555555555555555555555555555555555555555555"}]},
+    {"name": "unresolved-root", "phase": "semantic", "code": "InvalidManifest", "patch": [{"op": "add", "path": "/scenes/0/roots/-", "value": {"kind": "mesh", "uuid": "00000000-0000-4000-8000-000000000002"}}]},
+    {"name": "duplicate-version-field", "phase": "syntax", "code": "InvalidManifest", "raw": "{\"manifest_version\":1,\"manifest_version\":1}"},
+    {"name": "exponent-version", "phase": "syntax", "code": "InvalidManifest", "raw": "{\"manifest_version\":1e0}"},
+    {"name": "missing-version", "phase": "compatibility", "code": "UnsupportedVersion", "raw": "{}"}
+  ]
+}

@@ -8,6 +8,9 @@ namespace ZEngine::Core::Memory
     struct ArenaAllocator;
     struct ArenaTemp;
     struct ArenaCommitTracker;
+    struct ArenaGrowthChunk;
+    struct ArenaGrowth;
+    class IAllocationRoute;
 
     enum class ArenaAllocationFailureKind : uint8_t
     {
@@ -38,7 +41,24 @@ namespace ZEngine::Core::Memory
         size_t          PreviousOffset = 0;
     };
 
-    // ArenaAllocator — linear bump-pointer allocator backed by a virtual memory reservation.
+    // Allocation-free snapshot of a native root reservation's retained backing.
+    // Root/sub-arena views share Identity, the actual live root Owner, and
+    // complete backing totals. Moves update Owner without changing Identity. Reserved
+    // address space is separate from writable pages; borrowed/routed storage
+    // cannot infer its external owner's footprint and does not expose a snapshot.
+    struct ArenaRetainedStorage
+    {
+        const void*           Identity                                      = nullptr;
+        size_t                CommittedBytes                                = 0;
+        size_t                TrackingBytes                                 = 0;
+        size_t                ReservedAddressBytes                          = 0;
+        const ArenaAllocator* Owner                                         = nullptr;
+        [[nodiscard]] bool    operator==(const ArenaRetainedStorage&) const = default;
+    };
+
+    // ArenaAllocator — linear bump-pointer allocator, normally backed by a virtual memory reservation.
+    // InitializeBorrowed instead views caller storage; InitializeGrowingBorrowed
+    // adds routed, non-moving blocks. Only the first two modes are contiguous.
     //
     // Windows reserves with PAGE_NOACCESS; POSIX reserves with PROT_NONE. Both backends
     // promote only pages touched by an allocation. A root-owned page bitmap keeps those
@@ -98,6 +118,12 @@ namespace ZEngine::Core::Memory
         /// release or ownership transfer. The backing owner must outlive this view
         /// and every allocation/sub-arena carved from it. Failure preserves this arena.
         [[nodiscard]] bool                          InitializeBorrowed(void* memory, size_t bytes, cstring owner_name = "BorrowedArena");
+        /// Stable, segmented growth from caller-owned initial storage. Further
+        /// writable blocks (including headers/slack) use only the supplied route.
+        /// The cap bounds retained payload capacity; marks/Clear reuse blocks
+        /// without reallocating. Shutdown frees growth blocks, never initial
+        /// storage. No contiguous sub-arenas may be carved from this mode.
+        [[nodiscard]] bool                          InitializeGrowingBorrowed(void* memory, size_t initial_bytes, size_t max_bytes, IAllocationRoute& route, cstring owner_name = "GrowingBorrowedArena");
         void                                        Shutdown();
 
         void*                                       Allocate(size_t size, size_t alignment = DEFAULT_ALIGNMENT);
@@ -122,12 +148,24 @@ namespace ZEngine::Core::Memory
             return m_last_failure;
         }
 
+        // Owned, page-rounded tracker storage only; sub-arenas share their root's
+        // tracker and borrowed arenas own none. Does not include arena pages.
+        [[nodiscard]] size_t   AllocationTrackingBytes() const noexcept;
+        // Caller keeps the complete arena family stable while reading/using the
+        // snapshot. Failure preserves output and never commits/allocates pages.
+        [[nodiscard]] bool     RetainedStorage(ArenaRetainedStorage* output) const noexcept;
+        // Pure native-family containment check. Every page in the nonempty
+        // range must already be writable. Includes sibling views, but does not
+        // infer object lifetime or ownership of pointers stored in that object.
+        [[nodiscard]] bool     RetainsStorage(const void* pointer, size_t bytes) const noexcept;
+
         uint8_t*               m_memory                  = nullptr;
         bool                   m_is_sub_arena            = false;
         bool                   m_is_borrowed             = false;
         size_t                 m_total_size              = 0;
-        // Physical address-space range reserved for this arena. Sub-arenas reserve a
-        // page-rounded range while preserving m_total_size as their usable capacity.
+        // Physical address-space range reserved for a contiguous arena; total
+        // retained payload capacity for routed growth. Sub-arenas reserve a
+        // page-rounded range while preserving m_total_size as usable capacity.
         size_t                 m_reserved_size           = 0;
         size_t                 m_initial_current_offset  = 0;
         size_t                 m_initial_previous_offset = 0;
@@ -143,39 +181,16 @@ namespace ZEngine::Core::Memory
         ArenaAllocationFailure m_last_failure            = {};
 
     private:
+        friend struct ArenaGrowth;
         ArenaCommitTracker* m_commit_tracker      = nullptr;
         size_t              m_root_offset         = 0;
         bool                m_owns_commit_tracker = false;
+        IAllocationRoute*   m_growth_route        = nullptr;
+        ArenaGrowthChunk*   m_growth_first        = nullptr;
+        ArenaGrowthChunk*   m_growth_current      = nullptr;
+        size_t              m_growth_initial_size = 0;
 
-        void                MoveFrom(ArenaAllocator& other) noexcept
-        {
-            m_memory                    = other.m_memory;
-            m_is_sub_arena              = other.m_is_sub_arena;
-            m_is_borrowed               = other.m_is_borrowed;
-            m_total_size                = other.m_total_size;
-            m_reserved_size             = other.m_reserved_size;
-            m_initial_current_offset    = other.m_initial_current_offset;
-            m_initial_previous_offset   = other.m_initial_previous_offset;
-            m_current_offset            = other.m_current_offset;
-            m_previous_offset           = other.m_previous_offset;
-            m_committed_size            = other.m_committed_size;
-            m_mem_page_size             = other.m_mem_page_size;
-            m_owner_name                = other.m_owner_name;
-            m_last_failure              = other.m_last_failure;
-            m_commit_tracker            = other.m_commit_tracker;
-            m_root_offset               = other.m_root_offset;
-            m_owns_commit_tracker       = other.m_owns_commit_tracker;
-
-            other.m_memory              = nullptr;
-            other.m_total_size          = 0;
-            other.m_reserved_size       = 0;
-            other.m_committed_size      = 0;
-            other.m_is_sub_arena        = false;
-            other.m_is_borrowed         = false;
-            other.m_commit_tracker      = nullptr;
-            other.m_root_offset         = 0;
-            other.m_owns_commit_tracker = false;
-        }
+        void                MoveFrom(ArenaAllocator& other) noexcept;
     }; // struct ArenaAllocator
 
     struct PoolFreeNode
@@ -217,21 +232,22 @@ namespace ZEngine::Core::Memory
         // shallow copy is not immediately unsafe — but it silently duplicates the free
         // list, letting two independent PoolAllocator instances hand out the same chunk.
         // Deleted until there's a real use case for copying a pool.
-        PoolAllocator(const PoolAllocator&)            = delete;
-        PoolAllocator& operator=(const PoolAllocator&) = delete;
+        PoolAllocator(const PoolAllocator&)                = delete;
+        PoolAllocator&     operator=(const PoolAllocator&) = delete;
 
-        void           Initialize(Arena* arena, size_t size, size_t chunk_size, size_t alignment = DEFAULT_ALIGNMENT);
+        void               Initialize(Arena* arena, size_t size, size_t chunk_size, size_t alignment = DEFAULT_ALIGNMENT);
+        [[nodiscard]] bool TryInitialize(Arena* arena, size_t size, size_t chunk_size, size_t alignment = DEFAULT_ALIGNMENT);
 
-        void*          Allocate();
-        void*          Allocate(const char* file, int line);
+        void*              Allocate();
+        void*              Allocate(const char* file, int line);
 
-        void           Free(void* ptr);
-        void           Clear();
+        void               Free(void* ptr);
+        void               Clear();
 
-        uint8_t*       memory     = nullptr;
-        PoolFreeNode*  head       = nullptr;
-        size_t         total_size = 0;
-        size_t         chunk_size = 0;
+        uint8_t*           memory     = nullptr;
+        PoolFreeNode*      head       = nullptr;
+        size_t             total_size = 0;
+        size_t             chunk_size = 0;
     };
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena);

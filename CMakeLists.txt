@@ -31,6 +31,7 @@ endif()
 include(Scripts/CMake/NuGet.cmake)
 include(Scripts/CMake/CppWinRT.cmake)
 include(Scripts/CMake/LoggingDefaults.cmake)
+include(Scripts/CMake/MacOSCodeSign.cmake)
 
 option (ZENGINE_TRACY "Enable Tracy profiler" OFF)
 
@@ -76,4 +77,3 @@ add_subdirectory (Tetragrama)
 # Entry point is here
 #
 add_subdirectory (Obelisk)
-

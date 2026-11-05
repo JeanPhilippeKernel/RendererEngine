@@ -11,21 +11,22 @@ namespace ZEngine::Core::VFS
 
     enum class VFSOpenFlags : uint32_t
     {
-        None      = 0,
-        Read      = BIT(0),
-        Write     = BIT(1),
-        Append    = BIT(2),
-        Create    = BIT(3), // create file if it does not exist (requires Write)
-        Truncate  = BIT(4), // truncate to zero length on open  (requires Write)
-        Exclusive = BIT(5), // fail atomically if the name exists (requires Write | Create)
+        None         = 0,
+        Read         = BIT(0),
+        Write        = BIT(1),
+        Append       = BIT(2),
+        Create       = BIT(3), // create file if it does not exist (requires Write)
+        Truncate     = BIT(4), // truncate to zero length on open  (requires Write)
+        Exclusive    = BIT(5), // fail atomically if the name exists (requires Write | Create)
+        AllowReplace = BIT(6), // read-only stable handle; permit atomic replacement of its name
     };
 
-    inline VFSOpenFlags operator|(VFSOpenFlags a, VFSOpenFlags b)
+    constexpr VFSOpenFlags operator|(VFSOpenFlags a, VFSOpenFlags b)
     {
         return static_cast<VFSOpenFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
     }
 
-    inline bool HasFlag(VFSOpenFlags flags, VFSOpenFlags test)
+    constexpr bool HasFlag(VFSOpenFlags flags, VFSOpenFlags test)
     {
         return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(test)) != 0;
     }
@@ -38,22 +39,40 @@ namespace ZEngine::Core::VFS
         bool     IsReadOnly  = false;
     };
 
+    // Native object identity, not a content hash or a pathname. Zero is invalid.
+    // Two disk facades on the same filesystem report the same native identity.
+    struct VFSFileIdentity
+    {
+        uint64_t           Volume     = 0;
+        uint64_t           ObjectLow  = 0;
+        uint64_t           ObjectHigh = 0;
+        [[nodiscard]] bool IsValid() const noexcept
+        {
+            return Volume || ObjectLow || ObjectHigh;
+        }
+        [[nodiscard]] bool operator==(const VFSFileIdentity&) const = default;
+    };
+
     struct IVFSFile
     {
-        virtual ~IVFSFile()                                                                                      = default;
-        IVFSBackend*                   Owner                                                                     = nullptr;
+        virtual ~IVFSFile()                                                                                                        = default;
+        IVFSBackend*                                     Owner                                                                     = nullptr;
 
-        virtual VFSResult<size_t>      Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset)        = 0;
-        virtual VFSResult<size_t>      Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) = 0;
+        virtual VFSResult<size_t>                        Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset)        = 0;
+        virtual VFSResult<size_t>                        Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) = 0;
 
-        virtual VFSResult<uint64_t>    Size() const                                                              = 0;
-        virtual VFSResult<VFSFileStat> Stat() const                                                              = 0;
-        virtual VFSResult<void>        Flush()                                                                   = 0;
-        virtual const VFSPath&         Path() const                                                              = 0;
-        virtual VFSResult<void>        Close()                                                                   = 0;
+        virtual VFSResult<uint64_t>                      Size() const                                                              = 0;
+        virtual VFSResult<VFSFileStat>                   Stat() const                                                              = 0;
+        [[nodiscard]] virtual VFSResult<VFSFileIdentity> Identity() const
+        {
+            return VFSResult<VFSFileIdentity>::Fail(VFSError::Unsupported);
+        }
+        virtual VFSResult<void> Flush()      = 0;
+        virtual const VFSPath&  Path() const = 0;
+        virtual VFSResult<void> Close()      = 0;
 
         // Read the whole file into out_buffer
-        VFSResult<size_t>              ReadAll(Core::Containers::ArrayView<uint8_t> out_buffer);
+        VFSResult<size_t>       ReadAll(Core::Containers::ArrayView<uint8_t> out_buffer);
     };
 
 } // namespace ZEngine::Core::VFS

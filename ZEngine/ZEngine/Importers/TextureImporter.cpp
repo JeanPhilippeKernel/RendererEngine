@@ -3,7 +3,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/ZEngineDef.h>
 
-// stb_image implementation is defined once in RenderResourceManager.cpp.
+// Shared CPU implementation lives in Importers/ImageCodec.cpp.
 #include <stb/stb_image.h>
 
 namespace ZEngine::Importers

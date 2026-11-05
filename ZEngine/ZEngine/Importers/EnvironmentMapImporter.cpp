@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-// stb_image implementation is defined once in RenderResourceManager.cpp.
+// Shared CPU implementation lives in Importers/ImageCodec.cpp.
 #include <stb/stb_image.h>
 #include <tinyexr.h>
 

@@ -46,3 +46,7 @@ jobs:
             Result.Windows.x64.MultiConfig/tests/TetragramaTests.exe
             Result.Windows.x64.MultiConfig/tests/SceneDocumentProcess.exe
             Result.Windows.x64.MultiConfig/tests/SceneDocumentProcess.cmake
+            Result.Windows.x64.MultiConfig/tests/SceneCookProcess.exe
+            Result.Windows.x64.MultiConfig/tests/SceneCookProcess.cmake
+            Result.Windows.x64.MultiConfig/tests/SceneCookResourceProcess.exe
+            Result.Windows.x64.MultiConfig/tests/cook-fixtures/

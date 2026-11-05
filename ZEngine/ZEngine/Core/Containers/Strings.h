@@ -227,6 +227,13 @@ namespace ZEngine::Core::Containers
 
         StringView(const String& str) : m_data(str.c_str()), m_size(str.size()) {}
 
+        bool operator==(const StringView& other) const
+        {
+            if (m_size != other.m_size || (m_size && (!m_data || !other.m_data)))
+                return false;
+            return !m_size || Helpers::secure_memcmp(m_data, m_size, other.m_data, other.m_size, m_size) == 0;
+        }
+
         void set(const char* str)
         {
             m_data = str;

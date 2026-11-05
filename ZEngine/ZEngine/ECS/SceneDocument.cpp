@@ -1,4 +1,6 @@
 #include <ZEngine/Core/Containers/FixedArray.h>
+#include <ZEngine/Core/Containers/HeapSort.h>
+#include <ZEngine/Core/Serialization/YAMLAllocation.h>
 #include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/UUIDComponent.h>
@@ -12,6 +14,7 @@
 #include <algorithm>
 #include <limits>
 #include <new>
+#include <optional>
 #include <string_view>
 
 using ZEngine::Core::Containers::Array;
@@ -22,10 +25,23 @@ namespace ZEngine::ECS
 {
     namespace SceneDocumentDetail
     {
-        bool Reject(SceneDiagnostics* diagnostics, cstring message)
+        bool Reject(SceneDiagnostics* diagnostics, cstring message, SceneDiagnosticCode code = SceneDiagnosticCode::InvalidData)
         {
-            SceneDiagnosticError(diagnostics, message);
+            SceneDiagnosticError(diagnostics, message, code);
             return false;
+        }
+
+        template <typename T, typename Before>
+        bool SortRecords(ArrayView<T> records, Core::Memory::IWorkingMemoryBudget* budget, const Before& before, SceneDiagnostics* diagnostics)
+        {
+            if (records.size() < 2)
+                return true;
+            Core::Memory::WorkingMemoryCharge fixed = {};
+            if (!fixed.TryAcquire(budget, sizeof(Core::Containers::HeapSortState<T>) + sizeof(fixed)))
+                return Reject(diagnostics, "Scene ordering exceeds its fixed working-memory budget.", SceneDiagnosticCode::LimitExceeded);
+            Core::Containers::HeapSortState<T> state = {};
+            Core::Containers::HeapSort(records, state, before);
+            return true;
         }
 
         bool LimitsValid(const SceneDocumentLimits& limits)
@@ -33,31 +49,74 @@ namespace ZEngine::ECS
             return limits.MaxFileBytes > 0 && limits.MaxFileBytes <= 32 * 1024 * 1024 && limits.MaxEntities <= EntityRegistry::MAX_ENTITIES && limits.MaxComponentsPerEntity > 0 && limits.MaxComponentsPerEntity <= ARCHETYPE_MASK_CAPACITY && limits.MaxNodes > 0 && limits.MaxNodes <= 1048576 && limits.MaxDepth > 0 && limits.MaxDepth <= 32 && limits.MaxCollectionItems > 0 && limits.MaxCollectionItems <= 65536 && limits.MaxScalarBytes > 0 && limits.MaxScalarBytes <= 4096 && limits.MaxDecodedBytes > 0 && limits.MaxDecodedBytes <= ZMega(256);
         }
 
-        bool CountCapturedNodes(const SceneYAML::Node& node, const SceneDocumentLimits& limits, uint32_t& count, uint32_t depth)
+        bool CountCapturedNodes(const SceneYAML::Node& node, const SceneDocumentLimits& limits, uint32_t& count, uint32_t depth, SceneDiagnosticCode* failure, bool unique_keys)
         {
-            if (++count > limits.MaxNodes)
+            const auto fail = [failure](SceneDiagnosticCode code) {
+                if (failure)
+                    *failure = code;
                 return false;
-            if (node.IsScalar())
-                return node.Scalar().size() <= limits.MaxScalarBytes && node.Scalar().find('\0') == std::string::npos;
-            if (node.IsNull())
-                return true;
-            if (depth > limits.MaxDepth || node.size() > limits.MaxCollectionItems)
-                return false;
-            if (node.IsSequence())
+            };
+            Core::Memory::WorkingMemoryCharge fixed = {};
+            if (!fixed.TryAcquire(node.Owner() ? node.Owner()->WorkingMemoryBudget() : Core::Serialization::YAMLWorkingMemoryBudget(), SceneTreeWalkWorkingBytes()))
+                return fail(SceneDiagnosticCode::LimitExceeded);
+            SceneTreeWalkScratch walk = {};
+            walk.Current              = node;
+            for (;;)
             {
-                for (const auto& child : node.Sequence())
-                    if (!CountCapturedNodes(child, limits, count, depth + 1))
-                        return false;
+                if (count == UINT32_MAX || ++count > limits.MaxNodes)
+                    return fail(SceneDiagnosticCode::LimitExceeded);
+                if (walk.Current.IsScalar())
+                {
+                    if (walk.Current.Scalar().size() > limits.MaxScalarBytes)
+                        return fail(SceneDiagnosticCode::LimitExceeded);
+                    if (walk.Current.Scalar().find('\0') != std::string_view::npos)
+                        return fail(SceneDiagnosticCode::InvalidData);
+                }
+                else if (!walk.Current.IsNull())
+                {
+                    if (!walk.Current.IsMap() && !walk.Current.IsSequence())
+                        return fail(SceneDiagnosticCode::InvalidData);
+                    // Subtraction keeps even adversarial initial depths from
+                    // wrapping. Scalar/null leaves do not consume a frame.
+                    if (depth > limits.MaxDepth || walk.Active > limits.MaxDepth - depth || walk.Current.size() > limits.MaxCollectionItems || walk.Active == walk.Parents.size())
+                        return fail(SceneDiagnosticCode::LimitExceeded);
+                    if (unique_keys && walk.Current.IsMap() && !walk.Current.Owner()->UniqueKeys(walk.Current))
+                        return fail(walk.Current.Owner()->Failure());
+                    auto& parent     = walk.Parents[walk.Active++];
+                    parent.Container = walk.Current;
+                    parent.Field     = walk.Current.Mapping().begin();
+                    parent.Item      = walk.Current.Sequence().begin();
+                }
+                // Resume the nearest unfinished parent; each link is followed
+                // once. Node[index] would repeatedly rescan wide collections.
+                while (walk.Active)
+                {
+                    auto& parent = walk.Parents[walk.Active - 1];
+                    if (parent.Container.IsMap())
+                    {
+                        if (parent.Field != parent.Container.Mapping().end())
+                        {
+                            const auto entry = *parent.Field;
+                            ++parent.Field;
+                            if (entry.Key.size() > limits.MaxScalarBytes || count == UINT32_MAX || ++count > limits.MaxNodes)
+                                return fail(SceneDiagnosticCode::LimitExceeded);
+                            if (entry.Key.find('\0') != std::string_view::npos)
+                                return fail(SceneDiagnosticCode::InvalidData);
+                            walk.Current = entry.Value;
+                            break;
+                        }
+                    }
+                    else if (parent.Item != parent.Container.Sequence().end())
+                    {
+                        walk.Current = *parent.Item;
+                        ++parent.Item;
+                        break;
+                    }
+                    --walk.Active;
+                }
+                if (!walk.Active)
+                    return true;
             }
-            else if (node.IsMap())
-            {
-                for (const auto& entry : node.Mapping())
-                    if (entry.Key.size() > limits.MaxScalarBytes || entry.Key.find('\0') != std::string_view::npos || ++count > limits.MaxNodes || !CountCapturedNodes(entry.Value, limits, count, depth + 1))
-                        return false;
-            }
-            else
-                return false;
-            return true;
         }
 
         bool ReadUUID(const SceneYAML::Node& node, uuids::uuid& uuid)
@@ -92,7 +151,17 @@ namespace ZEngine::ECS
             return found != entity.Components.end() && found->Key == key ? &*found : nullptr;
         }
 
-        bool ValidateGraph(ArrayView<const EntityRecord> entities, const SceneDocumentSettings& settings, const SceneComponentSchemaRegistry& schemas, Core::Memory::ArenaAllocator& arena, SceneDiagnostics* diagnostics)
+        bool EnumerateRecordReferences(const ComponentRecord& component, const SceneComponentSchema& schema, ArrayView<SceneValueField> fields, SceneReferenceVisitorFn visitor, void* context, SceneDiagnostics* diagnostics)
+        {
+            if (component.Version != schema.Version)
+                return Reject(diagnostics, "Scene reference codec changed since document validation.");
+            if (!schema.Codecs.DecodeYAML || !schema.References.Enumerate)
+                return Reject(diagnostics, "Scene reference enumeration requires a supported component reference codec.");
+            SceneValueWriter writer(fields);
+            return schema.Codecs.DecodeYAML(schema.Codecs.Context, component.Version, component.Payload, &writer, diagnostics) && schema.References.Enumerate(schema.References.Context, writer.Value(), visitor, context, diagnostics);
+        }
+
+        bool ValidateGraph(ArrayView<const EntityRecord> entities, const SceneDocumentSettingsView& settings, const SceneComponentSchemaRegistry& schemas, Core::Memory::ArenaAllocator& arena, SceneFieldScratch& fields, Core::Memory::IWorkingMemoryBudget* budget, SceneDiagnostics* diagnostics)
         {
             const size_t none = entities.size();
             struct ScratchLease
@@ -102,27 +171,31 @@ namespace ZEngine::ECS
                 {
                     Core::Memory::EndTempArena(Mark);
                 }
-            } scratch{Core::Memory::BeginTempArena(&arena)};
+            };
             struct GraphNode
             {
                 size_t             Parent = 0;
                 Core::Maths::Mat4f World  = Core::Maths::Identity<Core::Maths::Mat4f>();
                 uint8_t            Color  = 0;
             };
+            struct ReferenceContext
+            {
+                ArrayView<const EntityRecord> Entities = {};
+            };
+            Core::Memory::WorkingMemoryCharge fixed = {};
+            if (!fixed.TryAcquire(budget, sizeof(ScratchLease) + sizeof(Array<GraphNode>) + sizeof(Array<size_t>) + sizeof(GraphNode) + sizeof(ReferenceContext) + sizeof(fixed)))
+                return Reject(diagnostics, "Scene graph validation exceeds its fixed working-memory budget.", SceneDiagnosticCode::LimitExceeded);
+            ScratchLease     scratch{Core::Memory::BeginTempArena(&arena)};
             Array<GraphNode> graph = {};
             Array<size_t>    path  = {};
             graph.m_allocator = path.m_allocator = &arena;
             if (!graph.try_reserve(none) || !path.try_reserve(none))
-                return Reject(diagnostics, "Scene graph validation exceeds its decoded-memory budget.");
+                return Reject(diagnostics, "Scene graph validation exceeds its decoded-memory budget.", SceneDiagnosticCode::LimitExceeded);
             for (size_t i = 0; i < none; ++i)
                 graph.push(GraphNode{.Parent = none});
             // Local matrices become world matrices in parent-first order below. Organizational
             // entities use identity locally and therefore carry the nearest authored parent frame.
-            FixedArray<SceneValueField, MaxComponentFields> fields = {};
-            struct ReferenceContext
-            {
-                ArrayView<const EntityRecord> Entities = {};
-            } context{entities};
+            ReferenceContext context{entities};
             for (size_t i = 0; i < entities.size(); ++i)
             {
                 for (const auto& component : entities[i].Components)
@@ -214,18 +287,19 @@ namespace ZEngine::ECS
     using SceneDocumentDetail::Reject;
     using SceneDocumentDetail::ValidateGraph;
 
-    bool SceneDocument::Impl::Initialize(const SceneDocumentLimits& limits)
+    bool SceneDocument::Impl::Initialize(const SceneDocumentLimits& limits, void* tree_memory, Core::Memory::IAllocationRoute* allocation_route)
     {
-        Limits = limits;
+        Limits                 = limits;
         // Canonicalized component payloads share the same bounded arena as source nodes.
         // Source-node limits remain enforced separately by the reader/capture traversal.
-        if (!Tree.Initialize(limits.MaxDecodedBytes, 2 * limits.MaxNodes, limits.MaxCollectionItems, limits.MaxScalarBytes))
+        const bool initialized = tree_memory && allocation_route ? Tree.InitializeGrowingBorrowed(tree_memory, SceneYAML::Storage::InitialRoutedCapacity(limits.MaxDecodedBytes), limits.MaxDecodedBytes, *allocation_route, 2 * limits.MaxNodes, limits.MaxCollectionItems, limits.MaxScalarBytes) : Tree.Initialize(limits.MaxDecodedBytes, 2 * limits.MaxNodes, limits.MaxCollectionItems, limits.MaxScalarBytes);
+        if (!initialized)
             return false;
         Entities.m_allocator = Components.m_allocator = Tree.Allocator();
         return true;
     }
 
-    bool SceneDocument::Impl::CreateRoot(const SceneDocumentSettings& settings, SceneYAML::Node* root, SceneYAML::Node* entities, SceneDiagnostics* diagnostics)
+    bool SceneDocument::Impl::CreateRoot(const SceneDocumentSettingsView& settings, SceneYAML::Node* root, SceneYAML::Node* entities, SceneDiagnostics* diagnostics)
     {
         auto& storage            = Tree;
         *root                    = storage.Make(SceneYAML::NodeType::Map);
@@ -243,6 +317,15 @@ namespace ZEngine::ECS
 
     bool SceneDocument::Impl::Decode(const SceneYAML::Node& root, const SceneComponentSchemaRegistry& schemas, SceneDiagnostics* diagnostics, bool canonical_payloads)
     {
+        Core::Memory::WorkingMemoryCharge fixed = {};
+        if (!fixed.TryAcquire(Tree.WorkingMemoryBudget(), SceneDocumentDetail::SceneFieldScratchWorkingBytes()))
+            return Reject(diagnostics, "Scene field decoding exceeds its fixed working-memory budget.", SceneDiagnosticCode::LimitExceeded);
+        SceneDocumentDetail::SceneFieldScratch fields = {};
+        return Decode(root, schemas, fields, diagnostics, canonical_payloads);
+    }
+
+    bool SceneDocument::Impl::Decode(const SceneYAML::Node& root, const SceneComponentSchemaRegistry& schemas, SceneDocumentDetail::SceneFieldScratch& fields, SceneDiagnostics* diagnostics, bool canonical_payloads)
+    {
         if (!schemas.IsInitialized() || !root.IsMap() || root.size() != 1)
             return Reject(diagnostics, "Scene document requires an initialized schema registry and a scene root.");
         const auto scene   = FindSceneYAMLField(root, "scene");
@@ -254,28 +337,29 @@ namespace ZEngine::ECS
         if (!settings.IsMap() || settings.size() != 2 || !DecodeSceneGridYAML(FindSceneYAMLField(settings, "grid"), &Settings.Grid, diagnostics) || !DecodeSceneSkyYAML(FindSceneYAMLField(settings, "sky"), &Settings.Sky, diagnostics))
             return Reject(diagnostics, "Scene settings are malformed or unsupported.");
         const auto entities = FindSceneYAMLField(scene, "entities");
-        if (!entities.IsSequence() || entities.size() > Limits.MaxEntities)
-            return Reject(diagnostics, "Scene entity collection exceeds its limit or is not a sequence.");
+        if (!entities.IsSequence())
+            return Reject(diagnostics, "Scene entity collection is not a sequence.");
+        if (entities.size() > Limits.MaxEntities)
+            return Reject(diagnostics, "Scene entity collection exceeds its limit.", SceneDiagnosticCode::LimitExceeded);
         size_t component_count = 0;
         for (const auto item : entities.Sequence())
         {
             const auto components = FindSceneYAMLField(item, "components");
-            if (!components.IsMap() || components.size() > Limits.MaxComponentsPerEntity)
-                return Reject(diagnostics, "Scene component collection exceeds its limit or is not a map.");
+            if (!components.IsMap())
+                return Reject(diagnostics, "Scene component collection is not a map.");
+            if (components.size() > Limits.MaxComponentsPerEntity)
+                return Reject(diagnostics, "Scene component collection exceeds its limit.", SceneDiagnosticCode::LimitExceeded);
             component_count += components.size();
         }
         // Exact reservation before taking any views. Neither array grows after this point.
         if (!Entities.try_reserve(entities.size()) || !Components.try_reserve(component_count))
-            return Reject(diagnostics, "Scene records exceed their decoded-memory budget.");
-        FixedArray<SceneValueField, MaxComponentFields> fields = {};
+            return Reject(diagnostics, "Scene records exceed their decoded-memory budget.", SceneDiagnosticCode::LimitExceeded);
         for (const auto& item : entities.Sequence())
         {
             EntityRecord entity = {};
             if (!item.IsMap() || item.size() != 2 || !ReadUUID(FindSceneYAMLField(item, "uuid"), entity.UUID))
                 return Reject(diagnostics, "Scene entity needs one non-null UUID and a component map.");
-            const auto components = FindSceneYAMLField(item, "components");
-            if (!components.IsMap() || components.size() > Limits.MaxComponentsPerEntity)
-                return Reject(diagnostics, "Scene component collection exceeds its limit or is not a map.");
+            const auto components      = FindSceneYAMLField(item, "components");
             const auto first_component = Components.size();
             for (const auto& entry : components.Mapping())
             {
@@ -302,35 +386,72 @@ namespace ZEngine::ECS
                     component.Payload.reset(FindSceneYAMLField(entry.Value, "fields"));
                 }
                 if (!Components.try_push(component))
-                    return Reject(diagnostics, "Scene component storage exceeds its decoded-memory budget.");
+                    return Reject(diagnostics, "Scene component storage exceeds its decoded-memory budget.", SceneDiagnosticCode::LimitExceeded);
             }
             entity.Components = {components.size() == 0 ? nullptr : Components.data() + first_component, components.size()};
-            if (entity.Components.size() > 1)
-                std::sort(entity.Components.begin(), entity.Components.end(), [](const auto& a, const auto& b) { return a.Key < b.Key; });
+            if (!SceneDocumentDetail::SortRecords(entity.Components, Tree.WorkingMemoryBudget(), [](const auto& a, const auto& b) { return a.Key < b.Key; }, diagnostics))
+                return false;
             for (size_t i = 1; i < entity.Components.size(); ++i)
                 if (entity.Components[i - 1].Key == entity.Components[i].Key)
                     return Reject(diagnostics, "Scene entity contains duplicate component keys.");
             if (!Entities.try_push(entity))
-                return Reject(diagnostics, "Scene entity storage exceeds its decoded-memory budget.");
+                return Reject(diagnostics, "Scene entity storage exceeds its decoded-memory budget.", SceneDiagnosticCode::LimitExceeded);
         }
-        if (Entities.size() > 1)
-            std::sort(Entities.begin(), Entities.end(), [](const auto& a, const auto& b) { return a.UUID < b.UUID; });
+        if (!SceneDocumentDetail::SortRecords<EntityRecord>(Entities, Tree.WorkingMemoryBudget(), [](const auto& a, const auto& b) { return a.UUID < b.UUID; }, diagnostics))
+            return false;
         for (size_t i = 1; i < Entities.size(); ++i)
             if (Entities[i - 1].UUID == Entities[i].UUID)
                 return Reject(diagnostics, "Scene contains duplicate entity UUIDs.");
-        if (!ValidateGraph(Entities, Settings, schemas, *Tree.Allocator(), diagnostics))
+        if (!ValidateGraph(Entities, Settings, schemas, *Tree.Allocator(), fields, Tree.WorkingMemoryBudget(), diagnostics))
             return false;
         if (ReadOnly && diagnostics)
             diagnostics->Add(SceneDiagnosticSeverity::Warning, "Unknown component schema/version retained for inspection. Document is read-only and cannot be saved.");
         Tree.Freeze();
         return true;
     }
-    SceneDocument::SceneDocument()                                                  = default;
-    SceneDocument::~SceneDocument()                                                 = default;
-    SceneDocument::SceneDocument(SceneDocument&&) noexcept                          = default;
-    SceneDocument&               SceneDocument::operator=(SceneDocument&&) noexcept = default;
+    SceneDocument::SceneDocument()                                    = default;
+    SceneDocument::~SceneDocument()                                   = default;
+    SceneDocument::SceneDocument(SceneDocument&&) noexcept            = default;
+    SceneDocument& SceneDocument::operator=(SceneDocument&&) noexcept = default;
 
-    const SceneDocumentSettings* SceneDocument::Settings() const
+    void           SceneDocument::ImplDeleter::operator()(Impl* pointer) const noexcept
+    {
+        if (!pointer)
+            return;
+        if (Route)
+        {
+            pointer->~Impl();
+            Route->Free(pointer);
+        }
+        else
+            delete pointer;
+    }
+
+    bool SceneDocument::Initialize(const SceneDocumentLimits& limits, Core::Memory::IAllocationRoute* allocation_route)
+    {
+        if (m_impl || !LimitsValid(limits))
+            return false;
+        void* tree_memory = nullptr;
+        if (allocation_route)
+        {
+            constexpr size_t alignment = alignof(std::max_align_t);
+            constexpr size_t offset    = (sizeof(Impl) + alignment - 1) & ~(alignment - 1);
+            static_assert(alignof(Impl) <= alignment);
+            const size_t initial_bytes = SceneYAML::Storage::InitialRoutedCapacity(limits.MaxDecodedBytes);
+            if (initial_bytes > std::numeric_limits<size_t>::max() - offset)
+                return false;
+            void* memory = allocation_route->Allocate(offset + initial_bytes);
+            if (!memory)
+                return false;
+            m_impl      = {new (memory) Impl{}, ImplDeleter{allocation_route}};
+            tree_memory = static_cast<uint8_t*>(memory) + offset;
+        }
+        else
+            m_impl.reset(new (std::nothrow) Impl{});
+        return m_impl && m_impl->Initialize(limits, tree_memory, allocation_route);
+    }
+
+    const SceneDocumentSettingsView* SceneDocument::Settings() const
     {
         return m_impl ? &m_impl->Settings : nullptr;
     }
@@ -343,38 +464,49 @@ namespace ZEngine::ECS
         return !m_impl || m_impl->ReadOnly;
     }
 
-    bool SceneDocument::Parse(cstring source, size_t size, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits, const SceneMigrationRegistry* migrations)
+    bool SceneDocument::Parse(cstring source, size_t size, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits, const SceneMigrationRegistry* migrations, Core::Memory::IAllocationRoute* allocation_route)
     {
-        if (!out || !source || size == 0 || !LimitsValid(limits) || size > limits.MaxFileBytes || std::string_view(source, size).find('\0') != std::string_view::npos)
-            return Reject(diagnostics, "Scene source is empty or exceeds configured input limits.");
+        if (!out || !source || !schemas.IsInitialized() || !LimitsValid(limits))
+            return Reject(diagnostics, "Scene parsing requires source, destination, schemas and valid limits.", SceneDiagnosticCode::InvalidArgument);
+        if (size > limits.MaxFileBytes)
+            return Reject(diagnostics, "Scene source exceeds configured input limits.", SceneDiagnosticCode::LimitExceeded);
+        if (size == 0 || std::string_view(source, size).find('\0') != std::string_view::npos)
+            return Reject(diagnostics, "Scene source is empty or contains embedded NUL bytes.");
         {
             SceneDocument candidate;
-            candidate.m_impl.reset(new (std::nothrow) Impl());
-            if (!candidate.m_impl || !candidate.m_impl->Initialize(limits))
-                return Reject(diagnostics, "Cannot allocate bounded scene document storage.");
+            if (!candidate.Initialize(limits, allocation_route))
+                return Reject(diagnostics, "Cannot allocate bounded scene document storage.", SceneDiagnosticCode::AllocationFailed);
+            std::optional<Core::Serialization::YAMLAllocationScope> allocation_scope = {};
+            if (allocation_route)
+                allocation_scope.emplace(*allocation_route);
             auto root = candidate.m_impl->Tree.Destination();
             if (!ReadSceneYAML({source, size}, limits, &root, diagnostics))
                 return false;
-            if (!SceneCompatibilityService::PrepareForLoad(&root, schemas, migrations, diagnostics, limits))
+            if (!SceneCompatibilityService::PrepareForLoad(&root, schemas, migrations, diagnostics, limits, allocation_route) || !candidate.m_impl->Decode(root, schemas, diagnostics))
+            {
+                if (!candidate.m_impl->Tree.Good())
+                    SceneDiagnosticError(diagnostics, "Scene value storage failed.", candidate.m_impl->Tree.Failure());
                 return false;
-            if (!candidate.m_impl->Decode(root, schemas, diagnostics))
-                return false;
+            }
             *out = std::move(candidate);
             return true;
         }
     }
 
-    bool SceneDocument::Capture(const Scene& scene, const SceneDocumentSettings& settings, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits)
+    bool SceneDocument::Capture(const Scene& scene, const SceneDocumentSettingsView& settings, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits)
     {
         if (!out || !scene.GetArena() || !schemas.IsInitialized() || !LimitsValid(limits) || scene.AliveCount() > limits.MaxEntities || scene.AliveCount() > limits.MaxCollectionItems || settings.UUID.is_nil() || settings.Name.size() > MaxNameBytes || settings.Name.find('\0') != std::string::npos)
             return Reject(diagnostics, "Scene capture requires initialized state, authored identity and bounded settings.");
         {
             SceneDocument candidate;
-            candidate.m_impl.reset(new (std::nothrow) Impl());
-            if (!candidate.m_impl || !candidate.m_impl->Initialize(limits))
+            if (!candidate.Initialize(limits))
                 return Reject(diagnostics, "Cannot allocate bounded scene capture storage.");
-            auto&           storage = candidate.m_impl->Tree;
-            SceneYAML::Node root = {}, entities = {};
+            auto&                             storage = candidate.m_impl->Tree;
+            Core::Memory::WorkingMemoryCharge fixed   = {};
+            if (!fixed.TryAcquire(storage.WorkingMemoryBudget(), SceneDocumentDetail::SceneFieldScratchWorkingBytes()))
+                return Reject(diagnostics, "Scene capture exceeds its fixed field-memory budget.", SceneDiagnosticCode::LimitExceeded);
+            SceneDocumentDetail::SceneFieldScratch fields = {};
+            SceneYAML::Node                        root = {}, entities = {};
             if (!candidate.m_impl->CreateRoot(settings, &root, &entities, diagnostics))
                 return false;
             uint32_t nodes = 0;
@@ -382,16 +514,17 @@ namespace ZEngine::ECS
                 return Reject(diagnostics, "Captured scene settings exceed document tree limits.");
             struct CaptureContext
             {
-                const Scene*        Source      = nullptr;
-                SceneYAML::Storage* Storage     = nullptr;
-                EntityID            Entity      = {};
-                SceneYAML::Node     Components  = {};
-                ArchetypeMask       Remaining   = 0;
-                SceneDiagnostics*   Diagnostics = nullptr;
-                uint32_t            Count       = 0;
-                uint32_t            Limit       = 0;
-                bool                Valid       = true;
-            } context  = {.Source = &scene, .Storage = &storage, .Diagnostics = diagnostics, .Limit = limits.MaxComponentsPerEntity};
+                const Scene*               Source      = nullptr;
+                SceneYAML::Storage*        Storage     = nullptr;
+                EntityID                   Entity      = {};
+                SceneYAML::Node            Components  = {};
+                ArchetypeMask              Remaining   = 0;
+                SceneDiagnostics*          Diagnostics = nullptr;
+                uint32_t                   Count       = 0;
+                uint32_t                   Limit       = 0;
+                bool                       Valid       = true;
+                ArrayView<SceneValueField> Fields      = {};
+            } context  = {.Source = &scene, .Storage = &storage, .Diagnostics = diagnostics, .Limit = limits.MaxComponentsPerEntity, .Fields = fields};
             bool valid = true;
             scene.ForEachEntity([&](EntityID entity) {
                 if (!valid)
@@ -422,9 +555,8 @@ namespace ZEngine::ECS
                             ctx.Valid = false;
                             return;
                         }
-                        FixedArray<SceneValueField, MaxComponentFields> fields = {};
-                        SceneValueWriter                                writer(fields);
-                        auto                                            payload = ctx.Storage->Destination();
+                        SceneValueWriter writer(ctx.Fields);
+                        auto             payload = ctx.Storage->Destination();
                         if (!schema.Codecs.Capture(schema.Codecs.Context, ctx.Entity, *ctx.Source, &writer, ctx.Diagnostics) || !schema.Codecs.EncodeYAML(schema.Codecs.Context, writer.Value(), &payload, ctx.Diagnostics))
                         {
                             ctx.Valid = false;
@@ -460,7 +592,7 @@ namespace ZEngine::ECS
             if (!valid)
                 return false;
             // Root has five schema fields; keep exactly one explicit document contract.
-            if (!candidate.m_impl->Decode(root, schemas, diagnostics, true))
+            if (!candidate.m_impl->Decode(root, schemas, fields, diagnostics, true))
                 return false;
             *out = std::move(candidate);
             return true;
@@ -550,16 +682,65 @@ namespace ZEngine::ECS
         const auto* schema = schemas.FindByRuntimeType(type);
         if (!schema || !schema->References.Enumerate || !schema->Codecs.DecodeYAML)
             return Reject(diagnostics, "Scene reference enumeration requires a supported component reference codec.");
-        FixedArray<SceneValueField, MaxComponentFields> fields = {};
+        Core::Memory::WorkingMemoryCharge fixed = {};
+        if (!fixed.TryAcquire(m_impl->Tree.WorkingMemoryBudget(), SceneDocumentDetail::SceneFieldScratchWorkingBytes()))
+            return Reject(diagnostics, "Scene references exceed their fixed field-memory budget.", SceneDiagnosticCode::LimitExceeded);
+        SceneDocumentDetail::SceneFieldScratch fields = {};
         for (const auto& entity : m_impl->Entities)
         {
             const auto* component = FindComponent(entity, schema->Key);
             if (!component || !component->Supported)
                 continue;
-            if (component->Version != schema->Version)
-                return Reject(diagnostics, "Scene reference codec changed since document validation.");
-            SceneValueWriter writer(fields);
-            if (!schema->Codecs.DecodeYAML(schema->Codecs.Context, component->Version, component->Payload, &writer, diagnostics) || !schema->References.Enumerate(schema->References.Context, writer.Value(), visitor, context, diagnostics))
+            if (!SceneDocumentDetail::EnumerateRecordReferences(*component, *schema, fields, visitor, context, diagnostics))
+                return false;
+        }
+        return true;
+    }
+
+    bool SceneDocument::EnumerateReferences(const SceneComponentSchemaRegistry& schemas, SceneReferenceOccurrenceVisitorFn visitor, void* context, SceneDiagnostics* diagnostics) const
+    {
+        if (!m_impl || m_impl->ReadOnly || !visitor || !schemas.IsInitialized())
+            return Reject(diagnostics, "Scene reference enumeration requires a fully supported document, schemas and visitor.");
+        struct VisitorContext
+        {
+            SceneReferenceOccurrence          Occurrence = {};
+            SceneReferenceOccurrenceVisitorFn Visitor    = nullptr;
+            void*                             Context    = nullptr;
+        };
+        Core::Memory::WorkingMemoryCharge fixed = {};
+        if (!fixed.TryAcquire(m_impl->Tree.WorkingMemoryBudget(), SceneDocumentDetail::SceneFieldScratchWorkingBytes() + sizeof(VisitorContext)))
+            return Reject(diagnostics, "Scene references exceed their fixed field-memory budget.", SceneDiagnosticCode::LimitExceeded);
+        VisitorContext forwarding = {.Visitor = visitor, .Context = context};
+        const auto     forward    = [](void* opaque, const SceneReference& reference) {
+            auto& state                = *static_cast<VisitorContext*>(opaque);
+            state.Occurrence.Reference = reference;
+            return state.Visitor(state.Context, state.Occurrence);
+        };
+        SceneDocumentDetail::SceneFieldScratch fields = {};
+        for (const auto& entity : m_impl->Entities)
+        {
+            forwarding.Occurrence.EntityUUID = entity.UUID;
+            for (const auto& component : entity.Components)
+            {
+                const auto* schema = schemas.FindByKey(component.Key.data());
+                if (!component.Supported || !schema || schema->Version != component.Version)
+                    return Reject(diagnostics, "Scene reference schema changed since document validation.");
+                if (!schema->References.Enumerate)
+                    continue;
+                forwarding.Occurrence.SchemaKey = schema->Key;
+                if (!SceneDocumentDetail::EnumerateRecordReferences(component, *schema, fields, forward, &forwarding, diagnostics))
+                    return false;
+            }
+        }
+        const auto& environment = m_impl->Settings.Sky.EnvironmentMap;
+        if (!environment.is_nil())
+        {
+            const SceneReferenceOccurrence occurrence = {
+                {SceneReferenceKind::Asset, environment, "sky.environment", "environment-map"},
+                {},
+                "SceneSettings"
+            };
+            if (!visitor(context, occurrence))
                 return false;
         }
         return true;
