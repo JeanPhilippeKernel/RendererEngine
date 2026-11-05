@@ -268,7 +268,7 @@ namespace ZEngine::Cook
         if (count > 1)
         {
             Detail::CookSortState<RootBinding> sort = {};
-            Detail::HeapSort<RootBinding>({roots, count}, sort, [](const RootBinding& a, const RootBinding& b) { return Helpers::secure_strcmp(a.Key, b.Key) < 0; });
+            Core::Containers::HeapSort<RootBinding>({roots, count}, sort, [](const RootBinding& a, const RootBinding& b) { return Helpers::secure_strcmp(a.Key, b.Key) < 0; });
         }
         fixed.Release();
         for (uint32_t i = 0; i < count; ++i)

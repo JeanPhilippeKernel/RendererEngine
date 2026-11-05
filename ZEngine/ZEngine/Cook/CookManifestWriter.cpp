@@ -78,7 +78,7 @@ namespace ZEngine::Cook
                 return descriptors;
             for (uint32_t i = 0; i < graph.SceneCount(); ++i)
                 workspace[i] = i;
-            Detail::HeapSort<uint32_t>({workspace.data(), graph.SceneCount()}, sort, [&](uint32_t left, uint32_t right) { return graph.Scene(left)->UUID < graph.Scene(right)->UUID; });
+            Core::Containers::HeapSort<uint32_t>({workspace.data(), graph.SceneCount()}, sort, [&](uint32_t left, uint32_t right) { return graph.Scene(left)->UUID < graph.Scene(right)->UUID; });
             return VFS::VFSResult<void>::Ok();
         }
 

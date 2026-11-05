@@ -121,7 +121,7 @@ namespace ZEngine::Cook
         if (m_count > 1)
         {
             Detail::CookSortState<uint32_t> sort = {};
-            Detail::HeapSort<uint32_t>({order, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_entries[left].Source < m_entries[right].Source; });
+            Core::Containers::HeapSort<uint32_t>({order, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_entries[left].Source < m_entries[right].Source; });
         }
         fixed.Release(); // Sorting state is gone before per-scene codec work.
         for (uint32_t i = 1; i < m_count; ++i)

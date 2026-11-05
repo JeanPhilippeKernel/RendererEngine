@@ -419,7 +419,7 @@ namespace ZEngine::Cook
         }
         // Lookup is typed, but asset UUIDs occupy one global namespace. Reuse
         // finalization's heap storage; no secondary hash table/allocation.
-        Detail::HeapSort<uint32_t>({m_storage.Heap, m_node_count}, sort, [&](uint32_t left, uint32_t right) { return m_storage.Nodes[left].Identity.UUID < m_storage.Nodes[right].Identity.UUID; });
+        Core::Containers::HeapSort<uint32_t>({m_storage.Heap, m_node_count}, sort, [&](uint32_t left, uint32_t right) { return m_storage.Nodes[left].Identity.UUID < m_storage.Nodes[right].Identity.UUID; });
         for (uint32_t i = 1; i < m_node_count; ++i)
             if (m_storage.Nodes[m_storage.Heap[i - 1]].Identity.UUID == m_storage.Nodes[m_storage.Heap[i]].Identity.UUID)
             {
@@ -432,7 +432,7 @@ namespace ZEngine::Cook
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
             }
         const auto before = [&](uint32_t a, uint32_t b) { return m_storage.Nodes[a].Identity < m_storage.Nodes[b].Identity; };
-        Detail::HeapSort<uint32_t>({m_storage.Canonical, m_node_count}, sort, before);
+        Core::Containers::HeapSort<uint32_t>({m_storage.Canonical, m_node_count}, sort, before);
         for (uint32_t parent = 0; parent < m_node_count; ++parent)
             for (uint32_t i = 0; i < m_storage.Nodes[parent].EdgeCount; ++i)
             {
@@ -449,10 +449,10 @@ namespace ZEngine::Cook
                 m_storage.Heap[ready++] = i;
         // Batch the initial frontier in linear time; newly unblocked parents
         // still take one logarithmic push each as their children drain.
-        Detail::HeapMake<uint32_t>({m_storage.Heap, ready}, sort, heap_before);
+        Core::Containers::HeapMake<uint32_t>({m_storage.Heap, ready}, sort, heap_before);
         while (ready)
         {
-            Detail::HeapPop<uint32_t>({m_storage.Heap, ready}, sort, heap_before);
+            Core::Containers::HeapPop<uint32_t>({m_storage.Heap, ready}, sort, heap_before);
             const uint32_t child            = m_storage.Heap[--ready];
             m_storage.LeafFirst[produced++] = child;
             for (uint32_t edge = m_storage.Heads[child]; edge != CookGraphInvalidIndex; edge = m_storage.Next[edge])
@@ -461,7 +461,7 @@ namespace ZEngine::Cook
                 if (!--m_storage.Pending[parent])
                 {
                     m_storage.Heap[ready++] = parent;
-                    Detail::HeapPush<uint32_t>({m_storage.Heap, ready}, sort, heap_before);
+                    Core::Containers::HeapPush<uint32_t>({m_storage.Heap, ready}, sort, heap_before);
                 }
             }
         }
@@ -502,7 +502,7 @@ namespace ZEngine::Cook
         }
         for (uint32_t i = 0; i < m_occurrence_count; ++i)
             m_storage.ByOccurrence[i] = i;
-        Detail::HeapSort<uint32_t>({m_storage.ByOccurrence, m_occurrence_count}, sort, [&](uint32_t a, uint32_t b) {
+        Core::Containers::HeapSort<uint32_t>({m_storage.ByOccurrence, m_occurrence_count}, sort, [&](uint32_t a, uint32_t b) {
             const auto& left  = m_storage.Occurrences[a];
             const auto& right = m_storage.Occurrences[b];
             return left.Scene == right.Scene ? before(left.Node, right.Node) : left.Scene < right.Scene;

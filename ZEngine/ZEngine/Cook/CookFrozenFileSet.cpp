@@ -171,7 +171,7 @@ namespace ZEngine::Cook
         // Reject multiple logical names for one physical file (e.g. hardlinks),
         // including aliases across declared roots. Reuse the discovery storage
         // before publishing stationary path-sorted records; no identity table.
-        Detail::HeapSort<CookFrozenFileRecord>({pending.m_records, pending.m_count}, sort, [](const CookFrozenFileRecord& a, const CookFrozenFileRecord& b) {
+        Core::Containers::HeapSort<CookFrozenFileRecord>({pending.m_records, pending.m_count}, sort, [](const CookFrozenFileRecord& a, const CookFrozenFileRecord& b) {
             if (a.Identity.Volume != b.Identity.Volume)
                 return a.Identity.Volume < b.Identity.Volume;
             if (a.Identity.ObjectHigh != b.Identity.ObjectHigh)
@@ -181,7 +181,7 @@ namespace ZEngine::Cook
         for (size_t i = 1; i < pending.m_count; ++i)
             if (pending.m_records[i - 1].Identity == pending.m_records[i].Identity)
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::AlreadyExists);
-        Detail::HeapSort<CookFrozenFileRecord>({pending.m_records, pending.m_count}, sort, [](const CookFrozenFileRecord& a, const CookFrozenFileRecord& b) { return a.Path < b.Path; });
+        Core::Containers::HeapSort<CookFrozenFileRecord>({pending.m_records, pending.m_count}, sort, [](const CookFrozenFileRecord& a, const CookFrozenFileRecord& b) { return a.Path < b.Path; });
         for (size_t i = 1; i < pending.m_count; ++i)
             if (pending.m_records[i - 1].Path == pending.m_records[i].Path)
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);

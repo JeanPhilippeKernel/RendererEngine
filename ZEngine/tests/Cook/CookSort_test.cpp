@@ -38,7 +38,7 @@ namespace ZEngine::Cook
             do
             {
                 actual = input;
-                Detail::HeapSort<uint32_t>({actual.data(), count}, state, [](uint32_t a, uint32_t b) { return a < b; });
+                Core::Containers::HeapSort<uint32_t>({actual.data(), count}, state, [](uint32_t a, uint32_t b) { return a < b; });
                 for (size_t i = 0; i < count; ++i)
                     ASSERT_EQ(actual[i], i) << "count=" << count;
             } while (std::next_permutation(input.data(), input.data() + count));
@@ -70,7 +70,7 @@ namespace ZEngine::Cook
                     const auto before = [descending](uint32_t a, uint32_t b) { return descending ? a > b : a < b; };
                     std::sort(reference.data(), reference.data() + count, before);
                     uint64_t comparisons = 0;
-                    Detail::HeapSort<uint32_t>({actual.data() + 1, count}, state, [&](uint32_t a, uint32_t b) {
+                    Core::Containers::HeapSort<uint32_t>({actual.data() + 1, count}, state, [&](uint32_t a, uint32_t b) {
                         ++comparisons;
                         return before(a, b);
                     });
@@ -101,17 +101,17 @@ namespace ZEngine::Cook
                 for (const bool minimumFirst : {false, true})
                 {
                     const auto before = [minimumFirst](uint32_t a, uint32_t b) { return minimumFirst ? a > b : a < b; };
-                    Detail::HeapPush<uint32_t>({}, state, before);
-                    Detail::HeapPop<uint32_t>({}, state, before);
+                    Core::Containers::HeapPush<uint32_t>({}, state, before);
+                    Core::Containers::HeapPop<uint32_t>({}, state, before);
                     for (size_t i = 0; i < count; ++i)
                     {
                         heap[i] = input[i];
-                        Detail::HeapPush<uint32_t>({heap.data(), i + 1}, state, before);
+                        Core::Containers::HeapPush<uint32_t>({heap.data(), i + 1}, state, before);
                         ASSERT_TRUE(std::is_heap(heap.data(), heap.data() + i + 1, before));
                     }
                     for (size_t remaining = count; remaining; --remaining)
                     {
-                        Detail::HeapPop<uint32_t>({heap.data(), remaining}, state, before);
+                        Core::Containers::HeapPop<uint32_t>({heap.data(), remaining}, state, before);
                         EXPECT_EQ(heap[remaining - 1], minimumFirst ? count - remaining : remaining - 1);
                         ASSERT_TRUE(std::is_heap(heap.data(), heap.data() + remaining - 1, before));
                     }
@@ -148,7 +148,7 @@ namespace ZEngine::Cook
                     };
                     const auto pop = [&] {
                         const auto previous = comparisons;
-                        Detail::HeapPop<uint32_t>({values.data() + 1, count}, state, counted);
+                        Core::Containers::HeapPop<uint32_t>({values.data() + 1, count}, state, counted);
                         EXPECT_LE(comparisons - previous, bound());
                         std::pop_heap(reference.data(), reference.data() + count, before);
                         --count;
@@ -165,7 +165,7 @@ namespace ZEngine::Cook
                         values[count + 1] = reference[count] = value;
                         ++count;
                         const auto previous = comparisons;
-                        Detail::HeapPush<uint32_t>({values.data() + 1, count}, state, counted);
+                        Core::Containers::HeapPush<uint32_t>({values.data() + 1, count}, state, counted);
                         EXPECT_LE(comparisons - previous, bound());
                         std::push_heap(reference.data(), reference.data() + count, before);
                         ASSERT_EQ(values[1], reference[0]);
@@ -200,7 +200,7 @@ namespace ZEngine::Cook
                     }
                     uint64_t   comparisons = 0;
                     const auto before      = [minimumFirst](uint32_t a, uint32_t b) { return minimumFirst ? a > b : a < b; };
-                    Detail::HeapMake<uint32_t>({values.data() + 1, count}, state, [&](uint32_t a, uint32_t b) {
+                    Core::Containers::HeapMake<uint32_t>({values.data() + 1, count}, state, [&](uint32_t a, uint32_t b) {
                         ++comparisons;
                         return before(a, b);
                     });
@@ -208,7 +208,7 @@ namespace ZEngine::Cook
                     EXPECT_EQ(state.HeapCount, count);
                     EXPECT_EQ(state.Start, 0u);
                     ASSERT_TRUE(std::is_heap(values.data() + 1, values.data() + count + 1, before));
-                    Detail::HeapSort<uint32_t>({values.data() + 1, count}, state, before);
+                    Core::Containers::HeapSort<uint32_t>({values.data() + 1, count}, state, before);
                     ASSERT_TRUE(std::is_sorted(values.data() + 1, values.data() + count + 1, before));
                     EXPECT_EQ(values[0], UINT32_MAX);
                     EXPECT_EQ(values[count + 1], UINT32_MAX - 1);
@@ -226,11 +226,11 @@ namespace ZEngine::Cook
             {
                 values[i].Key    = (i * 71) % static_cast<uint32_t>(values.size());
                 values[i].Cookie = values[i].Key ^ 0xabcd1234;
-                Detail::HeapPush<MoveOnlySortRecord>({values.data(), i + 1}, state, before);
+                Core::Containers::HeapPush<MoveOnlySortRecord>({values.data(), i + 1}, state, before);
             }
             for (size_t remaining = values.size(); remaining; --remaining)
             {
-                Detail::HeapPop<MoveOnlySortRecord>({values.data(), remaining}, state, before);
+                Core::Containers::HeapPop<MoveOnlySortRecord>({values.data(), remaining}, state, before);
                 const uint32_t expected = static_cast<uint32_t>(minimumFirst ? values.size() - remaining : remaining - 1);
                 EXPECT_EQ(values[remaining - 1].Key, expected);
                 EXPECT_EQ(values[remaining - 1].Cookie, expected ^ 0xabcd1234);
@@ -251,7 +251,7 @@ namespace ZEngine::Cook
         }
         for (const bool descending : {false, true, false})
         {
-            Detail::HeapSort<MoveOnlySortRecord>(values, state, [descending](const auto& a, const auto& b) { return descending ? a.Key > b.Key : a.Key < b.Key; });
+            Core::Containers::HeapSort<MoveOnlySortRecord>(values, state, [descending](const auto& a, const auto& b) { return descending ? a.Key > b.Key : a.Key < b.Key; });
             for (size_t i = 0; i < values.size(); ++i)
             {
                 const uint32_t expected = static_cast<uint32_t>(descending ? values.size() - i - 1 : i);

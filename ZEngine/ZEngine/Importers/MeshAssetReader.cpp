@@ -8,23 +8,23 @@
 #include <limits>
 #include <new>
 
+using ZEngine::Core::Containers::Array;
+using ZEngine::Core::Containers::ArrayView;
+using ZEngine::Core::Containers::HashEntry;
+using ZEngine::Core::Containers::String;
+using ZEngine::Core::Containers::UnorderedHashMap;
+using ZEngine::Core::Memory::ArenaAllocator;
+using ZEngine::Core::Memory::ArenaCheckpoint;
+using ZEngine::Core::Memory::ArenaScratch;
+using ZEngine::Core::VFS::IVFSContext;
+using ZEngine::Core::VFS::IVFSFile;
+using ZEngine::Core::VFS::VFSError;
+using ZEngine::Core::VFS::VFSOpenFlags;
+using ZEngine::Core::VFS::VFSPath;
+using ZEngine::Core::VFS::VFSResult;
+
 namespace ZEngine::Importers::AssetCodec
 {
-    using Core::Containers::Array;
-    using Core::Containers::ArrayView;
-    using Core::Containers::HashEntry;
-    using Core::Containers::String;
-    using Core::Containers::UnorderedHashMap;
-    using Core::Memory::ArenaAllocator;
-    using Core::Memory::ArenaCheckpoint;
-    using Core::Memory::ArenaScratch;
-    using Core::VFS::IVFSContext;
-    using Core::VFS::IVFSFile;
-    using Core::VFS::VFSError;
-    using Core::VFS::VFSOpenFlags;
-    using Core::VFS::VFSPath;
-    using Core::VFS::VFSResult;
-
     namespace
     {
         // v1 wrote native structs/counts. Its existing Windows/macOS/Linux 64-bit

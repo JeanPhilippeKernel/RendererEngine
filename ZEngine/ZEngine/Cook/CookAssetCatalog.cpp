@@ -105,10 +105,10 @@ namespace ZEngine::Cook
             if (charged.Failed())
                 return charged; // Still building: no index or record was modified.
             Detail::CookSortState<uint32_t> sort = {};
-            Detail::HeapSort<uint32_t>({m_by_identity, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Identity < m_records[right].Identity; });
-            Detail::HeapSort<uint32_t>({m_by_uuid, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Identity.UUID < m_records[right].Identity.UUID; });
-            Detail::HeapSort<uint32_t>({m_by_artifact, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Artifact < m_records[right].Artifact; });
-            Detail::HeapSort<uint32_t>({m_by_metadata, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Metadata < m_records[right].Metadata; });
+            Core::Containers::HeapSort<uint32_t>({m_by_identity, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Identity < m_records[right].Identity; });
+            Core::Containers::HeapSort<uint32_t>({m_by_uuid, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Identity.UUID < m_records[right].Identity.UUID; });
+            Core::Containers::HeapSort<uint32_t>({m_by_artifact, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Artifact < m_records[right].Artifact; });
+            Core::Containers::HeapSort<uint32_t>({m_by_metadata, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Metadata < m_records[right].Metadata; });
             for (size_t i = 1; i < m_count; ++i)
             {
                 const auto& uuid     = m_records[m_by_uuid[i]];

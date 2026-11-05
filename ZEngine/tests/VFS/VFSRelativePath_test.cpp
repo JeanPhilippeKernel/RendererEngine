@@ -5,11 +5,12 @@
 #include <limits>
 #include <type_traits>
 
+using ZEngine::Core::VFS::VFSRelativePath;
+
 namespace
 {
     namespace VFS     = ZEngine::Core::VFS;
     namespace Helpers = ZEngine::Helpers;
-    using VFS::VFSRelativePath;
 
     static_assert(std::is_trivially_copyable_v<VFSRelativePath>);
     static_assert(sizeof(VFSRelativePath) <= VFS::VFS_MAX_PATH + 8);

@@ -42,7 +42,7 @@ namespace ZEngine::Cook
                         return;
                     for (uint32_t i = 0; i < schema.FieldCount; ++i)
                         ctx.Order[i] = i;
-                    Detail::HeapSort<uint32_t>({ctx.Order.data(), schema.FieldCount}, ctx.Sort, [&](uint32_t left, uint32_t right) { return Helpers::secure_strcmp(schema.Fields[left].Key, schema.Fields[right].Key) < 0; });
+                    Core::Containers::HeapSort<uint32_t>({ctx.Order.data(), schema.FieldCount}, ctx.Sort, [&](uint32_t left, uint32_t right) { return Helpers::secure_strcmp(schema.Fields[left].Key, schema.Fields[right].Key) < 0; });
                     for (uint32_t i = 0; i < schema.FieldCount; ++i)
                     {
                         const auto& field = schema.Fields[ctx.Order[i]];
