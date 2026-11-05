@@ -1155,8 +1155,8 @@ namespace ZEngine::Core::VFS
                     return VFSResult<void>::Fail(relative.Error());
                 const bool         is_directory = node->NodeKind == MemNode::Kind::Directory;
                 const VFSRootEntry entry        = {
-                           .Path = relative.Value(), .Stat = {.SizeBytes = is_directory ? 0 : node->Data.size(), .IsDirectory = is_directory},
-                                .Identity = Storage->NodeIdentity(node)
+                    .Path = relative.Value(), .Stat = {.SizeBytes = is_directory ? 0 : node->Data.size(), .IsDirectory = is_directory},
+                         .Identity = Storage->NodeIdentity(node)
                 };
                 Helpers::secure_memcpy(buffer.data() + count * sizeof(entry), buffer.size() - count * sizeof(entry), &entry, sizeof(entry));
                 ++count;

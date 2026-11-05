@@ -34,7 +34,7 @@ namespace ZEngine::Cook
     // heap/control block: ownership and digest are inline and move-only. The run's
     // capture store, allocator, and scratch pin outlive these values, independently
     // of the input lease/seal. Disk reads use pinned reopen, not one held FD each.
-    class CookCapturedFile                   final : public ICookCapturedFile
+    class CookCapturedFile final : public ICookCapturedFile
     {
     public:
         CookCapturedFile() = default;

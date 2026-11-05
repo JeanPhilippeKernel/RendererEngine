@@ -342,7 +342,7 @@ namespace ZEngine::Cook
             {
                 CookDiagnostics       diagnostics = {};
                 CookAssetCatalogEntry previous    = {
-                       .Identity = {CookAssetKind::Mesh, identity.UUID}
+                    .Identity = {CookAssetKind::Mesh, identity.UUID}
                 };
                 const CookDependency dependency = {identity, "albedo", path};
                 EXPECT_EQ(ResolveCookDependency(lease, dependency, &previous, &diagnostics).Error(), failure.Error);

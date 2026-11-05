@@ -587,7 +587,7 @@ namespace ZEngine::ECS::SceneYAML
         }
     };
 
-    Emitter::Emitter(size_t limit) : m_impl(new(std::nothrow) Impl(limit)) {}
+    Emitter::Emitter(size_t limit) : m_impl(new (std::nothrow) Impl(limit)) {}
     Emitter::~Emitter() noexcept = default;
     Emitter& Emitter::operator<<(Event event)
     {

@@ -175,7 +175,7 @@ namespace ZEngine::Cook::Tests
                                          EXPECT_EQ(source, TextureUUID);
                                          *output = *static_cast<uuids::uuid*>(context);
                                          return true;
-                                     }};
+                                                                             }};
         Core::Containers::FixedArray<ECS::SceneValueField, 2> decoded     = {};
         ECS::SceneValueWriter                                 output({decoded.data(), decoded.size()});
         ASSERT_TRUE(Schema->References.Remap(nullptr, Value(), remap, &output, &Diagnostics));

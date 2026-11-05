@@ -42,7 +42,7 @@ namespace ZEngine::ECS
         SceneGridSettings            Grid = {};
         Rendering::Scenes::SkyConfig Sky  = {};
 
-        operator SceneDocumentSettingsView() const noexcept
+                                     operator SceneDocumentSettingsView() const noexcept
         {
             return {.UUID = UUID, .Name = Name, .Grid = Grid, .Sky = Sky};
         }

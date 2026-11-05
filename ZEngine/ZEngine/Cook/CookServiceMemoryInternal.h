@@ -14,7 +14,7 @@ namespace ZEngine::Cook::Detail
 {
     // Principal value/result storage for the constant-space allocator-chain
     // query, including its nested native profile helper; no custom stack bound.
-    [[nodiscard]] size_t          CookAllocatorQueryWorkingBytes() noexcept;
+    [[nodiscard]] size_t CookAllocatorQueryWorkingBytes() noexcept;
 
     // Five borrowed native views: schema, migration, callback, output, scratch. Common
     // backing-family and inline-object containment, without another persistent

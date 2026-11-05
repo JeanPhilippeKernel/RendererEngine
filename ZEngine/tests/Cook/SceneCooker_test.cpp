@@ -1444,7 +1444,7 @@ namespace ZEngine::Cook::Tests
         };
         ASSERT_TRUE(owner->Initialize(*page, roots).Succeeded());
         std::unique_ptr<CookFrozenInputSource, void (*)(CookFrozenInputSource*)> source(new (source_storage) CookFrozenInputSource{*owner}, [](CookFrozenInputSource* value) { std::destroy_at(value); });
-        struct ObservedInput                                                     final : ICookInputSource
+        struct ObservedInput final : ICookInputSource
         {
             CookFrozenInputSource*   Source       = nullptr;
             mutable uint64_t         Before       = 0;

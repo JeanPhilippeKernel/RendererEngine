@@ -311,9 +311,9 @@ TEST_F(MeshAssetReaderTest, CheckedCloseFailureDoesNotPublishDecodedResultsOrAre
 {
     ASSERT_TRUE(Cook());
     ASSERT_TRUE(Read().Succeeded());
-    const auto               before   = DecodeArena.m_current_offset;
-    const auto               previous = DecodeArena.m_previous_offset;
-    const auto*              vertices = Output.Vertices.data();
+    const auto  before   = DecodeArena.m_current_offset;
+    const auto  previous = DecodeArena.m_previous_offset;
+    const auto* vertices = Output.Vertices.data();
     struct CloseFaultContext final : VFSContext
     {
         uint32_t        Closes = 0;

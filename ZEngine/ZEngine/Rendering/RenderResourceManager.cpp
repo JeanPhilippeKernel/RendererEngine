@@ -3,8 +3,8 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/ImageCodec.h>
 #include <ZEngine/Profiling/Profiling.h>
-#include <cstdlib>
 #include <stb/stb_image.h>
+#include <cstdlib>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
