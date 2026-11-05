@@ -819,7 +819,9 @@ namespace ZEngine::Cook
     TEST_F(CookCapturedFileTest, ManyDiskCapturesDoNotRetainFileWrappers)
     {
         {
-            Core::Containers::FixedArray<CookCapturedFile, 64> captures = {};
+            // Parenthesized value-initialization avoids GCC 13's aggregate
+            // lowering bug for arrays of nontrivial owning elements.
+            auto captures = Core::Containers::FixedArray<CookCapturedFile, 64>();
             for (auto& capture : captures)
             {
                 ASSERT_TRUE(Store.CaptureDisk(Source, 3, &capture).Succeeded());

@@ -8,6 +8,7 @@
 #include <ZEngine/Importers/MaterialAssetDocument.h>
 #include <gtest/gtest.h>
 #include <cstdio>
+#include <iterator>
 #include <string>
 #include "CookTestAllocator.h"
 
@@ -250,7 +251,7 @@ namespace ZEngine::Cook
         }
         DiscoverySink material         = {};
         const auto*   material_adapter = Adapters.Find(CookAssetKind::Material);
-        ASSERT_TRUE(material_adapter->Encode(nullptr, input, resolved, CookTarget::DesktopVulkanLE64, material, Run, &Diagnostics).Succeeded());
+        ASSERT_TRUE(material_adapter->Encode(nullptr, input, {resolved, std::size(resolved)}, CookTarget::DesktopVulkanLE64, material, Run, &Diagnostics).Succeeded());
         EXPECT_NE(material.Bytes.find("objects/0000000000000000000000000000000000000000000000000000000000000000.tga"), std::string::npos);
         ASSERT_TRUE(Discovery.ReadInput(texture_index, Run, &metadata, &input).Succeeded());
         EXPECT_EQ(input.Artifact, stable_artifact);

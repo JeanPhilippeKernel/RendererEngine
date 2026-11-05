@@ -362,7 +362,7 @@ namespace ZEngine::Cook
         void Build(bool reverse = false, bool moved = false, bool changed_local = false, bool jpeg = false, bool one_slot = false)
         {
             Graph.Reset();
-            Results = {};
+            Results = decltype(Results)();
             ASSERT_TRUE(Graph.Initialize(Allocator, Limits).Succeeded());
             const auto add_scene = [&](bool sky) {
                 const auto path = VFS::VFSRelativePath::Parse(sky ? (moved ? "scenes/moved-sky.yaml" : "scenes/sky.yaml") : (moved ? "scenes/moved-main.yaml" : "scenes/main.yaml"));
