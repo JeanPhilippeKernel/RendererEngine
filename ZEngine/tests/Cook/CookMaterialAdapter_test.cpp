@@ -377,10 +377,14 @@ namespace ZEngine::Cook
         for (const bool encode : {false, true})
         {
             SCOPED_TRACE(encode);
+            // Successful inspection retains its allocator, including when the
+            // boundary probe replaces the previous result's dependencies.
+            FailingAdapterAllocator probe      = {};
+            FailingAdapterAllocator allocator  = {};
             CookAssetInspection     inspection = {};
             MaterialAdapterSink     measured   = {};
-            FailingAdapterAllocator probe      = {};
             probe.Parent                       = &Scratch;
+            allocator.Parent                   = &Scratch;
             ASSERT_TRUE((encode ? Adapter.Encode(nullptr, Input, {&child, 1}, CookTarget::DesktopVulkanLE64, measured, probe, nullptr) : Adapter.Inspect(nullptr, Input, probe, &inspection, nullptr)).Succeeded());
             EXPECT_EQ(probe.AllocationBytes[0], Capture.Size() + sizeof(Codec::MaterialAssetReader) + DEFAULT_ALIGNMENT);
             EXPECT_EQ(probe.Calls, encode ? 1u : 2u);
@@ -402,11 +406,9 @@ namespace ZEngine::Cook
                 ASSERT_LE(live + available, Limits.MaxWorkingBytes);
                 CookMemoryCharge blocker = {};
                 ASSERT_TRUE(Parent.TryCharge(Limits.MaxWorkingBytes - live - available, CookMemoryCategory::Codecs, &blocker).Succeeded());
-                FailingAdapterAllocator allocator = {};
-                allocator.Parent                  = &Scratch;
-                MaterialAdapterSink sink          = {};
-                const auto*         prior         = inspection.Dependencies().data();
-                const auto          result        = encode ? Adapter.Encode(nullptr, Input, {&child, 1}, CookTarget::DesktopVulkanLE64, sink, allocator, &Diagnostics) : Adapter.Inspect(nullptr, Input, allocator, &inspection, &Diagnostics);
+                MaterialAdapterSink sink   = {};
+                const auto*         prior  = inspection.Dependencies().data();
+                const auto          result = encode ? Adapter.Encode(nullptr, Input, {&child, 1}, CookTarget::DesktopVulkanLE64, sink, allocator, &Diagnostics) : Adapter.Inspect(nullptr, Input, allocator, &inspection, &Diagnostics);
                 EXPECT_EQ(result.Succeeded(), available == required);
                 EXPECT_EQ(Parent.Statistics().LiveBytes, live + blocker.Bytes());
                 EXPECT_EQ(Parent.Allocations, 1u);

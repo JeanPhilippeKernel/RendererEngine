@@ -309,17 +309,48 @@ namespace ZEngine::Core::VFS
             return entry.Length == 2 && entry.Name[0] == L'.' && entry.Name[1] == L'.';
         }
 
-        VFSResult<void> ReopenDirectory(HANDLE handle, NativeHandle& output)
+        VFSResult<void> OpenDirectoryByIdentity(HANDLE hint, const FILE_ID_128& identity, FILE_ID_TYPE identity_type, NativeHandle& output)
         {
-            // Unlike DuplicateHandle, ReOpenFile gives enumeration an independent
-            // native file object/offset without resolving a saved pathname.
-            const auto reopened = ReOpenFile(handle, DirectoryAccess, SharedMetadata, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
-            if (reopened == INVALID_HANDLE_VALUE)
+            FILE_ID_DESCRIPTOR descriptor = {};
+            descriptor.dwSize             = sizeof(descriptor);
+            descriptor.Type               = identity_type;
+            if (identity_type == FileIdType)
+            {
+                // NTFS uses the full reference, including its sequence number.
+                // ExtendedFileIdType is the ReFS profile; never truncate it.
+                uint64_t high = 0;
+                (void) Helpers::secure_memcpy(&high, sizeof(high), identity.Identifier + sizeof(descriptor.FileId), sizeof(high));
+                if (high)
+                {
+                    return VFSResult<void>::Fail(VFSError::Corrupted);
+                }
+                (void) Helpers::secure_memcpy(&descriptor.FileId, sizeof(descriptor.FileId), identity.Identifier, sizeof(descriptor.FileId));
+            }
+            else
+            {
+                descriptor.ExtendedFileId = identity;
+            }
+            const auto opened = OpenFileById(hint, &descriptor, DirectoryAccess, SharedMetadata, nullptr, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
+            if (opened == INVALID_HANDLE_VALUE)
             {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
             }
-            output.Reset(reopened);
+            output.Reset(opened);
             return VFSResult<void>::Ok();
+        }
+
+        VFSResult<void> ReopenDirectory(HANDLE handle, FILE_ID_TYPE identity_type, NativeHandle& output)
+        {
+            FILE_ID_INFO identity = {};
+            if (!GetFileInformationByHandleEx(handle, FileIdInfo, &identity, sizeof(identity)))
+            {
+                return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
+            // ReOpenFile's documented input is a CreateFile handle. Our native
+            // anchors also come from NtCreateFile and OpenFileById. Reopening by
+            // ID works for all of them and creates an independent enumeration
+            // cursor, unlike DuplicateHandle, without resolving a saved name.
+            return OpenDirectoryByIdentity(handle, identity.FileId, identity_type, output);
         }
 
         VFSResult<bool> IsVolumeRoot(HANDLE handle)
@@ -341,7 +372,7 @@ namespace ZEngine::Core::VFS
         VFSResult<void> OpenParentByIdentity(HANDLE handle, uint64_t volume, FILE_ID_TYPE identity_type, NativeHandle& output)
         {
             NativeHandle directory = {};
-            const auto   reopened  = ReopenDirectory(handle, directory);
+            const auto   reopened  = ReopenDirectory(handle, identity_type, directory);
             if (reopened.Failed())
             {
                 return reopened;
@@ -368,33 +399,13 @@ namespace ZEngine::Core::VFS
             {
                 return visited.Failed() ? visited : VFSResult<void>::Fail(VFSError::Unsupported);
             }
-            FILE_ID_DESCRIPTOR descriptor = {};
-            descriptor.dwSize             = sizeof(descriptor);
-            descriptor.Type               = identity_type;
-            if (identity_type == FileIdType)
+            NativeHandle pending = {};
+            const auto   opened  = OpenDirectoryByIdentity(handle, parent_id, identity_type, pending);
+            if (opened.Failed())
             {
-                // NTFS uses the full 64-bit file reference, including its
-                // sequence number. The extended descriptor is for ReFS; do
-                // not silently truncate a non-NTFS identity to make it fit.
-                uint64_t high = 0;
-                (void) Helpers::secure_memcpy(&high, sizeof(high), parent_id.Identifier + sizeof(descriptor.FileId), sizeof(high));
-                if (high)
-                {
-                    return VFSResult<void>::Fail(VFSError::Corrupted);
-                }
-                (void) Helpers::secure_memcpy(&descriptor.FileId, sizeof(descriptor.FileId), parent_id.Identifier, sizeof(descriptor.FileId));
+                return opened;
             }
-            else
-            {
-                descriptor.ExtendedFileId = parent_id;
-            }
-            const auto parent = OpenFileById(handle, &descriptor, DirectoryAccess, SharedMetadata, nullptr, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
-            if (parent == INVALID_HANDLE_VALUE)
-            {
-                return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
-            }
-            NativeHandle pending(parent);
-            const auto   checked = InspectNative(parent, volume);
+            const auto checked = InspectNative(pending.Value, volume);
             if (checked.Failed())
             {
                 return VFSResult<void>::Fail(checked.Error());
@@ -488,7 +499,7 @@ namespace ZEngine::Core::VFS
                 }
             }
             NativeHandle reopened = {};
-            const auto   opened   = ReopenDirectory(directory, reopened);
+            const auto   opened   = ReopenDirectory(directory, identity_type, reopened);
             if (opened.Failed())
             {
                 return opened;
@@ -805,7 +816,7 @@ namespace ZEngine::Core::VFS
             {
                 return walked;
             }
-            const auto reopened = ReopenDirectory(parent.Value, directory);
+            const auto reopened = ReopenDirectory(parent.Value, IdentityType, directory);
             if (reopened.Failed())
             {
                 return reopened;

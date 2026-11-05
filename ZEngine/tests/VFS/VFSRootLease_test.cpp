@@ -570,6 +570,32 @@ namespace ZEngine::Tests
         EXPECT_EQ(probe.Seen, 1u);
     }
 
+    TEST_F(VFSDiskRootLeaseTest, EnumerationAfterRenameUsesRetainedIdentityAndIndependentOffsets)
+    {
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("nested")).Succeeded());
+        ASSERT_TRUE(VFS::WriteFileAtomically(Root, Relative("nested/asset"), {OldContent, sizeof(OldContent)}).Succeeded());
+        VFS::VFSReadRootLease read     = {};
+        const auto            acquired = Context.AcquireReadRoot(RootPath("/assets/output/nested"), &read);
+        ASSERT_TRUE(acquired.Succeeded()) << static_cast<uint32_t>(acquired.Error());
+        const auto identity = read.Identity(Relative("asset"));
+        ASSERT_TRUE(identity.Succeeded());
+        ASSERT_TRUE(Root.Rename(Relative("nested"), Relative("moved")).Succeeded());
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("nested")).Succeeded());
+        ASSERT_TRUE(VFS::WriteFileAtomically(Root, Relative("nested/replacement"), {NewContent, sizeof(NewContent)}).Succeeded());
+
+        uint8_t buffer[ZKilo(4)] = {};
+        for (uint32_t visit = 0; visit < 3; ++visit)
+        {
+            SCOPED_TRACE(visit);
+            VisitProbe probe      = {};
+            const auto enumerated = read.VisitRoot(1, {buffer, sizeof(buffer)}, VisitProbe::Visit, &probe);
+            ASSERT_TRUE(enumerated.Succeeded()) << static_cast<uint32_t>(enumerated.Error());
+            EXPECT_EQ(probe.Seen, 1u);
+            EXPECT_EQ(probe.Last.Path, Relative("asset"));
+            EXPECT_EQ(probe.Last.Identity, identity.Value());
+        }
+    }
+
     TEST_F(VFSDiskRootLeaseTest, EnumerationRejectsBadBuffersDirectoriesAndMissingVisitors)
     {
         ASSERT_TRUE(VFS::WriteFileAtomically(Root, Relative("file"), {OldContent, sizeof(OldContent)}).Succeeded());

@@ -1,20 +1,7 @@
 # Scene Cooker — Proposed v1 Contracts
 
-**Status:** Selected v1 contracts implemented; agent-owned macOS/Linux work
-complete. User-owned native Windows acceptance remains pending.
-**Baseline:** 2026-11-04; `develop` at `2d9f0a10`.
-**Current verification:** The setup-query and inline category-peak changes pass
-both hosts' seven source process gates, 119 installed focused cases per host,
-and direct built-in/custom-schema manifest/object byte equality. macOS installed
-resource/stress acceptance passes (stress on an isolated retry); installed Linux
-resource/stress acceptance also passes after the user-approved Docker restart.
-Independent Draft 2020-12 and ECMAScript schema-pattern checks pass. See the final
-section-10 evidence in the proposal, including the retained initial failures.
-The final native provider-query scratch correction passes both full engine
-suites (with only the known Linux GPU baseline failures), five affected process
-gates per host and final installed mixed smokes with matching manifest/all-object
-bytes and no leaks. Native ownership/principal-query review is closed. Windows
-acceptance remains pending; no three-host or shipping-readiness claim follows.
+**Status:** Selected v1 contracts. Implementation acceptance is defined in section 9;
+execution evidence and unresolved failures belong in the associated PR and CI.
 **Scope:** The [scene cooker proposal](scene-cooker.md), issue #718.
 
 This page resolves the previously open wire/API, ownership, publication, and
@@ -1734,962 +1721,114 @@ manifest rebuild uses `CacheMiss`, while a future version is a hard failure.
 
 ## 9. Golden fixtures and implementation acceptance
 
-[manifest-v1.golden.json](scene-cooker-contracts/manifest-v1.golden.json) is the
-exact canonical **wire-shape** fixture (one scene and no assets).
-Its digests are synthetic record values: it deliberately has no corresponding
-binary scene or source tree, and is not proof of a valid cooked package. Its
-settings digest is real and its final LF/key ordering are normative. The
+This section defines acceptance criteria, not a chronological build report.
+Record execution results, host limitations, and unresolved failures in the
+associated pull request and CI runs. Passing a subset of these gates does not
+establish three-host or shipping readiness.
+
+### 9.1. Reviewed wire and package fixtures
+
+[manifest-v1.golden.json](scene-cooker-contracts/manifest-v1.golden.json) fixes
+canonical wire shape, key ordering, the real settings digest, and the final LF.
+Its synthetic scene digests have no corresponding binary scene or source tree;
+it is not evidence of a valid package. The
 [negative cases](scene-cooker-contracts/manifest-v1.negative-cases.json) specify
-mutations/raw inputs and expected validation outcomes. Shape-only tests must
-not be confused with graph, fingerprint, byte-integrity, or codec validation.
-The schema fixtures include trailing LF/CRLF in digests, UUIDs, and object paths,
-plus trailing LF/embedded NUL in logical source paths. These must fail schema
-validation independently of semantic digest/path agreement; a final document LF
-remains valid. Exercise these patterns in both Draft 2020-12 and ECMAScript
-validators so host regex end-anchor differences cannot weaken the contract.
+raw inputs, mutations, and expected outcomes. Keep shape validation separate
+from graph, fingerprint, byte-integrity, and codec validation.
+
+Validate the schema with both Draft 2020-12 and ECMAScript pattern semantics.
+Reject trailing LF/CRLF in digests, UUIDs, and object paths, and trailing LF or
+embedded NUL in logical source paths. A final document LF remains valid.
+
+The real `ZEngine/tests/Cook/Fixtures/package-v1.golden.json` anchors a
+mesh/material/texture/sky package. Checked-in scene/material source snapshots
+must match generated inputs byte-for-byte. `package-v1.inputs.json` fixes the
+SHA-256 and size of every source, sidecar, and generated binary artifact. The
+fixture uses shared serializers, a literal 1x1 BMP, and a finite six-face RGBA32F
+sky. Expectations require review; never regenerate goldens just to pass a test.
+
+`package-custom-schema.golden.json` anchors source digest/size and canonical
+manifest hashes for application schema v1/v2, including every object descriptor.
+Independent producers and consumers must allocate different runtime type IDs
+and register schemas in different orders. The `GameSurface` UUID/float unit
+vectors fix its 20-byte persisted representation; its runtime cache is excluded.
+A registered identity source migration must preserve source/asset records while
+changing schema/scene keys and the scene object. Missing migration must preserve
+the caller result, old manifest, and package inventory without scratch/lock leaks.
+Consumers accept current schemas and reject missing or non-current schemas.
+Canonical binary tables are validated before `UnsupportedVersion` is reported;
+malformed keys, ranges, ordering, reserved fields, and trailing bytes remain
+`InvalidData`.
+
+### 9.2. Independent processes and host portability
+
+Run installed, relocated producer/consumer helpers through plain and Unicode
+native paths, including four-byte UTF-8 characters. Consumers need no source
+tree, editor, dependency checkout, or GPU. Include moved checkout roots,
+changed child paths, no-op/forced rebuilds, texture-only transitive invalidation,
+custom schemas, and canonical material-float vectors. Verify decoded scene,
+mesh, material, texture, and sky semantics as well as physical bytes.
+
+Compare identical captured fixture hashes, canonical manifest bytes, and every
+object path/digest/size on native macOS, Linux, and Windows. A build,
+cross-compilation, configured CI gate, or two-host comparison is not a substitute
+for native execution on the remaining host. Missing and same-size-corrupted
+objects must fail independent consumption.
+
+### 9.3. Ownership, isolation, and strict paths
+
+Exercise every capability/error seam with fixed old/new manifests and independent
+package readers. Cover empty/duplicate scenes, unknown/newer versions,
+unsupported backend capabilities, allocation failures, and caller output/result
+immutability on failure.
+
+Test input-owner mutation contention and capture violations. Inject a seal-time
+recheck failure after all captures exist: no object may be staged/installed, no
+manifest replaced, and no no-op accepted. Sealing is terminal; later source
+mutation cannot affect captured output, and lease destruction introduces no
+new input errors.
 
-The real `ZEngine/tests/Cook/Fixtures/package-v1.golden.json` now anchors a
-mesh/material/texture/sky scene package. Checked-in source scene/material
-snapshots match the generated fixture byte-for-byte; `package-v1.inputs.json`
-fixes the SHA-256/size of every source, sidecar and generated binary artifact.
-The fixture generator uses the shared serializers, a literal 1x1 BMP and a
-finite six-face RGBA32F sky. These are reviewed initial expectations, never
-auto-regenerated when a test fails.
-
-`package-custom-schema.golden.json` additionally fixes the exact source
-digest/size and canonical manifest SHA-256 for a real application component at
-schema v1/v2. Manifest hashes anchor every object path/digest/size without
-duplicating the unchanged built-in asset records. Independent producer/consumer
-processes allocate different actual runtime type IDs and register custom/built-in
-schemas in different orders. `GameSurface` persists a typed texture UUID and
-weight, not its runtime cache; independently reviewed 20-byte unit vectors
-anchor its UUID/float wire encoding. Schema-only recooking through a registered
-identity source migration preserves source/all asset records and changes the
-schema/scene keys and scene object. Missing migration preserves the full caller
-result, old manifest and package inventory without scratch/lock leaks. Source-free
-consumers accept current v1/v2 packages and reject missing/non-current schemas.
-The binary container reports `UnsupportedVersion` before document allocation
-only after canonical table validation; malformed/reserved keys, invalid ranges,
-ordering or trailing bytes still report `InvalidData`. These additional gates
-pass locally on macOS, including fresh installed artifacts; native cross-host
-execution remains required.
-
-`SceneCookProcess.cmake` independently produces/consumes packages through plain
-and Unicode native paths, different real component-ID allocation orders, moved
-checkout roots, no-op/forced encoding and texture-only transitive invalidation.
-Read-only consumers need no source tree and verify physical bytes plus decoded
-scene/mesh/material/texture/sky semantics. Missing/same-size corrupted objects
-fail. Two concurrent processes prove an old open manifest and its dependency
-objects remain readable after replacement in the same root. Abrupt exits before
-and after manifest rename prove old/new authority, refusal to steal stale locks
-and non-destructive new-root recovery. CTest and installed-artifact execution
-pass locally on macOS; macOS/Linux CI is configured to invoke the same gate.
-The helper's Windows process CTests and installed-artifact CI gate are now
-enabled alongside the shared disk cook/publication/capture/lifetime tests.
-The rooted Windows provider uses handle-relative no-reparse opens and rename,
-native 128-bit IDs and bounded independent-offset enumeration. Its initial
-profile is local NTFS/ReFS with file-ID support and a bounded-query capability
-probe. Physical overlap walks directory identities, not saved native paths.
-The backend and nine affected test/helper translation units cross-compile with
-real Windows/dependency headers. Junction security/sharing/append/native-identity
-tests exist, but native Windows execution (including ancestry and rename semantics)
-remains unverified; enabled gates are not passing runtime evidence.
-
-Cross-host acceptance still requires macOS/Windows/Linux to compare identical
-captured fixture hashes, canonical manifest bytes, and every object path/digest/size.
-Native ARM64 Linux execution (Ubuntu 24.04 VM, Clang 18.1.3/C++20, CMake 4.1.3,
-Debug/libstdc++13; no x86 syscall emulation) now passes all 618 cook tests, 1,265
-editor tests, five process gates and installed scene/cook plain/Unicode gates.
-The full Linux engine suite is not green: two existing grid-label GPU pixel
-comparisons fail with software Vulkan/lavapipe (218 versus 219.6105, tolerance 1.5); 2,590 tests
-pass and seven skip out of 2,599. No cooker test fails. Reviewed built-in and
-custom-schema package manifests and all five objects per package have also been
-compared byte-for-byte between macOS and native ARM64 Linux. This does not prove
-native Windows behavior, x64/CI-profile execution or the full three-host gate.
-The earlier intermittent bind-mount capture failure is reproduced without engine
-code: Docker's host `fakeowner` filesystem (magic `0x6a656a63`) can report different
-inodes for discovery and read-only open after replacing a copied file, with equal
-bytes/size/mtime. The standalone copied-fixture probe passes 128 repetitions and
-the traced cooker passes 64 capture/rewrite runs on VM-native overlayfs instead.
-Stable native identity is required; this host-bind profile has not established
-that guarantee. The cooker correctly rejects the inconsistent generation; no
-identity waiver, automatic retry or path-only substitute was introduced.
-
-The installed native Linux `SceneCookDiskFullProcess.cmake` gate additionally
-exercises real kernel `ENOSPC` on a dedicated 2 MiB tmpfs, both object staging and
-manifest staging after installing new immutable objects, through plain/Unicode
-paths. No VFS failure code is injected. The fill owner verifies the opened file's
-actual tmpfs/capacity (<=16 MiB) before writing a fixed 4 KiB buffer until full;
-ordinary storage and oversized tmpfs are refused before import mutation. Each
-case preserves the complete prior caller result and manifest. Independent
-consumers verify old physical objects, then retry publishes/consumes the changed
-package after removing only the owned fill file. Unreferenced installed objects
-are allowed after failed manifest staging; private staging/scratch/locks must
-drain. All four cases pass using installed artifacts. Linux CI is configured to
-mount a bounded tmpfs and invoke this same script; that CI step is not yet run.
-This is native tmpfs staging-write exhaustion evidence, not power-loss durability,
-block-device writeback/flush exhaustion, or native Windows/macOS disk-full proof.
-
-The installed `SceneCookResourceProcess` additionally validates real texture
-limits with constant-sized generated inputs/output verification, not a second
-large fixture buffer. A 16384x8192 RLE TGA fully decodes 512 MiB RGBA8 from
-5,242,898 encoded bytes; inspection/passthrough pass at the observed modeled
-working peak and a one-byte-short budget rejects before pixel allocation with
-prior inspection/output preserved. A 16384x8191 uncompressed TGA streams
-536,805,394 exact bytes, within 64 KiB of both 512 MiB encoded/decoded caps.
-Smaller resource limits and over-cap headers reject safely, and all native
-mappings/charges drain. Ordinary PNG/BMP/TGA cases accept both orientations at
-dimension 16,384 and reject 16,385. The three large cases pass on native macOS
-arm64 and ARM64 Linux; allocator/principal-reservation decoded-cap peaks are
-536,888,100 and 536,875,812 bytes respectively, not complete stack/RSS or
-whole-run budget evidence. The installed process refuses incomplete filtering
-and zero repetitions. CTest serializes it with a 600-second timeout; all three
-host CI workflows invoke the installed artifact. Those new CI steps have not
-yet executed. Native Windows, other codecs/adapters and aggregate near-limit
-resource/temporary-storage acceptance remain required.
-
-The same installed process now includes five additional environment/mesh/fixture
-cases (eight total). A generated 1024x1024, six-face RGBA32f environment exercises
-the format's actual 96 MiB payload maximum, with one reusable stream allocation,
-exact-budget passthrough, early encoded/decoded/dimension refusals, a final-scalar
-NaN and a final-payload read fault. The mesh uses the full 8,388,608 vertices,
-536,870,897 decoded workspace bytes (15 below the generic 512 MiB cap), and
-536,870,436 encoded bytes. Inspection and passthrough each use one native
-workspace; encoding reuses its decoded arena for streaming. Exact decoded and
-working budgets pass byte-for-byte. One-byte-short decoded/mapping budgets reject
-before mapping, including a budget one byte below the full-operation peak now
-that the reader's fixed storage is reserved across allocation. Over-count and
-encoded-cap refusals, a final invalid index and late read faults preserve prior
-inspection and drain native mappings/charges. The shared constant-storage range
-generator is independently checked across segment boundaries, short reads and
-patched ranges; large fixtures do not retain whole input/output copies.
-
-All eight cases pass on built and refreshed installed macOS arm64/native ARM64
-Linux artifacts on 2026-11-05, together with the six macOS process CTests and five
-installed Linux protocols; all 635 cooker regression tests pass on both.
-Environment allocator/principal-reservation peaks are
-86,632/74,344 bytes (macOS/Linux); mesh peaks after reader fixed-state accounting
-are 536,904,976/536,892,688 bytes. Full engine runs are 2,635 on macOS (2,630 pass,
-five existing skips) and 2,628 on Linux (2,619 pass, seven skips and the same two
-software-Vulkan grid-label failures). Both hosts pass all 1,265 editor cases.
-These do not establish complete helper/compiler stacks, RSS, whole-run limits or
-a working-memory default. The refresh is test-only, not clean full installation
-proof. Per-format/scene and aggregate resource/temporary-storage acceptance and
-complete memory accounting remain open. Windows testing is user-owned from this
-point; existing Windows CI wiring is retained without agent Windows checks.
-
-Subsequent 2026-11-05 macOS Debug arm64 acceptance closes the clean full-install
-gap for that profile: install from the existing build into an initially empty
-prefix, then move the entire prefix to a Unicode/space path with no original
-prefix left behind. System-only FreeType/Vulkan dependency targets no longer
-inherit an unnecessary absolute install rpath (which overflowed framework load
-headers). Obelisk uses a loader-relative rpath, and a shared Apple-only hook
-ad-hoc signs and strictly verifies affected real targets after installation
-rewrites load commands. No fetched sources change; this is not notarization or
-shipping-signing policy.
-
-From outside the checkout with library/framework path overrides unset, the
-relocated installation passes all 2,630 runnable engine tests (five existing
-skips), 1,265 editor tests, eight resource cases, YAML allocation helper and
-scene/cook plain/Unicode independent-process protocols. The engine profile
-explicitly selects MoltenVK. Obelisk help and installed shader-tool version
-commands run without launching the editor; all 15 installed Mach-O files pass
-strict signature verification and have no checkout dependency paths. A separate
-tiny fixture validates Unicode/space `DESTDIR`/prefix handling and fatal refusal
-for missing/symlink targets, injected signing-launch failure and injected strict
-verification failure. macOS CI no longer overrides library lookup; its YAML
-parses locally, not evidence of a CI run. Linux regeneration/build remains a
-no-op for these Apple-only changes. This does not establish Release, clean-source
-rebuild, Windows, complete memory/whole-run bounds, remaining near-limit or
-offline live-project acceptance. Windows validation remains user-owned and the
-running SampleProject editor is not touched.
-
-Mesh ordering acceptance on 2026-11-05 adds 16 independently checked decimal
-boundary cases through the full 8,192-submesh format cap. Each case checks dense
-and sparse materials, alternating identities, canonical slots against a separate
-string-sort oracle, exact mesh passthrough, unchanged allocation counts, charge/
-mapping drainage and one-edge-short refusal preserving prior inspection and
-emitting no output. All 651 cooker tests now pass on macOS arm64/native ARM64
-Linux. Full engine runs are 2,651 on macOS (2,646 pass, five existing skips) and
-2,644 on Linux (2,635 pass, seven skips and the same two software-Vulkan grid-label
-failures); all 1,265 editor tests and six process CTests pass on both. Refreshed
-installed plain/Unicode protocols and all eight resource cases pass on both
-hosts; the relocated macOS helpers run without library-path overrides and their
-signatures strictly verify. All four installed Linux tmpfs ENOSPC gates pass.
-Fresh complete built-in/custom package trees remain byte-identical across the
-two hosts, with unchanged reviewed manifest digests. A standalone Apple Clang
-arm64 `-O0 -g0 -fstack-usage` sample shows the new iterator helper's fixed
-32-byte frame and no mesh sort instantiations. It is not a complete helper/
-compiler call-chain or working-memory bound; sorts elsewhere, remaining memory
-ownership and near-limit/aggregate acceptance still require work. Windows tests
-remain user-owned and the running SampleProject remains untouched.
-
-Subsequent hash/metadata validation on 2026-11-05 passes all 662 cooker tests on
-macOS arm64/native ARM64 Linux. The exact-budget tests now include the shared
-96-byte SHA compression-array bound; insufficient reservations cannot publish
-partial keys or outputs. Two hundred known-answer checks cover hash reset after
-finalized/unfinished streams at ten compression/padding boundaries. Metadata
-ordering adds eight size boundaries with five orderings and exact/short budgets,
-all 720 six-key permutations, and every one of the 496 duplicate-position pairs
-at the 32-setting cap, without caller mutation or allocator calls.
-
-Both hosts pass six process CTests (including all eight resource cases) and
-1,265 editor tests. Full engine runs are 2,663 on macOS (2,658 pass, five existing
-skips; explicitly selected MoltenVK) and 2,656 on Linux (2,647 pass, seven skips
-and the same two software-Vulkan grid-label failures). Environment modeled
-working peaks increase by 96 bytes to 86,728/74,440 bytes (macOS/Linux); mesh and
-texture modeled peaks are unchanged. The preceding hash-only installed refresh
-passes all eight resource cases on both and four Linux tmpfs ENOSPC gates. The
-final metadata refresh passes 27 installed hash/metadata tests and plain/Unicode
-cook protocols on both; the relocated macOS prefix needs no library overrides
-and all five refreshed test/helper signatures strictly verify. Fresh complete
-built-in/custom package trees compare byte-for-byte with unchanged reviewed
-manifest digests. Standalone Apple Clang arm64 `-O0 -g0 -fstack-usage` samples
-show reset's frame decreasing from 240 to 48 bytes and metadata fingerprinting
-from 816 to 800 bytes, with no metadata sort instantiations. This does not close
-the complete helper/compiler/callback call-chain, caller/service/VFS ownership,
-whole-run or remaining per-format/aggregate resource/temporary-storage audit.
-Offline SampleProject smoke remains pending; its running editor is untouched.
-Windows validation remains user-owned.
-
-Subsequent native-service reuse/material-cap validation on 2026-11-05 passes
-all 666 cook-related engine tests on both hosts (659 under `tests/Cook`, plus
-seven environment-cooking tests). The new service tests exercise all 120 caller
-address permutations, 128 repeated projections without arena growth or facade
-re-query, and public memory/disk cooks with shared/distinct facades and unchanged
-package bytes. Full engine results are 2,667 on macOS (2,662 pass, five existing
-skips) and 2,660 on Linux (2,651 pass, seven skips and the same two GPU failures).
-Both hosts pass 1,265 editor tests, six process CTests, 22 focused installed tests,
-installed plain/Unicode protocols and all ten installed resource cases. All five
-refreshed macOS helper signatures strictly verify; four installed Linux tmpfs
-ENOSPC cases pass. Fresh complete built-in/custom package trees remain identical
-across hosts and retain the reviewed manifest digests.
-
-The two new material resource cases use generated constant-storage input/output
-oracles rather than full fixture copies: actual 1 MiB encoded input, actual
-4096-byte decoded name, 25,200 canonical output bytes, exact/one-short decoded
-and working caps, 4097-byte name rejection, fragmented reads, late malformed JSON
-and final-read failure. Successful inspection/encoding each uses one native
-workspace; failures preserve prior inspection, emit no output and drain it.
-Modeled inspect/encode peaks are 1,066,032/1,066,740 bytes on macOS and
-1,057,840/1,058,548 bytes on Linux. These ledger measurements and smaller fixed
-caller tables are not complete compiler/callback/call-chain or whole-run memory
-proof. Other-format/scene and aggregate resource/temporary-storage acceptance,
-remaining memory ownership/accounting, offline SampleProject smoke and the final
-requirements audit remain open. Windows stays user-owned and the running editor
-remains untouched.
-
-Scene/batch and configured aggregate boundary acceptance on 2026-11-05 adds six
-public memory/disk run tests plus two serialized direct-codec resource cases.
-The actual 256-scene batch references one shared material and 257 objects; every
-binary's hash/UUID, every manifest scene root and every referenced byte count are
-checked. Configured 255 and actual 257-source refusals precede run allocations and preserve the old
-package/result. Reversed requests, forced encoding and doubled sufficient working
-budgets produce the same bytes. The eight-scene/material/texture fixture verifies
-exact 19,970-byte unique capture (sidecars included) and 10,597-byte new-object-plus-
-manifest staging limits against separate cold output roots. A one-byte shortfall
-cannot replace the old manifest/result or leak scratch, temporaries or writer
-locks. Orphan recovery verifies existing immutable objects, releases duplicate
-stages and needs only manifest-sized retained staging space.
-
-Because stream sizing adapts to available memory, the working-limit fixture
-searches for and rechecks the actual successful/refused adjacent budgets instead
-of treating a high-budget peak as a universal minimum. Eight-scene modeled
-minimum budgets are 40,678,340/7,222,212 bytes (macOS memory/disk) and
-40,608,564/7,222,068 bytes (Linux memory/disk). The 256-scene modeled peaks are
-40,779,524/7,323,396 and 40,709,748/7,323,252 bytes respectively. The preowned
-fixture backend pools are included; these numbers are neither a default preset
-nor complete whole-run/stack/RSS bounds.
-
-The direct scene codec also accepts a real 32 MiB whitespace-padded source and
-produces the same independently decoded 463-byte binary as its bounded unpadded
-fixture. Read/encode exact-budget success and one-byte-short refusal drain all
-routed storage; lower/over-limit inputs fail before reads/allocations. Late read,
-receipt and rehashed YAML-syntax failures preserve prior document/result storage
-and emit no sink output. Modeled read/encode peaks are 33,966,856/33,967,464 bytes
-on macOS and 33,733,384/33,733,992 bytes on Linux; fixture preparation/verification
-is outside those codec measurements. Semantic entity/node/decoded-tree density,
-other-format/combined-large-resource and temporary-storage stress still need
-separate acceptance.
-
-Final verification executes all twelve resource cases on both hosts, including
-refreshed installations without source/dependency mounts on Linux or library
-overrides on relocated macOS. Both hosts pass 672 cook-related engine tests,
-1,265 editor tests, six process CTests, six new installed batch tests and installed
-plain/Unicode cook protocols. Full engine results are 2,673 on macOS (2,668 pass,
-five existing skips) and 2,666 on Linux (2,657 pass, seven skips and the same two
-GPU grid-label failures). Five refreshed macOS helper signatures strictly verify;
-four installed Linux bounded-tmpfs ENOSPC cases pass. Fresh complete built-in/custom
-package trees remain byte-identical with unchanged reviewed manifest digests.
-Complete memory/ownership accounting, offline SampleProject smoke and the final
-requirements audit remain open. Windows stays user-owned; the live editor remains
-untouched. This batch adds no production allocation or API/format changes.
-
-Schema-field and catalog-index sorting now use an internal iterative heapsort
-with caller-reserved, default-initialized constant state, one moved value,
-O(n log n) worst-case comparisons and no recursion or dynamic allocation. Schema/
-recipe hashing includes that state in its existing single context reservation;
-the four catalog indexes reuse one temporary reservation without moving records.
-Multi-entry catalog reservation refusal leaves the catalog building/retryable;
-empty/single-entry catalogs do not query an unused sorting budget. The generic
-helper requires a valid mutable span, separate state, non-throwing default/move
-assignment and a strict weak ordering; equal keys are not stably ordered.
-Canonical callers must compare every relevant key field.
-
-Five new tests cover exhaustive small permutations, large adversarial/duplicate
-tables with a comparison-count bound and range guards, move-only ownership and
-state reuse, catalog exact-budget/refusal/retry and unused-state fast paths.
-The 257-field registration-order regression retains identical schema digests.
-Both hosts pass 677 cook-related tests, 1,265 editor tests, six process CTests
-(twelve resource cases), 19 refreshed installed focused tests and installed
-plain/Unicode cook protocols. Full engine results are 2,678 macOS tests (2,673
-pass, five existing skips) and 2,671 Linux tests (2,662 pass, seven skips and the
-same two GPU grid-label failures). Five macOS helper signatures strictly verify;
-fresh complete built-in/custom package trees remain byte-identical across hosts
-with unchanged reviewed manifest digests. These five converted sort sites are
-not proof of complete sorting/helper/compiler/callback stack or ownership
-accounting. Graph/ready-queue, manifest, frozen-root/file and scene-capture sorts,
-semantic-density/combined-large-resource/temporary-storage stress, offline
-SampleProject smoke and final acceptance remain open. Windows stays user-owned;
-the live editor/project are untouched. No runtime allocations or wire/API-signature
-changes were added.
-
-Dependency-graph finalization now reserves one shared principal sorting/ready-
-queue state before touching workspace. Its three sorts reuse iterative heapsort;
-initial ready nodes use O(V) bottom-up heap construction and subsequent queue
-operations take O(log V), all without recursion or allocation. Sorting, heap
-construction and queue removal share the same hole-filling sift. Reservation
-failure preserves retryable discovery; empty graphs need no sorting reservation,
-and invalid state/uninspected nodes fail before budget queries. Six new tests
-exercise queue permutations, large min/max/interleaved/duplicate/adversarial
-queues, comparison bounds, move-only ownership, graph exact-budget/refusal/retry
-and pre-budget validation. Existing graph/scene-root fixtures keep their original
-slabs with separate fixed-storage budget headroom. The manifest-reader failure
-test now discovers and injects every fixed-charge seam, including graph sorting,
-instead of assuming a fixed count.
-
-Updated modeled 256-scene peaks are 40,779,572/7,323,444 bytes on macOS memory/disk
-and 40,709,796/7,323,300 bytes on Linux; adjacent eight-scene working-limit fixtures
-accept 40,678,388/7,222,260 and 40,608,612/7,222,116 bytes respectively and refuse
-one byte less. Both hosts pass 683 cook-related engine tests, 1,265 editor tests,
-six process CTests (all twelve resource cases), 72 refreshed installed focused
-tests and installed plain/Unicode cook protocols. Full engine runs are 2,684 on
-macOS (2,679 pass, five existing skips) and 2,677 on Linux (2,668 pass, seven skips
-and the same two GPU grid-label failures). Five macOS helper signatures strictly
-verify; four installed Linux bounded-tmpfs ENOSPC cases pass. Fresh complete
-built-in/custom package trees remain byte-identical with unchanged reviewed
-manifest digests. This establishes the named graph sort/queue state gates, not
-whole-stack/RSS/ownership accounting. Manifest/frozen-root/file/scene-capture
-sorts, diagnostic temporaries/Describe and other helper/parser/decoder/callback/
-compiler frames, caller/service/VFS ownership, remaining resource-density/stress,
-offline SampleProject smoke and final acceptance remain open. The editor is
-still running and untouched; Windows stays user-owned. No runtime allocations
-or wire/API-signature changes are added.
-
-The remaining cooker-local manifest/frozen-file/root/capture sorts now reuse the
-same bounded iterative helper. Shared descriptor conflicts borrow state covered
-by reader/writer/publication principal reservations, and syntax key sorting is
-included in `sizeof(SyntaxPass)`. Writer structural validation still makes no
-budget query; its single reservation now precedes workspace mutation, descriptor
-conflict sorting and all writes. Conflicting descriptors refuse without changing
-the result or writing sink bytes. Frozen-file sorting reserves before discovery;
-root and capture sorting reserve before owner allocations (and root pins), then
-release that temporary state before later validation/codec work. Known singleton
-root/capture requests skip unused sorting reservations. Empty VFS base-lease
-construction is explicitly non-throwing, matching its empty members. No standard
-sort/heap calls remain inside the cooker directory; externally reached codec/
-callback sorting and full compiler/helper frames remain separate audit work.
-
-Four additional tests exercise root exact-peak/refusal/retry and moved-pin
-validity, singleton roots, file-set exact payload-plus-state boundaries, and
-capture pre-allocation refusal/retry. Writer tests verify unchanged workspace on
-budget refusal and charged conflict checking before writes; allocation-failure
-wrappers forward fixed-state charges rather than bypassing the new contract.
-Both hosts pass 687 cook-related engine tests, 1,265 editor tests, six process
-CTests (all twelve resource cases), 169 refreshed installed focused tests and
-installed plain/Unicode cook protocols. Full engine runs are 2,688 on macOS
-(2,683 pass, five existing skips) and 2,681 on Linux (2,672 pass, seven skips and
-the same two GPU grid-label failures). Five macOS helper signatures strictly
-verify; four installed Linux bounded-tmpfs ENOSPC cases pass. Fresh complete
-built-in/custom package trees remain byte-identical with unchanged reviewed
-manifest digests. Updated modeled 256-scene peaks are 40,779,612/7,323,484 bytes
-on macOS memory/disk and 40,709,836/7,323,340 bytes on Linux; eight-scene working
-boundaries accept 40,678,428/7,222,300 and 40,608,652/7,222,156 bytes respectively
-and refuse one byte less. These are principal ledger measurements, not complete
-RSS/stack/ownership bounds. Diagnostic temporaries/Describe and other helper/
-parser/decoder/callback/compiler accounting, caller/service/VFS ownership,
-remaining semantic-density/combined-large-resource/temporary-storage stress,
-offline SampleProject smoke and final acceptance remain open. Windows remains
-user-owned and the live editor/project are untouched. No new runtime allocation
-or public cook signature/wire-format change was introduced.
-
-Subsequent diagnostic construction acceptance on 2026-11-05 removes the full
-record temporary from `Describe` and all cooker error/warning helpers. The
-retained-slot `Emplace` route described above shares normalized, saturating
-counter behavior with alias-safe copied `Add`, requires no allocation/reservation
-on an error path, and skips unretained provenance construction when full.
-Clearing reconstructs entries in place. Seven new diagnostic/graph tests cover
-message/key aliasing, transactional invalid UTF-8 and bad arguments, bounded
-message truncation, stale-field reset, mixed/self-aliased copying, warning/error
-normalization, saturation, and full-buffer cycle/global UUID conflicts. Final
-rebuilt evidence is 694 cook-named engine tests per host, 1,265 editor tests,
-six process CTests including all twelve resource cases, 68 refreshed installed
-focused tests, installed plain/Unicode protocols, five strictly verified macOS
-helper signatures and four Linux 2 MiB tmpfs ENOSPC recovery cases. Full engine
-totals are 2,695 on macOS (2,690 pass, five existing skips) and 2,688 on Linux
-(2,679 pass, seven skips and the same two GPU grid-label failures). Fresh full
-built-in/custom package trees remain byte-identical across hosts with unchanged
-reviewed manifest digests; no storage fields or modeled budget values changed.
-
-Individual Apple Clang arm64 Debug-response `-O0 -g0 -fstack-usage` samples shrink
-`Describe` from 1,712 to 272 bytes, graph finalization from 3,584 to 672, clearing
-from 1,568 to 128, adapter failure from 1,584 to 112, manifest diagnostics from
-1,584 to 96 and top-level run failure from 1,600 to 96. Emplacement is 160 bytes
-in that sample. This closes duplicate full diagnostic storage, not complete
-helper/parser/decoder/callback/compiler call-chain, RSS or ownership bounds.
-Remaining caller/service/VFS accounting, semantic-density/combined-resource/
-temporary-storage acceptance, offline SampleProject smoke and the final audit
-remain open. Windows validation stays user-owned; no Windows test/cross-compile
-or operation against the live editor/project was performed.
-
-Native callback snapshot reuse acceptance on 2026-11-05 adds three tests for
-shared versus standalone footprint equality without arena growth/allocation,
-one-query facade reuse, mandatory custom-owner profiling despite a native arena
-declaration, and native foreign-root rejection. Existing multi-registry coverage
-now repeats the shared projection 128 times, and the public cooker snapshot test
-covers native/custom callbacks and shared/distinct output/scratch facades on
-both backends. Each facade is queried once per run and package bytes are stable.
-Both hosts pass 697 cook-named engine tests, 1,265 editor tests, six process gates
-including all twelve resource cases, 29 refreshed installed focused tests and
-installed plain/Unicode protocols. Full engine totals are 2,698 on macOS (2,693
-pass, five existing skips) and 2,691 on Linux (2,682 pass, seven skips and the
-same two GPU grid-label failures). Five macOS helper signatures strictly verify;
-four Linux dedicated 2 MiB tmpfs ENOSPC cases pass. Fresh complete built-in/custom
-package trees are byte-identical across hosts with unchanged reviewed digests.
-Modeled working-budget boundaries remain unchanged. This removes duplicate native
-profiling state, not the remaining complete helper/compiler/callback call-chain,
-RSS, ownership, density/stress, offline SampleProject or final acceptance gates.
-Windows testing/cross-compilation stays user-owned; the live editor/project are
-untouched.
-
-Entity-density acceptance on 2026-11-05 adds three resource tests using a
-constant-storage generated capture of 65,536 descending-UUID entities. The
-4,458,536-byte source produces a 1,573,327-byte binary, inspected in place for
-header/CRC, scene identity, canonical ascending entity rows and empty component
-ranges; no large fixture/output copy is retained. Exact principal read/encode
-working peaks are 72,076,040 / 72,076,648 bytes on macOS and 71,719,688 /
-71,720,296 on native ARM64 Linux. One byte less refuses before sink writes and
-preserves the output. Both paths accept the exact 327,855-input-node boundary;
-one fewer node, lower entity/collection/decoded-memory limits and one entity
-above the real cap fail with structured budget diagnostics, preserve the old
-owned document and release tentative allocations. All six process gates and all
-fifteen resource cases pass per host. Both refreshed installed helpers also pass
-all fifteen resource cases without source/dependency mounts on Linux and without
-library overrides from the moved Unicode macOS installation. Five installed
-macOS helper signatures strictly verify. The 96 MiB fixture ceiling and production
-code/APIs/formats are unchanged. This is codec and wire-validation evidence,
-not dense-scene publication, the full default node/component/value density,
-combined-resource/temporary-storage acceptance or complete memory/RSS proof.
-
-The installed macOS helper also completed the real offline SampleProject smoke
-after confirming the previous editor PID and all Obelisk processes absent.
-Read-only source mounts and a separate empty temporary workspace exercised
-publication, independent recapture/no-op and forced rebuilding of both configured
-scenes. All three runs verified two objects, 1,971 referenced bytes and the same
-manifest digest `30b78ef8967a55975f720f00a53ca57013d2b5ae38a3b0204557e737e491b3c6`.
-Reported principal cook peak is 1,679,192 bytes; all 118 project file hashes match
-before/after. No editor lifecycle operation or project write was performed.
-The two scenes reference zero assets, so representative asset-rich and runtime
-rendering coverage are not implied. Remaining helper/compiler/callback and
-caller/service/VFS ownership accounting, broader density/stress, final contract
-acceptance and user-owned Windows execution remain open.
-
-Component/scalar acceptance on 2026-11-05 adds four resource cases: 512 entities
-with 64 components each and real 127-byte name-codec values, plus 2,048 entities
-with 4,096-byte scalars through a registered typed string codec. Descending
-entity/component input is inspected as complete ascending wire tables with
-versions, ranges, schema keys and string payloads. The 64-component registry
-uses synthetic wire-only aliases of the built-in codec; candidate ECS type
-instantiation is not covered. One byte below each principal read/encode peak
-refuses before sink writes, while the exact peak succeeds. Lower component/
-scalar caps, one extra component/scalar byte and an invalid 128-byte name preserve
-previous documents/results, retain structured budget versus semantic diagnostics
-and drain tentative allocations.
-
-Component read/encode peaks are 74,205,960 / 74,206,568 bytes on macOS and
-73,849,608 / 73,850,216 on native ARM64 Linux. Scalar peaks are 42,369,912 /
-42,370,520 and 42,238,840 / 42,239,448 respectively. Component and scalar binary
-digests agree across hosts:
-`bddbd138977395c08c53e3530567967ce47a9a40baf7351c7bb559c3de8b8ed6` and
-`f63efd13bd8759e07cb46057d7afcecdce466fec84b340aa58b1f412b573a6ef`.
-The source generator copies borrowed row slices and patches only overlapping
-UUID digits, with no per-row temporary or large fixture/output copy. Shared
-helpers retain common budget and failure-preservation checks. Production YAML
-uniqueness now bypasses scratch reservation/sorting for maps of up to two fields;
-one new unit test proves this with a completely exhausted borrowed arena and
-duplicate key text in separate nodes. Larger-map behavior is unchanged.
-
-Both hosts pass all six process gates, nineteen source and installed resource
-cases, 1,265 editor tests, 74 installed YAML/document/capture/binary-codec tests
-and installed plain/Unicode package protocols. Five macOS signatures strictly
-verify; four Linux dedicated 2 MiB tmpfs ENOSPC cases pass. Full engine totals
-are 2,699 / 2,694 pass / five skips on macOS and 2,692 / 2,683 pass / seven skips /
-the same two GPU grid-label failures on Linux. Working presets, APIs and wire
-formats are unchanged. Maximum node/decoded-tree/field density, dense or combined-
-resource publication/stress, complete memory ownership/call-chain/RSS accounting
-and final acceptance remain open. Windows stays user-owned; this batch performs
-no Windows checks or SampleProject/editor operation.
-
-Node/field-density acceptance on 2026-11-05 adds four resource cases. A bounded
-generated 5,229,045-byte stream reaches exactly 1,048,576 input nodes using a
-registered typed numeric schema with up to 64 fields. The routed YAML parser
-accepts the exact default cap and rolls back node/link storage and destination
-for one fewer permitted node or one actual extra node. Parser principal peaks
-are 139,970,800 bytes on macOS and 139,602,160 on native ARM64 Linux, including
-source storage. Full cooking of this fixture still safely refuses under the
-independent 128 MiB decoded-tree hard cap: canonicalized storage also counts.
-Both codec paths preserve previous documents/results and write no sink bytes.
-No production cap is increased or simultaneous-maxima acceptance claimed.
-
-Read/encode of 2,048 entities with 64 numeric fields each succeeds at exact
-principal working peaks and refuses one byte less. Source/binary sizes are
-1,421,352 / 645,583 bytes; peaks are 135,807,864 / 135,808,472 on macOS and
-135,660,408 / 135,661,016 on Linux. Full wire inspection covers canonical entity
-order, keys/version/ranges and every numeric value; the common binary digest is
-`1b7ec394d184ca46665864fde9b05a126552e84dc0622ab1e7fb22dcaca8f234`.
-A 65th field preserves prior state and refuses before sink writes. Candidate
-ECS population is not covered. Only the new stress fixture uses explicit 192 MiB
-native backing; existing fixture and production limits are unchanged.
-
-Six process gates, all 23 source/installed resource cases and 74 installed
-focused scene/YAML/binary tests pass on each host. Five installed macOS signatures
-strictly verify. This test-only batch does not rerun the full engine/editor
-suites, alter SampleProject/editor state or execute/cross-compile Windows.
-Dense/combined-resource publication and temporary-storage stress, complete memory
-ownership/call-chain accounting and final acceptance remain open; modeled
-principal budgets are not whole-stack/RSS proof.
-
-Combined-publication acceptance on 2026-11-05 uses bounded streamed generators
-for 65,536 entities, a 64 MiB BMP pixel payload, 27 MiB mesh streams, a 24 MiB
-environment payload and their material/metadata dependencies. The mesh oracle
-is shared with adapter-limit tests. Source and installed helpers on macOS and
-native ARM64 Linux publish, independently binary-decode/hash, recapture/no-op and
-force-rebuild the same one-scene/four-asset/five-object package (122,160,938
-referenced bytes). Its manifest digest is
-`7073b566e630c32c4a681406799ae52c6bb36470af7b1fb92ded4ea7c9cfdefe`.
-Every source-file inventory is unchanged. Fresh capture/staging-budget refusals
-under 100 / 63 MiB retain every prior result field, manifest and referenced object
-bytes and clean scratch/temporary/writer ownership. Existing immutable duplicates
-release their temporary staging charge; installed-object totals cannot be used
-as the temporary-budget oracle. These logical-limit checks complement, not
-replace, the four separate real Linux 2 MiB tmpfs ENOSPC recovery cases.
-
-With an explicit test-only 256 MiB budget, principal cook peaks are 73,211,328 /
-72,731,952 bytes; native mapping peaks are 72,384,672 / 71,921,824 on macOS/Linux.
-All 6,427,996 native allocation/free calls across each harness balance; the whole
-pipeline is not zero-allocation. Sampling the original slow first cook exposed
-disk reopening for 128-byte stb reads. Image validation now amortizes those reads
-through an inline 16 KiB engine-array buffer after dimension/storage preflight;
-larger reads bypass it. Its fixed storage is budgeted and adds no heap allocation.
-Two new unit cases check the bounded read count, one pixel allocation, cheap
-unbuffered early refusal, late I/O failure and full state release. Actual 512 MiB
-texture principal peaks now include that buffer: 536,904,508 / 536,892,220 bytes.
-
-Both hosts pass all seven process gates, 23 source/installed resource cases, the
-installed mixed-stress protocol, 92 installed focused image/scene tests, 1,265
-editor tests and installed plain/Unicode package protocols. Full engine results
-are 2,701 / 2,696 pass / five skips on macOS and 2,694 / 2,685 pass / seven skips /
-the same two GPU failures on Linux. Five macOS signatures strictly verify; four
-installed real Linux ENOSPC cases pass. The serialized stress script is installed
-and wired into all three CI platforms, but Windows execution stays user-owned.
-The selected mixed profile does not prove simultaneous maxima, representative
-runtime rendering or mixed-profile physical disk-full behavior. Complete memory
-call-chain/ownership accounting and the final contract audit remain open; no
-whole-stack/RSS or production-readiness claim follows. SampleProject/editor
-lifecycle are untouched.
-
-Scene record and large-map canonical ordering now share the existing iterative
-heap implementation through `Core::Containers::HeapSort`, without ECS depending
-on Cook or retaining a second algorithm. The component/entity principal sorting
-state and token are reserved before sorting; large-map uniqueness additionally
-charges its engine-array facade/checkpoint before arena scratch. No new heap
-allocation, recursive sorting stack or storage member is introduced. Small maps
-of up to two fields still need neither scratch nor a fixed-state reservation.
-The storage's actual allocation route supplies the budget, also for growing
-borrowed documents; an unrelated nested YAML scope cannot override it. Native
-unrouted documents may use the scoped parser budget. Refusal preserves insertion
-order, propagates `LimitExceeded`, drains the charge and leaves the public
-source/binary document unchanged. Exact/one-byte-short, duplicate-key, scratch
-failure, route-selection and source/binary retry regressions exercise these
-boundaries; the shared heap retains its existing exhaustive and comparison-bound
-tests. This is principal sorting-state coverage, not complete compiler/callback/
-parser/decoder call-stack or caller/service/VFS ownership accounting.
-
-After this change both macOS/native ARM64 Linux pass 116 focused tests, 1,265
-editor tests, seven source process gates (23 resource cases), installed focused
-and resource suites, installed plain/Unicode protocols and installed mixed
-publication stress. Full engine results are 2,705 / 2,700 pass / five skips and
-2,698 / 2,689 pass / seven skips / the same two GPU grid-label failures,
-respectively. The 64-field scene's read/encode principal peaks are now
-135,807,944 / 135,808,552 and 135,660,488 / 135,661,096 bytes, with unchanged
-binary digest; mixed-publication digest and peak figures are unchanged. All four
-installed Linux 2 MiB tmpfs ENOSPC cases and five macOS strict signature checks
-pass. Complete memory accounting and the final acceptance audit remain open;
-the duplicate 64-field buffers in document decoding / graph validation are
-the next identified principal-state work. Windows execution remains user-owned.
-
-Shared principal field scratch now has one default-initialized, caller-owned
-64-field engine array through binary decode, document decode and graph validation.
-Capture callbacks/document validation reuse one array, as do binary encoding
-preparation and emission. Borrowed internal entries neither own another array
-nor retain its address. The owning entry reserves the array, one active writer
-and token before construction; binary measurement/encoding additionally reserve
-the encoding layout. Both reference-enumeration APIs reserve their field state
-before codec/visitor work. Graph validation separately reserves its array
-facades, checkpoint, transient node and reference context before using the
-existing charged arena for payload scratch. There is no extra heap block,
-document member, public API or output-format change.
-
-Four new regressions check actual buffer identity across callbacks/phases, one
-field charge/release, field/graph refusal with unchanged prior documents,
-binary measurement/output/arena preservation at exact and one-byte-short fixed
-budgets, and refusal before reference visitors. Standalone Apple Clang arm64
-`-O0 -g0 -fstack-usage` samples with current common include/define flags measure
-graph validation at 1,472 versus 3,536 bytes and encoding preparation at 544
-versus 2,608. Owned decode now has a 2,240-byte entry plus a 2,112-byte borrowed
-body; its selected entry/body/graph sum is 5,824 versus 7,696, and binary
-decode/body/graph is 7,744 versus 11,792. Other helpers/callbacks remain live;
-these selected sums are not whole-stack/RSS proof. Newly counted principal
-storage can raise modeled peaks despite reducing duplicate physical buffers.
-Complete call-chain/ownership accounting and the final acceptance audit remain
-unfinished; Windows execution is still user-owned.
-
-Validation passes on both hosts for 113 focused scene/cooker tests, 1,265 editor
-tests, seven source process gates (23 resource cases), installed focused/resource
-suites, installed plain/Unicode package protocols and installed mixed-resource
-stress. Full engine results are 2,709 / 2,704 pass / five existing skips on macOS
-and 2,702 / 2,693 pass / seven skips / the same two GPU grid-label failures on
-native ARM64 Linux. The 64-field read/encode principal peaks now include the
-new charges: 135,810,168 / 135,810,776 and 135,662,712 / 135,663,320 bytes,
-respectively, with identical binary digest. Mixed-publication manifest, peaks
-and all 6,427,996 allocation/free pairs are unchanged. Five strict macOS
-signatures and four installed native Linux 2 MiB tmpfs ENOSPC cases pass. No
-editor/SampleProject operation or Windows execution/cross-compilation was done.
-
-Scene/migration validation now uses one charged, default-initialized 32-parent
-engine cursor array, following forward links once. Captured-node counting and
-migration output key uniqueness share this traversal; large maps retain their
-already bounded sorting scratch. Keys count as extra nodes, scalar/null leaves
-do not consume parent frames, and depth, item, scalar/NUL and node limits remain
-checked without overflowing the initial depth or count. No traversal allocation,
-retained borrow or wire-format change is introduced.
-
-Storage cycle detection now follows links iteratively with 33 inline cursors,
-preserving the old inclusive depth-zero-through-32 and expanded-node-visit
-bounds. Self-links fail immediately, while scalar/null/empty children need no
-traversal reservation. Other checks charge before constructing the cursor state;
-budget refusal fails closed with `LimitExceeded` before replacing/appending a
-link. The storage's actual budget wins over an unrelated YAML scope.
-
-Eight regressions cover exact node/depth/collection limits, counter and initial
-depth overflow, key/scalar NUL and byte-limit classification, nested duplicate
-maps, 65,536-item collections, exact and one-byte-short reservations, no native
-allocation or field/arena mutation on refusal, owner routing, leaf fast paths,
-expanded DAG visits and a last-child cycle. Existing migration-output validation
-still exercises duplicate/invalid/over-limit callback results.
-
-Standalone Apple Clang arm64 samples with current common include/define flags
-and `-O0 -g0 -fstack-usage` measure the single captured-node frame at 2,432 bytes
-versus the old 416-byte recursive frame, and cycle detection at 368 bytes versus
-the old 144-byte recursive frame. They do not include all live helpers/callbacks
-or constitute a complete stack/RSS bound. Owned tree cloning remains recursive;
-complete call-chain/caller/service/VFS accounting and the final audit stay open.
-
-This batch passes 136 focused source/installed tests, 1,265 editor unit tests,
-seven source process gates (23 resource cases), 23 installed resource cases,
-installed plain/Unicode package protocols and installed mixed-resource
-publication per host. The full host-access macOS engine run has 2,717 tests /
-2,712 pass / five existing skips; native ARM64 Linux has 2,710 / 2,701 pass /
-seven skips and only the same two GPU grid-label failures. Initial sandbox-only
-macOS Metal/filesystem/watcher restrictions are resolved by that host-access
-rerun. Five macOS signatures strictly verify and four installed Linux 2 MiB
-tmpfs ENOSPC cases pass. Dense-scene digests/principal peaks, mixed-publication
-manifest/peaks and 6,427,996 balanced allocation/free pairs are unchanged.
-Sources match the Linux snapshot; formatting/diff checks pass. Windows remains
-user-owned, and no editor/SampleProject operation occurred. Complete memory
-accounting and the final requirement audit are still unfinished.
-
-Owned cloning now uses one charged 32-parent engine cursor array instead of
-recursive `CloneNode` calls. Source link values are copied before same-owner
-record/link growth. Keys/scalars are destination-owned, including expanded
-aliases, with style, order, depth/node/item limits and duplicate rejection
-preserved. New children attach through the existing checked append API while
-still empty, then fill iteratively; no completed-subtree cycle rescans or
-unchecked link API are needed. Traversal adds no heap allocation, but owned
-payload storage is still allocated and charged.
-
-Scalar/null/empty roots bypass scratch and use a separate small clone entry;
-cycle checking also separates its fast entry from its traversal body. Migration
-application now reserves both optional owners/checkpoints, current/next nodes,
-counters, pending result and token before the first snapshot allocation. That
-charge remains live through reuse, callbacks, validation and final owned clone,
-then releases after both snapshots drain. Its actual explicit scratch route
-supplies the budget, otherwise the existing scoped YAML budget applies.
-
-Five regressions cover exact/one-byte-short clone reservations, pre-mutation
-refusal, actual-owner routing, depth/expanded-node boundaries, alternating
-deep containers, same-owner 65,536-child growth, owned copies and scratch-free
-leaf/empty cases. Public compatibility-service tests additionally exercise the
-exact complete principal peak and one byte less, pre-snapshot/pre-callback
-migration-state refusal, temporary-owner draining and prior-document preservation.
-
-Current common CMake include/define flags plus standalone Apple Clang arm64
-`-O0 -g0 -fstack-usage` measure a 160-byte clone entry and 2,528-byte iterative
-body, versus the old 112-byte entry and 656-byte recursive frame at each depth.
-Cycle checks now have a 112-byte fast entry plus 368-byte iterative body;
-migration application is 1,664 bytes. These samples omit other live helper,
-callback/compiler/library state and do not prove whole-stack/RSS bounds.
-Complete memory accounting and the final acceptance audit remain open. The
-temporary migration error-formatting buffer identified here is addressed below.
-
-Verification for this batch passes 141 focused source/installed tests,
-1,265 editor unit tests, seven source process gates (23 resource cases),
-23 installed resource cases, installed plain/Unicode package protocols and
-installed mixed-resource stress on each host. Full engine results are
-2,722 run / 2,717 pass / five existing skips on macOS and 2,715 run /
-2,706 pass / seven skips and only the same two GPU grid-label failures on
-native ARM64 Linux. Dense-scene digests/principal peaks and mixed-publication
-manifest/peaks/all 6,427,996 balanced allocation/free pairs are unchanged.
-Five strict macOS signatures and four installed Linux 2 MiB tmpfs ENOSPC checks
-pass; sources match the Linux snapshot and formatting/diff checks pass. No
-Windows execution/cross-compilation or editor/SampleProject operation occurred.
-
-Subsequent diagnostic construction on 2026-11-05 removes the temporary 192-byte
-migration formatting buffer. Shared `SceneDiagnostics` retention preserves the
-existing Add/error/category/drop behavior; `Emplace` writes into a retained slot,
-optionally initializing it from bounded overlapping message storage before
-clearing unused bytes. Migration errors preserve keys borrowed from reused slots
-by moving their text before writing the prefix and formatting only the suffix.
-No temporary entry, heap storage or overlapping printf input/output is added.
-Full or absent diagnostics skip formatting; failure still returns false and
-full buffers retain error categories. Layout/capacity, compatibility signatures
-and wire bytes remain unchanged.
-
-`CookDiagnostic::SetKeys` now needs one 128-byte schema snapshot instead of two
-key snapshots: validate both inputs, save schema, move field in place, then
-publish schema. This preserves swapped/partial/shared aliases and transactional
-validation failures while removing one fixed buffer and one copy. Five new
-regressions cover retention/reuse/overlap/truncation, overflow/category behavior,
-null diagnostics, aliased migration keys, prior-document preservation with full
-diagnostics, and crossed key views. All 156 focused tests pass on each host.
-Individual Apple Clang arm64 `-O0 -g0 -fstack-usage` samples with current common
-CMake includes/defines measure migration rejection 336 -> 192 bytes and key
-assignment 496 -> 352; scene Emplace/retention are 64/32 bytes. These are selected
-frames, not a whole-call-chain/RSS proof. Manifest dependency-reader scratch is
-the next identified helper to inspect; complete helper/callback/caller/service/
-VFS ownership accounting and the final #718 acceptance audit remain open.
-Windows execution stays user-owned.
-
-Diagnostic-batch verification passes 156 focused source/installed tests,
-1,265 editor unit tests and seven source process gates (including 23 resource
-cases and mixed-resource publication) on each host. macOS engine totals are
-2,727 run / 2,722 pass / five existing skips; native ARM64 Linux totals are
-2,720 run / 2,711 pass / seven skips and only the same two XML-confirmed GPU
-grid-label failures. Installed plain/Unicode package protocols, five macOS
-strict signatures and four installed Linux 2 MiB tmpfs ENOSPC cases pass.
-Changed code matches the Linux snapshot; formatting/diff checks pass. Full
-installed resource/mixed-stress results remain those of the prior cloning
-batch, not reruns here. No Windows execution or editor/SampleProject lifecycle
-operation occurred. Memory-accounting and final acceptance audits stay open.
-
-Typed manifest row/preparation accounting on 2026-11-05 reserves named row
-state before construction through the actual allocator. Empty arrays bypass
-the large row bodies. Read-only field tables are static. Dependencies compare
-decoded text against the previous key before overwriting one inline 128-byte
-slot, with equal-key identity ordering deferred until all fields are read.
-This removes the second key buffer and prior-key copy without restricting
-property order or adding row allocations/retained borrows.
-Separate preparation accounting covers counts/recipe snapshots, layout/offsets,
-pending owner and token through second parsing, validation and handoff; owners
-drain before charges. Size/allocation/unsupported charge refusals fail without
-clearing the previous manifest, rather than becoming cache-miss rebuilds.
-
-Five tests exercise all fixed reservations with three refusal categories,
-isolated exact/one-byte-short reservation pressure, complete modeled peak and
-peak-minus-one, valid long/short slots, owned text, escaped scene paths,
-arbitrary property order and equal-slot identity ties. Isolated reservation
-pressure and requested-byte aggregate peaks are not physical/RSS proof.
-185 focused source/installed tests, 1,265 editor tests, the full macOS engine
-suite (2,732 run / 2,727 pass / five skips), installed plain/Unicode protocols
-and five strict signatures pass. Sampled arm64 debug frames are empty entries
-48 bytes, dependency body 480 versus old combined 560, field callback 240
-versus 144 and public Read 5,680 versus 5,504; not a whole-stack reduction/bound.
-Linux's final link hit ENOSPC and its Docker daemon then stopped responding to
-status/health checks. Sources are synchronized, but this batch has no current
-Linux test result. Only three own CLI clients were cancelled, not the daemon
-or editor. Windows stays user-owned. Path/digest helper temporaries, remaining
-ownership/call-chain accounting and the final acceptance audit remain open.
-
-The typed-row batch subsequently passes all seven macOS source process gates,
-including 23 resource cases and mixed-resource publication. Mixed manifest
-`7073b566e630c32c4a681406799ae52c6bb36470af7b1fb92ded4ea7c9cfdefe`,
-73,211,328 modeled principal bytes and 6,427,996 balanced allocation/free pairs
-remain unchanged, as do the dense-field encode digest/peak. These do not close
-whole-run memory accounting or supply a current Linux verification result.
-
-Manifest path/digest helper accounting on 2026-11-05 uses the shared
-`VFSRelativePath::ParseInto` API to write validated spellings directly into
-private row storage, without a second owned path or heap allocation. The
-value-returning Parse delegates to the same validation/construction path.
-Self/suffix overlap is handled before clearing trailing bytes, and invalid
-input/null output leaves existing destination storage unchanged. A rejected
-logical path affects only the unpublished row. Named helper views/results/tokens
-are reserved through the actual allocator before use; digest reservation also
-includes the decoder's local digest. Existing full-ledger tests inject resource
-refusals and exact/one-byte-short pressure at these new seams in both passes.
-Three new path tests cover Unicode, reuse, overlap and unchanged failure output.
-568 focused source/installed cooker/JSON/path tests, 1,265 editor unit tests,
-the full macOS engine suite (2,735 run / 2,730 pass / five skips), installed
-plain/Unicode package protocols and five strict signatures pass. XML confirms
-zero engine/editor failures. Formatting/diff checks and source/snapshot equality
-pass. All seven source process gates pass, including 23 resource cases and
-mixed-resource publication. Its manifest, 73,211,328 modeled principal bytes,
-6,427,996 balanced allocation/free pairs and dense-field encode digest/peak
-remain unchanged. Installed resource/mixed-stress tests were not rerun in this
-batch. Linux remains pending after
-another bounded Docker health timeout, with no daemon/editor restart.
-Selected arm64 debug frames are path 416 -> 192 bytes, shared ParseInto 128,
-digest 160 -> 224 with accounting. These are not complete stack/RSS proof;
-remaining call-chain/ownership accounting and final #718 acceptance stay open.
-Windows remains user-owned; no editor/SampleProject lifecycle operation occurs.
-
-Orchestration path preparation now retains the strict target and manifest in
-charged fixed-run storage, not three live parse/append result owners. Scalar
-preflight preserves early invalid-path rejection and current Append byte/component
-semantics without owned values before ledger setup. A checked temporary reservation
-covers returned paths and principal Append/Parse text/component/owned-value state;
-it drains before provider queries and the actual cook. No extra heap allocation,
-global scratch or separate strict-target temporary is introduced.
-Three parameterized regressions (six memory/disk cases) cover invalid and exact
-byte/component/root/Unicode boundaries, resource-short invalid requests, and exact
-preparation reservation versus one-byte-short refusal before provider queries,
-root acquisition or allocation. Previous results/backing/allocation counts remain
-unchanged. This isolated preparation seam is not whole-run/RSS proof. 80 focused
-source/installed tests, 1,265 editor tests, full macOS engine suite (2,741 run /
-2,736 pass / five skips), installed plain/Unicode protocols and five strict
-signatures pass. XML confirms zero failures; snapshot/format/diff checks pass.
-All seven source process gates pass, including 23 resource cases and mixed-resource
-publication. Selected arm64 debug Cook/preparation
-frames are 28,016/1,072 bytes, not total stack bounds. Remaining helper/callback/
-ownership accounting and final #718 audit remain open. Windows stays user-owned;
-Docker recovered after its timed-out normal restart: macOS Quit stopped the VM,
-normal termination completed Desktop/backend shutdown, and Desktop started with
-a responding daemon. No VM force-kill was used. Current Linux verification
-results follow. No editor/SampleProject lifecycle action occurred.
-
-The recovered native ARM64 Linux snapshot rebuilds successfully and runs 2,734
-engine tests: 2,725 pass, seven skip, and exactly the same two software-Vulkan
-GPU grid-label failures are confirmed in XML. All 1,265 editor tests, 648 installed
-cooker/JSON/path tests, installed plain/Unicode package protocols and four dedicated
-2 MiB tmpfs ENOSPC recovery cases pass. Fresh installed macOS/Linux producers have
-byte-identical manifests and all five referenced objects for each built-in/custom
-package. All seven source process gates, 23 installed resource cases and installed
-mixed-publication stress pass on each host. Installed/source mixed manifests,
-per-host backing/mapping/principal peaks and all 6,427,996 balanced allocation/free
-pairs match; Linux principal peak is 72,732,624 bytes. Dense-field encode digest
-`1b7ec394d184ca46665864fde9b05a126552e84dc0622ab1e7fb22dcaca8f234` and
-per-host peaks are unchanged. macOS source mixed-publication principal peak is 73,212,000
-bytes (672 newly accounted path bytes); backing/native-mapping peaks and 6,427,996
-balanced allocation/free pairs are unchanged, as is the manifest. This is modeled
-accounting, not increased backing allocation or whole-stack/RSS proof.
-Execution/producer principal-state accounting now separately reserves Execute's
-capture/publication arguments, scene input/digest, borrowed views and named
-results before input-root acquisition. Producer callbacks reserve their own
-input/output/view/result state before capture access or codec/adapter invocation.
-Retained run members, caller-service contexts and the existing publication-result
-reservation are not charged a second time. Resolved dependencies are constructed
-in-place in their already charged reusable buffer, not through another aggregate.
-The shared allocation-free `CookSceneCaptureSet::InputInto` preserves invalid
-outputs and fills caller-reserved storage, removing value-result/path temporaries
-from both production callers. Public pending results are filled directly before
-publication rather than through a second path-owning aggregate. Two capture-set
-tests cover repeated reuse, incomplete/null/out-of-range/reset preservation,
-unchanged allocation/accounting and post-exclusion reads. Two memory/disk public
-cases isolate exact execution reservation and one-byte-short refusal before input
-acquisition/allocation, preserving results/backing and draining reservations.
-No heap allocation, global/per-scene scratch owner or public service contract is
-added. Setup-query helper scratch and owned query-result wrappers remain a
-separate audit; named principal reservations are not compiler/library call-chain
-or whole-RSS proof. Remaining helper/ownership acceptance and final #718 contract
-audit stay open. Offline SampleProject smoke is optional; the running editor is
-untouched. Windows remains user-owned.
-
-Execution/producer validation rebuilds six targets on macOS/native ARM64 Linux.
-Full macOS engine results are 2,745 run / 2,740 pass / five existing skips;
-Linux is 2,738 run / 2,729 pass / seven skips / the same two XML-confirmed
-software-Vulkan grid-label GPU failures. All 1,265 editor tests, 93 installed
-public-cooker/resource/capture-set tests and 23 installed resource cases pass
-per host. Fresh installed built-in/custom-schema manifests and all five objects
-match byte-for-byte across hosts. Installed plain/Unicode protocols and four
-Linux 2 MiB tmpfs ENOSPC/recovery cases pass. Installed mixed publication,
-recaptured no-op, forced rebuild and logical capture/staging refusals pass;
-manifest/backing/mapping/allocation counts are unchanged, while principal peaks
-are now macOS 73,212,872 / Linux 72,733,496 bytes (+872 each). All 6,427,996
-allocation/free pairs balance. Selected Apple Clang arm64 `-O0 -g0 -fstack-usage`
-frames are Execute 1,744 (previously 1,952), asset callback 448 (288), scene
-callback 544 (480), public Cook 28,016 and path preparation 1,072 (unchanged).
-Callback accounting tokens add frame storage. These are selected samples, not
-whole-stack/RSS proof or closure of the remaining acceptance audit.
-
-Seven native Linux source process gates pass. On macOS six source gates pass
-initially; mixed stress encounters a texture-staging `IOError` during the
-logical staging-limit probe with low host disk headroom. Its retained package
-independently verifies the expected manifest/all five objects, empty scratch,
-and no lock/staging leaks. Fresh isolated stress passes after removing previous
-successful regenerable fixtures; source/installed mixed peaks, manifest and
-balanced allocation counts match. The initial native I/O cause is not proven;
-no test is weakened or I/O failure accepted as a logical-budget refusal. Both
-source 23-case resource gates pass, as do five installed macOS strict signatures,
-source/snapshot equality and formatting/diff checks. Remaining acceptance stays
-open as stated above.
-
-Include changed child paths,
-custom schemas, and canonical material-float vectors. The manifest/package
-reader remains headless; runtime rendering is still the separate #829 gate.
-
-Before marking #718 complete, every capability/error seam above must be tested
-with fixed old/new manifests and independently opened package readers. Include
-input-owner mutation contention/capture violations, unknown/newer versions,
-unsupported backend flags, output/result immutability on failure, memory hooks,
-empty/duplicate scenes, no-op/forced rebuild, concurrent Windows manifest reads,
-and real process termination around the commit point. Only a subsequent tested
-implementation can establish readiness; this contract review makes no such claim.
-
-In particular, inject a seal-time recheck failure after all captures exist:
-assert no package objects were staged/installed, no manifest was replaced, and
-no no-op succeeded. Verify sealing is terminal, later source mutations cannot
-change captured output, and lease destruction never introduces input errors.
 Race publication-root acquisition with mount/backend teardown and attempt
-remount/unmount/shutdown during publication and cleanup. Prove all operations
-stay on the retained backend/root, pin release happens after file/lock cleanup,
-and unsupported pinning fails before writer-lock creation. These are required
-implementation tests, not guarantees established by the wire fixtures.
-
-Strict-path tests must accept `manifest.json`, `objects/<digest>.png`, and
-valid Unicode relative names without changing their bytes. Reject `/manifest.json`,
-`C:/manifest.json`, UNC/backslash paths, `objects//file`, `objects/./file`,
-`objects/../manifest.json`, trailing slash, embedded NUL/control bytes, invalid
-UTF-8, and lengths/component counts above the limits. Test 255 versus 256 UTF-8
-bytes and 32 versus 33 components, including multibyte names; no silent aliasing
-or truncation is allowed. A `VFSPath` with already-normalized spelling is not
-evidence that its original raw spelling was a valid relative path. Parser tests
-must exercise the raw inputs, not inputs preprocessed by the old parser.
+remount, unmount, and shutdown during publication and cleanup. Operations must
+stay on the retained native backend/root, using anchored no-reparse access,
+not a saved pathname. Pins release after file/lock cleanup. Unsupported pinning
+must fail before writer-lock creation.
 
 For scratch lifetime, seal and destroy the input lease while keeping disk
-captures alive, then encode from them successfully. Attempt scratch remount,
-unmount, and backend teardown during capture, after sealing, during encoding,
-and during cleanup: rejection/deferral must keep reads and cleanup on the same
-backend/root. Test retained-handle and pinned-reopen paths, partial acquisition
-failure, unsupported pinning before run creation, and cleanup failures after
-commit. Verify all capture/file wrappers and owned cleanup attempts finish
-before the scratch pin releases and no deletion reaches a replacement mount.
+captures alive, then encode successfully. Attempt scratch remount, unmount, and
+backend teardown during capture, after sealing, during encoding, and during
+cleanup. Test retained-handle and pinned-reopen paths, partial acquisition
+failure, unsupported pinning before run creation, and cleanup failure after
+commit. All capture/file wrappers and owned cleanup attempts finish before
+the scratch pin releases; no deletion may reach a replacement mount.
+
+Raw strict-path tests accept `manifest.json`, `objects/<digest>.png`, and valid
+Unicode relative names without changing bytes. Reject absolute/drive/UNC and
+backslash paths, repeated separators, dot/dot-dot components, trailing slash,
+embedded NUL/control bytes, invalid UTF-8, and over-limit lengths/component
+counts. Exercise 255 versus 256 UTF-8 bytes and 32 versus 33 components,
+including multibyte names. No aliasing or truncation is allowed; tests must
+supply raw spellings, not already-normalized `VFSPath` values.
+
+### 9.4. Publication, recovery, and bounded resources
+
+Use concurrent processes to prove that an old open manifest and its immutable
+dependency objects remain readable after replacement. Terminate producers
+before and after manifest rename to verify old/new authority, writer exclusion,
+refusal to steal stale locks, and non-destructive new-root recovery. Include
+concurrent Windows manifest reads and failures throughout staging, commit, and
+cleanup.
+
+Exercise actual scene, mesh, material, texture, and environment resource caps,
+exact-fit and one-byte-short boundaries, principal/fixed-state accounting, and
+every allocation refusal without fallback, leaks, or mutation of prior outputs.
+Test logical staging limits separately from native disk exhaustion. Real ENOSPC
+acceptance uses a bounded native filesystem; injected errors do not replace it.
+Mixed publication stress must preserve package integrity and balance ownership
+under repeated success and failure.
+
+Ledger/principal accounting is not process RSS, total stack usage, or a shipping
+memory claim. Keep these measurements and their scope distinct. Rendering
+acceptance remains the separate #829 gate. Completion of #718 requires the
+relevant implemented profiles to satisfy these contracts and acceptance gates;
+the document alone is not a readiness claim.

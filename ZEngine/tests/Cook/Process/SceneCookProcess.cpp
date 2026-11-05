@@ -556,6 +556,23 @@ namespace ZEngine::Cook::Tests
                 {"envmaps", &Files, Path("/_cache/envmaps")},
             };
             const auto initialized = owner.Initialize(Allocator, roots);
+            if (initialized.Failed())
+            {
+                // Keep native CI failures actionable: distinguish acquisition
+                // from ancestry rejection before the owner folds both to VFS.
+                VFS::VFSReadRootLease leases[std::size(roots)] = {};
+                for (size_t i = 0; i < std::size(roots); ++i)
+                {
+                    const auto acquired = Files.AcquireReadRoot(roots[i].Path, &leases[i]);
+                    ASSERT_TRUE(acquired.Succeeded()) << "Input root acquisition failed: " << roots[i].Path.CStr() << " (VFS " << static_cast<uint32_t>(acquired.Error()) << ").";
+                    for (size_t j = 0; j < i; ++j)
+                    {
+                        const auto overlap = leases[i].Overlaps(leases[j]);
+                        ASSERT_TRUE(overlap.Succeeded()) << "Input root ancestry query failed: " << roots[i].Path.CStr() << " / " << roots[j].Path.CStr() << " (VFS " << static_cast<uint32_t>(overlap.Error()) << ").";
+                        EXPECT_FALSE(overlap.Value()) << "Input roots unexpectedly overlap: " << roots[i].Path.CStr() << " / " << roots[j].Path.CStr();
+                    }
+                }
+            }
             ASSERT_TRUE(initialized.Succeeded()) << "Frozen input root initialization failed (VFS " << static_cast<uint32_t>(initialized.Error()) << ").";
             CookFrozenInputSource source(owner);
             CookAdapterRegistry   adapters    = {};
